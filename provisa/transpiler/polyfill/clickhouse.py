@@ -383,6 +383,39 @@ def _is_null(value: exp.Expr) -> bool:
     return isinstance(node, exp.Null)
 
 
+def _a_count(value: exp.Expr) -> bool:
+    """Whether a window's offset is a bare unsigned literal, which ClickHouse takes as written."""
+    node = value.unnest()
+    return isinstance(node, exp.Literal) and not node.is_string and node.this.isdigit()
+
+
+#: What each window function's offset below its least raises: PostgreSQL's error, or a refusal
+#: of a backwards lag or lead, which no form here reads.
+_BELOW = {
+    "nth_value": ("22016", "argument of nth_value must be greater than zero", 1),
+    "lag": ("0A000", "lag does not read this value", 0),
+    "lead": ("0A000", "lead does not read this value", 0),
+}
+
+
+def _counted(offset: exp.Expr, name: str) -> exp.Expr:
+    """``offset`` as ClickHouse's unsigned count: its value where it is not NULL, and a raise of
+    one below the least the function reads."""
+    sqlstate, message, least = _BELOW[name]
+    below = exp.LT(this=offset.copy(), expression=exp.Literal.number(least))
+    thrown = exp.Anonymous(
+        this="throwIf",
+        expressions=[
+            exp.Anonymous(this="ifNull", expressions=[below, exp.Literal.number(0)]),
+            exp.Literal.string(f"postgresql-error {sqlstate}: {message}<end of postgresql-error>"),
+        ],
+    )
+    count = exp.Add(
+        this=exp.Anonymous(this="assumeNotNull", expressions=[offset.copy()]), expression=thrown
+    )
+    return exp.Anonymous(this="toUInt64", expressions=[count])
+
+
 def _null_of(value: exp.Expr) -> exp.Expr:
     """A NULL of ``value``'s type: nullIf of the value and itself."""
     return exp.Anonymous(this="nullIf", expressions=[_nullable(value), _nullable(value)])
@@ -421,6 +454,11 @@ def framed(function: str) -> Rewrite:
             )
         window = node.copy()
         value, rest = _nullable(args[0]), [arg.copy() for arg in args[1:]]
+        offset = args[1] if len(args) > 1 else None
+        if offset is not None and not _a_count(offset):
+            # ClickHouse takes an offset only as an integer no NULL: a row's NULL answers NULL,
+            # and one PostgreSQL refuses (or reads backwards) is raised.
+            rest[0] = _counted(offset, name)
         if name in _IN_FRAME:
             window.set("this", exp.Anonymous(this=_IN_FRAME[name], expressions=[value, *rest]))
             window.set("spec", _WHOLE_PARTITION.copy())
@@ -429,7 +467,13 @@ def framed(function: str) -> Rewrite:
             window.set("this", exp.RespectNulls(this=kind(this=value)))
         else:
             window.set("this", exp.Anonymous(this="nth_value", expressions=[value, *rest]))
-        return window
+        if offset is None or _a_count(offset):
+            return window
+        return exp.If(
+            this=exp.Is(this=offset.copy(), expression=exp.Null()),
+            true=exp.Null(),
+            false=window,
+        )
 
     frame.__doc__ = f"{function} over a window: NULL where ClickHouse answers its type's default."
     frame.__qualname__ = frame.__name__ = f"framed_{function}"
@@ -549,7 +593,14 @@ NUMERIC_MOD = Feature(
     FAMILY,
     "The remainder of one numeric divided by another, at the larger scale of the two.",
     read=Side(
-        rules=(Rule("numeric_mod($a, $b)", {"clickhouse": _NUMERIC_MOD}),),
+        rules=(
+            Rule(
+                "numeric_mod($a, $b)",
+                # Every other dialect keeps the old table's form: a rule of no form there would
+                # leave the call to the engine, which has no numeric_mod (run 43424649612).
+                {**trino.trino_only(trino.KEPT), "clickhouse": _NUMERIC_MOD},
+            ),
+        ),
         limitations={
             "clickhouse": (
                 Limitation(

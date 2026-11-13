@@ -171,7 +171,7 @@ def test_a_forms_every_match_is_replace_regexp_all():
     ("sql", "answer"),
     [
         (
-            "SELECT pg_catalog.record_lt(ROW(1, 'a'::text)::record, ROW(1, 'b'::text)::record) AS v",
+            "SELECT pg_catalog.record_lt(ROW(1, 2)::record, ROW(1, 5)::record) AS v",
             1,
         ),
         (
@@ -183,7 +183,7 @@ def test_a_forms_every_match_is_replace_regexp_all():
             1,
         ),
         (
-            "SELECT pg_catalog.record_ge(ROW(1, 'a'::text)::record, ROW(1, 'b'::text)::record) AS v",
+            "SELECT pg_catalog.record_ge(ROW(1, 2)::record, ROW(1, 5)::record) AS v",
             0,
         ),
     ],
@@ -519,3 +519,133 @@ def test_the_other_engines_keep_their_forms():
     assert "BOOL_AND" in transpile('SELECT pg_catalog."bool_and"(NULL::boolean) AS v', "trino")
     assert "&" in transpile("SELECT pg_catalog.int4and(5, 3) AS v", "duckdb")
     assert "COLLATE" in transpile("SELECT pg_catalog.text_lt('a'::text, 'b'::text) AS v", "duckdb")
+
+
+# --- run 43424649612: the wrong answers and errors of the first form ------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # A strict function of NULL is NULL: ``x IS NOT NULL`` of a NULL is false (sqlglot's Is,
+        # negated), which the fold of a decided CASE read as true.
+        ('SELECT pg_catalog."isfinite"(NULL::date) AS v', None),
+        ('SELECT pg_catalog."isfinite"(NULL::timestamp without time zone) AS v', None),
+        ('SELECT pg_catalog."masklen"(NULL::inet) AS v', None),
+        ('SELECT pg_catalog."hostmask"(NULL::inet) AS v', None),
+        ('SELECT pg_catalog."network_sub"(NULL::inet, NULL::inet) AS v', None),
+        ('SELECT pg_catalog."network_sup"(NULL::inet, NULL::inet) AS v', None),
+        ("SELECT CASE WHEN CAST(NULL AS BIGINT) IS NOT NULL THEN FALSE END AS v", None),
+        ('SELECT pg_catalog."num_nonnulls"(NULL::integer) AS v', 0),
+        ('SELECT pg_catalog."regr_count"(NULL::double precision, NULL::double precision) AS v', 0),
+        ('SELECT pg_catalog."rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) AS v', 1),
+        (
+            'SELECT pg_catalog."dense_rank"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) '
+            "AS v",
+            1,
+        ),
+        (
+            'SELECT pg_catalog."cume_dist"(NULL::integer) WITHIN GROUP (ORDER BY NULL::integer) '
+            "AS v",
+            1.0,
+        ),
+        (
+            'SELECT pg_catalog."percent_rank"(NULL::integer) WITHIN GROUP '
+            "(ORDER BY NULL::integer) AS v",
+            0.0,
+        ),
+        ('SELECT pg_catalog."int8shl"(3::bigint, 3::integer) AS v', 24),
+        ('SELECT pg_catalog."int8shl"(1::bigint, 64) AS v', 1),
+        (
+            "SELECT pg_catalog.\"array_to_string\"('{1,2,3}'::integer[], 'abc'::text, "
+            "'abc'::text) AS v",
+            "1abc2abc3",
+        ),
+        ("SELECT array_to_string('{1,NULL,3}'::integer[], ',', '*') AS v", "1,*,3"),
+        ("SELECT array_to_string('{1,NULL,3}'::integer[], ',') AS v", "1,3"),
+    ],
+)
+def test_a_statement_of_run_43424649612_answers_postgresqls(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+@pytest.mark.parametrize(
+    ("function", "answer"),
+    [("ts_rank", 0.0607927 / 1.5849625 / 2), ("ts_rank_cd", 0.1 / 1.0986123 / 2)],
+)
+def test_a_rank_normalized_by_length_and_words_is_postgresqls(runtime, function, answer):
+    sql = f"SELECT pg_catalog.\"{function}\"('cat:1 fat:2'::tsvector, 'cat'::tsquery, 3::integer) AS v"
+    assert _one(runtime, sql) == pytest.approx(answer, rel=1e-6)
+
+
+@pytest.mark.parametrize(
+    "function",
+    [f"record_{k}{op}" for k in ("", "image_") for op in ("eq", "ne", "lt", "le", "gt", "ge")],
+)
+def test_a_record_holding_null_is_refused_by_name(function):
+    row = "ROW(NULL::integer, 'c'::text)::record"
+    _refused(f'SELECT pg_catalog."{function}"({row}, {row}) AS v')
+
+
+@pytest.mark.parametrize(
+    ("function", "answer"),
+    [
+        ("record_eq", 0),
+        ("record_ne", 1),
+        ("record_lt", 1),
+        ("record_ge", 0),
+        ("record_image_le", 1),
+    ],
+)
+def test_a_record_of_numbers_is_compared_as_its_tuple(runtime, function, answer):
+    sql = f'SELECT pg_catalog."{function}"(ROW(1, -2)::record, ROW(1, 3)::record) AS v'
+    assert _one(runtime, sql) == answer
+
+
+def test_an_order_of_records_holding_text_is_refused_by_name():
+    _refused(
+        "SELECT pg_catalog.record_lt(ROW(1, 'a'::text)::record, ROW(1, 'B'::text)::record) AS v"
+    )
+
+
+_OFFSETS = (
+    "FROM (VALUES (1, 3::integer, 1::integer, 3::integer), (2, (-7)::integer, 2::integer, "
+    "(-7)::integer), (3, 42::integer, 1::integer, 42::integer)) AS t(c1, c2, c3, c4) ORDER BY c1"
+)
+
+
+@pytest.mark.parametrize(
+    ("call", "rows"),
+    [
+        ('pg_catalog."lag"(c2, c3)', [None, None, -7]),
+        ('pg_catalog."lag"(c2, c3, c4)', [3, -7, -7]),
+        ('pg_catalog."lead"(c2, c3)', [-7, None, None]),
+        ('pg_catalog."lead"(c2, c3, c4)', [-7, -7, 42]),
+        ('pg_catalog."nth_value"(c2, c3)', [3, -7, 3]),
+    ],
+)
+def test_a_window_offset_of_a_column_is_each_rows(runtime, call, rows):
+    sql = f"SELECT {call} OVER (ORDER BY c1) AS v {_OFFSETS}"
+    assert [row[0] for row in _rows(runtime, sql)] == rows
+
+
+@pytest.mark.parametrize(
+    ("sql", "sqlstate"),
+    [
+        (
+            "SELECT nth_value(c, 0::integer) OVER (ORDER BY c) AS v FROM (VALUES (1)) AS t(c)",
+            "22016",
+        ),
+        ("SELECT lag(c, -1) OVER (ORDER BY c) AS v FROM (VALUES (1)) AS t(c)", "0A000"),
+    ],
+)
+def test_a_window_offset_below_its_least_is_raised(runtime, sql, sqlstate):
+    assert _raised(runtime, sql).sqlstate == sqlstate
+
+
+@pytest.mark.parametrize("dialect", ["duckdb", "trino"])
+def test_numeric_mod_keeps_the_old_tables_form_elsewhere(dialect):
+    written = transpile(
+        'SELECT pg_catalog."numeric_mod"(NULL::numeric, NULL::numeric) AS v', dialect
+    )
+    assert "numeric_mod" not in written.lower()

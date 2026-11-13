@@ -638,7 +638,8 @@ def _word_count(e: Engine) -> str:
         "_s",
         "_x",
         "_s + _x",
-        "0",
+        # A count's type: ClickHouse's fold takes its seed's, and a bare 0 is a UInt8 there.
+        "CAST(0 AS BIGINT)",
     )
 
 

@@ -401,7 +401,9 @@ def _decided(condition: exp.Expr) -> bool | None:
     if isinstance(condition, exp.Paren):
         return _decided(condition.this)
     if isinstance(condition, exp.Is) and isinstance(condition.expression, exp.Null):
-        return True if _null_literal(condition.this) else None
+        if not _null_literal(condition.this):
+            return None
+        return not condition.args.get("negate")  # x IS NOT NULL is an Is negated
     if isinstance(condition, exp.Boolean):
         return bool(condition.this)
     if isinstance(condition, exp.Not):
@@ -437,3 +439,25 @@ def _clickhouse_case(self: Generator, expression: exp.Case) -> str:
 
 
 ClickHouse.Generator.TRANSFORMS[exp.Case] = _clickhouse_case
+
+
+def _clickhouse_array_to_string(self: Generator, expression: exp.ArrayToString) -> str:
+    """array_to_string with a text for NULL: each NULL element as that text, ClickHouse's
+    arrayStringConcat taking no third argument (it skips a NULL, as the two-argument form does). A
+    NULL text for NULL skips them too, as PostgreSQL's does."""
+    null = expression.args.get("null")
+    if null is None:
+        return self.func("arrayStringConcat", expression.this, expression.expression)
+    element = exp.to_identifier("_e")
+    shown = exp.Anonymous(
+        this="ifNull",
+        expressions=[exp.Anonymous(this="toString", expressions=[exp.column("_e")]), null.copy()],
+    )
+    mapped = exp.Anonymous(
+        this="arrayMap",
+        expressions=[exp.Lambda(this=shown, expressions=[element]), expression.this.copy()],
+    )
+    return self.func("arrayStringConcat", mapped, expression.expression)
+
+
+ClickHouse.Generator.TRANSFORMS[exp.ArrayToString] = _clickhouse_array_to_string

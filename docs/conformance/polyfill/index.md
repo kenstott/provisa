@@ -13,7 +13,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [DuckDB](duckdb.md)
 
-90 of the grid's 153 features are native on DuckDB and left out.
+89 of the grid's 153 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -267,11 +267,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN strlen($n) &gt; 63 THEN error(&#x27;postgresql-error 0A000: pg_char_to_encoding does not read this value&lt;end of postgresql-error&gt;&#x27;) ELSE CAST(CASE lower(regexp_replace($n, &#x27;[^A-Za-z0-9]&#x27;, &#x27;&#x27;, &#x27;g&#x27;)) WHEN &#x27;abc&#x27; THEN 19 WHEN &#x27;alt&#x27; THEN 20 WHEN &#x27;big5&#x27; THEN 36 WHEN &#x27;euccn&#x27; THEN 2 WHEN &#x27;eucjis2004&#x27; THEN 5 WHEN &#x27;eucjp&#x27; THEN 1 WHEN &#x27;euckr&#x27; THEN 3 WHEN &#x27;euctw&#x27; THEN 4 WHEN &#x27;gb18030&#x27; THEN 39 WHEN &#x27;gbk&#x27; THEN 37 WHEN &#x27;iso88591&#x27; THEN 8 WHEN &#x27;iso885910&#x27; THEN 13 WHEN &#x27;iso885913&#x27; THEN 14 WHEN &#x27;iso885914&#x27; THEN 15 WHEN &#x27;iso885915&#x27; THEN 16 WHEN &#x27;iso885916&#x27; THEN 17 WHEN &#x27;iso88592&#x27; THEN 9 WHEN &#x27;iso88593&#x27; THEN 10 WHEN &#x27;iso88594&#x27; THEN 11 WHEN &#x27;iso88595&#x27; THEN 25 WHEN &#x27;iso88596&#x27; THEN 26 WHEN &#x27;iso88597&#x27; THEN 27 WHEN &#x27;iso88598&#x27; THEN 28 WHEN &#x27;iso88599&#x27; THEN 12 WHEN &#x27;johab&#x27; THEN 40 WHEN &#x27;koi8&#x27; THEN 22 WHEN &#x27;koi8r&#x27; THEN 22 WHEN &#x27;koi8u&#x27; THEN 34 WHEN &#x27;latin1&#x27; THEN 8 WHEN &#x27;latin10&#x27; THEN 17 WHEN &#x27;latin2&#x27; THEN 9 WHEN &#x27;latin3&#x27; THEN 10 WHEN &#x27;latin4&#x27; THEN 11 WHEN &#x27;latin5&#x27; THEN 12 WHEN &#x27;latin6&#x27; THEN 13 WHEN &#x27;latin7&#x27; THEN 14 WHEN &#x27;latin8&#x27; THEN 15 WHEN &#x27;latin9&#x27; THEN 16 WHEN &#x27;mskanji&#x27; THEN 35 WHEN &#x27;muleinternal&#x27; THEN 7 WHEN &#x27;shiftjis&#x27; THEN 35 WHEN &#x27;shiftjis2004&#x27; THEN 41 WHEN &#x27;sjis&#x27; THEN 35 WHEN &#x27;sqlascii&#x27; THEN 0 WHEN &#x27;tcvn&#x27; THEN 19 WHEN &#x27;tcvn5712&#x27; THEN 19 WHEN &#x27;uhc&#x27; THEN 38 WHEN &#x27;unicode&#x27; THEN 6 WHEN &#x27;utf8&#x27; THEN 6 WHEN &#x27;vscii&#x27; THEN 19 WHEN &#x27;win&#x27; THEN 23 WHEN &#x27;win1250&#x27; THEN 29 WHEN &#x27;win1251&#x27; THEN 23 WHEN &#x27;win1252&#x27; THEN 24 WHEN &#x27;win1253&#x27; THEN 30 WHEN &#x27;win1254&#x27; THEN 31 WHEN &#x27;win1255&#x27; THEN 32 WHEN &#x27;win1256&#x27; THEN 18 WHEN &#x27;win1257&#x27; THEN 33 WHEN &#x27;win1258&#x27; THEN 19 WHEN &#x27;win866&#x27; THEN 20 WHEN &#x27;win874&#x27; THEN 21 WHEN &#x27;win932&#x27; THEN 35 WHEN &#x27;win936&#x27; THEN 37 WHEN &#x27;win949&#x27; THEN 38 WHEN &#x27;win950&#x27; THEN 36 WHEN &#x27;windows1250&#x27; THEN 29 WHEN &#x27;windows1251&#x27; THEN 23 WHEN &#x27;windows1252&#x27; THEN 24 WHEN &#x27;windows1253&#x27; THEN 30 WHEN &#x27;windows1254&#x27; THEN 31 WHEN &#x27;windows1255&#x27; THEN 32 WHEN &#x27;windows1256&#x27; THEN 18 WHEN &#x27;windows1257&#x27; THEN 33 WHEN &#x27;windows1258&#x27; THEN 19 WHEN &#x27;windows866&#x27; THEN 20 WHEN &#x27;windows874&#x27; THEN 21 WHEN &#x27;windows932&#x27; THEN 35 WHEN &#x27;windows936&#x27; THEN 37 WHEN &#x27;windows949&#x27; THEN 38 WHEN &#x27;windows950&#x27; THEN 36 ELSE -1 END AS INTEGER) END</code></pre></td><td><ul><li>A name of more than 63 bytes is refused by name where it runs: PostgreSQL cuts it to them as it reads it. <code>0A000</code> pg_char_to_encoding does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-9 of the grid's 153 features are native on Trino and left out.
+8 of the grid's 153 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -629,12 +632,15 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-9 of the grid's 153 features are native on Presto and left out.
+8 of the grid's 153 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -992,12 +998,15 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-9 of the grid's 153 features are native on Athena and left out.
+8 of the grid's 153 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1355,6 +1364,9 @@ CASE WHEN $n IS NULL THEN CAST(NULL AS INTEGER) WHEN length(to_utf8($n)) &gt; 63
 <tr><td><strong>json_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>jsonb_build_object</strong><br>A JSON object of keys and values; each key is cast to its text.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.object_keys_as_text: json_build_object&#x27;s keys as PostgreSQL&#x27;s text of them, where one is no text.</code></pre></td><td><ul><li>Where a rule writes the call, of a literal, a column or a cast of one only: any other value is refused by name.</li><li>A key of a type the statement says other than text, an integer or a boolean, or a NULL key: refused by name, as Trino&#x27;s text of it may differ.</li><li>An odd count of arguments is refused as the statement is read, not where it runs. <code>22023</code> argument list must have even number of elements</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>current_schemas</strong><br>The schemas of the search path.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_current_schemas: current_schemas: refused by name, as no form names the search path.</code></pre></td><td><ul><li>Refused by name: Trino has no form of it.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
@@ -1453,40 +1465,40 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
 =&gt;
-($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_eq_on_clickhouse: record_eq on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
 =&gt;
-($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_ne_on_clickhouse: record_ne on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
 =&gt;
-($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_eq_on_clickhouse: record_image_eq on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
-($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_ne_on_clickhouse: record_image_ne on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
 =&gt;
-($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_lt_on_clickhouse: record_lt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
 =&gt;
-($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_le_on_clickhouse: record_le on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
 =&gt;
-($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_gt_on_clickhouse: record_gt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
 =&gt;
-($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_ge_on_clickhouse: record_ge on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
 =&gt;
-($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_lt_on_clickhouse: record_image_lt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
 =&gt;
-($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_le_on_clickhouse: record_image_le on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
 =&gt;
-($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_gt_on_clickhouse: record_image_gt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
 =&gt;
-($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_ge_on_clickhouse: record_image_ge on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -1613,7 +1625,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+bitShiftLeft(CAST($a AS Nullable(Int64)), bitAnd($b, 63))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1695,7 +1707,7 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) WHEN $b =
 
 ## [Snowflake](snowflake.md)
 
-89 of the grid's 153 features are native on Snowflake and left out.
+88 of the grid's 153 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1960,11 +1972,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on snowflake</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-89 of the grid's 153 features are native on Databricks and left out.
+88 of the grid's 153 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2229,11 +2244,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on databricks</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-89 of the grid's 153 features are native on BigQuery and left out.
+88 of the grid's 153 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2498,11 +2516,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on bigquery</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-89 of the grid's 153 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+88 of the grid's 153 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2767,11 +2788,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on tsql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-89 of the grid's 153 features are native on Redshift and left out.
+88 of the grid's 153 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3036,11 +3060,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on redshift</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-89 of the grid's 153 features are native on MySQL and left out.
+88 of the grid's 153 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3305,11 +3332,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on mysql</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-89 of the grid's 153 features are native on SingleStore and left out.
+88 of the grid's 153 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3574,11 +3604,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on singlestore</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-89 of the grid's 153 features are native on SQLite and left out.
+88 of the grid's 153 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3843,11 +3876,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on sqlite</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-89 of the grid's 153 features are native on Oracle and left out.
+88 of the grid's 153 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4112,11 +4148,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on oracle</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-89 of the grid's 153 features are native on Hive and left out.
+88 of the grid's 153 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4381,11 +4420,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on hive</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-89 of the grid's 153 features are native on Exasol and left out.
+88 of the grid's 153 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4650,11 +4692,14 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on exasol</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-89 of the grid's 153 features are native on Druid and left out.
+88 of the grid's 153 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4919,4 +4964,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on druid</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

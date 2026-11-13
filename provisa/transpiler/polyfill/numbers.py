@@ -92,9 +92,15 @@ INT8SHL = Feature(
         rules=(
             Rule(
                 "int8shl($a, $b)",
-                trino.trino_only(
-                    "bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))"
-                ),
+                {
+                    **trino.trino_only(
+                        "bitwise_left_shift(CAST($a AS BIGINT), CAST(bitwise_and($b, 63) AS INTEGER))"
+                    ),
+                    # The old table's form wraps through 2^64, which ClickHouse reads as no exact
+                    # literal: int8shl(3, 3) answered 0 (run 43424649612). bitShiftLeft wraps an
+                    # Int64 as C does.
+                    "clickhouse": "bitShiftLeft(CAST($a AS Nullable(Int64)), bitAnd($b, 63))",
+                },
             ),
         )
     ),

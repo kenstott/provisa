@@ -8,7 +8,7 @@ This page lists every feature that has a polyfill or a limitation on ClickHouse.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 146, of which 61 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 146, of which 72 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
 37 of the grid's 153 features are native on ClickHouse and left out.
 
@@ -103,40 +103,40 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
 =&gt;
-($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_eq_on_clickhouse: record_eq on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_ne</strong><br>Two records not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_ne($a, $b)
 =&gt;
-($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_ne_on_clickhouse: record_ne on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_eq</strong><br>Two records of equal images, a NULL field equal to a NULL field.</td><td><pre><code>record_image_eq($a, $b)
 =&gt;
-($a) = ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_eq_on_clickhouse: record_image_eq on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_ne</strong><br>Two records of images not equal, a NULL field equal to a NULL field.</td><td><pre><code>record_image_ne($a, $b)
 =&gt;
-($a) &lt;&gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_ne_on_clickhouse: record_image_ne on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_lt</strong><br>One record before another.</td><td><pre><code>record_lt($a, $b)
 =&gt;
-($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_lt_on_clickhouse: record_lt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_le</strong><br>One record before or equal to another.</td><td><pre><code>record_le($a, $b)
 =&gt;
-($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_le_on_clickhouse: record_le on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_gt</strong><br>One record after another.</td><td><pre><code>record_gt($a, $b)
 =&gt;
-($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_gt_on_clickhouse: record_gt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_ge</strong><br>One record after or equal to another.</td><td><pre><code>record_ge($a, $b)
 =&gt;
-($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_ge_on_clickhouse: record_ge on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_lt</strong><br>One record image before another.</td><td><pre><code>record_image_lt($a, $b)
 =&gt;
-($a) &lt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_lt_on_clickhouse: record_image_lt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_le</strong><br>One record image before or equal to another.</td><td><pre><code>record_image_le($a, $b)
 =&gt;
-($a) &lt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_le_on_clickhouse: record_image_le on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_gt</strong><br>One record image after another.</td><td><pre><code>record_image_gt($a, $b)
 =&gt;
-($a) &gt; ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_gt_on_clickhouse: record_image_gt on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_image_ge</strong><br>One record image after or equal to another.</td><td><pre><code>record_image_ge($a, $b)
 =&gt;
-($a) &gt;= ($b)</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.records.record_image_ge_on_clickhouse: record_image_ge on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>money_text</strong><br>money&#x27;s text, as cash_out writes it: $1,234.50, NULL for a NULL.</td><td><pre><code>money_text($v)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: money_text($v). <code>XX000</code> cast to text on a money column needs money&#x27;s own semantics, which clickhouse neither has nor emulates; it is not answered over the column&#x27;s text form</li></ul></td><td></td><td></td></tr>
@@ -263,7 +263,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int8shl</strong><br>A bigint shifted left, its count taken modulo 64, the result wrapping.</td><td><pre><code>int8shl($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+bitShiftLeft(CAST($a AS Nullable(Int64)), bitAnd($b, 63))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>int2shr</strong><br>A smallint shifted right, its sign kept, its count taken modulo 32.</td><td><pre><code>int2shr($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
