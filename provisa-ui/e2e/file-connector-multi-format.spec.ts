@@ -28,11 +28,12 @@ import { fileURLToPath } from "node:url";
 import { test, expect, BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 import {
-  discoveredColumnCount,
   DOMAIN,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
+  tableOption,
+  tablesField,
   runSqlOnPage,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
@@ -106,16 +107,16 @@ test.describe("file connector: every recognized format is discoverable, columned
     if ((await schemaSelect.inputValue()) !== schemaName) {
       await schemaSelect.selectOption(schemaName);
     }
-    const tableSelect = page.getByTestId("register-table-table-select");
+    // REQ-2234: the Tables field, the standard multi-select, lists them in its open list.
+    const field = tablesField(page);
+    await expect(field).toBeEnabled({ timeout: 120000 });
+    await field.click();
     // Wait for at least the native tables (cheapest, no conversion) before reading the full list.
-    await expect(tableSelect.locator(`option[value='customers']`)).toHaveCount(1, {
-      timeout: 120000,
-    });
-    // Real entries render as <option value={tbl.name}>{tbl.name}</option> (value === text) — only
-    // the picker's own placeholder ("Select table...", value="") differs, so drop empty values.
-    const discovered = await tableSelect
-      .locator("option")
-      .evaluateAll((opts) => opts.map((o) => (o as HTMLOptionElement).value).filter(Boolean));
+    await expect(tableOption(page, "customers")).toBeVisible({ timeout: 120000 });
+    // An option's text is the table's name, followed by Register where it needs input.
+    const discovered = await page
+      .getByRole("option")
+      .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
 
     for (const name of NATIVE_TABLES) {
       expect(
@@ -142,17 +143,15 @@ test.describe("file connector: every recognized format is discoverable, columned
     }
 
     // ── 3. Columns populated: every discovered table resolves at least one typed column ───────
+    // A table is offered for picking only once its columns are read and every one has a type;
+    // one with none, or with a column discovery could not type, cannot be picked.
     for (const name of discovered) {
-      await tableSelect.selectOption(name);
-      const colCount = await discoveredColumnCount(page);
-      expect(colCount, `table ${name} resolved zero columns`).toBeGreaterThan(0);
-      // The short register step asks a type only for a column discovery could not type: none
-      // asked means every column resolved one.
       await expect(
-        page.locator('[data-testid^="register-table-type-"]'),
-        `table ${name} has columns with no resolved data type`,
-      ).toHaveCount(0);
+        tableOption(page, name),
+        `table ${name} resolved no columns, or a column with no data type`,
+      ).not.toHaveAttribute("data-combobox-disabled", { timeout: 120000 });
     }
+    await page.keyboard.press("Escape");
 
     // ── 4. Query one of them for real, through the SQL page ──────────────────────────────────
     await pickSchemaAndTable(page, schemaName, "customers");

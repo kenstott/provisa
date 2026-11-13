@@ -51,7 +51,9 @@ async function getDomainId(): Promise<string> {
   // The first domain a table may be put into: the form offers no internal one (meta, ontology, ops).
   const d = domains.find((d) => isAssignableDomain(d.id));
   if (!d) {
-    throw new Error(`no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`);
+    throw new Error(
+      `no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`,
+    );
   }
   return d.id;
 }
@@ -95,15 +97,17 @@ test("file connector: add northwind source and query customers", async ({ page }
   // ── 2. Open table form and verify Northwind tables are enumerated ─────────
   await openRegisterForm(page, SOURCE_ID, await getDomainId());
 
-  // The Northwind glob resolves to exactly one schema, which the form selects for itself.
-  await expect(page.getByTestId("register-table-schema-select")).toHaveValue(SCHEMA_NAME, {
-    timeout: 60000,
-  });
-  const tableSelect = page.getByTestId("register-table-table-select");
-  await expect(tableSelect.locator("option[value='customers']")).toHaveCount(1, {
-    timeout: 30000,
-  });
-  const tableOptions = await tableSelect.locator("option").allTextContents();
+  // The Northwind glob resolves to exactly one schema, which the form takes for itself: no
+  // Schema field (REQ-2234). The Tables field lists its tables.
+  await expect(page.getByTestId("register-table-schema-select")).toHaveCount(0);
+  const field = page.getByTestId("register-tables-field").getByRole("textbox");
+  await expect(field).toBeEnabled({ timeout: 60000 });
+  await field.click();
+  await expect(page.getByRole("option", { name: /^customers/ })).toBeVisible({ timeout: 30000 });
+  const tableOptions = await page
+    .getByRole("option")
+    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("customers");
   expect(tableOptions).toContain("orders");
@@ -124,7 +128,10 @@ test("file connector: add northwind source and query customers", async ({ page }
     },
   );
 
-  expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
+  expect(
+    registerResult.errors,
+    `registerTable errors: ${JSON.stringify(registerResult.errors)}`,
+  ).toBeUndefined();
   expect(
     registerResult.data?.registerTable?.success,
     `registerTable: ${JSON.stringify(registerResult.data?.registerTable)}`,
@@ -156,9 +163,15 @@ test("file connector: add northwind source and query customers", async ({ page }
     body: JSON.stringify({ query: `{ __schema { queryType { fields { name } } } }` }),
   });
   const introData = await introRes.json();
-  const allFields: string[] = introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
-  const customersField = allFields.find((f) => f.toLowerCase().endsWith("customers") && !f.toLowerCase().includes("aggregate"));
-  expect(customersField, `customers field not found in schema. Available: ${allFields.join(", ")}`).toBeDefined();
+  const allFields: string[] =
+    introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
+  const customersField = allFields.find(
+    (f) => f.toLowerCase().endsWith("customers") && !f.toLowerCase().includes("aggregate"),
+  );
+  expect(
+    customersField,
+    `customers field not found in schema. Available: ${allFields.join(", ")}`,
+  ).toBeDefined();
 
   const dataRes = await fetch(`${BACKEND_URL}/data/graphql`, {
     method: "POST",
@@ -167,7 +180,8 @@ test("file connector: add northwind source and query customers", async ({ page }
   });
   const queryResult = await dataRes.json();
   expect(queryResult.errors, `query errors: ${JSON.stringify(queryResult.errors)}`).toBeUndefined();
-  const rows: Array<{ customerId: string; companyName: string }> = queryResult.data?.[customersField!] ?? [];
+  const rows: Array<{ customerId: string; companyName: string }> =
+    queryResult.data?.[customersField!] ?? [];
   expect(rows.length).toBeGreaterThan(0);
   expect(rows[0].customerId).toBeDefined();
 });
