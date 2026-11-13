@@ -444,15 +444,14 @@ class EngineBackend:
         whose store is embedded and shares a single connection (DuckDB, REQ-989) overrides this to
         write through that connection instead, mirroring ``land_source_table``'s own dispatch."""
         del state
-        from sqlalchemy.schema import CreateSchema
-
+        from provisa.core.schema_create import create_schema
         from provisa.federation.materialize_exec import apply_cdc, build_table
         from provisa.federation.store_writer import store_connection
 
         tbl = build_table(schema, table, columns, tuple(pk_columns))
         async with store_connection(self.engine.materialize_store()) as conn:
-            if schema and conn.capabilities.schemas:
-                await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+            if schema:
+                await create_schema(conn, schema)
             return await apply_cdc(conn, tbl, pk_columns, events, report_unchanged=True)
 
     async def apply_change_group(self, state: Any, group: list[Any]) -> None:
@@ -463,16 +462,17 @@ class EngineBackend:
         connection (DuckDB) overrides this, as it does ``apply_cdc_events``."""
         del state
         from sqlalchemy import and_
-        from sqlalchemy.schema import CreateSchema, CreateTable
+        from sqlalchemy.schema import CreateTable
 
+        from provisa.core.schema_create import create_schema
         from provisa.federation.materialize_exec import apply_cdc, build_table
         from provisa.federation.store_writer import store_connection
 
         async with store_connection(self.engine.materialize_store()) as conn:
             async with conn.transaction():
                 for changes in group:
-                    if changes.schema and conn.capabilities.schemas:
-                        await conn.execute_core(CreateSchema(changes.schema, if_not_exists=True))
+                    if changes.schema:
+                        await create_schema(conn, changes.schema)
                     table = build_table(
                         changes.schema, changes.table, changes.columns, tuple(changes.pk_columns)
                     )
@@ -1242,13 +1242,13 @@ class TrinoBackend(EngineBackend):
         try:
             from provisa.core.environments import active_org_schema
             from provisa.core.request_context import require_current_org
+            from provisa.core.schema_create import create_schema
             from provisa.federation.store_writer import store_connection
-            from sqlalchemy.schema import CreateSchema
 
             org_id = require_current_org()
             cache_schema = active_org_schema(org_id, "_api_cache")
             async with store_connection(self.engine.materialize_store()) as store_conn:
-                await store_conn.execute_core(CreateSchema(cache_schema, if_not_exists=True))
+                await create_schema(store_conn, cache_schema)
         except Exception:
             _log.warning("ensuring the API-result cache schema failed (non-fatal)", exc_info=True)
 

@@ -32,6 +32,7 @@ import psycopg2.extensions
 import psycopg2.pool
 
 from provisa.core import request_deadline
+from provisa.core.schema_create import create_schema_on_cursor
 from provisa.core.ir_types import interval_value
 from provisa.core.pg_range import RANGE_TYPES
 from provisa.core.session_time_zone import carrying_zone, told_as
@@ -547,7 +548,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         )
 
         refuse_live_in_write_surface(folded_schema, source.table_name)
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{folded_schema}"')
+        create_schema_on_cursor(cur, folded_schema)
         found = pg_relation_kind(cur, folded_schema, source.table_name)
         if found is not None and found[1] != "v":
             raise ReplicaTargetError(
@@ -716,7 +717,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         want_cols = [name for name, _ in columns]
         want_pk = list(pk_columns or ())
         cur = self._con.cursor()
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        create_schema_on_cursor(cur, schema)
         if not require_pg_replica_table(cur, schema, table, action="reconcile the replica at"):
             cur.execute(self._create_table_ddl(schema, table, columns, want_pk))
             return "created"
@@ -747,7 +748,7 @@ class PgFederationRuntime:  # REQ-825, REQ-840, REQ-904
         engine's own (not the control plane's database) is given none at boot."""
         from provisa.federation.replica_guard import require_pg_replica_table
 
-        cur.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+        create_schema_on_cursor(cur, schema)
         if not require_pg_replica_table(cur, schema, table, action="write the replica"):
             cur.execute(self._create_table_ddl(schema, table, columns, pk_columns))
 
