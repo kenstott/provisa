@@ -38,6 +38,8 @@
     "policy_hidden": "非表示",
     "policy_optional": "任意",
     "policy_required": "必須",
+    "requiredLabel": "必須",
+    "requiredDesc": "「適用対象」に挙げた種類のすべてのオブジェクトに、このタグが必要です。付いていないオブジェクトは、タグレポートで欠落として表示されます。",
     "reasonPolicyBadge": "理由: {{policy}}",
     "expiresPolicyBadge": "期限: {{policy}}",
     "createButton": "タグを作成",

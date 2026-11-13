@@ -38,6 +38,8 @@
     "policy_hidden": "Скрыто",
     "policy_optional": "Необязательно",
     "policy_required": "Обязательно",
+    "requiredLabel": "Обязательный",
+    "requiredDesc": "Каждый объект тех видов, что указаны в поле «Применяется к», должен иметь этот тег. Объект без него отображается в отчёте по тегам как отсутствующий.",
     "reasonPolicyBadge": "Причина: {{policy}}",
     "expiresPolicyBadge": "Истечение: {{policy}}",
     "createButton": "Создать тег",

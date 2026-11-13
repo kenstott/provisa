@@ -75,6 +75,7 @@ export function useSaveTag() {
     expiresPolicy: string,
     paramPolicy: string, // REQ-1467
     requiresCitation: boolean, // REQ-2208
+    required: boolean, // REQ-2208: on every object of the kinds in appliesTo
     // The whole set of the definition's citations, saved with the tag; left out, they stay.
     citations?: CitationPlace[],
   ) => ({
@@ -87,6 +88,7 @@ export function useSaveTag() {
       expiresPolicy,
       paramPolicy,
       requiresCitation,
+      required,
     },
   });
   return {

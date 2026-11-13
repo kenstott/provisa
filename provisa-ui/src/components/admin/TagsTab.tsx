@@ -134,6 +134,7 @@ export function TagsTab() {
   const [formExpiresPolicy, setFormExpiresPolicy] = useState<TagFieldPolicy>("optional");
   const [formParamPolicy, setFormParamPolicy] = useState<TagParamPolicy>("none");
   const [formRequiresCitation, setFormRequiresCitation] = useState(false);
+  const [formRequired, setFormRequired] = useState(false);
   // The sections that say why the tag exists, edited here and saved with the tag.
   const [formCited, setFormCited] = useState<LibraryCitation[]>([]);
   // REQ-1467: which tag's value list is open, and the draft new value/description beneath it.
@@ -180,6 +181,7 @@ export function TagsTab() {
     setFormExpiresPolicy("optional");
     setFormParamPolicy("none");
     setFormRequiresCitation(false);
+    setFormRequired(false);
     setFormCited([]);
   };
 
@@ -203,6 +205,7 @@ export function TagsTab() {
     setFormExpiresPolicy(tag.expiresPolicy);
     setFormParamPolicy(tag.paramPolicy);
     setFormRequiresCitation(tag.requiresCitation);
+    setFormRequired(tag.required);
     setFormCited(tag.citations);
     setShowForm(true);
   };
@@ -247,6 +250,7 @@ export function TagsTab() {
       formExpiresPolicy,
       formParamPolicy,
       formRequiresCitation,
+      formRequired,
       formCited.map(({ documentId, sectionHeading, sectionPage }) => ({
         documentId,
         sectionHeading,
@@ -421,6 +425,14 @@ export function TagsTab() {
                 data-testid="tags-requires-citation"
               />
             </FormField>
+            <FormField help={t("tagsTab.requiredDesc")} size="medium">
+              <Switch
+                label={t("tagsTab.requiredLabel")}
+                checked={formRequired}
+                onChange={(e) => setFormRequired(e.currentTarget.checked)}
+                data-testid="tags-required"
+              />
+            </FormField>
           </FormChecks>
           <FormField size="full">
             <TagCitations
@@ -490,11 +502,17 @@ export function TagsTab() {
           <ListRow key={tag.id} testId={`tags-row-${tag.id}`} selected={tag.id === linkedTag}>
             <Table.Td>
               {tag.id}
-              {(tag.reasonPolicy !== "optional" ||
+              {(tag.required ||
+                tag.reasonPolicy !== "optional" ||
                 tag.expiresPolicy !== "optional" ||
                 tag.requiresCitation ||
                 tag.needsReview) && (
                 <Group gap={4} mt={2}>
+                  {tag.required && (
+                    <Badge size="xs" variant="light" color="gray" data-testid="tags-required-badge">
+                      {t("tagsTab.requiredLabel")}
+                    </Badge>
+                  )}
                   {tag.requiresCitation && (
                     <Badge size="xs" variant="light" color="gray">
                       {t("tagCitations.requiresCitationBadge")}
