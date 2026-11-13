@@ -102,7 +102,9 @@ PAGES: dict[str, PollyPage] = {
         "the MCP explorer: a separate chat, not yours, in which an agent answers with the governed "
         "MCP tools under the active role; the tool calls of its last answer are listed as badges, "
         "and a run_sql call's badge shows its statement and its explain. To carry its statement "
-        "to another tab, read it from the run_sql call's sql and navigate there with it",
+        "to another tab, read it from the run_sql call's sql and navigate to /sql with it as "
+        "state.sql, or to /python with a script that runs it (import provisa_client) as "
+        "state.code",
         "state.mcpQuestion, a question sent to its agent at once; state.mcpConnect true opens "
         "its Connect Claude Desktop panel",
         "inputs: status (idle, running, answered or failed), error, tools (each call of the last "

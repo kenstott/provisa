@@ -163,6 +163,8 @@ def test_she_can_read_the_mcp_explorer():
     assert "separate chat" in explore.what
     assert "same chat" not in explore.what
     assert "state.mcpQuestion" in explore.sets
+    assert "/sql with it as state.sql" in explore.what
+    assert "/python" in explore.what and "state.code" in explore.what
     assert {"status", "error", "draft", "tools", "messageCount", "messages"} <= _reads("/explore")
     assert "/explore" in _published("INPUT_ROUTES")
     assert "this same chat" not in chat._SYSTEM
