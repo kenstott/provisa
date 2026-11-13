@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2234 (EDITORS FIRST): a table that cannot be picked among several -- it needs input, or
-// its source needs a Cache TTL for each table -- is registered on its own by a Register action on
-// its row: it is handed over as it will be registered, with discovery's defaults, and opened in
+// REQ-2234 (EDITORS FIRST): a table that cannot be picked in the Tables field -- it needs input,
+// or its source needs a Cache TTL for each table -- is registered on its own by a Register action
+// beside its option in the picker's list: it is handed over as it will be registered, with discovery's defaults, and opened in
 // the table's detail panel in edit, where what is missing is given; its Save registers it as a
 // draft.
 
@@ -111,35 +111,43 @@ function renderForm(over: { source?: Record<string, unknown>; registered?: strin
       onRegisteredMany={vi.fn()}
       setError={setError}
       initialSourceId="pg"
-      severalFirst
     />,
   );
   return { onContinue, setError };
 }
 
-const action = (name: string) => screen.queryByTestId(`register-many-table-register-${name}`);
+const action = (name: string) => screen.queryByTestId(`option-action-${name}`);
+const held = (name: string) =>
+  screen
+    .getByRole("option", { name: new RegExp(`^${name}`), hidden: true })
+    .hasAttribute("data-combobox-disabled");
 
-// Every listed table read: the last one's answer is in.
+// The Tables field's list open, every offered table read: the last one's answer is in.
 async function listed() {
-  await screen.findByText("Its columns could not be read: permission denied for table invoices");
+  const field = () => screen.getByRole("textbox", { name: "Tables" });
+  await waitFor(() => expect(field()).not.toBeDisabled());
+  await userEvent.click(field());
+  await waitFor(() => expect(readColumns.mock.calls.map((c) => c[2])).toContain("invoices"));
   await waitFor(() => expect(action("blobs")).not.toBeNull());
 }
 
-describe("Register on the row of a table that cannot be picked among several", () => {
+describe("Register beside a table that cannot be picked in the Tables field", () => {
   it("is offered on each table that needs input, and on no other", async () => {
     renderForm({ registered: ["orders"] });
     await listed();
     expect(action("blobs")).toHaveTextContent("Register");
     expect(action("events")).not.toBeNull();
-    // Registered already; or its columns could not be read, so nothing is known to register.
+    // Registered already (not offered); or its columns could not be read, so nothing is known
+    // to register.
     expect(action("orders")).toBeNull();
+    await waitFor(() => expect(held("invoices")).toBe(true));
     expect(action("invoices")).toBeNull();
   });
 
-  it("is not offered on a table picked with the others", async () => {
+  it("is not offered on a table that can be picked", async () => {
     renderForm();
     await listed();
-    await waitFor(() => expect(screen.getByTestId("register-many-table-orders")).toBeChecked());
+    await waitFor(() => expect(held("orders")).toBe(false));
     expect(action("orders")).toBeNull();
   });
 
@@ -217,14 +225,16 @@ describe("Register on the row of a table that cannot be picked among several", (
     kind.tables_land = true;
     const { onContinue } = renderForm({ source: { changeSignal: "ttl", cacheTtl: null } });
     await listed();
-    const orders = screen.getByTestId("register-many-table-orders");
-    expect(orders).not.toBeChecked();
-    expect(orders).toBeDisabled();
-    expect(
-      screen.getByText(
+    await waitFor(() => expect(action("orders")).not.toBeNull());
+    expect(held("orders")).toBe(true);
+    await userEvent.hover(screen.getByTestId("option-not-held-orders"));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("tooltip", { hidden: true }).map((tip) => tip.textContent),
+      ).toContain(
         "Needs input: its source needs a Cache TTL for each table. Register it on its own.",
       ),
-    ).toBeInTheDocument();
+    );
     await userEvent.click(action("orders") as HTMLElement);
     await waitFor(() => expect(onContinue).toHaveBeenCalledTimes(1));
     expect(onContinue.mock.calls[0][0].input.tableName).toBe("orders");
