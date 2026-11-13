@@ -350,7 +350,12 @@ def test_the_live_salesforce_test_is_in_no_lane_but_its_own():
     for name, lane in run_lane.LANES.items():
         if name in ("warehouse", "salesforce", "athena", "servicenow", "polly_bakeoff"):
             continue
-        assert "not requires_warehouse" in lane.marker or name in ("isolated", "e2e", "cluster")
+        assert "not requires_warehouse" in lane.marker or name in (
+            "isolated",
+            "smoke",
+            "e2e",
+            "cluster",
+        )
     for test in ("test_salesforce_source_e2e.py", "test_cloudops_source_e2e.py"):
         source = (REPO / "tests" / "integration" / test).read_text()
         assert "pytest.mark.requires_warehouse" in source  # so no push lane selects it
