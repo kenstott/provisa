@@ -108,14 +108,23 @@ async def test_the_administrator_reads_every_tag_on_the_model(server, relation):
     assert found == _EVERY_TAG, rows
 
 
-@pytest.mark.parametrize(
-    "relation", ["meta.tag_instances", "ops.tags_report"], ids=["meta_table", "report"]
-)
-async def test_a_role_reading_one_domain_reads_the_tags_of_its_objects_only(server, relation):
+async def test_a_role_reading_one_domain_reads_the_tags_of_its_objects_only(server):
     rows = await _rows(
         server,
-        f"SELECT tag_id, object_kind, domain_id FROM {relation} WHERE tag_id = 'approved'",
+        "SELECT tag_id, object_kind, domain_id FROM meta.tag_instances WHERE tag_id = 'approved'",
         "sales_reader",
     )
     found = sorted((r["tag_id"], r["object_kind"], r["domain_id"]) for r in rows)
     assert found == [("approved", "column", "trs"), ("approved", "table", "trs")], rows
+
+
+async def test_the_report_is_refused_to_a_role_the_ops_domain_grants_nothing(server):
+    """ops is a lockdown domain: its reports are read by the roles granted their columns."""
+    async with httpx.AsyncClient(base_url=server.base_url, timeout=120.0) as client:
+        resp = await client.post(
+            "/data/sql",
+            json={"sql": "SELECT tag_id FROM ops.tags_report"},
+            headers={"X-Provisa-Role": "sales_reader"},
+        )
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["code"] == "data.governance_refused", resp.text
