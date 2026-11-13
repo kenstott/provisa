@@ -21,6 +21,7 @@ import asyncio
 import logging
 import hashlib
 import os
+import sys
 import threading
 import time
 import uuid
@@ -4183,6 +4184,13 @@ async def install_server_extensions() -> None:
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
     _log = logging.getLogger("uvicorn.error")
+    # #338: the embedded engine opens a file per Parquet file it reads; the soft open-file limit
+    # a process starts with (256 on macOS) is raised to the hard limit, once, before anything
+    # opens. POSIX only: elsewhere there is no such limit to raise.
+    if sys.platform != "win32":
+        from provisa.core.open_files import raise_open_file_limit
+
+        raise_open_file_limit(_log)
     # Set up in-memory log buffer for debugging (max 1000 lines)
     buffer_handler = _DebugLogBufferHandler(capacity=5000)
     buffer_handler.setFormatter(

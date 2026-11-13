@@ -14,7 +14,7 @@ Trino reads the ops signals from its ``otel`` Iceberg catalog. A native engine h
 process lands its own trace records as Parquet under ``<telemetry_parquet_dir()>/traces``: one
 closed file per export batch in the day's folder (``_date=YYYY-MM-DD``), readable the moment it
 is written, and a scheduled compaction that merges each day's small files into files of up to
-``COMPACT_TARGET_BYTES``. The engine reads the folder as ``otel.signals.traces``, the name Trino
+``COMPACT_TARGET_BYTES``, keeping the number of files in a day's folder bounded (``compact``). The engine reads the folder as ``otel.signals.traces``, the name Trino
 gives, so ``"ops"."traces"`` is the same governed table on both.
 
 The rows are those Trino's compaction keeps: a request span or the root span of background work
@@ -27,6 +27,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import uuid
 from pathlib import Path
@@ -64,9 +65,61 @@ COMPACT_LOCK = ".compact.lock"
 #: 0.044 s (0.003 s and 0.006 s with no deduplication).
 SPAN_KEY = ("trace_id", "span_id", "tenant_id")
 
-#: Each day's batches compaction has merged, by name, with when: kept in place until no read
-#: can still hold a listing of them (``compact``). Not Parquet, so the view's glob skips it.
+#: Each day's files compaction has merged, by name, with when: kept in place for ``MERGED_GRACE_S``
+#: (``compact``). Not Parquet, so the view's glob skips it.
 MERGED_FILE = "_merged.json"
+
+#: How long a merged file is kept beside its merged copy: past any directory listing that began
+#: before its merged copy was renamed into place. A listing (``readdir``) that runs while a file is
+#: added and another removed may return neither, so a merged input is never removed by the pass
+#: that merged it; the next pass, a minute later (``compact_otel_signals``), removes it.
+#:
+#: A longer grace protects no read. DuckDB lists a glob when a query starts and opens the files it
+#: listed when the scan begins, all at once, closing each as it finishes; a file removed after it
+#: was opened is still read, and one removed between the listing and the scan fails the query
+#: ("Cannot open file"). Every read that lists the folder while a merged file is kept lists that
+#: file too, so keeping it longer only moves the moment a removal can meet a read whose scan has
+#: not begun; it does not make that moment rarer. Kept an hour (the longest request timeout), a
+#: day's folder held every batch of the last hour, and one read opened them all (#338).
+MERGED_GRACE_S = 30.0
+
+#: How many small rolled files of one level a pass merges into one file of the next level. A pass
+#: merges the day's batches into one rolled file of level 1; a rolled file is merged again only
+#: with ``MERGE_FANIN - 1`` others of its level, so a row is rewritten once per level
+#: (``day_levels``), not once a pass.
+MERGE_FANIN = 4
+
+#: The compaction passes of a day at most: one a minute (``compact_otel_signals``).
+DAY_PASSES = 24 * 60
+
+_ROLLED = re.compile(r"rolled-(\d+)-[0-9a-f]{32}\.parquet")
+
+
+def day_levels(passes: int = DAY_PASSES) -> int:
+    """The levels of rolled file ``passes`` passes over one day's folder make: level 1 from the
+    batches, each pass one; level ``n + 1`` one of every ``MERGE_FANIN`` of level ``n``. The number
+    of times a row is rewritten, at most."""
+    levels, made = 1, MERGE_FANIN
+    while made <= passes:
+        levels, made = levels + 1, made * MERGE_FANIN
+    return levels
+
+
+def day_file_bound(batches_per_pass: int, passes: int = DAY_PASSES) -> int:
+    """The most Parquet files a day's folder holds -- each of which one read of the folder opens
+    at once (``traces_scan``) -- when ``batches_per_pass`` batches land between passes, apart from
+    files already filled to ``COMPACT_TARGET_BYTES`` (one per 64 MB of the day's rows):
+
+    * the batches landed since the last pass;
+    * the inputs of the last two passes, kept for ``MERGED_GRACE_S`` (each pass merges its batches
+      and at most ``MERGE_FANIN`` rolled files of each level);
+    * fewer than ``MERGE_FANIN`` small rolled files of each level, plus the one a pass just made.
+
+    With a batch every 10 seconds and a pass every minute, 6 a pass: 85 files."""
+    levels = day_levels(passes)
+    kept = 2 * (batches_per_pass + MERGE_FANIN * levels)
+    return batches_per_pass + kept + (MERGE_FANIN - 1) * levels + 1
+
 
 _ARROW = {
     "text": pa.string(),
@@ -94,9 +147,10 @@ def traces_scan(root: str) -> str:
     written with ``TRACES_SCHEMA`` (``write_batch``, ``compact``), so none needs its columns
     matched by name.
 
-    A query of the view lists the folder and then opens each file, so a batch removed between the
-    two would fail it ("Cannot open file"). ``compact`` keeps each batch it merged in place, beside
-    its merged copy, until no read can still hold a listing of it; the view reads each span once
+    A query of the view lists the folder when it starts and opens every listed file when its scan
+    begins, so a file removed between the two fails it ("Cannot open file"). ``compact`` keeps each
+    file it merged in place, beside its merged copy, for ``MERGED_GRACE_S``; the view reads each
+    span once
     (DISTINCT ON its key, ``SPAN_KEY``: a batch's rows and their merged copy are the same spans,
     and a record landed for another org is another span of that org's)."""
     schema = os.path.join(root, SCHEMA_FILE).replace("'", "''")
@@ -191,7 +245,7 @@ def compact(
     root: str,
     target_bytes: int = COMPACT_TARGET_BYTES,
     *,
-    grace_s: float,
+    grace_s: float = MERGED_GRACE_S,
     clock: Callable[[], float] = time.time,
 ) -> int:
     """Merge each day's files smaller than ``target_bytes`` into files of up to that size; the
@@ -202,13 +256,17 @@ def compact(
     folder to its holder and removes nothing. Two passes that merged the same files would each
     write their merged copy, and every row of them would then be there twice.
 
+    A pass merges a day's batches into a rolled file of level 1, and any ``MERGE_FANIN`` small
+    rolled files of one level into a file of the next; a lone batch, fewer rolled files of a level
+    and a file of another name are left as they are. A row is so rewritten at most once per level
+    (``day_levels``), and the folder holds at most ``day_file_bound`` files.
+
     Each input is written to the merged file as it is read, so a pass holds one input file of
     Arrow at a time, never a day's. A merged file is kept in place, beside its merged copy, for
-    ``grace_s`` seconds -- longer than any read of the folder can hold a listing of it
-    (``limits.longest_request_timeout``) -- and is removed by the first compaction after that; it
-    is never merged again. A read listing the folder meanwhile opens every file it listed and
-    reads each row once (``traces_scan``). The merged files are renamed into place before any
-    input is recorded, so no row is ever absent from the folder.
+    ``grace_s`` seconds (``MERGED_GRACE_S``) and is removed by the first compaction after that; it
+    is never merged again. A read listing the folder meanwhile reads each row once
+    (``traces_scan``). The merged files are renamed into place before any input is recorded, so
+    no row is ever absent from the folder.
     """
     if not os.path.isdir(root):
         return 0
@@ -227,20 +285,36 @@ def compact(
 
 
 def _compact_day(folder: str, target_bytes: int, grace_s: float, clock: Callable[[], float]) -> int:
-    """:func:`compact` for one day's folder, under the folder's lock: merge its small batches not
-    merged before, record them, and remove the recorded ones past ``grace_s``."""
+    """:func:`compact` for one day's folder, under the folder's lock: merge its batches, then each
+    level's small rolled files ``MERGE_FANIN`` at a time, record the inputs, and remove the
+    recorded ones past ``grace_s``."""
     merged = _merged(folder)
-    small = [
-        os.path.join(folder, name)
+    live = [
+        name
         for name in sorted(os.listdir(folder))
         if name.endswith(".parquet")
         and name not in merged
         and os.path.getsize(os.path.join(folder, name)) < target_bytes
     ]
-    if len(small) >= 2:
-        _merge_into_place(folder, small, target_bytes)
-        at = clock()
-        merged.update({os.path.basename(p): at for p in small})
+    groups: dict[int, list[str]] = {}
+    for name in live:
+        if name.startswith("batch-"):
+            groups.setdefault(0, []).append(name)
+        elif (rolled := _ROLLED.fullmatch(name)) is not None:
+            groups.setdefault(int(rolled.group(1)), []).append(name)
+    level = 0
+    while level <= max(groups, default=-1):
+        names = groups.get(level, [])
+        # Batches are merged two or more at a time (a lone one rewritten would stay one file);
+        # rolled files only MERGE_FANIN at a time.
+        if len(names) >= (2 if level == 0 else MERGE_FANIN):
+            inputs = [os.path.join(folder, n) for n in names]
+            for out in _merge_into_place(folder, inputs, target_bytes, level + 1):
+                if os.path.getsize(out) < target_bytes:
+                    groups.setdefault(level + 1, []).append(os.path.basename(out))
+            at = clock()  # the merged copy is in place: the grace runs from here
+            merged.update({n: at for n in names})
+        level += 1
     removed = 0
     now = clock()
     for name, at in list(merged.items()):
@@ -252,10 +326,10 @@ def _compact_day(folder: str, target_bytes: int, grace_s: float, clock: Callable
     return removed
 
 
-def _merge_into_place(folder: str, small: list[str], target_bytes: int) -> None:
-    """Write ``small``'s rows into merged files of up to ``target_bytes``, one input at a time, and
-    rename them into place. On a failure the merged files of this pass are removed: the inputs
-    stay, and kept, their rows would be there twice."""
+def _merge_into_place(folder: str, small: list[str], target_bytes: int, level: int) -> list[str]:
+    """Write ``small``'s rows into merged files of up to ``target_bytes``, rolled files of
+    ``level``, one input at a time, and rename them into place; the paths. On a failure the merged
+    files of this pass are removed: the inputs stay, and kept, their rows would be there twice."""
     writer: pq.ParquetWriter | None = None
     tmp = ""
     filled = 0
@@ -264,7 +338,7 @@ def _merge_into_place(folder: str, small: list[str], target_bytes: int) -> None:
     def roll() -> None:
         assert writer is not None
         writer.close()
-        rolled.append(os.path.join(folder, f"rolled-{uuid.uuid4().hex}.parquet"))
+        rolled.append(os.path.join(folder, f"rolled-{level}-{uuid.uuid4().hex}.parquet"))
         os.replace(tmp, rolled[-1])
 
     try:
@@ -290,6 +364,7 @@ def _merge_into_place(folder: str, small: list[str], target_bytes: int) -> None:
         for path in rolled:
             os.remove(path)
         raise
+    return rolled
 
 
 def _merged(folder: str) -> dict[str, float]:
