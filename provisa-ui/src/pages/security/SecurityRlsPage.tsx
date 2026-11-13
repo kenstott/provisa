@@ -586,7 +586,7 @@ export function SecurityRlsPage() {
                   </ActionIcon>
                 </Tip>
                 <PanelDuplicate
-                  name={String(r.id)}
+                  name={t("securityPage.panelRule", { id: r.id })}
                   onDuplicate={() => handleDuplicateRule(r)}
                   testId={`duplicate-rule-${r.id}`}
                 />

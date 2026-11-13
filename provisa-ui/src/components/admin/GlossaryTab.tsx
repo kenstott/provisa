@@ -767,6 +767,11 @@ export function GlossaryTab() {
                       >
                         {t("glossaryTab.edit")}
                       </Button>
+                      <PanelDuplicate
+                        name={detail.name}
+                        onDuplicate={() => openDuplicateTerm(detail)}
+                        testId="glossary-duplicate-btn"
+                      />
                       {/* REQ-1387, REQ-2144: each status change is a person's act. A defined draft is
                         approved, its impact seen first; an approved term deprecated, with a
                         reason; any term in service retired; a deprecation or a retirement undone. */}
@@ -836,11 +841,6 @@ export function GlossaryTab() {
                           </Button>
                         </Tip>
                       )}
-                      <PanelDuplicate
-                        name={detail.name}
-                        onDuplicate={() => openDuplicateTerm(detail)}
-                        testId="glossary-duplicate-btn"
-                      />
                       <PanelNoticeContext.Provider value={deleteNotice}>
                         <PanelDelete
                           itemKey={detail.id}
