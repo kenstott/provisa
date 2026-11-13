@@ -26,6 +26,7 @@ from provisa.transpiler.polyfill import (
     clickhouse,
     collations,
     dates,
+    geometric,
     instants,
     json_values,
     money,
@@ -80,6 +81,7 @@ GRID = Grid(
     + aggregates.FEATURES
     + snapshots.FEATURES
     + instants.FEATURES
+    + geometric.FEATURES
 )
 
 __all__ = [

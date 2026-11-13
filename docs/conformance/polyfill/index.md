@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-228 of the grid's 228 features are native on PostgreSQL and left out.
+255 of the grid's 255 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-94 of the grid's 228 features are native on DuckDB and left out.
+94 of the grid's 255 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -474,11 +474,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-13 of the grid's 228 features are native on Trino and left out.
+13 of the grid's 255 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1044,11 +1125,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-13 of the grid's 228 features are native on Presto and left out.
+13 of the grid's 255 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1614,11 +1776,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-13 of the grid's 228 features are native on Athena and left out.
+13 of the grid's 255 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2184,11 +2427,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 228 features are native on ClickHouse and left out.
+36 of the grid's 255 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2731,11 +3055,92 @@ function provisa.transpiler.polyfill.instants.timezone_of_an_instant: timezone o
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.instants.to_precision: timestamptz(instant, precision): the instant rounded to 0 to 6 digits of a second, half away</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31, of an instant written as a literal (or a VALUES list of them): its answer is read here first, and one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). An instant ClickHouse computes, a literal not in ISO form and infinity are refused by name. On a session off UTC a literal is refused by name: one with no offset is read in the session&#x27;s zone. The precision is a literal of 0 to 6; any other is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_area_1: area of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_area in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_area does not read this value). geo_ops.c&#x27;s circle_area in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_area does not read this value). geo_ops.c&#x27;s path_area in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_area does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of area() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_center_1: center of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s circle_center in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_center does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of center() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_circle_center_1: circle_center of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s circle_center in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_center does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_diagonal_1: diagonal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_diagonal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_diagonal does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_height_1: height of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_height in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_height does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_width_1: width of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_width in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_width does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_radius_1: radius of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s circle_radius in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_radius does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isclosed_1: isclosed of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s path_isclosed in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_isclosed does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isopen_1: isopen of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s path_isopen in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_isopen does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_ishorizontal_2: ishorizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s point_horiz in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (point_horiz does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isvertical_2: isvertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s point_vert in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (point_vert does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_ishorizontal_1: ishorizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_horizontal does not read this value). geo_ops.c&#x27;s lseg_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_horizontal does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of ishorizontal() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isvertical_1: isvertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_vertical does not read this value). geo_ops.c&#x27;s lseg_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_vertical does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of isvertical() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isparallel_2: isparallel of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_parallel does not read this value). geo_ops.c&#x27;s lseg_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_parallel does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of isparallel() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isperp_2: isperp of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_perp does not read this value). geo_ops.c&#x27;s lseg_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_perp does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of isperp() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_horizontal_1: line_horizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_horizontal does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_vertical_1: line_vertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_vertical does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_parallel_2: line_parallel of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_parallel does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_perp_2: line_perp of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_perp does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_horizontal_1: lseg_horizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_horizontal does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_vertical_1: lseg_vertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_vertical does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_parallel_2: lseg_parallel of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_parallel does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_perp_2: lseg_perp of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_perp does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_length_1: lseg_length of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_length in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_length does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_path_length_1: path_length of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s path_length in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_length does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_pt_contained_circle_2: pt_contained_circle of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s pt_contained_circle in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (pt_contained_circle does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_pt_contained_poly_2: pt_contained_poly of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s pt_contained_poly in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (pt_contained_poly does not read this value).</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-93 of the grid's 228 features are native on Snowflake and left out.
+93 of the grid's 255 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3207,11 +3612,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-93 of the grid's 228 features are native on Databricks and left out.
+93 of the grid's 255 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3683,11 +4169,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-93 of the grid's 228 features are native on BigQuery and left out.
+93 of the grid's 255 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4159,11 +4726,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-93 of the grid's 228 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+93 of the grid's 255 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4635,11 +5283,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-93 of the grid's 228 features are native on Redshift and left out.
+93 of the grid's 255 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5111,11 +5840,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-93 of the grid's 228 features are native on MySQL and left out.
+93 of the grid's 255 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5587,11 +6397,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-93 of the grid's 228 features are native on SingleStore and left out.
+93 of the grid's 255 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6063,11 +6954,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-93 of the grid's 228 features are native on SQLite and left out.
+93 of the grid's 255 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6539,11 +7511,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-93 of the grid's 228 features are native on Oracle and left out.
+93 of the grid's 255 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7015,11 +8068,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-93 of the grid's 228 features are native on Hive and left out.
+93 of the grid's 255 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7491,11 +8625,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-93 of the grid's 228 features are native on Exasol and left out.
+93 of the grid's 255 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7967,11 +9182,92 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-93 of the grid's 228 features are native on Druid and left out.
+93 of the grid's 255 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8441,6 +9737,87 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
