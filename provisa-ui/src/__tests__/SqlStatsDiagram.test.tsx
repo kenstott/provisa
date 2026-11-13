@@ -86,6 +86,17 @@ describe("SQL stats execution diagram", () => {
     await waitFor(() => expect(document.querySelector(".stats-mermaid svg")).not.toBeNull());
   });
 
+  it("draws the diagram in the shared canvas, with its hover controls", async () => {
+    renderStats({
+      total_elapsed_ms: 12,
+      mermaid: 'flowchart LR\n  n_pg["pg\\npostgresql"] --> route',
+      sources: [],
+    });
+    await waitFor(() => expect(document.querySelector(".plan-stage svg")).not.toBeNull());
+    expect(screen.getByRole("toolbar", { name: "Canvas controls" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Fit all" })).toBeTruthy();
+  });
+
   it("renders one diagram per statement in a batch", async () => {
     renderStats({
       total_elapsed_ms: 20,
