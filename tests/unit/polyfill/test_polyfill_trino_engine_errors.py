@@ -482,3 +482,118 @@ def test_each_row_is_in_the_grid_and_the_orders_moved_out_of_the_old_table():
     moved |= {f"record_{o}" for o in ("lt", "le", "gt", "ge")}
     moved |= {f"record_image_{o}" for o in ("lt", "le", "gt", "ge")}
     assert not moved & set(FORMS_BY_NAME)
+
+
+# --- confirming run 43324155455 ------------------------------------------------------------------
+
+_COUNTS = [
+    "(-7)::integer",
+    "(-1)::integer",
+    "0::integer",
+    "63::integer",
+    "64::integer",
+    "70::integer",
+]
+
+
+@pytest.mark.parametrize("count", _COUNTS)
+def test_int8shl_is_trinos_own_wrapping_shift_by_the_counts_low_six_bits(count):
+    """C's int64 << of the count modulo 64 wraps in two's complement, as Java's << does; a power of
+    two read as a double loses digits past 2^53 (int8shl(-7, -7) answered ...090, not ...104)."""
+    tree = _sent(_call("int8shl", f"(-7)::bigint, {count}"))
+    (shift,) = [n for n in tree.find_all(exp.Anonymous) if n.name.lower() == "bitwise_left_shift"]
+    masked = shift.expressions[1]
+    assert isinstance(masked, exp.Cast) and masked.to.is_type(exp.DataType.Type.INT)
+    assert isinstance(masked.this, exp.BitwiseAnd) and masked.this.expression.name == "63"
+    assert tree.find(exp.Pow) is None and "power" not in _calls(tree)
+
+
+@pytest.mark.parametrize("count", _COUNTS)
+@pytest.mark.parametrize("function", ["int2shl", "int4shl"])
+def test_a_narrow_left_shift_reads_the_counts_low_five_bits_exactly(function, count):
+    """int2shl and int4shl shift the promoted int by the count modulo 32: a power of two of at most
+    31 bits, which a double holds exactly."""
+    value = "(-7)::smallint" if function == "int2shl" else "(-7)::integer"
+    tree = _sent(_call(function, f"{value}, {count}"))
+    exponents = [n.expression for n in tree.find_all(exp.Pow)]
+    assert exponents and all(
+        isinstance(e.unnest(), exp.BitwiseAnd) and e.unnest().expression.name == "31"
+        for e in exponents
+    )
+
+
+@pytest.mark.parametrize("count", _COUNTS)
+@pytest.mark.parametrize(
+    ("function", "value", "width"),
+    [
+        ("int2shr", "(-7)::smallint", 31),
+        ("int4shr", "(-7)::integer", 31),
+        ("int8shr", "(-7)::bigint", 63),
+    ],
+)
+def test_a_right_shift_reads_the_counts_low_bits(function, value, width, count):
+    tree = _sent(_call(function, f"{value}, {count}"))
+    (shift,) = [
+        n
+        for n in tree.find_all(exp.Anonymous)
+        if n.name.lower() == "bitwise_right_shift_arithmetic"
+    ]
+    masked = shift.expressions[1]
+    assert isinstance(masked.this, exp.BitwiseAnd) and masked.this.expression.name == str(width)
+
+
+@pytest.mark.parametrize(
+    ("function", "args"), [("bool", "'true'::jsonb"), ("numeric", "'3'::jsonb")]
+)
+def test_a_jsonb_literal_read_as_a_type_is_refused_on_trino(function, args):
+    """The literal reaches the grid as JSON_PARSE of its text: still a jsonb value."""
+    _refused(_call(function, args), function)
+
+
+def _expanded(sql: str) -> str:
+    """The statement as pgwire sends it: each server function in its form (metadata_functions)."""
+    from provisa.transpiler.metadata_facts import CatalogFacts
+    from provisa.transpiler.metadata_functions import expand
+
+    facts = CatalogFacts("analyst", privileges=((16385, "SELECT"),))
+    return expand(sqlglot.parse_one(sql, read="postgres"), facts).sql(dialect="postgres")
+
+
+@pytest.mark.parametrize(
+    ("function", "args"),
+    [
+        ("pg_isolation_test_session_is_blocked", "NULL::integer, NULL::integer[]"),
+        ("pg_isolation_test_session_is_blocked", "1::integer, '{1,NULL,3}'::integer[]"),
+        ("postgresql_fdw_validator", "NULL::text[], NULL::oid"),
+        ("postgresql_fdw_validator", "'{a,\"b c\",NULL}'::text[], 1::oid"),
+    ],
+)
+def test_a_server_forms_array_is_its_text_as_array_out_writes_it_on_trino(function, args):
+    """The form reads each argument as text: an array's text is array_out's, not Trino's cast."""
+    tree = sqlglot.parse_one(transpile_to_trino(_expanded(_call(function, args))), read="trino")
+    unread = [
+        c
+        for c in tree.find_all(exp.Cast)
+        if c.to.is_type(exp.DataType.Type.VARCHAR)
+        and isinstance(c.this, exp.Cast)
+        and c.this.to.is_type(exp.DataType.Type.ARRAY)
+    ]
+    assert unread == []
+    assert "array_join" in _calls(tree)
+
+
+def test_an_array_of_text_is_quoted_as_array_out_quotes_it_on_trino():
+    sent = transpile_to_trino("SELECT CAST('{a,\"b c\"}'::text[] AS text) AS v")
+    assert "REGEXP_LIKE" in sent.upper() and "'NULL'" in sent
+
+
+@pytest.mark.parametrize("element", ["date", "numeric", "boolean"])
+def test_an_array_of_another_type_as_text_is_refused_on_trino(element):
+    _refused(f"SELECT CAST(NULL::{element}[] AS text) AS v", "array_out")
+
+
+def test_pg_xact_status_as_pgwire_sends_it_is_refused_on_trino():
+    with pytest.raises(RowRefused) as refused:
+        transpile_to_trino(_expanded(_call("pg_xact_status", "NULL::xid8")))
+    assert refused.value.sqlstate == "0A000"
+    assert str(refused.value) == "xid8in() has no form on trino"
