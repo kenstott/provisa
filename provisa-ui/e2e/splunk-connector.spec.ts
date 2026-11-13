@@ -66,7 +66,14 @@ async function getSplunkSessionKey(): Promise<string> {
     const body = `username=admin&password=${encodeURIComponent(SPLUNK_ADMIN_PASSWORD)}&output_mode=json`;
     const req = https.request(
       `${SPLUNK_URL}/services/auth/login`,
-      { method: "POST", rejectUnauthorized: false, headers: { "Content-Type": "application/x-www-form-urlencoded", "Content-Length": Buffer.byteLength(body) } },
+      {
+        method: "POST",
+        rejectUnauthorized: false,
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Content-Length": Buffer.byteLength(body),
+        },
+      },
       (res) => {
         let data = "";
         res.on("data", (chunk) => (data += chunk));
@@ -111,7 +118,9 @@ async function getDomainId(): Promise<string> {
   // The first domain a table may be put into: the form offers no internal one (meta, ontology, ops).
   const d = domains.find((d) => isAssignableDomain(d.id));
   if (!d) {
-    throw new Error(`no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`);
+    throw new Error(
+      `no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`,
+    );
   }
   return d.id;
 }
@@ -131,17 +140,25 @@ test.beforeAll(async () => {
   const result = spawnSync(
     "docker",
     [
-      "run", "-d",
-      "--name", CONTAINER_NAME,
+      "run",
+      "-d",
+      "--name",
+      CONTAINER_NAME,
       // Publish management port to host so this test process can authenticate.
-      "-p", `${SPLUNK_MGMT_PORT}:8089`,
+      "-p",
+      `${SPLUNK_MGMT_PORT}:8089`,
       // Join the core project's network with alias "splunk" so Trino can reach
       // splunk:8089 for federation queries (the source's host field).
-      "--network", DOCKER_NETWORK,
-      "--network-alias", SPLUNK_HOST,
-      "-e", "SPLUNK_START_ARGS=--accept-license",
-      "-e", "SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com",
-      "-e", `SPLUNK_PASSWORD=${SPLUNK_ADMIN_PASSWORD}`,
+      "--network",
+      DOCKER_NETWORK,
+      "--network-alias",
+      SPLUNK_HOST,
+      "-e",
+      "SPLUNK_START_ARGS=--accept-license",
+      "-e",
+      "SPLUNK_GENERAL_TERMS=--accept-sgt-current-at-splunk-com",
+      "-e",
+      `SPLUNK_PASSWORD=${SPLUNK_ADMIN_PASSWORD}`,
       "splunk/splunk:latest",
     ],
     { stdio: "pipe" },
@@ -226,7 +243,9 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await page.locator('[data-testid="sources-submit"]').click();
 
   // Wait for source row to appear in list
-  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({
+    timeout: 30000,
+  });
 
   // ── 2. Open table form and verify Splunk schema and tables are enumerated ─
   await page.goto("/tables");
@@ -239,7 +258,9 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   // data initially; the network fetch updates the cache within a few seconds.
   await page.waitForFunction(
     (id: string) => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-source-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-source-select"]',
+      );
       return Array.from(sel?.options ?? []).some((o) => o.value === id);
     },
     SOURCE_ID,
@@ -250,7 +271,9 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   // Wait for Domain dropdown to have options
   await page.waitForFunction(
     () => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-domain-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-domain-select"]',
+      );
       return sel != null && sel.options.length > 1;
     },
     { timeout: 10000 },
@@ -264,7 +287,9 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   // is already paid for in beforeAll, so this budget covers only the catalog handshake.
   await page.waitForFunction(
     (schema) => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-schema-select"]',
+      );
       return Array.from(sel?.options ?? []).some((o) => o.value === schema);
     },
     SCHEMA,
@@ -273,18 +298,18 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
 
   await page.locator('[data-testid="register-table-schema-select"]').selectOption(SCHEMA);
 
-  // Wait for internal_server table to appear
-  await page.waitForFunction(
-    () => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-table-select"]');
-      return Array.from(sel?.options ?? []).some((o) => o.value === "internal_server");
-    },
-    { timeout: 30000 },
-  );
-
+  // Wait for internal_server table to appear: the Tables field (REQ-2234) lists them in its open list.
+  const tablesField = page.getByTestId("register-tables-field").getByRole("textbox");
+  await expect(tablesField).toBeEnabled({ timeout: 30000 });
+  await tablesField.click();
+  await expect(page.getByRole("option", { name: /^internal_server/ })).toBeVisible({
+    timeout: 30000,
+  });
+  // An option's text is the table's name, followed by Register where it needs input.
   const tableOptions = await page
-    .locator('[data-testid="register-table-table-select"] option')
-    .allTextContents();
+    .getByRole("option")
+    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("internal_server");
   expect(tableOptions).toContain("internal_audit_logs");
@@ -304,7 +329,10 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
     },
   );
 
-  expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
+  expect(
+    registerResult.errors,
+    `registerTable errors: ${JSON.stringify(registerResult.errors)}`,
+  ).toBeUndefined();
   expect(registerResult.data?.registerTable?.success).toBe(true);
 
   // REQ-1921: registered through the admin, the table starts as draft; released, it is read.
@@ -322,7 +350,9 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
 
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 15000 });
-  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 15000 });
+  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({
+    timeout: 15000,
+  });
 
   // ── 4. Query internal_server via GQL data endpoint ───────────────────────
   // 60s: schema introspect should be fast; if backend hangs, fail with a clear error.
@@ -333,11 +363,15 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
     signal: AbortSignal.timeout(60000),
   });
   const introData = await introRes.json();
-  const allFields: string[] = introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
+  const allFields: string[] =
+    introData.data?.__schema?.queryType?.fields?.map((f: { name: string }) => f.name) ?? [];
   const tableField = allFields.find(
     (f) => f.toLowerCase().endsWith("internalserver") && !f.toLowerCase().includes("aggregate"),
   );
-  expect(tableField, `internal_server field not found. Available: ${allFields.join(", ")}`).toBeDefined();
+  expect(
+    tableField,
+    `internal_server field not found. Available: ${allFields.join(", ")}`,
+  ).toBeDefined();
 
   // 180s: Trino→Splunk JDBC query; Splunk data is indexed so allow extra time for the
   // connector to execute the search and stream results back through Trino.

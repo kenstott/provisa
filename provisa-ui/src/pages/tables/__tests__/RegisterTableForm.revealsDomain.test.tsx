@@ -8,13 +8,12 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// The create step names the domain a table is registered into; the domain is revealed in the
-// filter only once the table is registered, by the Save that follows its settings (REQ-2109,
-// pages/__tests__/tables-create.test.tsx).
+// Register Table names the domain its tables are registered into; the form reveals nothing in
+// the domain filter itself: the page that hears what was registered does (REQ-2109, REQ-2234).
 
 import { describe, expect, it, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../../../test-utils/render";
+import { held, openTables, submitTables, tableOption } from "./registerFormHelpers";
 
 const ensureDomainChecked = vi.fn();
 
@@ -31,12 +30,32 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
     loading: false,
   }),
 }));
+const readColumns = async () => [
+  { name: "id", dataType: "integer", comment: null, nativeFilterType: null, isPrimaryKey: true },
+];
+vi.mock("../../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
+}));
+const registerTables = vi.fn();
+vi.mock("../../../hooks/useTableQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useTableQueries")>()),
+  useRegisterTables: () => ({ registerTables, loading: false }),
+}));
+vi.mock("../../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/admin")>()),
+  fetchTableUniqueConstraints: vi.fn().mockResolvedValue([]),
+}));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 describe("RegisterTableForm names the domain it registers into", () => {
-  it("hands on the one domain, revealing nothing before the table is registered", async () => {
-    const onContinue = vi.fn();
+  it("registers in the one domain, revealing nothing itself", async () => {
+    const outcomes = [
+      { tableName: "getStore", result: { success: true, message: "", params: { id: 1 } } },
+    ];
+    registerTables.mockResolvedValue(outcomes);
+    const onRegisteredMany = vi.fn();
     render(
       <RegisterTableForm
         sources={[{ id: "petstore", type: "openapi", allowedDomains: [] } as never]}
@@ -46,26 +65,23 @@ describe("RegisterTableForm names the domain it registers into", () => {
         domainsEnabled={true}
         tables={[]}
         roles={[{ id: "admin" } as never]}
-        getAvailableColumnsMetadata={vi
-          .fn()
-          .mockResolvedValue([{ name: "id", dataType: "integer" }])}
         suggestTableAlias={vi.fn().mockResolvedValue("")}
-        onContinue={onContinue}
+        onContinue={vi.fn()}
         onCancel={() => {}}
         onProductsRegistered={vi.fn()}
-        onRegisteredMany={vi.fn()}
+        onRegisteredMany={onRegisteredMany}
         setError={vi.fn()}
+        initialSourceId="petstore"
       />,
     );
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByTestId("register-table-source-select"), "petstore");
     // The one domain the caller may register in is the domain: it is not asked.
     expect(screen.queryByTestId("register-table-domain-select")).toBeNull();
-    await user.selectOptions(await screen.findByTestId("register-table-table-select"), "getStore");
-    await screen.findByTestId("register-table-columns-summary");
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].input.domainId).toBe("inventory-copies");
+    const user = await openTables();
+    await waitFor(() => expect(held("getStore")).toBe(false));
+    await user.click(tableOption("getStore"));
+    await user.click(submitTables());
+    await waitFor(() => expect(onRegisteredMany).toHaveBeenCalledWith(outcomes));
+    expect(registerTables.mock.calls[0][0][0].domainId).toBe("inventory-copies");
     expect(ensureDomainChecked).not.toHaveBeenCalled();
   });
 });

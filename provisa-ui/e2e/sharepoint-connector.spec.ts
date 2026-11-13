@@ -27,7 +27,9 @@ const GQL = `${TRINO_BACKEND_URL}/admin/graphql`;
 function certPath(): string {
   const path = process.env.PROVISA_E2E_SHAREPOINT_CERT_HOST;
   if (!path) {
-    throw new Error("PROVISA_E2E_SHAREPOINT_CERT_HOST is not set: the certificate's absolute host path");
+    throw new Error(
+      "PROVISA_E2E_SHAREPOINT_CERT_HOST is not set: the certificate's absolute host path",
+    );
   }
   return path;
 }
@@ -70,7 +72,9 @@ async function getDomainId(): Promise<string> {
   // The first domain a table may be put into: the form offers no internal one (meta, ontology, ops).
   const d = domains.find((d) => isAssignableDomain(d.id));
   if (!d) {
-    throw new Error(`no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`);
+    throw new Error(
+      `no assignable domain among ${JSON.stringify(domains)}: ${JSON.stringify(res)}`,
+    );
   }
   return d.id;
 }
@@ -109,10 +113,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
 
   // ── 1. Add SharePoint source via UI ──────────────────────────────────────
   await page.goto("/sources");
-  await page.waitForFunction(
-    () => !document.body.textContent?.includes("Loading sources..."),
-    { timeout: 30000 },
-  );
+  await page.waitForFunction(() => !document.body.textContent?.includes("Loading sources..."), {
+    timeout: 30000,
+  });
   // A schema-version advance makes apolloClient.ts re-fetch every active query, causing
   // "Loading sources..." to reappear briefly. Use 30s to survive the re-fetch.
   await page.waitForSelector(".page-header", { timeout: 30000 });
@@ -126,15 +129,21 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // Mantine TextInput/Select: data-testid is forwarded to the underlying <input> element
   // (not a wrapper div), so selectors target data-testid directly — no child combinator.
   await page.waitForSelector('[data-testid="sharepoint-site-url-input"]', { timeout: 10000 });
-  await page.locator('[data-testid="sharepoint-site-url-input"]').fill("https://kenstott.sharepoint.com");
-  await page.locator('[data-testid="sharepoint-tenant-id-input"]').fill("5d2609cc-7eff-4b82-8f83-f0b28c71fafc");
+  await page
+    .locator('[data-testid="sharepoint-site-url-input"]')
+    .fill("https://kenstott.sharepoint.com");
+  await page
+    .locator('[data-testid="sharepoint-tenant-id-input"]')
+    .fill("5d2609cc-7eff-4b82-8f83-f0b28c71fafc");
 
   // Mantine Select — click the combobox input, then click the option in the listbox
   await page.locator('[data-testid="sharepoint-auth-type-select"]').click();
   await page.getByRole("option", { name: "Certificate" }).click();
 
   await page.waitForSelector('[data-testid="sharepoint-cert-path-input"]', { timeout: 10000 });
-  await page.locator('[data-testid="sharepoint-client-id-input"]').fill("d6f6b74e-df85-470f-8e68-e34c767436be");
+  await page
+    .locator('[data-testid="sharepoint-client-id-input"]')
+    .fill("d6f6b74e-df85-470f-8e68-e34c767436be");
   await page.locator('[data-testid="sharepoint-cert-path-input"]').fill(certPath());
   // PFX password — the cert was created with the password literally set to "YOUR_PFX_PASSWORD"
   await page.locator('[data-testid="sharepoint-cert-password-input"]').fill("YOUR_PFX_PASSWORD");
@@ -142,7 +151,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await page.locator('[data-testid="sources-submit"]').click();
 
   // Wait for source row to appear in list
-  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({ timeout: 30000 });
+  await expect(page.locator(".data-table td").filter({ hasText: SOURCE_ID })).toBeVisible({
+    timeout: 30000,
+  });
 
   // ── 2. Open table form and verify SharePoint lists are enumerated ─────────
   await page.goto("/tables");
@@ -156,7 +167,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // data initially; the network fetch updates the cache within a few seconds.
   await page.waitForFunction(
     (id: string) => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-source-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-source-select"]',
+      );
       return Array.from(sel?.options ?? []).some((o) => o.value === id);
     },
     SOURCE_ID,
@@ -169,7 +182,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await page.waitForFunction(
     () => {
       const selects = Array.from(document.querySelectorAll<HTMLSelectElement>(".form-card select"));
-      return selects.some((s) => s.dataset.testid === "register-table-domain-select" && s.options.length > 1);
+      return selects.some(
+        (s) => s.dataset.testid === "register-table-domain-select" && s.options.length > 1,
+      );
     },
     { timeout: 10000 },
   );
@@ -181,7 +196,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // 240s for Trino catalog initialisation + schema enumeration via SharePoint REST API.
   await page.waitForFunction(
     (schema) => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-schema-select"]');
+      const sel = document.querySelector<HTMLSelectElement>(
+        '[data-testid="register-table-schema-select"]',
+      );
       return Array.from(sel?.options ?? []).some((o) => o.value === schema);
     },
     SCHEMA,
@@ -191,18 +208,16 @@ test("sharepoint connector: add source and verify calendar list is available", a
   // Select sharepoint schema
   await page.locator('[data-testid="register-table-schema-select"]').selectOption(SCHEMA);
 
-  // Wait for 'calendar' table to appear — proves SharePoint lists are enumerated
-  await page.waitForFunction(
-    () => {
-      const sel = document.querySelector<HTMLSelectElement>('[data-testid="register-table-table-select"]');
-      return Array.from(sel?.options ?? []).some((o) => o.value === "calendar");
-    },
-    { timeout: 30000 },
-  );
-
+  // Wait for 'calendar' table to appear — proves SharePoint lists are enumerated: the Tables field (REQ-2234) lists them in its open list.
+  const tablesField = page.getByTestId("register-tables-field").getByRole("textbox");
+  await expect(tablesField).toBeEnabled({ timeout: 30000 });
+  await tablesField.click();
+  await expect(page.getByRole("option", { name: /^calendar/ })).toBeVisible({ timeout: 30000 });
+  // An option's text is the table's name, followed by Register where it needs input.
   const tableOptions = await page
-    .locator('[data-testid="register-table-table-select"] option')
-    .allTextContents();
+    .getByRole("option")
+    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("calendar");
   expect(tableOptions).toContain("events");
@@ -231,7 +246,10 @@ test("sharepoint connector: add source and verify calendar list is available", a
     },
   );
 
-  expect(registerResult.errors, `registerTable errors: ${JSON.stringify(registerResult.errors)}`).toBeUndefined();
+  expect(
+    registerResult.errors,
+    `registerTable errors: ${JSON.stringify(registerResult.errors)}`,
+  ).toBeUndefined();
   // The mutation reports a refusal in `message` with no GraphQL error, so carry it into the
   // assertion — otherwise CI shows only "expected true, received false".
   expect(
@@ -257,7 +275,9 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await page.goto("/tables");
   await page.waitForSelector(".page-header", { timeout: 30000 });
 
-  await expect(page.locator(".data-table").getByText("e2e_sp_calendar")).toBeVisible({ timeout: 10000 });
+  await expect(page.locator(".data-table").getByText("e2e_sp_calendar")).toBeVisible({
+    timeout: 10000,
+  });
 
   // ── 5. Query via GQL data endpoint ───────────────────────────────────────
   const queryResult = await gql(`{ e2eSpCalendar { id title } }`);

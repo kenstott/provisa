@@ -10456,5 +10456,7 @@
   "ru/registerManyTables.json::registerManyTables.registerOneLabel": "Register {{table}} on its own",
   "ru/tableEditForm.json::tableEditForm.discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted.",
   "tagCitations.json::tagCitations.citationsLabel": "Citations",
-  "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage"
+  "tagCitations.json::tagCitations.neededForCoverage": "Needed for coverage",
+  "ru/registerManyTables.json::registerManyTables.pickTables": "Select one table or more…",
+  "ru/registerManyTables.json::registerManyTables.needsVectorModel": "Needs input: name the model of each vector ({{columns}}). Register it on its own."
 }

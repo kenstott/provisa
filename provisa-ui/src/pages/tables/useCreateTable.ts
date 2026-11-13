@@ -12,6 +12,7 @@
 // holds, in one registerTable: the server applies all of them in one transaction, and a refusal
 // of any one registers nothing -- a profiler result table's row rules among them.
 
+import { vectorOf } from "./useVectorModels";
 import { useRegisterTable } from "../../hooks/useAdminQueries";
 import { writeGrantInputs } from "../../hooks/useWriteGrants";
 import type { MutationResult, RegisteredTable } from "../../types/admin";
@@ -35,7 +36,11 @@ export function registrationInput(
   const rowRules = registration.rowRules.filter((rule) => rule.filter.trim());
   return {
     ...registration.input,
-    ...buildTableUpdateInput(draft),
+    // REQ-2000: a vector whose model was not named is not registered, as it was offered.
+    ...buildTableUpdateInput({
+      ...draft,
+      columns: draft.columns.filter((c) => vectorOf(c.path) === null || Boolean(c.embeddingModel)),
+    }),
     // A view's name is chosen in its form (a duplicate's is a new one); a table's is the source's.
     tableName: draft.tableName,
     // A region is sent only where regions exist: the create step put one in its input then.

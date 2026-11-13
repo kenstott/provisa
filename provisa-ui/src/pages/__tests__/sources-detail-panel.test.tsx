@@ -296,18 +296,29 @@ describe("once a source is saved, its panel opens on registering its tables", ()
     await userEvent.click(screen.getByTestId("sources-submit"));
   }
 
-  it("is Register Table with the source chosen, its tables listed, those needing no input ticked", async () => {
+  it("is Register Table with the source chosen, its tables offered, those needing no input picked", async () => {
     await create();
     const step = within(panel()!);
     expect(await step.findByTestId("register-table-source-select")).toHaveValue("crm");
-    expect(step.getByRole("radio", { name: "Several tables" })).toBeChecked();
-    await waitFor(() => expect(step.getByTestId("register-many-table-accounts")).toBeChecked());
-    expect(step.getByTestId("register-many-table-audit_blobs")).not.toBeChecked();
-    expect(
-      step.getByText("Needs input: no type was found for body. Register it on its own."),
-    ).toBeInTheDocument();
+    // The same form as the Tables page's: one Tables field, no switch between one and several.
+    expect(step.queryByRole("radio")).toBeNull();
+    const tablesField = step.getByRole("textbox", { name: "Tables" });
+    await waitFor(() =>
+      expect(step.getByTestId("register-many-tables-submit")).toHaveTextContent("Register 1 table"),
+    );
+    expect(screen.getByText("accounts", { selector: ".mantine-Pill-label" })).toBeInTheDocument();
+    await userEvent.click(tablesField);
+    const blobs = screen.getByRole("option", { name: /^audit_blobs/, hidden: true });
+    expect(blobs).toHaveAttribute("data-combobox-disabled");
+    expect(screen.getByTestId("option-action-audit_blobs")).toHaveTextContent("Register");
+    await userEvent.hover(screen.getByTestId("option-not-held-audit_blobs"));
+    await waitFor(() =>
+      expect(
+        screen.getAllByRole("tooltip", { hidden: true }).map((tip) => tip.textContent),
+      ).toContain("Needs input: no type was found for body. Register it on its own."),
+    );
     // A step in the source's own panel, not a dialog over the page.
-    expect(panel()).toContainElement(screen.getByTestId("register-many-tables"));
+    expect(panel()).toContainElement(screen.getByTestId("register-tables-field"));
     expect(panel()).toContainElement(screen.getByTestId("register-tables-skip"));
   });
 });

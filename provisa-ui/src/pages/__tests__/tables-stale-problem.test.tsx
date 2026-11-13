@@ -204,7 +204,7 @@ describe("TablesPage — a problem stays with the action that met it", () => {
 
     await userEvent.click(screen.getByTestId("table-edit-cancel"));
     await userEvent.click(screen.getByTestId("tables-add-toggle"));
-    await screen.findByTestId("register-table-submit");
+    await screen.findByTestId("register-many-tables-submit");
     expect(screen.queryByText(/Table 7 not found/)).toBeNull();
   });
 });

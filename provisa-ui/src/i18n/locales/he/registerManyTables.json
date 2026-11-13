@@ -1,16 +1,10 @@
 {
   "registerManyTables": {
-    "modeLabel": "כמה טבלאות",
-    "modeOne": "טבלה אחת",
-    "modeSeveral": "מספר טבלאות",
     "tablesLabel": "טבלאות",
     "listing": "מאחזר את רשימת הטבלאות…",
     "noTables": "בסכמה זו אין טבלאות.",
-    "tickedCount_one": "סומנה {{count}} טבלה. כל אחת נרשמת עם ברירות המחדל.",
-    "tickedCount_other": "סומנו {{count}} טבלאות. כל אחת נרשמת עם ברירות המחדל.",
     "reading": "קורא את העמודות…",
     "readFailed": "לא ניתן היה לקרוא את העמודות: {{error}}",
-    "registered": "כבר רשומה.",
     "needsDeclared": "נדרש קלט: המקור אינו מתאר את העמודות. רשמו אותה בנפרד.",
     "needsNoColumns": "נדרש קלט: לא נמצאו עמודות. רשמו אותה בנפרד.",
     "needsUntyped": "נדרש קלט: לא נמצא סוג עבור {{columns}}. רשמו אותה בנפרד.",
@@ -21,6 +15,8 @@
     "register_other": "רישום {{count}} טבלאות",
     "refused": "הטבלה {{table}} לא נרשמה: {{message}}",
     "skip": "דילוג על רישום טבלאות",
-    "domainRequired": "בחרו את הדומיין שבו הטבלאות נרשמות."
+    "domainRequired": "בחרו את הדומיין שבו הטבלאות נרשמות.",
+    "pickTables": "בחרו טבלה אחת או יותר…",
+    "needsVectorModel": "נדרש קלט: ציינו את המודל של כל וקטור ({{columns}}). רשמו אותה בנפרד."
   }
 }

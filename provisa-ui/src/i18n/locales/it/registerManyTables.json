@@ -1,16 +1,10 @@
 {
   "registerManyTables": {
-    "modeLabel": "Quante tabelle",
-    "modeOne": "Una tabella",
-    "modeSeveral": "Più tabelle",
     "tablesLabel": "Tabelle",
     "listing": "Elenco delle tabelle in corso…",
     "noTables": "Questo schema non ha tabelle.",
-    "tickedCount_one": "{{count}} tabella selezionata. Ognuna viene registrata con i valori predefiniti.",
-    "tickedCount_other": "{{count}} tabelle selezionate. Ognuna viene registrata con i valori predefiniti.",
     "reading": "Lettura delle colonne in corso…",
     "readFailed": "Impossibile leggere le colonne: {{error}}",
-    "registered": "Già registrata.",
     "needsDeclared": "Input richiesto: la sua origine non descrive le colonne. Registrala singolarmente.",
     "needsNoColumns": "Input richiesto: non sono state trovate colonne. Registrala singolarmente.",
     "needsUntyped": "Input richiesto: nessun tipo trovato per {{columns}}. Registrala singolarmente.",
@@ -21,6 +15,8 @@
     "register_other": "Registra {{count}} tabelle",
     "refused": "{{table}} non è stata registrata: {{message}}",
     "skip": "Salta la registrazione delle tabelle",
-    "domainRequired": "Scegli il dominio in cui registrare le tabelle."
+    "domainRequired": "Scegli il dominio in cui registrare le tabelle.",
+    "pickTables": "Seleziona una o più tabelle…",
+    "needsVectorModel": "Input richiesto: indica il modello di ogni vettore ({{columns}}). Registrala singolarmente."
   }
 }

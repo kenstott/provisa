@@ -857,8 +857,10 @@ main {
 .split-pane__head .mantine-Group-root {
   gap: 0.25rem;
 }
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"]:disabled,
-.split-pane__head :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"][data-disabled] {
+.split-pane__head
+  :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"]:disabled,
+.split-pane__head
+  :is(.mantine-Button-root, .mantine-ActionIcon-root)[data-variant="subtle"][data-disabled] {
   background: transparent;
   border-color: transparent;
   opacity: 0.45;
@@ -3136,4 +3138,13 @@ main {
 /* REQ-2078: a derived role's value roles sit under their parent in the Roles list. */
 .data-table tbody td.derived-value-cell {
   padding-inline-start: 1.75rem;
+}
+
+/* A multi-select option that cannot be picked but has an action beside it: the label is dimmed
+   as the list dims any such option, and the action stays at full strength. */
+[data-combobox-disabled]:has(.multi-select-option-held) {
+  opacity: 1;
+}
+.multi-select-option-held {
+  opacity: 0.35;
 }
