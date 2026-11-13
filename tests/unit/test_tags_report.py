@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: e70c5c1a-0062-41b9-b036-557af1f121c3
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -40,8 +41,6 @@ from provisa.security.rights import (
     OPS_DOMAIN_ID,
     OPS_ROW_SCOPED_VIEWS,
 )
-
-pytestmark = pytest.mark.asyncio
 
 PERSONAL = "Personal data"
 RETENTION = "Retention"
@@ -167,8 +166,9 @@ def test_the_tags_report_is_a_row_scoped_meta_table_and_a_standard_report():
     assert OPS_ROW_SCOPED_VIEWS["tags_report"] == ("table_id",)
 
 
+@pytest.mark.asyncio
 async def test_one_row_per_tag_on_an_object_and_per_required_tag_missing(report):
-    _db, rows = report
+    rows = report[1]
     assert sorted(rows) == [
         ("approved", "table:1", "assigned"),
         ("approved", "table:2", "assigned"),
@@ -180,8 +180,9 @@ async def test_one_row_per_tag_on_an_object_and_per_required_tag_missing(report)
     ]
 
 
+@pytest.mark.asyncio
 async def test_each_row_names_its_object_and_tag(report):
-    _db, rows = report
+    rows = report[1]
     approved = rows[("approved", "table:1", "assigned")]
     assert (approved["object_kind"], approved["object_id"], approved["object_name"]) == (
         "table",
@@ -201,8 +202,9 @@ async def test_each_row_names_its_object_and_tag(report):
     )
 
 
+@pytest.mark.asyncio
 async def test_the_citation_measures_are_computed_when_read(report):
-    _db, rows = report
+    rows = report[1]
     measures = {
         key: (r["citations"], r["citations_broken"], r["citations_drifted"], r["citation_missing"])
         for key, r in rows.items()
@@ -213,8 +215,9 @@ async def test_the_citation_measures_are_computed_when_read(report):
     assert measures[("owner_reviewed", "table:1", "missing")] == (0, 0, 0, False)
 
 
+@pytest.mark.asyncio
 async def test_each_row_rolls_up_to_a_status_with_its_reason(report):
-    _db, rows = report
+    rows = report[1]
     statuses = {key: (r["status"], r["status_reason"]) for key, r in rows.items()}
     assert statuses == {
         ("approved", "table:1", "assigned"): ("clean", None),
@@ -235,13 +238,14 @@ _INSTANCES_TID, _REPORT_TID = 100, 101
 
 def _governance(role: dict):
     ctx = CompilationContext()
-    for tid, name, domain in (
-        (_INSTANCES_TID, "tag_instances", META_DOMAIN_ID),
-        (_REPORT_TID, "tags_report", OPS_DOMAIN_ID),
+    for tid, name, domain, field in (
+        (_INSTANCES_TID, "tag_instances", META_DOMAIN_ID, "tag_instances"),
+        # An ops table's field carries its schema's prefix (naming.SYSTEM_SCHEMA_GQL_PREFIX).
+        (_REPORT_TID, "tags_report", OPS_DOMAIN_ID, "op_tags_report"),
     ):
         ctx.tables[name] = TableMeta(
             table_id=tid,
-            field_name=name,
+            field_name=field,
             type_name=name,
             source_id="provisa-admin",
             catalog_name="main",
@@ -264,6 +268,7 @@ def _governance(role: dict):
     )
 
 
+@pytest.mark.asyncio
 async def test_a_reader_sees_no_row_of_an_object_it_may_not_read(report):
     db, rows = report
     gov = _governance(
