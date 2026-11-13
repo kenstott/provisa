@@ -308,6 +308,8 @@
         "history": "Histórico de versões"
       }
     },
-    "detailPanel": "Detalhe do produto de dados"
+    "detailPanel": "Detalhe do produto de dados",
+    "tagFacetLabel": "Tags",
+    "tagFacetPlaceholder": "Filtrar por tag"
   }
 }
