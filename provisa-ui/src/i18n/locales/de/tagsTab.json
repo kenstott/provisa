@@ -38,6 +38,8 @@
     "policy_hidden": "Ausgeblendet",
     "policy_optional": "Optional",
     "policy_required": "Erforderlich",
+    "requiredLabel": "Erforderlich",
+    "requiredDesc": "Jedes Objekt der unter „Gilt für“ genannten Arten muss dieses Tag tragen. Fehlt es, erscheint das Objekt im Tag-Bericht als fehlend.",
     "reasonPolicyBadge": "Begründung: {{policy}}",
     "expiresPolicyBadge": "Ablauf: {{policy}}",
     "createButton": "Tag erstellen",

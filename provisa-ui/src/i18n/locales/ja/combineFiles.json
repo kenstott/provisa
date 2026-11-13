@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "または一致するファイル",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "ソースのファイルに対する glob。1 つのテーブル、またはファイルごとに 1 つ。",
+    "modeLabel": "ファイルの登録方法",
+    "perFile": "ファイルごとに 1 テーブル",
+    "combine": "1 つのテーブルに結合",
+    "checking": "ファイルを確認しています…",
+    "noMatch": "この glob に一致するファイルはありません。",
+    "unmatched": "{{tables}} のファイルが見つかりません。",
+    "matched_one": "{{glob}} に一致するファイル {{count}} 件",
+    "matched_other": "{{glob}} に一致するファイル {{count}} 件",
+    "sharedColumns": "共通の列: {{columns}}",
+    "noSharedColumns": "共通の列はありません。",
+    "differHeading": "これらのファイルは列が異なるため、1 つのテーブルにできません。除外するか、これらに一致しない glob を入力してください:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "{{columns}} がありません",
+    "adds": "{{columns}} が追加されています",
+    "differUnreadable": "{{file}} を読み取れませんでした: {{error}}",
+    "extra": "glob {{glob}} は、選択していない {{files}} にも一致します。",
+    "includeExtra": "これらも含める",
+    "extraUnconfirmed": "glob が追加で一致するファイルを含めるか、必要なファイルだけに一致する glob を入力してください。",
+    "nameLabel": "新しいテーブル名",
+    "namePlaceholder": "complaints",
+    "nameRequired": "新しいテーブルに名前を付けてください。",
+    "notRegistrable": "これらのファイルは 1 つのテーブルとして登録できません。",
+    "sourceFileColumnLabel": "ソースファイル列",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "省略可: 各行の取得元ファイルを保持する列。"
+  }
+}

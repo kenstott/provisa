@@ -38,6 +38,8 @@
     "policy_hidden": "Oculto",
     "policy_optional": "Opcional",
     "policy_required": "Obligatorio",
+    "requiredLabel": "Obligatoria",
+    "requiredDesc": "Todo objeto de los tipos indicados en «Se aplica a» debe llevar esta etiqueta. Si falta, aparece como ausente en el informe de etiquetas.",
     "reasonPolicyBadge": "Motivo: {{policy}}",
     "expiresPolicyBadge": "Expiración: {{policy}}",
     "createButton": "Crear etiqueta",
