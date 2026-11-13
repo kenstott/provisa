@@ -17,6 +17,8 @@ replay is tests/unit/pgwire/test_pg_text_search_forms.py."""
 from __future__ import annotations
 
 import os
+import time
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -27,25 +29,46 @@ from tests.unit.pgwire.text_search_replay import BY_FUNCTION, problems
 pytestmark = [pytest.mark.integration]
 
 
-def _check(function: str, dialect: str, run: Any) -> None:
-    wrong, refused = problems(function, dialect, run)
-    print("REFUSED", dialect, function, refused)  # noqa: T201 -- the run's record
+def _check(
+    function: str, dialect: str, run: Callable[[str], list[Any]], capsys: pytest.CaptureFixture[str]
+) -> None:
+    on_engine = [0.0, 0.0, 0]  # seconds on the engine, its slowest statement, characters sent
+
+    def timed(sql: str) -> list[Any]:
+        started = time.perf_counter()
+        try:
+            return run(sql)
+        finally:
+            took = time.perf_counter() - started
+            on_engine[0] += took
+            on_engine[1] = max(on_engine[1], took)
+            on_engine[2] = max(on_engine[2], len(sql))
+
+    started = time.perf_counter()
+    wrong, refused = problems(function, dialect, timed)
+    took = time.perf_counter() - started
+    with capsys.disabled():  # the run's record, in the log whether the test passes or not
+        print(  # noqa: T201
+            f"\nTIMING {dialect} {function} statements={len(BY_FUNCTION[function])} "
+            f"refused={refused} total={took:.1f}s engine={on_engine[0]:.1f}s "
+            f"slowest={on_engine[1]:.2f}s largest_sql={on_engine[2]}"
+        )
     assert not wrong, f"{len(wrong)} differ on {dialect}: " + "\n".join(wrong[:30])
 
 
 @pytest.mark.requires_trino
 @pytest.mark.parametrize("function", sorted(BY_FUNCTION))
-def test_text_search_on_trino(trino_conn, function: str):
+def test_text_search_on_trino(trino_conn, function: str, capsys):
     def run(sql: str) -> list[Any]:
         cursor = trino_conn.cursor()
         cursor.execute(sql)
         return cursor.fetchall()
 
-    _check(function, "trino", run)
+    _check(function, "trino", run, capsys)
 
 
 @pytest.mark.requires_clickhouse
-def test_text_search_on_clickhouse():
+def test_text_search_on_clickhouse(capsys):
     """One test over every function: requires_clickhouse boots the engine for each test, and one
     test to a function booted it 48 times (tests/integration/every_case.py)."""
     import clickhouse_connect
@@ -60,4 +83,7 @@ def test_text_search_on_clickhouse():
     def run(sql: str) -> list[Any]:
         return list(client.query(sql).result_rows)
 
-    assert failures_of_every_case(sorted(BY_FUNCTION), lambda f: _check(f, "clickhouse", run)) == {}
+    assert (
+        failures_of_every_case(sorted(BY_FUNCTION), lambda f: _check(f, "clickhouse", run, capsys))
+        == {}
+    )
