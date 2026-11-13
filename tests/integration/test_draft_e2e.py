@@ -411,8 +411,16 @@ def _view_builds(srv) -> dict[str, dict]:
     return {mv["id"]: mv for mv in response.json()["data"]["mvList"]}
 
 
+def _draft_view_ids(srv) -> list[int]:
+    """The ids the draft view answers the role here (org_admin) by SQL."""
+    read = _sql(srv, "SELECT id FROM order_amounts ORDER BY id")
+    assert read.status_code == 200, read.text
+    return [r["id"] for r in read.json()["data"]["sql"]]
+
+
 def test_a_materialized_draft_view_is_built_by_its_stewards_preview_and_kept(server):
-    """A draft view is offered to no reader and is built on no schedule. Its steward's preview
+    """A draft view is offered to no reader without table registration in its domain, and is
+    built on no schedule. Its steward's preview
     answers from the view's inputs at once and starts its build; the build lands while the view
     is still a draft, is kept, and the view is read by its readers once released."""
     srv, pg = server
@@ -441,8 +449,9 @@ def test_a_materialized_draft_view_is_built_by_its_stewards_preview_and_kept(ser
     # Registered, a draft: its build is known and nothing has built it.
     time.sleep(_KEPT_S / 2)
     assert _view_builds(srv)["view-order_amounts"]["status"] != "fresh"
-    refused = _sql(srv, "SELECT id FROM order_amounts")
-    assert refused.status_code != 200 and "is a draft" in refused.text, refused.text
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: the role here holds table registration in the
+    # view's domain, so its statement naming the draft view reads it, from the view's inputs.
+    assert _draft_view_ids(srv) == [i for i, _ in _ID_AMOUNT]
 
     # Its steward's preview: answered from its inputs, and its build started.
     previewed = _previewed(srv, view_id, {"sorts": [{"col": "id", "dir": "asc"}]})
@@ -457,8 +466,7 @@ def test_a_materialized_draft_view_is_built_by_its_stewards_preview_and_kept(ser
     # Still a draft, and kept through the reloads and sweeps that follow.
     time.sleep(_KEPT_S)
     assert "view-order_amounts" in _view_builds(srv)
-    refused = _sql(srv, "SELECT id FROM order_amounts")
-    assert refused.status_code != 200 and "is a draft" in refused.text, refused.text
+    assert _draft_view_ids(srv) == [i for i, _ in _ID_AMOUNT]
 
     # Released: read by its readers.
     _mutate(srv, f"setTableDraft(tableId: {view_id}, draft: false)")
