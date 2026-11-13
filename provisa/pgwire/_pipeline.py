@@ -2616,7 +2616,7 @@ async def route_governed(
     from provisa.api.app import state
     from provisa.audit.pipeline import begin_audit
     from provisa.transpiler.router import Route
-    from provisa.transpiler.transpile import transpile
+    from provisa.transpiler.transpile import direct_physical, transpile
 
     if not stamp_is_valid(governed.stamp):
         raise PermissionError(
@@ -3237,12 +3237,15 @@ async def route_governed(
                 from provisa.compiler.stage2 import apply_row_cap
 
                 _physical = apply_row_cap(_physical, _cap)
-            _direct = transpile(
-                _physical,
+            _direct = direct_physical(
+                transpile(
+                    _physical,
+                    dialect,
+                    pgvector=_similarity.mentions(_physical)
+                    and state.source_pools.vector_capability(_direct_sid) == "pgvector",
+                    quote_identifiers=_quoted,
+                ),
                 dialect,
-                pgvector=_similarity.mentions(_physical)
-                and state.source_pools.vector_capability(_direct_sid) == "pgvector",
-                quote_identifiers=_quoted,
             )
             if not _optimized:
                 governed.memo[_direct_key] = _direct
@@ -5820,7 +5823,7 @@ async def _route_compiled(
         rewrite_semantic_to_physical,
     )
     from provisa.transpiler.router import Route
-    from provisa.transpiler.transpile import transpile
+    from provisa.transpiler.transpile import direct_physical, transpile
 
     _compiled_tree = compiled_tree
     _table_ids = table_ids
@@ -6235,12 +6238,15 @@ async def _route_compiled(
 
                 physical_sql = apply_row_cap(physical_sql, _cap)
             _direct = (
-                transpile(
-                    physical_sql,
+                direct_physical(
+                    transpile(
+                        physical_sql,
+                        dialect,
+                        pgvector=_similarity.mentions(physical_sql)
+                        and state.source_pools.vector_capability(_direct_sid) == "pgvector",
+                        quote_identifiers=_quoted,
+                    ),
                     dialect,
-                    pgvector=_similarity.mentions(physical_sql)
-                    and state.source_pools.vector_capability(_direct_sid) == "pgvector",
-                    quote_identifiers=_quoted,
                 ),
                 physical_sql,
             )

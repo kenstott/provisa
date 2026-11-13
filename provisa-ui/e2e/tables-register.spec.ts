@@ -7,7 +7,7 @@
 
 import { test, expect } from "./coverage";
 import type { Page } from "./coverage";
-import { tableOption, tablesField } from "./source-to-query-helpers";
+import { schemasLoaded, tableOption, tablesField } from "./source-to-query-helpers";
 
 // REQ-2234: Register Table holds Source, Domain, Schema where the source has more than one, and
 // one Tables field (the standard multi-select). A table already registered is not offered.
@@ -17,13 +17,6 @@ async function openAddForm(page: Page) {
   await page.waitForSelector(".page-header", { timeout: 15000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
-}
-
-/** Waits until the source's schemas have answered: the Schema field is disabled while they load. */
-async function schemasLoaded(page: Page) {
-  await expect(
-    page.getByTestId("register-table-schema-select").and(page.locator(":disabled")),
-  ).toHaveCount(0, { timeout: 30000 });
 }
 
 test("sqlite lists its one physical schema, 'main', not PG internal schemas", async ({ page }) => {

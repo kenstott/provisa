@@ -58,6 +58,14 @@ async function shows(locator: Locator, refused: string[], timeout: number) {
   }
 }
 
+/** Opens the panel's `section` row: every row but Offers starts closed, and Related (its commands
+ * and graph) is mounted only once open. */
+async function openSection(page: Page, section: string) {
+  const toggle = page.getByTestId(`data-product-row-${section}-${PRODUCT}-toggle`);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+}
+
 test.describe("a data product's panel and graph, read from the meta domain", () => {
   // The first navigation compiles the page's chunks and the panel's reads run after the list's.
   test.setTimeout(180_000);
@@ -86,6 +94,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await expect(ports).toContainText("pet-store.pets");
     await expect(ports).toContainText("pet-store.vets");
     await expect(ports).not.toContainText("pets_quality");
+    await openSection(page, "related");
     await expect(page.getByTestId(`data-product-detail-commands-${PRODUCT}`)).toContainText(
       "add_pet",
     );
@@ -114,6 +123,7 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     const refused = recordRefusals(page);
     await page.goto(`/data-products?product=${PRODUCT}`);
     await shows(page.getByTestId(`data-product-detail-${PRODUCT}`), refused, 90_000);
+    await openSection(page, "related");
     const kg = page.getByTestId("graph-panel");
     await kg.scrollIntoViewIfNeeded();
     // data-ready: three.js has loaded and the scene is drawn.

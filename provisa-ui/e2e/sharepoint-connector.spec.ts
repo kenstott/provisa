@@ -8,7 +8,7 @@
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 import { isAssignableDomain } from "../src/lib/internalDomains";
-import { addSourceOfType } from "./source-to-query-helpers";
+import { addSourceOfType, listedTableNames } from "./source-to-query-helpers";
 
 const SOURCE_ID = "e2e-sharepoint";
 // REQ-1730: the sharepoint catalog's schema is the sql-normalized source id on every engine
@@ -213,10 +213,7 @@ test("sharepoint connector: add source and verify calendar list is available", a
   await expect(tablesField).toBeEnabled({ timeout: 30000 });
   await tablesField.click();
   await expect(page.getByRole("option", { name: /^calendar/ })).toBeVisible({ timeout: 30000 });
-  // An option's text is the table's name, followed by Register where it needs input.
-  const tableOptions = await page
-    .getByRole("option")
-    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  const tableOptions = await listedTableNames(page);
   await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("calendar");

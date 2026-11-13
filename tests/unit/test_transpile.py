@@ -18,6 +18,7 @@ from provisa.transpiler.transpile import (
     transpile,
     transpile_to_trino,
     rewrite_correlated_subqueries_for_trino,
+    direct_physical,
     rewrite_json_object_to_build_object,
     rewrite_prometheus_labels_for_trino,
 )
@@ -667,3 +668,26 @@ def test_a_range_s_computed_step_fails_on_trino_at_zero():
         "SELECT SEQUENCE(2, 8, CASE WHEN s = 0 THEN FAIL('range() takes a step other than 0')"
         " ELSE s END) FROM t"
     )
+
+
+class TestDirectPostgresJson:
+    """A statement sent DIRECT to a PostgreSQL source (the meta domain's control plane among them)
+    builds its JSON values as json. PostgreSQL types JSON_OBJECT(...) as jsonb when any argument is
+    jsonb and as json otherwise, so a Cypher node union whose arms read jsonb columns in some
+    labels and none in others was refused: "UNION could not convert type jsonb to json"."""
+
+    UNION = (
+        "SELECT JSON_OBJECT('id': d.id, 'properties': JSON_OBJECT('name': d.name)) AS __node "
+        "FROM domains AS d UNION ALL "
+        "SELECT JSON_OBJECT('id': r.id, 'properties': JSON_OBJECT('capabilities': r.capabilities)) "
+        "AS __node FROM roles AS r"
+    )
+
+    def test_postgres_arms_are_built_as_json(self):
+        out = direct_physical(transpile(self.UNION, "postgres"), "postgres")
+        assert out.upper().count("JSON_BUILD_OBJECT") == 4
+        assert "JSON_OBJECT(" not in out.upper()
+
+    def test_another_dialect_is_unchanged(self):
+        mysql = transpile('SELECT "id" FROM "orders"', "mysql")
+        assert direct_physical(mysql, "mysql") == mysql

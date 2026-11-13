@@ -245,6 +245,23 @@ export function tableOption(page: Page, table: string) {
     .and(page.locator("[data-combobox-option]"));
 }
 
+/** The names the Tables field's open list offers. An option's text is the table's name, followed
+ * by Register where it needs input. */
+export async function listedTableNames(page: Page): Promise<string[]> {
+  return page
+    .locator("[data-combobox-option]")
+    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+}
+
+/** Waits until the source's schemas have answered. The Schema field is shown, disabled, while
+ * they load, and is gone once they answer with one schema (REQ-2234): whether it is asked is
+ * known only after the load. */
+export async function schemasLoaded(page: Page, timeout = 120000): Promise<void> {
+  await expect(
+    page.getByTestId("register-table-schema-select").and(page.locator(":disabled")),
+  ).toHaveCount(0, { timeout });
+}
+
 /**
  * Opens a list row's detail panel. The click lands on the row's first own cell: a list whose rows
  * can be selected (REQ-2240) puts a checkbox cell first, which keeps its click to itself, and the
@@ -265,9 +282,7 @@ let pickedTable: string | null = null;
 export async function pickSchemaAndTable(page: Page, schema: string, table: string) {
   await expect(page.getByTestId("register-tables-field")).toBeVisible({ timeout: 120000 });
   const schemaSelect = page.getByTestId("register-table-schema-select");
-  // The Schema field is shown, disabled, while the schemas load, and is gone once they answer with
-  // one schema (REQ-2234): whether it is asked is known only after the load.
-  await expect(schemaSelect.and(page.locator(":disabled"))).toHaveCount(0, { timeout: 120000 });
+  await schemasLoaded(page);
   if ((await schemaSelect.count()) > 0) {
     await expect(schemaSelect.locator(`option[value='${schema}']`)).toHaveCount(1, {
       timeout: 120000,

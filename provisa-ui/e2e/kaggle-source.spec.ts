@@ -37,6 +37,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./coverage";
 import {
   discoveredColumnCount,
+  listedTableNames,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
@@ -235,9 +236,7 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     await expect(field).toBeEnabled({ timeout: 120000 });
     await field.click();
     await expect(tableOption(page, covidTable)).toBeVisible({ timeout: 60000 });
-    const discovered = await page
-      .getByRole("option")
-      .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+    const discovered = await listedTableNames(page);
     await page.keyboard.press("Escape");
     expect(new Set(discovered)).toEqual(
       new Set([
