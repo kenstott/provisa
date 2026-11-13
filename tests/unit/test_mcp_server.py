@@ -126,6 +126,20 @@ def _patch_catalog(monkeypatch):
     monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)
 
 
+@pytest.fixture(autouse=True)
+def _no_masks(monkeypatch):
+    """The fake state's role is served every column of each table its context holds, and holds
+    no mask: its governance context (what describe_table reads each column's state from)."""
+    from provisa.compiler.stage2 import GovernanceContext
+
+    def _governance(state, role):
+        gov = GovernanceContext()
+        gov.visible_columns = {m.table_id: None for m in state.contexts[role].tables.values()}
+        return gov
+
+    monkeypatch.setattr(tools, "_role_governance", _governance)
+
+
 # --- drill-down -------------------------------------------------------------
 
 
@@ -155,8 +169,13 @@ async def test_describe_table(state):
     assert result["schema"] == "sales"
     assert result["table"] == "orders"
     assert result["columns"] == [
-        {"name": "id", "type": "integer", "description": "Primary key"},
-        {"name": "customer_id", "type": "integer", "description": "FK to customers"},
+        {"name": "id", "type": "integer", "description": "Primary key", "state": "plain"},
+        {
+            "name": "customer_id",
+            "type": "integer",
+            "description": "FK to customers",
+            "state": "plain",
+        },
     ]
     assert result["foreign_keys"] == [
         {

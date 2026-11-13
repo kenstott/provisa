@@ -27,7 +27,7 @@ from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.rls import RLSContext
 from provisa.compiler.schema_gen import SchemaInput
 from provisa.compiler.sql_validator import validate_sql
-from provisa.compiler.stage2 import build_governance_context
+from provisa.compiler.stage2 import apply_governance, build_governance_context
 from provisa.security.masking import MaskingRule, MaskType, reader_masks
 from provisa.security.meta_role import meta_chain
 from tests.role_state import RoleState
@@ -40,12 +40,20 @@ _STARS = MaskingRule(mask_type=MaskType.constant, value="***")
 _FAKE = MaskingRule(mask_type=MaskType.fake, fake="phone_number()")
 
 
+@pytest.fixture(autouse=True)
+def _platform_key(monkeypatch):
+    """A faked column's governance binds the platform's fake key, loaded at startup."""
+    from provisa.fakes import digest
+
+    monkeypatch.setattr(digest, "_key", b"k" * 32)
+
+
 def _role(rid: str) -> dict:
     return {"id": rid, "capabilities": ["query_development"], "domain_access": ["shop"]}
 
 
-def _tables(salary_to: list[str]) -> list[dict]:
-    """customers: salary is granted only to ``salary_to``; every other column to everyone."""
+def _tables(role_id: str, salary_to: list[str]) -> list[dict]:
+    """customers: salary is granted only to ``salary_to``; every other column to ``role_id``."""
     return [
         {
             "id": _TID,
@@ -54,7 +62,7 @@ def _tables(salary_to: list[str]) -> list[dict]:
             "schema_name": "public",
             "table_name": "customers",
             "columns": [
-                {"column_name": c, "visible_to": salary_to if c == "salary" else []}
+                {"column_name": c, "visible_to": salary_to if c == "salary" else [role_id]}
                 for c in _COLUMNS
             ],
             "write_ops": [],
@@ -66,7 +74,7 @@ def _tables(salary_to: list[str]) -> list[dict]:
 
 def _model(role_id: str, masks: dict, salary_to: list[str]):
     """The role's compiled context and governance context, as the query guard builds them."""
-    tables = _tables(salary_to)
+    tables = _tables(role_id, salary_to)
     types = {
         _TID: [
             ColumnMetadata(
@@ -140,14 +148,29 @@ def test_a_meta_role_member_gets_the_state_of_its_resolved_rights():
     assert column_state.column_state(meta_gov, _TID, "salary") == "plain"
 
 
+def _guard(sql: str, ctx, gov, role, tables) -> tuple[set[str], str]:
+    """What the query guard does with ``sql``: the V003/V005 codes it refuses it with -- the
+    validator's, then governance's own (stage2 refuses an unserved column it is handed) -- and
+    the governed statement when neither refuses it."""
+    codes = {v.code for v in validate_sql(sql, ctx, gov, role, tables)} & {"V003", "V005"}
+    if codes:
+        return codes, ""
+    try:
+        return set(), apply_governance(sql, gov)
+    except PermissionError as refused:
+        return {c for c in ("V003", "V005") if f"[{c}]" in str(refused)}, ""
+
+
 @pytest.mark.parametrize("column", _COLUMNS)
-def test_the_answer_agrees_with_the_validator_on_a_condition_over_the_column(column):
+def test_the_answer_agrees_with_the_guard_on_a_condition_over_the_column(column):
     ctx, gov, role, tables = _analyst()
     sql = f'SELECT "id" FROM "shop"."customers" WHERE "{column}" = \'1\''
-    codes = {v.code for v in validate_sql(sql, ctx, gov, role, tables)}
+    codes, governed = _guard(sql, ctx, gov, role, tables)
     state = column_state.column_state(gov, _TID, column)
     expected = {"plain": set(), "faked": set(), "masked": {"V005"}, "hidden": {"V003"}}[state]
-    assert codes & {"V003", "V005"} == expected, (column, state, codes)
+    assert codes == expected, (column, state, codes)
+    # A faked column's condition runs, over its fake values; a plain one's over the real ones.
+    assert (f"__fake__{column}" in governed) == (state == "faked")
 
 
 # --- describe_table carries the state on its column rows ------------------------------------
@@ -222,3 +245,21 @@ def test_the_tool_description_says_what_each_state_means_for_a_condition():
     for word in ("plain", "masked", "faked", "hidden", "cannot be evaluated"):
         assert word in text
     assert "REQ-" not in text
+
+
+async def test_every_surface_listing_describe_table_says_the_same():
+    from provisa.api.mcp import chat
+    from provisa.api.mcp.column_state import DESCRIBE_TABLE
+    from provisa.api.mcp.server import build_mcp_server
+    from provisa.api.mcp.status import _TOOLS as STATUS_TOOLS
+
+    listed = {t.name: t.description for t in await build_mcp_server(RoleState()).list_tools()}
+    assert listed["describe_table"] == DESCRIBE_TABLE
+    assert (
+        next(t for t in chat._TOOLS if t["name"] == "describe_table")["description"]
+        == DESCRIBE_TABLE
+    )
+    assert (
+        next(t for t in STATUS_TOOLS if t["name"] == "describe_table")["description"]
+        == DESCRIBE_TABLE
+    )

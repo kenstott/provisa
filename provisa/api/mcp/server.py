@@ -37,6 +37,7 @@ from contextvars import ContextVar
 from typing import Any
 
 from provisa.api.mcp import tools
+from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.org_resolve import OrgResolutionError
 from provisa.core import request_deadline
 from provisa.core.request_context import require_current_org, reset_current_org, set_current_org
@@ -581,10 +582,12 @@ def build_mcp_server(state: Any):
         """List tables in a schema with description and column count."""
         return await tools.list_tables(state, _role(role), schema)
 
-    @_tool
     async def describe_table(schema: str, table: str, role: str | None = None) -> dict:
-        """Describe a table: columns (name, type, description) and foreign keys."""
         return await tools.describe_table(state, _role(role), schema, table)
+
+    # The one description Polly's chat and the status page give it too.
+    describe_table.__doc__ = DESCRIBE_TABLE
+    _tool(describe_table)
 
     @_tool
     async def list_commands(role: str | None = None) -> list[dict]:
