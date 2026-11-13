@@ -51,7 +51,7 @@ from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 
 from provisa.compiler.sql_where import SERVED_WITH_EVERY_TABLE
 from provisa.compiler import temp_tables
-from provisa.compiler.cte_utils import cte_names, names_a_cte_in_scope
+from provisa.compiler.cte_utils import cte_in_scope, cte_names, names_a_cte_in_scope
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
 from provisa.compiler.stage2 import (
     GovernanceContext,
@@ -818,7 +818,8 @@ def _qualified_relation(  # REQ-039, REQ-2226
     does not name it (REQ-2226)."""
     select = _nearest_scope(col)
     while select is not None:
-        for item in _scope_relations(select):
+        items = _scope_relations(select)
+        for item in items:
             if item.alias_or_name != col.table:
                 continue
             if not isinstance(item, exp.Table) or not isinstance(item.this, exp.Identifier):
@@ -833,8 +834,35 @@ def _qualified_relation(  # REQ-039, REQ-2226
             if tid is None and not item.db:
                 tid = field_named.get(item.name)
             return tid
+        if any(col.table in _value_columns(item) for item in items):
+            # ``"__b"."n"`` over ``UNNEST($1) AS _uw0(__b)``, ``"m"."k"`` over ``FROM _w0`` whose
+            # SELECT gives ``m``: the qualifier is a value column of a derived relation, a field
+            # of which the column reads -- checked where that relation's own SELECT is.
+            return _DERIVED
         select = _nearest_scope(select)
     return None
+
+
+def _value_columns(item: exp.Expr) -> set[str]:  # REQ-039, REQ-2176
+    """The value columns FROM item ``item`` gives that a column may be qualified by, reading a
+    field of one (a Cypher map, a row a write gave): those its column list binds
+    (``UNNEST($1) AS _uw0(__b)`` binds ``__b``), and those a derived relation's SELECT gives --
+    a derived table's, or a CTE's it names. A table's own columns are not: a field of one is read
+    through the table, whose columns governance judges by name."""
+    alias = item.args.get("alias")
+    if isinstance(alias, exp.TableAlias) and alias.args.get("columns"):
+        return {column.name for column in alias.args["columns"]}
+    if isinstance(item, exp.Subquery) and isinstance(item.this, exp.Query):
+        return set(item.this.named_selects)
+    if isinstance(item, exp.Table) and isinstance(item.this, exp.Identifier):
+        cte = cte_in_scope(item)
+        if cte is not None:
+            listed = cte.args["alias"].args.get("columns") if cte.args.get("alias") else None
+            if listed:
+                return {column.name for column in listed}
+            if isinstance(cte.this, exp.Query):
+                return set(cte.this.named_selects)
+    return set()
 
 
 def _unqualified_column_refused(  # REQ-039, REQ-2190
@@ -997,19 +1025,17 @@ def _relation_names_by_scope(tree: exp.Expr) -> dict[int, set[str]]:
     """The names a column may be qualified by in each scope of ``tree`` (by ``id`` of its
     statement node): each FROM item's alias, else a table's name, else a function's name -- as
     PostgreSQL names an unaliased ``generate_series(1, 3)``. A CTE's name is listed where the CTE
-    is declared; it is a relation where it is read. A FROM item's column list names its columns,
-    each a value whose fields a qualified column reads -- ``"__b"."n"`` over
-    ``UNNEST($1) AS _uw0(__b)``, as REQ-2176 unwinds the rows a write gave."""
+    is declared; it is a relation where it is read. A derived FROM item's value columns
+    (:func:`_value_columns`) are names too, each a value whose fields a qualified column reads --
+    ``"__b"."n"`` over ``UNNEST($1) AS _uw0(__b)``, as REQ-2176 unwinds the rows a write gave;
+    ``"m"."k"`` over a WITH's rows carrying the map ``m``."""
     names: dict[int, set[str]] = {}
+    for scope in tree.find_all(*_SCOPES):
+        for item in _scope_relations(scope):
+            names.setdefault(id(scope), set()).update(_value_columns(item))
     for node in tree.find_all(exp.TableAlias, exp.Table, exp.Unnest):
         if isinstance(node, exp.TableAlias):
             name = node.name
-            if not isinstance(node.parent, exp.CTE):
-                scope = node.find_ancestor(*_SCOPES)
-                if scope is not None:
-                    names.setdefault(id(scope), set()).update(
-                        column.name for column in node.args.get("columns") or ()
-                    )
         elif node.alias:
             continue  # its TableAlias names it
         elif isinstance(node, exp.Table) and isinstance(node.this, exp.Identifier):

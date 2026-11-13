@@ -26,13 +26,12 @@ name: UI e2e (Trino lane)
 # run on embedded fakeredis.
 #
 # REQ-1759: like ui-e2e-core.yml, this lane is expensive (a 7g Trino coordinator cold boot) and no
-# longer runs on every push/PR — unit-tests.yml is the fast per-commit gate. Runs on release
-# branches/tags and on-demand only.
+# longer runs on every push/PR — unit-tests.yml is the fast per-commit gate. Runs on dispatch
+# (for a release branch, or on demand) only.
 
 on:
-  # Every push to a release branch runs this: it gates the release (REQ-1989). main never does.
-  push:
-    branches: ['release/**']
+  # Runs on dispatch for a release (gh workflow run <workflow> --ref <release branch>): it gates the
+  # release (REQ-1989). No push starts it.
   workflow_dispatch:
     # A retest of named specs: each a file or file:line under provisa-ui (e2e/x.spec.ts,
     # e2e/x.spec.ts:42), space-separated. The lane's provisioning runs as on a full run; Playwright
