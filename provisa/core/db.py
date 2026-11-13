@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.schema import CreateSchema
 
 from provisa.core.environments import org_schema
+from provisa.core.schema_create import create_schema
 from provisa.core.models import BUILT_IN_SOURCE_IDS
 
 if TYPE_CHECKING:
@@ -381,11 +382,9 @@ async def init_schema(
         # the abstraction so no PG-specific lock SQL appears here.
         async with conn.advisory_lock(schema_lock_key(schema_name)):
             await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
-            await conn.execute_core(
-                CreateSchema(
-                    org_schema(org_id, env, "_mv_cache", region=region), if_not_exists=True
-                )
-            )
+            # The org's view store has creators of its own (an engine landing a view's rows, the
+            # store writer reconciling a view's table) that do not hold this org's lock.
+            await create_schema(conn, org_schema(org_id, env, "_mv_cache", region=region))
             await conn.execute(f'SET search_path TO "{schema_name}"')
             # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
             # runs it natively; the control-plane Database shim auto-detects the
