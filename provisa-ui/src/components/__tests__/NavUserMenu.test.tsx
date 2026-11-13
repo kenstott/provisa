@@ -106,7 +106,9 @@ describe("Admin and Docs in the user menu", () => {
     expect(
       whatsNew.compareDocumentPosition(divider!) & Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    expect(divider!.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(
+      divider!.compareDocumentPosition(admin) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
   });
 
   it("opens the Docs page from the menu", async () => {

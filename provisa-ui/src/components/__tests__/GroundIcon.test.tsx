@@ -76,9 +76,7 @@ describe("the ground symbol on a graph label", () => {
 describe("the legend", () => {
   const graph = (grounding?: "grounded" | "grounded_pending") =>
     ({
-      nodes: [
-        { id: "term:1", type: "term", label: "Customer", ...(grounding ? { grounding } : {}) },
-      ],
+      nodes: [{ id: "term:1", type: "term", label: "Customer", ...(grounding ? { grounding } : {}) }],
       edges: [],
     }) as unknown as GraphData;
 

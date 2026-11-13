@@ -62,7 +62,7 @@ describe("the sandbox loader's random choice", () => {
 
   it("covers every loader across a seeded run", () => {
     let s = 7;
-    const seeded = () => (s = (s * 48271) % 2147483647) / 2147483647;
+    const seeded = () => ((s = (s * 48271) % 2147483647) / 2147483647);
     const seen = new Set(Array.from({ length: 60 }, () => pickLoader(seeded)));
     expect(seen).toEqual(new Set(SANDBOX_LOADERS));
   });
@@ -105,21 +105,15 @@ describe("the sandbox loader's random choice", () => {
     expect(kindOf(container)).toBe("gift");
   });
 
-  it.each(["box", "gift"] as const)(
-    "the %s stands still and open when motion is reduced",
-    async (kind) => {
-      prefersReduced(true);
-      const { container } = render(<SandboxLoader label="Opening" kind={kind} />);
-      await waitFor(() =>
-        expect(screen.getByRole("status", { name: "Opening" })).toHaveAttribute(
-          "data-motion",
-          "reduced",
-        ),
-      );
-      expect(container.querySelector("svg")).toHaveClass("ub--still");
-      expect(container.querySelector("svg")).not.toHaveClass("ub--moving");
-    },
-  );
+  it.each(["box", "gift"] as const)("the %s stands still and open when motion is reduced", async (kind) => {
+    prefersReduced(true);
+    const { container } = render(<SandboxLoader label="Opening" kind={kind} />);
+    await waitFor(() =>
+      expect(screen.getByRole("status", { name: "Opening" })).toHaveAttribute("data-motion", "reduced"),
+    );
+    expect(container.querySelector("svg")).toHaveClass("ub--still");
+    expect(container.querySelector("svg")).not.toHaveClass("ub--moving");
+  });
 
   it.each(["box", "gift"] as const)("the %s moves when motion is allowed", (kind) => {
     prefersReduced(false);

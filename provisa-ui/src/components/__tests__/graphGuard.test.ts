@@ -69,8 +69,7 @@ describe("the graph library is imported only by the one graph component", () => 
     expect(files.filter((f) => f.startsWith(THE_COMPONENT) && importsOf(f).length > 0)).not.toEqual(
       [],
     );
-    for (const f of NOT_YET_CONVERTED)
-      expect(files, `${f} is listed but does not exist`).toContain(f);
+    for (const f of NOT_YET_CONVERTED) expect(files, `${f} is listed but does not exist`).toContain(f);
   });
 
   it.each(files.filter((f) => !f.startsWith(THE_COMPONENT) && !pending.has(f)))(
@@ -80,12 +79,9 @@ describe("the graph library is imported only by the one graph component", () => 
     },
   );
 
-  it.each([...NOT_YET_CONVERTED])(
-    "%s still imports it: once it does not, it leaves the list",
-    (file) => {
-      expect(importsOf(file).length).toBeGreaterThan(0);
-    },
-  );
+  it.each([...NOT_YET_CONVERTED])("%s still imports it: once it does not, it leaves the list", (file) => {
+    expect(importsOf(file).length).toBeGreaterThan(0);
+  });
 
   it("is found by the rule", () => {
     expect(libraryImports(`import cytoscape from "cytoscape";`)).toEqual(["cytoscape"]);
