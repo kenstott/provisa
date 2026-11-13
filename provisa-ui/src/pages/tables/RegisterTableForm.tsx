@@ -575,7 +575,7 @@ export function RegisterTableForm({
     opening: manyTables.opening,
   });
   const listing = !schemaName || loadingTables;
-  // What the Tables field says under it: still listing, or that there is nothing to pick.
+  // What the Tables field's hint says: still listing, or that there is nothing to pick.
   const tablesStatus = startingTablesTimedOut
     ? t("registerTableForm.tableStartingTimedOut")
     : startingTables
@@ -743,18 +743,15 @@ export function RegisterTableForm({
           </FormField>
         )}
         {listsTables && (
-          <FormField size="full">
-            <div data-testid="register-tables-field">
-              <MultiSelect
-                label={t("registerManyTables.tablesLabel")}
-                options={choices}
-                value={manyTables.ticked}
-                onChange={manyTables.setTicked}
-                placeholder={t("registerManyTables.pickTables")}
-                description={tablesStatus}
-                disabled={listing || choices.length === 0}
-              />
-            </div>
+          <FormField size="long" hint={tablesStatus} data-testid="register-tables-field">
+            <MultiSelect
+              label={t("registerManyTables.tablesLabel")}
+              options={choices}
+              value={manyTables.ticked}
+              onChange={manyTables.setTicked}
+              placeholder={t("registerManyTables.pickTables")}
+              disabled={listing || choices.length === 0}
+            />
           </FormField>
         )}
         {authored && (
