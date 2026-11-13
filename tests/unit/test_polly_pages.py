@@ -13,6 +13,7 @@ and what the UI publishes to read_screen is what the table says."""
 
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -153,3 +154,22 @@ def test_she_is_told_read_screen_reports_the_data_node():
     assert "dataNode" in chat._SYSTEM
     tool = next(t for t in chat._CLIENT_TOOLS if t["name"] == "read_screen")
     assert "dataNode" in tool["description"]
+
+
+def test_she_can_read_the_mcp_explorer():
+    """The MCP explorer was described as her own chat, and published nothing to read_screen."""
+    explore = polly_pages.PAGES["/explore"]
+    assert "MCP explorer" in explore.what
+    assert "separate chat" in explore.what
+    assert "same chat" not in explore.what
+    assert "state.mcpQuestion" in explore.sets
+    assert {"status", "error", "draft", "tools", "messageCount", "messages"} <= _reads("/explore")
+    assert "/explore" in _published("INPUT_ROUTES")
+    assert "this same chat" not in chat._SYSTEM
+    assert "this same chat" not in json.dumps(chat._CLIENT_TOOLS)
+
+
+def test_the_mcp_explorer_publishes_what_the_table_names():
+    page = (ROOT / "provisa-ui/src/pages/McpExplorePage.tsx").read_text()
+    assert 'useScreenInputs("/explore"' in page
+    assert "mcpQuestion?: string" in page

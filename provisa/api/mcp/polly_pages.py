@@ -98,7 +98,18 @@ PAGES: dict[str, PollyPage] = {
     "/python": PollyPage("Python tab", "state.code, state.newTab, state.title", "editor"),
     "/notebook": PollyPage("Notebook tab", "state.cells", "the run's output in navigate's result"),
     "/science": PollyPage("redirects to /python"),
-    "/explore": PollyPage("this same chat, full page"),
+    "/explore": PollyPage(
+        "the MCP explorer: a separate chat, not yours, in which an agent answers with the governed "
+        "MCP tools under the active role; the tool calls of its last answer are listed as badges, "
+        "and a run_sql call's badge shows its statement and its explain. To carry its statement "
+        "to another tab, read it from the run_sql call's sql and navigate there with it",
+        "state.mcpQuestion, a question sent to its agent at once; state.mcpConnect true opens "
+        "its Connect Claude Desktop panel",
+        "inputs: status (idle, running, answered or failed), error, tools (each call of the last "
+        "answer: name, status running, done or error, and sql, a run_sql call's statement in "
+        "full), draft (the text in its input), messageCount, messages (the last 4: role, text "
+        "cut at 500 characters, cut true when it was)",
+    ),
     "/views": PollyPage("views"),
     "/metrics": PollyPage("governed metrics"),
     "/data-products": PollyPage(
