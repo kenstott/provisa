@@ -10411,5 +10411,7 @@
   "pt/roleRights.json::roleRights.draft": "Draft",
   "pt.json::common.stop": "Stop",
   "pt/relationshipRow.json::relationshipRow.fkBadgeTitle": "Created from a foreign key in the source",
-  "pt/findTerms.json::findTerms.stopTip": "Stop the scan"
+  "pt/findTerms.json::findTerms.stopTip": "Stop the scan",
+  "pt.json::common.stopped": "Stopped",
+  "pt.json::common.stopQuery": "Stop the query"
 }

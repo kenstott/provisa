@@ -72,7 +72,7 @@ export interface GraphState {
 interface SerializedFrame {
   id: string;
   query: string;
-  status: "done" | "error";
+  status: "done" | "error" | "stopped";
   nodes: [string, GNode][];
   edges: [string, GEdge][];
   rows: Record<string, unknown>[];

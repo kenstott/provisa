@@ -3,6 +3,8 @@
     "loading": "Loading...",
     "cancel": "Cancel",
     "stop": "Stop",
+    "stopped": "Stopped",
+    "stopQuery": "Stop the query",
     "save": "Save",
     "delete": "Delete",
     "confirm": "Confirm",

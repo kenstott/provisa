@@ -417,7 +417,8 @@ export type SparqlForm = "graph" | "rows" | "boolean";
 export interface FrameData {
   id: string;
   query: string;
-  status: "loading" | "done" | "error";
+  /** "stopped": the viewer stopped its request before an answer came; nothing it held is shown. */
+  status: "loading" | "done" | "error" | "stopped";
   nodes: Map<string, GNode>;
   edges: Map<string, GEdge>;
   rows: Record<string, unknown>[];

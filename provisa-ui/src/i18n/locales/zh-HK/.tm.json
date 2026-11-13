@@ -10408,5 +10408,7 @@
   "zh-HK/roleRights.json::roleRights.draft": "Draft",
   "zh-HK.json::common.stop": "Stop",
   "zh-HK/relationshipRow.json::relationshipRow.fkBadgeTitle": "Created from a foreign key in the source",
-  "zh-HK/findTerms.json::findTerms.stopTip": "Stop the scan"
+  "zh-HK/findTerms.json::findTerms.stopTip": "Stop the scan",
+  "zh-HK.json::common.stopped": "Stopped",
+  "zh-HK.json::common.stopQuery": "Stop the query"
 }

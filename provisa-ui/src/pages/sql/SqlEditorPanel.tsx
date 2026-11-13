@@ -34,6 +34,7 @@ import { nlToSql } from "../../api/admin";
 import type { SqlTab } from "./types";
 import type { RegisteredTable } from "../../types/admin";
 import { Tip } from "../../components/Tip";
+import { StopButton } from "../../components/StopButton";
 import {
   CanvasControls,
   CanvasButton,
@@ -69,6 +70,8 @@ interface SqlEditorPanelProps {
   // Toolbar
   running: boolean;
   handleRun: () => void;
+  /** Stop the statement running: Stop stands where Run is while it runs. */
+  handleStop: () => void;
   handleAnalyze: () => void;
   analyzing: boolean;
   sampleMode: "first" | "last" | "random";
@@ -115,6 +118,7 @@ export function SqlEditorPanel({
   handleCopy,
   running,
   handleRun,
+  handleStop,
   handleAnalyze,
   analyzing,
   sampleMode,
@@ -364,16 +368,20 @@ export function SqlEditorPanel({
           background: "var(--surface)",
         }}
       >
-        <Button
-          size="xs"
-          leftSection={<Play size={11} />}
-          onClick={handleRun}
-          disabled={running || !sqlText.trim()}
-          data-testid="sql-run"
-          style={{ flexShrink: 0 }}
-        >
-          {running ? t("sqlEditorPanel.running") : t("sqlEditorPanel.run")}
-        </Button>
+        {running ? (
+          <StopButton onClick={handleStop} tip={t("common.stopQuery")} testId="sql-stop" />
+        ) : (
+          <Button
+            size="xs"
+            leftSection={<Play size={11} />}
+            onClick={handleRun}
+            disabled={!sqlText.trim()}
+            data-testid="sql-run"
+            style={{ flexShrink: 0 }}
+          >
+            {t("sqlEditorPanel.run")}
+          </Button>
+        )}
         {/* REQ-1519: describe the statement instead of running it — the engine's plan for the
             routed SQL, with the Provisa rewrites that produced it called out. */}
         <Tip text={t("sqlEditorPanel.analyzeTitle")}>

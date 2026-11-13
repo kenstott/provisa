@@ -32,6 +32,8 @@ interface ResultsPanelProps {
   resultTab: ResultTab;
   setResultTab: React.Dispatch<React.SetStateAction<ResultTab>>;
   running: boolean;
+  /** The last run was stopped before it answered: the results say so, and show nothing it held. */
+  stopped?: boolean;
   resultError: string;
   /** The result was landed in the results store and is there, not in the grid. */
   resultRedirect?: ResultRedirect | null;
@@ -60,6 +62,7 @@ export function ResultsPanel({
   resultTab,
   setResultTab,
   running,
+  stopped = false,
   resultError,
   resultRedirect = null,
   resultRows,
@@ -149,6 +152,7 @@ export function ResultsPanel({
 
       {statements.length > 1 &&
         !running &&
+        !stopped &&
         (resultTab === "results" || resultTab === "profile") && (
           <StatementTabs
             tabs={statements.map((r) => ({
@@ -177,6 +181,18 @@ export function ResultsPanel({
             >
               <span className="btn-spinner" style={{ flexShrink: 0 }} />
               {t("sqlResultsPanel.running")}
+            </div>
+          ) : stopped ? (
+            <div
+              data-testid="sql-results-stopped"
+              style={{
+                padding: "1.5rem",
+                textAlign: "center",
+                color: "var(--text-muted)",
+                fontSize: "0.85rem",
+              }}
+            >
+              {t("common.stopped")}
             </div>
           ) : resultRedirect ? (
             <ResultRedirectNotice redirect={resultRedirect} />

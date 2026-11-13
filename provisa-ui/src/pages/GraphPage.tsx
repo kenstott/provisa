@@ -412,44 +412,45 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
       });
   }, [schemaNodeLabels, schemaRels, roleHeaderValue, checkedDomains]);
 
+  // Each frame's request still out, by frame: its token and the controller that aborts it. A frame
+  // shows only the answer to its latest request: a newer request, Stop, or closing the frame takes
+  // the entry away, and an answer whose token is no longer the frame's is dropped.
+  const requests = useRef(new Map<string, { token: number; controller: AbortController }>());
+  const lastToken = useRef(0);
+
   // Run ``query`` and put what it answered in frame ``id``: one result per statement it holds.
   const answer = useCallback(
     async (id: string, query: string, start: number) => {
-      if (sparql) {
-        // REQ-2135: one SPARQL query, answered in the form it asks for (rows, or triples drawn).
-        const hdrs: Record<string, string> = {
-          "Content-Type": "application/sparql-query",
-          Accept: SPARQL_ACCEPT,
-        };
-        if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
-        let statement;
-        try {
-          const res = await fetch("/data/sparql", { method: "POST", headers: hdrs, body: query });
-          statement = await sparqlStatement(query, res, framePrefixes);
-        } catch (err) {
-          statement = null;
-          const message = String(err);
-          setFrames((f) => {
-            const next = f.map((fr) =>
-              fr.id === id ? { ...fr, status: "error" as const, error: message } : fr,
-            );
-            graphState.frames = next;
-            saveGraphState(graphState);
-            return next;
-          });
-        }
-        if (statement === null) return;
-        const elapsed = Date.now() - start;
-        const shown = statement;
-        setFrames((f) => {
-          const next = f.map((fr) => (fr.id === id ? { ...fr, ...showing(shown), elapsed } : fr));
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
-        return;
-      }
+      requests.current.get(id)?.controller.abort();
+      const token = ++lastToken.current;
+      const controller = new AbortController();
+      requests.current.set(id, { token, controller });
+      const current = () => requests.current.get(id)?.token === token;
+      /** Shows ``change`` in the frame when this is still its latest request, which then ends. */
+      const settle = (change: (fr: FrameData) => Partial<FrameData>) => {
+        if (!current()) return;
+        requests.current.delete(id);
+        changeFrame(id, change);
+      };
       try {
+        if (sparql) {
+          // REQ-2135: one SPARQL query, answered in the form it asks for (rows, or triples drawn).
+          const hdrs: Record<string, string> = {
+            "Content-Type": "application/sparql-query",
+            Accept: SPARQL_ACCEPT,
+          };
+          if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
+          const res = await fetch("/data/sparql", {
+            method: "POST",
+            headers: hdrs,
+            body: query,
+            signal: controller.signal,
+          });
+          const statement = await sparqlStatement(query, res, framePrefixes);
+          const elapsed = Date.now() - start;
+          settle(() => ({ ...showing(statement), elapsed }));
+          return;
+        }
         const hdrs: Record<string, string> = { "Content-Type": "application/json" };
         if (roleHeaderValue) hdrs["X-Provisa-Role"] = roleHeaderValue;
         hdrs["X-Provisa-Stats"] = "true";
@@ -459,6 +460,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           method: "POST",
           headers: hdrs,
           body: JSON.stringify({ query, params: {}, results: "each" }),
+          signal: controller.signal,
         });
         const elapsed = Date.now() - start;
         if (!res.ok) {
@@ -469,56 +471,52 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
           } catch {
             refused = { error: text }; // no JSON body (a proxy's page): the response as it came
           }
-          setFrames((f) => {
-            const next = f.map((fr) =>
-              fr.id === id
-                ? { ...fr, status: "error" as const, violations: undefined, ...refused }
-                : fr,
-            );
-            graphState.frames = next;
-            saveGraphState(graphState);
-            return next;
-          });
+          settle(() => ({ status: "error" as const, violations: undefined, ...refused }));
           return;
         }
         const { results, session_changed } = (await res.json()) as {
           results: CypherAnswer[];
           session_changed?: boolean;
         };
-        // A statement that changed the user's graph session: its pills are read again.
+        // A statement that changed the user's graph session: its pills are read again, whether
+        // or not this frame still shows the answer (the session changed regardless).
         if (session_changed) setSessionChanges((n) => n + 1);
         const statements = results.map((r) => frameStatement(r, maxNodes, clusterMapRef.current));
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id
-              ? statements.length === 0
-                ? { ...fr, status: "done" as const, elapsed }
-                : {
-                    ...fr,
-                    ...showing(statements[0]),
-                    elapsed,
-                    statements: statements.length > 1 ? statements : undefined,
-                    statementIndex: 0,
-                  }
-              : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
+        settle(() =>
+          statements.length === 0
+            ? { status: "done" as const, elapsed }
+            : {
+                ...showing(statements[0]),
+                elapsed,
+                statements: statements.length > 1 ? statements : undefined,
+                statementIndex: 0,
+              },
+        );
       } catch (err) {
-        setFrames((f) => {
-          const next = f.map((fr) =>
-            fr.id === id ? { ...fr, status: "error" as const, error: String(err) } : fr,
-          );
-          graphState.frames = next;
-          saveGraphState(graphState);
-          return next;
-        });
+        // A request aborted by Stop or by a newer request is no longer this frame's: what Stop
+        // shows, or the newer answer, stands. Any other failure is the frame's error.
+        if (controller.signal.aborted) return;
+        settle(() => ({ status: "error" as const, error: String(err) }));
       }
     },
-    [roleHeaderValue, maxNodes, sparql, framePrefixes, graphState],
+    [roleHeaderValue, maxNodes, sparql, framePrefixes, changeFrame],
   );
+
+  /** Stop frame ``id``: its request, if one is out, is aborted, and a frame still running says it
+   *  was stopped. */
+  const stopFrame = useCallback(
+    (id: string) => {
+      requests.current.get(id)?.controller.abort();
+      requests.current.delete(id);
+      changeFrame(id, (fr) => (fr.status === "loading" ? { status: "stopped" as const } : {}));
+    },
+    [changeFrame],
+  );
+
+  /** Stop every frame still running. */
+  const stopAll = useCallback(() => {
+    for (const fr of framesRef.current) if (fr.status === "loading") stopFrame(fr.id);
+  }, [stopFrame]);
 
   // REQ-2135: what a SPARQL query is sent as, and so what its frame shows: the panel's prefixes it
   // uses and does not declare, written out, so the text stands alone wherever it is copied.
@@ -592,6 +590,9 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
   }, [runQuery, authLoading, forwarded, language]);
 
   const closeFrame = useCallback((id: string) => {
+    // A closed frame reads no answer: its request, if one is out, is aborted.
+    requests.current.get(id)?.controller.abort();
+    requests.current.delete(id);
     setFrames((f) => {
       const next = f.filter((fr) => fr.id !== id);
       graphState.frames = next;
@@ -1021,6 +1022,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         )}
         <QueryBar
           onRun={runQuery}
+          running={frames.some((f) => f.status === "loading")}
+          onStop={stopAll}
           initialQuery={historyQuery ?? graphState.currentQuery}
           onQueryChange={(q) => {
             graphState.currentQuery = q;
@@ -1059,6 +1062,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 requestedView={frameViews[frame.id]}
                 onClose={closeFrame}
                 onRerun={rerunFrame}
+                onStop={stopFrame}
                 // A drop, an expansion and an exclusion write Cypher against the model's labels and
                 // relationships; a SPARQL drop edits its query, its expansion merges a DESCRIBE.
                 onTableDrop={sparql ? undefined : onTableDrop}

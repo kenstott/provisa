@@ -1771,9 +1771,10 @@ export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
 
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
  * dollar-quoted block does not split). Nothing is run. */
-export async function splitSql(sql: string): Promise<string[]> {
+export async function splitSql(sql: string, signal?: AbortSignal): Promise<string[]> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/statements`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ sql }),
   });
@@ -1801,10 +1802,13 @@ export async function runSqlEach(
   // REQ-1937: the values of the statement's $1…$n placeholders, bound by the server; none sent
   // when there are none.
   params: (string | number)[] = [],
+  // Aborts the request (Stop in the SQL editor).
+  signal?: AbortSignal,
 ): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
+      signal,
       headers: sqlHeaders(role, statsEnabled),
       body: JSON.stringify(
         params.length > 0 ? { sql, results: "each", params } : { sql, results: "each" },

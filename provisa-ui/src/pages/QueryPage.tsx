@@ -57,6 +57,7 @@ import { useNamedDemo } from "../context/NamedDemoContext";
 import { operationNameOf } from "./graphqlOperationName";
 import { savedActiveTab } from "./graphiqlSavedTab";
 import { useScreenEditor } from "../mcp/screenState";
+import { StopButton } from "../components/StopButton";
 
 /** Register # @provisa hint completions in the GraphQL Monaco editor. */
 monaco.languages.registerCompletionItemProvider("graphql", {
@@ -419,10 +420,37 @@ interface RedirectSettings {
   onRedirect: (result: RedirectInfo | null) => void;
 }
 
+/** The reason a request is aborted when the viewer stops it, told apart from its timeout's. */
+const STOPPED = new DOMException("The query was stopped", "AbortError");
+
+/** ``answers``, whose return() -- GraphiQL's stop: its Stop, a run while one is out, or leaving the
+ *  tab -- aborts the request at once. An async generator's own return() waits for the generator's
+ *  pending step, which here is the request itself, so its answer would still be shown. */
+function stoppable<T>(
+  answers: AsyncGenerator<T>,
+  controller: AbortController,
+): AsyncIterableIterator<T> {
+  return {
+    [Symbol.asyncIterator]() {
+      return this;
+    },
+    next: () => answers.next(),
+    return: (value?: unknown) => {
+      controller.abort(STOPPED);
+      return answers.return(value as T);
+    },
+  };
+}
+
 function createProvisaFetch(
   settingsRef: React.RefObject<RedirectSettings>,
-): typeof globalThis.fetch {
-  return async (input, init) => {
+): (
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  // Aborts the request: at the timeout, or when the viewer stops it.
+  controller: AbortController,
+) => Promise<Response> {
+  return async (input, init, controller) => {
     const settings = settingsRef.current;
     settings.onRedirect(null);
     const headers = new Headers(init?.headers);
@@ -439,7 +467,6 @@ function createProvisaFetch(
       headers.set("X-Provisa-Stats", "true");
     }
 
-    const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000);
     let res: Response;
     const _t0 = performance.now();
@@ -535,6 +562,30 @@ function PublishToScreen() {
   const tab = useGraphiQL((s) => s.tabs[s.activeTabIndex]);
   useScreenEditor("/query", { language: "graphql", text: tab.query ?? "", tab: tab.title });
   return null;
+}
+
+/** While a query runs, Stop, where GraphiQL's run button is (hidden meanwhile, QueryPage.css): it
+ *  aborts the request, and the response says the query was stopped. */
+function StopQuery() {
+  const { t } = useTranslation();
+  const running = useGraphiQL((s) => s.isFetching || Boolean(s.subscription));
+  const responseEditor = useGraphiQL((s) => s.responseEditor);
+  const { stop, updateActiveTabValues } = useGraphiQLActions();
+  if (!running) return null;
+  return (
+    <div className="graphiql-stop-slot">
+      <StopButton
+        onClick={() => {
+          stop();
+          const said = t("common.stopped");
+          responseEditor?.setValue(said);
+          updateActiveTabValues({ response: said });
+        }}
+        tip={t("common.stopQuery")}
+        testId="graphql-stop"
+      />
+    </div>
+  );
 }
 
 /** Opens a new GraphiQL tab holding a query handed to the page, and runs it when asked.
@@ -768,16 +819,15 @@ export function QueryPage() {
   const fetcher = useMemo((): Fetcher | null => {
     if (roleHeader === null) return null;
     const roleId = roleHeader;
-    const base = createGraphiQLFetcher({
-      url: `/data/graphql`,
-      headers: { "X-Provisa-Role": roleId },
-      /* eslint-disable-next-line react-hooks/refs --
-         latest-value ref intentionally passed to the fetch wrapper; it is dereferenced per-request inside createProvisaFetch, never during render */
-      fetch: createProvisaFetch(settingsRef),
-    });
-    return async function* (request, opts) {
+    /* eslint-disable-next-line react-hooks/refs --
+       latest-value ref intentionally passed to the fetch wrapper; it is dereferenced per-request inside createProvisaFetch, never during render */
+    const provisaFetch = createProvisaFetch(settingsRef);
+    return (request, opts) => {
       // The response this run shows is kept with this query.
       noteRun(request.query ?? "");
+      // Each run its own controller: GraphiQL's stop aborts this run's request, and no other.
+      const controller = new AbortController();
+      const stopped = () => controller.signal.reason === STOPPED;
       // Detect subscription operations and stream via SSE
       let isSubscription = false;
       try {
@@ -788,8 +838,7 @@ export function QueryPage() {
         // unparseable — fall through to server
       }
 
-      if (isSubscription) {
-        const controller = new AbortController();
+      async function* subscriptionFrames() {
         try {
           const response = await fetch("/data/graphql", {
             method: "POST",
@@ -823,6 +872,7 @@ export function QueryPage() {
               if (!dataLine) continue;
               const raw = dataLine.slice(6).trim();
               if (!raw) continue;
+              if (stopped()) return;
               try {
                 // A frame naming why the stream ended is shown from the server-error catalog.
                 yield localizedStreamFrame(JSON.parse(raw));
@@ -834,20 +884,44 @@ export function QueryPage() {
         } finally {
           controller.abort();
         }
-        return;
       }
 
-      // Non-subscription: use standard fetcher
-      // base() is async, so it returns Promise<AsyncGenerator|ExecutionResult>
-      const result = await base(request, opts);
-      if (
-        result &&
-        typeof (result as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === "function"
-      ) {
-        yield* result as AsyncIterable<unknown>;
-      } else {
-        yield result;
+      async function* answers() {
+        try {
+          if (isSubscription) {
+            yield* subscriptionFrames();
+            return;
+          }
+          // Non-subscription: the standard fetcher, its request under this run's controller.
+          const base = createGraphiQLFetcher({
+            url: `/data/graphql`,
+            headers: { "X-Provisa-Role": roleId },
+            fetch: (input, init) => provisaFetch(input, init, controller),
+          });
+          // base() is async, so it returns Promise<AsyncGenerator|ExecutionResult>; each answer
+          // that comes after the run was stopped is dropped.
+          const result = await base(request, opts);
+          if (stopped()) return;
+          if (
+            result &&
+            typeof (result as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] ===
+              "function"
+          ) {
+            for await (const part of result as AsyncIterable<unknown>) {
+              if (stopped()) return;
+              yield part;
+            }
+          } else {
+            yield result;
+          }
+        } catch (err) {
+          // Stopped: the abort is the stop, said by Stop itself; nothing more is answered.
+          if (stopped()) return;
+          throw err;
+        }
       }
+
+      return stoppable(answers(), controller);
     };
   }, [roleHeader]);
 
@@ -991,6 +1065,16 @@ export function QueryPage() {
         initialVariables={savedTab?.variables}
         initialHeaders={savedTab?.headers}
       >
+        <GraphiQL.Toolbar>
+          {({ prettify, merge, copy }) => (
+            <>
+              <StopQuery />
+              {prettify}
+              {merge}
+              {copy}
+            </>
+          )}
+        </GraphiQL.Toolbar>
         <PublishToScreen />
         {handed && <OpenFromNav key={handed.seq} query={handed.query} autoRun={handed.autoRun} />}
         <GraphiQL.Footer>
