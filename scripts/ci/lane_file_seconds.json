@@ -344,6 +344,7 @@
   "tests/integration/test_my_invites.py": 0.5,
   "tests/integration/test_native_json_postgres.py": 0.2,
   "tests/integration/test_native_json_trino.py": 0.9,
+  "tests/integration/test_native_sql_command_pg.py": 165.0,
   "tests/integration/test_neo4j_config_persist.py": 0.0,
   "tests/integration/test_neo4j_exec.py": 0.0,
   "tests/integration/test_neo4j_register_table.py": 0.0,
