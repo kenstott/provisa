@@ -246,6 +246,8 @@ describe("Combine into one table", () => {
     await waitFor(() => expect(screen.getByText("No file matches this glob.")).toBeInTheDocument());
     // A typed glob offers the choice; combined, nothing can be registered.
     await user.click(screen.getByText("Combine into one table"));
+    // Said once, under the glob, not again in the combined table's section.
+    expect(screen.getAllByText("No file matches this glob.")).toHaveLength(1);
     expect(submit()).toBeDisabled();
     expect(registerTables).not.toHaveBeenCalled();
   });

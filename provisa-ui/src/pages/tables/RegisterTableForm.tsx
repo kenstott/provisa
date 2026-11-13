@@ -60,6 +60,7 @@ import { IR_TYPES_FALLBACK } from "../../irTypes";
 import { isWatermarkEligible } from "./helpers";
 import { CheckerFields } from "./CheckerFields";
 import {
+  FieldGroup,
   FormChecks,
   FormField,
   FormFooter,
@@ -788,30 +789,33 @@ export function RegisterTableForm({
             />
           </FormField>
         )}
+        {/* The glob and the choice it offers wrap together, beside each other at every width. */}
         {listsTables && isFilesSourceType(sourceType) && (
-          <FormField size="medium" hint={globHint}>
-            <TextInput
-              label={t("combineFiles.globLabel")}
-              placeholder={t("combineFiles.globPlaceholder")}
-              value={combine.typedGlob}
-              onChange={(e) => combine.setTypedGlob(e.currentTarget.value)}
-              data-testid="register-tables-file-glob"
-            />
-          </FormField>
-        )}
-        {combine.offeredChoice && (
-          <FormField size="medium">
-            <SegmentedControl
-              aria-label={t("combineFiles.modeLabel")}
-              value={combine.mode}
-              onChange={(v) => combine.setMode(v as "perFile" | "combine")}
-              data={[
-                { value: "perFile", label: t("combineFiles.perFile") },
-                { value: "combine", label: t("combineFiles.combine") },
-              ]}
-              data-testid="register-tables-combine-mode"
-            />
-          </FormField>
+          <FieldGroup>
+            <FormField size="medium" hint={globHint}>
+              <TextInput
+                label={t("combineFiles.globLabel")}
+                placeholder={t("combineFiles.globPlaceholder")}
+                value={combine.typedGlob}
+                onChange={(e) => combine.setTypedGlob(e.currentTarget.value)}
+                data-testid="register-tables-file-glob"
+              />
+            </FormField>
+            {combine.offeredChoice && (
+              <FormField size="medium">
+                <SegmentedControl
+                  aria-label={t("combineFiles.modeLabel")}
+                  value={combine.mode}
+                  onChange={(v) => combine.setMode(v as "perFile" | "combine")}
+                  data={[
+                    { value: "perFile", label: t("combineFiles.perFile") },
+                    { value: "combine", label: t("combineFiles.combine") },
+                  ]}
+                  data-testid="register-tables-combine-mode"
+                />
+              </FormField>
+            )}
+          </FieldGroup>
         )}
         {authored && (
           <FormField size="medium">

@@ -11,11 +11,12 @@
 // REQ-788: files combined into one table, before it is registered: the files matched, the columns
 // they share, the files whose columns differ (named), the files a derived glob adds to those
 // picked (accepted, or the glob typed instead), the new table's own name and an optional column
-// carrying each row's file.
+// carrying each row's file. It reads top to bottom as one block at every width: each summary takes
+// the full row, then the name and the source-file column share one row.
 
 import { Checkbox, Text, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { FormChecks, FormField } from "../../components/form/FormLayout";
+import { FieldGroup, FormChecks, FormField } from "../../components/form/FormLayout";
 import type { FileGlobPreview, FilesDiffer } from "./useFileGlobPreview";
 
 interface CombineFilesSectionProps {
@@ -44,11 +45,14 @@ export function CombineFilesSection({
   const { t } = useTranslation();
   return (
     <>
-      <FormField size="long" data-testid="register-combined-files">
-        <CombinedFiles preview={preview} checking={checking} error={error} />
-      </FormField>
+      {/* A typed glob matching nothing says so once, under the glob itself. */}
+      {!(preview && !error && !checking && nothingMatched(preview)) && (
+        <FormField size="full" data-testid="register-combined-files">
+          <CombinedFiles preview={preview} checking={checking} error={error} />
+        </FormField>
+      )}
       {preview && preview.differing.length > 0 && (
-        <FormField size="long" data-testid="register-combined-differing">
+        <FormField size="full" data-testid="register-combined-differing">
           <Text size="sm" c="red">
             {t("combineFiles.differHeading")}
           </Text>
@@ -60,7 +64,7 @@ export function CombineFilesSection({
         </FormField>
       )}
       {preview && preview.extraFiles.length > 0 && (
-        <FormField size="long" data-testid="register-combined-extra">
+        <FormField size="full" data-testid="register-combined-extra">
           <Text size="sm" c="orange">
             {t("combineFiles.extra", {
               glob: preview.glob,
@@ -69,25 +73,27 @@ export function CombineFilesSection({
           </Text>
         </FormField>
       )}
-      <FormField size="medium">
-        <TextInput
-          required
-          label={t("combineFiles.nameLabel")}
-          placeholder={t("combineFiles.namePlaceholder")}
-          value={name}
-          onChange={(e) => setName(e.currentTarget.value)}
-          data-testid="register-combined-name"
-        />
-      </FormField>
-      <FormField size="medium" hint={t("combineFiles.sourceFileColumnHint")}>
-        <TextInput
-          label={t("combineFiles.sourceFileColumnLabel")}
-          placeholder={t("combineFiles.sourceFileColumnPlaceholder")}
-          value={sourceFileColumn}
-          onChange={(e) => setSourceFileColumn(e.currentTarget.value)}
-          data-testid="register-combined-source-file-column"
-        />
-      </FormField>
+      <FieldGroup row>
+        <FormField size="medium">
+          <TextInput
+            required
+            label={t("combineFiles.nameLabel")}
+            placeholder={t("combineFiles.namePlaceholder")}
+            value={name}
+            onChange={(e) => setName(e.currentTarget.value)}
+            data-testid="register-combined-name"
+          />
+        </FormField>
+        <FormField size="medium" hint={t("combineFiles.sourceFileColumnHint")}>
+          <TextInput
+            label={t("combineFiles.sourceFileColumnLabel")}
+            placeholder={t("combineFiles.sourceFileColumnPlaceholder")}
+            value={sourceFileColumn}
+            onChange={(e) => setSourceFileColumn(e.currentTarget.value)}
+            data-testid="register-combined-source-file-column"
+          />
+        </FormField>
+      </FieldGroup>
       {preview && preview.extraFiles.length > 0 && (
         <FormChecks>
           <Checkbox
@@ -134,13 +140,6 @@ function CombinedFiles({
       </Text>
     );
   }
-  if (preview.files.length === 0) {
-    return (
-      <Text size="sm" c="red">
-        {t("combineFiles.noMatch")}
-      </Text>
-    );
-  }
   return (
     <>
       <Text size="sm" fw={500}>
@@ -154,6 +153,11 @@ function CombinedFiles({
       </Text>
     </>
   );
+}
+
+/** A glob that matched no file (said under the glob input), as opposed to picked tables not found. */
+function nothingMatched(preview: FileGlobPreview): boolean {
+  return preview.files.length === 0 && preview.unmatchedTables.length === 0;
 }
 
 /** One file whose columns differ: what it lacks, what it adds, or why it could not be read. */
