@@ -1,0 +1,212 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 2c7f9e14-8b3d-4a61-95e0-d4b8a1f6c037
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""A timestamp with time zone on ClickHouse (REQ-2236; REQ-2167, AN ANSWER WITHIN A STATED BOUND
+COMES BEFORE A REFUSAL; maintainer 2026-11-13): the grid is read before a type ClickHouse holds
+none of is refused, and a timestamptz, held as DateTime64(6, 'UTC'), answers its comparisons
+exactly from 1900-01-01 to 2299-12-31 and raises outside.
+
+The statements are the function support run's (43490334080): its NULL call and its values, under
+its session (UTC). Each answer is PostgreSQL 17's."""
+
+# Requirements: REQ-2236, REQ-2167
+
+from __future__ import annotations
+
+import datetime
+from typing import Any
+
+import pytest
+import sqlglot
+
+from provisa.core.pg_error import PostgresError, from_engine
+from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone
+from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.polyfill import GRID, instants, trino
+from provisa.transpiler.transpile import transpile
+
+_UTC = datetime.timezone.utc
+_TZ = "timestamp with time zone"
+
+
+@pytest.fixture(scope="module")
+def runtime() -> ClickHouseFederationRuntime:
+    return ClickHouseFederationRuntime.embedded()
+
+
+def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
+    ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    return value
+
+
+def _raised(runtime: ClickHouseFederationRuntime, sql: str) -> PostgresError:
+    with pytest.raises(Exception) as raised:
+        list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
+    error = from_engine(raised.value)
+    assert error is not None, str(raised.value)[:300]
+    return error
+
+
+def _call(function: str, a: str, b: str, a_type: str = _TZ, b_type: str = _TZ) -> str:
+    return f'SELECT pg_catalog."{function}"({a}::{a_type}, {b}::{b_type}) AS v'
+
+
+# --- the gate: a row that answers is read before the refusal by type ---------------------------
+
+
+def test_a_call_a_row_answers_is_read_before_its_type_is_refused():
+    sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
+    written = transpile(sql, "clickhouse")
+    assert "DateTime64(6, 'UTC')" in written and " < " in written
+
+
+@pytest.mark.parametrize(
+    ("sql", "function"),
+    [
+        ('SELECT pg_catalog."age"(NULL::timestamp with time zone) AS v', "age"),
+        ('SELECT pg_catalog."timestamptz_mi"(NULL::timestamp with time zone, NULL::timestamp with time zone) AS v', "timestamptz_mi"),
+        ('SELECT pg_catalog."date_trunc"(NULL::text, NULL::timestamp with time zone) AS v', "date_trunc"),
+        ('SELECT pg_catalog."date_trunc"(NULL::text, NULL::interval) AS v', "date_trunc"),
+        ('SELECT pg_catalog."avg"(NULL::numeric) AS v', "avg"),
+    ],
+)  # fmt: skip
+def test_a_call_no_row_answers_is_refused_as_it_was(sql, function):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, "clickhouse")
+    # A refusal by name, as before the grid was read first: not a row's (which carries 0A000).
+    assert type(refused.value) is FunctionRefused
+    assert str(refused.value) == f"{function}() has no form on clickhouse"
+
+
+def test_a_literal_no_iso_form_writes_keeps_its_refusal_by_name():
+    sql = _call("timestamptz_lt", "'infinity'", "'2024-06-15 12:30:45+00'")
+    with pytest.raises(FunctionRefused, match=r"^timestamptz_lt\(\) has no form on clickhouse$"):
+        transpile(sql, "clickhouse")
+
+
+# --- the exact case ------------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # The run's own statements, and PostgreSQL 17's answers to them.
+        ('SELECT pg_catalog."timestamptz_lt"(NULL::timestamp with time zone, NULL::timestamp with time zone) AS v', None),
+        (_call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'"), 0),
+        (_call("timestamptz_ge", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'"), 1),
+        (_call("timestamptz_eq", "'1999-12-31 23:59:59+02'", "'1999-12-31 21:59:59+00'"), 1),
+        (_call("timestamptz_ne", "'2000-02-29 00:00:00-05'", "'2000-02-29 05:00:00+00'"), 0),
+        (_call("timestamptz_cmp", "'1999-12-31 23:59:59+02'", "'2000-02-29 00:00:00-05'"), -1),
+        (_call("timestamptz_cmp", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'"), 1),
+        (_call("timestamptz_cmp", "'2024-06-15 12:30:45+00'", "'2024-06-15 14:30:45+02'"), 0),
+        ('SELECT pg_catalog."timestamptz_cmp"(NULL::timestamp with time zone, NULL::timestamp with time zone) AS v', None),
+        (_call("timestamptz_larger", "'1999-12-31 23:59:59+02'", "'2000-02-29 00:00:00-05'"),
+         datetime.datetime(2000, 2, 29, 5, 0, tzinfo=_UTC)),
+        (_call("timestamptz_smaller", "'1999-12-31 23:59:59+02'", "'2000-02-29 00:00:00-05'"),
+         datetime.datetime(1999, 12, 31, 21, 59, 59, tzinfo=_UTC)),
+        ('SELECT pg_catalog."timestamptz_larger"(NULL::timestamp with time zone, \'2024-06-15 12:30:45+00\'::timestamp with time zone) AS v', None),
+        # A date at its midnight, a timestamp as its wall time, in the session's zone (UTC).
+        (_call("timestamptz_lt_date", "'2024-06-15 12:30:45+00'", "'1999-12-31'", _TZ, "date"), 0),
+        (_call("timestamptz_eq_date", "'2000-02-29 00:00:00+00'", "'2000-02-29'", _TZ, "date"), 1),
+        (_call("date_lt_timestamptz", "'1999-12-31'", "'1999-12-31 23:59:59+02'", "date", _TZ), 1),
+        (_call("date_cmp_timestamptz", "'2000-02-29'", "'2000-02-29 00:00:00-05'", "date", _TZ), -1),
+        (_call("timestamptz_gt_timestamp", "'1999-12-31 23:59:59+02'", "'1999-12-31 23:59:59'",
+               _TZ, "timestamp without time zone"), 0),
+        (_call("timestamp_eq_timestamptz", "'1999-12-31 21:59:59'", "'1999-12-31 23:59:59+02'",
+               "timestamp without time zone", _TZ), 1),
+        (_call("timestamp_cmp_timestamptz", "'2024-06-15 12:30:45'", "'2024-06-15 12:30:45.000001+00'",
+               "timestamp without time zone", _TZ), -1),
+    ],
+)  # fmt: skip
+def test_comparisons_of_an_instant_answer_postgresql_on_clickhouse(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+@pytest.mark.parametrize("dialect", ["duckdb", "trino", "snowflake"])
+def test_every_other_dialect_keeps_what_it_had(dialect):
+    sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
+    call = sqlglot.parse_one(sql, read="postgres").selects[0].this.expression  # past pg_catalog
+    assert len(instants.FEATURES) == 37
+    for feature in instants.FEATURES:
+        (rule,) = feature.read.rules
+        assert rule.forms[dialect] is trino.KEPT
+    applied = GRID.read(call, dialect)
+    assert applied is not None and applied.form is trino.KEPT
+
+
+# --- the bound: at it, the answer; past it, the raise -------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        (_call("timestamptz_eq", "'1900-01-01 00:00:00+00'", "'1900-01-01 02:00:00+02'"), 1),
+        (_call("timestamptz_lt", "'2299-12-31 23:59:59.999998+00'", "'2299-12-31 23:59:59.999999+00'"), 1),
+        (_call("timestamptz_cmp", "'2299-12-31 23:59:59.999999+00'", "'1900-01-01 00:00:00+00'"), 1),
+        (_call("date_le_timestamptz", "'1900-01-01'", "'1900-01-01 00:00:00+00'", "date", _TZ), 1),
+        (_call("timestamptz_ge_date", "'2299-12-31 23:59:59.999999+00'", "'2299-12-31'", _TZ, "date"), 1),
+    ],
+)  # fmt: skip
+def test_a_value_at_the_bound_answers(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+@pytest.mark.parametrize(
+    ("function", "sql"),
+    [
+        ("timestamptz_lt", _call("timestamptz_lt", "'1899-12-31 23:59:59.999999+00'", "'2024-06-15 12:30:45+00'")),
+        # An offset moves the instant past the bound: 01:00 at +02 is 23:00 of the day before in UTC.
+        ("timestamptz_eq", _call("timestamptz_eq", "'1900-01-01 01:00:00+02'", "'2024-06-15 12:30:45+00'")),
+        ("timestamptz_cmp", _call("timestamptz_cmp", "'2024-06-15 12:30:45+00'", "'2300-01-01 00:00:00+00'")),
+        ("timestamptz_larger", _call("timestamptz_larger", "'2299-12-31 23:00:00-05'", "'2024-06-15 12:30:45+00'")),
+        ("date_lt_timestamptz", _call("date_lt_timestamptz", "'1899-12-31'", "'2024-06-15 12:30:45+00'", "date", _TZ)),
+        ("timestamp_ne_timestamptz", _call("timestamp_ne_timestamptz", "'2300-01-01 00:00:00'",
+                                           "'2024-06-15 12:30:45+00'", "timestamp without time zone", _TZ)),
+    ],
+)  # fmt: skip
+def test_a_value_past_the_bound_raises(runtime, function, sql):
+    error = _raised(runtime, sql)
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+
+
+def test_a_null_beside_a_value_past_the_bound_is_null(runtime):
+    sql = _call("timestamptz_lt", "'1850-01-01 00:00:00+00'", "NULL")
+    assert _one(runtime, sql) is None
+
+
+def test_the_stated_bound_is_the_one_enforced():
+    feature = next(f for f in GRID.features if f.name == "timestamptz_lt")
+    (stated,) = feature.read.limitations["clickhouse"]
+    assert instants.BOUND in stated.text
+    assert instants.FIRST == datetime.datetime(1900, 1, 1)
+    assert instants.LAST == datetime.datetime(2299, 12, 31, 23, 59, 59, 999999)
+
+
+# --- the session's zone ----------------------------------------------------------------------
+
+
+@pytest.fixture()
+def off_utc():
+    token = bind_zone(StatementZone("America/New_York", name="America/New_York"))
+    yield
+    reset_zone(token)
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        _call("timestamptz_lt", "'2024-06-15 12:30:45'", "'2024-06-15 12:30:45+00'"),
+        _call("date_lt_timestamptz", "'2024-06-15'", "NULL", "date", _TZ),
+    ],
+)
+def test_off_utc_a_value_read_in_the_session_zone_is_refused_by_name(off_utc, sql):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")

@@ -269,9 +269,15 @@ def _unit_said(unit: exp.Expr | None) -> str | None:
     return None
 
 
+#: What a statement may say of date_trunc's value that this row does not truncate.
+_NOT_A_TIMESTAMP = frozenset({"interval", "timestamptz", "timestamp with time zone"})
+
+
 def started(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """date_trunc of a timestamp: its start as DateTime64(6, 'UTC'), whatever the unit."""
-    if not isinstance(node, exp.TimestampTrunc):
+    """date_trunc of a timestamp: its start as DateTime64(6, 'UTC'), whatever the unit. A value
+    the statement says is an interval or a timestamp with time zone is not this row's: it keeps
+    its refusal by name (provisa.transpiler.engine_refusals)."""
+    if not isinstance(node, exp.TimestampTrunc) or trino.said(node.this) in _NOT_A_TIMESTAMP:
         return None
     unit = _unit_said(node.args.get("unit"))
     return None if unit is None else truncated(unit, node.this)
