@@ -27,6 +27,7 @@ import itertools
 import os
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -50,6 +51,8 @@ _SUITE = ("tests/integration", "tests/steps")
 TEST_TIMEOUT_S = 900
 # How long before that bound a still-running test's stacks are written to the log.
 STACKS_BEFORE_BOUND_S = 60
+# The lane job's steps before and after its tests (setup, image cache, uploads), within its limit.
+JOB_STEPS_S = 900
 
 
 @dataclass(frozen=True)
@@ -512,6 +515,15 @@ def targets(lane_name: str, shard_spec: str | None) -> list[str]:
     return shard(test_files(lane.paths), index, total)
 
 
+def budget_s(lane_name: str) -> int | None:
+    """How long a suite lane's tests may start for (tests/lane_budget.py): its job limit less the
+    job's other steps and one test's bound, so the last test started ends, and the lane fails with
+    its report, before the job limit cancels it with none. None for a lane not in the suite matrix."""
+    if lane_name not in SUITE:
+        return None
+    return SUITE[lane_name][1] * 60 - JOB_STEPS_S - TEST_TIMEOUT_S
+
+
 def _under(path: str, roots: tuple[str, ...]) -> bool:
     return any(path == r or path.startswith(r.rstrip("/") + "/") for r in roots)
 
@@ -530,7 +542,18 @@ def command(lane_name: str, shard_spec: str | None, extra: list[str]) -> list[st
     # was cancelled with no stack in its log. A test phase still running a minute before its
     # bound has every thread's stack written to the log at that moment.
     stacks = ["-o", f"faulthandler_timeout={lane.bound - STACKS_BEFORE_BOUND_S}"]
-    return cmd + ["-ra", "-p", "no:cacheprovider", "--durations=50", *bound, *stacks, *extra]
+    # The lane's own time budget (PROVISA_LANE_DEADLINE, set by main for a suite lane).
+    budget = ["-p", "tests.lane_budget"]
+    return cmd + [
+        "-ra",
+        "-p",
+        "no:cacheprovider",
+        "--durations=50",
+        *bound,
+        *stacks,
+        *budget,
+        *extra,
+    ]
 
 
 def main(argv: list[str]) -> int:
@@ -554,8 +577,13 @@ def main(argv: list[str]) -> int:
         print(f"targeted run: no named test is in lane {args.lane}; nothing to run", flush=True)
         return 0
     cmd = command(args.lane, args.shard, extra)
+    env = os.environ.copy()
+    budget = budget_s(args.lane)
+    if budget is not None:
+        env["PROVISA_LANE_DEADLINE"] = str(time.time() + budget)
+        print(f"lane budget: tests start for {budget // 60} minutes", flush=True)
     print("+", " ".join(cmd), flush=True)
-    code = subprocess.call(cmd, cwd=REPO, env=os.environ.copy())  # noqa: S603 - fixed argv
+    code = subprocess.call(cmd, cwd=REPO, env=env)  # noqa: S603 - fixed argv
     if code == 5 and named_tests():
         # The run was routed here because this lane's marker selects these tests (routes): a lane
         # that then collects none of them means their markers were read wrong, and they ran
