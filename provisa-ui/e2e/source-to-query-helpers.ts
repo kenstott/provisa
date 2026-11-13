@@ -11,6 +11,7 @@
 // The three screens of the source-to-query e2e (REQ-1671), as steps both lanes' specs share:
 // the Sources form, the Register Table form, and the SQL page's results grid.
 
+import type { Locator } from "@playwright/test";
 import { BACKEND_URL, expect, type Page } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 
@@ -236,9 +237,21 @@ export function tablesField(page: Page) {
   return page.getByTestId("register-tables-field").getByRole("textbox");
 }
 
-/** The Tables field's option for `table` in its open list. */
+/** The Tables field's option for `table` in its open list. A native `<option>` (the Source
+ * select's, whose source id can equal a table's name) is not one of them. */
 export function tableOption(page: Page, table: string) {
-  return page.getByRole("option", { name: new RegExp(`^${escaped(table)}`) });
+  return page
+    .getByRole("option", { name: new RegExp(`^${escaped(table)}`) })
+    .and(page.locator("[data-combobox-option]"));
+}
+
+/**
+ * Opens a list row's detail panel. The click lands on the row's first own cell: a list whose rows
+ * can be selected (REQ-2240) puts a checkbox cell first, which keeps its click to itself, and the
+ * row's centre can land on a cell's own control (a tag button).
+ */
+export async function openListRow(row: Locator): Promise<void> {
+  await row.locator("td:not(.list-select)").first().click();
 }
 
 // The table the last pick named: Register goes on with it (picked, or registered on its own).
@@ -252,6 +265,9 @@ let pickedTable: string | null = null;
 export async function pickSchemaAndTable(page: Page, schema: string, table: string) {
   await expect(page.getByTestId("register-tables-field")).toBeVisible({ timeout: 120000 });
   const schemaSelect = page.getByTestId("register-table-schema-select");
+  // The Schema field is shown, disabled, while the schemas load, and is gone once they answer with
+  // one schema (REQ-2234): whether it is asked is known only after the load.
+  await expect(schemaSelect.and(page.locator(":disabled"))).toHaveCount(0, { timeout: 120000 });
   if ((await schemaSelect.count()) > 0) {
     await expect(schemaSelect.locator(`option[value='${schema}']`)).toHaveCount(1, {
       timeout: 120000,
@@ -483,7 +499,7 @@ export async function openTableEditor(page: Page, sourceId: string, table: strin
   const named = rows.filter({ hasText: new RegExp(table.replace(/_/g, "[_ ]?"), "i") });
   const row = (await named.count()) > 0 ? named.first() : rows.first();
   await row.waitFor({ timeout: 120000 });
-  await row.locator("td").first().click();
+  await openListRow(row);
   const edit = page.getByTestId("table-read-view-edit").first();
   await edit.waitFor({ timeout: 15000 });
   await edit.click();
