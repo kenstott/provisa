@@ -56,14 +56,14 @@ def test_array_agg_keeps_its_nulls_and_is_null_of_no_rows(sql):
 @pytest.mark.parametrize(
     "sql",
     [
-        "SELECT array_agg(x ORDER BY y) AS v FROM t",
         "SELECT array_agg(DISTINCT x) AS v FROM t",
         "SELECT array_agg(x) FILTER (WHERE x > 1) AS v FROM t",
         "SELECT array_agg(x) OVER () AS v FROM t",
     ],
 )
-def test_array_agg_of_an_order_a_filter_or_a_window_keeps_its_form(sql):
-    """Only the plain call is this row's: the others keep what they had."""
+def test_array_agg_of_distinct_a_filter_or_a_window_keeps_its_form(sql):
+    """Only the plain call is this row's: the others keep what they had (an ordered one is
+    refused by name: test_polyfill_clickhouse_remaining)."""
     assert "groupArray(tuple(" not in _clickhouse(sql)
 
 
@@ -93,3 +93,8 @@ def test_current_schemas_is_still_refused_on_trino():
 
 def test_current_schemas_on_duckdb_is_unchanged():
     assert "current_schemas" in transpile("SELECT current_schemas(true) AS v", "duckdb").lower()
+
+
+def test_array_agg_of_an_order_is_refused_by_name():
+    with pytest.raises(RowRefused, match="array_agg"):
+        _clickhouse("SELECT array_agg(x ORDER BY y) AS v FROM t")
