@@ -274,7 +274,7 @@ export function TagControl({
               withinPortal
               position="bottom-start"
               shadow="md"
-              width={440}
+              width={480}
               opened={openChip === tag.id}
               onChange={(opened) => setOpenChip(opened ? tag.id : null)}
             >
@@ -358,7 +358,7 @@ export function TagControl({
         );
       })}
       {!readOnly && (
-        <Popover withinPortal position="bottom-start" shadow="md" width={460}>
+        <Popover withinPortal position="bottom-start" shadow="md" width={500}>
           <Popover.Target>
             <Tip text={t("tagControl.editTags")} named>
               <ActionIcon

@@ -236,7 +236,7 @@ export function TagCitations({
       {citations.map((c) => {
         const key = citationKey(c);
         return (
-          <Group key={key} gap="0.25rem" wrap="nowrap" data-testid={`${testId}-row-${key}`}>
+          <Group key={key} gap="0.25rem" data-testid={`${testId}-row-${key}`}>
             <CitationLink c={c} />
             <CitationState c={c} />
             {!readOnly && c.needsReview && (

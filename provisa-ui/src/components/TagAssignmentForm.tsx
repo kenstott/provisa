@@ -165,7 +165,10 @@ export function TagAssignmentForm({
       )}
       {/* REQ-2208: a tag that requires a citation marks the field; saving without one is a gap,
           shown on the chip, never a refusal. */}
-      <FormField size="full" hint={tag.requiresCitation ? t("tagCitations.gapHelp") : undefined}>
+      <FormField
+        size="full"
+        hint={tag.requiresCitation && cited.length === 0 ? t("tagCitations.gapHelp") : undefined}
+      >
         <TagCitations
           label={
             <Group gap="0.35rem" component="span" display="inline-flex">
