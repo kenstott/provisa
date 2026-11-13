@@ -1,16 +1,10 @@
 {
   "registerManyTables": {
-    "modeLabel": "テーブル数",
-    "modeOne": "1 つのテーブル",
-    "modeSeveral": "複数のテーブル",
     "tablesLabel": "テーブル",
     "listing": "テーブルを一覧表示しています…",
     "noTables": "このスキーマにはテーブルがありません。",
-    "tickedCount_one": "{{count}} 個のテーブルを選択しました。それぞれ既定値で登録されます。",
-    "tickedCount_other": "{{count}} 個のテーブルを選択しました。それぞれ既定値で登録されます。",
     "reading": "列を読み取っています…",
     "readFailed": "列を読み取れませんでした: {{error}}",
-    "registered": "登録済みです。",
     "needsDeclared": "入力が必要です: ソースが列を記述していません。単独で登録してください。",
     "needsNoColumns": "入力が必要です: 列が見つかりませんでした。単独で登録してください。",
     "needsUntyped": "入力が必要です: {{columns}} の型が見つかりませんでした。単独で登録してください。",
@@ -21,6 +15,8 @@
     "register_other": "{{count}} 個のテーブルを登録",
     "refused": "{{table}} は登録されませんでした: {{message}}",
     "skip": "テーブルの登録をスキップ",
-    "domainRequired": "テーブルを登録するドメインを選択してください。"
+    "domainRequired": "テーブルを登録するドメインを選択してください。",
+    "pickTables": "テーブルを1つ以上選択…",
+    "needsVectorModel": "入力が必要です: 各ベクトル ({{columns}}) のモデルを指定してください。単独で登録してください。"
   }
 }
