@@ -27007,3 +27007,13 @@ Maintainer 2026-11-12: three pairs of words each mean one thing, in every label,
 **Code:** —
 
 **Tests:** —
+
+### REQ-2245 · MCP & AI Integration {#REQ-2245}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-13: asked which values of a column may indicate non-compliance with a cited library section, the assistant writes a candidate condition from the section's text, runs it as a governed query under the asker's rights, and reports counts and examples as "may indicate", quoting the section and saying the counts cover only the rows the asker reads; it never states non-compliance as fact. A column that is masked, faked or not served for the asker answers that it cannot be evaluated, and the asker's state of each column (plain, masked, faked, hidden) is answerable before anything runs. If the person accepts, the condition is kept as a data quality rule that cites the section, so it reruns on the checker's schedule and appears in the tags report and the views connecting tags, documents and objects. Accepting needs the right to edit data quality rules. Keeping is refused by name when no checker scans the table, and unless the column is read in plain by the accepting person, by the checker's own user and by every role that sees the checker's results. A rule whose cited section has drifted or is broken keeps running and is marked as needing attention. Nothing is stored before the person accepts.
+
+**Code:** —
+
+**Tests:** —
