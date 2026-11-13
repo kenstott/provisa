@@ -258,7 +258,7 @@ export function CommandsPage() {
   const handleDuplicate = (actionType: ActionType, name: string) => {
     const values = formFor(actionType, name, { functions, webhooks });
     if (!values) return;
-    setForm({ ...values, name: `${name}-copy`, visibleTo: "" });
+    setForm({ ...values, name: `${name}_copy`, visibleTo: "" });
     setEditingName(null);
     setShowForm(true);
   };

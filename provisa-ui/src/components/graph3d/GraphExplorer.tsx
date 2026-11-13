@@ -210,7 +210,8 @@ export function GraphExplorer({
     orphans: true as boolean,
     rotate: false as boolean,
     attraction: 1 as number,
-    grid: true as boolean,
+    // The floor grid is not drawn until the reader turns Grid on (REQ-2239, amended 2026-11-13).
+    grid: false as boolean,
     // REQ-2174: drawn in 2D, laid out flat through a face-on camera.
     flat: opensFlat as boolean,
     // REQ-2174: auto opens in the preset's own layout, else Force; else the reader's Force or Layered.

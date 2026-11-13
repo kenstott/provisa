@@ -375,6 +375,7 @@ DO $$ BEGIN
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS federation_hints JSONB NOT NULL DEFAULT '{}';
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS cdc JSONB;  -- REQ-824: source-level CDC transport
     ALTER TABLE sources ADD COLUMN IF NOT EXISTS change_signal TEXT NOT NULL DEFAULT 'ttl';  -- REQ-929
+    ALTER TABLE sources ADD COLUMN IF NOT EXISTS is_system BOOLEAN NOT NULL DEFAULT FALSE;  -- a source Provisa runs for itself
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS cache_ttl INTEGER;
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS read_wait INTEGER;  -- REQ-2224
     ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS watermark_column TEXT;
