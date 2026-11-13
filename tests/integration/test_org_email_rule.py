@@ -102,10 +102,7 @@ def _prepare_sync():
 
 @pytest.fixture
 def planes(monkeypatch):
-    try:
-        sync_engine = _prepare_sync()
-    except Exception as exc:  # noqa: BLE001 — the suite provisions this PG; a miss is a config fault
-        pytest.skip(f"live Postgres not reachable at {_SYNC_URL}: {exc}")
+    sync_engine = _prepare_sync()
 
     admin_db = Database(create_engine_from_url(_ASYNC_URL), name="admin", search_path=_ADMIN_SCHEMA)
     tenant_db = Database(

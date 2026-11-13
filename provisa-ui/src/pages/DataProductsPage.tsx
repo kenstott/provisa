@@ -302,6 +302,16 @@ export function DataProductsPage() {
     setMsg("");
   };
 
+  // Duplicate, from a product's panel head: the create form filled with the product's definition
+  // and its member tables and commands, under "<id>-copy" (editable; an id that exists is refused
+  // on save by the create). Not copied: its consumers, contracts, offers and bids.
+  const openDuplicate = (p: DataProduct) => {
+    openEdit(p);
+    setEditingId(null);
+    setForm((f) => ({ ...f, id: `${p.id}-copy` }));
+    setCreating(true);
+  };
+
   const closeForm = () => {
     setCreating(false);
     setEditingId(null);
@@ -508,6 +518,7 @@ export function DataProductsPage() {
         editForm={editingId === selectedProduct.id ? formCard : undefined}
         onTagsChanged={() => setCoreVersion((v) => v + 1)}
         onEdit={(focus) => openEdit(selectedProduct, focus)}
+        onDuplicate={canEdit ? () => openDuplicate(selectedProduct) : undefined}
         onDelete={() => handleDelete(selectedProduct.id)}
         products={dataProducts}
         members={[
