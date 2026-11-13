@@ -297,3 +297,17 @@ def test_a_cached_arrow_replay_names_float_and_nested_lists_as_arrays():
     )
     entry = arrow_entry(table.schema, table.to_batches())
     assert entry_as_result(entry, None).column_types == ["DOUBLE[]", "INTEGER[]", "REAL[]"]
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."array_agg"(c1 ORDER BY c1) AS v FROM (VALUES (3::integer), '
+        "((-7)::integer)) AS t(c1)",
+        "SELECT array_agg(x ORDER BY y DESC) AS v FROM t",
+    ],
+)
+def test_an_ordered_array_agg_is_refused_by_name_on_clickhouse(sql):
+    """Run 43382046085: ClickHouse has no ORDER BY in an aggregate's call (Code 62)."""
+    with pytest.raises(RowRefused, match="array_agg"):
+        _clickhouse(sql)

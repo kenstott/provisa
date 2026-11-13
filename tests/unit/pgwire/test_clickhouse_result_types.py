@@ -94,6 +94,18 @@ def test_the_encoder_writes_the_strings_bytes_as_the_bytea(value, fmt):
     assert as_text == encoder.encode_rows([(value,)], ["BYTES"], [fmt])
 
 
+@pytest.mark.parametrize("fmt", [0, 1], ids=["text", "binary"])
+def test_the_encoder_writes_bytes_clickhouse_held_as_a_string_as_they_are(fmt):
+    """int4send(255): bytes no text holds, read as bytes (clickhouse_runtime.bytes_where_not_text),
+    which text_bytes leaves as they are: \\x000000ff (run 43382046085 failed XX000 here)."""
+    sql = "SELECT pg_catalog.int4send(255) AS v"
+    assert _described(sql, "VARCHAR") == (BVType.BYTES, 17, ["text_bytes"])
+    sent = encoder.encode_rows([(b"\x00\x00\x00\xff",)], ["BYTES"], [fmt], [["text_bytes"]])
+    assert sent == encoder.encode_rows([(b"\x00\x00\x00\xff",)], ["BYTES"], [fmt])
+    if fmt == 0:
+        assert sent.endswith(b"\\x000000ff")
+
+
 def test_the_reference_reads_a_string_as_its_utf8_bytes():
     assert cast_types.bytes_of_text("\x00\x01é") == b"\x00\x01\xc3\xa9"
     assert cast_types.bytes_of_text(b"\x01") == b"\x01"
@@ -223,6 +235,19 @@ def test_an_integer_call_served_as_bigint_keeps_its_integer(sql):
 )
 def test_a_null_of_no_type_is_described_as_the_array_the_call_returns(sql, described):
     assert _described(sql, "BLOB") == (*described, ["null_alone"])
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_catalog.\"int2_avg_accum\"('{3,6}'::bigint[], 3::smallint) AS v",
+        "SELECT pg_catalog.\"int4_avg_accum_inv\"('{3,6}'::bigint[], 3::integer) AS v",
+    ],
+)
+def test_a_bigint_array_served_as_integers_of_another_width_is_bigint(sql):
+    """Run 43382046085: ClickHouse's Int64 array is named INTEGER[] (arrow_type_name names an array
+    of integers by none of its widths); the call's bigint[] is what it is described as."""
+    assert _described(sql, "INTEGER[]")[:2] == (BVType.BIGINTARRAY, 1016)
 
 
 def test_an_engines_own_double_array_takes_no_coercer():
