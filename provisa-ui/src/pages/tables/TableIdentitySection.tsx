@@ -8,10 +8,10 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-import { useState } from "react";
+import { useCallback, useState } from "react";
 import { Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import type { RegisteredTable } from "../../types/admin";
+import type { RegisteredTable, Source } from "../../types/admin";
 import {
   FormChecks,
   FormField,
@@ -23,17 +23,23 @@ import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
 import { UNREGISTERED_ID } from "./draftTable";
 import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
+import { FilesGlobFieldset } from "./FilesGlobFieldset";
+import { ImportSetField } from "./ImportSetField";
+import { isFilesSourceType } from "./tableSectionFields";
 
 /** The Identity section of a table's form: the same when it is created and when it is edited. */
 export function TableIdentitySection({
   editingTable,
   setEditingTable,
   isView,
+  source,
   describe,
 }: {
   editingTable: RegisteredTable;
   setEditingTable: React.Dispatch<React.SetStateAction<RegisteredTable | null>>;
   isView: boolean;
+  /** The table's source: its type decides the settings only some sources' tables have. */
+  source?: Source;
   /** Writes a description from the saved table; absent while the table is being created. */
   describe?: () => Promise<string>;
 }) {
@@ -43,6 +49,17 @@ export function TableIdentitySection({
   // A view not yet registered (a new one, or a duplicate) is named by its own name: it is the
   // identity being chosen. A registered table or view keeps the name it was registered under.
   const nameEditable = isView && editingTable.id === UNREGISTERED_ID;
+  const sourceType = (source?.type ?? "").toLowerCase();
+  // Kept for the import set's own clearing: a stable callback over the latest table.
+  const setImportSet = useCallback(
+    (importSet: string | null) =>
+      setEditingTable((current) =>
+        current === null || (current.importSet ?? null) === importSet
+          ? current
+          : { ...current, importSet },
+      ),
+    [setEditingTable],
+  );
   return (
     <FormLayout className="form-card" data-testid="table-section-identity-panel">
       <FormIdentifiers>
@@ -126,6 +143,34 @@ export function TableIdentitySection({
         />
       </FormField>
       <TableRegionField table={editingTable} isView={isView} onChange={setEditingTable} />
+      {/* REQ-788: a files source's table may be one table over a glob of its files. */}
+      {!isView && isFilesSourceType(sourceType) && (
+        <FilesGlobFieldset
+          fileGlob={editingTable.fileGlob ?? ""}
+          // With no glob the table is one file again, and has no column naming each row's file.
+          setFileGlob={(v) =>
+            setEditingTable({
+              ...editingTable,
+              fileGlob: v || null,
+              sourceFileColumn: v.trim() ? editingTable.sourceFileColumn : null,
+            })
+          }
+          sourceFileColumn={editingTable.sourceFileColumn ?? ""}
+          setSourceFileColumn={(v) =>
+            setEditingTable({ ...editingTable, sourceFileColumn: v || null })
+          }
+        />
+      )}
+      {/* REQ-1954: a ServiceNow table's inserts may go through one of its transform maps. */}
+      {!isView && sourceType === "servicenow" && (
+        <ImportSetField
+          sourceId={editingTable.sourceId}
+          schemaName={editingTable.schemaName}
+          tableName={editingTable.tableName}
+          value={editingTable.importSet ?? null}
+          onChange={setImportSet}
+        />
+      )}
 
       {/* Its source's document could not be read: no endpoint, and why. */}
       {editingTable.apiEndpointError && (

@@ -29,7 +29,6 @@ import { isFilesSourceType } from "./tableSectionFields";
 import { useTranslation } from "react-i18next";
 import {
   Button,
-  Checkbox,
   NumberInput,
   SegmentedControl,
   Select,
@@ -77,6 +76,7 @@ import { requiredParametersOf } from "./lookups";
 import { SchemaTableSelects } from "./SchemaTableSelects";
 import { DeclaredColumns } from "./DeclaredColumns";
 import { ImportSetField } from "./ImportSetField";
+import { DiscoverColumnsField } from "./DiscoverColumnsField";
 import { assignableDomainIds } from "../../lib/internalDomains";
 import { DbtPublicProducts } from "./DbtPublicProducts";
 import {
@@ -706,6 +706,7 @@ export function RegisterTableForm({
     offered: many ? availableTables : [],
     isRegistered,
     suggestTableAlias,
+    needsCacheTtl,
   });
   const isCdcSource = CDC_TYPES.has(sourceType);
 
@@ -910,6 +911,10 @@ export function RegisterTableForm({
           ticked={manyTables.ticked}
           setTicked={manyTables.setTicked}
           loading={!schemaName || loadingTables}
+          needsCacheTtl={manyTables.needsCacheTtl}
+          // A table that needs input is registered on its own, opened in edit to be given it.
+          onRegisterOne={(name) => void manyTables.registerAsDraft(name, onContinue, setError)}
+          opening={manyTables.opening}
         />
       )}
       {!productsMode && !many && (
@@ -1052,14 +1057,11 @@ export function RegisterTableForm({
             {!isChecker &&
               !isQueryApi &&
               (!short || (tableName !== "" && !loadingColumns && columns.length === 0)) && (
-                <FormField size="short" help={t("registerTableForm.discoverHint")}>
-                  <Checkbox
-                    checked={discover}
-                    onChange={(e) => setDiscover(e.currentTarget.checked)}
-                    data-testid="discover-columns-checkbox"
-                    label={t("registerTableForm.discoverLabel")}
-                  />
-                </FormField>
+                <DiscoverColumnsField
+                  checked={discover}
+                  onChange={setDiscover}
+                  help={t("registerTableForm.discoverHint")}
+                />
               )}
           </FormChecks>
           {availableTables.find((tb) => tb.name === tableName)?.columnsDeclared && (

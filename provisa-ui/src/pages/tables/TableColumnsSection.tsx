@@ -46,6 +46,7 @@ export function TableColumnsSection({
   roles,
   hidingOnly,
   writeGrants,
+  discover,
   describeColumn,
   scanTableId,
 }: {
@@ -56,6 +57,8 @@ export function TableColumnsSection({
   hidingOnly: boolean;
   /** The Write grants tab's editor. */
   writeGrants: ReactNode;
+  /** REQ-252: reading the columns from the live source, where the table's columns can be. */
+  discover?: ReactNode;
   /** Writes a column's description from the saved table; absent while it is being created. */
   describeColumn?: (column: string) => Promise<string>;
   /** REQ-2147: the saved table a scan for sensitive values reads; absent while it is being
@@ -120,6 +123,7 @@ export function TableColumnsSection({
   ];
   return (
     <div data-testid="table-section-columns-panel">
+      {discover}
       {/* One tab bar for everything of a column: its own attributes, and its test data. */}
       <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
       {tab === "access" && <SensitiveScanBar scan={scan} />}

@@ -24,7 +24,7 @@ import type { Role } from "../../types/auth";
 import type { PlatformSettings } from "../../api/admin";
 import { useLivePolicyPreview } from "./useLivePolicyPreview";
 import { roleTtlRowError, tableTtlSignalError } from "./roleTtl";
-import { FormFooter } from "../../components/form/FormLayout";
+import { FormChecks, FormFooter, FormLayout } from "../../components/form/FormLayout";
 import { ParametersPanel } from "./ParametersPanel";
 import { usePanelDirty } from "../../components/list/panelLeave";
 import { TableSectionTabs } from "./TableSectionTabs";
@@ -32,7 +32,8 @@ import { WriteGrantsPanel } from "./WriteGrantsPanel";
 import { useSetTableWriteGrants } from "../../hooks/useWriteGrants";
 import { useTableSection, type TableSection } from "./tableSections";
 import { IdentityRead, LoadRead, QualityRead, QueryRead } from "./TableSectionsRead";
-import { isCheckerSource } from "./tableSectionFields";
+import { discoversColumns, isCheckerSource } from "./tableSectionFields";
+import { DiscoverColumnsField } from "./DiscoverColumnsField";
 import { TableIdentitySection } from "./TableIdentitySection";
 import { TableAssociationsSection } from "./TableAssociationsSection";
 import { TableLoadSection } from "./TableLoadSection";
@@ -178,6 +179,7 @@ export function TableEditForm({
             editingTable={editingTable}
             setEditingTable={setEditingTable}
             isView={isView}
+            source={editSource}
             describe={creating ? undefined : () => generateTableDescription(editingTable.id)}
           />
         ))}
@@ -253,6 +255,20 @@ export function TableEditForm({
               onSave={hidingOnly ? undefined : saveWriteGrants}
               kept={creating}
             />
+          }
+          discover={
+            !hidingOnly &&
+            discoversColumns((editSource?.type ?? "").toLowerCase(), editingTable) && (
+              <FormLayout data-testid="table-edit-discover">
+                <FormChecks>
+                  <DiscoverColumnsField
+                    checked={editingTable.discover === true}
+                    onChange={(discover) => setEditingTable({ ...editingTable, discover })}
+                    help={t("tableEditForm.discoverHint")}
+                  />
+                </FormChecks>
+              </FormLayout>
+            )
           }
           scanTableId={creating ? undefined : editingTable.id}
           describeColumn={

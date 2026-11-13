@@ -376,6 +376,7 @@ query TablesQuery {
     queryTemplate
     fileGlob
     sourceFileColumn
+    importSet
     arguments
     landingFilter
     readWait
