@@ -11,15 +11,18 @@
 // REQ-2127: the Data Product detail panel, the right-hand panel of the products list. Its core --
 // the product's fields, member tables, commands, tags, glossary terms, related tables -- is read
 // from the meta domain as the signed-in user (productCore.ts); a part the role cannot read there is
-// absent. REQ-2180 OFFERS, REQ-2239 (amended 2026-11-11): a header (owner, domain, freshness, a
-// query to run now, every value of the product), then tabs built around the product's offers --
-// Offers, Quality, Profile, Lineage, Related and, for its owner, Requests -- the same tabs for the
-// read view and the edit view. Each tab is composed of the components the tables page uses.
+// absent. REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): a short header, then one
+// section per subject in a fixed order -- Offers, Quality, Profile, Lineage, Related, Requests (its
+// owner's alone), Access -- each a row of the application's collapsible whose one-line summary is
+// computed from its content, expanded in place, open or closed as this viewer left it. Offers is
+// open at first; a graph is drawn only inside an expanded row. REQ-2160: one page for owner and
+// reader alike; what a reader may do is their rights', not another page's. The same rows for the
+// read view and the edit view, each composed of the components the tables page uses.
 
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
-import { ActionIcon, Alert, Loader, Stack, Tabs, Text } from "@mantine/core";
+import { ActionIcon, Alert, Group, Loader, Stack, Text } from "@mantine/core";
 import { Pencil } from "lucide-react";
 import type { DataProduct, ListedTable, Relationship } from "../../types/admin";
 import { OwnerResolutionInline } from "../../components/OwnerResolution";
@@ -34,6 +37,11 @@ import { useProductLifecycle } from "./ProductLifecycle";
 import type { DataProductStatus, ProductFinding } from "../../hooks/useDataProductMutations";
 import { modelName, type ProductCore } from "./productCore";
 import { ProductHeader } from "./ProductHeader";
+import { AccessSection } from "./AccessSection";
+import { CollapsibleItem, Collapsibles } from "../../components/collapsible/Collapsible";
+import type { Bid, Offer, ProductProfile } from "../../api/dataProductOffers";
+import { qualitySummary, useQualityWords } from "./productQuality";
+import { WorstBadge } from "./QualityStatus";
 import type { ContractViewer } from "./ContractView";
 import { OffersTab } from "./offers/OffersTab";
 import type { OfferDataset } from "./offers/AddOfferForm";
@@ -42,7 +50,7 @@ import { ProfileTab } from "./tabs/ProfileTab";
 import { LineageTab } from "./tabs/LineageTab";
 import { RelatedTab, type SharingProduct } from "./tabs/RelatedTab";
 import { RequestsTab } from "./tabs/RequestsTab";
-import { PRODUCT_TABS, type ProductTab } from "./tabs/productTabs";
+import { PRODUCT_SECTIONS, type ProductSection } from "./productSections";
 import { TablePreviewPane } from "../tables/TablePreviewPane";
 
 interface DataProductDetailPanelProps {
@@ -83,7 +91,7 @@ interface DataProductDetailPanelProps {
   relationships?: Relationship[];
   /** The role (or roles) the reader acts as: a preview's rows and the profile are read as it. */
   actingRole?: string | null;
-  /** The edit form, in place of the header's values while the product is edited; the tabs stay. */
+  /** The edit form, in place of the header's values while the product is edited; the rows stay. */
   editForm?: ReactNode;
   /** REQ-1634: a tag was put on the product or taken off; its core is read again. */
   onTagsChanged: () => void;
@@ -103,8 +111,11 @@ interface DataProductDetailPanelProps {
   statusActions: DataProductStatus;
 }
 
-/** A tab keeps its content inside it: what cannot wrap scrolls within the tab. */
-const TAB_BODY = { overflowX: "auto", overflowWrap: "anywhere" } as const;
+/** A section keeps its content inside it: what cannot wrap scrolls within the section. */
+const SECTION_BODY = { overflowX: "auto", overflowWrap: "anywhere" } as const;
+
+/** The sections whose content is a graph, or holds one: mounted only while expanded. */
+const DRAWS_A_GRAPH: ReadonlySet<ProductSection> = new Set(["lineage", "related"]);
 
 export function DataProductDetailPanel({
   p,
@@ -139,10 +150,22 @@ export function DataProductDetailPanel({
 }: DataProductDetailPanelProps) {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
-  const [tab, setTab] = useState<ProductTab>("offers");
-  // A dataset whose rows are looked at, in place of the tabs.
+  // A section a link inside the page asks to expand (See Quality, an input's lineage).
+  const [reveal, setReveal] = useState<ProductSection | null>(null);
+  useEffect(() => {
+    // Expanded and remembered so by the collapsible, which opens an item when ``reveal`` changes:
+    // cleared once consumed, the same link asked again expands it again.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a one-shot request, consumed.
+    if (reveal) setReveal(null);
+  }, [reveal]);
+  // What each section's summary is computed from, as its content reads it.
+  const [offers, setOffers] = useState<Offer[] | null>(null);
+  const [profiles, setProfiles] = useState<ProductProfile[] | null>(null);
+  const [requests, setRequests] = useState<Bid[] | null>(null);
+  const qualityWords = useQualityWords();
+  // A dataset whose rows are looked at, in place of the rows.
   const [preview, setPreview] = useState<ListedTable | null>(null);
-  // Bumped when a bid is made: the Requests tab reads them again.
+  // Bumped when a bid is made: the Requests section reads them again.
   const [bids, setBids] = useState(0);
   // Its lifecycle reads the list's row, so it is drawn while the panel's core is read.
   const lifecycle = useProductLifecycle({
@@ -182,8 +205,9 @@ export function DataProductDetailPanel({
   const views: OfferDataset[] = (lineageGraph?.consumers ?? [])
     .filter((c) => c.kind !== "table")
     .map((c) => ({ id: c.table_id, name: c.alias ? `${c.domain_id}.${c.alias}` : c.table_name }));
-  const shownTabs = PRODUCT_TABS.filter((tb) => tb !== "requests" || owner);
-  const current = shownTabs.includes(tab) ? tab : "offers";
+  const shown = PRODUCT_SECTIONS.filter((s) => s !== "requests" || owner);
+  const promises = lineageGraph?.dq.promises;
+  const quality = promises ? qualitySummary(promises) : null;
 
   // Every value of the product, under the labels its form gives them.
   const fields: DetailField[] = [
@@ -265,6 +289,139 @@ export function DataProductDetailPanel({
     </PanelActions>
   );
 
+  /** A section's one-line summary, computed from its content; an ellipsis while it is read. */
+  const summary = (section: ProductSection): string => {
+    const pending = "…";
+    switch (section) {
+      case "offers": {
+        if (offers === null) return pending;
+        const open = offers.filter((o) => o.open).length;
+        const review = offers.filter((o) => o.review !== null).length;
+        return [
+          t("dataProductOffers.summaryOffers", { count: offers.length }),
+          open > 0 ? t("dataProductOffers.summaryOpen", { count: open }) : null,
+          review > 0 ? t("dataProductOffers.summaryInReview", { count: review }) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      case "quality":
+        return quality ? qualityWords(quality) : pending;
+      case "profile": {
+        if (!actingRole) return t("dataProductOffers.summaryProfileNoRole");
+        if (profiles === null) return pending;
+        return t("dataProductOffers.summaryProfiles", {
+          profiled: profiles.filter((pr) => pr.run !== null).length,
+          count: datasets.length,
+        });
+      }
+      case "lineage":
+        return lineageGraph
+          ? [
+              t("dataProductOffers.summaryDatasets", { count: datasets.length }),
+              t("dataProductOffers.summaryInputs", { count: lineageGraph.inputs.length }),
+            ].join(" · ")
+          : pending;
+      case "related":
+        return [
+          t("dataProductOffers.summarySharing", { count: sharing.length }),
+          t("dataProductOffers.summaryRelatedTables", {
+            count: core.edges?.filter((e) => e.kind === "related").length ?? 0,
+          }),
+          t("dataProductOffers.summaryTerms", { count: core.terms?.length ?? 0 }),
+        ].join(" · ");
+      case "requests": {
+        if (requests === null) return pending;
+        const waiting = requests.filter((b) => b.status === "pending").length;
+        return [
+          t("dataProductOffers.summaryRequests", { count: requests.length }),
+          waiting > 0 ? t("dataProductOffers.summaryPending", { count: waiting }) : null,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+      }
+      case "access":
+        return t("dataProductOffers.summaryAccess", { count: datasets.length });
+    }
+  };
+
+  /** A section's content, expanded in place. */
+  const body = (section: ProductSection): ReactNode => {
+    switch (section) {
+      case "offers":
+        return (
+          <OffersTab
+            productId={p.id}
+            owner={owner}
+            canEdit={canEdit}
+            datasets={datasets}
+            views={views}
+            onShowQuality={() => setReveal("quality")}
+            onPreview={previewTable}
+            onQueryNow={queryNow}
+            onBid={() => setBids((n) => n + 1)}
+            context={{ ports: outputTables ?? [], lineage: lineageGraph, reader, viewer }}
+            version={contractsVersion}
+            onLoaded={setOffers}
+          />
+        );
+      case "quality":
+        return (
+          <QualityTab
+            productId={p.id}
+            owner={owner}
+            dq={lineageGraph?.dq}
+            lineageGraph={lineageGraph}
+            lineageLoading={lineageLoading}
+            lineageError={lineageError}
+            outputTables={outputTables}
+            dqTables={dqTables}
+            offers={offers}
+            onShowLineage={() => setReveal("lineage")}
+          />
+        );
+      case "profile":
+        return (
+          <ProfileTab productId={p.id} owner={owner} role={actingRole} onLoaded={setProfiles} />
+        );
+      case "lineage":
+        return (
+          <LineageTab
+            productId={p.id}
+            loading={lineageLoading}
+            error={lineageError}
+            graph={lineageGraph}
+            relationLabel={relationLabel}
+          />
+        );
+      case "related":
+        return (
+          <RelatedTab
+            productId={p.id}
+            core={core}
+            seesConsumers={seesConsumers}
+            lineageGraph={lineageGraph}
+            lineageLoading={lineageLoading}
+            lineageError={lineageError}
+            sharing={sharing}
+            relationships={relationships}
+            openProduct={openProduct}
+          />
+        );
+      case "requests":
+        return (
+          <RequestsTab
+            key={bids}
+            productId={p.id}
+            datasets={datasets}
+            onLoaded={setRequests}
+          />
+        );
+      case "access":
+        return <AccessSection core={core} reader={reader} />;
+    }
+  };
+
   if (preview) {
     return (
       <div className="split-pane__fill" data-testid={`data-product-preview-${p.id}`}>
@@ -278,82 +435,61 @@ export function DataProductDetailPanel({
     <Stack gap="sm" data-testid={`data-product-detail-${p.id}`}>
       {actions}
       {lifecycle.toReview}
-      {editForm ?? <ProductHeader core={core} reader={reader} fields={fields} />}
-      <Tabs value={current} onChange={(v) => v && setTab(v as ProductTab)} keepMounted={false}>
-        <Tabs.List aria-label={t("dataProductOffers.tabsLabel")}>
-          {shownTabs.map((tb) => (
-            <Tabs.Tab
-              key={tb}
-              value={tb}
-              data-testid={`data-product-tab-${tb}-${p.id}`}
-              // The guided tour's anchor for a product's data quality: its tab, always there.
-              data-tour={tb === "quality" ? "data-product-dq" : undefined}
-            >
-              {t(`dataProductOffers.tab_${tb}`)}
-            </Tabs.Tab>
-          ))}
-        </Tabs.List>
-        <Tabs.Panel value="offers" pt="sm" style={TAB_BODY}>
-          <OffersTab
-            productId={p.id}
-            owner={owner}
-            canEdit={canEdit}
-            datasets={datasets}
-            views={views}
-            onShowQuality={() => setTab("quality")}
-            onPreview={previewTable}
-            onQueryNow={queryNow}
-            onBid={() => setBids((n) => n + 1)}
-            context={{ ports: outputTables ?? [], lineage: lineageGraph, reader, viewer }}
-            version={contractsVersion}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="quality" pt="sm" style={TAB_BODY}>
-          <QualityTab
-            productId={p.id}
-            owner={owner}
-            dq={lineageGraph?.dq}
-            lineageGraph={lineageGraph}
-            lineageLoading={lineageLoading}
-            lineageError={lineageError}
-            outputTables={outputTables}
-            dqTables={dqTables}
-            onShowLineage={() => setTab("lineage")}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="profile" pt="sm" style={TAB_BODY}>
-          <ProfileTab productId={p.id} owner={owner} role={actingRole} />
-        </Tabs.Panel>
-        <Tabs.Panel value="lineage" pt="sm" style={TAB_BODY}>
-          <LineageTab
-            productId={p.id}
-            loading={lineageLoading}
-            error={lineageError}
-            graph={lineageGraph}
-            relationLabel={relationLabel}
-          />
-        </Tabs.Panel>
-        <Tabs.Panel value="related" pt="sm" style={TAB_BODY}>
-          <RelatedTab
-            productId={p.id}
-            core={core}
-            canEdit={canEdit}
-            seesConsumers={seesConsumers}
-            lineageGraph={lineageGraph}
-            lineageLoading={lineageLoading}
-            lineageError={lineageError}
-            sharing={sharing}
-            relationships={relationships}
-            onTagsChanged={onTagsChanged}
-            openProduct={openProduct}
-          />
-        </Tabs.Panel>
-        {owner && (
-          <Tabs.Panel value="requests" pt="sm" style={TAB_BODY}>
-            <RequestsTab key={bids} productId={p.id} datasets={datasets} />
-          </Tabs.Panel>
-        )}
-      </Tabs>
+      {editForm ?? (
+        <ProductHeader
+          core={core}
+          fields={fields}
+          quality={quality}
+          consumers={seesConsumers && lineageGraph ? lineageGraph.consumers.length : null}
+          canEdit={canEdit}
+          onTagsChanged={onTagsChanged}
+        />
+      )}
+      <Collapsibles
+        id="data-product.sections"
+        reveal={reveal}
+        testId={`data-product-sections-${p.id}`}
+      >
+        {shown.map((section) => (
+          <CollapsibleItem
+            key={section}
+            value={section}
+            defaultOpen={section === "offers"}
+            mountWhenOpen={DRAWS_A_GRAPH.has(section)}
+            testId={`data-product-row-${section}-${p.id}`}
+            controlTestId={`data-product-row-${section}-${p.id}-toggle`}
+            title={
+              <Group
+                gap="sm"
+                wrap="nowrap"
+                style={{ minWidth: 0 }}
+                // The guided tour's anchor for a product's data quality: its row, always there.
+                data-tour={section === "quality" ? "data-product-dq" : undefined}
+              >
+                <Text
+                  size="sm"
+                  fw={600}
+                  style={{ flexShrink: 0 }}
+                  data-testid={`data-product-row-${section}-${p.id}-name`}
+                >
+                  {t(`dataProductOffers.section_${section}`)}
+                </Text>
+                {section === "quality" && quality?.worst && <WorstBadge worst={quality.worst} />}
+                <Text
+                  size="xs"
+                  c="dimmed"
+                  truncate="end"
+                  data-testid={`data-product-row-${section}-${p.id}-summary`}
+                >
+                  {summary(section)}
+                </Text>
+              </Group>
+            }
+          >
+            <div style={SECTION_BODY}>{body(section)}</div>
+          </CollapsibleItem>
+        ))}
+      </Collapsibles>
       {lifecycle.dialogs}
     </Stack>
   );

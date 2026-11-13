@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-2157, REQ-2132: a data product's Quality tab -- its checks and their latest results. The owner
+// REQ-2157, REQ-2132: a data product's Quality section -- its checks and their latest results. The owner
 // sees its expectations on its inputs, its promises on its tables and the related checks others
 // make, with the curation gaps; any other reader its promises. The owner also adds drift and
 // expectation checks on each dataset's profile from the tables page's checks bar (REQ-2239).
@@ -19,6 +19,7 @@ import { ActionIcon, Alert, Anchor, Badge, Group, List, Stack, Text } from "@man
 import { ListChecks, Table as TableIcon } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import type { ProductDq, ProductDqEntry, ProductLineage } from "../../../api/lineage";
+import type { Offer } from "../../../api/dataProductOffers";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 import { Tip } from "../../../components/Tip";
 import { ProfileChecksBar } from "../../tables/ProfileChecksBar";
@@ -29,6 +30,8 @@ import { modelName, restModelName, type CoreTable } from "../productCore";
 import { Empty } from "../DetailCard";
 import { sqlExample, type TableRef } from "../tableExamples";
 import { LineagePending, OwnerOnlyList } from "./LineagePending";
+import { offerPromises, qualitySummary } from "../productQuality";
+import { QualityStatus } from "../QualityStatus";
 
 /** REQ-2157: the data quality section's rows, in order. */
 const DQ_ROWS = ["expectations", "promises", "related"] as const;
@@ -42,6 +45,7 @@ export function QualityTab({
   lineageError,
   outputTables,
   dqTables,
+  offers,
   onShowLineage,
 }: {
   productId: string;
@@ -52,7 +56,9 @@ export function QualityTab({
   lineageError: string;
   outputTables: CoreTable[] | undefined;
   dqTables: CoreTable[] | undefined;
-  /** Opens the Lineage tab, where the inputs are drawn with what is upstream of them. */
+  /** The product's offers, once read: its quality is summarised per offer. */
+  offers: Offer[] | null;
+  /** Opens the Lineage section, where the inputs are drawn with what is upstream of them. */
   onShowLineage: () => void;
 }) {
   const { t } = useTranslation();
@@ -249,6 +255,30 @@ export function QualityTab({
 
   return (
     <Stack gap="md" data-testid={`data-product-quality-${productId}`}>
+      {/* REQ-2180 (QUALITY IS STATUS AND COUNTS, NOT A SCORE): per offer, the worst outcome of
+          the checks its contracts promise, the counts, the failing checks named, the last run. */}
+      {dq && offers && offers.length > 0 && (
+        <Stack gap={4} data-testid={`data-product-offer-quality-${productId}`}>
+          {offers.map((offer) => (
+            <Group key={offer.id} gap={8} wrap="nowrap" align="flex-start">
+              <Text size="sm" fw={500} style={{ flexShrink: 0 }}>
+                {offer.name}
+              </Text>
+              <Stack gap={0} style={{ minWidth: 0 }}>
+                <QualityStatus
+                  quality={qualitySummary(offerPromises(offer, dq.promises))}
+                  testId={`offer-quality-${offer.id}`}
+                />
+                {!offer.dq_results && (
+                  <Text size="xs" c="dimmed" data-testid={`offer-quality-${offer.id}-excluded`}>
+                    {t("dataProductOffers.resultsNotIncluded")}
+                  </Text>
+                )}
+              </Stack>
+            </Group>
+          ))}
+        </Stack>
+      )}
       {dq ? dqChecks() : <LineagePending loading={lineageLoading} error={lineageError} />}
       {/* REQ-2126, REQ-2132, REQ-2160: the inputs and the product's expectations of them, always
           shown: the owner's list, or whose it is. */}

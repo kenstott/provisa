@@ -1,0 +1,12 @@
+/* The shared canvas controls (provisa-graph/CanvasControls) over a code editor: the same bar, at
+ * the editor's top-right, shown while the pointer is over the editor or a control has the focus.
+ * The bar's own look (border, body background, radius) comes from canvas-controls.css. */
+.editor-hover-host .pg-controls {
+  top: 8px;
+  bottom: auto;
+  inset-inline-start: auto;
+  inset-inline-end: 8px;
+}
+.editor-hover-host:hover .pg-controls {
+  opacity: 1;
+}

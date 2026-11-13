@@ -308,6 +308,8 @@
         "history": "История версий"
       }
     },
-    "detailPanel": "Сведения о продукте данных"
+    "detailPanel": "Сведения о продукте данных",
+    "tagFacetLabel": "Теги",
+    "tagFacetPlaceholder": "Фильтр по тегу"
   }
 }
