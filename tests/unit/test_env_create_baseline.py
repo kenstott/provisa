@@ -45,6 +45,7 @@ class _Pool:
 def created(monkeypatch):
     """Every collaborator of the create path answered, collecting the write-throughs it asked for."""
     commits: list[tuple[str, str, str | None]] = []
+    likes: list[tuple[str, str] | None] = []
     source_tip: list[str | None] = ["a" * 40]
     tree_unchanged: list[bool] = [False]
     started: list[tuple[str, str]] = []
@@ -84,8 +85,9 @@ def created(monkeypatch):
     async def _org_model_db(org_id):
         return _Db()
 
-    async def _write_through(conn, admin_db, org_id, env, schema, message, actor):
+    async def _write_through(conn, admin_db, org_id, env, schema, message, actor, like=None):
         commits.append((env, message, actor))
+        likes.append(like)
         return None if tree_unchanged[0] else "d" * 40
 
     def _start_branch(repo, env, from_env):
@@ -128,6 +130,7 @@ def created(monkeypatch):
         (),
         {
             "commits": commits,
+            "likes": likes,
             "started": started,
             "positions": positions,
             "origins": origins,
@@ -154,6 +157,12 @@ class TestBaseline:
     async def test_it_is_authored_by_the_person_who_created_it(self, created):
         await _create("dev")
         assert created.commits[0][2] == ACTOR
+
+    async def test_it_renders_from_the_environment_it_was_copied_from(self, created):
+        """REQ-2006: its model is the source's a moment ago, so the source's rendering is where its
+        own starts; only an entity that differs is rendered again."""
+        await _create("dev", from_env="staging")
+        assert created.likes == [(ORG, "staging")]
 
 
 class TestAncestry:

@@ -362,11 +362,18 @@ async def write_through(
     actor: str | None,
     onto: str | None = None,
     merged_from: str | None = None,
+    like: tuple[str, str] | None = None,
 ) -> str | None:
     """Project ``schema`` into ``env``'s branch and commit it. Never raises.
 
     ``onto``: the fetched commit the model was just made from; ``merged_from``: the commit of the
     line a whole merge just carried (see :func:`commit_files`).
+
+    ``like``: the ``(org, environment)`` this one's model was copied from a moment ago -- an
+    environment created from another, a demo sandbox cloned from its template (REQ-2006). Until
+    this environment has a rendering of its own, it starts from that one's: only an entity that
+    differs from what was rendered there is rendered again, so the files are the very text a full
+    rendering gives.
 
     THE RETURN IS THE SHA, and ``None`` means either nothing changed or the projection did not land
     -- the caller cannot act differently on those two anyway, because neither is a reason to undo the
@@ -388,9 +395,10 @@ async def write_through(
         # was read, so the commit holds exactly the model at that stamp. Unequal, the commit is
         # recorded without a stamp and no statement's audit row will name it.
         before = await model_stamp(conn, schema)
-        files, _rendered[(org_id, env)] = dump_reusing(
-            await project(conn, schema), _rendered.get((org_id, env), {})
-        )
+        last = _rendered.get((org_id, env))
+        if last is None and like is not None:
+            last = _rendered.get(like)
+        files, _rendered[(org_id, env)] = dump_reusing(await project(conn, schema), last or {})
         exact_stamp = before if await model_stamp(conn, schema) == before else None
         repo = ensure_repo(org_id)
         sha = commit_files(repo, env, files, message, actor, onto, merged_from)

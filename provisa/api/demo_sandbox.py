@@ -421,7 +421,6 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
     from provisa.core import org_files
     from provisa.core.env_copy import clone_model
     from provisa.core.env_classes import COPIED
-    from provisa.core.env_repo import ensure_repo, write_through
     from provisa.core.env_store import ensure_prod
     from provisa.core.environments import PROD, org_schema
     from provisa.core.org_membership import JOINED_VIA_ADMIN, grant_org_roles, record_membership
@@ -501,17 +500,7 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
                     )
     async with _stage(org_id, demo.name, "its record, environments and ready mark"):
         async with _stage(org_id, demo.name, "its record"):
-            ensure_repo(org_id)
-            async with rt.model_db.acquire() as conn:
-                await write_through(
-                    conn,
-                    _admin_pool(),
-                    org_id,
-                    PROD,
-                    org_schema(org_id),
-                    "opened from its demo",
-                    person,
-                )
+            await _record(rt.model_db, demo, org_id, person)
         await _environments(demo, org_id, person)
         await _refresh_root_registry_view()
         async with _admin_pool().acquire() as conn:
@@ -530,6 +519,28 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         env_name=PROD,  # REQ-1503: a sandbox is served from its one environment
     )
     return secret
+
+
+async def _record(model_db: Any, demo: PublishedDemo, org_id: str, person: str) -> None:
+    """Sandbox ``org_id``'s first commit of its prod (REQ-1524). Its model was cloned from its
+    template's prod a moment ago, so its rendering starts from the template's (REQ-2006): only an
+    entity that differs is rendered again."""
+    from provisa.api.admin.orgs_router import _admin_pool
+    from provisa.core.env_repo import ensure_repo, write_through
+    from provisa.core.environments import PROD, org_schema
+
+    ensure_repo(org_id)
+    async with model_db.acquire() as conn:
+        await write_through(
+            conn,
+            _admin_pool(),
+            org_id,
+            PROD,
+            org_schema(org_id),
+            "opened from its demo",
+            person,
+            like=(demo.template_org, PROD),
+        )
 
 
 async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:

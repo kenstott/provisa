@@ -208,6 +208,8 @@ async def create_environment(
                 org_schema(org_id, name),
                 note,
                 created_by,
+                # REQ-2006: its model is from_env's a moment ago, and so is its rendering.
+                like=(org_id, from_env),
             )
     except BaseException:
         # Compensating rollback, mirroring provision_org's own: an environment that exists and
