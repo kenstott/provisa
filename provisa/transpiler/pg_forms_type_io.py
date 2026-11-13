@@ -1631,6 +1631,17 @@ def _as_interval(said: exp.Expr, dialect: str | None) -> exp.Expr:
     return exp.Paren(this=exp.Add(this=exp.Add(this=months, expression=days), expression=us))
 
 
+#: interval_in's infinite texts: pgwire describes a folded text as interval (cast_types), and has
+#: no interval value of either.
+_INFINITE = frozenset({"infinity", "-infinity"})
+
+
+def _infinite_unheld(said: exp.Expr, dialect: str | None) -> bool:
+    """Whether interval_in's folded text is infinity on an engine that answers it as its text."""
+    infinite = isinstance(said, exp.Literal) and said.is_string and said.this in _INFINITE
+    return infinite and dialect not in (None, "duckdb", "postgres")
+
+
 def _folded(name: str, arguments: list[exp.Expr]) -> exp.Expr | None:
     """``_fold_row``, with PostgreSQL's refusal of a literal as an expression that raises it."""
     try:
@@ -1691,6 +1702,11 @@ def _lowered(tree: exp.Expr, dialect: str | None) -> exp.Expr:
             return exp.alias_(said, name) if in_select else said
         folded = _folded(name, arguments)
         if folded is not None and name == "interval_in":
+            if _infinite_unheld(folded, dialect):
+                # pgwire has no interval value of it: the call of the text it reads as, for the
+                # polyfill grid's row to refuse by name (polyfill.type_io).
+                target.set("expressions", [folded, *arguments[1:]])
+                return node
             folded = _as_interval(folded, dialect)
         if folded is not None:
             return exp.alias_(folded, name) if in_select else folded

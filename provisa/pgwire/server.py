@@ -1190,6 +1190,8 @@ def _describe_casts(
             if not untyped:
                 continue
             coerce.append((i, _null_alone))
+        if types[i] is BVType.TEXT and cast_type.of_text is not None:
+            coerce.append((i, cast_type.of_text))
         types[i], oids[i], typmods[i] = cast_type.bvtype, cast_type.oid, cast_type.typmod
         if cast_type.coerce is not None:
             coerce.append((i, cast_type.coerce))
@@ -1259,6 +1261,7 @@ def _coercer_names_by_function() -> dict[Any, str]:
         cast_types.record_text: "record",
         cast_types._clock_of: "clock",
         cast_types._of_no_zone: "no_zone",
+        cast_types.interval_of_text: "interval_text",
         enum_array_text: "enum_array",
     }
 

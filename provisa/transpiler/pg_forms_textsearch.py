@@ -657,8 +657,7 @@ def _rows() -> tuple[Row, ...]:
         add(d, "tsvector_to_array", "v", _read(e, "tsvector_to_array", lexemes, "v", listed=True))
         kept = e.keep.format(_tokens(e), "_t", f"{_lexeme_of(e, '_t')} <> x")
         add(d, "ts_delete", "v, x", _read(e, "ts_delete", _join_tokens(e, kept), "v"))
-        dropped = e.keep.format(_tokens(e), "_t", f"NOT {e.has.format('x', _lexeme_of(e, '_t'))}")
-        add(d, "ts_delete_array", "v, x", _read(e, "ts_delete", _join_tokens(e, dropped), "v"))
+        # ts_delete of a list of lexemes (ts_delete_array) is the polyfill grid's row.
         add(d, "tsvector_eq", "a, b", _read(e, "tsvector_eq", "a = b", "a", "b"))
         add(d, "tsvector_ne", "a, b", _read(e, "tsvector_ne", "a <> b", "a", "b"))
         for weight in "ABCD":
