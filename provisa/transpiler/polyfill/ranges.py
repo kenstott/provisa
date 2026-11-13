@@ -1,4 +1,5 @@
 # Copyright (c) 2026 Kenneth Stott
+# Canary: 1dfceb93-f852-49f2-94e5-c2a4b48712e4
 #
 # This source code is licensed under the Business Source License 1.1
 # found in the LICENSE file in the root directory of this source tree.
@@ -12,9 +13,10 @@ support measure, run 43337203459, REQ-2171).
 
 provisa.transpiler.pg_ranges lowers every range call before the grid runs, so the grid holds the
 refusal and pg_ranges raises it (THE REFUSAL LIVES IN THE GRID). A VARIADIC array is the arguments
-it holds: an array's text of one dimension is its ranges, each answered as the constructor of them
-is. Any other array (one the rows hold, or of more dimensions) would reach the engine cast to an
-array of a range type it does not have: refused by name. DuckDB names the range types (the
+it holds: an array's text of one dimension cast to an array of ranges is its ranges, each answered
+as the constructor of them is. Any other cast to an array of ranges (of a value the rows hold, or of
+more dimensions) would reach the engine as an array of a type it does not have: refused by name.
+An array the engine holds (array_agg of a range column, held as text) is read as it was. DuckDB names the range types (the
 catalog's CREATE TYPE), and reads such an array as its text."""
 
 # Requirements: REQ-2236, REQ-2171
@@ -59,8 +61,9 @@ FEATURES: tuple[Feature, ...] = tuple(
             limitations={
                 dialect: (
                     Limitation(
-                        "Of a VARIADIC array other than the text of one dimension the statement "
-                        "says: refused by name, as no array of a range type is held.",
+                        "Of a VARIADIC cast to an array of ranges, of anything but the text of an "
+                        "array of one dimension: refused by name, as no array of a range type is "
+                        "held.",
                         _REFUSALS[f"{base}multirange"][dialect],
                     ),
                 )

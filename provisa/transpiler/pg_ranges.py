@@ -1590,13 +1590,14 @@ class _Rewrite:
         return _M(rtype, null, self.writer.canonical(_concat(*pieces), rtype, rtype.multirange))
 
     def _variadic_ranges(self, rtype: RangeType, args: list[exp.Expr]) -> list[exp.Expr]:
-        """A VARIADIC array's text, on a dialect with no array of a range type, as the ranges it
-        holds: PostgreSQL's VARIADIC array is the arguments it holds. An array of no text the
-        statement says is refused by name, the polyfill grid's row's refusal."""
+        """A VARIADIC array cast to an array of ranges, on a dialect with no such type, as the
+        ranges its text holds: PostgreSQL's VARIADIC array is the arguments it holds. A cast of
+        anything but the text of one dimension is refused by name, the polyfill grid's row's
+        refusal."""
         given = _variadic_array(args[0])
-        if given is None or isinstance(given, exp.Array):
-            return args  # not VARIADIC, or an array of its elements: read as it is
-        written = array_input(given) if isinstance(given, exp.Cast) else given
+        if not isinstance(given, exp.Cast) or not given.to.is_type(_T.ARRAY):
+            return args  # an array of its elements, or one the engine holds: read as it is
+        written = array_input(given)
         items = written.this if isinstance(written, exp.Cast) else None
         if not isinstance(items, exp.Array) or any(
             isinstance(item, exp.Array) for item in items.expressions
