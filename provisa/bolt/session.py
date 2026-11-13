@@ -61,6 +61,10 @@ def _recv_timeout() -> int:
 # lockout as a lockout rather than as one more wrong password.
 _RATE_LIMIT_CODE = "Neo.ClientError.Security.AuthenticationRateLimit"
 _ARGUMENT_ERROR = "Neo.ClientError.Statement.ArgumentError"
+# A fault inside Provisa (not a statement the client got wrong): Neo4j's code for it, and a message
+# that carries nothing of the server's internals -- those are in the server log.
+_INTERNAL_ERROR = "Neo.DatabaseError.General.UnknownError"
+_INTERNAL_ERROR_MESSAGE = "An internal error occurred; see the server log."
 # An HTTP status from the shared command executor, as the Neo4j error a Bolt client reads.
 _BOLT_CODE_FOR_STATUS = {
     403: "Neo.ClientError.Security.Forbidden",
@@ -974,13 +978,25 @@ class BoltSession:
             if isinstance(exc, databases.DatabaseCommandError):
                 self.send_failure(exc.code, str(exc))
                 return
-            import logging as _logging
-            import traceback as _tb
+            from provisa.core.read_refusal import ReadRefused
+            from provisa.federation.replica_state import ReplicaBuilding
 
-            _logging.getLogger("uvicorn.error").warning(
-                "[BOLT] RUN failed: %s\n%s", exc, _tb.format_exc()
-            )
-            self.send_failure("Neo.ClientError.Statement.SyntaxError", str(exc))
+            if isinstance(exc, (ValueError, ReadRefused, ReplicaBuilding)):
+                # A statement refused on purpose, in its own words: a parse, translate or
+                # parameter refusal (raised as ValueError above), a refusal by name, a replica
+                # still being built. The client's to read and fix.
+                import logging as _logging
+                import traceback as _tb
+
+                _logging.getLogger("uvicorn.error").warning(
+                    "[BOLT] RUN failed: %s\n%s", exc, _tb.format_exc()
+                )
+                self.send_failure("Neo.ClientError.Statement.SyntaxError", str(exc))
+                return
+            # Anything else is a fault in Provisa, never the client's mistake: said as one, with
+            # no internals, and logged here once with its traceback.
+            log.error("[BOLT] RUN failed with an internal fault", exc_info=exc)
+            self.send_failure(_INTERNAL_ERROR, _INTERNAL_ERROR_MESSAGE)
             return
         finally:
             with shield.lock:  # execution is over: this thread is inside no deadline's scope
