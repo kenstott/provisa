@@ -273,6 +273,8 @@ class TagType:  # REQ-1373, REQ-1375
     param_values: list[TagParamValueType] = strawberry.field(default_factory=list)
     # REQ-2208: each assignment must cite a library document or section (a gap when it does not).
     requires_citation: bool = False
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
+    required: bool = False
     # REQ-2208: the sections that define the tag, and whether one of them changed or is gone.
     citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
     needs_review: bool = False
@@ -1165,6 +1167,9 @@ class TagInput:  # REQ-1373
     sensitive: bool = False  # REQ-1943: the Sensitive data option
     # REQ-2208: each assignment must cite a library document or section (a gap, never refused).
     requires_citation: bool = False
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; the tags
+    # report lists each object without it, nothing is refused.
+    required: bool = False
 
 
 @strawberry.input

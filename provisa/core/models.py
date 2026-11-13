@@ -1014,6 +1014,9 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # REQ-2208 (CITATIONS PER ASSIGNMENT): each assignment must cite a library document or section;
     # one that does not is reported as a gap, never refused.
     requires_citation: bool = False
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; an object
+    # without it is listed by the tags report, never refused.
+    required: bool = False
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never

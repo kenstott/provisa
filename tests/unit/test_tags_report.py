@@ -62,6 +62,7 @@ RETENTION = "Retention"
 APPROVED = Tag(id="approved", applies_to=["table"], requires_citation=True)
 SENSITIVITY = Tag(id="sensitivity", applies_to=["column"], param_policy="required")
 CHECKED = Tag(id="checked", applies_to=["column"], requires_citation=True)
+OWNER_REVIEWED = Tag(id="owner_reviewed", applies_to=["table"], required=True)
 REVIEWED = Tag(
     id="reviewed",
     applies_to=[
@@ -215,10 +216,11 @@ async def report(control_plane):
             await conn.execute_core(text(_META_TABLE_VIEWS[name]))
         await conn.execute_core(text(_OPS_REPORT_VIEWS["tags_report"]))
         handbook, policy = await _model(conn)
-        for tag in (APPROVED, SENSITIVITY, CHECKED, REVIEWED):
+        for tag in (APPROVED, SENSITIVITY, CHECKED, REVIEWED, OWNER_REVIEWED):
             await tag_repo.upsert(conn, tag)
         await tag_repo.assign(conn, _on_table("approved", 1))
         await tag_repo.assign(conn, _on_table("approved", 2))
+        await tag_repo.assign(conn, _on_table("owner_reviewed", 1))
         await tag_repo.assign(conn, _on_column("sensitivity:high", "email"))
         await tag_repo.assign(
             conn, _on_column("deprecated", "total", reason="replaced", expires_on="2020-01-01")
@@ -274,6 +276,9 @@ async def test_one_row_per_tag_on_an_object(report):
         ("approved", "table:2"): "assigned",
         ("checked", "column:1:email"): "assigned",
         ("deprecated", "column:1:total"): "assigned",
+        ("owner_reviewed", "table:1"): "assigned",
+        # required on every table: table 2 does not carry it
+        ("owner_reviewed", "table:2"): "missing",
         ("sensitivity:high", "column:1:email"): "assigned",
     }
     assert len([k for k in rows if k[0] == "reviewed"]) == len(REVIEWED_ON) + 2
@@ -292,6 +297,12 @@ async def test_each_row_names_its_object_and_tag(report):
         "sales",
         1,
         True,
+    )
+    missing = rows[("owner_reviewed", "table:2")]
+    assert (missing["tag_required"], missing["domain_id"], missing["citation_missing"]) == (
+        True,
+        "hr",
+        False,
     )
     sensitivity = rows[("sensitivity:high", "column:1:email")]
     assert (sensitivity["base_tag_id"], sensitivity["parameter"]) == ("sensitivity", "high")
@@ -330,6 +341,8 @@ async def test_each_row_rolls_up_to_a_status_with_its_reason(report):
             "a cited section changed since it was cited",
         ),
         ("deprecated", "column:1:total"): ("needs attention", "the assignment expired"),
+        ("owner_reviewed", "table:1"): ("clean", None),
+        ("owner_reviewed", "table:2"): ("needs attention", "required tag missing"),
         ("sensitivity:high", "column:1:email"): ("clean", None),
     }
 
@@ -429,8 +442,11 @@ async def test_a_table_or_column_tag_is_read_in_the_tables_domain(report):
         ("approved", "table:1"),
         ("checked", "column:1:email"),
         ("deprecated", "column:1:total"),
+        ("owner_reviewed", "table:1"),
         ("sensitivity:high", "column:1:email"),
     }
+    # The missing row is about hr's table, which the reader does not reach.
+    assert ("owner_reviewed", "table:2") not in {tuple(r) for r in read}
 
 
 def test_the_compiler_applies_the_predicate_to_both_relations():
