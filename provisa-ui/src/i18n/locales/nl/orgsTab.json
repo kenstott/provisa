@@ -19,7 +19,7 @@
     "colActions": "Acties",
     "empty": "Geen organisaties",
     "membersButton": "Leden",
-    "hideButton": "Verbergen",
+    "hideButton": "Inklappen",
     "expandOrg": "Leden voor {{name}} in-/uitklappen",
     "deleteOrg": "{{name}} verwijderen",
     "membersHeading": "Leden",
