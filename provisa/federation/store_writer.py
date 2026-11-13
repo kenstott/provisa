@@ -31,6 +31,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy.schema import CreateTable, DropTable
 
 from provisa.core.change_signal import APPEND, select_landing_shape
+from provisa.core.schema_create import create_schema
 from provisa.federation.replica_guard import require_store_replica_table
 from provisa.federation.materialize_exec import (
     apply_persistence,
@@ -92,10 +93,8 @@ async def ensure_table(
     The engine is never the writer — this opens the store's own connection."""
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if schema and conn.capabilities.schemas:
-            from sqlalchemy.schema import CreateSchema
-
-            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        if schema:
+            await create_schema(conn, schema)
         await require_store_replica_table(conn, schema, table, action="create the replica at")
         await conn.execute_core(CreateTable(tbl, if_not_exists=True))
     return _qualified(schema, table)
@@ -128,10 +127,8 @@ async def reconcile_table(
     want = [name for name, _ in columns]
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if schema and conn.capabilities.schemas:
-            from sqlalchemy.schema import CreateSchema
-
-            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        if schema:
+            await create_schema(conn, schema)
         from sqlalchemy.exc import NoSuchTableError
 
         await require_store_replica_table(conn, schema, table, action="reconcile the replica at")
@@ -201,10 +198,8 @@ async def persist_land(
     check_source_drift(columns, rows, match_floor=match_floor)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if schema and conn.capabilities.schemas:
-            from sqlalchemy.schema import CreateSchema
-
-            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        if schema:
+            await create_schema(conn, schema)
         await require_store_replica_table(conn, schema, table, action="write the replica")
         return await apply_persistence(
             conn, tbl, rows, persist=persist, pk_columns=list(pk_columns or ())
@@ -302,10 +297,8 @@ async def land(
     shape = shape if shape is not None else select_landing_shape(change_signal, watermark_column)
     tbl = build_table(schema, table, columns, tuple(pk_columns or ()))
     async with store_connection(store_dsn) as conn:
-        if schema and conn.capabilities.schemas:
-            from sqlalchemy.schema import CreateSchema
-
-            await conn.execute_core(CreateSchema(schema, if_not_exists=True))
+        if schema:
+            await create_schema(conn, schema)
         await require_store_replica_table(conn, schema, table, action="write the replica")
         if shape == APPEND:
             # REQ-960: pass the key so the append is an idempotent upsert-by-key, not a blind append.

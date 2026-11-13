@@ -154,6 +154,7 @@ _DDL = re.compile(
 )
 _NOT_ORG_SCHEMA_DDL = {
     "core/schema_org.py": "this metadata, compiled by the fingerprint itself",
+    "core/schema_create.py": "creates the schema its caller names, under a lock; no table",
     "core/schema_admin.py": "the platform plane, never an org's schema",
     "core/boot_lock.py": "the platform plane's boot lock",
     "core/org_registry_view.py": "a view in the root org's schema, never a template's",
