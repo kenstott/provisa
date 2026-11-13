@@ -8,9 +8,9 @@
 // accepts or edits it, and the table is registered with what is declared.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../../../test-utils/render";
-import { NO_PAGING } from "../paging";
+import { NO_PAGING, pagingInput } from "../paging";
+import { held, openTables, submitTables, tableOption } from "./registerFormHelpers";
 
 const OFFERED = [
   {
@@ -28,60 +28,73 @@ vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
   useAvailableSchemas: () => ({ schemas: ["openapi"], loading: false }),
   useAvailableTables: () => ({ tables: OFFERED, loading: false }),
 }));
+const readColumns = async () => [
+  { name: "id", dataType: "integer", comment: null, nativeFilterType: null, isPrimaryKey: true },
+];
+vi.mock("../../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
+}));
+const registerTables = vi.fn();
+vi.mock("../../../hooks/useTableQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useTableQueries")>()),
+  useRegisterTables: () => ({ registerTables, loading: false }),
+}));
+vi.mock("../../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/admin")>()),
+  fetchTableUniqueConstraints: vi.fn().mockResolvedValue([]),
+}));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
 function renderForm() {
-  const onContinue = vi.fn();
-  const setError = vi.fn();
   render(
     <RegisterTableForm
       sources={[{ id: "petstore", type: "openapi", allowedDomains: [] } as never]}
-      domainHints={[]}
+      domainHints={["sales"]}
       domainAccess={["*"]}
       checkedDomains={new Set<string>()}
-      domainsEnabled={false}
+      domainsEnabled={true}
       tables={[]}
       roles={[{ id: "admin" } as never]}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      onContinue={onContinue}
+      onContinue={vi.fn()}
       onCancel={() => {}}
       onProductsRegistered={vi.fn()}
       onRegisteredMany={vi.fn()}
-      setError={setError}
+      setError={vi.fn()}
+      initialSourceId="petstore"
     />,
   );
-  return { onContinue, setError };
 }
 
-async function pickTable(name: string) {
-  const user = userEvent.setup();
-  await user.selectOptions(screen.getByTestId("register-table-source-select"), "petstore");
-  await user.selectOptions(await screen.findByTestId("register-table-table-select"), name);
-  // Discovery is done when the short step counts the columns it registers.
-  await screen.findByTestId("register-table-columns-summary");
-  return user;
+/** The table picked and registered; what its registration sent. */
+async function registered(name: string) {
+  registerTables.mockResolvedValue([
+    { tableName: name, result: { success: true, message: "", params: { id: 1 } } },
+  ]);
+  renderForm();
+  const user = await openTables();
+  await waitFor(() => expect(held(name)).toBe(false));
+  await user.click(tableOption(name));
+  await user.click(submitTables());
+  await waitFor(() => expect(registerTables).toHaveBeenCalled());
+  return registerTables.mock.calls[0][0][0];
 }
 
 describe("RegisterTableForm paging (REQ-318)", () => {
   beforeEach(() => vi.clearAllMocks());
 
-  // Paging is not asked in the short step: the paging the source proposes is carried to the
-  // Load and timeliness section that follows it, where it is accepted or edited (REQ-2109, REQ-318).
-  it("carries the paging a source proposes out of the short step without asking it", async () => {
-    const { onContinue } = renderForm();
-    const user = await pickTable("listPets");
+  // Paging is not asked on Register Table: a table picked is registered with the paging its
+  // source proposes, which the panel's Load and timeliness section edits (REQ-2109, REQ-318).
+  it("registers the paging a source proposes without asking it", async () => {
+    const input = await registered("listPets");
     expect(screen.queryByRole("textbox", { name: "Paging type" })).toBeNull();
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].pagination).toEqual(OFFERED[0].pagination);
+    expect(input.pagination).toEqual(pagingInput(OFFERED[0].pagination as never));
   });
 
   it("registers a table whose source suggests none with no paging", async () => {
-    const { onContinue } = renderForm();
-    const user = await pickTable("getStore");
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].pagination).toBeNull();
+    const input = await registered("getStore");
+    expect(input.pagination).toBeUndefined();
   });
 });

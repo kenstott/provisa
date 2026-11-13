@@ -39,6 +39,8 @@ export function whyNot(
   if (needs.kind === "declared") return t("registerManyTables.needsDeclared");
   if (needs.kind === "noColumns") return t("registerManyTables.needsNoColumns");
   if (needs.kind === "cacheTtl") return t("registerManyTables.needsCacheTtl");
+  if (needs.kind === "vectors")
+    return t("registerManyTables.needsVectorModel", { columns: needs.columns.join(", ") });
   return t("registerManyTables.needsUntyped", { columns: needs.columns.join(", ") });
 }
 

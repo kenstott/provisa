@@ -9,12 +9,12 @@
 // permission from the copyright holder.
 
 // REQ-1921: a new table starts in its source's region, else the region the operator is
-// connected to; the operator may change it or choose No region. With no regions declared there
-// is no field, and the table is registered with none.
+// connected to; the operator changes it on the table's Identity tab. With no regions declared,
+// the table is registered with none. Register Table (REQ-2234) never asks it.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
 import { render, screen, waitFor } from "../../../test-utils/render";
+import { held, openTables, submitTables, tableOption } from "./registerFormHelpers";
 
 const choices = vi.hoisted(() => ({
   value: { regions: ["eu", "us"], connected: "us" as string | null },
@@ -32,6 +32,22 @@ vi.mock("../../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../hooks/useRegionQueries")>()),
   useRegionChoices: () => choices.value,
 }));
+const readColumns = async () => [
+  { name: "id", dataType: "integer", comment: null, nativeFilterType: null, isPrimaryKey: true },
+];
+vi.mock("../../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
+}));
+const registerTables = vi.fn();
+vi.mock("../../../hooks/useTableQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useTableQueries")>()),
+  useRegisterTables: () => ({ registerTables, loading: false }),
+}));
+vi.mock("../../../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../api/admin")>()),
+  fetchTableUniqueConstraints: vi.fn().mockResolvedValue([]),
+}));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
@@ -40,35 +56,35 @@ const SOURCES = [
   { id: "erp", type: "postgresql", allowedDomains: [], region: null },
 ];
 
-function renderForm() {
-  const onContinue = vi.fn();
+/** orders of the source picked and registered; what its registration sent. */
+async function registered(sourceId: string) {
+  registerTables.mockResolvedValue([
+    { tableName: "orders", result: { success: true, message: "", params: { id: 1 } } },
+  ]);
   render(
     <RegisterTableForm
       sources={SOURCES as never}
-      domainHints={[]}
+      domainHints={["sales"]}
       domainAccess={["*"]}
       checkedDomains={new Set<string>()}
-      domainsEnabled={false}
+      domainsEnabled={true}
       tables={[]}
       roles={[{ id: "admin" } as never]}
       suggestTableAlias={vi.fn().mockResolvedValue("")}
-      onContinue={onContinue}
+      onContinue={vi.fn()}
       onCancel={() => {}}
       onProductsRegistered={vi.fn()}
       onRegisteredMany={vi.fn()}
       setError={vi.fn()}
+      initialSourceId={sourceId}
     />,
   );
-  return { onContinue };
-}
-
-async function pick(sourceId: string) {
-  const user = userEvent.setup();
-  await user.selectOptions(screen.getByTestId("register-table-source-select"), sourceId);
-  await user.selectOptions(await screen.findByTestId("register-table-table-select"), "orders");
-  // Discovery is done when the short step counts the columns it registers.
-  await screen.findByTestId("register-table-columns-summary");
-  return user;
+  const user = await openTables();
+  await waitFor(() => expect(held("orders")).toBe(false));
+  await user.click(tableOption("orders"));
+  await user.click(submitTables());
+  await waitFor(() => expect(registerTables).toHaveBeenCalled());
+  return registerTables.mock.calls[0][0][0];
 }
 
 describe("RegisterTableForm region (REQ-1921)", () => {
@@ -77,37 +93,21 @@ describe("RegisterTableForm region (REQ-1921)", () => {
     choices.value = { regions: ["eu", "us"], connected: "us" };
   });
 
-  // The short step does not ask the region: the table starts where its source is, and the region
-  // is changed on its Identity tab.
   it("starts a table in its source's region", async () => {
-    const { onContinue } = renderForm();
-    const user = await pick("crm");
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].input.region).toBe("eu");
+    expect((await registered("crm")).region).toBe("eu");
   });
 
   it("starts a table of a source naming none in the connected region", async () => {
-    const { onContinue } = renderForm();
-    const user = await pick("erp");
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect(onContinue.mock.calls[0][0].input.region).toBe("us");
+    expect((await registered("erp")).region).toBe("us");
   });
 
-  it("does not ask the region in the short step", async () => {
-    renderForm();
-    await pick("crm");
+  it("does not ask the region", async () => {
+    await registered("crm");
     expect(screen.queryByTestId("register-table-region-select")).toBeNull();
   });
 
-  it("shows no region and sends none when the platform declares no regions", async () => {
+  it("sends none when the platform declares no regions", async () => {
     choices.value = { regions: [], connected: null };
-    const { onContinue } = renderForm();
-    const user = await pick("crm");
-    expect(screen.queryByTestId("register-table-region-select")).toBeNull();
-    await user.click(screen.getByTestId("register-table-submit"));
-    await waitFor(() => expect(onContinue).toHaveBeenCalled());
-    expect("region" in onContinue.mock.calls[0][0].input).toBe(false);
+    expect("region" in (await registered("crm"))).toBe(false);
   });
 });

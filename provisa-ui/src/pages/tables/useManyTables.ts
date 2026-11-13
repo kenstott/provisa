@@ -98,7 +98,7 @@ export function useManyTables(choice: ManyTablesChoice) {
       let reading: Reading;
       try {
         const columns = await readColumns(sourceId, schemaName, tbl.name);
-        reading = { state: "read", columns, needs: inputNeeded(tbl, columns) };
+        reading = { state: "read", columns, needs: inputNeeded(tbl, columns, choice.sourceType) };
       } catch (e) {
         reading = { state: "failed", error: e instanceof Error ? e.message : String(e) };
       }
@@ -111,7 +111,7 @@ export function useManyTables(choice: ManyTablesChoice) {
     return () => {
       live = false;
     };
-  }, [readColumns, sourceId, schemaName, pickableKey]);
+  }, [readColumns, sourceId, schemaName, pickableKey, choice.sourceType]);
 
   const needsCacheTtl = choice.needsCacheTtl === true;
   const ready = (name: string) =>
@@ -137,7 +137,12 @@ export function useManyTables(choice: ManyTablesChoice) {
       alias,
       description: tbl.comment ?? "",
       watermarkColumn: defaultWatermark(columns, choice.sourceType),
-      columns: registeredColumns(columns, null),
+      // A collection's vectors go with it to the panel, where each names its model; one left
+      // without a model is not registered (registrationInput).
+      columns: registeredColumns(
+        read.needs?.kind === "vectors" ? columns.map((c) => ({ ...c, selected: true })) : columns,
+        null,
+      ),
       uniqueConstraints,
       pagingKind: tbl.pagingKind ?? null,
       pagination: tbl.pagination ?? null,

@@ -8,31 +8,48 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A source whose connector server is still starting answers the columns read with null. The form
-// shows the starting state (not an empty table), then the columns once the server answers.
+// A source whose connector server is still starting lists no tables yet: the Tables field says
+// so (not an empty list), then offers the tables once the server answers. A table whose columns
+// are still being read is offered, cannot be picked yet and says so, then can be picked.
 
 import { describe, expect, it, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
-import { render, screen } from "../../../test-utils/render";
+import { render, screen, waitFor } from "../../../test-utils/render";
+import { expectReason, held, openTables, tablesField } from "./registerFormHelpers";
 
 vi.mock("../../../context/DomainFilterContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../context/DomainFilterContext")>()),
   useDomainFilter: () => ({ ensureDomainChecked: vi.fn() }),
 }));
 
+const listing = { starting: true };
+const GET_STORE = [{ name: "getStore", comment: "The store", pagingKind: null, pagination: null }];
 vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../../hooks/useAdminQueries")>()),
   useAvailableSchemas: () => ({ schemas: ["openapi"], loading: false }),
   useAvailableTables: () => ({
-    tables: [{ name: "getStore", comment: "The store", pagingKind: null, pagination: null }],
+    tables: listing.starting ? [] : GET_STORE,
     loading: false,
+    starting: listing.starting,
+    startingTimedOut: false,
   }),
+}));
+
+let answer: (columns: unknown[]) => void = () => {};
+const readColumns = vi.fn(
+  () =>
+    new Promise<unknown[]>((resolve) => {
+      answer = resolve;
+    }),
+);
+vi.mock("../../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
 }));
 
 const { RegisterTableForm } = await import("../RegisterTableForm");
 
-describe("RegisterTableForm — columns of a starting source", () => {
-  it("shows the starting state, then the columns the poll returns", async () => {
+describe("RegisterTableForm — tables of a starting source", () => {
+  it("shows the starting state, then the tables, each pickable once its columns are read", async () => {
     const props = {
       sources: [{ id: "petstore", type: "openapi", allowedDomains: [] } as never],
       domainHints: ["sales"],
@@ -47,35 +64,30 @@ describe("RegisterTableForm — columns of a starting source", () => {
       onProductsRegistered: vi.fn(),
       onRegisteredMany: vi.fn(),
       setError: vi.fn(),
+      initialSourceId: "petstore",
     };
-    const { rerender } = render(<RegisterTableForm {...props} columnsStarting />);
-    const user = userEvent.setup();
-    await user.selectOptions(screen.getByTestId("register-table-source-select"), "petstore");
-    await user.selectOptions(await screen.findByTestId("register-table-table-select"), "getStore");
-    expect(await screen.findByTestId("register-table-columns-starting")).toBeInTheDocument();
-    expect(screen.queryByTestId("register-table-columns-summary")).toBeNull();
+    const { rerender } = render(<RegisterTableForm {...props} />);
+    expect(
+      await screen.findByText(
+        "Starting up, discovering files… this can take a while for large datasets",
+      ),
+    ).toBeInTheDocument();
+    expect(tablesField()).toBeDisabled();
 
-    rerender(
-      <RegisterTableForm
-        {...props}
-        columnsStarting={false}
-        lateColumns={{
-          sourceId: "petstore",
-          schemaName: "openapi",
-          tableName: "getStore",
-          columns: [
-            {
-              name: "id",
-              dataType: "integer",
-              isPrimaryKey: true,
-              comment: null,
-              nativeFilterType: null,
-            },
-          ],
-        }}
-      />,
-    );
-    expect(await screen.findByTestId("register-table-columns-summary")).toBeInTheDocument();
-    expect(screen.queryByTestId("register-table-columns-starting")).toBeNull();
+    listing.starting = false;
+    rerender(<RegisterTableForm {...props} />);
+    const user = await openTables();
+    await waitFor(() => expect(held("getStore")).toBe(true));
+    await expectReason(user, "getStore", "Reading its columns…");
+    answer([
+      {
+        name: "id",
+        dataType: "integer",
+        isPrimaryKey: true,
+        comment: null,
+        nativeFilterType: null,
+      },
+    ]);
+    await waitFor(() => expect(held("getStore")).toBe(false));
   });
 });

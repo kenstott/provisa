@@ -26,6 +26,8 @@ import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import type { ColumnDefinitionLine } from "./ColumnGlossaryHover";
 import { VectorModelCell } from "./VectorModelCell";
+import { QdrantVectorColumns } from "./QdrantVectorColumns";
+import { FormLayout } from "../../components/form/FormLayout";
 import { useVectorModels } from "./useVectorModels";
 import {
   governanceWithheld,
@@ -124,6 +126,20 @@ export function TableColumnsSection({
   return (
     <div data-testid="table-section-columns-panel">
       {discover}
+      {editSource?.type === "qdrant" && !editingTable.queryTemplate && (
+        <FormLayout style={{ marginBottom: "0.75rem" }}>
+          <QdrantVectorColumns
+            sourceId={editingTable.sourceId}
+            collection={editingTable.tableName}
+            columns={editingTable.columns.map((c) => ({
+              name: c.columnName,
+              path: c.path,
+              embeddingModel: c.embeddingModel,
+            }))}
+            onModel={(i, m) => updateEditCol(i, "embeddingModel", m)}
+          />
+        </FormLayout>
+      )}
       {/* One tab bar for everything of a column: its own attributes, and its test data. */}
       <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
       {tab === "access" && <SensitiveScanBar scan={scan} />}
