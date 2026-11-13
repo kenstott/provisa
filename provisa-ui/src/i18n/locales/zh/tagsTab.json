@@ -38,6 +38,8 @@
     "policy_hidden": "隐藏",
     "policy_optional": "可选",
     "policy_required": "必填",
+    "requiredLabel": "必填",
+    "requiredDesc": "“适用于”所列类型的每个对象都必须带有此标签。缺少此标签的对象会在标签报告中显示为缺失。",
     "reasonPolicyBadge": "原因：{{policy}}",
     "expiresPolicyBadge": "到期：{{policy}}",
     "createButton": "创建标签",

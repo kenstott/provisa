@@ -38,6 +38,8 @@
     "policy_hidden": "Hidden",
     "policy_optional": "Optional",
     "policy_required": "Required",
+    "requiredLabel": "Required",
+    "requiredDesc": "Every object of the kinds in Applies to must carry this tag. One without it shows as missing in the tags report.",
     "reasonPolicyBadge": "Reason: {{policy}}",
     "expiresPolicyBadge": "Expiry: {{policy}}",
     "createButton": "Create tag",

@@ -38,6 +38,8 @@
     "policy_hidden": "Nascosto",
     "policy_optional": "Facoltativo",
     "policy_required": "Obbligatorio",
+    "requiredLabel": "Obbligatorio",
+    "requiredDesc": "Ogni oggetto dei tipi indicati in «Si applica a» deve avere questo tag. Un oggetto senza il tag risulta mancante nel report dei tag.",
     "reasonPolicyBadge": "Motivo: {{policy}}",
     "expiresPolicyBadge": "Scadenza: {{policy}}",
     "createButton": "Crea tag",

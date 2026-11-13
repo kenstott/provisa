@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "או קבצים התואמים ל",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "Glob על קובצי המקור, כטבלה אחת או טבלה לכל קובץ.",
+    "modeLabel": "כיצד הקבצים נרשמים",
+    "perFile": "טבלה לכל קובץ",
+    "combine": "איחוד לטבלה אחת",
+    "checking": "בודק את הקבצים…",
+    "noMatch": "אין קובץ התואם ל-Glob הזה.",
+    "unmatched": "לא נמצא קובץ עבור {{tables}}.",
+    "matched_one": "קובץ {{count}} תואם ל-{{glob}}",
+    "matched_other": "{{count}} קבצים תואמים ל-{{glob}}",
+    "sharedColumns": "עמודות משותפות: {{columns}}",
+    "noSharedColumns": "אין להם עמודה משותפת.",
+    "differHeading": "העמודות של קבצים אלה שונות, ולכן הם אינם יכולים להיות טבלה אחת. השמיטו אותם או הקלידו Glob שאינו תואם להם:",
+    "differ": "{{file}} {{how}}",
+    "lacks": "חסרות {{columns}}",
+    "adds": "מוסיף {{columns}}",
+    "differUnreadable": "לא ניתן היה לקרוא את {{file}}: {{error}}",
+    "extra": "ה-Glob {{glob}} תואם גם ל-{{files}}, שלא בחרתם.",
+    "includeExtra": "לכלול גם אותם",
+    "extraUnconfirmed": "כללו את הקבצים שה-Glob תואם להם גם כן, או הקלידו Glob התואם רק לקבצים הרצויים.",
+    "nameLabel": "שם הטבלה החדשה",
+    "namePlaceholder": "complaints",
+    "nameRequired": "תנו שם לטבלה החדשה.",
+    "notRegistrable": "לא ניתן לרשום קבצים אלה כטבלה אחת.",
+    "sourceFileColumnLabel": "עמודת קובץ המקור",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "אופציונלי: עמודה המציינת מאיזה קובץ הגיעה כל שורה."
+  }
+}

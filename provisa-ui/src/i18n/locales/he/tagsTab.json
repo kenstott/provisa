@@ -38,6 +38,8 @@
     "policy_hidden": "מוסתר",
     "policy_optional": "אופציונלי",
     "policy_required": "חובה",
+    "requiredLabel": "חובה",
+    "requiredDesc": "כל אובייקט מהסוגים המופיעים ב״חלה על״ חייב לשאת תגית זו. אובייקט בלעדיה מופיע כחסר בדוח התגיות.",
     "reasonPolicyBadge": "סיבה: {{policy}}",
     "expiresPolicyBadge": "תפוגה: {{policy}}",
     "createButton": "יצירת תגית",

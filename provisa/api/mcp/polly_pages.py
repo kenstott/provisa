@@ -160,7 +160,9 @@ PAGES: dict[str, PollyPage] = {
         'tags-expires-policy and tags-param-policy; "Assignments require a citation" is '
         'tags-requires-citation; "Why this tag exists" is the citation list tags-defined-by, '
         "added to with tags-defined-by-picker-document, tags-defined-by-picker-section and "
-        "tags-defined-by-picker-add; tags-save saves the form"
+        "tags-defined-by-picker-add; tags-save saves the form. "
+        "The form's Required switch (tags-required) makes every object of the kinds "
+        "in Applies to carry the tag; one without it is a missing row in the tags report"
     ),
     "/admin/classification-kinds": PollyPage("classification kinds"),
     "/admin/reports": PollyPage("reports"),

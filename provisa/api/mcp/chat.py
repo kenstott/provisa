@@ -46,6 +46,7 @@ from typing import Any
 
 from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage, tag_edit
 from provisa.api.mcp import tools as mcp_tools
+from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
@@ -67,7 +68,7 @@ _TOOLS: list[Any] = [
     },
     {
         "name": "describe_table",
-        "description": "Describe a table: columns (name, type, description) and foreign keys.",
+        "description": DESCRIBE_TABLE,
         "input_schema": {
             "type": "object",
             "properties": {"schema": {"type": "string"}, "table": {"type": "string"}},
