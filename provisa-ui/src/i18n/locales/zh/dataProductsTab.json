@@ -218,7 +218,8 @@
         "data_level_changed": "数据级别从 {{before}} 改为 {{after}}",
         "dq_results_changed": "质量结果从 {{before}} 改为 {{after}}",
         "profiles_changed": "画像从 {{before}} 改为 {{after}}",
-        "duration_changed": "期限从 {{before}} 改为 {{after}}"
+        "duration_changed": "期限从 {{before}} 改为 {{after}}",
+        "terms_of_use_changed": "使用条款已更改：{{subject}}"
       },
       "howToUse": {
         "column": {

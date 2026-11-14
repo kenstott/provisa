@@ -218,7 +218,8 @@
         "data_level_changed": "Nivel de datos cambiado de {{before}} a {{after}}",
         "dq_results_changed": "Resultados de calidad cambiados de {{before}} a {{after}}",
         "profiles_changed": "Perfiles cambiados de {{before}} a {{after}}",
-        "duration_changed": "Duración cambiada de {{before}} a {{after}}"
+        "duration_changed": "Duración cambiada de {{before}} a {{after}}",
+        "terms_of_use_changed": "Condiciones de uso cambiadas: {{subject}}"
       },
       "howToUse": {
         "column": {

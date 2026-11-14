@@ -218,7 +218,8 @@
         "data_level_changed": "डेटा स्तर {{before}} से {{after}} में बदला",
         "dq_results_changed": "क्वालिटी परिणाम {{before}} से {{after}} में बदले",
         "profiles_changed": "प्रोफ़ाइल {{before}} से {{after}} में बदले",
-        "duration_changed": "अवधि {{before}} से {{after}} में बदली"
+        "duration_changed": "अवधि {{before}} से {{after}} में बदली",
+        "terms_of_use_changed": "उपयोग की शर्तें बदलीं: {{subject}}"
       },
       "howToUse": {
         "column": {
