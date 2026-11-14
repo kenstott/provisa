@@ -426,7 +426,8 @@ def build_mcp_server(state: Any):
             "Provisa governed catalog + SQL. Drill down with list_schemas -> "
             "list_tables -> describe_table, then run_sql / explain_sql. Look up "
             "business vocabulary with search_terms. Every call is governed by "
-            "the caller's role."
+            "the caller's role. A tool's optional role argument names the role to act as "
+            "(one you hold: see describe_role); omitted, your session's role."
         ),
     )
     global _session_bounds
@@ -1206,7 +1207,39 @@ def build_mcp_server(state: Any):
             low-confidence ones to a person or further reasoning."""
             return await tools.jev_evaluate(state, _role(role), jev_state, questions)
 
+    # A client is sent every tool's schemas on every model call. Pydantic titles each schema and
+    # property after its own name ("Role", "list_tablesArguments"), which says nothing the names
+    # do not. A title is an annotation: arguments are validated by each tool's argument model and
+    # results by the same schema without it.
+    for info in mcp._tool_manager.list_tools():
+        _drop_titles(info.parameters)
+        _drop_titles(info.output_schema)
     return mcp
+
+
+# Schema keywords whose values are data, not subschemas: a "title" inside them is not a title.
+_SCHEMA_DATA = frozenset({"default", "const", "enum", "examples"})
+
+
+def _drop_titles(schema: Any) -> None:
+    """Remove every ``title`` annotation from a JSON schema, in place."""
+    if isinstance(schema, list):
+        for item in schema:
+            _drop_titles(item)
+        return
+    if not isinstance(schema, dict):
+        return
+    if isinstance(schema.get("title"), str):
+        del schema["title"]
+    for key, value in schema.items():
+        if key in _SCHEMA_DATA:
+            continue
+        if key in ("properties", "$defs", "definitions") and isinstance(value, dict):
+            # Keys here are property or definition names, so a property named "title" stays.
+            for sub in value.values():
+                _drop_titles(sub)
+        else:
+            _drop_titles(value)
 
 
 def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
