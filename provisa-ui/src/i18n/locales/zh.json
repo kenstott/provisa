@@ -47,7 +47,7 @@
     "yes": "是",
     "no": "否",
     "none": "—",
-    "expandUser": "显示 {{username}} 的分配",
+    "expandUser": "展开 {{username}} 的分配",
     "deleteUser": "删除 {{username}} 的账户",
     "assignmentsHeading": "角色:域 分配",
     "noAssignments": "暂无分配",

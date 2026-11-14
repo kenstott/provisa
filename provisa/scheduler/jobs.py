@@ -145,14 +145,9 @@ async def compact_otel_signals() -> None:  # REQ-302, REQ-303
         if state.shared_federation_engine.landed_signals:
             from provisa.observability import native_traces
 
-            from provisa.core.limits import longest_request_timeout
-
-            # A merged batch is kept while a request's read could still hold its listing.
-            merged = await asyncio.to_thread(
-                native_traces.compact,
-                native_traces.traces_dir(),
-                grace_s=longest_request_timeout(),
-            )
+            # A merged file is kept past any listing begun before its merged copy was in place
+            # (native_traces.MERGED_GRACE_S), and the folder stays within day_file_bound (#338).
+            merged = await asyncio.to_thread(native_traces.compact, native_traces.traces_dir())
             logger.debug("compact_otel: merged %d native trace files", merged)
         return
 

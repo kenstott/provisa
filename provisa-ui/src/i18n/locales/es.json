@@ -47,7 +47,7 @@
     "yes": "Sí",
     "no": "No",
     "none": "—",
-    "expandUser": "Mostrar asignaciones de {{username}}",
+    "expandUser": "Expandir las asignaciones de {{username}}",
     "deleteUser": "Eliminar la cuenta de {{username}}",
     "assignmentsHeading": "Asignaciones rol:dominio",
     "noAssignments": "Sin asignaciones",

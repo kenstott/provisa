@@ -94,16 +94,12 @@ async def test_compaction_compacts_nothing_into_duckdb(monkeypatch, tmp_path):
     compacted: list[str] = []
     merged: list[str] = []
     monkeypatch.setattr(jobs, "_compact_signal", lambda signal, *a: compacted.append(signal))
-    monkeypatch.setattr(
-        native_traces, "compact", lambda root, *, grace_s: merged.append((root, grace_s)) or 0
-    )
+    monkeypatch.setattr(native_traces, "compact", lambda *a, **kw: merged.append((a, kw)) or 0)
     await jobs.compact_otel_signals()
     assert compacted == [] and runtime.sent == []
     # REQ-862: DuckDB's own trace lane has its day's small files merged instead, each merged
-    # batch kept while the longest request's read could still hold its listing.
-    from provisa.core.limits import longest_request_timeout
-
-    assert merged == [(native_traces.traces_dir(), longest_request_timeout())]
+    # file kept for the module's own grace (native_traces.MERGED_GRACE_S, #338), not an hour.
+    assert merged == [((native_traces.traces_dir(),), {})]
 
 
 @pytest.mark.asyncio

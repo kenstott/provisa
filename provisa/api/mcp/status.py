@@ -28,6 +28,7 @@ import os
 
 from fastapi import APIRouter, HTTPException, Request
 from provisa.api.admin.capabilities import has_capability_request, require_capability_request
+from provisa.api.mcp.column_state import DESCRIBE_TABLE
 
 router = APIRouter()
 
@@ -44,7 +45,7 @@ _TOOLS = [
     },
     {
         "name": "describe_table",
-        "description": "Describe a table: columns (name, type, description) and foreign keys.",
+        "description": DESCRIBE_TABLE,
     },
     {
         "name": "run_sql",

@@ -708,6 +708,35 @@ class _SyncedStore:
             )
         ]
 
+    def row_counts(self, schema: str) -> dict[str, int]:
+        """The rows each table of ``schema`` holds, read in one operation on the store: a replica
+        build swapping in beside it (drop and rename, ``replica_swap``) lands before or after it,
+        never between the listing and a count. A build table (``BUILD_TABLE_PREFIX``) is a build
+        in progress, not a table anything reads, and is left out."""
+        from provisa.federation.replica_target import BUILD_TABLE_PREFIX
+        from provisa.federation.store_connection import _qualified
+
+        def _counts(con: Any) -> dict[str, int]:
+            names = [
+                row[0]
+                for row in con.execute(
+                    "SELECT table_name FROM duckdb_tables() "
+                    "WHERE database_name = ? AND schema_name = ?",
+                    [_MAT_STORE_ALIAS, schema],
+                ).fetchall()
+                if not row[0].startswith(BUILD_TABLE_PREFIX)
+            ]
+            return {
+                name: int(
+                    con.execute(
+                        f"SELECT count(*) FROM {_qualified(_MAT_STORE_ALIAS, schema, name)}"
+                    ).fetchone()[0]
+                )
+                for name in names
+            }
+
+        return self._run(_counts)
+
     def execute(self, sql: str, params: list | None = None) -> list[tuple]:
         """Run one statement against the store (``mat_store.*`` names resolve) and return its rows.
         For the MV-maintenance statements that act on the store alone (reclaim/orphan DROP, SHOW

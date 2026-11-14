@@ -29,6 +29,8 @@ import { test, expect, BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 import {
   DOMAIN,
+  listedTableNames,
+  schemasLoaded,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
@@ -100,12 +102,15 @@ test.describe("file connector: every recognized format is discoverable, columned
 
     // ── 2. Register Table: enumerate every discovered table ──────────────────────────────────
     await openRegisterForm(page, sourceId);
+    // First attach on a cold JVM: bundle already resolved, but still a JVM boot.
+    await schemasLoaded(page, 180000);
     const schemaSelect = page.getByTestId("register-table-schema-select");
-    await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1, {
-      timeout: 180000, // first attach on a cold JVM: bundle already resolved, but still a JVM boot
-    });
-    if ((await schemaSelect.inputValue()) !== schemaName) {
-      await schemaSelect.selectOption(schemaName);
+    // The Schema field is asked only where the source has more than one (REQ-2234).
+    if ((await schemaSelect.count()) > 0) {
+      await expect(schemaSelect.locator(`option[value='${schemaName}']`)).toHaveCount(1);
+      if ((await schemaSelect.inputValue()) !== schemaName) {
+        await schemaSelect.selectOption(schemaName);
+      }
     }
     // REQ-2234: the Tables field, the standard multi-select, lists them in its open list.
     const field = tablesField(page);
@@ -113,10 +118,7 @@ test.describe("file connector: every recognized format is discoverable, columned
     await field.click();
     // Wait for at least the native tables (cheapest, no conversion) before reading the full list.
     await expect(tableOption(page, "customers")).toBeVisible({ timeout: 120000 });
-    // An option's text is the table's name, followed by Register where it needs input.
-    const discovered = await page
-      .getByRole("option")
-      .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+    const discovered = await listedTableNames(page);
 
     for (const name of NATIVE_TABLES) {
       expect(

@@ -196,6 +196,57 @@ async def tag_target_domains(conn: "Connection", assignment: Any) -> set[str]:
     raise DomainLookupError(f"a {kind!r} tag assignment has no target this gate can place")
 
 
+def tag_offered(
+    tag_domains: Iterable[str], object_domains: Iterable[str], acting: Iterable[str] | None
+) -> bool:  # REQ-2208
+    """Whether a tag whose allowed domains are ``tag_domains`` is offered on, and may be put on, an
+    object in ``object_domains`` (:func:`tag_target_domains`) by a caller acting in ``acting``
+    (``None``: every domain, as ``allowed_domains_request`` answers it).
+
+    A tag that names no domain is every domain's, as a source that names none is. An object is
+    of the tag's domains when one of its domains is among them; a source open to every domain
+    (``*``) is of all of them. An object in no domain (a role) is placed by its assigner instead:
+    the tag is offered to someone acting in one of its domains, for that domain's own purposes."""
+    allowed = {d for d in tag_domains if d}
+    if not allowed or _ALL_DOMAINS in allowed:
+        return True
+    placed = set(object_domains)
+    if placed:
+        return _ALL_DOMAINS in placed or bool(placed & allowed)
+    return acting is None or bool(set(acting) & allowed)
+
+
+async def tag_assignments_outside(
+    conn: "Connection", tag_id: str, tag_domains: Iterable[str]
+) -> list[tuple[dict, set[str]]]:  # REQ-2208
+    """The assignments of tag ``tag_id`` on objects outside ``tag_domains``, each with its object's
+    domains: what narrowing the tag's domains leaves outside them. An assignment on an object in no
+    domain is not among them: whether it is outside is its assigner's domain, which the assignment
+    does not record."""
+    import types
+
+    from provisa.core.models import base_tag_id
+    from provisa.core.repositories import tag as tag_repo
+
+    allowed = list(tag_domains)
+    base = base_tag_id(tag_id)
+    rows = [
+        *await tag_repo.list_assignments(conn),
+        *await tag_repo.list_library_assignments(conn),
+    ]
+    outside: list[tuple[dict, set[str]]] = []
+    for row in rows:
+        if row["base_tag_id"] != base:
+            continue
+        target = types.SimpleNamespace(
+            **{"document_id": None, "section_heading": None, "section_page": None, **row}
+        )
+        domains = await tag_target_domains(conn, target)
+        if domains and not tag_offered(allowed, domains, None):
+            outside.append((row, domains))
+    return outside
+
+
 async def library_target_domains(conn: "Connection", assignment: Any) -> set[str]:
     """The domains of the library document a document or section tag is on (REQ-2208): those it
     names, ``*`` for the whole org's. A section must be one the library read from the document:

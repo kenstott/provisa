@@ -10,13 +10,16 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
-import type { Tag, TagAssignment } from "../types/admin";
+import { offeredTagsFor } from "../test-utils/offeredTags";
+import type { Tag, TagAssignment, TagTarget } from "../types/admin";
 import { TagControl } from "../components/TagControl";
 
 const assignSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 const unassignSpy = vi.fn(async () => ({ success: true, message: "ok" }));
 
 let mockTags: Tag[] = [];
+// The tags the server places outside the object's domains (offeredTags), per test.
+let notOffered: ReadonlySet<string> = new Set();
 let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: vmThreads + fileParallelism:false share one module registry, so a
@@ -27,6 +30,7 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
   useAssignTag: () => ({ assignTag: assignSpy }),
   useUnassignTag: () => ({ unassignTag: unassignSpy }),
+  useOfferedTags: (target: TagTarget) => offeredTagsFor(mockTags, target, notOffered),
 }));
 
 // A column's term, as the pii flow reads it: none unless a test names one.
@@ -43,6 +47,7 @@ vi.mock("react-router-dom", async (importOriginal) => ({
 
 describe("TagControl", () => {
   beforeEach(() => {
+    notOffered = new Set();
     termByRef.term = null;
     navigateTo.mockClear();
     assignSpy.mockClear();
@@ -58,6 +63,8 @@ describe("TagControl", () => {
         expiresPolicy: "optional",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -72,6 +79,8 @@ describe("TagControl", () => {
         expiresPolicy: "hidden",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -86,6 +95,8 @@ describe("TagControl", () => {
         expiresPolicy: "required",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -100,6 +111,8 @@ describe("TagControl", () => {
         expiresPolicy: "optional",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -114,6 +127,8 @@ describe("TagControl", () => {
         expiresPolicy: "hidden",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -128,6 +143,8 @@ describe("TagControl", () => {
         expiresPolicy: "hidden",
         paramPolicy: "required",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [
@@ -165,6 +182,26 @@ describe("TagControl", () => {
     await screen.findByTestId("tag-option-deprecated");
     expect(screen.getByTestId("tag-option-finance")).toBeInTheDocument();
     expect(screen.queryByTestId("tag-option-pii")).toBeNull();
+  });
+
+  it("picker offers only the tags the server offers on the object, by its domains", async () => {
+    // REQ-2208: finance applies to tables, but the server places table 7 outside its domains.
+    notOffered = new Set(["finance"]);
+    render(<TagControl objectType="table" tableId={7} />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    await screen.findByTestId("tag-option-deprecated");
+    expect(screen.queryByTestId("tag-option-finance")).toBeNull();
+  });
+
+  it("picker keeps a tag already on the object outside its domains, so it can be taken off", async () => {
+    // Narrowing a tag's domains removes no assignment: table 8 keeps finance, unchecked here.
+    notOffered = new Set(["finance"]);
+    render(<TagControl objectType="table" tableId={8} />);
+    fireEvent.click(screen.getByTestId("tag-picker-toggle"));
+    fireEvent.click(await screen.findByTestId("tag-option-finance"));
+    await waitFor(() =>
+      expect(unassignSpy).toHaveBeenCalledWith(expect.objectContaining({ tagId: "finance" })),
+    );
   });
 
   it("picker never offers a derived tag, which the server refuses to assign", async () => {
@@ -566,6 +603,8 @@ describe("TagControl: row rules, roles and metrics", () => {
         expiresPolicy: "hidden",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -580,6 +619,8 @@ describe("TagControl: row rules, roles and metrics", () => {
         expiresPolicy: "hidden",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],
@@ -594,6 +635,8 @@ describe("TagControl: row rules, roles and metrics", () => {
         expiresPolicy: "hidden",
         paramPolicy: "none",
         requiresCitation: false,
+        required: false,
+        allowedDomains: [],
         citations: [],
         needsReview: false,
         paramValues: [],

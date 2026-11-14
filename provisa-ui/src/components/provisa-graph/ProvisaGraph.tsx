@@ -361,20 +361,25 @@ export function ProvisaGraph({
       setLayingOut(false);
       setFailed(error instanceof Error ? error : new Error(String(error)));
     };
-    /** The canvas, its layouts' failures said: one that throws as it starts, or whose placement
-     * throws once it answers, ends the laying out and goes to the page's error path. */
+    /** The canvas, its layouts' failures said: one that throws as it starts, that fails after it
+     * started (ELK's rejected answer), or whose placement throws once it answers, ends the laying
+     * out and goes to the page's error path. */
     const laying: CyCanvas = {
       container: canvas.container,
       end: canvas.end,
       run(layout, then) {
         try {
-          canvas.run(layout, () => {
-            try {
-              then?.();
-            } catch (error) {
-              fail(error);
-            }
-          });
+          canvas.run(
+            layout,
+            () => {
+              try {
+                then?.();
+              } catch (error) {
+                fail(error);
+              }
+            },
+            fail,
+          );
         } catch (error) {
           fail(error);
         }
@@ -543,6 +548,8 @@ export function ProvisaGraph({
         cy.nodes('[kind = "node"]').forEach((n) => {
           if (!connected.has(n.id())) n.style("display", "none");
         });
+        // ELK through Provisa's own adapter (ERD_ELK_LAYOUT names it), which says a failure after
+        // the layout started.
         laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
           const opts = latest.current.options;
           const rect = box.getBoundingClientRect();

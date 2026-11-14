@@ -47,7 +47,7 @@
     "yes": "Да",
     "no": "Нет",
     "none": "—",
-    "expandUser": "Показать назначения для {{username}}",
+    "expandUser": "Развернуть назначения для {{username}}",
     "deleteUser": "Удалить учётную запись {{username}}",
     "assignmentsHeading": "Назначения роль:домен",
     "noAssignments": "Нет назначений",

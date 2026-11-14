@@ -31,8 +31,8 @@ _CHECKER_ID = {
         "scans the target; with several, the call is refused naming them."
     ),
 }
-_RIGHT_TABLE = "Needs table_registration; a caller without it is refused 'Missing capability'."
-_RIGHT_ENV = "Needs environment_management; a caller without it is refused 'Missing capability'."
+_RIGHT_TABLE = "Needs table_registration."
+_RIGHT_ENV = "Needs environment_management."
 
 
 def _obj(properties: dict, required: list[str] | None = None) -> dict:
@@ -43,11 +43,10 @@ SPECS: list[dict] = [
     {
         "name": "find_table_id",
         "description": (
-            "The numeric id of a registered table, which every profiler, constraint, check and "
-            "fake tool takes. `domain` is the table's domain (the schema list_schemas/"
-            "describe_table show) and `table` its registered name or alias. Returns every match "
-            "with its id, source, domain, name and the profiler it belongs to; empty when none "
-            "matches. Read only. " + _RIGHT_TABLE
+            "The numeric id of a registered table, which the profiler, constraint, check and fake"
+            " tools take. domain: the table's domain (schema); table: its registered name or "
+            "alias. Returns every match (id, source, domain, name, profiler); empty if none. Read"
+            " only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"domain": {"type": "string"}, "table": {"type": "string"}}, ["domain", "table"]
@@ -56,20 +55,18 @@ SPECS: list[dict] = [
     {
         "name": "list_profilers",
         "description": (
-            "List the Data Profiler sources: each one's id, cron schedule, sample budget "
-            "(sampleAboveCells), lowCardinalityMax and member tables. Read only. " + _RIGHT_TABLE
+            "List the Data Profiler sources: id, cron schedule, sample budget (sampleAboveCells),"
+            " lowCardinalityMax, member tables. Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj({}),
     },
     {
         "name": "set_table_profiler",
         "description": (
-            "Add a table to a profiler (profiler_source_id = a profiler id from "
-            "list_profilers) or remove it from the one it is in (profiler_source_id = null). "
-            "Saved through the table editor's own save, so its refusals come back verbatim: a "
-            "table whose rows need a required filter cannot join a profiler, and an unknown "
-            "profiler id is refused. Removing a table stops its scheduled profiling: confirm with "
-            "present_choice (mode='yes_no') before removing. " + _RIGHT_TABLE
+            "Add a table to a profiler (profiler_source_id from list_profilers) or remove it "
+            "(null). A table whose rows need a required filter cannot join; refusals come back "
+            "verbatim. Removing stops its scheduled profiling: confirm with the user "
+            "(present_choice, mode='yes_no') first. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -82,32 +79,27 @@ SPECS: list[dict] = [
     {
         "name": "run_profiler",
         "description": (
-            "Run a profiler now over every member table. Refused 'not_a_profiler' when "
-            "the id is not a profiler source. Needs source_registration; a caller without it is "
-            "refused 'Missing capability'."
+            "Run a profiler now over all its member tables. Needs source_registration."
         ),
         "input_schema": _obj({"source_id": {"type": "string"}}, ["source_id"]),
     },
     {
         "name": "run_table_profile",
         "description": (
-            "Profile one table now (Run Profile Now). Refused when the table has not "
-            "joined a profiler ('has not joined a profiler') or the run fails (the reason is "
-            "returned). Returns runId, rowCount and profiledRows. " + _RIGHT_TABLE
+            "Profile one table now; it must have joined a profiler. Returns runId, rowCount, "
+            "profiledRows. " + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
     {
         "name": "declare_table_profile",
         "description": (
-            "Store a declared profile of a table in the active environment -- the facts "
-            "a profile run measures, written by hand, so a table with no data to profile can be "
-            "generated, or a what-if: {rowCount, columns: {<column>: {nullShare, distinctCount, "
-            "range {min, max} | quantiles [101] | values [{value, weight}] | shapes [{shape, "
-            "weight}], integerOnly}}, fanouts: {<relationship>: {range | quantiles}}, dependence}. "
-            "A column left out takes its fake or synthetic rule; one with none is refused by "
-            "name. Start from get_profile_run_as_declared to copy a run. Returns runId. "
-            + _RIGHT_TABLE
+            "Store a hand-written profile of a table in the active environment (a table with no "
+            "data, or a what-if): {rowCount, columns: {<column>: {nullShare, distinctCount, range"
+            " {min, max} | quantiles [101] | values [{value, weight}] | shapes [{shape, weight}],"
+            " integerOnly}}, fanouts: {<relationship>: {range | quantiles}}, dependence}. An "
+            "omitted column uses its fake or synthetic rule; one with neither is refused. Copy a "
+            "run with get_profile_run_as_declared. Returns runId. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "profile": {"type": "object"}}, ["table_id", "profile"]
@@ -116,9 +108,8 @@ SPECS: list[dict] = [
     {
         "name": "get_profile_run_as_declared",
         "description": (
-            "A table's profile run (measured or declared) as a declared profile "
-            "document, as the caller may see it -- to change and store with "
-            "declare_table_profile. Read only. " + _RIGHT_TABLE
+            "A table's profile run (measured or declared) as a declared profile you may edit and "
+            "store with declare_table_profile. Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "run_id": {"type": "string"}}, ["table_id", "run_id"]
@@ -127,22 +118,19 @@ SPECS: list[dict] = [
     {
         "name": "list_profile_runs",
         "description": (
-            "A table's profile run history, newest first (run_id, run_time, status, "
-            "row_count, sampling, error). Read only. Refused when the table has not joined a "
-            "profiler. " + _RIGHT_TABLE
+            "A table's profile runs, newest first (run_id, run_time, status, row_count, sampling,"
+            " error); it must have joined a profiler. Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
     {
         "name": "get_table_profile",
         "description": (
-            "One profile run's results, as YOUR role may see them (masked columns stay "
-            "masked). run_id defaults to the latest succeeded run; refused when there is none. "
-            "kinds picks result kinds; left out it returns runs, columns, top_values, "
-            "plausible_type, constraints, constraint_checks, classifications and drift. Other "
-            "kinds: quantiles, "
-            "histogram, fits, fit_quality, fanout, fanout_runs, shapes, duplicates, correlations, "
-            "dependencies, joint_counts, repeats. Read only. " + _RIGHT_TABLE
+            "One profile run's results as your role may see them (masked columns stay masked). "
+            "run_id: default the latest succeeded run. kinds: default runs, columns, top_values, "
+            "plausible_type, constraints, constraint_checks, classifications, drift; also "
+            "quantiles, histogram, fits, fit_quality, fanout, fanout_runs, shapes, duplicates, "
+            "correlations, dependencies, joint_counts, repeats. Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -156,23 +144,20 @@ SPECS: list[dict] = [
     {
         "name": "list_profile_constraints",
         "description": (
-            "The constraints the latest succeeded profile run proposes (not_null, "
-            "unique, value_set, range, ordering; each with evidence, share and whether it rests "
-            "on a sample), the decisions already taken (accepted/dismissed, with their ids) and "
-            "the checker tables an accepted one can be exported to. Read only. " + _RIGHT_TABLE
+            "The constraints the latest succeeded run proposes (not_null, unique, value_set, "
+            "range, ordering; with evidence, share, whether sampled), the decisions taken (with "
+            "ids), and the checker tables an accepted one can be exported to. Read only. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
     {
         "name": "decide_profile_constraint",
         "description": (
-            "Accept or dismiss ONE constraint the latest succeeded run proposes, named "
-            "by kind + column (+ other_column for an ordering) exactly as list_profile_constraints "
-            "shows it. status is 'accepted' or 'dismissed'. To accept an edited form pass "
-            "definition (the kind's parameters, e.g. {values:[...]} or {min,max}); left out, the "
-            "proposed definition is accepted. Every later run checks accepted constraints. "
-            "Refused when the run proposes no such constraint, or the definition is invalid. "
-            + _RIGHT_TABLE
+            "Accept or dismiss one proposed constraint, named by kind + column (+ other_column "
+            "for ordering) as list_profile_constraints shows it. definition: an edited form to "
+            "accept (e.g. {values:[...]} or {min,max}); omitted, the proposed one. Later runs "
+            "check accepted constraints. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -189,8 +174,8 @@ SPECS: list[dict] = [
     {
         "name": "forget_profile_constraint",
         "description": (
-            "Withdraw an accept/dismiss decision by its id (from "
-            "list_profile_constraints); the constraint is proposed as new again. " + _RIGHT_TABLE
+            "Withdraw an accept/dismiss decision by its id (from list_profile_constraints); the "
+            "constraint is proposed again. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "constraint_id": {"type": "string"}},
@@ -200,9 +185,8 @@ SPECS: list[dict] = [
     {
         "name": "export_profile_constraint",
         "description": (
-            "Add an ACCEPTED constraint to a data-quality checker table whose contract "
-            "scans the table. Refused when the constraint is not accepted, or no checker (or more "
-            "than one, with checker_table_id left out) scans the table. " + _RIGHT_TABLE
+            "Add an accepted constraint to a data-quality checker table that scans the table. "
+            "checker_table_id: needed only when several checkers scan it. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -216,18 +200,18 @@ SPECS: list[dict] = [
     {
         "name": "list_profile_checks",
         "description": (
-            "What a drift or expectation check for a table can use: whether its drift "
-            "result table is registered, the checker tables scanning it, and the registered "
-            "tables of the expectations shape. Read only. " + _RIGHT_TABLE
+            "What a drift or expectation check for a table can use: whether its drift result "
+            "table is registered, the checker tables scanning it, and the expectations-shaped "
+            "tables. Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
     {
         "name": "create_drift_check",
         "description": (
-            "Add a drift check over the table's registered drift result table to a "
-            "checker. Refused when the drift table is not registered on the profiler ('register "
-            "it on the profiler first') or no single checker scans it. " + _RIGHT_TABLE
+            "Add a drift check over the table's drift result table (registered on the profiler) "
+            "to a checker. checker_table_id: needed only when several checkers scan it. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "checker_table_id": _CHECKER_ID}, ["table_id"]
@@ -236,11 +220,10 @@ SPECS: list[dict] = [
     {
         "name": "create_expectation_check",
         "description": (
-            "Add an expectation check comparing the table's drift results with an "
-            "expectations table (expectations_table_id, one of list_profile_checks' "
-            "expectationTables). Refused when that table is not of the expectations shape (the "
-            "missing columns are named), the drift table is not registered, or no single checker "
-            "scans it. " + _RIGHT_TABLE
+            "Add a check comparing the table's drift results with an expectations table "
+            "(expectations_table_id, from list_profile_checks' expectationTables). The drift "
+            "table must be registered; checker_table_id: needed only when several checkers scan "
+            "it. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -254,33 +237,29 @@ SPECS: list[dict] = [
     {
         "name": "list_fake_kinds",
         "description": (
-            "The kinds of fake (categories, bool, distributions, relative fakes, sql, "
-            "...) and the fake methods (email, name, phone, ...) a column can declare, with their "
-            "argument names. Read this before writing a fake. A declaration is one call, e.g. "
-            "categories((shoes, bra), (.4, .6)), normal(mean=50, sd=10, min=0), "
-            "after(created_at, 1 to 10 days), email(). Kinds marked syntheticRuleOnly may only be "
-            "a synthetic rule. Read only. " + _RIGHT_TABLE
+            "The kinds of fake (categories, bool, distributions, relative fakes, sql, ...) and "
+            "fake methods (email, name, phone, ...) a column can declare, with argument names. "
+            "Read before writing a fake. A declaration is one call, e.g. categories((shoes, bra),"
+            " (.4, .6)), normal(mean=50, sd=10, min=0), after(created_at, 1 to 10 days), email()."
+            " syntheticRuleOnly kinds may only be a synthetic rule. Read only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj({}),
     },
     {
         "name": "get_table_fakes",
         "description": (
-            "Each column of a table with its fake, whether the fake is stable, its "
-            "synthetic rule and whether it is tagged pii. Read only. " + _RIGHT_TABLE
+            "Each column of a table with its fake, stable flag, synthetic rule and pii tag. Read "
+            "only. " + _RIGHT_TABLE
         ),
         "input_schema": _obj({"table_id": _TABLE_ID}, ["table_id"]),
     },
     {
         "name": "set_column_fake",
         "description": (
-            "Set or clear one column's fake, synthetic rule (used only by synthetic "
-            "generation, laid over the fake) and stable flag. A field left out keeps its value; "
-            "'' (empty string) clears a fake or a synthetic rule. Checked exactly as the table editor checks it, then saved "
-            "through the editor's save; a refusal comes back verbatim, e.g. an unknown kind or "
-            "method, arguments the kind does not take, shares that do not sum to one, a relative "
-            "fake naming a missing column, a cycle, a kind wrong for the column's type, or a "
-            "method no column can hold. " + _RIGHT_TABLE
+            "Set or clear one column's fake, synthetic rule (used only by synthetic generation, "
+            "over the fake) and stable flag. An omitted field keeps its value; '' clears a fake "
+            "or rule. Checked as the table editor checks it; refusals come back verbatim. "
+            + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {
@@ -296,15 +275,11 @@ SPECS: list[dict] = [
     {
         "name": "propose_fakes",
         "description": (
-            "Fill from profile — propose a fake for each identifying column and a "
-            "synthetic rule for the rest, from the table's latest succeeded profile run. Saves "
-            "NOTHING: show the proposals, ask the user which to save (present_choice), then save "
-            "each chosen one with set_column_fake. Refused 'no succeeded profile run' when the "
-            "table has not been profiled in this environment. unmatchedPii lists pii columns with "
-            "no confident proposal. columns: propose for these columns only, each from the "
-            "profile even when it already declares a fake or a rule (to ask which fake the "
-            "profile suggests for a column); left out, every column that declares neither. "
-            + _RIGHT_TABLE
+            "Propose a fake for each identifying column and a synthetic rule for the rest, from "
+            "the table's latest succeeded profile run. Saves nothing: show the proposals, ask the"
+            " user which to save (present_choice), then save each with set_column_fake. "
+            "unmatchedPii: pii columns with no confident proposal. columns: only these, even if "
+            "already declared; omitted, every column declaring neither. " + _RIGHT_TABLE
         ),
         "input_schema": _obj(
             {"table_id": _TABLE_ID, "columns": {"type": "array", "items": {"type": "string"}}},
@@ -314,32 +289,29 @@ SPECS: list[dict] = [
     {
         "name": "list_synthetic_datasets",
         "description": (
-            "The synthetic datasets defined in this environment: id, seed, scale, "
-            "status, the store schema they generate into, and their tables (each from a profile "
-            "run). Read only. " + _RIGHT_ENV
+            "The synthetic datasets in this environment: id, seed, scale, status, store schema, "
+            "tables (each from a profile run). Read only. " + _RIGHT_ENV
         ),
         "input_schema": _obj({}),
     },
     {
         "name": "list_synthetic_profile_runs",
         "description": (
-            "The tables environment `env` has succeeded profile runs of, with their "
-            "runs newest first — the runs a dataset can be generated from. Read only. " + _RIGHT_ENV
+            "The tables environment env has succeeded profile runs of, runs newest first: what a "
+            "dataset can be generated from. Read only. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
     {
         "name": "define_synthetic_dataset",
         "description": (
-            "Define (or redefine) a synthetic dataset: dataset_id, seed, scale (rows "
-            "relative to the profiled tables) and tables, each {tableId, profileEnv, runId, "
-            "scale?} from list_synthetic_profile_runs. Refused verbatim for an invalid name, a "
-            "table set missing a parent its relationships need, or a pii column with neither a "
-            "fake nor a synthetic rule. Redefining an existing id replaces it. Optional: "
-            "fanoutConditions [{relationship, condition, count: {fixed} | {low, high} | "
-            "{measured: true}}], assertions [statement], privateEpsilon (makes it private), and "
-            "closenessThreshold with closenessDraws (both or neither; neither: closeness is not "
-            "checked). " + _RIGHT_ENV
+            "Define or replace a synthetic dataset: dataset_id, seed, scale (rows relative to the"
+            " profiled tables), tables [{tableId, profileEnv, runId, scale?}] from "
+            "list_synthetic_profile_runs. Optional: fanoutConditions [{relationship, condition, "
+            "count: {fixed} | {low, high} | {measured: true}}], assertions [statement], "
+            "privateEpsilon (makes it private), closenessThreshold with closenessDraws (both or "
+            "neither). Refused for an invalid name, a table missing a parent its relationships "
+            "need, or a pii column with neither fake nor synthetic rule. " + _RIGHT_ENV
         ),
         "input_schema": _obj(
             {
@@ -382,50 +354,45 @@ SPECS: list[dict] = [
     {
         "name": "generate_synthetic_dataset",
         "description": (
-            "Generate a defined dataset's rows into its store schema (replacing rows "
-            "generated before). Refused verbatim when the dataset is unknown or its definition "
-            "cannot be generated. " + _RIGHT_ENV
+            "Generate a defined dataset's rows into its store schema, replacing rows generated "
+            "before. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"dataset_id": {"type": "string"}}, ["dataset_id"]),
     },
     {
         "name": "get_synthetic_report",
         "description": (
-            "The comparison report of a generated dataset — per table, column and "
-            "measure, the source value, the synthetic value, their delta and a note. Read only. "
-            + _RIGHT_ENV
+            "A generated dataset's comparison report: per table, column and measure, the source "
+            "and synthetic values, their delta and a note. Read only. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"dataset_id": {"type": "string"}}, ["dataset_id"]),
     },
     {
         "name": "drop_synthetic_dataset",
         "description": (
-            "Drop a synthetic dataset and its generated tables. Irreversible — always "
-            "confirm with present_choice (mode='yes_no') first. Refused 'not_found' for an "
-            "unknown id. " + _RIGHT_ENV
+            "Drop a synthetic dataset and its generated tables. Irreversible: confirm with the "
+            "user (present_choice, mode='yes_no') first. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"dataset_id": {"type": "string"}}, ["dataset_id"]),
     },
     {
         "name": "get_environment_detail",
         "description": (
-            "An environment's detail -- its parent, data mode (inherit, unbound, "
-            "test_fake, test_synthetic; none for prod), mutation handling (refused, reversible, "
-            "direct), each source's binding (own, inherited, unbound), and its test data: the "
-            "faked column count, the sensitive columns with no fake, the synthetic dataset's "
-            "status. Read only. " + _RIGHT_ENV
+            "An environment's parent, data mode (inherit, unbound, test_fake, test_synthetic; "
+            "none for prod), mutation handling (refused, reversible, direct), each source's "
+            "binding (own, inherited, unbound), and test data (faked column count, sensitive "
+            "columns with no fake, synthetic dataset status). Read only. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
     {
         "name": "set_environment_data",
         "description": (
-            "Change an environment's data mode and/or mutation handling. Inherit and "
-            "unbound set every source's binding; the test modes leave them. A change to or from "
-            "test_synthetic discards the kept mutations: refused unless confirmDiscard is true "
-            "-- ask the user first with present_choice (mode='yes_no'). Test (fake) is refused "
-            "while a sensitive column has no fake. Needs environment_data; a caller without it "
-            "is refused 'Missing capability'."
+            "Change an environment's data mode and/or mutation handling. inherit and unbound set "
+            "every source's binding; the test modes leave them. A change to or from "
+            "test_synthetic discards kept mutations: refused unless confirmDiscard is true, so "
+            "ask the user first (present_choice, mode='yes_no'). test_fake is refused while a "
+            "sensitive column has no fake. Needs environment_data."
         ),
         "input_schema": _obj(
             {
@@ -443,11 +410,9 @@ SPECS: list[dict] = [
     {
         "name": "set_source_binding",
         "description": (
-            "Set one source's binding in an environment: copied (its connection copied "
-            "again from the parent, as the parent wrote it), unbound (cleared), or own -- a "
-            "connection of the environment's own, given as connection {host, port, database, "
-            "username, password} or {path}. Needs environment_data; a caller without it is "
-            "refused 'Missing capability'."
+            "Set one source's binding in an environment: copied (the parent's connection, as "
+            "written), unbound (cleared), or own, with connection {host, port, database, "
+            "username, password} or {path}. Needs environment_data."
         ),
         "input_schema": _obj(
             {
@@ -462,10 +427,8 @@ SPECS: list[dict] = [
     {
         "name": "recopy_environment_sources",
         "description": (
-            "Re-copy from parent -- replace the connection of each named source in an "
-            "environment (every source when sources is omitted) with its parent's, exactly as the "
-            "parent wrote it. Needs environment_data; a caller without it is refused 'Missing "
-            "capability'."
+            "Replace the connection of each named source in an environment (every source when "
+            "sources is omitted) with its parent's, as written. Needs environment_data."
         ),
         "input_schema": _obj(
             {"env": {"type": "string"}, "sources": {"type": "array", "items": {"type": "string"}}},
@@ -475,30 +438,22 @@ SPECS: list[dict] = [
     {
         "name": "get_environment_synthetic_plan",
         "description": (
-            "For a Test (synthetic) environment, what generating its whole model "
-            "would do: every table with the profiles it may be generated from, measured or "
-            "declared (selected: the parent's latest measured run, else the latest declared "
-            "profile); unavailable -- the API tables that need a required parameter and have no "
-            "declared profile, each with why; commandsNotDefined -- the commands of each API "
-            "source, which a synthetic environment does not define; and ready. Read only. "
-            + _RIGHT_ENV
+            "For a Test (synthetic) environment, what generating its whole model would do: each "
+            "table with the profiles it may use (selected: the parent's latest measured run, else"
+            " the latest declared profile), unavailable tables with why, commandsNotDefined, and "
+            "ready. Read only. " + _RIGHT_ENV
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
     {
         "name": "generate_environment_model",
         "description": (
-            "Generate a Test (synthetic) environment's whole model, in two steps. "
-            "Without digest it generates nothing and returns the Limitations of Synthetic Data "
-            "warning: what the environment loses, each table to be generated with its profile "
-            "and estimated rows, each table that will not be available, each command that will "
-            "not be defined, and the kept mutations it discards. Show the user that warning and "
-            "ask with present_choice (mode='yes_no'); once they confirm, call again with the "
-            "same runs, seed and scale and the warning's digest to start generating in the "
-            "background -- the environment's detail then shows generating, then ready or failed "
-            "with the reason. runs maps a table id to a profile run id (a table left out takes "
-            "the preselected one). Needs environment_data; a caller without it is refused "
-            "'Missing capability'."
+            "Generate a Test (synthetic) environment's whole model, in two calls. Without digest "
+            "it generates nothing and returns the Limitations of Synthetic Data warning: show it "
+            "and ask the user (present_choice, mode='yes_no'); once they confirm, call again with"
+            " the same runs, seed and scale and the warning's digest to generate in the "
+            "background (get_environment_detail shows progress). runs: {table id: profile run "
+            "id}; an omitted table takes the preselected run. Needs environment_data."
         ),
         "input_schema": _obj(
             {
@@ -514,19 +469,17 @@ SPECS: list[dict] = [
     {
         "name": "reset_environment_mutations",
         "description": (
-            "Reset mutations -- drop the mutations a Reversible environment keeps, "
-            "returning it to its baseline (the parent's real rows, the generated rows, or a "
-            "database of its own). Irreversible: confirm with present_choice (mode='yes_no') "
-            "first. Needs environment_data; a caller without it is refused 'Missing capability'."
+            "Drop the mutations a Reversible environment keeps, returning it to its baseline. "
+            "Irreversible: confirm with the user (present_choice, mode='yes_no') first. Needs "
+            "environment_data."
         ),
         "input_schema": _obj({"env": {"type": "string"}}, ["env"]),
     },
     {
         "name": "export_model_config",
         "description": (
-            "Export the acting org's governed model as a config file (YAML): "
-            "returns {filename, yaml}. Read only. Needs user_management in this org (an "
-            "org_admin); others are refused 'user_management in <org> required'."
+            "Export the acting org's governed model as a YAML config: {filename, yaml}. Read "
+            "only. Needs user_management in the org (org_admin)."
         ),
         "input_schema": _obj({}),
     },

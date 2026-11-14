@@ -47,7 +47,7 @@
     "yes": "כן",
     "no": "לא",
     "none": "—",
-    "expandUser": "הצגת שיוכים עבור {{username}}",
+    "expandUser": "הרחבת השיוכים עבור {{username}}",
     "deleteUser": "מחיקת החשבון של {{username}}",
     "assignmentsHeading": "שיוכי תפקיד:דומיין",
     "noAssignments": "אין שיוכים",

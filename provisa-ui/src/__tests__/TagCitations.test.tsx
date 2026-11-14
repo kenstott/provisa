@@ -14,10 +14,11 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../test-utils/render";
+import { offeredTagsFor } from "../test-utils/offeredTags";
 import i18n from "../i18n";
 import { TagCitations } from "../components/TagCitations";
 import { TagControl } from "../components/TagControl";
-import type { LibraryCitation, Tag, TagAssignment } from "../types/admin";
+import type { LibraryCitation, Tag, TagAssignment, TagTarget } from "../types/admin";
 
 const t = i18n.getFixedT("en");
 
@@ -34,6 +35,8 @@ const unciteAssignment = vi.fn(async (..._a: unknown[]) => ({ success: true, mes
 const assignTag = vi.fn(async (..._a: unknown[]) => ({ success: true, message: "ok" }));
 
 let mockTags: Tag[] = [];
+// The tags the server places outside the object's domains (offeredTags), per test.
+const notOffered: ReadonlySet<string> = new Set();
 let mockAssignments: TagAssignment[] = [];
 vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useTagQueries")>()),
@@ -41,6 +44,7 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
   useAssignTag: () => ({ assignTag }),
   useUnassignTag: () => ({ unassignTag: vi.fn() }),
+  useOfferedTags: (target: TagTarget) => offeredTagsFor(mockTags, target, notOffered),
   useTagCitations: () => ({
     citeDefinition: cite,
     unciteDefinition: uncite,
@@ -79,6 +83,8 @@ const tag = (over: Partial<Tag> = {}): Tag => ({
   paramPolicy: "none",
   paramValues: [],
   requiresCitation: false,
+  required: false,
+  allowedDomains: [],
   citations: [],
   needsReview: false,
   ...over,

@@ -600,6 +600,10 @@
         "label": "MCP local principal",
         "help": "The principal (user id) local (stdio) MCP calls act for, beside the local role; that person's entitlements narrow the role. Until it is set those calls are refused. Guarded because it acts with that person's access for anyone who can start the local client."
       },
+      "tools": {
+        "label": "MCP tools listed",
+        "help": "The tools listed to an MCP client whose address names none (tools=full or tools=sip on the address). full lists every tool; sip lists the tools for finding, describing, querying and reading metrics, plus one tool that adds the other groups when the client asks. Every tool can be called in either mode, as the caller's rights allow."
+      },
       "external_url": {
         "label": "MCP external address",
         "help": "The MCP address shown to users when the deployment sits behind a proxy."

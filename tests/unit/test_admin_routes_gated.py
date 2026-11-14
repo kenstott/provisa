@@ -129,6 +129,11 @@ EXEMPT: dict[tuple[str, str], str] = {
 EXEMPT[("graphql:query", "tags")] = (
     "org tag vocabulary read by every role's pages; names no table, column, source or role"
 )
+# REQ-2208 (A TAG IS OFFERED BY DOMAIN): the ids, from that same vocabulary, that the picker offers on
+# one object. It returns tag ids only; a tag's allowed domains are already in ``tags``.
+EXEMPT[("graphql:query", "offeredTags")] = (
+    "ids from the org tag vocabulary offered on one object; returns no table, column, source or role"
+)
 # resolveOwners is answered per right (has_capability("user_management") decides whether the user id
 # and e-mail come back), and tagAssignments by the right to read each tagged object, so both count
 # as gated and need no entry.

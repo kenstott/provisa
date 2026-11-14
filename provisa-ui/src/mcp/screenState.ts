@@ -75,6 +75,7 @@ export const INPUT_ROUTES: ReadonlySet<string> = new Set([
   "/relationships",
   "/data-products",
   "/admin/ontology",
+  "/explore",
 ]);
 
 function wakeWaiters(route: string): void {
