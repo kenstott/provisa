@@ -147,12 +147,13 @@ test.describe("a data product's panel and graph, read from the meta domain", () 
     await page.getByTestId("graph-panel-expand").click();
     await shows(page.locator('[data-testid="graph3d-stage"][data-ready]'), refused, 60_000);
     // REQ-2174 (amended 2026-11-09, A PRODUCT OPENS ON ITSELF): the product alone -- its tables,
-    // their columns and the terms grounded on them, 3 hops from it -- selected, with the rest of
-    // the model on asking.
+    // their columns and the terms grounded on them -- selected, with the rest of the model on
+    // asking. (Amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS:) that grounding comes with the
+    // product at any hop count, so the expanded graph opens at 1 hop.
     await expect(page.getByTestId("graph3d-detail")).toContainText("Pet Health");
     await expect(page.getByTestId("graph3d-depth-label")).toHaveText("Hops from Pet Health");
     await expect(
-      page.getByTestId("graph3d-depth").getByRole("radio", { name: "3" }),
+      page.getByTestId("graph3d-depth").getByRole("radio", { name: "1" }),
     ).toBeChecked();
     await expect(page.getByTestId("graph3d-rest")).not.toBeChecked();
   });

@@ -569,12 +569,13 @@ export async function submitRegisterAndExpectListed(
       .getByRole("textbox", { name: "Page size", exact: true })
       .fill(String(columns.pageSize));
   }
-  const save = page.getByTestId("table-edit-save");
-  await save.click();
-  // Registration rebuilds the schemas; the row lands in the tables list when it is done.
+  // The Save registers the table or updates the one registered from the Tables field; either
+  // rebuilds the schemas before it answers (an update took 15-24 s on a CI runner, run
+  // 43521446753), so the wait is for its answer, not a fixed time after the click.
+  await saveRegistration(page);
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
   await expect(row).toBeVisible({ timeout: timeoutMs });
-  await expect(save).toBeHidden({ timeout: 15000 });
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
   await releaseDraftTables(page, { sourceId }, baseUrl);
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
     data: { query: "{ tables { sourceId dqDataset } }" },
