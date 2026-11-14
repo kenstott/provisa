@@ -705,14 +705,14 @@ In detail: passed is exact and equivalent; skipped by design is the decisions' g
 | Exact | The engine answered every call as PostgreSQL did, and an answer, a type and form, or a side effect was compared. |
 | Equivalent | The answer passes under a numbered rule below, linked from its row. |
 | Not checked | The engine answered with PostgreSQL's result type, but nothing was compared. A call that ran proves nothing, so this is no pass. |
-| Skipped by design | A decision of REQ-2167 skips it: a side-effect function off the PostgreSQL engine, one whose side effect no client can see, or a refusal by name a decision makes. |
+| Skipped by design | A recorded decision skips it: a side-effect function off the PostgreSQL engine, one whose side effect no client can see, or a refusal by name a decision makes. |
 | Refused by name | Provisa refused the call and said what it refuses. |
 | Differs: wrong answer | The answer is wrong. This is a defect. |
 | Differs: engine error | The engine returned an error and no named refusal. This is a defect. |
 
 A result marked *type and form only* could not be compared by value, so its result type and, for a string, its canonical form were compared with PostgreSQL's own output. One marked *side effect* returns void or acts: what it did, seen through a client, was compared with what PostgreSQL did. `n/a` means PostgreSQL itself refuses every call.
 
-Skipped by design (REQ-2167), by group and engine:
+Skipped by design, by group and engine:
 
 | Group | Postgres | DuckDB | Trino | ClickHouse |
 | --- | ---: | ---: | ---: | ---: |
@@ -1508,7 +1508,7 @@ Of each engine's passes, these also pass reading the same value from a column of
 
 <a id="rule-clock-field"></a>**9. A clock's field compared by its form.** A field read from the clock, such as `pg_cursor`'s `creation_time`, differs on every call, so it compares by its type's form; the record's other fields compare by value. Overloads covered: Postgres 0, DuckDB 0, Trino 0, ClickHouse 0.
 
-<a id="rule-tzdata-packaging"></a>**10. Time zones a distribution packages differently.** `pg_timezone_names` lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships it, and compares by the names both lists hold. A name that differs only through a distribution's tzdata packaging is skipped by design (REQ-2167, amended 2026-11-03, Time zones follow upstream tzdata): Debian drops the backward links, a link Provisa lists whose zone both list, and adds `localtime` and `posixrules`. Overloads covered: Postgres 0, DuckDB 1, Trino 0, ClickHouse 0.
+<a id="rule-tzdata-packaging"></a>**10. Time zones a distribution packages differently.** `pg_timezone_names` lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships it, and compares by the names both lists hold. A name that differs only through a distribution's tzdata packaging is skipped by design (time zones follow upstream tzdata): Debian drops the backward links, a link Provisa lists whose zone both list, and adds `localtime` and `posixrules`. Overloads covered: Postgres 0, DuckDB 1, Trino 0, ClickHouse 0.
 
 ### No engine serves
 
