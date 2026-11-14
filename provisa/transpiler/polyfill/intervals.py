@@ -55,6 +55,7 @@ from provisa.transpiler.interval_input import (
     INPUT_UNITS as _INPUT_UNITS,
     MINUTE_US as _MINUTE_US,
     SECOND_US as _SECOND_US,
+    canonical,
     interval_read,
 )
 from provisa.transpiler.polyfill import instants, trino
@@ -267,6 +268,9 @@ def _interval(argument: exp.Expr, sql: _Sql, untyped: bool = False) -> str | Non
             return _NULL_HELD
         text = _string(inner)
         return None if text is None else _read_literal(text)
+    if isinstance(value, exp.Interval):
+        read = keyword_read(value)
+        return None if read is None else _literal(*read)
     if isinstance(value, exp.Column):
         return _values_column(value, sql)
     return _written(value, sql)
@@ -275,6 +279,15 @@ def _interval(argument: exp.Expr, sql: _Sql, untyped: bool = False) -> str | Non
 def _read_literal(text: str) -> str | None:
     read = interval_read(text)
     return None if read is None else _literal(*read)
+
+
+def keyword_read(node: exp.Interval) -> tuple[int, int, int] | None:
+    """The fields of sqlglot's INTERVAL 'n' UNIT, an amount of one unit (the parser keeps one
+    such literal so, pg_syntax): None for one of no unit read here (a span, a quarter)."""
+    amount, unit = node.this, node.args.get("unit")
+    if not isinstance(amount, exp.Literal) or not isinstance(unit, exp.Var):
+        return None
+    return interval_read(f"{amount.name} {unit.name}")
 
 
 def _cell(cell: exp.Expr) -> str | None:
@@ -891,7 +904,9 @@ def _kind(argument: exp.Expr) -> str | None:
     if value.meta.get(HELD):
         return "i"
     said = _said(value)
-    if said == "interval" or (isinstance(value, exp.Column) and _held_column(value)):
+    if said == "interval" or isinstance(value, exp.Interval):
+        return "i"
+    if isinstance(value, exp.Column) and _held_column(value):
         return "i"
     if said in _KIND_TYPES["timestamp"]:
         return "t"
@@ -928,6 +943,8 @@ def _mentions_interval(node: exp.Expr) -> bool:
         if inner.meta.get(HELD):
             return True
         if isinstance(inner, exp.DataType) and inner.this == exp.DataType.Type.INTERVAL:
+            return True
+        if isinstance(inner, exp.Interval):
             return True
         if isinstance(inner, exp.Anonymous) and inner.name.lower() in _NAMES - _SHARED:
             return True
@@ -1000,6 +1017,10 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
     for kind, argument in zip(row.kinds, args):
         if kind == "i":
             value = _interval(argument, sql, untyped=row.untyped)
+            if value is None and name not in _SHARED and isinstance(argument.unnest(), exp.Column):
+                # a table's column: ClickHouse holds no interval of it to read (and the call's
+                # name says the column is one, which no other row answers)
+                raise _refused_literal(f"{name}() of a table's interval column", _CLICKHOUSE)
         elif kind == "u":
             text = _unit(argument)
             if text is False:
@@ -1062,10 +1083,16 @@ def _answered_as_text(node: exp.Expr) -> bool | None:
         return False
     if type(parent) in _OPERATORS:
         return False
+    if isinstance(parent, exp.Cast) and _said(parent) in _TEXT_TYPES:
+        return True  # f(..)::text: interval_out's text is the cast's answer
     call = trino.called(parent)
     if call is not None and call[0] & _NAMES:
         return False
     return None
+
+
+#: The text types a cast of an interval's answer to is that answer's text (interval_out).
+_TEXT_TYPES = frozenset({"text", "varchar", "character varying"})
 
 
 def _rewrite(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
@@ -1227,6 +1254,189 @@ for _name, _what, _summary in (
     _DOCS[_name] = _Doc(f"{_name}({_types})", _summary, _SHIFT_STATED.format(_what, _name))
 
 
+# --- an interval's literal where no call reads it -------------------------------------------------
+
+#: The row of a literal of interval: a string cast to interval, sqlglot's INTERVAL 'n' UNIT, or a
+#: NULL cast to interval.
+LITERAL = "interval literal"
+_TRINO_DIALECTS = ("trino", "presto", "athena")
+
+
+def _literal_fields(node: exp.Expr) -> tuple[int, int, int] | str | None:
+    """The fields of a literal of interval ``node``; "null" for a NULL; the text read for a
+    literal of no form read here (refused by name); None for a node that is no such literal."""
+    if isinstance(node, exp.Interval):
+        read = keyword_read(node)
+        return read if read is not None else node.sql(dialect="postgres")
+    if not isinstance(node, exp.Cast) or node.to.this != exp.DataType.Type.INTERVAL:
+        return None
+    inner = node.this.unnest()
+    if isinstance(inner, exp.Null):
+        return "null"
+    text = _string(inner)
+    if text is None:
+        return None
+    read = interval_read(text)
+    return read if read is not None else text
+
+
+def _standing(node: exp.Expr) -> str | None:
+    """Where a value stands: "shown" in the select list (or cast to text there), "read" as an
+    argument of a call or an operand of an interval's operator (the call reads it, or refuses it,
+    as its own), "cell" in a VALUES list, None anywhere else (a predicate, a CASE, an ORDER BY)."""
+    child, parent = node, node.parent
+    while isinstance(parent, (exp.Paren, exp.Alias)):
+        child, parent = parent, parent.parent
+    if isinstance(parent, exp.Select):
+        return "shown" if child.arg_key == "expressions" else None
+    if isinstance(parent, exp.Cast):
+        return "shown" if _said(parent) in _TEXT_TYPES else None
+    if isinstance(parent, exp.Tuple) and isinstance(parent.parent, exp.Values):
+        return "cell"
+    if type(parent) in _OPERATORS or isinstance(parent, exp.Anonymous):
+        return "read"
+    if isinstance(parent, exp.Func) and not isinstance(parent, (exp.Binary, exp.Unary)):
+        return "read"
+    return None
+
+
+def _cell_readers(node: exp.Expr) -> list[str | None]:
+    """Where each reference to the VALUES column of the cell ``node`` stands."""
+    tuple_ = node.find_ancestor(exp.Tuple)
+    values = tuple_.parent if tuple_ is not None else None
+    alias = values.args.get("alias") if isinstance(values, exp.Values) else None
+    select = values.find_ancestor(exp.Select) if values is not None else None
+    if tuple_ is None or alias is None or select is None or not alias.columns:
+        return [None]
+    at = next(i for i, cell in enumerate(tuple_.expressions) if cell is node or node in cell.walk())
+    name = alias.columns[at].name
+    readers: list[str | None] = []
+    for column in select.find_all(exp.Column):
+        if column.name == name and column.find_ancestor(exp.Values) is None:
+            readers.append("read" if _read_by_a_row(column) else _standing(column))
+    return readers or [None]
+
+
+def _refused_literal(what: str, dialect: str) -> Refused:
+    return Refused(Refusal("0A000", f"{what} has no form on {dialect}"), ruling=True)
+
+
+def _literal_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal of interval where no call reads it, on ClickHouse: its text (interval_out,
+    IntervalStyle postgres) in the select list or a VALUES column it alone reads; refused by name
+    anywhere else, or for an input form not read here. A call or an operator reads its own."""
+    if dialect != _CLICKHOUSE or node.meta.get(HELD):
+        return None
+    if isinstance(node, exp.Cast) and _said(node) in _TEXT_TYPES:
+        inner = node.this.unnest()
+        if _literal_fields(inner) is None:
+            return None  # a cast of any other value to text is not this row's
+        node = inner  # '1 day'::interval::text: the literal's text is the cast's answer
+    fields = _literal_fields(node)
+    if fields is None:
+        return None
+    where = _standing(node)
+    if where == "read":
+        return None
+    if where == "cell":
+        readers = _cell_readers(node)
+        if all(r == "read" for r in readers):
+            return None  # the rows read the column (_values_column)
+        where = "shown" if all(r == "shown" for r in readers) else None
+    if isinstance(fields, str) and fields != "null":
+        raise _refused_literal(f"interval input '{fields}'", dialect)
+    if where is None:
+        raise _refused_literal(
+            "an interval value outside an interval call or the select list", dialect
+        )
+    if fields == "null":
+        return exp.cast(exp.null(), exp.DataType.build("Nullable(String)", dialect=_CLICKHOUSE))
+    return exp.Literal.string(interval_text(*fields))
+
+
+def _trino_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal of interval on Trino where no call reads it: sqlglot's INTERVAL 'n' UNIT where
+    its value is one field Trino holds exactly (months, days, or whole seconds); refused by name
+    for any other, which Trino's interval types (year to month, day to second in milliseconds)
+    hold apart or not at all. A literal a call reads is the call's, as before."""
+    if dialect not in _TRINO_DIALECTS or not isinstance(node, exp.Cast):
+        return None
+    fields = _literal_fields(node)
+    if fields is None or _standing(node) == "read":
+        return None
+    if fields == "null":  # Trino has no type named interval: a NULL of its day to second
+        return exp.cast(exp.null(), exp.DataType.build("INTERVAL DAY TO SECOND", dialect="trino"))
+    if isinstance(fields, str):
+        raise _refused_literal(f"interval input '{fields}'", dialect)
+    months, days, micros = fields
+    amount, unit = None, None
+    if days == 0 and micros == 0:
+        amount, unit = months, "MONTH"
+    elif months == 0 and micros == 0:
+        amount, unit = days, "DAY"
+    elif months == 0 and days == 0 and micros % _SECOND_US == 0:
+        amount, unit = micros // _SECOND_US, "SECOND"
+    if unit is None:
+        text = interval_text(*fields)
+        raise _refused_literal(f"interval '{text}', which no one interval of Trino holds", dialect)
+    return exp.Interval(this=exp.Literal.string(str(amount)), unit=exp.Var(this=unit))
+
+
+_LITERAL_STATED = (
+    " A literal of interval where no call reads it (`'1 day 02:03'::interval`, "
+    "`interval '1 day 02:03'`) is its text (interval_out, IntervalStyle postgres) in the select "
+    "list, or in a VALUES column read only there; anywhere else it is refused by name, as is an "
+    "input form not read here."
+)
+_TRINO_LITERAL_STATED = (
+    "A literal of interval where no call reads it is sqlglot's INTERVAL 'n' UNIT where its value "
+    "is one field Trino holds exactly: months, days, or whole seconds. Any other is refused by "
+    "name: Trino holds months and days in two interval types, and a day's time in milliseconds."
+)
+
+
+def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A string cast to interval on DuckDB, wherever it stands: the cast of its fields' text, read
+    here as PostgreSQL reads it. DuckDB's own input differs on some ('1.0000005 sec' rounds up a
+    microsecond, '+3 hours' and '1 day 02:03 ago' fail); the text of three integer fields it reads
+    exactly. A text not read here is DuckDB's, as before."""
+    if dialect != "duckdb" or not isinstance(node, exp.Cast):
+        return None
+    fields = _literal_fields(node)
+    if not isinstance(fields, tuple):
+        return None
+    written = canonical(*fields)
+    if node.this.unnest().name == written:
+        return None
+    return exp.Cast(this=exp.Literal.string(written), to=node.to.copy())
+
+
+_DUCKDB_LITERAL_STATED = (
+    "A string cast to interval is read as PostgreSQL's interval input reads it (IntervalStyle "
+    "postgres) and sent as the text of its three fields, which DuckDB reads exactly; a form not "
+    "read here (ISO 8601, the SQL standard's) is DuckDB's own reading."
+)
+
+
+def _literal_feature() -> Feature:
+    forms: dict[str, Rewrite] = {
+        _CLICKHOUSE: Rewrite(_literal_rewrite, mentions=_MENTIONS),
+        "duckdb": Rewrite(_duckdb_rewrite, mentions=_MENTIONS),
+    }
+    forms.update({d: Rewrite(_trino_rewrite, mentions=_MENTIONS) for d in _TRINO_DIALECTS})
+    limitations = {
+        _CLICKHOUSE: (Limitation(_HELD_STATED + _LITERAL_STATED),),
+        "duckdb": (Limitation(_DUCKDB_LITERAL_STATED),),
+        **{d: (Limitation(_TRINO_LITERAL_STATED),) for d in _TRINO_DIALECTS},
+    }
+    return Feature(
+        LITERAL,
+        FAMILY,
+        "A literal of interval where no call reads it.",
+        read=Side(rules=(Rule(None, forms),), limitations=limitations),
+    )
+
+
 def _isfinite_rewrite() -> Callable[[exp.Expr, str], exp.Expr | None]:
     """isfinite's rewrite: instants' row reads every isfinite by its pattern, so this row's pattern
     is read first, and a call of no interval is that row's."""
@@ -1267,6 +1477,6 @@ def _feature(name: str) -> Feature:
 
 
 #: The rows. isfinite's is read before instants' (polyfill.GRID lists this family first).
-FEATURES: tuple[Feature, ...] = tuple(_feature(name) for name in _ROWS)
+FEATURES: tuple[Feature, ...] = (*(_feature(name) for name in _ROWS), _literal_feature())
 
-__all__ = ["FEATURES", "HELD", "interval_read", "interval_text"]
+__all__ = ["FEATURES", "HELD", "LITERAL", "interval_read", "interval_text", "keyword_read"]

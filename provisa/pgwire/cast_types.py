@@ -328,7 +328,15 @@ _RETURNED: dict[str, CastType] = {
         _clock_of,
         of_text=clock_of_text,
     ),
-    "interval": CastType(1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL})),
+    # ClickHouse holds no interval: a literal of one is served as interval_out's text
+    # (polyfill.intervals), read back as the interval it is.
+    "interval": CastType(
+        1186,
+        -1,
+        BVType.INTERVAL,
+        frozenset({BVType.INTERVAL, BVType.TEXT}),
+        of_text=interval_of_text,
+    ),
     "timestamp without time zone": CastType(
         1114, -1, BVType.TIMESTAMP, frozenset({BVType.TIMESTAMP}), _of_no_zone
     ),

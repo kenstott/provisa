@@ -43,6 +43,7 @@ import sqlglot.expressions as exp
 
 
 from provisa.core.pg_error import PostgresError
+from provisa.pgwire import function_types
 from provisa.core.session_time_zone import (
     StatementZone,
     clickhouse_spelling,
@@ -243,9 +244,15 @@ def _zone_named(engine: _Engine) -> str:
 
 
 def _may_be_instant(value: exp.Expr) -> bool:
-    """False for what the statement itself says is no instant, which needs no asking."""
+    """False for what the statement itself says is no instant, which needs no asking: a call
+    PostgreSQL types as an interval is one too (its text is the interval rows' own)."""
     if isinstance(value, exp.Paren):
         return _may_be_instant(value.this)
+    if (
+        isinstance(value, (exp.Func, exp.Dot))
+        and function_types.call_result_type(value) == "interval"
+    ):
+        return False
     if isinstance(value, exp.Cast):
         return value.to.is_type(exp.DataType.Type.TIMESTAMPTZ)
     if isinstance(value, exp.Anonymous):
