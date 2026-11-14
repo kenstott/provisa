@@ -44,17 +44,14 @@ export const CLAIMED_ADMIN_FLAG = "provisa_claimed_platform_admin";
  * the disclosure survives the post-claim navigation but is never shown twice.
  *
  * The invite button goes to Team, which asks `user_management`: root's org_admin holds it and
- * platform_admin does not. Acting as platform_admin alone, the button first selects the claimant's
- * role that grants it, so it never lands on a refusal; with no such role it is not offered.
+ * platform_admin does not. It is offered only while the roles acted as hold that right, so it never
+ * lands on a refusal, and it never changes the role being acted as.
  */
 export function PlatformAdminWelcomeModal() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const { capabilities, availableRoles, selectRole } = useAuth();
-  const teamRole = meetsRequirement(capabilities, TEAM)
-    ? null
-    : availableRoles.find((r) => meetsRequirement(r.effectiveCapabilities, TEAM));
-  const mayInvite = teamRole !== undefined;
+  const { capabilities } = useAuth();
+  const mayInvite = meetsRequirement(capabilities, TEAM);
   const [opened, setOpened] = useState(
     () => getStored(CLAIMED_ADMIN_FLAG, { global: true }) === "1",
   );
@@ -100,7 +97,6 @@ export function PlatformAdminWelcomeModal() {
               data-testid="platform-admin-welcome-team"
               onClick={() => {
                 close();
-                if (teamRole) selectRole(teamRole);
                 navigate("/team");
               }}
             >

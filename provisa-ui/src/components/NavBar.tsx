@@ -410,12 +410,15 @@ export function NavBar() {
           {/* The dialog's action first, then the other, at the start of the line. */}
           <FormFooter
             action={
-              <Button onClick={() => navigate("/admin/orgs")}>
+              // REQ-1931: an organization is created by a sign-in with no membership, which lands
+              // on organization setup. So this does what Log Out does: the sandbox account is
+              // deleted and the visitor signed out, and their next sign-in creates the org.
+              <Button onClick={proceedWithLogout} data-testid="sandbox-exit-create-org">
                 {t("navBar.sandboxExitCreateOrg")}
               </Button>
             }
           >
-            <Button variant="default" onClick={proceedWithLogout}>
+            <Button variant="default" onClick={proceedWithLogout} data-testid="sandbox-exit-logout">
               {t("navBar.sandboxExitLogOut")}
             </Button>
           </FormFooter>

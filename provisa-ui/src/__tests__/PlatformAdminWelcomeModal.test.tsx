@@ -132,36 +132,26 @@ describe("PlatformAdminWelcomeModal (REQ-1294)", () => {
     expect(localStorage.getItem(CLAIMED_ADMIN_FLAG)).toBeNull();
   });
 
-  it("acting as platform_admin alone, selects root's org_admin before opening Team", async () => {
-    // REQ-1327: Team asks user_management, which platform_admin does not hold; the button must not
-    // land on a refusal.
+  it("offers no invite button while acting as a role without user_management", async () => {
+    // Team asks user_management, which platform_admin does not hold. The button is not offered,
+    // and the role being acted as is never changed for the user.
     auth.capabilities = [...PLATFORM_ADMIN.effectiveCapabilities];
-    localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
-
-    renderModal(<PlatformAdminWelcomeModal />);
-    fireEvent.click(await screen.findByTestId("platform-admin-welcome-team"));
-
-    expect(auth.selectRole).toHaveBeenCalledWith(ORG_ADMIN);
-    expect(await screen.findByTestId("team-page")).toBeInTheDocument();
-  });
-
-  it("does not select a role when the acting roles already open Team", async () => {
-    localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
-
-    renderModal(<PlatformAdminWelcomeModal />);
-    fireEvent.click(await screen.findByTestId("platform-admin-welcome-team"));
-
-    expect(auth.selectRole).not.toHaveBeenCalled();
-  });
-
-  it("offers no invite button when no role of the claimant opens Team", async () => {
-    auth.capabilities = [...PLATFORM_ADMIN.effectiveCapabilities];
-    auth.availableRoles = [PLATFORM_ADMIN];
     localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
 
     renderModal(<PlatformAdminWelcomeModal />);
 
     expect(await screen.findByTestId("platform-admin-welcome-dismiss")).toBeInTheDocument();
     expect(screen.queryByTestId("platform-admin-welcome-team")).not.toBeInTheDocument();
+    expect(auth.selectRole).not.toHaveBeenCalled();
+  });
+
+  it("does not change the role being acted as when it opens Team", async () => {
+    localStorage.setItem(CLAIMED_ADMIN_FLAG, "1");
+
+    renderModal(<PlatformAdminWelcomeModal />);
+    fireEvent.click(await screen.findByTestId("platform-admin-welcome-team"));
+
+    expect(await screen.findByTestId("team-page")).toBeInTheDocument();
+    expect(auth.selectRole).not.toHaveBeenCalled();
   });
 });
