@@ -2554,7 +2554,7 @@ reference_citations = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
     CheckConstraint(
-        "citer_kind IN ('tag', 'tag_assignment')",
+        "citer_kind IN ('tag', 'tag_assignment', 'dq_check')",
         name="reference_citations_citer_kind_check",
     ),
 )

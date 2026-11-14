@@ -2606,7 +2606,7 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
 CREATE TABLE IF NOT EXISTS reference_citations (
     id              SERIAL PRIMARY KEY,
     citer_kind      TEXT NOT NULL CONSTRAINT reference_citations_citer_kind_check
-                        CHECK (citer_kind IN ('tag', 'tag_assignment')),
+                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check')),
     tag_id          TEXT,
     object_key      TEXT NOT NULL DEFAULT '',
     document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,
