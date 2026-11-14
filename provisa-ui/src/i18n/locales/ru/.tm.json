@@ -10491,5 +10491,8 @@
   "combineFiles.json::combineFiles.notRegistrable": "These files cannot be registered as one table.",
   "combineFiles.json::combineFiles.sourceFileColumnLabel": "Source-file column",
   "combineFiles.json::combineFiles.sourceFileColumnPlaceholder": "source_file",
-  "combineFiles.json::combineFiles.sourceFileColumnHint": "Optional: a column holding the file each row came from."
+  "combineFiles.json::combineFiles.sourceFileColumnHint": "Optional: a column holding the file each row came from.",
+  "ru/tagsTab.json::tagsTab.outsideTitle": "Assignments outside the allowed domains",
+  "ru/tagsTab.json::tagsTab.outsideBody": "The save kept these assignments. Take the tag off an object where it no longer belongs.",
+  "ru/tagsTab.json::tagsTab.outsideItem": "{{kind}} {{name}}, in {{domains}}"
 }

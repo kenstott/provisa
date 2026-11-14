@@ -234,6 +234,7 @@ query TagsQuery {
     }
     requiresCitation
     required
+    allowedDomains
     needsReview
     citations {
       documentId
@@ -248,6 +249,10 @@ query TagsQuery {
       needsReview
     }
   }
+}
+
+query OfferedTags($target: TagTargetInput!) {
+  offeredTags(target: $target)
 }
 
 query TagAssignmentsQuery {
@@ -1413,7 +1418,11 @@ mutation UpdateRelationship($input: RelationshipInput!) {
   }
 }
 
-mutation DeleteRelationship($id: String!, $confirmTagLoss: [String!], $carryTags: Boolean! = false) {
+mutation DeleteRelationship(
+  $id: String!
+  $confirmTagLoss: [String!]
+  $carryTags: Boolean! = false
+) {
   deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
     ...MutationResult
   }
@@ -1632,7 +1641,11 @@ mutation RefreshMv($mvId: String!, $full: Boolean! = false) {
 }
 
 mutation UpdateVersionLog($mvId: String!, $refreshInterval: Int!, $allowedLateness: Float!) {
-  updateVersionLog(mvId: $mvId, refreshInterval: $refreshInterval, allowedLateness: $allowedLateness) {
+  updateVersionLog(
+    mvId: $mvId
+    refreshInterval: $refreshInterval
+    allowedLateness: $allowedLateness
+  ) {
     ...MutationResult
   }
 }

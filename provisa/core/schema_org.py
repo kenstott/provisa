@@ -672,6 +672,9 @@ tags = Table(
     Column("requires_citation", Boolean, nullable=False, server_default=false()),
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
     Column("required", Boolean, nullable=False, server_default=false()),
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered on objects of these domains, as a source's
+    # allowed_domains; empty = every domain.
+    Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
