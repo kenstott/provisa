@@ -563,7 +563,7 @@ Provisa knows the "See also" heading of these editions: `en`, `de`, `es`, `it`, 
 
 Only tables that editors mark as data tables (`table.wikitable`) become tables, and a table with fewer than 2 rows is not offered.
 
-**Advanced crawl settings.** The form keeps these folded under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
+**Advanced crawl settings.** The form keeps these collapsed under "Crawl settings" and shows each with its default; leave a field empty to keep it. In a `files` mapping the same names go under `crawl:`, and a name outside this list is refused.
 
 | Setting | Wikipedia default | Meaning |
 | --- | --- | --- |

@@ -19,7 +19,7 @@
     "colActions": "動作",
     "empty": "沒有組織",
     "membersButton": "成員",
-    "hideButton": "隱藏",
+    "hideButton": "摺疊",
     "expandOrg": "切換 {{name}} 的成員顯示",
     "deleteOrg": "刪除 {{name}}",
     "membersHeading": "成員",

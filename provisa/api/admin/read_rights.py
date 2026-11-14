@@ -204,6 +204,14 @@ async def _tag_assignment_readable(
     return row["table_id"] is None or reader.column(row["table_id"], row["column_name"])
 
 
+async def tag_assignment_readable(
+    conn: "Connection", reader: DependentsReader, row: dict
+) -> bool:  # REQ-2152, REQ-2208
+    """Whether ``reader`` may be told of the tag assignment ``row`` (a row as
+    ``repositories.tag.list_assignments`` or ``list_library_assignments`` answers it)."""
+    return await _tag_assignment_readable(conn, reader, row)
+
+
 def _ref_dependent(kind: str, key: Any) -> "Dependent":
     """A bare dependent naming ``kind`` ``key``, to ask :func:`_readable` about an object another
     one is on."""

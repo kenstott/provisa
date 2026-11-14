@@ -24,6 +24,7 @@ declare module "*.graphql" {
   export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
+  export const OfferedTags: DocumentNode;
   export const CreateTag: DocumentNode;
   export const UpdateTag: DocumentNode;
   export const DeleteTag: DocumentNode;
@@ -181,6 +182,7 @@ declare module "*.gql" {
   export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
+  export const OfferedTags: DocumentNode;
   export const CreateTag: DocumentNode;
   export const UpdateTag: DocumentNode;
   export const DeleteTag: DocumentNode;

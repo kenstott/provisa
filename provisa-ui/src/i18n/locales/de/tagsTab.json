@@ -62,6 +62,9 @@
     "purposeTitle": "Wozu Tags dienen",
     "purposeBody": "Ein Tag ist ein organisationsweites Label mit fester Bedeutung, das auf Quellen, Tabellen, Spalten, Beziehungen oder Kommandos angewendet wird. Tags tragen Verhalten, nicht nur Dokumentation: „technical“ hält eine Spalte aus dem Data-Product-Export heraus, „entity“ macht die Werte einer Spalte zu Retrieval-Vokabular, „deprecated“ fordert Konsumenten zur Migration auf.",
     "purposeAdd": "Es gibt nur eine Registry. Ein Tag, das für mehrere Objekttypen gilt, ist überall dieselbe Identität — eine Änderung in einer der Listen ändert es in allen.",
-    "purposeAria": "Über Tags"
+    "purposeAria": "Über Tags",
+    "outsideTitle": "Zuweisungen außerhalb der erlaubten Domänen",
+    "outsideBody": "Das Speichern hat diese Zuweisungen behalten. Entfernen Sie das Tag von einem Objekt, zu dem es nicht mehr gehört.",
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
   }
 }

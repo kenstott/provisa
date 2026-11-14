@@ -62,6 +62,9 @@
     "purposeTitle": "Para qué sirven las etiquetas",
     "purposeBody": "Una etiqueta es un rótulo único para toda la organización con un significado fijo, aplicado a fuentes, tablas, columnas, relaciones o comandos. Las etiquetas llevan comportamiento, no solo documentación: technical deja una columna fuera de la exportación de Data Product, entity convierte los valores de una columna en vocabulario de recuperación, deprecated indica a los consumidores que migren.",
     "purposeAdd": "El registro es único. Una etiqueta que aplica a varios tipos de objeto es la misma identidad en todos, así que editarla en cualquiera de las listas la edita en todas.",
-    "purposeAria": "Acerca de las etiquetas"
+    "purposeAria": "Acerca de las etiquetas",
+    "outsideTitle": "Asignaciones fuera de los dominios permitidos",
+    "outsideBody": "Al guardar se conservaron estas asignaciones. Quite la etiqueta de un objeto al que ya no corresponda.",
+    "outsideItem": "{{kind}} {{name}}, en {{domains}}"
   }
 }

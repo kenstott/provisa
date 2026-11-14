@@ -45,6 +45,16 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   }),
 }));
 
+vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
+  useDomains: () => ({
+    domains: [{ id: "sales" }, { id: "finance" }],
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
+}));
+
 vi.mock("../api/referenceLibrary", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../api/referenceLibrary")>()),
   fetchLibrary: vi.fn(async () => [{ id: 3, title: "Data Policy", index_status: "ready" }]),
@@ -65,6 +75,7 @@ const SYSTEM_TAG: Tag = {
   paramPolicy: "none",
   requiresCitation: false,
   required: false,
+  allowedDomains: [],
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -80,6 +91,7 @@ const USER_TAG: Tag = {
   paramPolicy: "none",
   requiresCitation: false,
   required: false,
+  allowedDomains: [],
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -96,6 +108,7 @@ const DERIVED_TAG: Tag = {
   paramPolicy: "none",
   requiresCitation: false,
   required: false,
+  allowedDomains: [],
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -112,6 +125,7 @@ const ENTITY_TAG: Tag = {
   paramPolicy: "required",
   requiresCitation: false,
   required: false,
+  allowedDomains: [],
   citations: [],
   needsReview: false,
   paramValues: [
@@ -130,6 +144,7 @@ const COMMAND_TAG: Tag = {
   paramPolicy: "none",
   requiresCitation: false,
   required: false,
+  allowedDomains: [],
   citations: [],
   needsReview: false,
   paramValues: [],
@@ -148,6 +163,18 @@ async function pickPolicy(testid: string, label: string) {
   fireEvent.click(
     within(listbox as HTMLElement).getByRole("option", { name: label, hidden: true }),
   );
+}
+
+// The Allowed Domains field's MultiSelect: its options are in the listbox its input names.
+function pickDomain(id: string) {
+  const input = within(screen.getByTestId("tags-allowed-domains")).getByRole("textbox");
+  fireEvent.click(input);
+  const listbox = document.getElementById(input.getAttribute("aria-controls") as string);
+  const option = [...(listbox as HTMLElement).querySelectorAll("*")].find(
+    (el) => el.textContent === id,
+  );
+  if (!option) throw new Error(`domain ${id} not offered`);
+  fireEvent.click(option);
 }
 
 describe("TagsTab", () => {
@@ -261,6 +288,7 @@ describe("TagsTab", () => {
         false,
         false,
         [],
+        [],
       ),
     );
   });
@@ -318,6 +346,88 @@ describe("TagsTab", () => {
       expect(
         within(screen.getByTestId("tags-row-finance")).queryByTestId("tags-required-badge"),
       ).toBeNull();
+    });
+  });
+
+  describe("allowed domains", () => {
+    const edit = (id: string) =>
+      fireEvent.click(
+        within(screen.getByTestId(`tags-row-${id}`)).getByLabelText(t("tagsTab.editTag", { id })),
+      );
+
+    it("saves the domains picked with the tag", async () => {
+      render(<TagsTab />);
+      fireEvent.click(screen.getByTestId("tags-create-button"));
+      fireEvent.change(screen.getByLabelText(t("tagsTab.idLabel")), {
+        target: { value: "gdpr" },
+      });
+      pickDomain("sales");
+      pickDomain("finance");
+      fireEvent.click(screen.getByTestId("tags-save"));
+      await waitFor(() => expect(upsertSpy).toHaveBeenCalledTimes(1));
+      expect(upsertSpy.mock.calls[0][9]).toEqual(["sales", "finance"]);
+    });
+
+    it("says that none selected means all domains", () => {
+      render(<TagsTab />);
+      fireEvent.click(screen.getByTestId("tags-create-button"));
+      expect(
+        within(screen.getByTestId("tags-allowed-domains")).getByText(
+          t("sourceFormFieldsExtended.allowedDomainsHint"),
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("reads back a tag's domains when it is edited, and saves them as they are", async () => {
+      mockTags = [{ ...USER_TAG, allowedDomains: ["finance"] }];
+      render(<TagsTab />);
+      edit("finance");
+      const field = screen.getByTestId("tags-allowed-domains");
+      expect(within(field).getByText("finance")).toBeInTheDocument();
+      fireEvent.click(screen.getByTestId("tags-save"));
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+      expect(updateSpy.mock.calls[0][9]).toEqual(["finance"]);
+    });
+
+    it("lists the assignments a narrowing save left outside the domains", async () => {
+      mockTags = [{ ...USER_TAG, allowedDomains: ["sales", "finance"] }];
+      updateSpy.mockResolvedValueOnce({
+        success: true,
+        message: "ok",
+        params: {
+          tag: "finance",
+          outside: [
+            {
+              tagId: "finance",
+              objectType: "source",
+              objectKey: "source:erp",
+              domains: ["finance"],
+            },
+          ],
+        },
+      } as never);
+      render(<TagsTab />);
+      edit("finance");
+      fireEvent.click(screen.getByTestId("tags-save"));
+      const listed = await screen.findByTestId("tags-outside-assignments");
+      expect(within(listed).getByText(t("tagsTab.outsideTitle"))).toBeInTheDocument();
+      expect(
+        within(listed).getByText(
+          t("tagsTab.outsideItem", {
+            kind: t("tagsTab.scope_source"),
+            name: "erp",
+            domains: "finance",
+          }),
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it("lists nothing after a save that leaves every assignment inside", async () => {
+      render(<TagsTab />);
+      edit("finance");
+      fireEvent.click(screen.getByTestId("tags-save"));
+      await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+      expect(screen.queryByTestId("tags-outside-assignments")).toBeNull();
     });
   });
 
@@ -461,6 +571,7 @@ describe("TagsTab", () => {
         false,
         false,
         [],
+        [],
       ),
     );
   });
@@ -562,6 +673,7 @@ describe("TagsTab", () => {
         "required",
         false,
         false,
+        [],
         [],
       ),
     );
