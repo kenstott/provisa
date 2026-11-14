@@ -19,12 +19,16 @@ the per-engine tables of provisa.transpiler (scripts/conformance/polyfill_audit.
 from __future__ import annotations
 
 from provisa.transpiler.polyfill import (
+    aggregates,
     arrays,
+    bytea,
     calls,
     casts,
     clickhouse,
     collations,
     dates,
+    geometric,
+    instants,
     json_values,
     money,
     network,
@@ -33,6 +37,7 @@ from provisa.transpiler.polyfill import (
     records,
     regex,
     server,
+    snapshots,
     textsearch,
     type_io,
     unheld,
@@ -74,6 +79,11 @@ GRID = Grid(
     + ranges.FEATURES
     + json_values.FEATURES
     + clickhouse.FEATURES
+    + aggregates.FEATURES
+    + snapshots.FEATURES
+    + instants.FEATURES
+    + geometric.FEATURES
+    + bytea.FEATURES
 )
 
 __all__ = [

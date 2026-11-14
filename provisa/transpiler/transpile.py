@@ -1279,6 +1279,20 @@ def rewrite_json_object_to_build_object(pg_sql: str) -> str:  # REQ-902
     return pg_syntax.overlaps_restored(tree).sql(dialect="postgres")
 
 
+def direct_physical(sql: str, dialect: str) -> str:
+    """``sql``, transpiled to ``dialect``, as it is sent DIRECT to one source of that dialect.
+
+    PostgreSQL types JSON_OBJECT(...) as jsonb when any of its arguments is jsonb and as json
+    otherwise, so two JSON values of one column (a Cypher node union's arms, one label reading a
+    jsonb column and another none) were of two types, and PostgreSQL refused the statement: "UNION
+    could not convert type jsonb to json". json_build_object is json whatever it holds, as the pg
+    engine already sends it (rewrite_json_object_to_build_object, REQ-902).
+    """
+    if dialect != "postgres":
+        return sql
+    return rewrite_json_object_to_build_object(sql)
+
+
 def postgres_try_casts(tree: exp.Expr) -> exp.Expr:  # REQ-778
     """``tree`` for a PostgreSQL server, which has no TRY_CAST: each null-on-failure cast (the
     semantic SQL keeps them, ``semantic_dialect``) is ``CASE WHEN pg_input_is_valid(text, type)
@@ -2188,6 +2202,11 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
             reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
             return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+        if isinstance(node, exp.Date) and not node.args.get("zone"):
+            # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
+            # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
+            # The new node is not walked again: its value is said here.
+            return exp.Anonymous(this="toDate32", expressions=[node.this.transform(said)])
         if isinstance(node, exp.Hex):
             return exp.Anonymous(
                 this="replaceRegexpOne",

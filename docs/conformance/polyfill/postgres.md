@@ -10,7 +10,7 @@ When PostgreSQL is a serving engine reading a source it attaches directly, it ma
 
 Rules on this page: 0, of which 0 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-154 of the grid's 154 features are native on PostgreSQL and left out.
+278 of the grid's 278 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>

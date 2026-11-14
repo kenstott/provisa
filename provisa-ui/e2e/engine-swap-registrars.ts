@@ -24,6 +24,7 @@ import {
 } from "./demo-source-containers";
 import {
   expectDiscoveredColumns,
+  openListRow,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
@@ -496,7 +497,7 @@ function registerDqChecker(
     await page.waitForSelector(".page-header", { timeout: 15000 });
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await row.waitFor({ timeout: 15000 });
-    await row.locator("td").first().click();
+    await openListRow(row);
     const editBtn = page.getByTestId("table-read-view-edit").first();
     await editBtn.waitFor({ timeout: 10000 });
     await editBtn.click();

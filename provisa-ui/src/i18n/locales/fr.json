@@ -47,7 +47,7 @@
     "yes": "Oui",
     "no": "Non",
     "none": "—",
-    "expandUser": "Afficher les affectations de {{username}}",
+    "expandUser": "Développer les affectations de {{username}}",
     "deleteUser": "Supprimer le compte de {{username}}",
     "assignmentsHeading": "Affectations rôle:domaine",
     "noAssignments": "Aucune affectation",

@@ -122,6 +122,7 @@ from provisa.api.admin.types import (
     LibraryCitationType,
     TagAssignmentType,
     TagParamValueType,
+    TagTargetInput,
     TagType,
     UserSummaryType,
 )
@@ -1120,10 +1121,36 @@ class Query:  # REQ-021, REQ-042
                 sensitive=bool(r["sensitive"]),
                 requires_citation=bool(r["requires_citation"]),  # REQ-2208
                 required=bool(r["required"]),  # REQ-2208 (THE TAGS REPORT)
+                allowed_domains=list(r["allowed_domains"] or []),  # REQ-2208
                 citations=[citation_type(c) for c in cited.get(r["id"], [])],
                 needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def offered_tags(
+        self, info: StrawberryInfo, target: TagTargetInput
+    ) -> list[str]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+        """The ids of the tags the picker offers on ``target``: those that apply to its kind, are
+        not derived, and are offered in its domains -- or, for an object in no domain, in one the
+        caller acts in. assignTag refuses the same tags by the same rule."""
+        from provisa.api.admin.capabilities import allowed_domains_request
+        from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        acting = allowed_domains_request(info.context["request"])
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            domains = await tag_target_domains(cast("Connection", conn), target)
+            rows = await tag_repo.list_all(cast("Connection", conn))
+        return [
+            r["id"]
+            for r in rows
+            if target.object_type in (r["applies_to"] or [])
+            and not r["derived"]
+            and tag_offered(r["allowed_domains"] or [], domains, acting)
         ]
 
     @strawberry.field
@@ -3030,6 +3057,24 @@ async def _derived_view_columns(schema_name: str, table_name: str) -> list[Avail
     ]
 
 
+# REQ-2234: Register Table reads the columns of every table it lists, one after another, and an
+# OpenAPI table's columns come from its source's parsed spec. Parsing Stripe's spec (273 read
+# operations) took seconds, once per table read. A loaded spec is parsed once; a spec loaded again
+# (a new dict in state.openapi_specs) is parsed again. The held spec keeps its identity unique.
+_parsed_specs: dict[str, tuple[dict, list]] = {}
+
+
+def _spec_queries(source_id: str, spec: dict) -> list:
+    """The read operations of `source_id`'s loaded `spec`, parsed once per loaded spec."""
+    from provisa.openapi.mapper import parse_spec
+
+    held = _parsed_specs.get(source_id)
+    if held is None or held[0] is not spec:
+        held = (spec, parse_spec(spec)[0])
+        _parsed_specs[source_id] = held
+    return held[1]
+
+
 async def _introspect_available_columns(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -3190,12 +3235,10 @@ async def _introspect_available_columns(
     # _source_for_introspection + introspect_columns path below that sharepoint/splunk already
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-        from provisa.openapi.mapper import parse_spec
         from provisa.api.admin.introspect import openapi_parameter_columns
         from provisa.openapi.register import _schema_to_columns
 
-        spec = state.openapi_specs[source_id]["spec"]
-        queries, _ = parse_spec(spec)
+        queries = _spec_queries(source_id, state.openapi_specs[source_id]["spec"])
         q = next((q for q in queries if q.operation_id == table_name), None)
         if q is None:
             return []

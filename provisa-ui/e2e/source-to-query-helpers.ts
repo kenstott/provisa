@@ -11,8 +11,9 @@
 // The three screens of the source-to-query e2e (REQ-1671), as steps both lanes' specs share:
 // the Sources form, the Register Table form, and the SQL page's results grid.
 
+import type { Locator } from "@playwright/test";
 import { BACKEND_URL, expect, type Page } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { deleteSourceAndItsTables, type AdminGql } from "./delete-source";
 
 export const DOMAIN = "pet-store"; // shipped by both lanes' configs; its SQL schema is pet_store
 
@@ -61,15 +62,7 @@ export async function setSourceCacheTtl(page: Page, seconds: number) {
  * The tests' sources are told from the model's own by their ids: `e2e_<kind>_<13-digit stamp>`,
  * which no source of the demo model has. */
 export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<string[]> {
-  const gql = async (query: string, variables: Record<string, unknown> = {}) => {
-    const res = await fetch(`${baseUrl}/admin/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-provisa-role": "org_admin" },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!res.ok) throw new Error(`admin GraphQL answered ${res.status}: ${await res.text()}`);
-    return res.json();
-  };
+  const gql = adminGql(baseUrl);
   const listed = await gql("{ sources { id } }");
   if (listed.errors)
     throw new Error(`sources could not be listed: ${JSON.stringify(listed.errors)}`);
@@ -78,6 +71,28 @@ export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<
     .filter((id) => /^e2e_[a-z0-9_]+_\d{13}$/.test(id));
   for (const id of mine) await deleteSourceAndItsTables(gql, id);
   return mine;
+}
+
+/** One admin GraphQL document posted to the backend at `baseUrl` as org_admin, its parsed body. */
+function adminGql(baseUrl: string): AdminGql {
+  return async (query: string, variables: Record<string, unknown> = {}) => {
+    const res = await fetch(`${baseUrl}/admin/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-provisa-role": "org_admin" },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) throw new Error(`admin GraphQL answered ${res.status}: ${await res.text()}`);
+    return res.json();
+  };
+}
+
+/** Remove one source a test created, with its tables (deleteSourceAndItsTables), on the backend at
+ * `baseUrl`. For a test's own cleanup of what it registered. */
+export async function removeTestSource(
+  sourceId: string,
+  baseUrl: string = BACKEND_URL,
+): Promise<void> {
+  await deleteSourceAndItsTables(adminGql(baseUrl), sourceId);
 }
 
 // A source form field, by its label. The sources list behind the form has sortable column headers
@@ -236,9 +251,38 @@ export function tablesField(page: Page) {
   return page.getByTestId("register-tables-field").getByRole("textbox");
 }
 
-/** The Tables field's option for `table` in its open list. */
+/** The Tables field's option for `table` in its open list. A native `<option>` (the Source
+ * select's, whose source id can equal a table's name) is not one of them. */
 export function tableOption(page: Page, table: string) {
-  return page.getByRole("option", { name: new RegExp(`^${escaped(table)}`) });
+  return page
+    .getByRole("option", { name: new RegExp(`^${escaped(table)}`) })
+    .and(page.locator("[data-combobox-option]"));
+}
+
+/** The names the Tables field's open list offers. An option's text is the table's name, followed
+ * by Register where it needs input. */
+export async function listedTableNames(page: Page): Promise<string[]> {
+  return page
+    .locator("[data-combobox-option]")
+    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+}
+
+/** Waits until the source's schemas have answered. The Schema field is shown, disabled, while
+ * they load, and is gone once they answer with one schema (REQ-2234): whether it is asked is
+ * known only after the load. */
+export async function schemasLoaded(page: Page, timeout = 120000): Promise<void> {
+  await expect(
+    page.getByTestId("register-table-schema-select").and(page.locator(":disabled")),
+  ).toHaveCount(0, { timeout });
+}
+
+/**
+ * Opens a list row's detail panel. The click lands on the row's first own cell: a list whose rows
+ * can be selected (REQ-2240) puts a checkbox cell first, which keeps its click to itself, and the
+ * row's centre can land on a cell's own control (a tag button).
+ */
+export async function openListRow(row: Locator): Promise<void> {
+  await row.locator("td:not(.list-select)").first().click();
 }
 
 // The table the last pick named: Register goes on with it (picked, or registered on its own).
@@ -252,6 +296,7 @@ let pickedTable: string | null = null;
 export async function pickSchemaAndTable(page: Page, schema: string, table: string) {
   await expect(page.getByTestId("register-tables-field")).toBeVisible({ timeout: 120000 });
   const schemaSelect = page.getByTestId("register-table-schema-select");
+  await schemasLoaded(page);
   if ((await schemaSelect.count()) > 0) {
     await expect(schemaSelect.locator(`option[value='${schema}']`)).toHaveCount(1, {
       timeout: 120000,
@@ -483,7 +528,7 @@ export async function openTableEditor(page: Page, sourceId: string, table: strin
   const named = rows.filter({ hasText: new RegExp(table.replace(/_/g, "[_ ]?"), "i") });
   const row = (await named.count()) > 0 ? named.first() : rows.first();
   await row.waitFor({ timeout: 120000 });
-  await row.locator("td").first().click();
+  await openListRow(row);
   const edit = page.getByTestId("table-read-view-edit").first();
   await edit.waitFor({ timeout: 15000 });
   await edit.click();
@@ -538,12 +583,13 @@ export async function submitRegisterAndExpectListed(
       .getByRole("textbox", { name: "Page size", exact: true })
       .fill(String(columns.pageSize));
   }
-  const save = page.getByTestId("table-edit-save");
-  await save.click();
-  // Registration rebuilds the schemas; the row lands in the tables list when it is done.
+  // The Save registers the table or updates the one registered from the Tables field; either
+  // rebuilds the schemas before it answers (an update took 15-24 s on a CI runner, run
+  // 43521446753), so the wait is for its answer, not a fixed time after the click.
+  await saveRegistration(page);
   const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
   await expect(row).toBeVisible({ timeout: timeoutMs });
-  await expect(save).toBeHidden({ timeout: 15000 });
+  await expect(page.getByTestId("table-edit-save")).toBeHidden({ timeout: 15000 });
   await releaseDraftTables(page, { sourceId }, baseUrl);
   const res = await page.request.post(`${baseUrl}/admin/graphql`, {
     data: { query: "{ tables { sourceId dqDataset } }" },

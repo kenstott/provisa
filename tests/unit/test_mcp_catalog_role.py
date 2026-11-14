@@ -101,6 +101,22 @@ def _context(served: dict[int, list[str]]):
     )
 
 
+@pytest.fixture(autouse=True)
+def _no_masks(monkeypatch):
+    """Each role's governance context serves it the columns its context does, with no mask."""
+    from provisa.compiler.stage2 import GovernanceContext
+
+    def _governance(state, role):
+        gov = GovernanceContext()
+        gov.visible_columns = {
+            table_id: frozenset(c for t, c in state.contexts[role].physical_to_sql if t == table_id)
+            for table_id in _SERVED[role]
+        }
+        return gov
+
+    monkeypatch.setattr(tools, "_role_governance", _governance)
+
+
 @pytest.fixture
 def state():
     db = types.SimpleNamespace(acquire=lambda: _Conn())
@@ -127,6 +143,7 @@ async def test_a_role_is_listed_only_the_schemas_and_tables_it_is_served(state):
 async def test_a_table_is_described_with_only_the_columns_the_role_is_served(state):
     described = await tools.describe_table(state, "seller", "sales", "orders")
     assert [c["name"] for c in described["columns"]] == ["id", "region"]  # not `margin`
+    assert {c["state"] for c in described["columns"]} == {"plain"}
     listed = await tools.list_tables(state, "seller", "sales")
     assert listed[0]["column_count"] == 2
     full = await tools.describe_table(state, "org_admin", "sales", "orders")

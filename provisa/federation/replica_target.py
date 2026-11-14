@@ -68,11 +68,16 @@ class ReplicaTarget(Protocol):
         ...
 
 
+#: What every build table's name starts with: a table so named is a build in progress (or one a
+#: dead build left), never a replica.
+BUILD_TABLE_PREFIX = "build__"
+
+
 def build_table_name(table: str) -> str:
     """The name of the build table of the replica ``table``: short and fixed, so a long replica
     name cannot run it past the store's identifier limit, and one per replica, so a build that
     died is found and dropped by the next one."""
-    return "build__" + hashlib.sha256(table.encode()).hexdigest()[:24]
+    return BUILD_TABLE_PREFIX + hashlib.sha256(table.encode()).hexdigest()[:24]
 
 
 def _q(name: str) -> str:

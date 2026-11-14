@@ -2813,6 +2813,24 @@ def _said_scale(scale: exp.Expr, called: str, dialect: str) -> int | None:
     return digits
 
 
+def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
+    """Whether a row of the polyfill grid answers ``node`` on ``dialect`` (REQ-2236; REQ-2167, AN
+    ANSWER WITHIN A STATED BOUND COMES BEFORE A REFUSAL): its form is the engine's SQL, or a
+    rewrite that writes this call. A row that keeps the old table's form, a rewrite that leaves
+    this call or refuses it, and a refusal answer nothing: the call is refused as it was."""
+    try:
+        applied = polyfill.GRID.read(node, dialect)  # a rule of no pattern runs its rewrite here
+        if applied is None or applied.form is None or isinstance(applied.form, polyfill.Refusal):
+            return False
+        if isinstance(applied.form, str) or applied.rewritten is not None:
+            return True
+        argued = node.copy()  # read where the call stands, as _polyfilled_by_rule reads it
+        argued.parent, argued.arg_key = node.parent, node.arg_key
+        return applied.form.function(argued, dialect) is not None
+    except polyfill_notation.Refused:
+        return False
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -2822,6 +2840,8 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     if dialect not in _DUCKDB:
         tree = _unqualified(tree)
         for node in tree.walk():
+            if _answered_by_a_row(node, dialect):
+                continue  # REQ-2167: an answer within a stated bound comes before a refusal
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
             if refused_call is not None:
                 raise FunctionRefused(refused_call, dialect)

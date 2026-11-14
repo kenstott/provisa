@@ -946,11 +946,11 @@ export function LineageDag({
           </Tip>
         )}
         {onOpenModal && (
-          <Tip text="Open full view" named>
+          <Tip text="Enlarge" named>
             <ActionIcon
               variant="subtle"
               onClick={onOpenModal}
-              aria-label="Open full view"
+              aria-label="Enlarge"
               data-testid="lineage-open-modal"
             >
               <Expand size={16} />

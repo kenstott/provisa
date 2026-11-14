@@ -29,6 +29,7 @@ from provisa.compiler.sql_types import JoinMeta, TableMeta
 from provisa.executor.result import QueryResult
 from provisa.transpiler.router import Route
 from tests.role_state import RoleState
+from tests.unit.mcp_described import serve_whole
 from tests.unit.mcp_local_principal import act_for
 
 pytestmark = pytest.mark.asyncio
@@ -126,6 +127,13 @@ def _patch_catalog(monkeypatch):
     monkeypatch.setattr(tools, "_build_catalog_tables_async", _fake)
 
 
+@pytest.fixture(autouse=True)
+def _no_masks(monkeypatch):
+    """The fake state's role is served every column of each table its context holds, and holds
+    no mask: its governance context (what describe_table reads each column's state from)."""
+    serve_whole(monkeypatch)
+
+
 # --- drill-down -------------------------------------------------------------
 
 
@@ -155,8 +163,13 @@ async def test_describe_table(state):
     assert result["schema"] == "sales"
     assert result["table"] == "orders"
     assert result["columns"] == [
-        {"name": "id", "type": "integer", "description": "Primary key"},
-        {"name": "customer_id", "type": "integer", "description": "FK to customers"},
+        {"name": "id", "type": "integer", "description": "Primary key", "state": "plain"},
+        {
+            "name": "customer_id",
+            "type": "integer",
+            "description": "FK to customers",
+            "state": "plain",
+        },
     ]
     assert result["foreign_keys"] == [
         {

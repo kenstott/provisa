@@ -6,6 +6,7 @@
 // found in the LICENSE file in the root directory of this source tree.
 
 import { test, expect } from "./coverage";
+import { openListRow } from "./source-to-query-helpers";
 
 // Demo mode auto-starts the guided tour in a fresh browser profile (App.tsx), which
 // navigates away from /tables — mark it seen before the app boots.
@@ -28,7 +29,7 @@ test("pets table edit shows enableAggregates and enableGroupBy checked", async (
   await petsRow.waitFor({ timeout: 10000 });
   // Click the source cell, not the row's centre: the centre of the row lands on the table
   // cell's "Edit tags" button, which opens the tag popover instead of expanding the row.
-  await petsRow.locator("td").first().click();
+  await openListRow(petsRow);
 
   // Click the Edit button that appears after expansion
   const editBtn = page.getByTestId("table-read-view-edit").first();

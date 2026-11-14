@@ -23,6 +23,7 @@ import {
 } from "./demo-source-containers";
 import {
   expectDiscoveredColumns,
+  openListRow,
   existingSourcePath,
   openRegisterForm,
   openSourcesForm,
@@ -589,7 +590,7 @@ export async function registerRss(page: Page): Promise<Registration> {
   // action button click doesn't also toggle the row), and a row wide enough for that column to
   // sit at the row's horizontal midpoint swallows a plain `row.click()` there — reproduced live
   // (the row locator resolves and clicks with no error, but the row never expands).
-  await row.locator("td").first().click();
+  await openListRow(row);
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 10000 });
   await editBtn.click();

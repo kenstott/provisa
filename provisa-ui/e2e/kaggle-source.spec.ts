@@ -37,6 +37,7 @@ import type { Page } from "@playwright/test";
 import { test, expect } from "./coverage";
 import {
   discoveredColumnCount,
+  listedTableNames,
   openRegisterForm,
   openSourcesForm,
   pickSchemaAndTable,
@@ -235,9 +236,7 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     await expect(field).toBeEnabled({ timeout: 120000 });
     await field.click();
     await expect(tableOption(page, covidTable)).toBeVisible({ timeout: 60000 });
-    const discovered = await page
-      .getByRole("option")
-      .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+    const discovered = await listedTableNames(page);
     await page.keyboard.press("Escape");
     expect(new Set(discovered)).toEqual(
       new Set([
@@ -293,7 +292,12 @@ test.describe("Kaggle source through the real UI, live Kaggle API (REQ-1780/1781
     test.setTimeout(60000);
     // The link Polly gives for a Kaggle dataset she found (she never takes the token).
     await page.goto("/sources?new=kaggle&kaggle=arshid/iris-flower-dataset");
-    await expect(page.getByTestId("sources-type-select")).toHaveValue("kaggle");
+    // A fresh page's first render of Sources (the dev server's modules, then the page's reads)
+    // outlasted the 5 s default (run 43521446753): it is given the page's first-load budget, as
+    // openSourcesForm gives it.
+    await expect(page.getByTestId("sources-type-select")).toHaveValue("kaggle", {
+      timeout: 60000,
+    });
     await page.getByTestId("kaggle-token-input").fill(KAGGLE_TOKEN!);
     await page.getByTestId("kaggle-validate-token-button").click();
     await expect(page.getByTestId("kaggle-token-valid")).toBeVisible({ timeout: 30000 });
