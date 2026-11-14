@@ -559,6 +559,29 @@ def _sign(a: _R, b: _R) -> exp.Expr:
     )
 
 
+#: Date32's last day, the day after which ClickHouse holds as itself.
+_DATE32_LAST = "2299-12-31"
+_YEAR_HELD = "(19[0-9][0-9]|2[0-2][0-9][0-9])"
+_CLOCK = r"( [0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?)?"
+_OFFSET = r"([+-][0-9]{2}(:?[0-9]{2}){0,2})?"
+#: A row's text of a bound inside what ClickHouse holds, by its element: an ISO date of a year
+#: Date32 and DateTime64 hold, a time, and a timestamptz's offset.
+_ROW_HELD_TEXT = {
+    "date": f"^{_YEAR_HELD}-[0-9]{{2}}-[0-9]{{2}}$",
+    "timestamp": f"^{_YEAR_HELD}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}$",
+    "timestamptz": f"^{_YEAR_HELD}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}{_OFFSET}$",
+}
+#: A row's text this reads at all: an ISO date of any year (BC too), an infinity.
+_ROW_ISO_TEXT = {
+    "date": r"^(-?infinity|[0-9]{4,}-[0-9]{2}-[0-9]{2}( BC)?)$",
+    "timestamp": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}( BC)?)$",
+    "timestamptz": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}{_OFFSET}( BC)?)$",
+}
+#: An instant on DateTime64's first or last day whose offset may take it past: a negative offset
+#: on the last, a positive one on the first.
+_ROW_EDGES = (r"^2299-12-31 .*-[0-9:]+$", r"^1900-01-01 .*[+][0-9:]*[1-9][0-9:]*$")
+
+
 def _held_by_clickhouse(value: object, element: str) -> bool:  # object-ok: an element
     """Whether ClickHouse's bound type holds a literal's ``value`` as itself."""
     held = range_rows.HELD_ON_CLICKHOUSE.get(element)
@@ -636,6 +659,38 @@ class _Writer:
             return exp.Cast(this=raised, to=self.bound_type(rtype.element))
         return self.bound_from_text(_string(pg_range.element_text(value)), rtype.element)
 
+    def held_text(self, text: exp.Expr, value: exp.Expr, rtype: RangeType) -> exp.Expr:
+        """``value``, a bound ClickHouse reads from a row's ``text``, or PostgreSQL's 0A000 where
+        the text is a value outside what its bound type holds, which ClickHouse would hold at its
+        type's end: an infinity, a year before 1900 or after 2299, a year BC, and an instant on
+        the bound's first or last day whose offset may take it past (REQ-2167: a bound, stated
+        and enforced). A text in no ISO form, which this does not read, is refused by name."""
+        if self.dialect != "clickhouse" or rtype.element not in range_rows.HELD_ON_CLICKHOUSE:
+            return value
+        held = _ROW_HELD_TEXT[rtype.element]
+        iso = _ROW_ISO_TEXT[rtype.element]
+        outside = _and(
+            _not(_is_null(text)),
+            _or(
+                _not(_call("match", text, _string(held))),
+                *(
+                    _call("match", text, _string(edge))
+                    for edge in (_ROW_EDGES if rtype.element == "timestamptz" else ())
+                ),
+            ),
+        )
+        unread = _and(_not(_is_null(text)), _not(_call("match", text, _string(iso))))
+        bound = self.bound_type(rtype.element)
+        return _case(
+            [
+                (unread, exp.Cast(this=self.raised("0A000", range_rows.unread_bound(rtype.name)), to=bound)),
+                (outside, exp.Cast(
+                    this=self.raised("0A000", range_rows.outside_held(rtype.name)), to=bound
+                )),
+            ],
+            value,
+        )  # fmt: skip
+
     def raised(self, sqlstate: str, message: str) -> exp.Expr:
         """An expression of integer type raising PostgreSQL's error ``message``."""
         text = _string(f"{MARK} {sqlstate}: {message}")
@@ -689,6 +744,18 @@ class _Writer:
         if rtype.element != "date":
             return _plus(value, steps) if not _is_zero(steps) else value
         added = exp.DateAdd(this=value.copy(), expression=steps.copy(), unit=exp.Var(this="DAY"))
+        if self.dialect == "clickhouse" and not _is_zero(steps):
+            # Date32's last day: the day after it is held there as itself (REQ-2167: a bound,
+            # stated and enforced, of a day a row computes).
+            past = _and(
+                exp.GTE(this=value.copy(), expression=self.typed(_string(_DATE32_LAST), "date")),
+                exp.GT(this=steps.copy(), expression=_int(0)),
+            )
+            raised = self.raised("0A000", range_rows.outside_held(rtype.name))
+            return _case(
+                [(past, exp.Cast(this=raised, to=self.bound_type("date")))],
+                self.typed(added, "date"),
+            )
         return self.typed(added, "date")
 
     def step(self, value: exp.Expr, rtype: RangeType) -> exp.Expr:
@@ -738,9 +805,8 @@ class _Writer:
         upper_inf = _eq(_substring(text, _minus(_length(text), _int(1)), _int(1)), _string(","))
 
         def bound(written: exp.Expr) -> exp.Expr:
-            return self.bound_from_text(
-                exp.Nullif(this=written, expression=_string("")), rtype.element
-            )
+            text = exp.Nullif(this=written, expression=_string(""))
+            return self.held_text(text, self.bound_from_text(text, rtype.element), rtype)
 
         low, high = bound(lower_text), bound(upper_text)
         if rtype.discrete:

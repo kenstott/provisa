@@ -518,6 +518,13 @@ _INDEX_STATED = (
     " An index outside the value raises PostgreSQL's 2202E (index out of valid range); its "
     "message does not name the index and the range, as PostgreSQL's does."
 )
+_OPERATOR_STATED = (
+    " Its operator (LIKE, NOT LIKE, ~~, !~~) beside a bytea: an untyped string is a bytea's "
+    "input, a value any expression computes is read as its bytes, and a value of another type the "
+    "statement says raises 42883 (operator does not exist). Its ESCAPE is read where the "
+    "statement is transpiled (provisa.transpiler.like_patterns): the pattern is like_escape's "
+    "bytes. bytea has no ILIKE: one raises 42883."
+)
 _LITERAL_STATED = " Its {} is read as the statement writes it, a literal or a NULL; one a row computes is refused by name."
 
 
@@ -718,7 +725,8 @@ FEATURES: tuple[Feature, ...] = (
         "like(bytea, bytea)", "Whether a bytea matches a LIKE pattern.",
         ("$a LIKE $b",),
         _Call(_like_arguments("like"), "bB", _like(False), operator="~~"),
-        _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name.",
+        _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name."
+        + _OPERATOR_STATED,
         plain_call=True, mentions=_LIKE_OF_BYTES,
     ),
     _feature(
@@ -731,7 +739,8 @@ FEATURES: tuple[Feature, ...] = (
         "notlike(bytea, bytea)", "Whether a bytea does not match a LIKE pattern.",
         ("notlike($a, $b)", "$a NOT LIKE $b"),
         _Call(_like_arguments("notlike"), "bB", _like(True), operator="!~~"),
-        _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name.",
+        _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name."
+        + _OPERATOR_STATED,
         plain_call=True, mentions=_LIKE_OF_BYTES,
     ),
     _feature(

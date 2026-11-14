@@ -142,7 +142,10 @@ def test_every_other_dialect_s_writer_keeps_escape(dialect):
 # --- 2. a text cast to a timestamp outside the bound -----------------------------------------
 
 _OUTSIDE_INSTANT = instants.out_of_bound("timestamptz_in")
-_OUTSIDE_STAMP = instants.out_of_bound("timestamp_in", instants.STAMP_BOUND)
+_OUTSIDE_STAMP = (
+    "timestamp_in() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no "
+    "exact form on clickhouse"
+)
 
 
 @pytest.mark.parametrize(
@@ -191,6 +194,74 @@ def test_isfinite_of_a_literal_outside_the_bound_is_still_read_as_there():
     # isfinite reads only that a value is there: J1305's row, unchanged.
     sql = "SELECT pg_catalog.\"isfinite\"('2300-01-01 00:00:00+00'::timestamp with time zone) AS v"
     assert "throwIf" not in transpile(sql, "clickhouse")
+
+
+# --- 3. a range's bound a row computes ----------------------------------------------------------
+
+_DAYS = "(VALUES ('2000-01-01'::date, '2299-12-31'::date)) AS t(a, b)"
+
+
+def _text_rows(text: str) -> str:
+    return f"(VALUES ('{text}'::text)) AS t(c)"
+
+
+@pytest.mark.parametrize(
+    ("sql", "constructor"),
+    [
+        # The day after 2299-12-31, which an inclusive upper bound is made into.
+        (f"SELECT daterange(a, b, '[]') AS v FROM {_DAYS}", "daterange"),
+        (f"SELECT daterange(b, NULL, '()') AS v FROM {_DAYS}", "daterange"),
+        (f"SELECT c::daterange AS v FROM {_text_rows('[2000-01-01,2300-01-01)')}", "daterange"),
+        (f"SELECT c::daterange AS v FROM {_text_rows('[2000-01-01,2299-12-31]')}", "daterange"),
+        (f"SELECT upper(c::tsrange) AS v FROM "
+         f"{_text_rows('["2000-01-01 00:00:00","2300-01-01 00:00:00")')}", "tsrange"),
+        (f"SELECT lower(c::tsrange) AS v FROM {_text_rows('["1800-01-01 00:00:00",)')}",
+         "tsrange"),
+        (f"SELECT upper(c::tsrange) AS v FROM {_text_rows('["2000-01-01 00:00:00",infinity)')}",
+         "tsrange"),
+        (f"SELECT upper(c::tstzrange) AS v FROM "
+         f"{_text_rows('["2000-01-01 00:00:00+00","2299-12-31 23:00:00-05")')}", "tstzrange"),
+        (f"SELECT c::tsrange @> '2001-01-01'::timestamp AS v FROM "
+         f"{_text_rows('["2000-01-01 00:00:00","2300-01-01 00:00:00")')}", "tsrange"),
+    ],
+)  # fmt: skip
+def test_a_range_s_bound_a_row_computes_outside_the_bound_raises(runtime, sql, constructor):
+    error = _raised(runtime, sql)
+    assert (error.sqlstate, str(error)) == ("0A000", ranges.outside_held(constructor))
+
+
+def test_a_range_s_text_bound_in_no_iso_form_raises(runtime):
+    error = _raised(runtime, f"SELECT lower(c::tsrange) AS v FROM {_text_rows('["Jan 1 2000",)')}")
+    assert (error.sqlstate, str(error)) == ("0A000", ranges.unread_bound("tsrange"))
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        (f"SELECT daterange(a, b, '[)') AS v FROM {_DAYS}", "[2000-01-01,2299-12-31)"),
+        ("SELECT daterange(a, b, '[]') AS v FROM (VALUES ('2000-01-01'::date, '2299-12-30'::date))"
+         " AS t(a, b)", "[2000-01-01,2299-12-31)"),
+        (f"SELECT c::daterange AS v FROM {_text_rows('[2000-01-01,2299-12-30]')}",
+         "[2000-01-01,2299-12-31)"),
+        (f"SELECT c::daterange AS v FROM {_text_rows('[2000-01-01,2001-01-01]')}",
+         "[2000-01-01,2001-01-02)"),
+        (f"SELECT c::tsrange AS v FROM "
+         f"{_text_rows('["2000-01-01 00:00:00","2001-01-01 00:00:00.5")')}",
+         '["2000-01-01 00:00:00","2001-01-01 00:00:00.5")'),
+        # The text alone is the row's, which no bound type holds.
+        (f"SELECT c::tsrange AS v FROM "
+         f"{_text_rows('["2000-01-01 00:00:00","2300-01-01 00:00:00")')}",
+         '["2000-01-01 00:00:00","2300-01-01 00:00:00")'),
+        (f"SELECT upper(c::tstzrange) AS v FROM "
+         f"{_text_rows('["2000-01-01 00:00:00+00","2299-12-31 05:00:00+05")')}", None),
+    ],
+)  # fmt: skip
+def test_a_range_s_bound_a_row_computes_inside_the_bound_answers(runtime, sql, answer):
+    value = _one(runtime, sql)
+    if answer is None:
+        assert value.strftime("%Y-%m-%d %H:%M:%S") == "2299-12-31 00:00:00"
+    else:
+        assert value == answer
 
 
 # --- 4. a bytea LIKE of a value no row wrote -------------------------------------------------
@@ -257,5 +328,57 @@ def test_bytea_ilike_is_postgresql_s_error(sql, message):
     assert (refused.value.sqlstate, str(refused.value)) == ("42883", message)
 
 
-def test_ranges_bound_text_is_shared():
-    assert ranges.HELD_ON_CLICKHOUSE["timestamp"][2] == instants.STAMP_BOUND
+# --- 6. the native TCP backend's read of an engine's message -----------------------------------
+
+
+class _Packet:
+    """clickhouse-driver's buffered reader over the bytes of one packet."""
+
+    def __init__(self, data: bytes) -> None:
+        self._data, self._at = data, 0
+
+    def read(self, size: int) -> bytes:
+        part = self._data[self._at : self._at + size]
+        self._at += size
+        return part
+
+    def read_one(self) -> int:
+        return self.read(1)[0]
+
+
+def _text(data: bytes) -> bytes:
+    assert len(data) < 0x80  # one byte of varint
+    return bytes([len(data)]) + data
+
+
+def _exception_packet(message: bytes) -> bytes:
+    """An EXCEPTION packet's body as the server writes it: code, name, message, stack, nested."""
+    code = (395).to_bytes(4, "little")
+    return code + _text(b"DB::Exception") + _text(message) + _text(b"stack") + b"\x00"
+
+
+def test_a_native_engine_message_beside_bytes_that_are_not_utf8_is_postgresql_s_error():
+    from provisa.federation.clickhouse_runtime import _NativeBackend
+
+    backend = _NativeBackend(host="127.0.0.1", port=9000, username="u", password="p")
+    connection = backend._client.connection
+    message = (
+        b"postgresql-error 22011: negative substring length not allowed: while executing "
+        b"'overlay('\xff\xff'_String)'"
+    )
+    connection.fin = _Packet(_exception_packet(message))
+    raised = connection.receive_exception()
+    error = from_engine(raised)
+    assert error is not None, str(raised)
+    assert (error.sqlstate, str(error)) == ("22011", "negative substring length not allowed")
+    assert "\\xff\\xff" in str(raised)
+
+
+def test_a_native_string_column_is_read_by_the_driver_s_own_reader():
+    from clickhouse_driver.connection import Connection
+
+    from provisa.federation.clickhouse_runtime import _NativeBackend
+
+    backend = _NativeBackend(host="127.0.0.1", port=9000, username="u", password="p")
+    for connection in (backend._client.connection, *backend._client.connections):
+        assert type(connection).receive_data is Connection.receive_data
