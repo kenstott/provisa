@@ -937,7 +937,7 @@ def to_char_written(node: exp.Expr, dialect: str) -> exp.Expr | None:
         raise Refused(Refusal("0A000", message), ruling=True) from refused
 
 
-_TO_CHAR_STATED = (
+TO_CHAR_STATED = (
     "Of a timestamp, and of an instant (timestamp with time zone) on a session on UTC, in a literal "
     "template: each keyword is written as one expression that yields PostgreSQL's text for it, "
     "and the pieces are concatenated (provisa.transpiler.to_char); text outside a keyword is a "
@@ -948,7 +948,7 @@ _TO_CHAR_STATED = (
     "value whose type no statement says, and an instant on a session off UTC are refused by name "
     "(to_char() has no form on clickhouse)."
 )
-_TO_CHAR_TRINO_STATED = (
+TO_CHAR_TRINO_STATED = (
     "Of a timestamp in a literal template: each keyword is written as one expression that yields "
     "PostgreSQL's text for it, and the pieces are concatenated (provisa.transpiler.to_char); text "
     "outside a keyword is a string constant. A literal value is read at microseconds (Trino's "
@@ -983,23 +983,6 @@ FEATURES += (
     _literal_feature(
         "timestamptz(timestamptz, integer)", "timestamptz($a, $n)", to_precision,
         "An instant rounded to a number of digits of a second.", _PRECISION_STATED,
-    ),
-    Feature(
-        "to_char(timestamp, text)", FAMILY, "A timestamp's or an instant's text in a template.",
-        read=Side(
-            rules=(
-                Rule(
-                    "to_char($a, $b)",
-                    {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-                     _CLICKHOUSE: Rewrite(to_char_written), "trino": Rewrite(to_char_written)},
-                    unlisted_keep=True,
-                ),
-            ),
-            limitations={
-                _CLICKHOUSE: (Limitation(_TO_CHAR_STATED),),
-                "trino": (Limitation(_TO_CHAR_TRINO_STATED),),
-            },
-        ),
     ),
     Feature(
         "cast(timestamptz as DateTime64)", FAMILY,
