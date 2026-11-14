@@ -90902,7 +90902,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     or list. The drivers surface keeps its per-test list. (Amended 2026-11-13, AN ANSWER WITHIN A STATED
     BOUND COMES BEFORE A REFUSAL:) Maintainer 2026-11-13: a pg_catalog function follows the order REQ-2236
     states for every engine: the exact answer; an answer within a stated and enforced bound, raising outside
-    it; a refusal by name only where no common case is exact.'
+    it; a refusal by name only where no common case is exact. (Amended 2026-11-13, AN INTERNAL TYPE IS BY
+    DESIGN:) Maintainer 2026-11-12 and 2026-11-13: in the function conformance report, an overload whose
+    argument or result is a type that exists only inside PostgreSQL (the reg* types, record, aclitem, a
+    type''s input by oid, xid and xid8, an aggregate''s state) counts under by design, grouped by that reason,
+    on every engine. The count is decided by the type, not by the refusal''s text. Every other refusal stays
+    under refused by name, including value types an engine does not hold yet (inet, numeric forms, interval,
+    text forms, jsonpath, tsquery, xml): those are gaps.'
   scenario: 'Given the openCypher TCK run against a test instance
 
     When a scenario fails
