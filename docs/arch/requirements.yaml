@@ -88085,7 +88085,8 @@ Then the form offers Open in VS Code as a vscode://file link to it"
     holds external ontology systems. For every entry, differences between Provisa and the entry are listed
     with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per kind of
     difference, which scheduled export and import apply; a kind with no choice is held for review. The per-table
-    lock to a catalog stays.'
+    lock to a catalog stays. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer 2026-11-14 (REQ-2247):
+    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology.'
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -96096,7 +96097,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the difference list at the moment a group is accepted, and is shown and changed on the entry''s page.
     A held difference waits in the list; an unattended run never decides one. To tell which side changed,
     a run compares each value with the one last exchanged with that entry. An ontology''s releases are uploaded
-    to its entry (REQ-2237); nothing is fetched.'
+    to its entry (REQ-2237); nothing is fetched. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer
+    2026-11-14: the Catalogs panel is named Sync Points. It is the one place for every outside system kept
+    in sync with Provisa and for that system''s details: its connection, what is kept in sync with it, its
+    open differences, the steward''s standing choices, and when it last ran with what it applied and held.
+    An entry has a type, Data Catalog or Ontology, and the list is shown under those two headings; the difference
+    list and the standing choices are the same for both, and a later type of synced system is added as a
+    new type here. The panel''s description says it keeps descriptions, owners, tags and terms in step,
+    not data.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
