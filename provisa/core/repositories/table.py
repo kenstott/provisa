@@ -348,7 +348,13 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table, declared)
+        table_id = await _upsert(conn, table, declared)
+        if table_id is not None:
+            from provisa.dq.regulation import uncite_removed
+
+            # REQ-2245: a kept regulation check its contract no longer holds takes its citation.
+            await uncite_removed(conn, table_id)
+        return table_id
 
 
 async def naming_rules(conn: "Connection") -> list[dict]:
@@ -1071,6 +1077,10 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
         # very table, so the sweep that follows has nothing left to read them from.
         refs_before = await glossary_repo.before_ref_removal(conn)
         await discard(conn, table_id)
+        from provisa.dq.regulation import uncite_removed
+
+        # REQ-2245: a checker table's kept regulation checks go with it, and their citations.
+        await uncite_removed(conn, table_id)
         # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
         # abstract term hangs on them).
         await glossary_repo.sweep_refless_terms(conn, before=refs_before)

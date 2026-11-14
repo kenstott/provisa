@@ -11,8 +11,9 @@
 """Citations of reference library documents and their sections (REQ-2208).
 
 One shape for whatever cites the library (``reference_citations``): a tag's definition cites the
-section that defines it, and each assignment of a tag cites the documents or sections that trace or
-confirm it; a security item will cite under a kind of its own. A citation names a document and,
+section that defines it, each assignment of a tag cites the documents or sections that trace or
+confirm it, and a data quality check kept from a regulation cites the section it came from
+(REQ-2245); a security item will cite under a kind of its own. A citation names a document and,
 optionally, a section of it as a section tag does: by its heading, or by its page when it has none
 (a PDF's pages). The section's text is what the library's extraction read: the passages under that
 heading, or on that page, in order; the whole document's when no section is named.
@@ -30,7 +31,7 @@ Citing a section again records its text as it is now, which is how a reviewer co
 citation.
 """
 
-# Requirements: REQ-2208
+# Requirements: REQ-2208, REQ-2245
 
 from __future__ import annotations
 
@@ -54,7 +55,10 @@ if TYPE_CHECKING:
 TAG = "tag"
 #: An assignment of a tag to an object cites what traces or confirms it.
 TAG_ASSIGNMENT = "tag_assignment"
-CITER_KINDS = (TAG, TAG_ASSIGNMENT)
+#: A data quality check kept from a regulation's section cites that section; its tag id is NULL and
+#: its object key names the check (provisa.dq.regulation.check_object_key).
+DQ_CHECK = "dq_check"
+CITER_KINDS = (TAG, TAG_ASSIGNMENT, DQ_CHECK)
 
 #: The cited section is there with the text it had when cited.
 CURRENT = "current"
