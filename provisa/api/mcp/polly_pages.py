@@ -146,7 +146,9 @@ PAGES: dict[str, PollyPage] = {
     "/admin/import": PollyPage("import"),
     "/admin/tags": PollyPage(
         "tags. The tag form's Required switch (tags-required) makes every object of the kinds "
-        "in Applies to carry the tag; one without it is a missing row in the tags report"
+        "in Applies to carry the tag; one without it is a missing row in the tags report. Its "
+        "Allowed Domains field (tags-allowed-domains) offers the tag only on objects of those "
+        "domains and requires it only there; none selected means all domains"
     ),
     "/admin/classification-kinds": PollyPage("classification kinds"),
     "/admin/reports": PollyPage("reports"),

@@ -62,6 +62,9 @@
     "purposeTitle": "À quoi servent les tags",
     "purposeBody": "Un tag est un libellé unique à l'échelle de l'organisation, au sens fixe, appliqué aux sources, tables, colonnes, relations ou commandes. Les tags portent un comportement, pas seulement de la documentation : technical exclut une colonne de l'export Data Product, entity transforme les valeurs d'une colonne en vocabulaire de recherche, deprecated invite les consommateurs à migrer.",
     "purposeAdd": "Le registre est unique. Un tag applicable à plusieurs types d'objets est la même identité partout : le modifier dans l'une des listes le modifie dans toutes.",
-    "purposeAria": "À propos des tags"
+    "purposeAria": "À propos des tags",
+    "outsideTitle": "Affectations hors des domaines autorisés",
+    "outsideBody": "L'enregistrement a conservé ces affectations. Retirez le tag d'un objet auquel il ne correspond plus.",
+    "outsideItem": "{{kind}} {{name}}, dans {{domains}}"
   }
 }

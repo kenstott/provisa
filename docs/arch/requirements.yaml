@@ -93934,7 +93934,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     or review-needed citation, and the controls of the tag assignment form and the tag editor, so Polly
     can evaluate the tags on a screen and edit them through the same forms; MCP has the same edits as tools
     (assign, unassign, cite, uncite) through the existing calls with the caller''s rights. Polly proposes
-    an edit and the person confirms before it is written.'
+    an edit and the person confirms before it is written. (Amended 2026-11-13, AN ASSIGNMENT ON AN OBJECT
+    WITH NO DOMAIN RECORDS NO DOMAIN:) Maintainer 2026-11-13: a domain-limited tag assigned to an object
+    with no domain (a role) is checked against the assigner''s acting domains when it is made and records
+    no domain. Narrowing the tag''s domains never lists such an assignment, and such an object is never
+    missing a domain-limited required tag.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -95932,5 +95936,51 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When a person for whom email is masked asks the same question
 
     Then the answer says the column cannot be evaluated
+
+    '
+- id: REQ-2246
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: MCP & AI Integration
+  feature: mcp-server-identity
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-13: an LLM client is sent every MCP tool''s definition on every model
+    call, and the server''s full list is large (88 tools, about 15,000 tokens, measured that day). The MCP
+    server has a sip mode for clients that mostly ask questions. A client chooses its mode when it connects,
+    by a parameter on the MCP address; an operator setting, with its field in the settings UI, gives the
+    mode of a client that names none. In sip mode the client is listed only the tools nearly every question
+    uses: finding, describing, querying and reading a metric by name, plus one tool that lists the other
+    groups of tools, each with a line saying what it is for (statistics, graph, glossary, data products,
+    metric management, proposals, test data and environments), and adds a group to the session when asked,
+    after which the client''s list holds that group too. Nothing is unreachable in sip mode, and a group
+    costs tokens only once it is added. A tool''s rights are unchanged: what a role may call is decided
+    as in full mode. Full mode lists every tool, as before. Sip mode changes only which tools are listed;
+    result sizes keep their own settings.'
+  scenario: 'Given an MCP client that connects in sip mode
+
+    When it lists the tools
+
+    Then it is listed the asking tools and the tool that adds a group, and no statistics or glossary management
+    tool
+
+    When it asks that tool what groups there are
+
+    Then the answer names each group and what it is for
+
+    When it asks for the statistics group
+
+    Then its tool list also holds the statistics tools
+
+    When it asks for the glossary group
+
+    Then its tool list also holds the glossary management tools
+
+    And a call to one of them is allowed or refused by the caller''s rights as in full mode
+
+    Given an MCP client that connects naming no mode
+
+    Then it is listed the tools of the mode the operator setting names
 
     '

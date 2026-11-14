@@ -14,13 +14,16 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "../test-utils/render";
-import type { Tag, TagAssignment, TagObjectType } from "../types/admin";
+import { offeredTagsFor } from "../test-utils/offeredTags";
+import type { Tag, TagAssignment, TagObjectType, TagTarget } from "../types/admin";
 import { TagControl } from "../components/TagControl";
 
 const assignSpy = vi.fn(async (_input: TagAssignment) => ({ success: true, message: "ok" }));
 const unassignSpy = vi.fn(async (_input: TagAssignment) => ({ success: true, message: "ok" }));
 
 let mockTags: Tag[] = [];
+// The tags the server places outside the object's domains (offeredTags), per test.
+const notOffered: ReadonlySet<string> = new Set();
 let mockAssignments: TagAssignment[] = [];
 
 // Spread the real module: a replace-everything factory leaks into other files (TagControl.test).
@@ -30,6 +33,7 @@ vi.mock("../hooks/useTagQueries", async (importOriginal) => ({
   useTagAssignments: () => ({ tagAssignments: mockAssignments, refetch: vi.fn() }),
   useAssignTag: () => ({ assignTag: assignSpy }),
   useUnassignTag: () => ({ unassignTag: unassignSpy }),
+  useOfferedTags: (target: TagTarget) => offeredTagsFor(mockTags, target, notOffered),
 }));
 
 function tag(id: string, appliesTo: TagObjectType[]): Tag {
@@ -44,6 +48,7 @@ function tag(id: string, appliesTo: TagObjectType[]): Tag {
     paramPolicy: "none",
     requiresCitation: false,
     required: false,
+    allowedDomains: [],
     citations: [],
     needsReview: false,
     paramValues: [],
