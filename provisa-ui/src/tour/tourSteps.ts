@@ -721,10 +721,10 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     // REQ-1945: publishing the model, its data products and lineage out to a catalog. The anchor is
-    // the Metadata Export page root, which paints in both the entitled and not-entitled states.
-    route: "/admin/metadata-export",
+    // the Syncing page root (REQ-2247), which paints in both the entitled and not-entitled states.
+    route: "/admin/syncing",
     capability: "org_settings",
-    element: '[data-tour="metadata-export"]',
+    element: '[data-tour="syncing"]',
     key: "stepPublish",
   },
   {

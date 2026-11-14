@@ -48,7 +48,6 @@
     "itemAuthentication": "身份验证",
     "itemAiModels": "AI 模型",
     "itemPackageRegistries": "软件包注册表",
-    "itemMetadataExport": "导出",
     "itemImport": "导入",
     "itemTags": "标签",
     "itemClassificationKinds": "分类",
@@ -79,7 +78,6 @@
     "itemNotebook": "笔记本",
     "itemContainerRegistries": "容器注册表",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "目录",
     "itemLibrary": "资料库",
     "itemPlatformObservability": "平台可观测性"
   }

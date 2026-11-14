@@ -48,7 +48,6 @@
     "itemAuthentication": "אימות",
     "itemAiModels": "מודלי AI",
     "itemPackageRegistries": "מאגרי חבילות",
-    "itemMetadataExport": "ייצוא",
     "itemImport": "ייבוא",
     "itemTags": "תגיות",
     "itemClassificationKinds": "סיווג",
@@ -79,7 +78,6 @@
     "itemNotebook": "מחברת",
     "itemContainerRegistries": "מאגרי קונטיינרים",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "קטלוגים",
     "itemLibrary": "ספרייה",
     "itemPlatformObservability": "ניטור הפלטפורמה"
   }

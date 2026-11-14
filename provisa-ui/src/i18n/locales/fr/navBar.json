@@ -48,7 +48,6 @@
     "itemAuthentication": "Authentification",
     "itemAiModels": "Modèles IA",
     "itemPackageRegistries": "Registres de paquets",
-    "itemMetadataExport": "Exporter",
     "itemImport": "Importer",
     "itemTags": "Tags",
     "itemClassificationKinds": "Classification",
@@ -79,7 +78,6 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Registres de conteneurs",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Catalogues",
     "itemLibrary": "Bibliothèque",
     "itemPlatformObservability": "Observabilité de la plateforme"
   }
