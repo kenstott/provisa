@@ -34615,7 +34615,8 @@
   description: 'Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942
     event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py)
     periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped
-    to that org only.'
+    to that org only. (Amended 2026-11-14, A SCHEDULE PER ENTRY:) Maintainer 2026-11-14 (REQ-2247). The
+    scheduled reconcile is set per entry on the Syncing page, not once for the organisation.'
   use_case: Event-driven sync ensures near-real-time metadata propagation for operational responsiveness;
     scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant
     isolation and per-customer credential management.
@@ -50872,8 +50873,13 @@
     YAML, the converter warnings and per-kind counts while writing NOTHING, and POST /admin/import/hasura/apply
     loads the YAML the administrator approved -- including any edits made in the preview -- through the
     settled org sequence (catalog names first per REQ-1266, then load_config, source pools, PK resolution,
-    schema rebuild), never a second loader. replace defaults to off so an import merges; turned on it
-    is load_config full-replace semantics.'
+    schema rebuild), never a second loader. replace defaults to off so an import merges; turned on it is
+    load_config full-replace semantics. (Amended 2026-11-14, THE TAB IS MIGRATIONS:) Maintainer 2026-11-14:
+    the admin tab is named Migrations, not Import, and Hasura is one type of migration. A migration is a
+    one-time conversion of another product''s project into a Provisa model, previewed before it is applied;
+    nothing stays connected afterwards. The tab lists the types it can convert, today Hasura v2 metadata
+    and Hasura DDN, and a later product is added as a new type there. ''Import'' in the product means only
+    the direction of an entry on the Syncing page (REQ-2247).'
   use_case: An administrator migrating off Hasura converts their metadata export in the admin UI, reads
     what the conversion produced and what it could not convert, corrects the connection details in place,
     and applies it to their org, without a shell on the deployment.
@@ -88086,7 +88092,10 @@ Then the form offers Open in VS Code as a vscode://file link to it"
     with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per kind of
     difference, which scheduled export and import apply; a kind with no choice is held for review. The per-table
     lock to a catalog stays. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer 2026-11-14 (REQ-2247):
-    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology.'
+    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology. (Amended 2026-11-14,
+    THE PAGE IS SYNCING AND HOLDS THE EXPORT SETTINGS:) Maintainer 2026-11-14 (REQ-2247). The panel is named
+    Syncing, not Sync Points. A metadata export target is no longer a separate object on a separate screen:
+    its settings are on the catalog''s entry, and each entry has its own schedules.'
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -96104,7 +96113,44 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     An entry has a type, Data Catalog or Ontology, and the list is shown under those two headings; the difference
     list and the standing choices are the same for both, and a later type of synced system is added as a
     new type here. The panel''s description says it keeps descriptions, owners, tags and terms in step,
-    not data.'
+    not data. (Amended 2026-11-14, THE PAGE IS SYNCING, WITH EXPORT, SCHEDULES AND A WEBHOOK CHOICE:) Maintainer
+    2026-11-14. The page is named Syncing; this replaces the name Sync Points given earlier the same day.
+    The Metadata Export screen becomes part of it: an entry carries what an export target carried (the role
+    it publishes as, its provider''s export settings, Publish now and the result of its last run), so a
+    system is set up in one place and the separate Metadata Export screen and its targets go away. Each
+    entry has its own schedules in place of the one schedule for the whole organisation: one for sending
+    to the system and one for reading from it, each optional, each with Run now and its last result. An
+    ontology entry normally has neither, since its releases are uploaded. Publishing a change as it happens,
+    the plan check and the per-table lock are unchanged. The steward''s standing choice for a kind of difference
+    has a fourth option, ask a webhook: Provisa sends the one difference (the entry and its type, the kind
+    of difference, the object by its name, both values, the value last exchanged and which side changed)
+    and the webhook answers take Provisa''s value, take the other system''s value, or hold. No answer in
+    time, an error or any other answer is a hold, the same as a kind with no standing choice. The webhook
+    is called the way the approval hook is (REQ-247: its transports and timeout setting), and every applied
+    difference records who decided it: the steward by name, a standing choice, or the webhook. (Amended
+    2026-11-14, AN ENTRY SAYS ITS DIRECTION:) Maintainer 2026-11-14. Each entry says which direction it
+    syncs: Export (Provisa to the system), Import (the system to Provisa), or both. The two directions are
+    named Export and Import everywhere, in place of ''sending'' and ''reading'' above, and each has its
+    own schedule, Run now and last result. A direction that is off never runs, on a schedule or by hand,
+    and lists no differences; an entry with Export only never changes Provisa, and one with Import only
+    never changes the other system. (Amended 2026-11-14, A WEBHOOK PER DIRECTION:) Maintainer 2026-11-14:
+    an approval on the receiving system is that system''s feature, and the webhook is how it is reached.
+    An entry''s standing choices are set per direction and per kind of difference, and an entry has one
+    webhook for Export and one for Import, each optional, since the system that must agree differs by direction.
+    A webhook that answers hold (an approval still open on the other system, for example) leaves the difference
+    in the list, and each later run of that direction asks it again until it answers take or a steward accepts
+    the difference by hand; Provisa keeps no approval state of its own for the other system. (Amended 2026-11-14,
+    THE WEBHOOK MAY MODIFY OR HANDLE A CHANGE:) Maintainer 2026-11-14: Provisa knows how to write to a catalog,
+    and cannot know how a customer has set that catalog up (its approval workflow, required fields, starting
+    statuses); the webhook covers that part. A webhook is passed the change in Provisa''s own form, not
+    the vendor''s API call: the entry, the direction, the kind, the object by its name, both values, the
+    value last exchanged, and an open set of extra fields. It answers one of four ways: take as is; take
+    with these changes (a changed value or extra fields, which the adapter writes on Export and Provisa
+    applies on Import); handled (the webhook made the change itself and Provisa writes nothing); or hold.
+    What was actually written is recorded as the value last exchanged. A handled change is not confirmed
+    separately: the next run''s comparison shows whether it happened. This widens the answers given in the
+    earlier amendments of the same day. An entry has a third type, Custom, for a system Provisa has no adapter
+    for: its Export and Import are done entirely by its webhooks.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
