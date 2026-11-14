@@ -16,6 +16,7 @@ not built or that region's stores cannot be reached."""
 
 from __future__ import annotations
 
+import threading
 from datetime import UTC, datetime
 from types import SimpleNamespace
 
@@ -94,6 +95,7 @@ def test_duckdb_attaches_only_a_server_store_of_another_region():
 
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
     runtime._region_stores = set()
+    runtime._region_store_lock = threading.Lock()
     with pytest.raises(RuntimeError, match="not a server store"):
         runtime.attach_region_store("eu", "duckdb:///eu.duckdb")
 
@@ -120,11 +122,62 @@ def test_duckdb_attaches_a_postgres_store_by_the_url_libpq_reads(monkeypatch, ds
     monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
     runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
     runtime._region_stores = set()
+    runtime._region_store_lock = threading.Lock()
     con = SimpleNamespace(execute=executed.append, close=lambda: None)
     con.cursor = lambda: con  # the runtime runs each statement on a cursor of its own
     runtime._con = con  # type: ignore[assignment]
     runtime.attach_region_store("eu", dsn)
     assert executed == [f"ATTACH '{attached}' AS \"eu\" (TYPE postgres, READ_ONLY)"]
+
+
+def test_duckdb_attaches_another_regions_store_once_when_two_reads_reach_it_at_once(monkeypatch):
+    """Two requests' first reads of a region's store at once (a visitor's first query and its
+    sandbox's tour warm-up, each on its own thread) attach it once, and both read it: DuckDB
+    refuses a second ATTACH under a name already attached, which was taken for that region's
+    store being unreachable (query.home_region_unavailable, R509-AQ)."""
+    import time
+
+    import duckdb
+
+    from provisa.federation import duckdb_runtime
+    from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
+
+    monkeypatch.setattr(duckdb_runtime, "install_and_load", lambda *_a, **_k: None)
+    real = duckdb.connect()
+    attaches: list[str] = []
+
+    class _Cursor:
+        """A cursor of ``real`` whose ATTACH of a store takes a while, as one to a server does;
+        the store itself stands in as an in-memory database under the same name."""
+
+        def execute(self, sql: str) -> None:
+            attaches.append(sql)
+            time.sleep(0.2)
+            alias = sql.split(" AS ")[1].split(" ")[0]
+            real.cursor().execute(f"ATTACH ':memory:' AS {alias}")
+
+        def close(self) -> None:
+            pass
+
+    runtime = DuckDBFederationRuntime.__new__(DuckDBFederationRuntime)
+    runtime._region_stores = set()
+    runtime._region_store_lock = threading.Lock()
+    runtime._con = SimpleNamespace(cursor=_Cursor)  # type: ignore[assignment]
+    failed: list[BaseException] = []
+
+    def read() -> None:
+        try:
+            runtime.attach_region_store("eu", "postgresql+psycopg://r:pw@127.0.0.1:5433/eu_store")
+        except BaseException as exc:  # noqa: BLE001 - recorded for the assertion below
+            failed.append(exc)
+
+    readers = [threading.Thread(target=read) for _ in range(2)]
+    for reader in readers:
+        reader.start()
+    for reader in readers:
+        reader.join()
+    assert failed == []
+    assert len(attaches) == 1
 
 
 def test_an_engine_without_an_attach_for_another_region_refuses_naming_itself():

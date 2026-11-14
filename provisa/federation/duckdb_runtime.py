@@ -285,6 +285,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._attached_store_dsn: str | None = None  # the store that attach was for
         # REQ-1922: the other regions' replicas stores this connection has attached, by alias.
         self._region_stores: set[str] = set()
+        # Two requests' first reads of a region's store reach it at once (each on its own thread):
+        # it is attached once, under this lock -- a second ATTACH of the name is refused by DuckDB.
+        self._region_store_lock = threading.Lock()
         # REQ-1901: set instead of a `mat_store` ATTACH when the store is embedded DuckDB — see
         # ensure_materialize_attached. A statement's `mat_store.<schema>.<table>` reads (a replica,
         # a materialized view) are served by the query-time refresh in run/run_sync/run_arrow/
@@ -1188,13 +1191,16 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 f"{name!r}: that region's replicas store is not a server store this engine can "
                 "attach"
             )
-        if store_type not in self._NO_EXTENSION_TYPES:
-            # A Postgres store loads the extension with its settings too (#241).
-            self._install_and_load(store_type, from_community=False)
-        self._on_instance(
-            f"ATTACH '{_attach_url(url)}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)"
-        )
-        self._region_stores.add(alias)
+        with self._region_store_lock:
+            if alias in self._region_stores:  # attached by a read that held the lock before
+                return alias
+            if store_type not in self._NO_EXTENSION_TYPES:
+                # A Postgres store loads the extension with its settings too (#241).
+                self._install_and_load(store_type, from_community=False)
+            self._on_instance(
+                f"ATTACH '{_attach_url(url)}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)"
+            )
+            self._region_stores.add(alias)
         return alias
 
     @property
