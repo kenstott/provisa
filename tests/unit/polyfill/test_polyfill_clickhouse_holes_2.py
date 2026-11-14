@@ -264,6 +264,46 @@ def test_a_range_s_bound_a_row_computes_inside_the_bound_answers(runtime, sql, a
         assert value == answer
 
 
+# --- to_char(timestamptz, text) of a plain template -------------------------------------------
+
+_INSTANT = "'2024-06-15 12:30:45-05'::timestamptz"
+
+
+@pytest.mark.parametrize(
+    ("template", "answer"),
+    [
+        ("YYYY-MM-DD", "2024-06-15"),
+        ("yyyy/mm/dd", "2024/06/15"),
+        ("YYYY-MM-DD HH24", "2024-06-15 17"),
+    ],
+)
+def test_to_char_of_an_instant_in_a_plain_template_is_postgresql_s(runtime, template, answer):
+    assert _one(runtime, f"SELECT to_char({_INSTANT}, '{template}') AS v") == answer
+
+
+@pytest.mark.parametrize("template", ["%Y", "SSSS", "DDTHH24", "HH24:MI:SS", "Mon", '"YYYY"'])
+def test_to_char_of_an_instant_in_another_template_is_refused_by_name(template):
+    sql = f"SELECT to_char({_INSTANT}, '{template}') AS v"
+    assert str(_refused(sql)) == "to_char() has no form on clickhouse"
+
+
+def test_to_char_of_an_instant_off_utc_is_refused_by_name():
+    from provisa.core.session_time_zone import StatementZone, bind_zone, reset_zone
+
+    token = bind_zone(StatementZone("America/New_York", name="America/New_York"))
+    try:
+        assert str(_refused(f"SELECT to_char({_INSTANT}, 'YYYY') AS v")) == (
+            "to_char() has no form on clickhouse"
+        )
+    finally:
+        reset_zone(token)
+
+
+def test_to_char_of_an_instant_outside_the_bound_raises(runtime):
+    error = _raised(runtime, "SELECT to_char('2300-01-01 00:00:00+00'::timestamptz, 'YYYY') AS v")
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound("to_char"))
+
+
 # --- 4. a bytea LIKE of a value no row wrote -------------------------------------------------
 
 _C3A9 = "(VALUES ('\\xc3a9'::bytea)) AS t(c)"
@@ -382,3 +422,24 @@ def test_a_native_string_column_is_read_by_the_driver_s_own_reader():
     backend = _NativeBackend(host="127.0.0.1", port=9000, username="u", password="p")
     for connection in (backend._client.connection, *backend._client.connections):
         assert type(connection).receive_data is Connection.receive_data
+
+
+# --- to_char's template through a step that writes the statement again ---------------------------
+
+
+@pytest.mark.parametrize("dialect", ["clickhouse", "trino"])
+def test_to_char_s_template_is_kept_where_the_statement_is_written_again(dialect):
+    # An instant's literal with an offset makes transpile write the statement again
+    # (_instants_as_utc): sqlglot's strftime text of '%Y' was written back as 'YYYY'.
+    sql = (
+        "SELECT to_char('2024-06-15'::timestamp, '%Y') AS v, "
+        "'2024-01-01 00:00:00+00'::timestamptz AS w"
+    )
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, dialect)
+    assert str(refused.value) == f"to_char() has no form on {dialect}"
+
+
+def test_to_char_s_template_on_postgresql_is_the_one_written():
+    written = transpile("SELECT to_char(c, '%Y') AS v FROM t", "postgres")
+    assert "'%Y'" in written

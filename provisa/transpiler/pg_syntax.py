@@ -238,6 +238,19 @@ def _to_char(args: list[exp.Expr], dialect: Any) -> exp.Expr:
     return call
 
 
+_TO_CHAR_WRITTEN = Postgres.Generator.TRANSFORMS[exp.TimeToStr]
+
+
+def _to_char_written(self: Any, node: exp.TimeToStr) -> str:
+    """to_char in PostgreSQL's SQL, its template the one the statement wrote: a step that writes
+    the statement again (transpile's passes over its text) keeps it, where sqlglot's strftime
+    text of it would be written back as another template ('%Y' as 'YYYY')."""
+    template = node.meta.get(TO_CHAR_TEMPLATE)
+    if template is None:
+        return _TO_CHAR_WRITTEN(self, node)
+    return self.func("TO_CHAR", node.this, exp.Literal.string(template))
+
+
 _JSON_OBJECT = Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"]
 
 _reads_types(Postgres.Parser)
@@ -249,6 +262,7 @@ Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
 Postgres.Parser.FUNCTIONS["TO_DATE"] = _formatted(exp.StrToDate)
 Postgres.Parser.FUNCTIONS["TO_TIMESTAMP"] = _to_timestamp
 Postgres.Parser.FUNCTIONS["TO_CHAR"] = _to_char
+Postgres.Generator.TRANSFORMS[exp.TimeToStr] = _to_char_written
 Postgres.Parser.FUNCTION_PARSERS.pop("CONVERT", None)
 Postgres.Parser.FUNCTIONS["CONVERT"] = lambda args: exp.Anonymous(this="convert", expressions=args)
 Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"] = _pg_json_object

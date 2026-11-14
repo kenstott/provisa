@@ -56,7 +56,7 @@ from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
 from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler import pg_forms
-from provisa.transpiler.engine_refusals import PLAIN_PARTS
+from provisa.transpiler.engine_refusals import PLAIN_PARTS, plain_format
 
 FAMILY = "timestamp with time zone on ClickHouse"
 
@@ -118,9 +118,28 @@ def wall_inputs(tree: exp.Expr) -> exp.Expr:
     return tree
 
 
-#: The meta key of a value a row reads only that it is there (isfinite): ClickHouse's value of a
-#: literal outside the bound answers it as PostgreSQL's does.
-PRESENCE_READ = "provisa_presence_read"
+#: The meta key of a literal a row of this module reads: one it raises for with its own name, or
+#: one it reads only that it is there (isfinite), where ClickHouse's value of it answers as
+#: PostgreSQL's does.
+ROW_READ = "provisa_row_read"
+
+
+def _read_by_row(*arguments: exp.Expr) -> None:
+    """Each literal ``arguments`` write, or a VALUES list's column holds, marked :data:`ROW_READ`."""
+    for argument in arguments:
+        value = argument.unnest()
+        if isinstance(value, exp.Cast):
+            value.meta[ROW_READ] = True
+            continue
+        cast = values_cast(value) if isinstance(value, exp.Column) else None
+        values = None if cast is None else cast.find_ancestor(exp.Values)
+        if values is None:
+            continue
+        index = [c.name for c in values.args["alias"].columns].index(value.name)
+        for row in values.expressions:
+            written = row.expressions[index].unnest()
+            if isinstance(written, exp.Cast):
+                written.meta[ROW_READ] = True
 
 
 def outside_cast(node: exp.Expr) -> exp.Expr | None:
@@ -129,7 +148,7 @@ def outside_cast(node: exp.Expr) -> exp.Expr | None:
     for any other node. Read last (transpile.clickhouse_semantics): a row of this module raises one
     its call reads with its own name, or answers it where it reads only that it is there."""
     named = _INPUT_FUNCTIONS.get(node.to.this) if isinstance(node, exp.Cast) else None
-    if named is None or node.meta.get(PRESENCE_READ):
+    if named is None or node.meta.get(ROW_READ):
         return None
     literal = node.this
     if not (isinstance(literal, exp.Literal) and literal.is_string):
@@ -376,10 +395,10 @@ def _rewrite(
         if current_zone.get() is not None and (zoned or literal):
             return None  # read in the session's zone: refused by name off UTC
         if bounded and _Read.OUTSIDE in read and not (strict and _Read.NULL in read):
+            _read_by_row(*call[1])
             return raised(function, dialect, pattern, returns)
         if not bounded:
-            for argument in call[1]:
-                argument.unnest().meta[PRESENCE_READ] = True
+            _read_by_row(*call[1])
         return graft(replacement(form, dialect, pattern), dict(zip(holes, call[1])))
 
     return rewrite
@@ -483,7 +502,10 @@ def zoned_instant(
     read = _checked(argument, _OF["timestamptz"])
     if read is None or current_zone.get() is not None:
         return False, None
-    return True, raised(function, dialect, pattern, INSTANT) if read is _Read.OUTSIDE else None
+    if read is not _Read.OUTSIDE:
+        return True, None
+    _read_by_row(argument)
+    return True, raised(function, dialect, pattern, INSTANT)
 
 
 # --- one instant -------------------------------------------------------------------------------
@@ -1003,30 +1025,50 @@ def held_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     pattern = "f($a)"
     if read is _Read.OUTSIDE:
+        _read_by_row(node.this)
         return raised("tstzrange", dialect, pattern, INSTANT)
     return graft(replacement(f"CAST($a AS {INSTANT})", dialect, pattern), {"a": node.this})
 
 
-def to_char_of_null(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """to_char(timestamptz, text) of a NULL instant or a NULL template: NULL, as the STRICT
-    function answers. Any other call keeps its refusal by name: the template reaches the
-    translator as sqlglot's strftime text, which no longer tells PostgreSQL's YYYY from a literal
-    %Y, so no form can be read as exact."""
+def to_char_of_an_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """to_char(timestamptz, text): NULL of a NULL instant or a NULL template, as the STRICT
+    function answers; ClickHouse's format of a template made only of YYYY, MM, DD, HH24, MI and SS
+    and the characters ``-/: `` (engine_refusals.plain_format reads the template the statement
+    wrote, which pg_syntax keeps), of an instant held as DateTime64(6, 'UTC') in its bound, on a
+    session on UTC: PostgreSQL's text is the session zone's. A literal outside the bound raises.
+    Any other call keeps its refusal by name."""
     if not isinstance(node, exp.TimeToStr):
         return None
     value, template = node.this, node.args.get("format")
-    if template is None or _checked(value, _OF["timestamptz"]) is None:
+    if template is None:
         return None
-    if not (_is_null(value) or _is_null(template)):
+    read = _checked(value, _OF["timestamptz"])
+    if read is None:
         return None
-    return replacement("CAST(NULL AS Nullable(String))", dialect, "to_char($a, $b)")
+    pattern = "to_char($a, $b)"
+    if read is _Read.NULL or _is_null(template):
+        return replacement("CAST(NULL AS Nullable(String))", dialect, pattern)
+    if current_zone.get() is not None or not plain_format(node, _CLICKHOUSE):
+        return None
+    if read is _Read.OUTSIDE:
+        _read_by_row(value)
+        return raised("to_char", dialect, pattern, "Nullable(String)")
+    form = replacement(f"formatDateTime($a, {_quoted(template.this)})", dialect, pattern)
+    return graft(form, {"a": value})
+
+
+def _quoted(text: str) -> str:
+    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
 
 
 _TO_CHAR_STATED = (
-    "Of a NULL instant or a NULL template only: NULL, as the strict function answers. Any other "
-    "call is refused by name (to_char() has no form on clickhouse): the template reaches the "
-    "translator as strftime text, in which PostgreSQL's YYYY and a literal %Y are the same, so "
-    "no form of it is exact."
+    "Of a NULL instant or a NULL template: NULL, as the strict function answers. Of a template "
+    "made only of YYYY, MM, DD, HH24, MI and SS and the characters -/: (read as the statement "
+    "writes it, not as sqlglot's strftime text of it, in which PostgreSQL's YYYY and a literal %Y "
+    f"are the same), on a session on UTC: ClickHouse's format of it. {_ONE_HELD.format('to_char')}"
+    " MI is refused by name there as well (ClickHouse's %M is a month's name). Any other template, "
+    "and any call on a session off UTC (its text is the session zone's), is refused by name "
+    "(to_char() has no form on clickhouse)."
 )
 
 
@@ -1061,7 +1103,7 @@ FEATURES += (
                 Rule(
                     "to_char($a, $b)",
                     {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-                     _CLICKHOUSE: Rewrite(to_char_of_null)},
+                     _CLICKHOUSE: Rewrite(to_char_of_an_instant)},
                     unlisted_keep=True,
                 ),
             ),
