@@ -11,6 +11,7 @@
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
 import re
+import threading
 import zlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -201,17 +202,36 @@ def _create_table_postgres(sync_conn, table) -> None:
     """CREATE ``table`` in the connection's current schema with every JSON column as JSONB — what
     ``schema.sql`` and the tables' own PostgreSQL DDL declare. Built from a copy, so the shared
     metadata (which the portable backends create from as it is) is not changed."""
+    _jsonb_copies(table.metadata)[table.name].create(sync_conn, checkfirst=True)
+
+
+#: Each metadata's JSONB copy (:func:`_jsonb_copies`), by the metadata and the tables it held.
+_JSONB_COPIES: dict[tuple[Any, tuple[str, ...]], dict[str, Any]] = {}
+_JSONB_COPIES_LOCK = threading.Lock()
+
+
+def _jsonb_copies(metadata) -> dict[str, Any]:
+    """A copy of every table of ``metadata``, each JSON column typed JSONB, made once per process.
+    The whole metadata is copied so a table's foreign keys resolve in the copy. REQ-2006: made
+    again for each table a layout created, it was ~0.1 s of Python per table, four per new org
+    schema, and the environments a sandbox's open lays out side by side waited on each other's."""
     from sqlalchemy import MetaData
+    from sqlalchemy.dialects import postgresql
     from sqlalchemy.dialects.postgresql import JSONB
 
-    scratch = MetaData()
-    # The whole metadata is copied so the table's foreign keys resolve in the copy.
-    copies = {t.name: t.to_metadata(scratch) for t in table.metadata.tables.values()}
-    copy = copies[table.name]
-    for column in copy.columns:
-        if column.type.compile(sync_conn.dialect).upper() == "JSON":
-            column.type = JSONB()
-    copy.create(sync_conn, checkfirst=True)
+    key = (metadata, tuple(metadata.tables))
+    with _JSONB_COPIES_LOCK:
+        copies = _JSONB_COPIES.get(key)
+        if copies is None:
+            scratch = MetaData()
+            copies = {t.name: t.to_metadata(scratch) for t in metadata.tables.values()}
+            dialect = postgresql.dialect()
+            for copy in copies.values():
+                for column in copy.columns:
+                    if column.type.compile(dialect).upper() == "JSON":
+                        column.type = JSONB()
+            _JSONB_COPIES[key] = copies
+    return copies
 
 
 def _live_columns_postgres(sync_conn, schema: str | None) -> dict[str, set[str]]:

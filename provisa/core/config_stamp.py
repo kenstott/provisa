@@ -38,6 +38,7 @@ Kinds, and where their row lives:
 
 from __future__ import annotations
 
+import zlib
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import text, update
@@ -128,15 +129,23 @@ _INSTALL_LOCK_KEY = 0x50524F5649534134
 _PG_FUNCTION = "advance_config_stamp"
 
 
+def _install_lock_key(schema: str) -> int:
+    """REQ-2006: the lock of one schema's install. What it serializes is two installs of the same
+    schema's function and triggers (the worker processes of a launch); one key for every schema
+    queued each environment a sandbox's open lays out side by side behind the other's."""
+    return ((_INSTALL_LOCK_KEY & 0x7FFFFFFF) << 32) | zlib.crc32(schema.encode())
+
+
 def _seed(conn: Any, qualified: str, kinds: set[str]) -> None:
-    for kind in sorted(kinds):
-        conn.execute(
-            text(
-                f"INSERT INTO {qualified} (kind, stamp) SELECT :kind, 0 "
-                f"WHERE NOT EXISTS (SELECT 1 FROM {qualified} WHERE kind = :kind)"
-            ),
-            {"kind": kind},
-        )
+    """A row of stamp 0 for each of ``kinds`` that has none: one statement, whatever their number."""
+    conn.execute(
+        text(
+            f"INSERT INTO {qualified} (kind, stamp) "
+            "SELECT k, 0 FROM unnest(CAST(:kinds AS text[])) AS k "
+            f"WHERE NOT EXISTS (SELECT 1 FROM {qualified} s WHERE s.kind = k)"
+        ),
+        {"kinds": sorted(kinds)},
+    )
 
 
 def trigger_function_body() -> str:
@@ -170,9 +179,10 @@ def trigger_function_body() -> str:
 
 
 def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -> None:
-    conn.execute(text(f"SELECT pg_advisory_xact_lock({_INSTALL_LOCK_KEY})"))
     if schema is None:
         schema = conn.execute(text("SELECT current_schema()")).scalar_one()
+    assert schema is not None
+    conn.execute(text(f"SELECT pg_advisory_xact_lock({_install_lock_key(schema)})"))
     stamp = f'"{schema}".config_stamp'
     kinds = set(tables.values())
     _seed(conn, stamp, kinds | {BUILD} if MODEL in kinds else kinds)
@@ -198,16 +208,24 @@ def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -
     # A table holding a ``json`` column (one created from the portable metadata rather than
     # schema.sql, which declares jsonb) cannot be compared row to row: json has no equality
     # operator. Its every UPDATE advances the stamp.
+    # Read from pg_catalog: information_schema.columns is a view over every schema's columns that
+    # PostgreSQL filters by privilege row by row, and a control plane holding many org schemas
+    # made it the slowest statement of a layout.
     uncomparable = {
         row[0]
         for row in conn.execute(
             text(
-                "SELECT DISTINCT table_name FROM information_schema.columns "
-                "WHERE table_schema = :schema AND data_type = 'json'"
+                "SELECT DISTINCT c.relname FROM pg_catalog.pg_attribute a "
+                "JOIN pg_catalog.pg_class c ON c.oid = a.attrelid "
+                "JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = :schema AND c.relkind IN ('r', 'p', 'v', 'm', 'f') "
+                "AND a.attnum > 0 AND NOT a.attisdropped "
+                "AND a.atttypid = 'pg_catalog.json'::pg_catalog.regtype"
             ),
             {"schema": schema},
         )
     }
+    missing: list[str] = []
     for table, kind in tables.items():
         target = f'"{schema}"."{table}"'
         call = f"EXECUTE FUNCTION {function}('{kind}')"
@@ -218,9 +236,14 @@ def _install_postgresql(conn: Any, tables: dict[str, str], schema: str | None) -
             "config_stamp_update": (f"AFTER UPDATE ON {target} FOR EACH ROW {changed}{call}"),
             "config_stamp_truncate": f"AFTER TRUNCATE ON {target} FOR EACH STATEMENT {call}",
         }
-        for name, definition in wanted.items():
-            if (table, name) not in existing:
-                conn.execute(text(f"CREATE TRIGGER {name} {definition}"))
+        missing.extend(
+            f"CREATE TRIGGER {name} {definition};"
+            for name, definition in wanted.items()
+            if (table, name) not in existing
+        )
+    if missing:
+        # One statement for them all: a new schema has ~100 of them, and each was a round trip.
+        conn.execute(text(f"DO $install$ BEGIN {' '.join(missing)} END $install$"))
 
 
 def install(
