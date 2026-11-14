@@ -529,9 +529,12 @@ def test_duckdb_reads_a_cast_s_text_as_postgresql_does(text, want):
     assert _duckdb_rows(f"SELECT '{text}'::interval AS v", ["x"]) == [want]
 
 
-@pytest.mark.parametrize("text", ["1 day 1 day", "1 quarter", "1 hour 02:03"])
-def test_duckdb_refuses_by_name_an_input_postgresql_refuses(text):
-    """PostgreSQL refuses each (22007); DuckDB answered them (2 days, 3 mons, 03:03:00)."""
+@pytest.mark.parametrize(
+    "text", ["1 day 1 day", "1 quarter", "1 hour 02:03", "P1D", "1-2", "1 2:03:04", "infinity"]
+)
+def test_duckdb_refuses_by_name_an_input_not_read_here(text):
+    """PostgreSQL refuses the first three (22007), which DuckDB answered (2 days, 3 mons,
+    03:03:00); DuckDB fails on ISO 8601, the SQL standard's forms and infinity (an engine error)."""
     with pytest.raises(FunctionRefused, match="duckdb"):
         transpile(f"SELECT '{text}'::interval AS v", "duckdb")
 
