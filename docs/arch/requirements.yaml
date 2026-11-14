@@ -88081,10 +88081,11 @@ Then the form offers Open in VS Code as a vscode://file link to it"
     export''s own settings for a catalog are the DataZone project that owns its data products and the Unity
     Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The Catalogs
     panel''s connection test is the provider''s own health check, the one the export runs. (Amended 2026-11-14,
-    A CATALOG CONNECTION DECLARES ITS ROLE PER KIND OF FACT:) Maintainer 2026-11-14 (REQ-2247). A catalog
-    connection declares, per kind of fact, whether it is the authority or a mirror; a catalog mirrors every
-    kind unless declared otherwise. The per-table lock to a catalog stays as the way one table''s descriptive
-    fields are given to a catalog.'
+    DIFFERENCES, ACCEPT AND STANDING CHOICES:) Maintainer 2026-11-14 (REQ-2247). The Catalogs panel also
+    holds external ontology systems. For every entry, differences between Provisa and the entry are listed
+    with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per kind of
+    difference, which scheduled export and import apply; a kind with no choice is held for review. The per-table
+    lock to a catalog stays.'
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -95719,14 +95720,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     individuals still come in as valid values. How a relation between two classes (an OWL object property
     with a domain and a range) is modelled is a separate decision; until it is made, such a property is
     kept with its domain and range as above, not reduced to a part-of edge. (Amended 2026-11-14, AN ONTOLOGY
-    IS A CONNECTION, AND ITS RELEASES LAND FINAL:) Maintainer 2026-11-14 (REQ-2247). An ontology is not
-    a one-off file import: one external ontology system has one ontology connection, and each file uploaded
-    to it is recorded as a release of that connection, in order. For the kinds of fact the connection is
-    the authority for, a release applies as final: new terms are approved and changed definitions replace
-    the old, which replaces ''nothing is approved automatically'' for those kinds only. Facts the connection
-    does not own (groundings, matches to terms made in Provisa) still pass the steward''s review. An item
-    marked owl:deprecated deprecates its term. An IRI absent from a later release is a finding, not an ending.
-    An applied release is never deleted.'
+    IS AN ENTRY IN THE CATALOGS PANEL:) Maintainer 2026-11-14 (REQ-2247). An ontology is not a one-off file
+    import: one external ontology system has one entry in the Catalogs panel, and each file uploaded to
+    it is recorded as a release of that entry, in order. A release is compared with what Provisa holds and
+    its differences (new terms, changed definitions, changed hierarchy, deprecated terms) are listed with
+    Accept, grouped by kind; the steward''s standing choices on the entry decide what an upload applies
+    without review, and everything else is held. An item marked owl:deprecated is listed as an ending. An
+    IRI absent from a later release is a finding, not an ending. An applied release is never deleted.'
   use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
     Provisa already knows.
 - id: REQ-2238
@@ -96080,36 +96080,45 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   feature: glossary-tags-ontology-terms
   priority: SHOULD
   type: behavioral
-  description: 'Maintainer 2026-11-14: ''declare the authority - and the non-authority can draft but not
-    finalize''; ''you need a single connection that is the authority OR the mirror''; ''same with data
-    catalogs''. Each connection to an external ontology system or data catalog declares, for each kind
-    of fact (term meaning, term structure, groundings of terms to columns, model objects, physical schema,
-    ownership, tags, derived facts), whether it is the authority or a mirror. At most one connection is
-    the authority for a kind of fact in a domain; Provisa is the authority where none is, and the source
-    database is always the authority for physical schema. Defaults: an ontology connection is the authority
-    for term meaning and term structure and a mirror for the rest; a catalog connection mirrors everything.
-    The declaration is kept on the connection, per environment, with its other settings, outside git.
-    Final facts flow from the authority. The other side may draft and never finalizes, and a draft is
-    a creation request (REQ-063): a mirror''s change arrives in Provisa as a request a rights holder executes
-    or rejects; an edit in Provisa to a fact an external authority owns is not written to the model and
-    becomes a request addressed to that connection, which no one in Provisa can execute. The authority''s
-    team reads the requests addressed to its connection through REST or MCP, and a person closes each
-    one. An ontology connection''s releases are uploaded to it (REQ-2237); nothing is fetched.'
-  scenario: 'Given an ontology connection declared the authority for term meaning in a domain
+  description: 'Maintainer 2026-11-14: ''just show a list of differences with Accept buttons''; ''predetermined
+    choices made by the data steward on how to handle diffs''; an ontology ''is just added to the catalog
+    list''; ''the catalog list is where you declare how to handle diffs''. This replaces the earlier wording
+    of the same day about declaring which system owns each kind of fact; no system is declared the owner
+    of anything. An external ontology system is an entry in the Catalogs panel (REQ-2122), beside the data
+    catalogs, and every entry works the same way. Whenever Provisa and an entry hold different values (a
+    description, a column description, an owner, a tag, a glossary link, a term''s definition or place in
+    the hierarchy, or an ending on either side), the difference is listed with both values and an Accept
+    button for each side. Long lists are grouped by kind of difference, then by table or term; a group shows
+    its count, opens to its rows, and can be accepted as a whole. For runs with nobody watching (a scheduled
+    export or import, an uploaded ontology release), the steward sets, on the entry''s page in the Catalogs
+    panel, a standing choice for each kind of difference: take Provisa''s value, take the other system''s
+    value, or hold for review. A kind with no standing choice is held. A standing choice can be set from
+    the difference list at the moment a group is accepted, and is shown and changed on the entry''s page.
+    A held difference waits in the list; an unattended run never decides one. To tell which side changed,
+    a run compares each value with the one last exchanged with that entry. An ontology''s releases are uploaded
+    to its entry (REQ-2237); nothing is fetched.'
+  scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
+    two owners
 
-    When a second connection is declared the authority for term meaning in that domain
+    When the steward opens the entry''s differences
 
-    Then the declaration is refused, naming the first connection
+    Then they are grouped by kind with a count, and each row shows both values
 
-    When a steward edits the definition of a term that connection owns
+    When the steward accepts the column description group from the catalog and chooses to always do so
 
-    Then the term is unchanged and a request addressed to the connection holds the proposed definition
+    Then Provisa holds the catalog''s forty descriptions
 
-    And executing that request in Provisa is refused
+    And the entry''s page shows the standing choice for column descriptions
 
-    When a release with a changed definition is uploaded to the connection
+    When a scheduled import later finds a changed column description and a changed owner
 
-    Then the term''s definition is the release''s, with no approval step
+    Then the description is taken and the owner difference is held in the list
+
+    Given an ontology entry in the same panel
+
+    When a release with changed definitions is uploaded and no standing choice is set for definitions
+
+    Then each changed definition is listed as a difference and no term changes until one is accepted
 
     '
 - id: REQ-2248
