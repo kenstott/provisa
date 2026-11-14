@@ -10,7 +10,7 @@
 
 """REQ-1073: metadata export is a premium entitlement, on every path into it.
 
-The admin endpoints are gated in ``tests/unit/test_metadata_export_admin_surface.py``. What is
+The admin endpoints are gated in ``tests/unit/test_syncing_admin_surface.py``. What is
 pinned here is the path with no request behind it — the REQ-1072 scheduled reconcile — because a gate
 that holds on the API but not on the cron lets an org stage a config while entitled and keep
 publishing after the plan lapses.
