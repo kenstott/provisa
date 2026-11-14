@@ -83979,7 +83979,35 @@
     BLOCK] (Amended 2026-11-07, WHAT THE TOUR NEVER SAYS ABOUT REPLICAS:) The tour may show replicas as
     the feature they are (a SaaS source read through its replica, the replica''s build and lineage). It
     never says that the demo''s replicas were generated in advance or that they do not refresh: landing
-    them once (TTL -1) is the choice that keeps the demo practical, not part of its story (maintainer 2026-11-07).'
+    them once (TTL -1) is the choice that keeps the demo practical, not part of its story (maintainer 2026-11-07).
+    (Amended 2026-11-14, CUSTOMER 360 IS ENTITY RESOLUTION, ORGANIZATIONS AND PEOPLE:) Maintainer 2026-11-14.
+    The customer360 demo is reworked around entity resolution, following the design that runs in govdata
+    (EntityBridgeListener). (1) Two tracks, one matching algorithm per entity type: organizations (identifier
+    exact on web or email domain, then normalised-name exact, then blocked Jaro-Winkler with high at 0.95
+    and a floor of 0.85) and people (exact email, or last name exact then Jaro-Winkler on first name, blocked
+    within the resolved organization). People are added to the four systems. No AI inference anywhere. (2)
+    One registry in code declares every table that refers to an organization or a person; exactly one entry
+    per entity type is the authority (Salesforce Account and Contact), whose records are the golden records,
+    and each mention is matched to an authority record, never clustered pairwise. (3) Narrow bridges are
+    physical tables written only by the matching job, one row per mention with match_method, match_confidence,
+    match_score and match_run_id, hidden from consumer roles. Wide canonical tables are code tables regenerated
+    from them by a generic streaming pivot, one row per mention with one typed key column per registry entry,
+    always replicated, refreshed when the job signals a completed run, and read through a freshness gate.
+    Systems join each other only through the canonical id. (4) The job that reruns entity resolution is
+    registered as a Provisa command so it can be triggered from Provisa. (5) The hub being checked gains
+    people and match metadata (method, score, model version); the check compares the hub''s links with the
+    evidence for both tracks. The match rate gains a confidence band (high 0.90 and above, medium 0.75 to
+    0.90, low below 0.75, plus rule and steward), by entity type and month, its edges kept in one place.
+    A steward queue lists model links below threshold or disputed by evidence, ordered by score, visible
+    to the data steward only. (6) Unmatched records are findings: unresolved organizations and people are
+    listed with their best below-floor candidate and a reason (no candidate, below floor, ambiguous, excluded),
+    keep a synthetic id so they stay joinable, are flagged unresolved on the wide table, are never promoted
+    to golden records, and an unresolved rate by source and month is a data quality measure. (7) A second
+    governed question: for each at-risk renewal, which customer contacts raised the open P1 incidents, and
+    whether any is a contact on the renewal opportunity, answered through the canonical tables only. (8)
+    Phase 2, a separate job after phase 1 is accepted: mentions of resolved organizations and people in
+    long text, found by a deterministic phrase matcher from a term list generated from the bridges, as further
+    evidence for the check.'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
@@ -92384,7 +92412,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     per offer as the worst outcome of the checks its contract promises, how many passed and failed, the
     failing checks named, and when they last ran (for example: 22 checks, 1 failing: customer_id unique,
     checked 2h ago). Anywhere a sortable figure is wanted it is the plain count of promised checks passing
-    out of those promised.'
+    out of those promised. (Amended 2026-11-14, TERMS OF USE BELONG TO THE OFFER; THE ASK ROW IS THE OWNER''S
+    LIST:) Maintainer 2026-11-14. An offer''s purpose, usage and limitations are part of that offer''s contract;
+    a term the offer leaves empty shows the product''s text, which narrows ''entered once on the product''
+    to the product''s own description. An offer may state no terms of use: the bid form says so plainly
+    and the bid goes ahead. The Ask row''s questions are written by the product''s owner on the product,
+    each with an optional saved query, and run as the reader''s role.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them

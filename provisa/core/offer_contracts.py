@@ -39,6 +39,7 @@ from provisa.core.models import (
     OfferContract,
     OfferContractVersion,
     OfferField,
+    TERMS_OF_USE,
     OfferTerms,
     VersionColumn,
 )
@@ -88,6 +89,9 @@ def terms(
         dq_results=offer.dq_results,
         profiles=sorted(set(profiles)) if offer.profiles else [],
         duration_days=offer.duration_days,
+        purpose=offer.purpose,
+        usage=offer.usage,
+        limitations=offer.limitations,
     )
 
 
@@ -117,7 +121,8 @@ def differences(before: OfferTerms, after: OfferTerms) -> list[ContractChange]:
     """How ``after`` differs from ``before``, each difference marked breaking or not: the fields'
     and checks' differences as :func:`contract_versions.differences` reads them; a column masked
     (breaking) or unmasked; a row rule added (breaking: fewer rows) or removed; and the data
-    level, data quality results, profiles and duration, each breaking when it gives less."""
+    level, data quality results, profiles and duration, each breaking when it gives less; and each
+    term of use changed, never breaking."""
     changes = contract_versions.differences(
         _columns(before), _columns(after), before.checks, after.checks
     )
@@ -188,6 +193,18 @@ def differences(before: OfferTerms, after: OfferTerms) -> list[ContractChange]:
                 and (before.duration_days is None or after.duration_days < before.duration_days),
             )
         )
+    # The terms of use are prose: a change is recorded, and read by a person, not judged here.
+    changes += [
+        _changed(
+            "terms_of_use_changed",
+            term,
+            getattr(before, term) or None,
+            getattr(after, term) or None,
+            breaking=False,
+        )
+        for term in TERMS_OF_USE
+        if getattr(before, term) != getattr(after, term)
+    ]
     return changes
 
 

@@ -449,3 +449,36 @@ def test_a_failure_surfaces_as_it_did_one_after_another(monkeypatch, tmp_path, f
             assert registry.get(runtime_key(ORG, env)) is None
         if step in {"schema", "copy"}:
             assert env not in plane.rows and env not in plane.schemas
+
+
+def test_every_part_of_the_environments_stage_is_timed(monkeypatch, tmp_path, caplog):
+    """The open's environments are timed whole and in their parts (REQ-2006): the template's list
+    of them, the fan-out of their lines, and each line's wait for its turn to build, which a slow
+    open otherwise spends in no named step."""
+    from provisa.core import step_clock
+
+    label = f"demo sandbox {ORG} of {_DEMO.name}"
+
+    async def _timed(demo: PublishedDemo, org_id: str, person: str) -> None:
+        with step_clock.every_step_of(label):
+            await demo_sandbox._environments(demo, org_id, person)
+
+    with caplog.at_level("WARNING"):
+        _plane, _registry, raised = _opened(monkeypatch, tmp_path, _timed)
+
+    assert raised is None
+    timed = {
+        message.removeprefix(f"{label}: ").rsplit(" took ", 1)[0]
+        for record in caplog.records
+        if (message := record.getMessage()).startswith(f"{label}: ") and " took " in message
+    }
+    names = [env["name"] for env in WANTED]
+    expected = {
+        "its environments' list",
+        "its redaction rules and secrets",
+        "its environments",
+        *(f"its environment {name}" for name in names),
+        *(f"environment {name}: its turn to build" for name in names),
+        *(f"its environment {name}'s runtime" for name in names),
+    }
+    assert expected <= timed, sorted(expected - timed)
