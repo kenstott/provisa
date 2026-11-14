@@ -34,6 +34,7 @@ sandbox whose tab said it was closing, and that no request has reached since for
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import contextlib
 import logging
 from functools import partial
@@ -569,8 +570,12 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
     # a runtime build alone: the domain policy (domain_policy, keyed by the org), which a build
     # sets to the deployment's naming and then to the org's own, reading it between
     # (app._build_org_runtime). So one runtime is built at a time: the builds' turn below.
-    # Both lines run on this request's one loop, so an asyncio lock serializes them.
-    building = asyncio.Lock()
+    # Each line runs on a thread and loop of its own (run_on_own_thread): the control plane blocks
+    # the thread that calls it (core.database), so two lines on one loop would run one after
+    # another. The builds' turn is taken across those threads.
+    from provisa.core.connection_loop import CrossLoopLock, run_on_own_thread
+
+    building = CrossLoopLock()
     # The phase each line failed in (its creation, its rows, its runtime), so the failure raised is
     # the one an open making them one after another would have met first.
     failed_in: dict[str, int] = {}
@@ -595,13 +600,20 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
             async with _stage(org_id, demo.name, f"its environment {name}'s runtime"):
                 await ensure_org_runtime(org_id, name, model_cloned=True)
 
-    # Every line is waited for, failed or not: the open removes a sandbox that failed (reap), and
-    # a line still writing would write into what is being removed.
-    outcomes = await asyncio.gather(*(_line(env) for env in wanted), return_exceptions=True)
+    lines = [
+        run_on_own_thread(partial(_line, env), name=f"sandbox-environment-{env['name']}")
+        for env in wanted
+    ]
+    # Every line is waited for, failed or not, and however this wait ends: the open removes a
+    # sandbox that failed (reap), and a line still writing would write into what is being removed.
+    try:
+        await asyncio.gather(*(asyncio.wrap_future(line) for line in lines), return_exceptions=True)
+    finally:
+        concurrent.futures.wait(lines)
     failures = [
-        (failed_in[env["name"]], index, outcome)
-        for index, (env, outcome) in enumerate(zip(wanted, outcomes, strict=True))
-        if isinstance(outcome, BaseException)
+        (failed_in[env["name"]], index, failure)
+        for index, (env, line) in enumerate(zip(wanted, lines, strict=True))
+        if not line.cancelled() and (failure := line.exception()) is not None
     ]
     if failures:
         raise min(failures, key=lambda failure: failure[:2])[2]

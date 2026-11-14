@@ -14,7 +14,8 @@ another (REQ-2006).
 The open made its environments (a demo's dev and test) one after another: each created from prod,
 then the test one's rows, then each runtime. A second open of a demo took 13.4 s on CI against an
 11 s bound, 5.8 s of it the two creations and 2.3 s the two runtimes. Each environment is now its
-own line (created, given its rows, its runtime built), the lines side by side.
+own line (created, given its rows, its runtime built), the lines side by side, each on a thread
+of its own: the control plane blocks the thread that calls it, and this test's does too.
 
 What the two lines share is the org's: its registry of environments, its model repository, its
 redaction load and its domain policy. Each test here runs the real open path
@@ -31,6 +32,8 @@ and an environment is whole or absent: the open removes the sandbox whole (demo_
 from __future__ import annotations
 
 import asyncio
+import threading
+import time
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any, cast
@@ -110,11 +113,20 @@ class _Plane:
         self.most_creating = 0
         self.building = 0
         self.most_building = 0
+        #: The lines run on threads of their own: the counts are taken under this.
+        self.counting = threading.Lock()
         self.policy_read: dict[str, tuple[bool | None, str]] = {}
         self.db = _Db(self)
         #: Each branch's tip once the open has ended, prod's named ``PROD_TIP``: the org's repository
         #: is in this open's own data directory.
         self.branches: dict[str, str | None] = {}
+
+    def count(self, what: str, by: int) -> None:
+        with self.counting:
+            now = getattr(self, what) + by
+            setattr(self, what, now)
+            most = f"most_{what}"
+            setattr(self, most, max(getattr(self, most), now))
 
     def _maybe_fail(self, step: str, env: str) -> None:
         failure = self.fail.get((step, env))
@@ -148,26 +160,25 @@ def _install(monkeypatch, tmp_path: Path, plane: _Plane) -> OrgRegistry:
         plane.rows.pop(name, None)
 
     async def _provision_org(pool, schema_sql, org_id, redis_url, redis_password, env):
-        plane.creating += 1
-        plane.most_creating = max(plane.most_creating, plane.creating)
+        plane.count("creating", +1)
         try:
-            await asyncio.sleep(_SCHEMA_S[env])
+            # The control plane blocks the thread that calls it (core.database): so does this.
+            time.sleep(_SCHEMA_S[env])
             plane._maybe_fail("schema", env)
             plane.schemas.add(env)
         finally:
-            plane.creating -= 1
+            plane.count("creating", -1)
 
     async def _deprovision_org(pool, org_id, env):
         plane.schemas.discard(env)
 
     async def _copy_model(model_db, org_id, from_env, name, **kwargs):
-        plane.creating += 1
-        plane.most_creating = max(plane.most_creating, plane.creating)
+        plane.count("creating", +1)
         try:
-            await asyncio.sleep(0.01)
+            time.sleep(0.01)
             plane._maybe_fail("copy", name)
         finally:
-            plane.creating -= 1
+            plane.count("creating", -1)
         return SimpleNamespace()
 
     async def _set_position(db, org_id, name, *, deployed_sha, deployed_stamp, redo_sha):
@@ -210,8 +221,7 @@ def _install(monkeypatch, tmp_path: Path, plane: _Plane) -> OrgRegistry:
         # ``domain_policy.configure(seed.naming...)``), the model read under it, then the org's
         # own set (``naming_override``) -- on the org's one policy, which every build shares.
         plane.events.append(("building", env))
-        plane.building += 1
-        plane.most_building = max(plane.most_building, plane.building)
+        plane.count("building", +1)
         token = set_current_org(org_id)
         try:
             domain_policy.configure(*SEED)
@@ -222,7 +232,7 @@ def _install(monkeypatch, tmp_path: Path, plane: _Plane) -> OrgRegistry:
             await asyncio.sleep(0)
         finally:
             reset_current_org(token)
-            plane.building -= 1
+            plane.count("building", -1)
         return SimpleNamespace(org_id=org_id, env=env, model_cloned=model_cloned, model_db=plane.db)
 
     registry = OrgRegistry()
