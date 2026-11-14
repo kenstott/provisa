@@ -209,6 +209,8 @@ def _register_table_in_ctx(
             ctx.exposed_to_physical[(t.table_id, sql_name)] = phys
         ctx.physical_to_sql[(t.table_id, phys)] = sql_name
         ctx.physical_to_gql[(t.table_id, phys)] = gql
+        if col.get("alias"):
+            ctx.column_aliases[(t.table_id, phys)] = col["alias"]
         object_fields = col.get("object_fields")
         if object_fields and isinstance(object_fields, list):
             ctx.gql_json_columns.add((t.table_id, gql))

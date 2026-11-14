@@ -18,6 +18,10 @@ vocabulary under ``/vocab/``:
   instances (the W3C Direct Mapping);
 - a column's predicate, ``{base}/vocab/{domain}/{table}#{column}``, for a column bound to no
   property term: two columns of one name need not mean the same thing;
+
+  ``{table}`` and ``{column}`` are model names (REQ-1385, THE IDENTIFIER IS THE NAME): the alias
+  when one is set, never the physical name, so a physical rename under an alias leaves the IRI as
+  it was and a change of the alias changes it;
 - a term's class or property, ``{base}/vocab/term/{name}``: a class term types the instances of
   the tables it grounds besides their table class, and a property term is the predicate of the
   columns it grounds, in place of their own (REQ-2163, A TERM-BOUND COLUMN'S PROPERTY IS THE
@@ -29,7 +33,7 @@ Each segment is percent-encoded as an instance key is. The vocabulary is built f
 the label map built for it, so a class or predicate the role cannot read is not in it.
 """
 
-# Requirements: REQ-2135, REQ-2141, REQ-2163
+# Requirements: REQ-1385, REQ-2135, REQ-2141, REQ-2163
 
 from __future__ import annotations
 
@@ -175,7 +179,7 @@ def build_vocabulary(
     for label, nm in lm.nodes.items():
         if not nm.domain_id or nm.traversal_only:
             continue
-        own = table_class_iri(base, nm.domain_id, nm.table_name)
+        own = table_class_iri(base, nm.domain_id, nm.model_name)
         prefixes.setdefault(nm.domain_id, f"{base}/vocab/{_seg(nm.domain_id)}/")
         class_iris = [own]
         if label in grounding.class_terms:
@@ -190,7 +194,7 @@ def build_vocabulary(
             iris = (
                 [term_iri(base, t) for t in terms]
                 if terms
-                else [column_iri(base, nm.domain_id, nm.table_name, prop)]
+                else [column_iri(base, nm.domain_id, nm.model_name, nm.property_model_name(prop))]
             )
             for iri in iris:
                 columns[iri].append(cp)

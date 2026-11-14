@@ -240,8 +240,10 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     "_axioms": f"""
         CREATE OR REPLACE VIEW _axioms_ontology AS
         WITH t AS (
-            SELECT id, name, definition, is_class, is_property, term_domains, tenant_id
-            FROM _terms_ontology WHERE NOT retired
+            -- iri: the IRI an ontology import gave the term (REQ-1385), stated equivalent below.
+            SELECT o.id, o.name, o.definition, o.is_class, o.is_property, o.term_domains,
+                   o.tenant_id, g.iri
+            FROM _terms_ontology o JOIN glossary_terms g ON g.id = o.id WHERE NOT o.retired
         ),
         bound AS (
             SELECT r.term_id, rt.class_term_id AS domain_term_id, tc.data_type,
@@ -292,6 +294,16 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
             SELECT term_id, '{RDFS}range', NULL, {xsd_of_sql("data_type")}, NULL, NULL
             FROM bound
             WHERE term_id NOT IN (SELECT term_id FROM object_properties) AND data_type IS NOT NULL
+            UNION
+            -- REQ-1385: a term's IRI is built from its name; one an import gave it is stated
+            -- equivalent: owl:equivalentClass for a Class, owl:equivalentProperty for a Property,
+            -- skos:exactMatch for a Concept.
+            SELECT id,
+                   CASE WHEN is_class THEN '{OWL}equivalentClass'
+                        WHEN is_property THEN '{OWL}equivalentProperty'
+                        ELSE '{SKOS}exactMatch' END,
+                   NULL, iri, NULL, NULL
+            FROM t WHERE iri IS NOT NULL
             UNION
             SELECT id, '{SKOS}prefLabel', NULL, NULL, name, NULL FROM t
             UNION

@@ -87,6 +87,24 @@ class NodeMapping:
     #: A graph session's date time properties, each with the zone its values were written in
     #: (REQ-2176): the column holds the instant, and a read gives it back in that zone.
     property_zones: tuple[tuple[str, str], ...] = ()
+    #: REQ-1385: the table's alias, "" when it has none. With ``table_name`` it gives the table's
+    #: model name (:attr:`model_name`), the name SPARQL's IRIs are built from.
+    alias: str = ""
+    #: REQ-1385: each aliased column's alias, as (cypher prop name, alias) pairs: the column's
+    #: model name, which its prop name need not spell (a GraphQL convention applied to the
+    #: physical name when the alias is that name's SQL spelling). A tuple, as property_types is.
+    property_aliases: tuple[tuple[str, str], ...] = ()
+
+    @property
+    def model_name(self) -> str:
+        """The table's model name (REQ-1385): its alias when it has one, else its table name, the
+        rule metadata export's table_uri follows."""
+        return self.alias or self.table_name
+
+    def property_model_name(self, prop: str) -> str:
+        """The model name of the column ``prop`` reads (REQ-1385): its alias when it has one,
+        else the property's own name."""
+        return dict(self.property_aliases).get(prop, prop)
 
     def property_of(self, column: str) -> str:
         """The property a column of this node is read and written by, the column named by its
@@ -865,6 +883,13 @@ def _build_node_mappings(
             if len(user_pks) > 1
             else (),
             key_readable=key_readable,
+            alias=table_meta.display_name,
+            property_aliases=tuple(
+                (_published_property(ctx_typed, table_meta.table_id, c), alias)
+                for c in col_names
+                if (table_meta.table_id, c) not in _gov_obj
+                and (alias := ctx_typed.column_aliases.get((table_meta.table_id, c)))
+            ),
         )
 
         if domain_label:
@@ -1085,6 +1110,8 @@ def _make_traversal_node(
         properties=props,
         physical_properties=phys_props,
         traversal_only=True,
+        alias=tgt_table.get("alias") or "",
+        property_aliases=tuple((alias, alias) for alias in _col_alias.values()),
     )
 
 
