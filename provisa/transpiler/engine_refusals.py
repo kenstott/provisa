@@ -233,7 +233,7 @@ def _is_empty(value: exp.Expr) -> bool:
     )
 
 
-def plain_format(node: exp.TimeToStr, engine: str) -> bool:
+def _plain_format(node: exp.TimeToStr, engine: str) -> bool:
     """Whether the engine's format of to_char's template writes PostgreSQL's text. sqlglot's
     strftime text of a template no longer tells YYYY from a literal %Y, nor SS twice from SSSS, so
     the template the statement wrote is read (pg_syntax keeps it): its strftime form must be the
@@ -277,7 +277,7 @@ def refused_call(
     said = {type_name.split("(")[0] for type_name in map(said_type, args) if type_name}
     if engine == _C and name in _NOT_EMPTY and len(args) > 1 and _is_empty(args[1]):
         return name
-    if isinstance(node, exp.TimeToStr) and not plain_format(node, engine):
+    if isinstance(node, exp.TimeToStr) and not _plain_format(node, engine):
         return "to_char"
     if name in ("date_part", "extract") and not _plain_part(args[0], engine):
         return name

@@ -290,3 +290,29 @@ def postgres_literals(pg_sql: str) -> str:
             if isinstance(target, exp.Null):
                 target.replace(exp.cast(exp.null(), exp.DataType.Type.TEXT))
     return tree.sql(dialect="postgres", copy=False)
+
+
+#: An edit of a statement's text: the characters ``start`` to ``end`` (exclusive) and their
+#: replacement.
+TextEdit = tuple[int, int, str]
+
+
+def literal_span(literal: exp.Literal) -> tuple[int, int]:
+    """Where a parsed string literal is in the statement's text: its first character and the one
+    after its last."""
+    return literal.meta["start"], literal.meta["end"] + 1
+
+
+def pg_string(text: str) -> str:
+    """``text`` as a PostgreSQL string literal (standard_conforming_strings: a backslash is
+    itself)."""
+    return "'" + text.replace("'", "''") + "'"
+
+
+def spliced(sql: str, edits: list[TextEdit]) -> str:
+    """``sql`` with each edit made. A step that changes a few literals edits the statement's text
+    rather than write the parsed statement again, which would lose what a parse keeps in a node's
+    meta (to_char's template, pg_syntax)."""
+    for start, end, text in sorted(edits, reverse=True):
+        sql = sql[:start] + text + sql[end:]
+    return sql

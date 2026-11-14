@@ -1015,8 +1015,7 @@ def _like_patterns_read(pg_sql: str, target_dialect: str) -> str:
         return pg_sql
     from provisa.transpiler import like_patterns
 
-    tree = like_patterns.written(sqlglot.parse_one(pg_sql, read="postgres"))
-    return tree.sql(dialect="postgres", copy=False)
+    return like_patterns.written(pg_sql)
 
 
 def _stamp_inputs_held(pg_sql: str, target_dialect: str) -> str:
@@ -1026,8 +1025,7 @@ def _stamp_inputs_held(pg_sql: str, target_dialect: str) -> str:
         return pg_sql
     from provisa.transpiler.polyfill import instants
 
-    tree = instants.wall_inputs(sqlglot.parse_one(pg_sql, read="postgres"))
-    return tree.sql(dialect="postgres", copy=False)
+    return instants.wall_inputs(pg_sql)
 
 
 def _null_order_as_key(tree: exp.Expr) -> exp.Expr:

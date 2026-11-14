@@ -46,6 +46,7 @@ import zoneinfo
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.session_time_zone import current_zone
@@ -54,9 +55,15 @@ from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitati
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
-from provisa.transpiler.pg_literals import values_cast
+from provisa.transpiler.pg_literals import (
+    TextEdit,
+    literal_span,
+    pg_string,
+    spliced,
+    values_cast,
+)
 from provisa.transpiler import pg_forms
-from provisa.transpiler.engine_refusals import PLAIN_PARTS, plain_format
+from provisa.transpiler.engine_refusals import PLAIN_PARTS
 
 FAMILY = "timestamp with time zone on ClickHouse"
 
@@ -102,20 +109,21 @@ _INPUT_FUNCTIONS = {
 STAMP_BOUND = "1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999"
 
 
-def wall_inputs(tree: exp.Expr) -> exp.Expr:
-    """``tree`` with each string literal cast to a timestamp without its offset, as PostgreSQL's
-    input drops it: ClickHouse's cast reads it. Read before an instant's literal is written as its
-    UTC wall time (transpile._instants_as_utc)."""
-    for cast in tree.find_all(exp.Cast):
+def wall_inputs(sql: str) -> str:
+    """``sql`` with each string literal cast to a timestamp without its offset, as PostgreSQL's
+    input drops it (ClickHouse's cast reads it): its text edited (pg_literals.spliced). Read
+    before an instant's literal is written as its UTC wall time (transpile._instants_as_utc)."""
+    edits: list[TextEdit] = []
+    for cast in sqlglot.parse_one(sql, read="postgres").find_all(exp.Cast):
         literal = cast.this
         if cast.to.this != exp.DataType.Type.TIMESTAMP or not (
-            isinstance(literal, exp.Literal) and literal.is_string
+            isinstance(literal, exp.Literal) and literal.is_string and "start" in literal.meta
         ):
             continue
         wall = _offset_dropped(literal.this)
         if wall is not None:
-            literal.replace(exp.Literal.string(wall))
-    return tree
+            edits.append((*literal_span(literal), pg_string(wall)))
+    return spliced(sql, edits) if edits else sql
 
 
 #: The meta key of a literal a row of this module reads: one it raises for with its own name, or
@@ -1030,45 +1038,26 @@ def held_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(replacement(f"CAST($a AS {INSTANT})", dialect, pattern), {"a": node.this})
 
 
-def to_char_of_an_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """to_char(timestamptz, text): NULL of a NULL instant or a NULL template, as the STRICT
-    function answers; ClickHouse's format of a template made only of YYYY, MM, DD, HH24, MI and SS
-    and the characters ``-/: `` (engine_refusals.plain_format reads the template the statement
-    wrote, which pg_syntax keeps), of an instant held as DateTime64(6, 'UTC') in its bound, on a
-    session on UTC: PostgreSQL's text is the session zone's. A literal outside the bound raises.
-    Any other call keeps its refusal by name."""
+def to_char_of_null(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """to_char(timestamptz, text) of a NULL instant or a NULL template: NULL, as the STRICT
+    function answers. Any other call keeps its refusal by name: the template reaches the
+    translator as sqlglot's strftime text, which no longer tells PostgreSQL's YYYY from a literal
+    %Y, so no form can be read as exact."""
     if not isinstance(node, exp.TimeToStr):
         return None
     value, template = node.this, node.args.get("format")
-    if template is None:
+    if template is None or _checked(value, _OF["timestamptz"]) is None:
         return None
-    read = _checked(value, _OF["timestamptz"])
-    if read is None:
+    if not (_is_null(value) or _is_null(template)):
         return None
-    pattern = "to_char($a, $b)"
-    if read is _Read.NULL or _is_null(template):
-        return replacement("CAST(NULL AS Nullable(String))", dialect, pattern)
-    if current_zone.get() is not None or not plain_format(node, _CLICKHOUSE):
-        return None
-    if read is _Read.OUTSIDE:
-        _read_by_row(value)
-        return raised("to_char", dialect, pattern, "Nullable(String)")
-    form = replacement(f"formatDateTime($a, {_quoted(template.this)})", dialect, pattern)
-    return graft(form, {"a": value})
-
-
-def _quoted(text: str) -> str:
-    return "'" + text.replace("\\", "\\\\").replace("'", "\\'") + "'"
+    return replacement("CAST(NULL AS Nullable(String))", dialect, "to_char($a, $b)")
 
 
 _TO_CHAR_STATED = (
-    "Of a NULL instant or a NULL template: NULL, as the strict function answers. Of a template "
-    "made only of YYYY, MM, DD, HH24, MI and SS and the characters -/: (read as the statement "
-    "writes it, not as sqlglot's strftime text of it, in which PostgreSQL's YYYY and a literal %Y "
-    f"are the same), on a session on UTC: ClickHouse's format of it. {_ONE_HELD.format('to_char')}"
-    " MI is refused by name there as well (ClickHouse's %M is a month's name). Any other template, "
-    "and any call on a session off UTC (its text is the session zone's), is refused by name "
-    "(to_char() has no form on clickhouse)."
+    "Of a NULL instant or a NULL template only: NULL, as the strict function answers. Any other "
+    "call is refused by name (to_char() has no form on clickhouse): the template reaches the "
+    "translator as strftime text, in which PostgreSQL's YYYY and a literal %Y are the same, so "
+    "no form of it is exact."
 )
 
 
@@ -1103,7 +1092,7 @@ FEATURES += (
                 Rule(
                     "to_char($a, $b)",
                     {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-                     _CLICKHOUSE: Rewrite(to_char_of_an_instant)},
+                     _CLICKHOUSE: Rewrite(to_char_of_null)},
                     unlisted_keep=True,
                 ),
             ),

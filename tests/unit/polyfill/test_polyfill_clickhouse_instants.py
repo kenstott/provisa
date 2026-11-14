@@ -679,14 +679,9 @@ def test_to_char_of_a_null_is_null(runtime, sql):
     assert _one(runtime, sql) is None
 
 
-def test_to_char_of_an_instant_in_a_plain_template_answers(runtime):
-    # J1311: the template the statement wrote is read (pg_syntax keeps it), not sqlglot's strftime.
+def test_to_char_of_an_instant_keeps_its_refusal_by_name():
+    # The template reaches the translator as strftime text: YYYY and a literal %Y are the same.
     sql = f"SELECT pg_catalog.\"to_char\"('2024-01-01 00:00:00+00'::{_TZ}, 'YYYY'::text) AS v"
-    assert _one(runtime, sql) == "2024"
-
-
-def test_to_char_of_an_instant_in_another_template_keeps_its_refusal_by_name():
-    sql = f"SELECT pg_catalog.\"to_char\"('2024-01-01 00:00:00+00'::{_TZ}, 'Mon'::text) AS v"
     with pytest.raises(FunctionRefused) as refused:
         transpile(sql, "clickhouse")
     assert str(refused.value) == "to_char() has no form on clickhouse"

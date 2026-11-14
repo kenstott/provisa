@@ -30,9 +30,13 @@ An ILIKE of a value the statement says is a bytea raises PostgreSQL's error here
 
 from __future__ import annotations
 
+import re
+
+import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.transpiler.function_macros import FunctionRefused, RowRefused
+from provisa.transpiler.pg_literals import TextEdit, literal_span, pg_string, spliced
 from provisa.transpiler.polyfill import bytea, trino
 from provisa.transpiler.polyfill.notation import Refusal
 
@@ -41,8 +45,6 @@ _DIALECT = "clickhouse"
 #: the backslash and the character.
 _CLICKHOUSE_ESCAPED = frozenset("%_\\")
 _INVALID_ESCAPE = Refusal("22025", "invalid escape string")
-#: The meta key of a LIKE whose pattern is already in ClickHouse's form.
-_READ = "provisa_like_read"
 
 
 def text_like_escape(pattern: str, escape: str) -> str | None:
@@ -140,74 +142,109 @@ def _no_ilike_of_bytea(node: exp.ILike) -> None:
     )
 
 
-def _escaped_bytea(match: exp.Like, escape: exp.Expr) -> exp.Expr:
+def _literal(node: exp.Expr) -> exp.Literal | None:
+    """A pattern's string literal, through a cast of it; None for any other value."""
+    value = node.unnest()
+    if isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    return value if isinstance(value, exp.Literal) and value.is_string else None
+
+
+_ESCAPE_KEYWORD = re.compile(r"\bescape\b", re.IGNORECASE)
+_ESCAPE_NULL = re.compile(r"\s*\bescape\s+null\b", re.IGNORECASE)
+
+
+def _escape_clause(sql: str, match: exp.Expr, escape: exp.Expr) -> TextEdit:
+    """The edit that takes an ESCAPE clause out of the statement's text."""
+    if isinstance(escape, exp.Literal):
+        start, end = literal_span(escape)
+        keyword = None
+        for keyword in _ESCAPE_KEYWORD.finditer(sql, 0, start):
+            pass
+        assert keyword is not None  # the parse read ESCAPE before its literal
+        return keyword.start(), end, ""
+    # ESCAPE NULL: a NULL holds no place in the text; the clause follows the match's last token.
+    ends = [n.meta["end"] for n in match.walk() if "end" in n.meta]
+    if not ends:
+        raise FunctionRefused("like_escape", _DIALECT)  # nothing of the match marks its place
+    clause = _ESCAPE_NULL.match(sql, max(ends) + 1)
+    if clause is None:
+        raise FunctionRefused("like_escape", _DIALECT)
+    return clause.start(), clause.end(), ""
+
+
+def _escaped_bytea(sql: str, match: exp.Like, escape: exp.Expr) -> list[TextEdit]:
     """A bytea LIKE of an ESCAPE: its pattern the hex input of like_escape's bytes."""
-    pattern = match.expression
-    if _is_null(pattern) or _is_null(escape):
-        match.set("expression", exp.Cast(this=exp.null(), to=exp.DataType.build("BYTEA")))
-        return match
-    pattern_bytes, escape_bytes = _bytes(pattern), _bytes(escape)
-    if pattern_bytes is None or escape_bytes is None:
+    clause = _escape_clause(sql, match, escape)
+    pattern = _literal(match.expression)
+    if _is_null(match.expression):
+        return [clause]
+    if _is_null(escape):
+        if pattern is None:
+            raise FunctionRefused("like_escape", _DIALECT)  # a computed pattern
+        return [clause, (*literal_span(pattern), "NULL")]
+    pattern_bytes, escape_bytes = _bytes(match.expression), _bytes(escape)
+    if pattern is None or pattern_bytes is None or escape_bytes is None:
         raise FunctionRefused("like_escape", _DIALECT)  # a computed pattern or escape
     written = bytea.like_escape(pattern_bytes, escape_bytes)
     if written is None:
         raise RowRefused("like_escape", _DIALECT, _INVALID_ESCAPE)
-    match.meta[_READ] = True
-    hex_input = exp.Literal.string("\\x" + written.hex())
-    match.set("expression", exp.Cast(this=hex_input, to=exp.DataType.build("BYTEA")))
-    return match
+    return [clause, (*literal_span(pattern), pg_string("\\x" + written.hex()))]
 
 
-def _text_pattern(match: exp.Like | exp.ILike, escape: exp.Expr | None) -> exp.Expr:
+def _text_pattern(sql: str, match: exp.Like | exp.ILike, escape: exp.Expr | None) -> list[TextEdit]:
     """A text LIKE (ILIKE), its literal pattern in ClickHouse's form."""
-    pattern = match.expression
-    if escape is not None and (_is_null(pattern) or _is_null(escape)):
-        match.set("expression", exp.Cast(this=exp.null(), to=exp.DataType.build("TEXT")))
-        return match
-    written = _string(pattern)
+    edits = [] if escape is None else [_escape_clause(sql, match, escape)]
+    pattern = _literal(match.expression)
+    if escape is not None and _is_null(match.expression):
+        return edits
+    if escape is not None and _is_null(escape):
+        if pattern is None:
+            raise FunctionRefused("like_escape", _DIALECT)  # a computed pattern
+        return [*edits, (*literal_span(pattern), "NULL")]
+    written = _string(match.expression)
     if escape is not None:
         escape_text = _string(escape)
-        if written is None or escape_text is None:
+        if pattern is None or written is None or escape_text is None:
             raise FunctionRefused("like_escape", _DIALECT)  # a computed pattern or escape
         escaped = text_like_escape(written, escape_text)
         if escaped is None:
             raise RowRefused("like_escape", _DIALECT, _INVALID_ESCAPE)
         written = escaped
-    match.meta[_READ] = True
-    if written is None:
-        return match  # a pattern a row computes: ClickHouse's own reading of its backslashes
+    if pattern is None or written is None:
+        return edits  # a pattern a row computes: ClickHouse's own reading of its backslashes
     ours = clickhouse_pattern(written)
     if ours is None:
         # PostgreSQL raises 22025 only where a match reaches the escape, which a row decides.
         raise FunctionRefused("like", _DIALECT)
-    literal = exp.Literal.string(ours)
-    value = pattern.unnest()
-    if isinstance(value, exp.Cast):
-        value.set("this", literal)
-    else:
-        match.set("expression", literal)
-    return match
+    if ours != pattern.this:
+        edits.append((*literal_span(pattern), pg_string(ours)))
+    return edits
 
 
-def _match(match: exp.Expr, escape: exp.Expr | None) -> exp.Expr:
-    """A LIKE or ILIKE (or another match an ESCAPE reads) as ClickHouse reads it, its ESCAPE gone."""
+def _match(sql: str, match: exp.Expr, escape: exp.Expr | None) -> list[TextEdit]:
+    """The edits that write a LIKE or ILIKE (or another match an ESCAPE reads) as ClickHouse
+    reads it, its ESCAPE gone."""
     if isinstance(match, exp.ILike):
         _no_ilike_of_bytea(match)
     if not isinstance(match, (exp.Like, exp.ILike)):
         raise FunctionRefused("similar_to_escape", _DIALECT)  # SIMILAR TO ... ESCAPE
     if _of_bytea(match.this) or _of_bytea(match.expression):
         if escape is None or isinstance(match, exp.ILike):
-            return match  # the bytea LIKE rows' own
-        return _escaped_bytea(match, escape)
-    return _text_pattern(match, escape)
+            return []  # the bytea LIKE rows' own
+        return _escaped_bytea(sql, match, escape)
+    return _text_pattern(sql, match, escape)
 
 
-def written(tree: exp.Expr) -> exp.Expr:
-    """``tree`` with each LIKE and ILIKE pattern in ClickHouse's form, its ESCAPE read."""
-    for escaped in list(tree.find_all(exp.Escape)):
-        match = escaped.this
-        escaped.replace(_match(match, escaped.expression))
-    for match in list(tree.find_all(exp.Like, exp.ILike)):
-        if not match.meta.get(_READ):
-            _match(match, None)
-    return tree
+def written(sql: str) -> str:
+    """``sql`` with each LIKE and ILIKE pattern in ClickHouse's form, its ESCAPE read: its text
+    edited where a pattern changes (pg_literals.spliced)."""
+    tree = sqlglot.parse_one(sql, read="postgres")
+    edits: list[TextEdit] = []
+    escaped = {id(e.this) for e in tree.find_all(exp.Escape)}
+    for node in tree.find_all(exp.Escape):
+        edits += _match(sql, node.this, node.expression)
+    for node in tree.find_all(exp.Like, exp.ILike):
+        if id(node) not in escaped:
+            edits += _match(sql, node, None)
+    return spliced(sql, edits) if edits else sql
