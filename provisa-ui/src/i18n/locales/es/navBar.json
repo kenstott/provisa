@@ -79,6 +79,7 @@
     "itemContainerRegistries": "Registros de contenedores",
     "itemSparql": "SPARQL",
     "itemLibrary": "Biblioteca",
-    "itemPlatformObservability": "Observabilidad de la plataforma"
+    "itemPlatformObservability": "Observabilidad de la plataforma",
+    "itemSyncing": "Sincronización"
   }
 }

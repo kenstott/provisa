@@ -79,6 +79,7 @@
     "itemContainerRegistries": "कंटेनर रजिस्ट्री",
     "itemSparql": "SPARQL",
     "itemLibrary": "लाइब्रेरी",
-    "itemPlatformObservability": "प्लेटफ़ॉर्म ऑब्ज़र्वेबिलिटी"
+    "itemPlatformObservability": "प्लेटफ़ॉर्म ऑब्ज़र्वेबिलिटी",
+    "itemSyncing": "सिंकिंग"
   }
 }

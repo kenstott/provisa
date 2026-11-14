@@ -79,6 +79,7 @@
     "itemContainerRegistries": "מאגרי קונטיינרים",
     "itemSparql": "SPARQL",
     "itemLibrary": "ספרייה",
-    "itemPlatformObservability": "ניטור הפלטפורמה"
+    "itemPlatformObservability": "ניטור הפלטפורמה",
+    "itemSyncing": "סנכרון"
   }
 }

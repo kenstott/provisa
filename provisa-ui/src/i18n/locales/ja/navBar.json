@@ -79,6 +79,7 @@
     "itemContainerRegistries": "コンテナレジストリ",
     "itemSparql": "SPARQL",
     "itemLibrary": "ライブラリ",
-    "itemPlatformObservability": "プラットフォームのオブザーバビリティ"
+    "itemPlatformObservability": "プラットフォームのオブザーバビリティ",
+    "itemSyncing": "同期"
   }
 }
