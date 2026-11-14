@@ -323,7 +323,9 @@ def test_the_check_finds_the_wrong_merge_beside_the_other_findings(set_up):
     assert {r["finding"]: r["n"] for r in found} == {
         "wrong merge": 2,
         "duplicate customer": 2,
-        "coverage gap": 5,
+        # Five gaps in the hub, and the four records no rule gives a customer (REQ-2034,
+        # amended 2026-11-14): Harbor Lane Bakery, Halcyon Mdia Grp, Tessa Rowe Design, TBD.
+        "coverage gap": 9,
         "stale link": 2,
     }
     (merge,) = _sql(
