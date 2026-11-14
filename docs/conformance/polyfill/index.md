@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-181 of the grid's 181 features are native on PostgreSQL and left out.
+278 of the grid's 278 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-89 of the grid's 181 features are native on DuckDB and left out.
+95 of the grid's 278 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -348,11 +348,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Trino](trino.md)
 
-8 of the grid's 181 features are native on Trino and left out.
+14 of the grid's 278 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -792,11 +1071,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Presto](presto.md)
 
-8 of the grid's 181 features are native on Presto and left out.
+14 of the grid's 278 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1236,11 +1794,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Athena](athena.md)
 
-8 of the grid's 181 features are native on Athena and left out.
+14 of the grid's 278 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1680,11 +2517,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [ClickHouse](clickhouse.md)
 
-37 of the grid's 181 features are native on ClickHouse and left out.
+36 of the grid's 278 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1775,6 +2891,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timezone</strong><br>A value at a zone; a zone written as a POSIX offset (&#x27;+05:30&#x27;) is that many hours west of UTC.</td><td><pre><code>timezone($z::text, $v)
+=&gt;
+function provisa.transpiler.polyfill.instants.at_zone: timezone(zone, instant): the instant&#x27;s wall time at a named zone, a timestamp held as</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31, of an instant written as a literal (or a VALUES list of them): its answer is read here first, and one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timezone() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). An instant ClickHouse computes, a literal not in ISO form and infinity are refused by name. On a session off UTC a literal is refused by name: one with no offset is read in the session&#x27;s zone. The zone is a region&#x27;s IANA name or UTC, as a literal; an abbreviation, a POSIX offset and any other text are refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>record_eq</strong><br>Two records equal, a NULL field equal to a NULL field.</td><td><pre><code>record_eq($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.records.record_eq_on_clickhouse: record_eq on ClickHouse: of two ROWs of literals, else refused by name.</code></pre></td><td><ul><li>Only of two ROWs of literals none NULL (and, for an order, none text): any other is refused by name, as ClickHouse&#x27;s tuples compare a NULL as NULL and text by its bytes.</li></ul></td><td></td><td></td></tr>
@@ -2005,7 +3124,9 @@ if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_
 function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td><pre><code>date_trunc($u, $t)
 =&gt;
-function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. Of a</code></pre><pre><code>date_trunc($u, $t, $z)
+=&gt;
+function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. Of a</code></pre></td><td><ul><li>Of a timestamp with time zone: held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31; a literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_trunc() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). On a session off UTC it is refused by name (date_trunc() has no form on clickhouse): the start of a unit is the session zone&#x27;s. Of an interval, refused by name.</li><li>At a zone the call names: Of a literal instant, unit and zone (a region&#x27;s IANA name or UTC): the start is computed as the statement is translated, by PostgreSQL&#x27;s rules (its wall time at the zone truncated, a day or longer read back at the zone&#x27;s offset then, a gap&#x27;s before and an overlap&#x27;s after), with Python&#x27;s tzdata; held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. An instant or a start outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_trunc() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A NULL of any answers NULL. An instant, unit or zone a row computes, a VALUES list, an abbreviation or a POSIX zone is refused by name; so is any literal on a session off UTC.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.dated: A text the statement writes cast to a date: its day, PostgreSQL&#x27;s error of one that does</code></pre></td><td><ul><li>A text the statement writes: an ISO date of 1900 to 2299, any other refused by name. A text column&#x27;s cast keeps ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>first_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_first_value: first_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>last_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_last_value: last_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
@@ -2093,11 +3214,296 @@ CASE WHEN $x IS NULL THEN CAST(NULL AS Nullable(Bool)) ELSE CASE WHEN $s IS NULL
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.snapshots.to_hex_of_an_integer: to_hex of an integer: the digits of its bits.</code></pre></td><td><ul><li>Exact: the digits of an integer&#x27;s 32 bits, or a bigint&#x27;s 64, a negative value&#x27;s two&#x27;s complement. A value ClickHouse holds as an Int64 is read as a bigint.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.snapshots.to_oct_of_an_integer: to_oct of an integer: the digits of its bits.</code></pre></td><td><ul><li>Exact: the digits of an integer&#x27;s 32 bits, or a bigint&#x27;s 64, a negative value&#x27;s two&#x27;s complement. A value ClickHouse holds as an Int64 is read as a bigint.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.snapshots.to_bin_of_an_integer: to_bin of an integer: the digits of its bits.</code></pre></td><td><ul><li>Exact: the digits of an integer&#x27;s 32 bits, or a bigint&#x27;s 64, a negative value&#x27;s two&#x27;s complement. A value ClickHouse holds as an Int64 is read as a bigint.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_eq: timestamptz_eq of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_eq() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_eq() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_ne: timestamptz_ne of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_ne() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_ne() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_lt: timestamptz_lt of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_lt() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_lt() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_le: timestamptz_le of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_le() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_le() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_gt: timestamptz_gt of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_gt() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_gt() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_ge: timestamptz_ge of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_ge() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_ge() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_cmp: timestamptz_cmp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_cmp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_cmp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_larger: timestamptz_larger of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_larger() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_larger() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_smaller: timestamptz_smaller of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_smaller() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant is refused by name (timestamptz_smaller() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_eq_date: timestamptz_eq_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_eq_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_eq_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_ne_date: timestamptz_ne_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_ne_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_ne_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_lt_date: timestamptz_lt_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_lt_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_lt_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_le_date: timestamptz_le_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_le_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_le_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_gt_date: timestamptz_gt_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_gt_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_gt_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_ge_date: timestamptz_ge_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_ge_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_ge_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_cmp_date: timestamptz_cmp_date of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_cmp_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_cmp_date() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_eq_timestamptz: date_eq_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_eq_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_eq_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_ne_timestamptz: date_ne_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_ne_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_ne_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_lt_timestamptz: date_lt_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_lt_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_lt_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_le_timestamptz: date_le_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_le_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_le_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_gt_timestamptz: date_gt_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_gt_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_gt_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_ge_timestamptz: date_ge_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_ge_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_ge_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_date_cmp_timestamptz: date_cmp_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_cmp_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the date is read as an instant in the session&#x27;s zone) is refused by name (date_cmp_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_eq_timestamp: timestamptz_eq_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_eq_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_eq_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_ne_timestamp: timestamptz_ne_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_ne_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_ne_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_lt_timestamp: timestamptz_lt_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_lt_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_lt_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_le_timestamp: timestamptz_le_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_le_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_le_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_gt_timestamp: timestamptz_gt_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_gt_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_gt_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_ge_timestamp: timestamptz_ge_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_ge_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_ge_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamptz_cmp_timestamp: timestamptz_cmp_timestamp of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz_cmp_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamptz_cmp_timestamp() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_eq_timestamptz: timestamp_eq_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_eq_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_eq_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_ne_timestamptz: timestamp_ne_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_ne_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_ne_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_lt_timestamptz: timestamp_lt_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_lt_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_lt_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_le_timestamptz: timestamp_le_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_le_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_le_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_gt_timestamptz: timestamp_gt_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_gt_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_gt_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_ge_timestamptz: timestamp_ge_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_ge_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_ge_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.compared_timestamp_cmp_timestamptz: timestamp_cmp_timestamptz of two values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp_cmp_timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. On a session off UTC, a call of a literal instant, and every call (the timestamp is read as an instant in the session&#x27;s zone) is refused by name (timestamp_cmp_timestamptz() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone, which the transpiled form no longer tells from one with an offset.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>max(timestamptz)</strong><br>The latest of a group&#x27;s instants.</td><td><pre><code>function provisa.transpiler.polyfill.instants.max_of_an_instant: max of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (max() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC a call of a literal is refused by name (max() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>min(timestamptz)</strong><br>The earliest of a group&#x27;s instants.</td><td><pre><code>function provisa.transpiler.polyfill.instants.min_of_an_instant: min of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (min() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC a call of a literal is refused by name (min() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.instants.isfinite_of_an_instant: isfinite of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;): exact, as its answer reads only that a value is there (ClickHouse holds no infinity). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC a call of a literal is refused by name (isfinite() has no form on clickhouse): a literal with no offset is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date(timestamptz)</strong><br>An instant&#x27;s day in the session&#x27;s zone.</td><td><pre><code>function provisa.transpiler.polyfill.instants.date_of_an_instant: date of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC it is refused by name (date() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.instants.timestamp_of_an_instant: timestamp of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC it is refused by name (timestamp() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_part(text, timestamptz)</strong><br>A part of an instant in the session&#x27;s zone, as a double precision.</td><td><pre><code>function provisa.transpiler.polyfill.instants.date_part_of_instants: date_part of values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_part() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. Only the parts day, dow, doy, hour, minute, month, quarter, year are read; any other is refused by name. On a session off UTC it is refused by name (date_part() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>extract(text, timestamptz)</strong><br>A part of an instant in the session&#x27;s zone, as a numeric.</td><td><pre><code>function provisa.transpiler.polyfill.instants.extract_of_instants: extract of values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (extract() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. Only the parts day, dow, doy, hour, minute, month, quarter, year are read; any other is refused by name. On a session off UTC it is refused by name (extract() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.instants.overlaps_of_instants: overlaps of values held as DateTime64(6, &#x27;UTC&#x27;), in their bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (overlaps() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse); ClickHouse would hold it at the nearest end of its range. A literal not in ISO form (a date, then a time to microseconds), infinity, and a value whose type no statement says are refused by name. A NULL end of a period is read as PostgreSQL reads it; a literal outside the bound raises beside a NULL too.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.instants.timezone_of_an_instant: timezone of a value held as DateTime64(6, &#x27;UTC&#x27;), in its bound.</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timezone() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. On a session off UTC it is refused by name (timezone() has no form on clickhouse): its answer is read in the session&#x27;s zone.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.instants.to_precision: timestamptz(instant, precision): the instant rounded to 0 to 6 digits of a second, half away</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31, of an instant written as a literal (or a VALUES list of them): its answer is read here first, and one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (timestamptz() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). An instant ClickHouse computes, a literal not in ISO form and infinity are refused by name. On a session off UTC a literal is refused by name: one with no offset is read in the session&#x27;s zone. The precision is a literal of 0 to 6; any other is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.to_char_of_null: to_char(timestamptz, text) of a NULL instant or a NULL template: NULL, as the STRICT</code></pre></td><td><ul><li>Of a NULL instant or a NULL template only: NULL, as the strict function answers. Any other call is refused by name (to_char() has no form on clickhouse): the template reaches the translator as strftime text, in which PostgreSQL&#x27;s YYYY and a literal %Y are the same, so no form of it is exact.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>cast(timestamptz as DateTime64)</strong><br>An instant as ClickHouse holds one, as a tstzrange&#x27;s form reads its bounds.</td><td><pre><code>function provisa.transpiler.polyfill.instants.held_instant: A cast of an instant to ClickHouse&#x27;s own (DateTime64(6, &#x27;UTC&#x27;)), as pg_ranges writes a</code></pre></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. A literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (tstzrange() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A literal not in ISO form, infinity, and a value whose type no statement says are refused by name. The cast is the one a tstzrange&#x27;s form writes of its bounds (pg_ranges); a NULL, a column of a VALUES list and a literal are read, any other value is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_area_1: area of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_area in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_area does not read this value). geo_ops.c&#x27;s circle_area in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_area does not read this value). geo_ops.c&#x27;s path_area in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_area does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of area() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_center_1: center of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s circle_center in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_center does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of center() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_circle_center_1: circle_center of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s circle_center in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_center does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_diagonal_1: diagonal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_diagonal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_diagonal does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_height_1: height of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_height in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_height does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_width_1: width of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s box_width in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (box_width does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_radius_1: radius of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s circle_radius in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (circle_radius does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isclosed_1: isclosed of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s path_isclosed in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_isclosed does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isopen_1: isopen of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s path_isopen in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_isopen does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_ishorizontal_2: ishorizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s point_horiz in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (point_horiz does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isvertical_2: isvertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s point_vert in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (point_vert does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_ishorizontal_1: ishorizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_horizontal does not read this value). geo_ops.c&#x27;s lseg_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_horizontal does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of ishorizontal() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isvertical_1: isvertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_vertical does not read this value). geo_ops.c&#x27;s lseg_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_vertical does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of isvertical() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isparallel_2: isparallel of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_parallel does not read this value). geo_ops.c&#x27;s lseg_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_parallel does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of isparallel() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_isperp_2: isperp of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_perp does not read this value). geo_ops.c&#x27;s lseg_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_perp does not read this value). An argument whose type the statement does not say is refused by name: PostgreSQL resolves no one overload of isperp() for it.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_horizontal_1: line_horizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_horizontal does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_vertical_1: line_vertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_vertical does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_parallel_2: line_parallel of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_parallel does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_line_perp_2: line_perp of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s line_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (line_perp does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_horizontal_1: lseg_horizontal of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_horizontal in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_horizontal does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_vertical_1: lseg_vertical of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_vertical in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_vertical does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_parallel_2: lseg_parallel of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_parallel in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_parallel does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_perp_2: lseg_perp of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_perp in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_perp does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_lseg_length_1: lseg_length of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s lseg_length in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (lseg_length does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_path_length_1: path_length of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s path_length in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (path_length does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_pt_contained_circle_2: pt_contained_circle of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s pt_contained_circle in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (pt_contained_circle does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.geometric.measured_pt_contained_poly_2: pt_contained_poly of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s pt_contained_poly in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (pt_contained_poly does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.bytea.octet_length_of_bytes: octet_length of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.bytea.length_of_bytes: length of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.bytea.bit_length_of_bytes: bit_length of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.bytea.bit_count_of_bytes: bit_count of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.byteacat_of_bytes: byteacat of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.btrim_of_bytes: btrim of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.bytea.btrim_of_bytes: btrim of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.ltrim_of_bytes: ltrim of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.rtrim_of_bytes: rtrim of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.bytea.get_bit_of_bytes: get_bit of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. An index outside the value raises PostgreSQL&#x27;s 2202E (index out of valid range); its message does not name the index and the range, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.bytea.set_bit_of_bytes: set_bit of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. An index outside the value raises PostgreSQL&#x27;s 2202E (index out of valid range); its message does not name the index and the range, as PostgreSQL&#x27;s does. A new bit other than 0 or 1 raises 22023 (new bit must be 0 or 1).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.bytea.get_byte_of_bytes: get_byte of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. An index outside the value raises PostgreSQL&#x27;s 2202E (index out of valid range); its message does not name the index and the range, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.bytea.set_byte_of_bytes: set_byte of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. An index outside the value raises PostgreSQL&#x27;s 2202E (index out of valid range); its message does not name the index and the range, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.bytea.like_of_bytes: like of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>function provisa.transpiler.polyfill.bytea.like_of_bytes: like of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.bytealike_of_bytes: bytealike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.notlike_of_bytes: notlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.byteanlike_of_bytes: byteanlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.bytea.like_escape_of_bytes: like_escape of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern and escape is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. An escape of more than one byte raises 22025 (invalid escape string).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.bytea.overlay_of_bytes: overlay of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.bytea.overlay_of_bytes: overlay of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. A start below 1 raises 22011 (negative substring length not allowed), and a start and length past an integer 22003 (integer out of range).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.bytea.position_of_bytes: position of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>function provisa.transpiler.polyfill.bytea.position_of_bytes: position of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.bytea.substr_of_bytes: substr of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.bytea.substr_of_bytes: substr of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. A negative length raises 22011 (negative substring length not allowed). A length a row computes is read only beside a start of at least 1 the statement writes; otherwise the call is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its format is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. base64 breaks its text into lines of 76 characters, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Snowflake](snowflake.md)
 
-88 of the grid's 181 features are native on Snowflake and left out.
+94 of the grid's 278 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2443,11 +3849,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Databricks](databricks.md)
 
-88 of the grid's 181 features are native on Databricks and left out.
+94 of the grid's 278 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2793,11 +4478,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [BigQuery](bigquery.md)
 
-88 of the grid's 181 features are native on BigQuery and left out.
+94 of the grid's 278 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3143,11 +5107,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-88 of the grid's 181 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+94 of the grid's 278 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3493,11 +5736,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Redshift](redshift.md)
 
-88 of the grid's 181 features are native on Redshift and left out.
+94 of the grid's 278 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3843,11 +6365,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [MySQL](mysql.md)
 
-88 of the grid's 181 features are native on MySQL and left out.
+94 of the grid's 278 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4193,11 +6994,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SingleStore](singlestore.md)
 
-88 of the grid's 181 features are native on SingleStore and left out.
+94 of the grid's 278 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4543,11 +7623,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [SQLite](sqlite.md)
 
-88 of the grid's 181 features are native on SQLite and left out.
+94 of the grid's 278 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4893,11 +8252,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Oracle](oracle.md)
 
-88 of the grid's 181 features are native on Oracle and left out.
+94 of the grid's 278 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5243,11 +8881,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Hive](hive.md)
 
-88 of the grid's 181 features are native on Hive and left out.
+94 of the grid's 278 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5593,11 +9510,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Exasol](exasol.md)
 
-88 of the grid's 181 features are native on Exasol and left out.
+94 of the grid's 278 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5943,11 +10139,290 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>
 
 ## [Druid](druid.md)
 
-88 of the grid's 181 features are native on Druid and left out.
+94 of the grid's 278 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6293,4 +10768,283 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_hex</strong><br>An integer&#x27;s hexadecimal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne</strong><br>Whether an instant differs from an instant.</td><td><pre><code>timestamptz_ne($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt</strong><br>Whether an instant is before an instant.</td><td><pre><code>timestamptz_lt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le</strong><br>Whether an instant is not after an instant.</td><td><pre><code>timestamptz_le($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt</strong><br>Whether an instant is after an instant.</td><td><pre><code>timestamptz_gt($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge</strong><br>Whether an instant is not before an instant.</td><td><pre><code>timestamptz_ge($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp</strong><br>btree&#x27;s comparison of an instant and an instant: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_larger</strong><br>The later of an instant and an instant.</td><td><pre><code>timestamptz_larger($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_smaller</strong><br>The earlier of an instant and an instant.</td><td><pre><code>timestamptz_smaller($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_date</strong><br>Whether an instant equals a date.</td><td><pre><code>timestamptz_eq_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_date</strong><br>Whether an instant differs from a date.</td><td><pre><code>timestamptz_ne_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_date</strong><br>Whether an instant is before a date.</td><td><pre><code>timestamptz_lt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_date</strong><br>Whether an instant is not after a date.</td><td><pre><code>timestamptz_le_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_date</strong><br>Whether an instant is after a date.</td><td><pre><code>timestamptz_gt_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_date</strong><br>Whether an instant is not before a date.</td><td><pre><code>timestamptz_ge_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_date</strong><br>btree&#x27;s comparison of an instant and a date: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_date($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_eq_timestamptz</strong><br>Whether a date equals an instant.</td><td><pre><code>date_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ne_timestamptz</strong><br>Whether a date differs from an instant.</td><td><pre><code>date_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_lt_timestamptz</strong><br>Whether a date is before an instant.</td><td><pre><code>date_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_le_timestamptz</strong><br>Whether a date is not after an instant.</td><td><pre><code>date_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_gt_timestamptz</strong><br>Whether a date is after an instant.</td><td><pre><code>date_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_ge_timestamptz</strong><br>Whether a date is not before an instant.</td><td><pre><code>date_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>date_cmp_timestamptz</strong><br>btree&#x27;s comparison of a date and an instant: -1, 0 or 1.</td><td><pre><code>date_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_eq_timestamp</strong><br>Whether an instant equals a timestamp.</td><td><pre><code>timestamptz_eq_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ne_timestamp</strong><br>Whether an instant differs from a timestamp.</td><td><pre><code>timestamptz_ne_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_lt_timestamp</strong><br>Whether an instant is before a timestamp.</td><td><pre><code>timestamptz_lt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_le_timestamp</strong><br>Whether an instant is not after a timestamp.</td><td><pre><code>timestamptz_le_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_gt_timestamp</strong><br>Whether an instant is after a timestamp.</td><td><pre><code>timestamptz_gt_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_ge_timestamp</strong><br>Whether an instant is not before a timestamp.</td><td><pre><code>timestamptz_ge_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz_cmp_timestamp</strong><br>btree&#x27;s comparison of an instant and a timestamp: -1, 0 or 1.</td><td><pre><code>timestamptz_cmp_timestamp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_eq_timestamptz</strong><br>Whether a timestamp equals an instant.</td><td><pre><code>timestamp_eq_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ne_timestamptz</strong><br>Whether a timestamp differs from an instant.</td><td><pre><code>timestamp_ne_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_lt_timestamptz</strong><br>Whether a timestamp is before an instant.</td><td><pre><code>timestamp_lt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_le_timestamptz</strong><br>Whether a timestamp is not after an instant.</td><td><pre><code>timestamp_le_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_gt_timestamptz</strong><br>Whether a timestamp is after an instant.</td><td><pre><code>timestamp_gt_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_ge_timestamptz</strong><br>Whether a timestamp is not before an instant.</td><td><pre><code>timestamp_ge_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp_cmp_timestamptz</strong><br>btree&#x27;s comparison of a timestamp and an instant: -1, 0 or 1.</td><td><pre><code>timestamp_cmp_timestamptz($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isfinite(timestamptz)</strong><br>Whether an instant is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timestamp($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamptz)</strong><br>Whether two periods of instants overlap.</td><td><pre><code>overlaps($a, $b, $c, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timezone(timestamptz)</strong><br>An instant&#x27;s wall time in the session&#x27;s zone.</td><td><pre><code>timezone($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>circle_center(shape)</strong><br>PostgreSQL&#x27;s circle_center.</td><td><pre><code>circle_center($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>diagonal(shape)</strong><br>PostgreSQL&#x27;s box_diagonal.</td><td><pre><code>diagonal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>height(shape)</strong><br>PostgreSQL&#x27;s box_height.</td><td><pre><code>height($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>width(shape)</strong><br>PostgreSQL&#x27;s box_width.</td><td><pre><code>width($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>radius(shape)</strong><br>PostgreSQL&#x27;s circle_radius.</td><td><pre><code>radius($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isclosed(shape)</strong><br>PostgreSQL&#x27;s path_isclosed.</td><td><pre><code>isclosed($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isopen(shape)</strong><br>PostgreSQL&#x27;s path_isopen.</td><td><pre><code>isopen($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape, shape)</strong><br>PostgreSQL&#x27;s point_horiz.</td><td><pre><code>ishorizontal($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape, shape)</strong><br>PostgreSQL&#x27;s point_vert.</td><td><pre><code>isvertical($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ishorizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal, lseg_horizontal.</td><td><pre><code>ishorizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isvertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical, lseg_vertical.</td><td><pre><code>isvertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isparallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel, lseg_parallel.</td><td><pre><code>isparallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>isperp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp, lseg_perp.</td><td><pre><code>isperp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_horizontal(shape)</strong><br>PostgreSQL&#x27;s line_horizontal.</td><td><pre><code>line_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_vertical(shape)</strong><br>PostgreSQL&#x27;s line_vertical.</td><td><pre><code>line_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s line_parallel.</td><td><pre><code>line_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>line_perp(shape, shape)</strong><br>PostgreSQL&#x27;s line_perp.</td><td><pre><code>line_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_horizontal(shape)</strong><br>PostgreSQL&#x27;s lseg_horizontal.</td><td><pre><code>lseg_horizontal($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_vertical(shape)</strong><br>PostgreSQL&#x27;s lseg_vertical.</td><td><pre><code>lseg_vertical($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_parallel(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_parallel.</td><td><pre><code>lseg_parallel($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_perp(shape, shape)</strong><br>PostgreSQL&#x27;s lseg_perp.</td><td><pre><code>lseg_perp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lseg_length(shape)</strong><br>PostgreSQL&#x27;s lseg_length.</td><td><pre><code>lseg_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>path_length(shape)</strong><br>PostgreSQL&#x27;s path_length.</td><td><pre><code>path_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_circle(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_circle.</td><td><pre><code>pt_contained_circle($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length(bytea)</strong><br>A bytea&#x27;s number of bits.</td><td><pre><code>bit_length($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count(bytea)</strong><br>The number of a bytea&#x27;s bits that are set.</td><td><pre><code>bit_count($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacat(bytea, bytea)</strong><br>Two byteas, one after the other.</td><td><pre><code>byteacat($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start and its end.</td><td><pre><code>btrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>trim(both $b from $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its start.</td><td><pre><code>ltrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim(bytea, bytea)</strong><br>A bytea less the bytes of a set at its end.</td><td><pre><code>rtrim($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit(bytea, bigint)</strong><br>A bit of a bytea, the first the low bit of its first byte.</td><td><pre><code>get_bit($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit(bytea, bigint, integer)</strong><br>A bytea with one of its bits set to 0 or 1.</td><td><pre><code>set_bit($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_byte(bytea, integer)</strong><br>A byte of a bytea.</td><td><pre><code>get_byte($a, $n)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_byte(bytea, integer, integer)</strong><br>A bytea with one of its bytes replaced.</td><td><pre><code>set_byte($a, $n, $v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>$a LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bytealike(bytea, bytea)</strong><br>Whether a bytea matches a LIKE pattern.</td><td><pre><code>bytealike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>like_escape(bytea, bytea)</strong><br>A LIKE pattern with its escape byte written as a backslash.</td><td><pre><code>like_escape($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay(bytea, bytea, integer)</strong><br>A bytea with a part of it replaced by another.</td><td><pre><code>overlay($a, $b, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($a, $b, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position(bytea, bytea)</strong><br>Where a bytea first holds another, from 1; 0 where it does not.</td><td><pre><code>position($b in $a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substr(bytea, integer)</strong><br>A part of a bytea, from a byte and for a number of bytes.</td><td><pre><code>substr($a, $s)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>substr($a, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

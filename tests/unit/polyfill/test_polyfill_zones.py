@@ -57,7 +57,8 @@ def test_each_rule_is_the_form_the_translator_writes(feature, rule, dialect):
         # timezone() on a dialect of no form: refused before the grid (engine_refusals) or the
         # dialect's own function, as before the row.
         return
-    assert isinstance(form, Rewrite) and dialect == "duckdb"
+    # DuckDB's POSIX zone; ClickHouse's instant at a named zone (polyfill.instants).
+    assert isinstance(form, Rewrite) and dialect in ("duckdb", "clickhouse")
 
 
 #: (statement, DuckDB's SQL of it): timezone() of a POSIX zone of a fixed offset is the ICU zone
