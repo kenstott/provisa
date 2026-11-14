@@ -1330,7 +1330,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- other). Last, so an existing view is replaced in place.
                rt.draft
         FROM registered_tables rt
-        -- REQ-2248: a retired table is not listed.
+        -- A retired table is not listed.
         WHERE NOT rt.retired
     """,
     # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
@@ -1377,7 +1377,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                tc.visible_to,
                tc.tenant_id
         -- registered_tables first: schema.sql locks it before table_columns (lock order).
-        -- A draft or retired table's columns are not listed, nor a retired column (REQ-2248).
+        -- A draft or retired table's columns are not listed, nor a retired column.
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
         WHERE NOT rt.draft AND NOT rt.retired AND NOT tc.retired

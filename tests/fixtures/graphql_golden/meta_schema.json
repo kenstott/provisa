@@ -4836,6 +4836,13 @@
        }
       },
       {
+       "name": "retired",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "sameEntity",
        "type": {
         "kind": "SCALAR",
@@ -4861,6 +4868,27 @@
        "type": {
         "kind": "SCALAR",
         "name": "Int"
+       }
+      },
+      {
+       "name": "statusAt",
+       "type": {
+        "kind": "SCALAR",
+        "name": "DateTime"
+       }
+      },
+      {
+       "name": "statusBy",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
+       }
+      },
+      {
+       "name": "statusReason",
+       "type": {
+        "kind": "SCALAR",
+        "name": "String"
        }
       },
       {

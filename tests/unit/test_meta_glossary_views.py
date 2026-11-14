@@ -35,7 +35,7 @@ CREATE TABLE glossary_term_refs (
     id TEXT PRIMARY KEY, term_id TEXT, table_id INTEGER, column_name TEXT, tenant_id TEXT);
 CREATE TABLE relationships (
     id TEXT PRIMARY KEY, source_table_id INTEGER, target_table_id INTEGER,
-    same_entity BOOLEAN NOT NULL DEFAULT 0, tenant_id TEXT);
+    same_entity BOOLEAN NOT NULL DEFAULT 0, tenant_id TEXT, retired BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE glossary_term_edges (
     id TEXT PRIMARY KEY, from_term_id TEXT, to_term_id TEXT, rel_type TEXT, tenant_id TEXT);
 CREATE TABLE glossary_term_domains (
@@ -44,13 +44,14 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT);
+    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT,
+    retired BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE table_columns (
     id INTEGER PRIMARY KEY, table_id INTEGER, domain_id TEXT, column_name TEXT, data_type TEXT,
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
     masks TEXT, native_filter_type TEXT, is_foreign_key BOOLEAN,
     is_alternate_key BOOLEAN, object_fields TEXT, visible_to TEXT,
-    writable_by TEXT, tenant_id TEXT);
+    writable_by TEXT, tenant_id TEXT, retired BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,
@@ -101,7 +102,7 @@ def db() -> sqlite3.Connection:
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL)"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL, 0)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
@@ -196,18 +197,18 @@ class TestGlossaryMetaViews:
         9 not yet -- a gap until a same-entity relationship reaches 9 too."""
         db.execute("UPDATE registered_tables SET class_term_id = 't-party' WHERE id = 7")
         db.executemany(
-            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?)",
+            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?, 0)",
             [(8, "accounts", "t-party"), (9, "contacts", "t-party"), (6, "people", "t-user")],
         )
-        db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1')")
+        db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1', 0)")
         # A relationship not marked same entity joins nothing as one.
-        db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1')")
+        db.execute("INSERT INTO relationships VALUES ('r79', 7, 9, 0, 'org1', 0)")
         gap = lambda: {  # noqa: E731
             r["id"]: r["identity_gap"]
             for r in db.execute("SELECT id, identity_gap FROM _terms_ontology")
         }
         assert gap() == {"t-user": 0, "t-party": 1, "t-old": 0}
-        db.execute("INSERT INTO relationships VALUES ('r98', 9, 8, 1, 'org1')")
+        db.execute("INSERT INTO relationships VALUES ('r98', 9, 8, 1, 'org1', 0)")
         assert gap()["t-party"] == 0
 
     def test_a_retired_or_excluded_term_is_returned_with_its_flag_not_withheld(

@@ -53,6 +53,7 @@ from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import glossary as glossary_repo, rls as rls_repo
 from provisa.api.admin.capabilities import require_capability, require_right_in_domains
 from provisa.security.rights import ALL_DOMAINS
+from provisa.api.admin._retired_objects import restore as restore_retired
 from provisa.api.admin._retired_objects import retired_name_result
 from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin.types import (
@@ -3917,13 +3918,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     ) -> MutationResult:  # REQ-2248
         """Restore a retired table, column, relationship, tag or metric (``kind``) named by
         ``key`` as the retired listing names it: the same object, served again."""
-        from provisa.api.admin._retired_objects import restore
-
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
             async with _conn.transaction():
-                result = await restore(info, _conn, kind, key)
+                # The gate is the kind's delete right, in its domains (restore_retired).
+                result = await restore_retired(info, _conn, kind, key)
         if result.success:
             if kind == "tag":
                 await _refresh_config_tags()

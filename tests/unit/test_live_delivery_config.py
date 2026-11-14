@@ -203,6 +203,7 @@ class TestRepoUpsertSerializesLive:
         conn.upsert_returning = AsyncMock(return_value=1)
         _empty = MagicMock()
         _empty.fetchall.return_value = []  # no pre-existing column types to preserve
+        _empty.fetchone.return_value = None  # no row: no retired table holds the name
         conn.execute_core = AsyncMock(return_value=_empty)
 
         await table_repo.upsert(conn, tbl)
@@ -230,6 +231,7 @@ class TestRepoUpsertSerializesLive:
         conn.upsert_returning = AsyncMock(return_value=1)
         _empty = MagicMock()
         _empty.fetchall.return_value = []  # no pre-existing column types to preserve
+        _empty.fetchone.return_value = None  # no row: no retired table holds the name
         conn.execute_core = AsyncMock(return_value=_empty)
 
         await table_repo.upsert(conn, tbl)
