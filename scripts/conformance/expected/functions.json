@@ -2,9 +2,9 @@
   "engines": {
     "clickhouse": {
       "total": 3319,
-      "passed": 1817,
+      "passed": 1819,
       "differs_engine_error": 0,
-      "refused_by_name": 586
+      "refused_by_name": 584
     },
     "duckdb": {
       "total": 3319,
@@ -20,9 +20,9 @@
     },
     "trino": {
       "total": 3319,
-      "passed": 1767,
+      "passed": 1768,
       "differs_engine_error": 0,
-      "refused_by_name": 626
+      "refused_by_name": 625
     }
   },
   "expected": []
