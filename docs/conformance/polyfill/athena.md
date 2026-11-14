@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Athena. A f
 
 When Athena is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 302, of which 208 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 304, of which 210 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-14 of the grid's 278 features are native on Athena and left out.
+18 of the grid's 282 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -340,6 +340,9 @@ CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y
 <tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
 =&gt;
 current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>generate_series</strong><br>A series of integers, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_generate_series: generate_series in a select list: refused by name, as Trino unnests only in FROM.</code></pre></td><td><ul><li>In a select list, refused by name: Trino reads a set of rows only in a FROM clause.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lag: lag over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
@@ -576,9 +579,6 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -706,7 +706,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

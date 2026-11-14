@@ -41,6 +41,8 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import re
 import uuid
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -53,6 +55,7 @@ from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
+    from clickhouse_driver.errors import ServerException
     from collections.abc import Iterable, Iterator
 
     import pyarrow as pa
@@ -273,6 +276,46 @@ class _ServerBackend:
         self._client.close()
 
 
+def _engine_exception(buf: Any) -> ServerException:  # noqa: ANN401 -- the driver's buffered reader
+    """An EXCEPTION packet as clickhouse-driver's readhelpers.read_exception reads it, its text
+    decoded with the bytes that are not UTF-8 as backslash escapes. The driver decodes it as
+    strict UTF-8, and ClickHouse's message echoes a statement's constants, so a constant whose
+    bytes are not UTF-8 raised UnicodeDecodeError in place of the engine's error (REQ-2167:
+    PostgreSQL's error a raise carries is read from that message). Only an EXCEPTION packet is
+    read here: a String column's value is read by the driver's own column reader, unchanged."""
+    from clickhouse_driver.errors import ServerException
+    from clickhouse_driver.reader import read_binary_bytes, read_binary_int32, read_binary_uint8
+
+    def text() -> str:
+        # A decode of the engine's diagnostic text, not a fallback for a missing value.
+        return read_binary_bytes(buf).decode("utf-8", errors="backslashreplace")
+
+    code = read_binary_int32(buf)
+    name, message, stack_trace = text(), text(), text()
+    nested = _engine_exception(buf) if read_binary_uint8(buf) else None
+    prefix = "" if name == "DB::Exception" else name + ". "
+    return ServerException(f"{prefix}{message}. Stack trace:\n\n{stack_trace}", code, nested=nested)
+
+
+@functools.cache
+def _engine_text_connection() -> type:
+    """clickhouse-driver's Connection, its EXCEPTION packet read by :func:`_engine_exception`."""
+    from clickhouse_driver.connection import Connection
+
+    class _EngineTextConnection(Connection):
+        def receive_exception(self) -> ServerException:
+            return _engine_exception(self.fin)
+
+    return _EngineTextConnection
+
+
+def _engine_text_connections(client: Any) -> None:  # noqa: ANN401 -- clickhouse_driver.Client
+    """Each of ``client``'s connections reading an EXCEPTION packet by :func:`_engine_exception`:
+    the one it holds, and those it rotates to (alt_hosts)."""
+    for connection in (client.connection, *client.connections):
+        connection.__class__ = _engine_text_connection()
+
+
 class _NativeBackend:
     """A running ClickHouse server reached over the native TCP protocol (clickhouse-driver).
 
@@ -286,6 +329,7 @@ class _NativeBackend:
         # server_side_params: the driver sends {pN:Type} values to the server as typed query
         # parameters instead of formatting them into the SQL text itself.
         self._client = Client(**self._conn_args, settings={"server_side_params": True})
+        _engine_text_connections(self._client)
 
     def _kill(self, query_id: str) -> None:
         # Request-deadline cancel (REQ-1882): the query's own TCP connection is busy, so the KILL
@@ -356,6 +400,21 @@ def _answer_of(raw: bytes) -> pa.Table:
     return table
 
 
+@contextlib.contextmanager
+def _engine_text() -> Iterator[None]:
+    """chdb's error with its message as text. chdb decodes the engine's message as strict UTF-8,
+    and ClickHouse's message echoes a statement's constants, so a constant whose bytes are not
+    UTF-8 makes chdb raise UnicodeDecodeError in place of the error (REQ-2167: PostgreSQL's error
+    a raise carries is read from that message)."""
+    try:
+        yield
+    except UnicodeDecodeError as undecoded:
+        # A decode of the engine's diagnostic text, not a fallback for a missing value: the bytes
+        # it echoes stay as backslash escapes.
+        message = undecoded.object.decode("utf-8", errors="backslashreplace")
+        raise RuntimeError(message) from undecoded
+
+
 class _EmbeddedBackend:
     """chdb — the ClickHouse engine in-process. ``path`` persists the store; None is in-memory."""
 
@@ -372,12 +431,14 @@ class _EmbeddedBackend:
     # its escaped form, so each value is formatted the way clickhouse-connect formats one for the
     # server (a backslash or a tab in a string survives as itself).
     def command(self, sql: str, params: dict | None = None) -> None:
-        self._session.query(sql, params=_server_text(params))
+        with _engine_text():
+            self._session.query(sql, params=_server_text(params))
 
     # chdb runs the query in-process inside one blocking C call and exposes no cancel/interrupt API
     # (chdb/session/state.py: query/send_query only), so the request deadline cannot pre-empt it.
     def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
-        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
+        with _engine_text():
+            raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return [], []
         table = _answer_of(raw)
@@ -389,7 +450,8 @@ class _EmbeddedBackend:
         import pyarrow as pa
 
         sql = _in_session_zone(sql)
-        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
+        with _engine_text():
+            raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return pa.table({})
         return _answer_of(raw)
@@ -403,7 +465,8 @@ class _EmbeddedBackend:
         import pyarrow as pa
 
         sql = _in_session_zone(sql)
-        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
+        with _engine_text():
+            raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             empty = pa.table({})
             return empty.schema, iter(())
@@ -419,10 +482,11 @@ class _EmbeddedBackend:
 
         _replica_batch = pa.Table.from_batches([batch])
         names = ", ".join(f'"{name}"' for name, _ in columns)
-        self._session.query(
-            f'INSERT INTO "{database}"."{table}" ({names}) '
-            f"SELECT {names} FROM Python(_replica_batch)"
-        )
+        with _engine_text():
+            self._session.query(
+                f'INSERT INTO "{database}"."{table}" ({names}) '
+                f"SELECT {names} FROM Python(_replica_batch)"
+            )
         del _replica_batch
 
     def close(self) -> None:

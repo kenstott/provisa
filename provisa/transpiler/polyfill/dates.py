@@ -17,14 +17,19 @@ old form adds a time to a date, which Trino does not: it is refused by name ther
 transaction_timestamp have no Trino function of the name: each is Trino's form here. Nor has
 ClickHouse (run 43410717058): make_date is its makeDate32 of a year Date32 holds (1900 to 2299) and
 a day the month has, any other refused by name; transaction_timestamp is the statement's now64, as
-current_timestamp is there."""
+current_timestamp is there.
+
+to_char of a timestamp on ClickHouse and Trino, and of an instant on ClickHouse on a session on
+UTC, is written from PostgreSQL's own tokens (provisa.transpiler.to_char,
+instants.to_char_written)."""
 
 # Requirements: REQ-2236, REQ-2171
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill import instants, trino
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.notation import Rewrite
 from provisa.transpiler.polyfill.numbers import fail, refused
 
 FAMILY = "dates"
@@ -146,6 +151,29 @@ TRANSACTION_TIMESTAMP = Feature(
     ),
 )
 
+TO_CHAR = Feature(
+    "to_char(timestamp, text)",
+    FAMILY,
+    "A timestamp's or an instant's text in a template.",
+    read=Side(
+        rules=(
+            Rule(
+                "to_char($a, $b)",
+                {
+                    **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                    "clickhouse": Rewrite(instants.to_char_written),
+                    "trino": Rewrite(instants.to_char_written),
+                },
+                unlisted_keep=True,
+            ),
+        ),
+        limitations={
+            "clickhouse": (Limitation(instants.TO_CHAR_STATED),),
+            "trino": (Limitation(instants.TO_CHAR_TRINO_STATED),),
+        },
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     DATE_MI,
     DATE_PLI,
@@ -153,4 +181,5 @@ FEATURES: tuple[Feature, ...] = (
     TIME_MI_TIME,
     MAKE_DATE,
     TRANSACTION_TIMESTAMP,
+    TO_CHAR,
 )

@@ -82534,7 +82534,12 @@
     are made from the template''s prepared environments rather than rebuilt per sandbox. (Amended 2026-11-04,
     SANDBOX ENVIRONMENT BUILT AT OPEN:) Opening a sandbox copies its environments'' rows, generation records
     and synthetic bindings from the template''s prepared environment, and builds each environment''s runtime
-    once during the open, cloned from the template''s, so that no tour step waits on an environment build.'
+    once during the open, cloned from the template''s, so that no tour step waits on an environment build.
+    (Amended 2026-11-14, EVERY DEMO MUST WORK; TIME TO OPEN IS RELAXED:) Maintainer 2026-11-14, for release
+    509: every demo must open and work, and that gates a release. The time a demo takes to open does not:
+    the bound on a demo opened again is 20 s on the server, in place of the 11 s accepted on 2026-11-03,
+    which was measured on the embedded PostgreSQL and is exceeded in the release''s core lane (9.5 to 13.4
+    s against the compose PostgreSQL). Making the open faster continues as ordinary work.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
