@@ -306,11 +306,16 @@ def test_a_check_raised_from_warn_to_fail_breaks_nothing():
 
 
 def test_what_all_of_a_products_contracts_share_is_no_part_of_a_contracts_versions():
-    # REQ-2180: description, usage, limitations, freshness and support are written once on the
-    # product, so changing them makes no contract version: they are no term of one.
-    assert not {"description", "usage", "limitations", "freshness", "support"} & set(
-        OfferTerms.model_fields
-    )
+    # REQ-2180: the description, freshness and support are written once on the product, so
+    # changing them makes no contract version: they are no term of one.
+    assert not {"description", "freshness", "support"} & set(OfferTerms.model_fields)
+
+
+def test_an_offers_terms_of_use_are_terms_of_its_contracts():
+    # REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): each offer carries its own
+    # terms of use -- purpose, usage and limitations -- shown in its contract, so changing them
+    # versions the offer's contracts.
+    assert {"purpose", "usage", "limitations"} <= set(OfferTerms.model_fields)
 
 
 def test_a_version_label_alone_is_no_difference():

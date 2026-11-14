@@ -1398,6 +1398,10 @@ data_product_offers = Table(
     Column("profiles", Boolean, nullable=False, server_default=false()),
     Column("open", Boolean, nullable=False, server_default=false()),
     Column("duration_days", Integer),
+    # REQ-2180 (amended 2026-11-11): the offer's terms of use in prose.
+    Column("purpose", Text, nullable=False, server_default=""),
+    Column("usage", Text, nullable=False, server_default=""),
+    Column("limitations", Text, nullable=False, server_default=""),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("published_by", Text),
     Column("review", Text),
@@ -1442,6 +1446,10 @@ data_product_bids = Table(
     Column("terms", JSON, nullable=False),
     Column("requester", Text, nullable=False),
     Column("reason", Text, nullable=False),
+    # REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS).
+    Column("consumer_kind", Text),
+    Column("approver", Text),
+    Column("agreed_at", DateTime(timezone=True)),
     Column("hook", Text, nullable=False),
     Column("payload", JSON, nullable=False),
     Column("status", Text, nullable=False, server_default="pending"),
@@ -1452,6 +1460,10 @@ data_product_bids = Table(
     Column("granted", JSON(none_as_null=True)),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "consumer_kind IN ('person', 'team', 'data_product', 'agent')",
+        name="data_product_bids_consumer_kind_check",
+    ),
     CheckConstraint(
         "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
         name="data_product_bids_status_check",

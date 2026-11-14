@@ -13,25 +13,30 @@
 // the product, and the picked role's masks and row rules on them are shown before saving. The data
 // level is full, a sample (views over the datasets, named here) or synthetic; quality results and
 // profiles are the offer's own choices (a synthetic offer has no profiles); "open" is offered only
-// when the role reads the data as public; a duration dates what accepting it grants. The summary
-// says the offer in one sentence. The server still refuses what it must, by name.
+// when the role reads the data as public; a duration dates what accepting it grants. Its terms of
+// use -- purpose, usage and limitations -- are prose, shown on its card and in its contracts, and
+// agreed to by whoever bids for it. The summary says the offer in one sentence. The server still
+// refuses what it must, by name.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   Alert,
   Checkbox,
+  Divider,
   Loader,
   NumberInput,
   Select,
   Stack,
   Table,
   Text,
+  Textarea,
   TextInput,
 } from "@mantine/core";
 import {
   addOffer,
   fetchGrantableRoles,
+  TERMS_OF_USE,
   type DataLevel,
   type OfferInput,
 } from "../../../api/dataProductOffers";
@@ -56,6 +61,9 @@ const EMPTY: OfferInput = {
   profiles: false,
   open: false,
   duration_days: null,
+  purpose: "",
+  usage: "",
+  limitations: "",
 };
 
 function message(e: unknown): string {
@@ -141,9 +149,13 @@ export function AddOfferForm({
   const ready = offer.name.trim() !== "" && offer.role_id !== "" && !sampleMissing;
 
   const save = () =>
-    addOffer(productId, { ...offer, name: offer.name.trim() }).then(onSaved, (e: unknown) =>
-      setError(message(e)),
-    );
+    addOffer(productId, {
+      ...offer,
+      name: offer.name.trim(),
+      purpose: offer.purpose.trim(),
+      usage: offer.usage.trim(),
+      limitations: offer.limitations.trim(),
+    }).then(onSaved, (e: unknown) => setError(message(e)));
 
   if (error && roles === null) {
     return (
@@ -292,6 +304,21 @@ export function AddOfferForm({
           />
         </FormField>
       </FormChecks>
+      <FormField size="full">
+        <Divider label={t("dataProductOffers.termsOfUse")} labelPosition="left" />
+      </FormField>
+      {TERMS_OF_USE.map((term) => (
+        <FormField key={term} size="full" hint={t(`dataProductOffers.termHint_${term}`)}>
+          <Textarea
+            label={t(`dataProductOffers.term_${term}`)}
+            autosize
+            minRows={2}
+            value={offer[term]}
+            onChange={(e) => set({ [term]: e.currentTarget.value })}
+            data-testid={`add-offer-${term}`}
+          />
+        </FormField>
+      ))}
       <FormField size="full">
         <Text size="sm" data-testid="add-offer-summary">
           {offerSummary(offer, datasets.length, t)}

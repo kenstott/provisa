@@ -35,6 +35,7 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from types import SimpleNamespace
 from typing import Any, Literal
+from urllib.parse import urlsplit
 
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
@@ -47,7 +48,7 @@ from provisa.api.admin.capabilities import (
 from provisa.api.errors import ApiError
 from provisa.api.offer_derivation import derive, seen_columns
 from provisa.core import offer_grant, offer_hooks, offer_public
-from provisa.core.models import DataProductOffer
+from provisa.core.models import ConsumerKind, DataProductOffer
 from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
@@ -65,7 +66,13 @@ REVIEW_FAKE_GONE = "a column of a dataset of this synthetic offer has no fake"
 
 
 class BidBody(BaseModel):
+    """A bid: its purpose (``reason``), the kind of consumer it is for, and whether its requester
+    agrees to the offer's terms of use (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO
+    THE TERMS)."""
+
     reason: str
+    consumer_kind: ConsumerKind
+    agreed: bool
 
 
 class DeclineBody(BaseModel):
@@ -364,6 +371,31 @@ async def _destination(state: Any) -> tuple[str, offer_hooks.HookTarget | None]:
     return offer_hooks.destination(target, state.auth_config or {}), target
 
 
+def approver_of(product: dict, target: offer_hooks.HookTarget | None) -> dict[str, str | None]:
+    """Who approves a request for ``product`` (amended 2026-11-11, A BID NAMES ITS CONSUMER AND
+    AGREES TO THE TERMS): the authority the org's request hook reaches, named by its host alone --
+    a requester never reads the hook's credentials, path or query -- else the product's owner
+    role, whose queue holds the request (None: the product names no owner role)."""
+    if target is not None:
+        return {"via": "hook", "name": urlsplit(target.url).hostname}
+    return {"via": "owner", "name": product.get("owner_role")}
+
+
+@router.get("/{product_id}/approver")
+async def approver(product_id: str, request: Request) -> dict[str, str | None]:
+    """Who a request for the product goes to for approval, as its request form names it; refused
+    where an identity provider holds access and no request hook is configured, as a bid is."""
+    require_capability_request(request, "data_product_read")
+    state = _state()
+    async with state.model_db.acquire() as conn:
+        product = await _product(conn, product_id)
+    try:
+        _, target = await _destination(state)
+    except OfferRefused as refused:
+        raise _refused(refused) from refused
+    return approver_of(product, target)
+
+
 async def _fire(target: offer_hooks.HookTarget | None, body: dict) -> None:
     """Post the request to the org's hook; the local queue holds it already."""
     if target is None:
@@ -383,13 +415,14 @@ async def _reload_held(conn: Any, state: Any) -> None:
 
 @router.post("/{product_id}/offers/{offer_id}/bids")
 async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -> dict:
-    """Bid for the product's offer, stating why: the bid fires the outbound request hook and
+    """Bid for the product's offer for a kind of consumer, stating its purpose and agreeing to the
+    offer's terms of use: the bid fires the outbound request hook, names who approves it, and
     waits for its decision. An open offer is no request at all: query it now."""
     require_capability_request(request, "data_product_read")
     requester = _requester(request)
     state = _state()
     async with state.model_db.acquire() as conn:
-        await _product(conn, product_id)
+        product = await _product(conn, product_id)
         try:
             offer_row = await offers.require_offer(conn, product_id, offer_id)
             if offer_row["open"]:
@@ -409,6 +442,7 @@ async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -
                 product_id=product_id,
                 offer_row=offer_row,
                 reason=body.reason.strip(),
+                consumer_kind=body.consumer_kind,
             )
             async with conn.transaction():
                 held = await offers.bid(
@@ -417,6 +451,9 @@ async def bid(product_id: str, offer_id: int, body: BidBody, request: Request) -
                     offer_id,
                     requester=requester,
                     reason=body.reason,
+                    consumer_kind=body.consumer_kind,
+                    agreed=body.agreed,
+                    approver=approver_of(product, target)["name"],
                     request_id=request_id,
                     hook=hook,
                     payload=payload,

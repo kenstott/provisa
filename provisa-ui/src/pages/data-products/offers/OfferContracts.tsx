@@ -12,8 +12,8 @@
 // offer gives, one row per dataset, each headed by its dataset, version, SLA headline, last check
 // and a warning where its newest version breaks a reader. A row opens to the offer's terms on the
 // dataset -- its columns as the offer's role sees them in the tables page's columns table (REQ-2239),
-// its row rules in words -- and to its ODCS document, read when that opens (ContractView). Rows
-// start closed and several may be open at once.
+// the offer's terms of use, its row rules in words -- and to its ODCS document, read when that
+// opens (ContractView). Rows start closed and several may be open at once.
 
 import { useEffect, useState, type CSSProperties } from "react";
 import { useTranslation } from "react-i18next";
@@ -35,6 +35,7 @@ import { ColumnsTable } from "../../tables/ColumnsTable";
 import { ContractView, type ContractViewer } from "../ContractView";
 import { modelName, type CoreTable } from "../productCore";
 import { contractColumns, memberOf } from "./offerTerms";
+import { TermsOfUse } from "./TermsOfUse";
 
 /** What a contract's heading and its document read besides the offer: the product's datasets as
  *  the meta domain names them, its lineage (the checks on each), and who reads it. */
@@ -233,6 +234,10 @@ function DatasetContract({
         tableId={entry.table_id}
         testId={`${testId}-columns`}
       />
+      <Text size="xs" fw={600}>
+        {t("dataProductOffers.termsOfUse")}
+      </Text>
+      <TermsOfUse terms={terms} testId={`${testId}-terms`} />
       <Text size="xs" fw={600}>
         {t("dataProductOffers.rowRules")}
       </Text>

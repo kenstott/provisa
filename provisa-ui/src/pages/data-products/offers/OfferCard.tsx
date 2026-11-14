@@ -11,21 +11,55 @@
 // REQ-2180 OFFERS, THE UI SHOWS CONTRACTS PER OFFER: one offer of a data product, as a card that
 // opens to its role, its data level and duration, and the contract it gives on each dataset -- the
 // columns as its role sees them (masked ones marked), its row rules in words, its sample views,
-// its quality promises and profiles. A requester bids for it, or queries it now when it is open.
-// REQ-2239 (amended 2026-11-11): a contract's columns are the tables page's columns table.
+// its quality promises and profiles, and its terms of use. A requester bids for it, or queries it
+// now when it is open. REQ-2239 (amended 2026-11-11): a contract's columns are the tables page's
+// columns table. REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS):
+// the bid form names who approves it, asks the kind of consumer and the purpose (prefilled from the
+// offer's usage), shows the terms of use, and sends only once they are agreed to.
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Anchor, Badge, Button, Group, Paper, Stack, Text, Textarea } from "@mantine/core";
+import type { TFunction } from "i18next";
+import {
+  Alert,
+  Anchor,
+  Badge,
+  Button,
+  Checkbox,
+  Divider,
+  Group,
+  Loader,
+  Paper,
+  Select,
+  Stack,
+  Text,
+  Textarea,
+} from "@mantine/core";
 import { Trash2 } from "lucide-react";
-import { bidForOffer, removeOffer, type Offer } from "../../../api/dataProductOffers";
+import {
+  bidForOffer,
+  CONSUMER_KINDS,
+  fetchApprover,
+  removeOffer,
+  TERMS_OF_USE,
+  type Approver,
+  type ConsumerKind,
+  type Offer,
+} from "../../../api/dataProductOffers";
 import { CollapsibleItem, Collapsibles } from "../../../components/collapsible/Collapsible";
 import { ConfirmDialog } from "../../../components/ConfirmDialog";
-import { FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
+import {
+  FormChecks,
+  FormField,
+  FormFooter,
+  FormLayout,
+  ReadRow,
+} from "../../../components/form/FormLayout";
 import { Tip } from "../../../components/Tip";
 import { usePanelDirty } from "../../../components/list/panelLeave";
 import { offerSummary } from "./offerTerms";
 import { OfferContracts, type ContractContext } from "./OfferContracts";
+import { TermsOfUse } from "./TermsOfUse";
 
 export interface OfferCardProps {
   offer: Offer;
@@ -50,8 +84,17 @@ function message(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-/** The bid's reason, asked inline: a bid states why. */
-function BidForm({
+/** Who approves the request, in words. */
+function approverWords(approver: Approver, t: TFunction): string {
+  if (approver.via === "hook") return t("dataProductOffers.approverHook", { host: approver.name });
+  return approver.name
+    ? t("dataProductOffers.approverOwner", { role: approver.name })
+    : t("dataProductOffers.approverNone");
+}
+
+/** The request, asked inline: who approves it, the kind of consumer it is for, its purpose
+ *  (prefilled from the offer's usage), and the offer's terms of use, which it agrees to. */
+export function BidForm({
   productId,
   offer,
   onDone,
@@ -63,35 +106,97 @@ function BidForm({
   onCancel: () => void;
 }) {
   const { t } = useTranslation();
-  const [reason, setReason] = useState("");
+  const [approver, setApprover] = useState<Approver | null>(null);
+  const [consumerKind, setConsumerKind] = useState<ConsumerKind | null>(null);
+  const [purpose, setPurpose] = useState(offer.usage);
+  const [agreed, setAgreed] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  usePanelDirty(reason.trim() !== "", t("dataProductOffers.sendBid"));
-  const submit = () =>
-    bidForOffer(productId, offer.id, reason.trim()).then(onDone, (e: unknown) =>
-      setError(message(e)),
+  const testId = `offer-${offer.id}-bid`;
+  usePanelDirty(
+    purpose !== offer.usage || consumerKind !== null || agreed,
+    t("dataProductOffers.sendBid"),
+  );
+  useEffect(() => {
+    let live = true;
+    fetchApprover(productId).then(
+      (found) => live && setApprover(found),
+      (e: unknown) => live && setError(message(e)),
     );
+    return () => {
+      live = false;
+    };
+  }, [productId]);
+  const ready = approver !== null && consumerKind !== null && purpose.trim() !== "" && agreed;
+  const submit = () =>
+    bidForOffer(productId, offer.id, {
+      reason: purpose.trim(),
+      consumer_kind: consumerKind as ConsumerKind,
+      agreed,
+    }).then(onDone, (e: unknown) => setError(message(e)));
   return (
-    <FormLayout data-testid={`offer-${offer.id}-bid-form`}>
-      <FormField size="full" hint={t("dataProductOffers.bidReasonHint")}>
+    <FormLayout data-testid={`${testId}-form`}>
+      {approver === null ? (
+        !error && <Loader size="sm" data-testid={`${testId}-approver-loading`} />
+      ) : (
+        <ReadRow
+          label={t("dataProductOffers.approver")}
+          value={approverWords(approver, t)}
+          size="long"
+          testId={`${testId}-approver`}
+        />
+      )}
+      <FormField size="medium">
+        <Select
+          label={t("dataProductOffers.consumerKind")}
+          required
+          allowDeselect={false}
+          data={CONSUMER_KINDS.map((kind) => ({
+            value: kind,
+            label: t(`dataProductOffers.consumerKind_${kind}`),
+          }))}
+          value={consumerKind}
+          onChange={(v) => setConsumerKind(v as ConsumerKind | null)}
+          data-testid={`${testId}-consumer-kind`}
+        />
+      </FormField>
+      <FormField size="full" hint={t("dataProductOffers.bidPurposeHint")}>
         <Textarea
-          label={t("dataProductOffers.bidReason")}
+          label={t("dataProductOffers.bidPurpose")}
           required
           autosize
           minRows={2}
-          value={reason}
-          onChange={(e) => setReason(e.currentTarget.value)}
-          data-testid={`offer-${offer.id}-bid-reason`}
+          value={purpose}
+          onChange={(e) => setPurpose(e.currentTarget.value)}
+          data-testid={`${testId}-purpose`}
         />
       </FormField>
+      <FormField size="full">
+        <Divider label={t("dataProductOffers.termsOfUse")} labelPosition="left" />
+      </FormField>
+      {TERMS_OF_USE.map((term) => (
+        <ReadRow
+          key={term}
+          label={t(`dataProductOffers.term_${term}`)}
+          value={offer[term]}
+          size="full"
+          testId={`${testId}-${term}`}
+        />
+      ))}
+      <FormChecks>
+        <FormField size="full">
+          <Checkbox
+            label={t("dataProductOffers.agreeToTerms")}
+            checked={agreed}
+            onChange={(e) => setAgreed(e.currentTarget.checked)}
+            data-testid={`${testId}-agree`}
+          />
+        </FormField>
+      </FormChecks>
       <FormFooter
         onCancel={onCancel}
         problem={error}
         action={
-          <Button
-            onClick={submit}
-            disabled={reason.trim() === ""}
-            data-testid={`offer-${offer.id}-bid-send`}
-          >
+          <Button onClick={submit} disabled={!ready} data-testid={`${testId}-send`}>
             {t("dataProductOffers.sendBid")}
           </Button>
         }
@@ -160,6 +265,7 @@ export function OfferCard({
           <Text size="xs" c="dimmed" data-testid={`${testId}-access`}>
             {t("dataProductOffers.accessLine", { masked, rowRules })}
           </Text>
+          <TermsOfUse terms={offer} testId={`${testId}-terms`} />
           {offer.sample_views.length > 0 && (
             <Text size="xs" c="dimmed" data-testid={`${testId}-sample-views`}>
               {t("dataProductOffers.sampleViews", {
