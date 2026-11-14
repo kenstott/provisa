@@ -526,10 +526,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
     },
     "relationships": {
         "id": "Relationship identifier, unique across the catalog",
-        "retired": "True when the relationship was deleted: kept, not traversable, and restorable",
-        "status_reason": "Why the relationship was retired",
-        "status_by": "Who retired the relationship",
-        "status_at": "When the relationship was retired",
         "source_table_id": "Table the edge starts at",
         "target_table_id": "Table the edge points to",
         "source_column": "Column on the source table that carries the key",

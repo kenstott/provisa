@@ -408,6 +408,18 @@ def catalog(embedded_postgres, control_plane_template):
                     table_id=table_id, column_name=name, data_type="integer", retired=retired
                 )
             )
+        for rel_id, retired in (("orders_self", False), ("orders_customer", True)):
+            conn.execute(
+                t.relationships.insert().values(
+                    id=rel_id,
+                    source_table_id=1,
+                    target_table_id=1 if rel_id == "orders_self" else 2,
+                    source_column="id",
+                    target_column="id",
+                    cardinality="many-to-one",
+                    retired=retired,
+                )
+            )
         conn.execute(t.metrics.insert().values(name="revenue", expression="SUM(x)", retired=True))
         conn.execute(t.metrics.insert().values(name="orders_count", expression="COUNT(*)"))
         for ddl in _META_TABLE_VIEWS.values():
@@ -450,6 +462,12 @@ def test_the_meta_views_list_no_retired_table_column_or_metric(catalog):
     assert tables == [("orders",)]
     assert columns == [("id",)]
     assert metrics == [("orders_count",)]
+
+
+def test_the_meta_relationships_list_no_retired_relationship(catalog):
+    with catalog.begin() as conn:
+        listed = _read(conn, "SELECT id FROM relationships_meta ORDER BY id")
+    assert listed == [("orders_self",)]
 
 
 # --- the write path: a retired name stays taken -------------------------------------------------

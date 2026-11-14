@@ -10502,10 +10502,6 @@ tables:
     data_type: integer
     visible_to:
     - viewer
-  - name: retired
-    data_type: boolean
-    visible_to:
-    - viewer
   - name: same_entity
     data_type: boolean
     visible_to:
@@ -10520,18 +10516,6 @@ tables:
     - viewer
   - name: source_table_id
     data_type: integer
-    visible_to:
-    - viewer
-  - name: status_at
-    data_type: timestamp
-    visible_to:
-    - viewer
-  - name: status_by
-    data_type: text
-    visible_to:
-    - viewer
-  - name: status_reason
-    data_type: text
     visible_to:
     - viewer
   - name: target_column

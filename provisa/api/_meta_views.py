@@ -1333,6 +1333,22 @@ _META_TABLE_VIEWS: dict[str, str] = {
         -- A retired table is not listed.
         WHERE NOT rt.retired
     """,
+    # REQ-2248: the relationships of the model, as registered_tables_meta lists its tables: a
+    # retired relationship is not listed, so no retirement column is either.
+    "relationships": """
+        CREATE OR REPLACE VIEW relationships_meta AS
+        SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, r.target_column,
+               r.cardinality, r.materialize, r.refresh_interval, r.target_function_name,
+               r.function_arg, r.alias, r.graphql_alias, r.disable_cypher, r.hide_target_meta,
+               r.same_entity,
+               r.via_table_id, r.via_source_column, r.via_target_column, r.via_type_column,
+               r.via_type_value, r.via_label_source,
+               r.source_json_key, r.parameters, r.owner, r.version, r.needs_review,
+               r.cypher_type, r.graphql_field,
+               r.tenant_id
+        FROM relationships r
+        WHERE NOT r.retired
+    """,
     # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
     # version built -- one row per model object and surface, the name it has there and the
     # naming problems found in it. A row is read where the table it is about is
