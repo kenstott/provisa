@@ -47043,34 +47043,42 @@
   priority: MUST
   type: structural
   description: 'Semantic URIs (provisa:// scheme) on metadata-exported assets, addressed by business identity,
-    self-describing to the point practical: kind is stated in the URI path at the leaf transition and
-    domain nesting is unmarked (homogeneous). Grammar: provisa://<org>/<domain>[/<subdomain>...] is a
-    domain (no kind keyword — still in the domain tree, unambiguous at any depth, no trailing-slash convention
-    needed); provisa://<org>/<domain-path>/tables/<table> is a table (the tables/ keyword marks the kind
-    transition); provisa://<org>/sources/<source-id> is a source, provisa://<org>/tags/<tag-id> a tag,
-    provisa://<org>/roles/<role-id> a role, provisa://<org>/commands/<name> a command (a tracked function/webhook,
-    by its registered name) — reserved plural kind keywords extend to future registries. Fragments carry
-    attribute kinds: #field:<column> for a column; #rel:<alias> for a relationship (a navigational field
-    anchored at its source table; registry id when the edge has no alias). Instance (row) addressing:
-    ?<key>=<value>[&...] query-string predicate. Composite keys compose; a primary-key predicate denotes
-    exactly one instance; requires a declared row identity (mvPrimaryKey, unique constraint REQ-1093,
-    or introspected pk), no declared key = no instance form. Composition: instance + fragment. ?id=123#field:amount is a cell, ?id=123#rel:customer the governed traversal from one instance. Dereferencing any instance/traversal
-    URI is a GOVERNED query: RLS and masking apply to the resolver''s role. Reserved words: kind keywords
-    (tables, sources, tags, roles, and future registry keywords) are illegal as domain names and are refused at domain creation (schema.domain_reserved_word). Correspondence: the URI is the compressed form of
-    the semantic-model JSON Pointer grammar (domain nesting implied, kind stated at the leaf): provisa://acme/sales/emea/tables/orders
-    maps to #/children/sales/children/emea/definitions/orders; conversion is mechanical. Metadata export
-    emits concept/attribute/relationship URIs only; the instance grammar serves citations, audit trails,
-    data-quality findings, agent provenance. Resolution convention: provisa://<org>/<path> resolves via
-    the org''s Provisa instance (https mapping), keeping URIs dereferenceable by convention. The physical
-    triple (source.schema.table) exports alongside as a binding attribute, so re-platforming a table to
-    a different source preserves catalog identity, history, and lineage continuity; identity events (alias/domain
-    rename, moving a table between domains) export the previous URI as an alias for continuity. Uniqueness
-    precondition: (full domain path, table) via _assert_domain_table_unique generalized to hierarchical
-    domains. Exporters carry the URI per vendor: Atlas as a provisaUri entity attribute alongside qualifiedName;
-    DataHub in externalUrl + customProperties; OpenLineage as a provisa_uri dataset facet (the cross-catalog
-    stitching join key); OpenMetadata in sourceUrl + relationship extension entries; Collibra as a "Provisa
-    URI" attribute; relationship and lineage edges reference endpoints by semantic URI enabling cross-catalog
-    lineage stitching.'
+    self-describing to the point practical: kind is stated in the URI path at the leaf transition and domain
+    nesting is unmarked (homogeneous). Grammar: provisa://<org>/<domain>[/<subdomain>...] is a domain (no
+    kind keyword — still in the domain tree, unambiguous at any depth, no trailing-slash convention needed);
+    provisa://<org>/<domain-path>/tables/<table> is a table (the tables/ keyword marks the kind transition);
+    provisa://<org>/sources/<source-id> is a source, provisa://<org>/tags/<tag-id> a tag, provisa://<org>/roles/<role-id>
+    a role, provisa://<org>/commands/<name> a command (a tracked function/webhook, by its registered name)
+    — reserved plural kind keywords extend to future registries. Fragments carry attribute kinds: #field:<column>
+    for a column; #rel:<alias> for a relationship (a navigational field anchored at its source table; registry
+    id when the edge has no alias). Instance (row) addressing: ?<key>=<value>[&...] query-string predicate.
+    Composite keys compose; a primary-key predicate denotes exactly one instance; requires a declared row
+    identity (mvPrimaryKey, unique constraint REQ-1093, or introspected pk), no declared key = no instance
+    form. Composition: instance + fragment. ?id=123#field:amount is a cell, ?id=123#rel:customer the governed
+    traversal from one instance. Dereferencing any instance/traversal URI is a GOVERNED query: RLS and masking
+    apply to the resolver''s role. Reserved words: kind keywords (tables, sources, tags, roles, and future
+    registry keywords) are illegal as domain names and are refused at domain creation (schema.domain_reserved_word).
+    Correspondence: the URI is the compressed form of the semantic-model JSON Pointer grammar (domain nesting
+    implied, kind stated at the leaf): provisa://acme/sales/emea/tables/orders maps to #/children/sales/children/emea/definitions/orders;
+    conversion is mechanical. Metadata export emits concept/attribute/relationship URIs only; the instance
+    grammar serves citations, audit trails, data-quality findings, agent provenance. Resolution convention:
+    provisa://<org>/<path> resolves via the org''s Provisa instance (https mapping), keeping URIs dereferenceable
+    by convention. The physical triple (source.schema.table) exports alongside as a binding attribute, so
+    re-platforming a table to a different source preserves catalog identity, history, and lineage continuity;
+    identity events (alias/domain rename, moving a table between domains) export the previous URI as an
+    alias for continuity. Uniqueness precondition: (full domain path, table) via _assert_domain_table_unique
+    generalized to hierarchical domains. Exporters carry the URI per vendor: Atlas as a provisaUri entity
+    attribute alongside qualifiedName; DataHub in externalUrl + customProperties; OpenLineage as a provisa_uri
+    dataset facet (the cross-catalog stitching join key); OpenMetadata in sourceUrl + relationship extension
+    entries; Collibra as a "Provisa URI" attribute; relationship and lineage edges reference endpoints by
+    semantic URI enabling cross-catalog lineage stitching. (Amended 2026-11-14, THE IDENTIFIER IS THE NAME,
+    AND WHEN IT CHANGES:) Maintainer 2026-11-14: ''names are semantics. change the name. change the meaning.''
+    An object''s identifier is its model name. It does not change on a physical rename at the source when
+    an alias holds the model name (an alias can be added later to keep it). It changes on any change of
+    the model name, and that change makes a new object; the old one is retired (REQ-2248). SPARQL names
+    table classes and column predicates by the model name, not the physical name. Provisa never describes
+    the identifier as stable: ''there''s no clean way to create a stable identifier'', and it states only
+    when the name changes.'
   use_case: Enables lineage stitching across external catalogs by using business identity rather than
     physical location; preserves catalog continuity when tables are re-platformed to different sources;
     allows lineage and history to follow the business entity through infrastructure changes; supports
@@ -47482,7 +47490,12 @@
     name and both edges for the person to confirm or rename; to add RELATED_TO anyway, as a placeholder
     the review filter lists, in one click; or to cancel. The relationship assistant''s bulk proposals do
     not open the dialog per edge; each RELATED_TO proposal carries the same shapes in its note where proposals
-    are reviewed.'
+    are reviewed. (Amended 2026-11-14, ENDINGS ARE PUBLISHED, AND A SOURCE LOSS IS A FINDING:) Maintainer
+    2026-11-14 (REQ-2248). A retired object stays in what is published, marked retired: in a catalog by
+    the vendor''s deprecation, or a description note where it has none, and in RDF by owl:deprecated true,
+    with dcterms:isReplacedBy only when a person named a successor. Its catalog binding is kept and no successor
+    is inferred. A table or column missing at the source keeps its model object and its links and raises
+    a finding; its links are no longer dropped and its generated tables no longer deleted automatically.'
   use_case: 'Bottom-up bootstrap means the glossary is never empty: every column name seeds the vocabulary, avoiding the failure mode of top-down glossary projects. Concept-level discovery ("show every physical field that means order date"), expert routing for data questions, grounded vocabulary for NL-to-SQL and agent surfaces via the MCP term-lookup tool, and glossary interchange with external catalogs through metadata export.'
   scenario: 'Given tables with columns cust_id, customerId, and CUSTOMER_KEY registered in the semantic
     layer
@@ -53271,129 +53284,135 @@
   priority: SHOULD
   type: behavioral
   description: 'Every environment has a repository, and the repository is a PROJECTION of the environment,
-    never an authority over it. The governed model lives in the tenant control plane and is read from
-    there by every query (REQ-1488); each change to a carried class of REQ-1489 additionally serializes
-    that class to files and commits them, so an environment''s history, its builds (REQ-1496) and its
-    export (REQ-1502) are one artifact instead of three mechanisms. The commit carries the acting user
-    as its author and names what changed, which is where REQ-1505''s history comes from without a second
-    ledger. Because the repository is derived, a failed commit MUST NOT fail the change it observes --
-    a model edit that succeeded is not undone by a disk that would not take a projection of it, which
-    is the REQ-1515 rule applied to a different observer -- and the environment is instead marked as having
-    drifted. Drift is repairable by construction and the repair ships with the write-through rather than
-    after it: rebuilding re-serializes every carried class from the control plane and commits the result,
-    which is correct however far behind the tree had fallen. The tree holds the carried classes and nothing
-    else; no binding, secret, grant or runtime table is ever written to it, so the REQ-1489 exclusion
-    becomes something a person can see in a file listing rather than only something a test asserts. [SUPERSEDED
-    by REQ-1524 amendment, 2026-10-03 -- Its own 2026-08-21 amendment makes the repository per organization
-    with an environment a branch in it. Kept here for history; do not implement against it.] The repository
-    is EMBEDDED -- a bare repository per environment, held by the deployment beside the org''s own storage
-    [END SUPERSEDED BLOCK] -- because REQ-294 makes the distribution airgap-capable and an external forge
-    cannot be a dependency of editing a model; the git implementation is therefore pure Python with no
-    native library to build. The repository is a normal one on disk, so an organization that wants it
-    on a forge adds a remote and pushes with ordinary git; [SUPERSEDED by REQ-1527, 2026-10-03 -- The
-    org''s remote is stored on the orgs row and Provisa pushes to it after every commit (and on request,
-    REQ-1546). Kept here for history; do not implement against it.] Provisa configures no remote, holds
-    no push credential and performs no push, which keeps a credential out of the control plane and keeps
-    Provisa out of a business -- remote state, conflicts, rejected pushes -- it has no reason to enter.
-    [END SUPERSEDED BLOCK] (Amended 2026-08-21, one repository per ORGANIZATION:) The bare repository
-    is per organization and an environment is a BRANCH within it, not a repository of its own. The boundary is not a packaging convenience. A repository is exactly the set of refs that can branch from one
-    another and merge back into one another, and that set is the org: an environment is always created
-    from another environment of the same org or a sha of one, and always merges back into one, while a
-    branch or merge across orgs is never a legal operation. Two environments in separate repositories
-    share no object graph, so a pull request between them cannot be expressed at all, which would leave
-    REQ-1504''s review-as-a-pull-request unbuildable. A single deployment-wide repository with refs namespaced
-    per org is refused for the opposite reason: git objects are content-addressed and shared across refs,
-    so one object store holding every tenant would let an org fetch another org''s model objects by hash.
-    Per-org is therefore the same isolation boundary as the org schema of REQ-1488, drawn where git already
-    draws one, and it is provisioned with the schema, the role and the stores at org creation. Creating
-    an environment from a sha is branching that sha and loading its tree into the new environment''s schema;
-    the branch is named for the environment. (Amended 2026-08-21, three verbs and automatic commits:)
-    Provisa''s git surface is BRANCH, BROWSE and LOAD, and nothing else. A branch can be created, the
-    repository''s branches and history can be browsed, and any branch or sha can be loaded into an environment.
-    Committing is not a verb: the write-through above commits every change as it happens, which is what makes UNDO free rather than a feature. Undoing is loading an earlier sha, and it works for any change
-    ever made rather than for the ones somebody remembered to mark. The cost is a history of generated
-    messages, and a person who wants a legible one squashes it afterwards with ordinary git, which is
-    a better trade than asking everyone to name their work at the moment they are least inclined to. [SUPERSEDED
-    by REQ-1546, 2026-10-03 -- Provisa performs push (REQ-1546), fetch and pull (REQ-1541) and merge (REQ-1490)
-    itself; all four are router endpoints. Kept here for history; do not implement against it.] Everything
-    else -- pushing, fetching, merging, rebasing, promotion, CI -- is done with ordinary git against this
-    repository by whoever wants to do it, and Provisa neither performs those operations nor polices them.
-    [END SUPERSEDED BLOCK] It is a normal repository, so normal tools work on it; a product that reimplemented
-    them would be reimplementing git badly, and one that restricted them would be preventing the workflows
-    the organization already has. The consequence is accepted deliberately: a branch may move underneath
-    an environment, and that is not an error state Provisa tracks. What protects the model is not control over the repository but REQ-1496: a tree is not a model until a load validates it and applies it
-    whole or not at all. (Amended 2026-08-21, BROWSE is a REF browser and the library is pure Python:)
-    The load sources are a ref in the org''s repository -- a branch or a sha -- and a set of files the
-    operator brings; there is no third one, and in particular there is no server filesystem for a tenant
-    to pick a path out of. The config file on disk is the DEPLOYMENT''s boot seed (REQ-164), not a tenant
-    load source, so a browser that showed directories would be offering the operator a machine they do
-    not own. BROWSE therefore lists branches, their history and the commits within it, and selecting a
-    commit is selecting what LOAD will apply. The tree is shown as the files at that commit, which REQ-1526
-    makes readable, but it is browsed by ref and never by path. The implementation is dulwich: it is pure
-    Python, so it satisfies the no-native-library rule above and needs no git binary on the host, which
-    GitPython would (it shells out, so an image without git silently loses history) and pygit2 would not
-    satisfy at all (libgit2 is a native build, and REQ-294''s airgap distribution cannot carry a compiler).
-    (Amended 2026-08-21, the repository exists from the first moment there is a model, and its location
-    is the org''s to choose:) The repository is not created lazily by the first change. A deployment launched
-    with --demo has a model before anyone edits anything, and that model is committed as the demo repository''s
-    first commit, so the demo opens on a history rather than on an empty one and every verb -- BRANCH,
-    BROWSE, LOAD -- works on it before a single edit. A deployment launched without the demo has no model,
-    and the act that produces one -- creating the org, whose prod environment REQ-1487 gives it at creation
-    -- creates the bare repository beside it, in the same act and with the same failure semantics as its
-    schema. There is no state in which an environment holds a model and has no repository to project it
-    into. WHERE the repository lives is configurable the way every other developer tool makes it configurable:
-    the default is embedded, a bare repository the deployment holds (REQ-294''s airgap rule makes that
-    the only default that can always work), and an organization may instead point the projection at a
-    local path it already keeps or at a remote it already uses. Pointing at a remote makes Provisa push,
-    which is the part REQ-1524 originally refused, so it is admitted only on the terms REQ-1525 already
-    sets for every other credential: the authentication is a REFERENCE resolved at use time (${env:VAR}
-    through provisa/core/secrets.py), never a literal in the control plane, and an org that supplies none
-    gets the embedded default rather than a broken push. [SUPERSEDED by REQ-1546, 2026-10-03 -- A failed
-    mirror is recorded as the branch''s sync state (ahead of the remote) and repaired by an explicit push;
-    the code logs a failed push and does not set drifted (provisa/core/env_ci.py:228-229). Kept here for
-    history; do not implement against it.] A push that fails is a projection that did not land -- it marks
-    the environment drifted and never fails the change it observes, which is the same rule the local commit
-    already obeys. [END SUPERSEDED BLOCK] (Amended 2026-08-21, the local store is mandatory and the environment
-    IS the working copy:) A configured remote is a PUSH MIRROR and never the store. The embedded bare
-    repository is always written first and is always what BROWSE and LOAD read; nothing serving a page
-    ever fetches from a remote. That is precisely what makes the remote optional: an org that configures none, or whose remote is unreachable, loses a mirror and never loses a verb. There is NO per-developer
-    git storage, no server-side clone and no working directory allocated to a user. A developer''s working
-    copy is the ENVIRONMENT, which REQ-1488 already makes a schema: creating a branch is creating an environment,
-    and that developer''s undo history is that environment''s branch in the org''s one repository, written
-    by the write-through above. The quota on this is the plan''s environment ceiling (REQ-1488), already
-    counted and already enforced, rather than a second per-user storage quota to allocate, meter and garbage-collect.
-    The consequence is that the SaaS deployment and the single-tenant deployment differ in NOTHING here
-    -- there is no mechanism in one that is absent from the other, no per-seat storage tier and no hosted-only
-    path -- which is the reason to prefer this shape over server-side clones even before the operational
-    cost is counted. Provisa''s git UI is the three verbs and no more: browse a ref, diff two refs per
-    file, merge with a report. Rebase, cherry-pick, force-push and textual conflict resolution are absent
-    by construction rather than by omission, because REQ-1490''s merge matches by OBJECT IDENTITY and
-    therefore has no textual conflict to resolve; a product that reimplemented those verbs would be reimplementing
-    git badly on top of a merge that does not need them. (Amended 2026-08-22, WHERE THE COMMIT IS TRIGGERED
-    AND WHEN THE REPOSITORY IS CREATED:) [SUPERSEDED by REQ-1919, 2026-10-03 -- The 2026-10-03 amendment
-    moves the write-through into the model store''s connection, one commit per request, load, import,
-    reaper run or boot. Kept here for history; do not implement against it.] The write-through has ONE
-    trigger: a strawberry SchemaExtension registered on the admin GraphQL schema, which after every mutation
-    that completed without errors projects the environment''s schema and commits the result. [END SUPERSEDED
-    BLOCK] It is one place rather than fifty resolvers because a rule that must be remembered at fifty
-    call sites is a rule that will be missed at the fifty-first, and a mutation added later is projected
-    without anyone adding a line for it. It projects the WHOLE model rather than the rows a mutation appears
-    to touch: a resolver does not report what it wrote, and a change set inferred from what it seems to
-    write would be a second, weaker model of the model. Projection is deterministic (REQ-1526), so an
-    unchanged model produces a byte-identical tree and NO commit is written. The filter is the tree comparison, which cannot be wrong about what changed. It runs AFTER the operation and never before,
-    because a commit records what the model is and not what somebody asked it to become; an operation
-    whose result carries errors is skipped for the same reason. The organization''s repository is created
-    by the act that produces the organization, in the same provisioning path that writes prod''s registry
-    row, and with the same failure semantics as the schema: creating it raises, so an org whose repository
-    could not be created never reaches ready. Prod''s FIRST commit is written there too, once the org
-    already holds its seeded model (and its demo model when --demo asked for one), which is what makes
-    the first user edit read as a diff instead of the whole model appearing at once. The environment whose
-    branch receives a commit is the one the request is bound to (REQ-1487): an unbound request is the
-    default org''s prod, which is the routing rule read back rather than a default invented at the commit
-    point. (Amended 2026-10-03, EVERY MODEL CHANGE COMMITS:) Every change to the model commits to the
-    environment''s branch. The write-through sits in the model store''s connection (REQ-1919) and makes
-    one commit per request, load, import, reaper run or boot. Environment create, merge, deploy, undo
-    and redo keep their own commits. A projection that fails marks the environment drifted.'
+    never an authority over it. The governed model lives in the tenant control plane and is read from there
+    by every query (REQ-1488); each change to a carried class of REQ-1489 additionally serializes that class
+    to files and commits them, so an environment''s history, its builds (REQ-1496) and its export (REQ-1502)
+    are one artifact instead of three mechanisms. The commit carries the acting user as its author and names
+    what changed, which is where REQ-1505''s history comes from without a second ledger. Because the repository
+    is derived, a failed commit MUST NOT fail the change it observes -- a model edit that succeeded is not
+    undone by a disk that would not take a projection of it, which is the REQ-1515 rule applied to a different
+    observer -- and the environment is instead marked as having drifted. Drift is repairable by construction
+    and the repair ships with the write-through rather than after it: rebuilding re-serializes every carried
+    class from the control plane and commits the result, which is correct however far behind the tree had
+    fallen. The tree holds the carried classes and nothing else; no binding, secret, grant or runtime table
+    is ever written to it, so the REQ-1489 exclusion becomes something a person can see in a file listing
+    rather than only something a test asserts. [SUPERSEDED by REQ-1524 amendment, 2026-10-03 -- Its own
+    2026-08-21 amendment makes the repository per organization with an environment a branch in it. Kept
+    here for history; do not implement against it.] The repository is EMBEDDED -- a bare repository per
+    environment, held by the deployment beside the org''s own storage [END SUPERSEDED BLOCK] -- because
+    REQ-294 makes the distribution airgap-capable and an external forge cannot be a dependency of editing
+    a model; the git implementation is therefore pure Python with no native library to build. The repository
+    is a normal one on disk, so an organization that wants it on a forge adds a remote and pushes with ordinary
+    git; [SUPERSEDED by REQ-1527, 2026-10-03 -- The org''s remote is stored on the orgs row and Provisa
+    pushes to it after every commit (and on request, REQ-1546). Kept here for history; do not implement
+    against it.] Provisa configures no remote, holds no push credential and performs no push, which keeps
+    a credential out of the control plane and keeps Provisa out of a business -- remote state, conflicts,
+    rejected pushes -- it has no reason to enter. [END SUPERSEDED BLOCK] (Amended 2026-08-21, one repository
+    per ORGANIZATION:) The bare repository is per organization and an environment is a BRANCH within it,
+    not a repository of its own. The boundary is not a packaging convenience. A repository is exactly the
+    set of refs that can branch from one another and merge back into one another, and that set is the org:
+    an environment is always created from another environment of the same org or a sha of one, and always
+    merges back into one, while a branch or merge across orgs is never a legal operation. Two environments
+    in separate repositories share no object graph, so a pull request between them cannot be expressed at
+    all, which would leave REQ-1504''s review-as-a-pull-request unbuildable. A single deployment-wide repository
+    with refs namespaced per org is refused for the opposite reason: git objects are content-addressed and
+    shared across refs, so one object store holding every tenant would let an org fetch another org''s model
+    objects by hash. Per-org is therefore the same isolation boundary as the org schema of REQ-1488, drawn
+    where git already draws one, and it is provisioned with the schema, the role and the stores at org creation.
+    Creating an environment from a sha is branching that sha and loading its tree into the new environment''s
+    schema; the branch is named for the environment. (Amended 2026-08-21, three verbs and automatic commits:)
+    Provisa''s git surface is BRANCH, BROWSE and LOAD, and nothing else. A branch can be created, the repository''s
+    branches and history can be browsed, and any branch or sha can be loaded into an environment. Committing
+    is not a verb: the write-through above commits every change as it happens, which is what makes UNDO
+    free rather than a feature. Undoing is loading an earlier sha, and it works for any change ever made
+    rather than for the ones somebody remembered to mark. The cost is a history of generated messages, and
+    a person who wants a legible one squashes it afterwards with ordinary git, which is a better trade than
+    asking everyone to name their work at the moment they are least inclined to. [SUPERSEDED by REQ-1546,
+    2026-10-03 -- Provisa performs push (REQ-1546), fetch and pull (REQ-1541) and merge (REQ-1490) itself;
+    all four are router endpoints. Kept here for history; do not implement against it.] Everything else
+    -- pushing, fetching, merging, rebasing, promotion, CI -- is done with ordinary git against this repository
+    by whoever wants to do it, and Provisa neither performs those operations nor polices them. [END SUPERSEDED
+    BLOCK] It is a normal repository, so normal tools work on it; a product that reimplemented them would
+    be reimplementing git badly, and one that restricted them would be preventing the workflows the organization
+    already has. The consequence is accepted deliberately: a branch may move underneath an environment,
+    and that is not an error state Provisa tracks. What protects the model is not control over the repository
+    but REQ-1496: a tree is not a model until a load validates it and applies it whole or not at all. (Amended
+    2026-08-21, BROWSE is a REF browser and the library is pure Python:) The load sources are a ref in the
+    org''s repository -- a branch or a sha -- and a set of files the operator brings; there is no third
+    one, and in particular there is no server filesystem for a tenant to pick a path out of. The config
+    file on disk is the DEPLOYMENT''s boot seed (REQ-164), not a tenant load source, so a browser that showed
+    directories would be offering the operator a machine they do not own. BROWSE therefore lists branches,
+    their history and the commits within it, and selecting a commit is selecting what LOAD will apply. The
+    tree is shown as the files at that commit, which REQ-1526 makes readable, but it is browsed by ref and
+    never by path. The implementation is dulwich: it is pure Python, so it satisfies the no-native-library
+    rule above and needs no git binary on the host, which GitPython would (it shells out, so an image without
+    git silently loses history) and pygit2 would not satisfy at all (libgit2 is a native build, and REQ-294''s
+    airgap distribution cannot carry a compiler). (Amended 2026-08-21, the repository exists from the first
+    moment there is a model, and its location is the org''s to choose:) The repository is not created lazily
+    by the first change. A deployment launched with --demo has a model before anyone edits anything, and
+    that model is committed as the demo repository''s first commit, so the demo opens on a history rather
+    than on an empty one and every verb -- BRANCH, BROWSE, LOAD -- works on it before a single edit. A deployment
+    launched without the demo has no model, and the act that produces one -- creating the org, whose prod
+    environment REQ-1487 gives it at creation -- creates the bare repository beside it, in the same act
+    and with the same failure semantics as its schema. There is no state in which an environment holds a
+    model and has no repository to project it into. WHERE the repository lives is configurable the way every
+    other developer tool makes it configurable: the default is embedded, a bare repository the deployment
+    holds (REQ-294''s airgap rule makes that the only default that can always work), and an organization
+    may instead point the projection at a local path it already keeps or at a remote it already uses. Pointing
+    at a remote makes Provisa push, which is the part REQ-1524 originally refused, so it is admitted only
+    on the terms REQ-1525 already sets for every other credential: the authentication is a REFERENCE resolved
+    at use time (${env:VAR} through provisa/core/secrets.py), never a literal in the control plane, and
+    an org that supplies none gets the embedded default rather than a broken push. [SUPERSEDED by REQ-1546,
+    2026-10-03 -- A failed mirror is recorded as the branch''s sync state (ahead of the remote) and repaired
+    by an explicit push; the code logs a failed push and does not set drifted (provisa/core/env_ci.py:228-229).
+    Kept here for history; do not implement against it.] A push that fails is a projection that did not
+    land -- it marks the environment drifted and never fails the change it observes, which is the same rule
+    the local commit already obeys. [END SUPERSEDED BLOCK] (Amended 2026-08-21, the local store is mandatory
+    and the environment IS the working copy:) A configured remote is a PUSH MIRROR and never the store.
+    The embedded bare repository is always written first and is always what BROWSE and LOAD read; nothing
+    serving a page ever fetches from a remote. That is precisely what makes the remote optional: an org
+    that configures none, or whose remote is unreachable, loses a mirror and never loses a verb. There is
+    NO per-developer git storage, no server-side clone and no working directory allocated to a user. A developer''s
+    working copy is the ENVIRONMENT, which REQ-1488 already makes a schema: creating a branch is creating
+    an environment, and that developer''s undo history is that environment''s branch in the org''s one repository,
+    written by the write-through above. The quota on this is the plan''s environment ceiling (REQ-1488),
+    already counted and already enforced, rather than a second per-user storage quota to allocate, meter
+    and garbage-collect. The consequence is that the SaaS deployment and the single-tenant deployment differ
+    in NOTHING here -- there is no mechanism in one that is absent from the other, no per-seat storage tier
+    and no hosted-only path -- which is the reason to prefer this shape over server-side clones even before
+    the operational cost is counted. Provisa''s git UI is the three verbs and no more: browse a ref, diff
+    two refs per file, merge with a report. Rebase, cherry-pick, force-push and textual conflict resolution
+    are absent by construction rather than by omission, because REQ-1490''s merge matches by OBJECT IDENTITY
+    and therefore has no textual conflict to resolve; a product that reimplemented those verbs would be
+    reimplementing git badly on top of a merge that does not need them. (Amended 2026-08-22, WHERE THE COMMIT
+    IS TRIGGERED AND WHEN THE REPOSITORY IS CREATED:) [SUPERSEDED by REQ-1919, 2026-10-03 -- The 2026-10-03
+    amendment moves the write-through into the model store''s connection, one commit per request, load,
+    import, reaper run or boot. Kept here for history; do not implement against it.] The write-through has
+    ONE trigger: a strawberry SchemaExtension registered on the admin GraphQL schema, which after every
+    mutation that completed without errors projects the environment''s schema and commits the result. [END
+    SUPERSEDED BLOCK] It is one place rather than fifty resolvers because a rule that must be remembered
+    at fifty call sites is a rule that will be missed at the fifty-first, and a mutation added later is
+    projected without anyone adding a line for it. It projects the WHOLE model rather than the rows a mutation
+    appears to touch: a resolver does not report what it wrote, and a change set inferred from what it seems
+    to write would be a second, weaker model of the model. Projection is deterministic (REQ-1526), so an
+    unchanged model produces a byte-identical tree and NO commit is written. The filter is the tree comparison,
+    which cannot be wrong about what changed. It runs AFTER the operation and never before, because a commit
+    records what the model is and not what somebody asked it to become; an operation whose result carries
+    errors is skipped for the same reason. The organization''s repository is created by the act that produces
+    the organization, in the same provisioning path that writes prod''s registry row, and with the same
+    failure semantics as the schema: creating it raises, so an org whose repository could not be created
+    never reaches ready. Prod''s FIRST commit is written there too, once the org already holds its seeded
+    model (and its demo model when --demo asked for one), which is what makes the first user edit read as
+    a diff instead of the whole model appearing at once. The environment whose branch receives a commit
+    is the one the request is bound to (REQ-1487): an unbound request is the default org''s prod, which
+    is the routing rule read back rather than a default invented at the commit point. (Amended 2026-10-03,
+    EVERY MODEL CHANGE COMMITS:) Every change to the model commits to the environment''s branch. The write-through
+    sits in the model store''s connection (REQ-1919) and makes one commit per request, load, import, reaper
+    run or boot. Environment create, merge, deploy, undo and redo keep their own commits. A projection that
+    fails marks the environment drifted. (Amended 2026-11-14, THE HISTORY NAMES OBJECTS BY NAME AND SYNCS
+    BY CONNECTION:) Maintainer 2026-11-14: the model''s git repository is the history store for retirements
+    and syncs; the model is not made bitemporal. A commit message names each changed object by its model
+    URI, never a serial id. A sync from an authority commits as that connection and names the release.'
   use_case: An org_admin asks what changed in prod last Tuesday and who changed it, and reads it from
     the environment's history; the same organization reviews a dev-to-prod promotion as a pull request
     in its own GitHub, because the builds are already there.
@@ -88018,7 +88037,56 @@ Then the form offers Open in VS Code as a vscode://file link to it"
   feature: catalog-and-discovery-warehouse-listings
   priority: SHOULD
   type: behavioral
-  description: "Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once: provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs (sales with one, finance with another): a domain's tables offer only its catalogs in the pick list, Refresh from catalog, import and lock, and its data products publish to its catalogs, [SUPERSEDED by REQ-2122, 2026-10-21 -- a data product has one owning domain and no cross-domain listing; see the amendment below. Kept here for history; do not implement against it.] a product shared across domains appearing in each listing domain's catalogs. [END SUPERSEDED BLOCK] A metadata export target names a catalog and keeps only its export settings, in place of its own endpoint and credentials. Description import: a table's description has From catalog, which opens a pick list of the connected catalogs' assets for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by name similarity and searchable; the steward picks one or none, and the picked asset's description, column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated descriptions only fill what the catalog never described, when the steward asks. A pick is stored as the table's catalog binding, the same binding an export records, so export and import share one link per table per catalog, an export updates the asset the steward picked, and a description can be refreshed from it later. Every export target records the catalog's id for what it publishes and, where the catalog's API allows, writes the table's Provisa address into the catalog asset, so after one export each published table is linked both ways. Catalog import: a catalog's Import action reads, for every table linked to that catalog (by an export or a pick), its current description, column descriptions, owners, tags and glossary links, and shows them as a review list beside Provisa's current values; the steward accepts all or table by table. A table not yet linked is listed as not linked, with the two ways to link it (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor of a linked table offers Refresh from catalog, which reads the linked asset's current description, column descriptions, owners, tags and glossary links and offers the changes beside the current values for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog its authority: the locked table's descriptive fields (descriptions, column descriptions, owners, tags, glossary links) are read-only in Provisa's editor with a link to edit them in the catalog, and the export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies a catalog's current metadata without review to the tables locked to it, and for its other linked tables lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row rules, masks) stays Provisa's on every table. (Amended 2026-10-21, DOMAIN SCOPE:) A catalog connection serves at least one domain. A table and its columns publish to the catalogs of their domain, a data product to the catalogs of its owning domain, and the glossary to every catalog; there is no cross-domain listing of a data product. Each other published fact (a source, a relationship, a lineage edge, a tag, a quality check, a term's link to an asset) goes to a catalog only with the assets it is about. The export's own settings for a catalog are the DataZone project that owns its data products and the Unity Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The Catalogs panel's connection test is the provider's own health check, the one the export runs."
+  description: 'Catalogs are their own admin panel, and Provisa both publishes to and reads from them. A
+    Catalogs panel, beside Package Registries and Container Registries, holds each catalog connection once:
+    provider (OpenMetadata, DataHub, Collibra, Apache Atlas or Purview, Atlan, Unity Catalog, Snowflake
+    Horizon, Dataplex, DataZone and the others the export supports), endpoint, credentials and a connection
+    test. A catalog connection is assigned to one or more domains, so each domain works with its own catalogs
+    (sales with one, finance with another): a domain''s tables offer only its catalogs in the pick list,
+    Refresh from catalog, import and lock, and its data products publish to its catalogs, [SUPERSEDED by
+    REQ-2122, 2026-10-21 -- a data product has one owning domain and no cross-domain listing; see the amendment
+    below. Kept here for history; do not implement against it.] a product shared across domains appearing
+    in each listing domain''s catalogs. [END SUPERSEDED BLOCK] A metadata export target names a catalog
+    and keeps only its export settings, in place of its own endpoint and credentials. Description import:
+    a table''s description has From catalog, which opens a pick list of the connected catalogs'' assets
+    for it, the asset for the same physical table preselected when a catalog has one, the rest ranked by
+    name similarity and searchable; the steward picks one or none, and the picked asset''s description,
+    column descriptions (matched by column name and adjustable one by one), owners, tags and linked glossary
+    terms are offered to the table, each shown with its catalog. The LLM matches nothing; the existing generated
+    descriptions only fill what the catalog never described, when the steward asks. A pick is stored as
+    the table''s catalog binding, the same binding an export records, so export and import share one link
+    per table per catalog, an export updates the asset the steward picked, and a description can be refreshed
+    from it later. Every export target records the catalog''s id for what it publishes and, where the catalog''s
+    API allows, writes the table''s Provisa address into the catalog asset, so after one export each published
+    table is linked both ways. Catalog import: a catalog''s Import action reads, for every table linked
+    to that catalog (by an export or a pick), its current description, column descriptions, owners, tags
+    and glossary links, and shows them as a review list beside Provisa''s current values; the steward accepts
+    all or table by table. A table not yet linked is listed as not linked, with the two ways to link it
+    (export once, or pick its asset in the table editor), and nothing is guessed for it. The table editor
+    of a linked table offers Refresh from catalog, which reads the linked asset''s current description,
+    column descriptions, owners, tags and glossary links and offers the changes beside the current values
+    for the steward to accept. Imported metadata records its provenance: a table shows that its descriptions
+    were last imported from a named catalog at a stated time, and they stay editable; Provisa claims no
+    authority it cannot know. A steward may elect to lock a table to a catalog, and only then is that catalog
+    its authority: the locked table''s descriptive fields (descriptions, column descriptions, owners, tags,
+    glossary links) are read-only in Provisa''s editor with a link to edit them in the catalog, and the
+    export no longer writes them to that catalog. Scheduled import, using the existing scheduler, applies
+    a catalog''s current metadata without review to the tables locked to it, and for its other linked tables
+    lists what changed for the steward to review, never overwriting a local edit. Governance (grants, row
+    rules, masks) stays Provisa''s on every table. (Amended 2026-10-21, DOMAIN SCOPE:) A catalog connection
+    serves at least one domain. A table and its columns publish to the catalogs of their domain, a data
+    product to the catalogs of its owning domain, and the glossary to every catalog; there is no cross-domain
+    listing of a data product. Each other published fact (a source, a relationship, a lineage edge, a tag,
+    a quality check, a term''s link to an asset) goes to a catalog only with the assets it is about. The
+    export''s own settings for a catalog are the DataZone project that owns its data products and the Unity
+    Catalog Delta Share; the catalog holds the address, credentials and the DataZone domain. The Catalogs
+    panel''s connection test is the provider''s own health check, the one the export runs. (Amended 2026-11-14,
+    DIFFERENCES, ACCEPT AND STANDING CHOICES:) Maintainer 2026-11-14 (REQ-2247). The Catalogs panel also
+    holds external ontology systems. For every entry, differences between Provisa and the entry are listed
+    with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per kind of
+    difference, which scheduled export and import apply; a kind with no choice is held for review. The per-table
+    lock to a catalog stays. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer 2026-11-14 (REQ-2247):
+    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology.'
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -95652,7 +95720,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     back out on export, so an imported ontology round-trips. Provisa does not reason over them. Plain enumerated
     individuals still come in as valid values. How a relation between two classes (an OWL object property
     with a domain and a range) is modelled is a separate decision; until it is made, such a property is
-    kept with its domain and range as above, not reduced to a part-of edge.'
+    kept with its domain and range as above, not reduced to a part-of edge. (Amended 2026-11-14, AN ONTOLOGY
+    IS AN ENTRY IN THE CATALOGS PANEL:) Maintainer 2026-11-14 (REQ-2247). An ontology is not a one-off file
+    import: one external ontology system has one entry in the Catalogs panel, and each file uploaded to
+    it is recorded as a release of that entry, in order. A release is compared with what Provisa holds and
+    its differences (new terms, changed definitions, changed hierarchy, deprecated terms) are listed with
+    Accept, grouped by kind; the steward''s standing choices on the entry decide what an upload applies
+    without review, and everything else is held. An item marked owl:deprecated is listed as an ending. An
+    IRI absent from a later release is a finding, not an ending. An applied release is never deleted.'
   use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
     Provisa already knows.
 - id: REQ-2238
@@ -95996,5 +96071,101 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Given an MCP client that connects naming no mode
 
     Then it is listed the tools of the mode the operator setting names
+
+    '
+- id: REQ-2247
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-14: ''just show a list of differences with Accept buttons''; ''predetermined
+    choices made by the data steward on how to handle diffs''; an ontology ''is just added to the catalog
+    list''; ''the catalog list is where you declare how to handle diffs''. This replaces the earlier wording
+    of the same day about declaring which system owns each kind of fact; no system is declared the owner
+    of anything. An external ontology system is an entry in the Catalogs panel (REQ-2122), beside the data
+    catalogs, and every entry works the same way. Whenever Provisa and an entry hold different values (a
+    description, a column description, an owner, a tag, a glossary link, a term''s definition or place in
+    the hierarchy, or an ending on either side), the difference is listed with both values and an Accept
+    button for each side. Long lists are grouped by kind of difference, then by table or term; a group shows
+    its count, opens to its rows, and can be accepted as a whole. For runs with nobody watching (a scheduled
+    export or import, an uploaded ontology release), the steward sets, on the entry''s page in the Catalogs
+    panel, a standing choice for each kind of difference: take Provisa''s value, take the other system''s
+    value, or hold for review. A kind with no standing choice is held. A standing choice can be set from
+    the difference list at the moment a group is accepted, and is shown and changed on the entry''s page.
+    A held difference waits in the list; an unattended run never decides one. To tell which side changed,
+    a run compares each value with the one last exchanged with that entry. An ontology''s releases are uploaded
+    to its entry (REQ-2237); nothing is fetched. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer
+    2026-11-14: the Catalogs panel is named Sync Points. It is the one place for every outside system kept
+    in sync with Provisa and for that system''s details: its connection, what is kept in sync with it, its
+    open differences, the steward''s standing choices, and when it last ran with what it applied and held.
+    An entry has a type, Data Catalog or Ontology, and the list is shown under those two headings; the difference
+    list and the standing choices are the same for both, and a later type of synced system is added as a
+    new type here. The panel''s description says it keeps descriptions, owners, tags and terms in step,
+    not data.'
+  scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
+    two owners
+
+    When the steward opens the entry''s differences
+
+    Then they are grouped by kind with a count, and each row shows both values
+
+    When the steward accepts the column description group from the catalog and chooses to always do so
+
+    Then Provisa holds the catalog''s forty descriptions
+
+    And the entry''s page shows the standing choice for column descriptions
+
+    When a scheduled import later finds a changed column description and a changed owner
+
+    Then the description is taken and the owner difference is held in the list
+
+    Given an ontology entry in the same panel
+
+    When a release with changed definitions is uploaded and no standing choice is set for definitions
+
+    Then each changed definition is listed as a difference and no term changes until one is accepted
+
+    '
+- id: REQ-2248
+  status: proposed
+  target: 2027-Q1
+  group: 3. Source Registration & Data Modeling
+  category: Business Glossary & Ontology
+  feature: glossary-tags-ontology-terms
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-14: ''when keeping things in sync you must have soft deletes''; ''we
+    can''t reuse a retired name. it was retired for a reason''; ''without knowing why something was renamed
+    you can''t tell what the right approach would be''. Deleting a table, column, relationship, tag, metric
+    or glossary term retires it: it keeps its row, its name and its file in the model repository, marked
+    retired with who, when and why, and it is no longer served. Nothing in the model is hard-deleted,
+    in any environment, and a merge that removes an object retires it. A retired name is never taken by
+    another object; the check is in each kind''s write path and counts retired rows. Restoring clears
+    the retirement on the same object. Changing an object''s model name retires it and creates a new object
+    (REQ-1385). A link to a retired object, or to a name that no longer resolves (a grounding, tag, relationship,
+    catalog binding, citation or ontology alignment), is a finding naming the link and the name. No rule
+    moves or drops such a link; a person does. When retiring an object a person may name its successor
+    and, as an explicit option in the same act, move its links to it, as retiring a glossary term allows;
+    nothing moves unless they choose it.'
+  scenario: 'Given a table with a grounded term and a tag
+
+    When a steward deletes the table
+
+    Then the table is retired with who, when and why, and is absent from every query surface
+
+    And its file in the model repository carries the retirement
+
+    And the grounding and the tag each raise a finding naming the retired table
+
+    When another table is registered under the retired name
+
+    Then the registration is refused, naming the retired table
+
+    When the steward restores the table
+
+    Then the same object is served again and the findings clear
 
     '
