@@ -61,9 +61,8 @@ class NotAKindKeyword(ValueError):
     """A root-kind URI asked for with a keyword the grammar does not reserve."""
 
     def __init__(self, keyword: str) -> None:
-        super().__init__(
-            f"{keyword!r} is not a reserved kind keyword (REQ-1385): {RESERVED_KIND_KEYWORDS}"
-        )
+        # REQ-1385: the grammar's reserved root-kind keywords.
+        super().__init__(f"{keyword!r} is not a reserved kind keyword: {RESERVED_KIND_KEYWORDS}")
 
 
 def _segment(name: str) -> str:
