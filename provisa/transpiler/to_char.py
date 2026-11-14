@@ -38,6 +38,8 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.dialects.postgres import Postgres
 
+from provisa.transpiler.pg_literals import values_cast
+
 
 class _CallsKept(Postgres):
     """PostgreSQL, with to_char read as the call it is (not sqlglot's TimeToStr)."""
@@ -49,10 +51,19 @@ class _CallsKept(Postgres):
         }
 
 
-def _refused(element: str) -> NotImplementedError:
-    return NotImplementedError(
-        f"to_char: the format element {element!r} is not supported; it is not answered by a guess"
-    )
+class ElementRefused(NotImplementedError):
+    """A template's element (a keyword with its modifiers) with no exact form: refused by name."""
+
+    def __init__(self, element: str) -> None:
+        super().__init__(
+            f"to_char: the format element {element!r} is not supported; it is not answered by a "
+            "guess"
+        )
+        self.element = element
+
+
+def _refused(element: str) -> ElementRefused:
+    return ElementRefused(element)
 
 
 # Date/time elements (PostgreSQL's formatting.c keywords), longest first, each to how it is
@@ -272,6 +283,8 @@ class _Engine:
     def wide(self, x: str, width: int) -> str:
         """A non-negative integer's text padded to ``width``, its every digit kept past it (an
         engine's pad cuts a text longer than the width)."""
+        if not self.bc:  # no year past 9999 either
+            return self.pad(x, width)
         return f"CASE WHEN {x} >= {10**width} THEN {self.text(x)} ELSE {self.pad(x, width)} END"
 
     def idiv(self, a: str, b: int) -> str:
@@ -291,7 +304,8 @@ _CLICKHOUSE = _Engine(
     minute="toMinute({v})",
     second="toSecond({v})",
     micro="positiveModulo(toUnixTimestamp64Micro({v}), 1000000)",
-    doy="toDayOfYear({v})",
+    # toDayOfYear answers 364 of 2299-12-31, DateTime64's last day.
+    doy="(dateDiff('day', makeDate32(toYear({v}), 1, 1), toDate32({v})) + 1)",
     isodow="toDayOfWeek({v})",
     isoweek="toISOWeek({v})",
     isoyear="toISOYear({v})",
@@ -733,9 +747,10 @@ def _numeric(value: exp.Expr, fmt: str) -> exp.Expr:
 
 
 def _zoned(value: exp.Expr) -> bool | None:
-    """False for a value the statement casts to timestamp, which has no zone; None for any other,
-    whose type is not read here."""
-    if isinstance(value, exp.Cast) and value.to.this == exp.DataType.Type.TIMESTAMP:
+    """False for a value the statement casts to timestamp (a literal, or a column of a VALUES list),
+    which has no zone; None for any other, whose type is not read here."""
+    cast = values_cast(value) if isinstance(value, exp.Column) else value
+    if isinstance(cast, exp.Cast) and cast.to.this == exp.DataType.Type.TIMESTAMP:
         return False
     return None
 
@@ -773,7 +788,7 @@ def to_char_for_duckdb(pg_sql: str) -> str:  # REQ-2167
             target = node.expression
         if isinstance(target, exp.Anonymous) and target.name.lower() == "to_char":
             for i, arg in enumerate(target.expressions):
-                target.expressions[i] = arg.transform(_call)
+                target.expressions[i] = arg.transform(_call, copy=False)
             return _translated(target)
         return node
 
