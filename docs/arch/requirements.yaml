@@ -96139,7 +96139,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     webhook for Export and one for Import, each optional, since the system that must agree differs by direction.
     A webhook that answers hold (an approval still open on the other system, for example) leaves the difference
     in the list, and each later run of that direction asks it again until it answers take or a steward accepts
-    the difference by hand; Provisa keeps no approval state of its own for the other system.'
+    the difference by hand; Provisa keeps no approval state of its own for the other system. (Amended 2026-11-14,
+    THE WEBHOOK MAY MODIFY OR HANDLE A CHANGE:) Maintainer 2026-11-14: Provisa knows how to write to a catalog,
+    and cannot know how a customer has set that catalog up (its approval workflow, required fields, starting
+    statuses); the webhook covers that part. A webhook is passed the change in Provisa''s own form, not
+    the vendor''s API call: the entry, the direction, the kind, the object by its name, both values, the
+    value last exchanged, and an open set of extra fields. It answers one of four ways: take as is; take
+    with these changes (a changed value or extra fields, which the adapter writes on Export and Provisa
+    applies on Import); handled (the webhook made the change itself and Provisa writes nothing); or hold.
+    What was actually written is recorded as the value last exchanged. A handled change is not confirmed
+    separately: the next run''s comparison shows whether it happened. This widens the answers given in the
+    earlier amendments of the same day. An entry has a third type, Custom, for a system Provisa has no adapter
+    for: its Export and Import are done entirely by its webhooks.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
