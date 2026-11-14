@@ -236,11 +236,12 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
     # owl:ObjectProperty when every column it binds is a many-to-one key to a table with a Class,
     # whose Class is then its rdfs:range; otherwise an owl:DatatypeProperty ranging over its
     # columns' xsd types. Every term has its name as skos:prefLabel and its definition, when it
-    # has one, as skos:definition.
+    # has one, as skos:definition. REQ-1385: a term's IRI is built from its name; one an import
+    # gave it (glossary_terms.iri) is stated equivalent to it.
     "_axioms": f"""
         CREATE OR REPLACE VIEW _axioms_ontology AS
         WITH t AS (
-            -- iri: the IRI an ontology import gave the term (REQ-1385), stated equivalent below.
+            -- iri: the IRI an ontology import gave the term, stated equivalent below.
             SELECT o.id, o.name, o.definition, o.is_class, o.is_property, o.term_domains,
                    o.tenant_id, g.iri
             FROM _terms_ontology o JOIN glossary_terms g ON g.id = o.id WHERE NOT o.retired
@@ -295,7 +296,7 @@ ONTOLOGY_TABLE_VIEWS: dict[str, str] = {
             FROM bound
             WHERE term_id NOT IN (SELECT term_id FROM object_properties) AND data_type IS NOT NULL
             UNION
-            -- REQ-1385: a term's IRI is built from its name; one an import gave it is stated
+            -- A term's IRI is built from its name; one an import gave it is stated
             -- equivalent: owl:equivalentClass for a Class, owl:equivalentProperty for a Property,
             -- skos:exactMatch for a Concept.
             SELECT id,
