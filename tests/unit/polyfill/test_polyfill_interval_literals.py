@@ -30,6 +30,8 @@ The DuckDB and ClickHouse answers run on the embedded engines; Trino's is its SQ
 from __future__ import annotations
 
 import datetime
+import sys
+from pathlib import Path
 from typing import Any
 
 import duckdb
@@ -42,6 +44,7 @@ from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.pgwire.cast_types import interval_of_text
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.polyfill import intervals
 from provisa.transpiler.transpile import transpile
 
 #: Each statement and PostgreSQL's text of its answer: a tuple for one of several rows, and
@@ -564,3 +567,97 @@ def test_an_engine_error_is_never_the_answer(runtime):
             list(runtime.run_sync(written).iter_rows())
         except Exception as error:  # a PostgreSQL error the form raises is one
             assert from_engine(error) is not None, (sql, str(error)[:200])
+
+
+# --- the conformance run's engine errors on 35924c49ac ------------------------------------------
+
+_CONFORMANCE = Path(__file__).resolve().parents[3] / "scripts" / "conformance"
+_INTERVALS = "FROM (VALUES ('1 day 02:03:04'::interval), ('3 mons'::interval), ('-1 year 2 days'::interval)) AS t(c1)"
+
+
+def _named_by_the_run(error: str) -> bool:
+    """Whether the functions conformance run counts ``error`` a refusal by name, not an engine
+    error (pgwire_function_probe.REFUSAL)."""
+    sys.path.insert(0, str(_CONFORMANCE))
+    try:
+        from pgwire_function_probe import refused_by_name
+    finally:
+        sys.path.remove(str(_CONFORMANCE))
+    return refused_by_name(f"ERROR:  {error}")
+
+
+@pytest.mark.parametrize("dialect", ["clickhouse", "trino"])
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."percentile_cont"(NULL::double precision) WITHIN GROUP '
+        "(ORDER BY NULL::interval) AS v",
+        'SELECT pg_catalog."percentile_cont"(NULL::double precision[]) WITHIN GROUP '
+        "(ORDER BY NULL::interval) AS v",
+        'SELECT pg_catalog."percentile_cont"(0.25::double precision) WITHIN GROUP '
+        f"(ORDER BY c1) AS v {_INTERVALS}",
+        "SELECT pg_catalog.\"percentile_cont\"('{0.25,0.5}'::double precision[]) WITHIN GROUP "
+        f"(ORDER BY c1) AS v {_INTERVALS}",
+    ],
+)
+def test_percentile_cont_of_intervals_is_refused_by_its_name(sql, dialect):
+    """The run's percentile_cont(.. ORDER BY interval) calls. On 35924c49ac the literal's refusal
+    named no call ("an interval value outside an interval call or the select list", "interval
+    '1 day 02:03:04' anywhere but a timestamp's plus or minus"), which the run counts an engine
+    error; it names percentile_cont, as main's refusal did."""
+    with pytest.raises(FunctionRefused, match=dialect) as refused:
+        transpile(sql, dialect)
+    assert str(refused.value).startswith("percentile_cont() ")
+    assert _named_by_the_run(str(refused.value))
+
+
+@pytest.mark.parametrize("dialect", ["clickhouse", "trino"])
+@pytest.mark.parametrize(
+    ("sql", "named"),
+    [
+        (f"SELECT array_agg(1 ORDER BY c1) AS v {_INTERVALS}", "array_agg"),
+        (f"SELECT string_agg('x', ',' ORDER BY c1) AS v {_INTERVALS}", "string_agg"),
+        (
+            'SELECT pg_catalog."percentile_disc"(0.5::double precision) WITHIN GROUP '
+            f"(ORDER BY c1) AS v {_INTERVALS}",
+            "percentile_disc",
+        ),
+        ("SELECT array_agg(1 ORDER BY '1 day'::interval) AS v", "array_agg"),
+    ],
+)
+def test_an_interval_an_aggregate_orders_by_is_refused_by_its_name(sql, named, dialect):
+    """An interval no row reads, in an aggregate's ORDER BY: refused naming that aggregate. On
+    main string_agg and percentile_disc reached both engines as a cast to interval (an engine
+    error); a refusal that names no call is counted one too."""
+    with pytest.raises(FunctionRefused, match=dialect) as refused:
+        transpile(sql, dialect)
+    assert str(refused.value).startswith(f"{named}() of an interval ")
+    assert _named_by_the_run(str(refused.value))
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."range_agg"(NULL::int4multirange) AS v',
+        'SELECT pg_catalog."range_agg"(NULL::int4range) AS v',
+        'SELECT pg_catalog."range_intersect_agg"(c1 ORDER BY c1) AS v FROM (VALUES '
+        "('[1,5)'::int4range), ('empty'::int4range), ('(,3]'::int4range)) AS t(c1)",
+    ],
+)
+def test_the_interval_rows_read_a_deep_form_once_a_row(sql, monkeypatch):
+    """range_agg's ClickHouse form is deep, and each interval row asked of each of its nodes
+    whether any descendant holds an interval: on 35924c49ac its transpile took longer than the
+    run's 30 s a call (no answer, counted an engine error). A row now asks only of a node that may
+    be its own call (its operator, its name): the walks are a few per node, not one per row."""
+    walks = 0
+    walk = intervals._mentions_interval
+
+    def counted(node: exp.Expr) -> bool:
+        nonlocal walks
+        walks += 1
+        return walk(node)
+
+    monkeypatch.setattr(intervals, "_mentions_interval", counted)
+    written = transpile(sql, "clickhouse")
+    nodes = sum(1 for _ in sqlglot.parse_one(written, read="clickhouse").walk())
+    assert walks <= nodes, (walks, nodes)

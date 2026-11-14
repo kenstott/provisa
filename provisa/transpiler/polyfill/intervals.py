@@ -1172,8 +1172,23 @@ def _interval_column(column: exp.Column) -> bool:
     return False
 
 
-def _call(node: exp.Expr) -> tuple[str, _Row, list[exp.Expr]] | None:
-    """The row ``node`` is a call of, by its name or its operator, and its arguments."""
+def _may_be(node: exp.Expr, name: str) -> bool:
+    """Whether ``node`` may be a call of the row ``name``: its operator is one of that row's, or
+    it calls that name. Read before _mentions_interval, which walks the node's every descendant:
+    every row asks of every node, so a deep form (range_agg's on ClickHouse) is read once a row,
+    not once a row and a node, for each of its operators."""
+    operators = _OPERATORS.get(type(node))
+    if operators is not None:
+        return name in operators.values()
+    call = trino.called(node)
+    return call is not None and name in call[0]
+
+
+def _call(node: exp.Expr, name: str | None = None) -> tuple[str, _Row, list[exp.Expr]] | None:
+    """The row ``node`` is a call of, by its name or its operator, and its arguments; with
+    ``name``, None for a call of any other row."""
+    if name is not None and not _may_be(node, name):
+        return None
     if not _mentions_interval(node):
         return None
     if type(node) in _OPERATORS:
@@ -1301,7 +1316,7 @@ def _rewrite(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
     def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
         if dialect != _CLICKHOUSE or (type(node) not in _OPERATORS and trino.called(node) is None):
             return None
-        found = _call(node)
+        found = _call(node, name)
         if found is None or found[0] != name:
             return None
         sql = _Sql()
@@ -1527,20 +1542,57 @@ def _standing(node: exp.Expr) -> str | None:
     return None
 
 
-def _cell_readers(node: exp.Expr) -> list[str | None]:
-    """Where each reference to the VALUES column of the cell ``node`` stands."""
+def _reading_call(node: exp.Expr) -> str | None:
+    """The name of the call a value ``node`` stands in, as the statement wrote it
+    (``percentile_cont(..) WITHIN GROUP (ORDER BY v)``, ``string_agg(.. ORDER BY v)``); for a cell
+    of a VALUES list, of the first call reading its column; None where no call holds it."""
+    if isinstance(node.parent, exp.Tuple) and isinstance(node.parent.parent, exp.Values):
+        return next(filter(None, map(_reading_call, _cell_columns(node))), None)
+    parent = node.parent
+    while parent is not None and not isinstance(parent, (exp.Select, exp.Values)):
+        if isinstance(parent, exp.WithinGroup):
+            parent = parent.this
+        if isinstance(parent, exp.Anonymous):
+            return parent.name.lower()
+        if isinstance(parent, exp.Func) and not isinstance(parent, (exp.Binary, exp.Unary)):
+            if not isinstance(parent, exp.Cast):
+                written = parent.sql(dialect="postgres").split("(", 1)[0]
+                return written.rsplit(".", 1)[-1].strip('"').lower()
+        parent = parent.parent
+    return None
+
+
+def _refused_value(node: exp.Expr, what: str, dialect: str) -> Refused:
+    """The refusal of an interval value ``node`` no row reads: by the name of the call it stands
+    in, where one holds it; ``what`` it is otherwise."""
+    called = _reading_call(node)
+    if called is not None:
+        return _refused_literal(f"{called}() of an interval", dialect)
+    return _refused_literal(what, dialect)
+
+
+def _cell_columns(node: exp.Expr) -> list[exp.Column]:
+    """The references to the VALUES column of the cell ``node``, outside the VALUES list."""
     tuple_ = node.find_ancestor(exp.Tuple)
     values = tuple_.parent if tuple_ is not None else None
     alias = values.args.get("alias") if isinstance(values, exp.Values) else None
     select = values.find_ancestor(exp.Select) if values is not None else None
     if tuple_ is None or alias is None or select is None or not alias.columns:
-        return [None]
+        return []
     at = next(i for i, cell in enumerate(tuple_.expressions) if cell is node or node in cell.walk())
     name = alias.columns[at].name
-    readers: list[str | None] = []
-    for column in select.find_all(exp.Column):
-        if column.name == name and column.find_ancestor(exp.Values) is None:
-            readers.append("read" if _read_by_a_row(column) else _standing(column))
+    return [
+        column
+        for column in select.find_all(exp.Column)
+        if column.name == name and column.find_ancestor(exp.Values) is None
+    ]
+
+
+def _cell_readers(node: exp.Expr) -> list[str | None]:
+    """Where each reference to the VALUES column of the cell ``node`` stands."""
+    readers = [
+        "read" if _read_by_a_row(column) else _standing(column) for column in _cell_columns(node)
+    ]
     return readers or [None]
 
 
@@ -1573,8 +1625,8 @@ def _literal_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if isinstance(fields, str) and fields != "null":
         raise _refused_literal(f"interval input '{fields}'", dialect)
     if where is None:
-        raise _refused_literal(
-            "an interval value outside an interval call or the select list", dialect
+        raise _refused_value(
+            node, "an interval value outside an interval call or the select list", dialect
         )
     if fields == "null":
         return exp.cast(exp.null(), exp.DataType.build("Nullable(String)", dialect=_CLICKHOUSE))
@@ -1603,8 +1655,8 @@ def _trino_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     months, days, micros = fields
     text = interval_text(*fields)
     if not _shifts_an_instant(node):
-        raise _refused_literal(
-            f"interval '{text}' anywhere but a timestamp's plus or minus", dialect
+        raise _refused_value(
+            node, f"interval '{text}' anywhere but a timestamp's plus or minus", dialect
         )
     if days == 0 and micros == 0:
         return exp.Interval(this=exp.Literal.string(str(months)), unit=exp.Var(this="MONTH"))
