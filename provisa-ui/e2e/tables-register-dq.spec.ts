@@ -10,22 +10,24 @@
 
 // REQ-1663: registering a results table on each data-quality checker source through the UI.
 //
-// The harness boots from config/provisa-install.yaml, which registers both checkers (dq-checker is
-// Great Expectations, dq-soda is Soda) connecting back through Provisa's own pgwire. Neither checker
-// library has to be installed to REGISTER: the contract is YAML, the dataset resolves against the
-// governed tables, and the results envelope ships with Provisa. What this proves end to end is the
-// form's claim — pick the table to scan, add a rule, submit — and that the registered row comes back
-// carrying the checker it runs under.
+// The shipped checkers (dq-checker, dq-soda) are system sources, which the Register Table form's
+// source picker leaves out, so each case adds its own checker source through the Sources form, as
+// a user would: a Great Expectations one and a Soda one, each connecting back through this
+// backend's own pgwire (fillCheckerConnection). Neither checker library has to be installed to
+// REGISTER: the contract is YAML, the dataset resolves against the governed tables, and the results
+// envelope ships with Provisa. What this proves end to end is the form's claim — pick the table to
+// scan, add a rule, submit — and that the registered row comes back carrying the checker it runs
+// under. Each case removes the source it added, with its table.
 
 import { test, expect, type Page } from "./coverage";
-import { saveRegistration } from "./source-to-query-helpers";
-
-async function openAddForm(page: Page) {
-  await page.goto("/tables");
-  await page.waitForSelector(".page-header", { timeout: 15000 });
-  await page.getByRole("button", { name: /\+ Table/i }).click();
-  await page.waitForSelector(".form-card", { timeout: 5000 });
-}
+import {
+  fillCheckerConnection,
+  openRegisterForm,
+  openSourcesForm,
+  removeTestSource,
+  saveRegistration,
+  submitSourceAndExpectListed,
+} from "./source-to-query-helpers";
 
 /** Mantine Select: open it, then pick the option by its rendered label. */
 async function pickOption(page: Page, testId: string, label: string) {
@@ -33,16 +35,27 @@ async function pickOption(page: Page, testId: string, label: string) {
   await page.getByRole("option", { name: label, exact: true }).click();
 }
 
+/** Add a checker source of `type` through the Sources form; it opens in edit once created. */
+async function addCheckerSource(page: Page, sourceId: string, type: string) {
+  await openSourcesForm(page);
+  await page.getByTestId("sources-id-input").fill(sourceId);
+  await page.getByTestId("sources-type-select").selectOption(type);
+  await fillCheckerConnection(page);
+  await submitSourceAndExpectListed(page, sourceId);
+}
+
 const CHECKERS = [
   {
-    sourceId: "dq-checker",
+    type: "great_expectations",
+    short: "gx",
     checker: "Great Expectations",
     scanned: "pet_store.inquiries",
     column: /^message/,
     check: "expect_column_values_to_not_be_null",
   },
   {
-    sourceId: "dq-soda",
+    type: "soda",
+    short: "soda",
     checker: "Soda",
     scanned: "pet_store.pet_visits",
     column: /^visit_date/,
@@ -50,15 +63,30 @@ const CHECKERS = [
   },
 ] as const;
 
+// The source the running case added, removed after it whatever its outcome.
+let addedSource: string | undefined;
+
+test.afterEach(async () => {
+  if (addedSource === undefined) return;
+  const sourceId = addedSource;
+  addedSource = undefined;
+  await removeTestSource(sourceId);
+});
+
 for (const c of CHECKERS) {
   test(`registers a ${c.checker} results table by picking the table to scan and adding a rule`, async ({
     page,
   }) => {
-    const resultsTable = `${c.sourceId.replace("-", "_")}_e2e_${Date.now()}`;
-    await openAddForm(page);
+    test.setTimeout(120000);
+    const stamp = Date.now();
+    // e2e_<kind>_<13-digit stamp>: the shape removeTestSources tells a test's source by.
+    const sourceId = `e2e_${c.type}_${stamp}`;
+    // Unique across retries and workers; kept short, as the result relation appends the source id.
+    const resultsTable = `${c.short}_${stamp}`;
 
-    await page.getByTestId("register-table-source-select").selectOption(c.sourceId);
-    await page.getByTestId("register-table-domain-select").selectOption("pet-store");
+    addedSource = sourceId;
+    await addCheckerSource(page, sourceId, c.type);
+    await openRegisterForm(page, sourceId);
 
     // A checker source is not introspected: no schema/table pickers, the contract panel instead.
     await expect(page.getByTestId("register-table-dq")).toBeVisible();
@@ -76,8 +104,8 @@ for (const c of CHECKERS) {
       `${scannedTable}_quality`,
     );
     // The name stays editable — keep the row unique across retries and workers. So does the alias,
-    // derived from the scanned table: left as it is, a retry's registration is refused, since the
-    // attempt before it registered the same alias in the same domain (run 40434830192).
+    // derived from the scanned table: left as it is, it can meet one already registered in the
+    // domain (run 40434830192).
     await page.getByTestId("register-table-dq-results-table").fill(resultsTable);
     await page.getByTestId("register-table-alias").fill(resultsTable);
 
@@ -100,7 +128,7 @@ for (const c of CHECKERS) {
 
     // The registered row lands in the list carrying the checker it runs under, registered under
     // its result relation's name, <name>_<source>_dq.
-    const relation = `${resultsTable}_${c.sourceId.replaceAll("-", "_")}_dq`;
+    const relation = `${resultsTable}_${sourceId}_dq`;
     // The list shows 50 rows a page and every spec before this one has added tables, so the new
     // one can be on any page: filter the list to it.
     await page
