@@ -654,7 +654,7 @@ PEOPLE = [
         "Lopez",
         "mlopez@juniperlogistics.com",
         "Controller",
-        snow=("Maria", "Lopez", "mlopez@juniperlogistics.com"),
+        snow=("Maria", "Lopez", "maria.lopez@juniperlogistics.com"),
         stripe=True,
     ),
     Person("juniper", "Peter", "Nguyen", "peter.nguyen@juniperlogistics.com", "IT Manager"),

@@ -17,8 +17,19 @@
 #   jira        engineering's ENG project: bugs, each naming its customer in the Customer field
 #               (replica_rows/jira/)
 #   stripe      billing: customers and their invoices (replica_rows/stripe/)
-#   hub         the company's customer master (db/init.sql), read live: master customers, the
-#               crosswalk from each to every system's id, and when it last synced
+#   hub         the company's customer master (db/init.sql), read live: master customers and master
+#               people, the crosswalks from each to every system's id with how each link was made
+#               (a rule, a steward, or the matching model's run and its score), and when it last
+#               synced
+#   er          the narrow entity bridges (db/er.sql, schema er): each mention of an organization or
+#               a person in the four systems, matched to Salesforce's record of it by the
+#               entity-resolution job (entity_resolution/er_job.py), which alone writes them and
+#               signals when it has. The data steward's alone
+#
+# The four systems hold people as well as customers (REQ-2034, amended 2026-11-14): Salesforce
+# contacts, ServiceNow users, the reporter of each Jira bug and the billing contact of a Stripe
+# customer. Which tables refer to an organization or a person is declared once, in
+# entity_resolution/entity_resolution.py (ENTITY_SOURCES).
 #
 # The demo declares the four systems' rows (replica_rows/, REQ-2089): nothing calls Salesforce,
 # ServiceNow, Jira or Stripe. Each system relates to the hub, not to the others.
@@ -115,7 +126,18 @@ sources:
   database: customer360${env:CUSTOMER360_PG_NS}
   username: provisa_reader
   password: provisa_reader
-  description: 'Halyard''s customer master: master customers and the crosswalk to each system''s id'
+  description: 'Halyard''s customer master: master customers and people, and the crosswalks to each system''s id'
+# The narrow entity bridges, in the hub's database: written only by the entity-resolution job, which
+# signals this source when a run completes (POST /data/sources/er/signal).
+- id: er
+  type: postgresql
+  host: ${env:CUSTOMER360_PG_HOST:-localhost}
+  port: ${env:CUSTOMER360_PG_PORT:-30532}
+  database: customer360${env:CUSTOMER360_PG_NS}
+  username: provisa_reader
+  password: provisa_reader
+  change_signal: signal
+  description: 'The entity-resolution job''s narrow bridges: each mention of an organization or a person in the four systems, and the Salesforce record it is matched to'
 tables:
 - source_id: salesforce
   domain_id: customer360
@@ -146,6 +168,20 @@ tables:
   - {name: Amount, data_type: double, description: The contract's annual value in USD, visible_to: [data_steward, customer_success]}
   - {name: CloseDate, data_type: date, description: The day it is expected to close, visible_to: [data_steward, customer_success]}
   - {name: IsClosed, data_type: boolean, description: Whether it has closed, visible_to: [data_steward, customer_success]}
+- source_id: salesforce
+  domain_id: customer360
+  schema: salesforce
+  table: Contact
+  alias: contacts
+  description: The people at each customer the CRM knows
+  columns:
+  - {name: Id, data_type: varchar, is_primary_key: true, description: 'The contact''s Salesforce id', visible_to: [data_steward, customer_success]}
+  - {name: AccountId, data_type: varchar, description: The account they work at, visible_to: [data_steward, customer_success]}
+  - {name: FirstName, data_type: varchar, description: Their first name, visible_to: [data_steward, customer_success]}
+  - {name: LastName, data_type: varchar, description: Their last name, visible_to: [data_steward, customer_success]}
+  - {name: Email, data_type: varchar, description: Their email address, visible_to: [data_steward, customer_success]}
+  - {name: Title, data_type: varchar, description: Their job title, visible_to: [data_steward, customer_success]}
+  - {name: CreatedDate, data_type: timestamp, description: When the contact was created, visible_to: [data_steward, customer_success]}
 - source_id: servicenow
   domain_id: customer360
   schema: servicenow
@@ -177,6 +213,20 @@ tables:
   - {name: company, data_type: varchar, description: 'The company that raised it, by record id', visible_to: [data_steward, customer_success]}
   - {name: company__display, data_type: varchar, description: The company that raised it, visible_to: [data_steward, customer_success]}
   - {name: correlation_id, data_type: varchar, description: The Jira bug that fixes it; empty when none, visible_to: [data_steward, customer_success]}
+  - {name: caller_id, data_type: varchar, description: 'The ServiceNow user who raised it, by record id; empty when none', visible_to: [data_steward, customer_success]}
+- source_id: servicenow
+  domain_id: customer360
+  schema: servicenow
+  table: sys_user
+  alias: service_desk_users
+  description: The customers' people who raise incidents with the service desk
+  columns:
+  - {name: sys_id, data_type: varchar, is_primary_key: true, description: 'The user''s ServiceNow record id', visible_to: [data_steward, customer_success]}
+  - {name: first_name, data_type: varchar, description: Their first name as the service desk wrote it, visible_to: [data_steward, customer_success]}
+  - {name: last_name, data_type: varchar, description: Their last name, visible_to: [data_steward, customer_success]}
+  - {name: email, data_type: varchar, description: Their email address, visible_to: [data_steward, customer_success]}
+  - {name: company, data_type: varchar, description: 'The company they work at, by record id', visible_to: [data_steward, customer_success]}
+  - {name: sys_created_on, data_type: timestamp, description: When the user was created, visible_to: [data_steward, customer_success]}
 # A Jira form: the ENG project's bugs, with the Customer field.
 - source_id: jira
   domain_id: customer360
@@ -194,6 +244,8 @@ tables:
   - {name: updated, data_type: timestamp, description: When it last changed, visible_to: [data_steward, customer_success]}
   - {name: priority, data_type: varchar, description: 'Highest, High, Medium or Low', visible_to: [data_steward, customer_success]}
   - {name: customer, data_type: varchar, path: customfield_10050, description: 'The customer it was raised for, as the support engineer typed it', visible_to: [data_steward, customer_success]}
+  - {name: reporter_name, data_type: varchar, path: customfield_10051, description: 'Who raised it through the support portal, by name; empty when an engineer did', visible_to: [data_steward, customer_success]}
+  - {name: reporter_email, data_type: varchar, path: customfield_10052, description: 'Their email address', visible_to: [data_steward, customer_success]}
 - source_id: stripe
   domain_id: customer360
   schema: default
@@ -208,6 +260,7 @@ tables:
   - {name: currency, data_type: varchar, description: The currency it is billed in, visible_to: [data_steward, customer_success]}
   - {name: delinquent, data_type: boolean, description: Whether its latest invoice is past due, visible_to: [data_steward, customer_success]}
   - {name: description, data_type: varchar, description: A note about it, visible_to: [data_steward, customer_success]}
+  - {name: billing_contact_name, data_type: varchar, description: 'The person its invoices are for; empty when none is named', visible_to: [data_steward, customer_success]}
 - source_id: stripe
   domain_id: customer360
   schema: default
@@ -245,6 +298,34 @@ tables:
   - {name: system_key, data_type: varchar, is_primary_key: true, description: 'The system''s own id for the customer: a Salesforce account id, a ServiceNow company sys_id, a Jira Customer value or a Stripe customer id', visible_to: [data_steward, customer_success]}
   - {name: linked_at, data_type: timestamp, description: When the link was made, visible_to: [data_steward, customer_success]}
   - {name: linked_by, data_type: varchar, description: 'Who made it: the initial load, a steward, the support desk or a bulk import', visible_to: [data_steward, customer_success]}
+  - {name: match_method, data_type: varchar, description: 'How it was made: rule (the initial load''s rules), steward (by hand) or model (the matching model''s run)', visible_to: [data_steward, customer_success]}
+  - {name: match_score, data_type: double, description: 'The model''s score for it, from 0 to 1; empty for a rule''s or a steward''s link', visible_to: [data_steward, customer_success]}
+  - {name: model_version, data_type: varchar, description: 'The model whose run made it, such as match-v2; empty for a rule''s or a steward''s link', visible_to: [data_steward, customer_success]}
+- source_id: hub
+  domain_id: customer360
+  schema: mdm
+  table: master_person
+  description: The customer master's people, one a real person as the hub holds them, each under a master customer
+  columns:
+  - {name: person_master_id, data_type: varchar, is_primary_key: true, description: 'The master person''s id, such as MP-20001', visible_to: [data_steward, customer_success]}
+  - {name: name, data_type: varchar, description: The person's name, visible_to: [data_steward, customer_success]}
+  - {name: email, data_type: varchar, description: Their email address, visible_to: [data_steward, customer_success]}
+  - {name: master_id, data_type: varchar, description: The master customer they work at, visible_to: [data_steward, customer_success]}
+  - {name: created_at, data_type: timestamp, description: When the master person was created, visible_to: [data_steward, customer_success]}
+- source_id: hub
+  domain_id: customer360
+  schema: mdm
+  table: xref_person
+  description: 'The customer master''s crosswalk of people: each system''s id for a person, and the master person it belongs to'
+  columns:
+  - {name: person_master_id, data_type: varchar, description: The master person it belongs to, visible_to: [data_steward, customer_success]}
+  - {name: system, data_type: varchar, is_primary_key: true, description: 'salesforce, servicenow, jira or stripe', visible_to: [data_steward, customer_success]}
+  - {name: system_key, data_type: varchar, is_primary_key: true, description: 'The system''s own id for the person: a Salesforce contact id, a ServiceNow user sys_id, a Jira reporter''s email or the Stripe customer whose billing contact they are', visible_to: [data_steward, customer_success]}
+  - {name: linked_at, data_type: timestamp, description: When the link was made, visible_to: [data_steward, customer_success]}
+  - {name: linked_by, data_type: varchar, description: 'Who made it: the initial load, a steward or the bulk import', visible_to: [data_steward, customer_success]}
+  - {name: match_method, data_type: varchar, description: 'How it was made: rule, steward or model', visible_to: [data_steward, customer_success]}
+  - {name: match_score, data_type: double, description: 'The model''s score for it, from 0 to 1; empty for a rule''s or a steward''s link', visible_to: [data_steward, customer_success]}
+  - {name: model_version, data_type: varchar, description: 'The model whose run made it; empty for a rule''s or a steward''s link', visible_to: [data_steward, customer_success]}
 - source_id: hub
   domain_id: customer360
   schema: mdm
@@ -253,6 +334,55 @@ tables:
   columns:
   - {name: system, data_type: varchar, is_primary_key: true, description: The system, visible_to: [data_steward, customer_success]}
   - {name: synced_at, data_type: timestamp, description: When the hub last synced from it, visible_to: [data_steward, customer_success]}
+# The narrow entity bridges: one row per mention, written only by the entity-resolution job. Internal:
+# the data steward's alone, read by the checks and the canonical tables built from them.
+- source_id: er
+  domain_id: customer360
+  schema: er
+  table: entity_org_bridge
+  description: 'Each mention of an organization in the four systems, matched to the Salesforce account that is its golden record, or unresolved with why'
+  columns:
+  - {name: source_schema, data_type: varchar, is_primary_key: true, description: 'The source of the table the mention is in, as Provisa registers it: salesforce, servicenow, jira or stripe', visible_to: [data_steward]}
+  - {name: source_table, data_type: varchar, is_primary_key: true, description: 'The table the mention is in', visible_to: [data_steward]}
+  - {name: source_column, data_type: varchar, is_primary_key: true, description: 'The column whose value identifies the mention (the registry entry''s key)', visible_to: [data_steward]}
+  - {name: source_key, data_type: varchar, is_primary_key: true, description: 'That column''s value: the mention', visible_to: [data_steward]}
+  - {name: name_raw, data_type: varchar, description: 'How a steward sees the mention: its registry entry''s label', visible_to: [data_steward]}
+  - {name: name_norm, data_type: varchar, description: 'The mention''s match text, normalised as the matching compares it', visible_to: [data_steward]}
+  - {name: match_text, data_type: varchar, description: 'The string the fuzzy tier compares, from its registry entry''s match_text', visible_to: [data_steward]}
+  - {name: label, data_type: varchar, description: 'Its registry entry''s label, formatted over the row', visible_to: [data_steward]}
+  - {name: canonical_id, data_type: varchar, description: 'The id of the entity it is matched to: the Salesforce record''s id, or for a mention matched to none ''h:'' and the md5 of its source identity', visible_to: [data_steward]}
+  - {name: golden_source, data_type: varchar, description: 'The authority whose record is the golden record, such as salesforce.Account; empty when unresolved', visible_to: [data_steward]}
+  - {name: match_method, data_type: varchar, description: 'The tier that matched it: authority (a golden record itself), exact_domain, exact_email, exact_normalized or fuzzy; empty when unresolved', visible_to: [data_steward]}
+  - {name: match_confidence, data_type: varchar, description: 'high, low (a fuzzy score from 0.85 to 0.95) or unresolved', visible_to: [data_steward]}
+  - {name: match_score, data_type: double, description: 'The match''s score, from 0 to 1; empty when unresolved', visible_to: [data_steward]}
+  - {name: unresolved_reason, data_type: varchar, description: 'Why it matched no golden record: no_candidate, below_floor, ambiguous or excluded; empty when matched', visible_to: [data_steward]}
+  - {name: candidate_id, data_type: varchar, description: 'The golden record it came closest to, when unresolved', visible_to: [data_steward]}
+  - {name: candidate_score, data_type: double, description: 'Its score against that record', visible_to: [data_steward]}
+  - {name: match_run_id, data_type: varchar, description: 'The job''s run that wrote it', visible_to: [data_steward]}
+- source_id: er
+  domain_id: customer360
+  schema: er
+  table: entity_person_bridge
+  description: 'Each mention of a person in the four systems, matched within its organization to the Salesforce contact that is its golden record, or unresolved with why'
+  columns:
+  - {name: source_schema, data_type: varchar, is_primary_key: true, description: 'The source of the table the mention is in, as Provisa registers it: salesforce, servicenow, jira or stripe', visible_to: [data_steward]}
+  - {name: source_table, data_type: varchar, is_primary_key: true, description: 'The table the mention is in', visible_to: [data_steward]}
+  - {name: source_column, data_type: varchar, is_primary_key: true, description: 'The column whose value identifies the mention (the registry entry''s key)', visible_to: [data_steward]}
+  - {name: source_key, data_type: varchar, is_primary_key: true, description: 'That column''s value: the mention', visible_to: [data_steward]}
+  - {name: name_raw, data_type: varchar, description: 'How a steward sees the mention: its registry entry''s label', visible_to: [data_steward]}
+  - {name: name_norm, data_type: varchar, description: 'The mention''s match text, normalised as the matching compares it', visible_to: [data_steward]}
+  - {name: match_text, data_type: varchar, description: 'The string the fuzzy tier compares, from its registry entry''s match_text', visible_to: [data_steward]}
+  - {name: label, data_type: varchar, description: 'Its registry entry''s label, formatted over the row', visible_to: [data_steward]}
+  - {name: canonical_id, data_type: varchar, description: 'The id of the entity it is matched to: the Salesforce record''s id, or for a mention matched to none ''h:'' and the md5 of its source identity', visible_to: [data_steward]}
+  - {name: golden_source, data_type: varchar, description: 'The authority whose record is the golden record, such as salesforce.Account; empty when unresolved', visible_to: [data_steward]}
+  - {name: org_canonical_id, data_type: varchar, description: 'The canonical id of the organization the person was matched in: the mention''s own organization''s', visible_to: [data_steward]}
+  - {name: match_method, data_type: varchar, description: 'The tier that matched it: authority (a golden record itself), exact_domain, exact_email, exact_normalized or fuzzy; empty when unresolved', visible_to: [data_steward]}
+  - {name: match_confidence, data_type: varchar, description: 'high, low (a fuzzy score from 0.85 to 0.95) or unresolved', visible_to: [data_steward]}
+  - {name: match_score, data_type: double, description: 'The match''s score, from 0 to 1; empty when unresolved', visible_to: [data_steward]}
+  - {name: unresolved_reason, data_type: varchar, description: 'Why it matched no golden record: no_candidate, below_floor, ambiguous or excluded; empty when matched', visible_to: [data_steward]}
+  - {name: candidate_id, data_type: varchar, description: 'The golden record it came closest to, when unresolved', visible_to: [data_steward]}
+  - {name: candidate_score, data_type: double, description: 'Its score against that record', visible_to: [data_steward]}
+  - {name: match_run_id, data_type: varchar, description: 'The job''s run that wrote it', visible_to: [data_steward]}
 views:
 # The question answered through the hub: each account renewing this quarter (its open renewal
 # closing in the quarter of the hub's last sync), with what the hub links to it in each system.

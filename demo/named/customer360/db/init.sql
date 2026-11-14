@@ -275,7 +275,7 @@ INSERT INTO mdm.xref_person (person_master_id, system, system_key, linked_at, li
   ('MP-20001', 'servicenow', '4e64ea0451852bf8b9dac569700ad3cc', '2026-08-14 02:30:00', 'bulk import', 'model', '0.99', 'match-v2'),
   ('MP-20002', 'servicenow', '42b39fe736a3a9a8623e97d9dcb9fce7', '2026-08-14 02:30:00', 'bulk import', 'model', '0.71', 'match-v2'),
   ('MP-20002', 'jira', 'jsmith@cobaltfreight.com', '2026-08-14 02:30:00', 'bulk import', 'model', '0.97', 'match-v2'),
-  ('MP-20001', 'servicenow', '6e2d7e97f2b7e40b88bb1dc3a8ba482b', '2026-08-14 02:30:00', 'bulk import', 'model', '0.77', 'match-v2'),
+  ('MP-20001', 'servicenow', '06307fb73734cb59641369438bcd094f', '2026-08-14 02:30:00', 'bulk import', 'model', '0.77', 'match-v2'),
   ('MP-20003', 'stripe', 'cus_ORUVx8bM9s6O9q', '2026-08-14 02:30:00', 'bulk import', 'model', '0.97', 'match-v2'),
   ('MP-20005', 'servicenow', 'e9b1575e3a398a4a41bff2742bf7b6c8', '2026-08-14 02:30:00', 'bulk import', 'model', '0.98', 'match-v2'),
   ('MP-20006', 'jira', 'liam.walsh@ironbarkenergy.com', '2026-08-14 02:30:00', 'bulk import', 'model', '0.95', 'match-v2'),

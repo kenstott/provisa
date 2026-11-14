@@ -70,8 +70,10 @@ def _load(con: duckdb.DuckDBPyConnection, root: Path) -> None:
     files = {
         ("salesforce", "Account"): "salesforce/salesforce.Account.tsv",
         ("salesforce", "Opportunity"): "salesforce/salesforce.Opportunity.tsv",
+        ("salesforce", "Contact"): "salesforce/salesforce.Contact.tsv",
         ("servicenow", "core_company"): "servicenow/servicenow.core_company.tsv",
         ("servicenow", "incident"): "servicenow/servicenow.incident.tsv",
+        ("servicenow", "sys_user"): "servicenow/servicenow.sys_user.tsv",
         ("jira", "bug"): "jira/jira.bug.tsv",
         ("stripe", "get_customers"): "stripe/default.get_customers.tsv",
         ("stripe", "get_invoices"): "stripe/default.get_invoices.tsv",
@@ -86,7 +88,7 @@ def _load(con: duckdb.DuckDBPyConnection, root: Path) -> None:
         "timestamp": "TIMESTAMP",
     }
     for table in _CONFIG["tables"]:
-        if table["source_id"] == "hub":
+        if table["source_id"] in ("hub", "er"):  # Postgres's: the hub loaded below
             continue
         path = root / "replica_rows" / files[(table["source_id"], table["table"])]
         lines = path.read_text().rstrip("\n").split("\n")
@@ -168,10 +170,15 @@ def test_the_check_finds_what_was_planted(shipped):
         " COALESCE(evidence_customer, '') FROM hub_findings ORDER BY 1, 2, 3",
     )
     assert found == [
+        # The records no rule gives a customer (REQ-2034, amended 2026-11-14): the hub holds none.
+        ("coverage gap", "jira", "TBD", "", ""),
         ("coverage gap", "jira", "Xylo Robotics", "", "Xylo Robotics"),
         ("coverage gap", "servicenow", "Alder and Finch", "", "Alder & Finch"),
+        ("coverage gap", "servicenow", "Halcyon Mdia Grp", "", ""),
         ("coverage gap", "servicenow", "Tamarack Mining Corp", "", "Tamarack Mining"),
         ("coverage gap", "stripe", "Bramble Software Inc", "", "Bramble Software"),
+        ("coverage gap", "stripe", "Harbor Lane Bakery", "", ""),
+        ("coverage gap", "stripe", "Tessa Rowe Design", "", ""),
         ("coverage gap", "stripe", "Yarrow Insurance Brokers Ltd", "", "Yarrow Insurance Brokers"),
         (
             "duplicate customer",
