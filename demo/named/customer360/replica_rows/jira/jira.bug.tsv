@@ -3,14 +3,14 @@ ENG-401	10401	Login failures after SSO change (Larkspur Analytics)	Done	2026-09-
 ENG-402	10402	API rate limit errors (Larkspur Analytics)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Larkspur Analytics	\N	\N
 ENG-403	10403	Export job times out (Larkspur Labs)	Done	2026-08-28 12:00:00	2026-08-31 12:00:00	Medium	larkspur labs	\N	\N
 ENG-404	10404	Login failures after SSO change (Larkspur Labs)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	larkspur labs	\N	\N
-ENG-405	10405	Dashboard slow to load (Brightwater Health)	Done	2026-08-17 12:00:00	2026-08-20 12:00:00	Medium	Brightwater	\N	\N
-ENG-406	10406	Export job times out (Brightwater Health)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Brightwater	\N	\N
+ENG-405	10405	Dashboard slow to load (Brightwater Health)	Done	2026-08-17 12:00:00	2026-08-20 12:00:00	Medium	Brightwater Health	\N	\N
+ENG-406	10406	Export job times out (Brightwater Health)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Brightwater Health	\N	\N
 ENG-407	10407	Webhook deliveries delayed (Cobalt Freight)	Done	2026-08-06 12:00:00	2026-08-09 12:00:00	Medium	Cobalt Freight	John Smith	jsmith@cobaltfreight.com
 ENG-408	10408	P1: Export job times out (Cobalt Freight)	In Progress	2026-10-31 03:20:00	2026-11-03 03:20:00	Highest	Cobalt Freight	John Smith	jsmith@cobaltfreight.com
 ENG-409	10409	Dashboard slow to load (Cobalt Freight)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Cobalt Freight	John Smith	jsmith@cobaltfreight.com
 ENG-410	10410	Report totals do not match (Ferncliff Retail)	Done	2026-07-26 12:00:00	2026-07-29 12:00:00	Medium	ferncliff-retail	Oliver Hughes	oliver.hughes@ferncliff.co
-ENG-411	10411	API rate limit errors (Ferncliff Retail)	Done	2026-07-21 12:00:00	2026-07-24 12:00:00	Medium	Ferncliff	Oliver Hughes	oliver.hughes@ferncliff.co
-ENG-412	10412	Blocked: Export job times out (Ferncliff Retail)	Blocked	2026-10-19 12:00:00	2026-10-22 12:00:00	High	Ferncliff	Oliver Hughes	oliver.hughes@ferncliff.co
+ENG-411	10411	API rate limit errors (Ferncliff Retail)	Done	2026-07-21 12:00:00	2026-07-24 12:00:00	Medium	Ferncliff Retail	Oliver Hughes	oliver.hughes@ferncliff.co
+ENG-412	10412	Blocked: Export job times out (Ferncliff Retail)	Blocked	2026-10-19 12:00:00	2026-10-22 12:00:00	High	Ferncliff Retail	Oliver Hughes	oliver.hughes@ferncliff.co
 ENG-413	10413	Webhook deliveries delayed (Ferncliff Retail)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	ferncliff-retail	Oliver Hughes	oliver.hughes@ferncliff.co
 ENG-414	10414	API rate limit errors (Granite Ridge Bank)	Done	2026-07-15 12:00:00	2026-07-18 12:00:00	Medium	Granite Ridge Bank	\N	\N
 ENG-415	10415	Report totals do not match (Granite Ridge Bank)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Granite Ridge Bank	\N	\N
@@ -34,10 +34,10 @@ ENG-432	10432	API rate limit errors (Northgate Foods)	In Progress	2026-10-29 12:
 ENG-433	10433	Dashboard slow to load (Pinecrest Schools)	Done	2026-04-07 12:00:00	2026-04-10 12:00:00	Medium	Pinecrest Schools	Rachel Adams	rachel.adams@pinecrestschools.org
 ENG-434	10434	Blocked: API rate limit errors (Pinecrest Schools)	Blocked	2026-10-21 12:00:00	2026-10-24 12:00:00	High	Pinecrest Schools	Rachel Adams	rachel.adams@pinecrestschools.org
 ENG-435	10435	Export job times out (Pinecrest Schools)	In Progress	2026-10-27 12:00:00	2026-10-30 12:00:00	Low	Pinecrest Schools	Rachel Adams	rachel.adams@pinecrestschools.org
-ENG-436	10436	Webhook deliveries delayed (Quillon Systems)	Done	2026-03-27 12:00:00	2026-03-30 12:00:00	Medium	Quillon	\N	\N
-ENG-437	10437	Dashboard slow to load (Quillon Systems)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Quillon	\N	\N
-ENG-438	10438	Report totals do not match (Redfern Hotels)	Done	2026-03-16 12:00:00	2026-03-19 12:00:00	Medium	Redfern Hotels	\N	\N
-ENG-439	10439	Webhook deliveries delayed (Redfern Hotels)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Redfern Hotels	\N	\N
+ENG-436	10436	Webhook deliveries delayed (Quillon Systems)	Done	2026-03-27 12:00:00	2026-03-30 12:00:00	Medium	Quillon Systems	\N	\N
+ENG-437	10437	Dashboard slow to load (Quillon Systems)	In Progress	2026-10-26 12:00:00	2026-10-29 12:00:00	Low	Quillon Systems	\N	\N
+ENG-438	10438	Report totals do not match (Redfern Hotels)	Done	2026-03-16 12:00:00	2026-03-19 12:00:00	Medium	Redfern Hottles	\N	\N
+ENG-439	10439	Webhook deliveries delayed (Redfern Hotels)	In Progress	2026-10-29 12:00:00	2026-11-01 12:00:00	Low	Redfern Hottles	\N	\N
 ENG-440	10440	API rate limit errors (Saltmarsh Brewing)	Done	2026-03-05 12:00:00	2026-03-08 12:00:00	Medium	Saltmarsh Brewing	\N	\N
 ENG-441	10441	Report totals do not match (Saltmarsh Brewing)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Saltmarsh Brewing	\N	\N
 ENG-442	10442	Login failures after SSO change (Tamarack Mining)	Done	2026-02-22 12:00:00	2026-02-25 12:00:00	Medium	Tamarack Mining	\N	\N
@@ -52,6 +52,6 @@ ENG-450	10450	API rate limit errors (Zephyr Telecom)	In Progress	2026-10-29 12:0
 ENG-451	10451	Export job times out (Alder & Finch)	Done	2025-12-07 12:00:00	2025-12-10 12:00:00	Medium	Alder & Finch	\N	\N
 ENG-452	10452	Login failures after SSO change (Alder & Finch)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Alder & Finch	\N	\N
 ENG-453	10453	Webhook deliveries delayed (Cinder Studios)	Done	2025-11-15 12:00:00	2025-11-18 12:00:00	Medium	Cinder Studios	\N	\N
-ENG-454	10454	API rate limit errors (Elmstead Manufacturing)	Done	2025-10-24 12:00:00	2025-10-27 12:00:00	Medium	Elmstead	Victor Sousa	victor.sousa@elmstead.com
-ENG-455	10455	Report totals do not match (Elmstead Manufacturing)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Elmstead	Victor Sousa	victor.sousa@elmstead.com
+ENG-454	10454	API rate limit errors (Elmstead Manufacturing)	Done	2025-10-24 12:00:00	2025-10-27 12:00:00	Medium	Elmstead Manufacturing	Victor Sousa	victor.sousa@elmstead.com
+ENG-455	10455	Report totals do not match (Elmstead Manufacturing)	In Progress	2026-10-28 12:00:00	2026-10-31 12:00:00	Low	Elmstead Manufacturing	Victor Sousa	victor.sousa@elmstead.com
 ENG-456	10456	Uploads stall at 99% on large media files	To Do	2026-11-01 15:30:00	2026-11-04 15:30:00	Medium	TBD	Priya Shah	priya.shah@halcyonmedia.tv

@@ -59,6 +59,9 @@ its score. The people are planted the way real ones go wrong:
 And four records no rule can give a customer: Harbor Lane Bakery, billed in Stripe with no
 Salesforce account; "Halcyon Mdia Grp", a ServiceNow company typed by the desk; Tessa Rowe Design,
 a Stripe customer on a personal mailbox; and a Jira bug whose Customer field says "TBD".
+
+One organization is misspelled where the fuzzy tier still finds it: Redfern Hotels' Jira bugs say
+"Redfern Hottles", a match below the high band that is flagged low.
 """
 
 from __future__ import annotations
@@ -205,7 +208,7 @@ COMPANIES = [
         212000,
         "Brightwater Health, Inc.",
         "https://brightwaterhealth.com",
-        ("Brightwater",),
+        ("Brightwater Health",),
         "Brightwater Health",
         "finance@brightwaterhealth.com",
     ),
@@ -234,7 +237,7 @@ COMPANIES = [
         77000,
         "Ferncliff Retail Ltd",
         "https://ferncliff.co",
-        ("ferncliff-retail", "Ferncliff"),
+        ("ferncliff-retail", "Ferncliff Retail"),
         "Ferncliff Retail Ltd",
         "accounts@ferncliff.co",
         blocked=1,
@@ -397,7 +400,7 @@ COMPANIES = [
         118000,
         "Quillon Systems GmbH",
         "https://quillon.com",
-        ("Quillon",),
+        ("Quillon Systems",),
         "Quillon Systems GmbH",
         "rechnung@quillon.com",
         extra_accounts=(("Quillon Systems Inc.", "http://www.quillon.com/us"),),
@@ -412,7 +415,7 @@ COMPANIES = [
         99000,
         "Redfern Hotels",
         "https://redfernhotels.com",
-        ("Redfern Hotels",),
+        ("Redfern Hottles",),  # a misspelling the fuzzy tier matches low
         "Redfern Hotels",
         "accounts@redfernhotels.com",
     ),
@@ -603,7 +606,7 @@ COMPANIES = [
         214000,
         "Elmstead Manufacturing Co.",
         "https://elmstead.com",
-        ("Elmstead",),
+        ("Elmstead Manufacturing",),
         "Elmstead Manufacturing",
         "ap@elmstead.com",
     ),

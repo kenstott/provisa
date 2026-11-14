@@ -587,6 +587,44 @@ def test_the_four_planted_records_are_unresolved_with_their_reason(
         assert row["candidate_score"] == pytest.approx(0.79, rel=1e-14)
 
 
+def test_only_the_four_planted_records_are_unresolved_organizations(shipped):
+    bridges, _, _ = shipped
+    unresolved = sorted(
+        (r["source_schema"], r["label"])
+        for r in bridges.org
+        if r["match_confidence"] == "unresolved"
+    )
+    assert unresolved == [
+        ("jira", "TBD"),
+        ("servicenow", "Halcyon Mdia Grp"),
+        ("stripe", "Harbor Lane Bakery <ap@harborlanebakery.com>"),
+        ("stripe", "Tessa Rowe Design <tessa.rowe.design@gmail.com>"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "spelled",
+    ["Brightwater Health", "Elmstead Manufacturing", "Ferncliff Retail", "Quillon Systems"],
+)
+def test_a_jira_customer_spelled_in_full_resolves_to_its_account(shipped, spelled):
+    bridges, rows, _ = shipped
+    row = _by_label(bridges.org, "jira", spelled)
+    assert _verdict(row) == (_account(rows, spelled), "exact_normalized", "high", 1.0)
+
+
+def test_the_misspelled_organization_is_the_one_fuzzy_organization_match_flagged_low(shipped):
+    bridges, rows, _ = shipped
+    fuzzy = [r for r in bridges.org if r["match_method"] == "fuzzy"]
+    assert [(r["source_schema"], r["name_raw"]) for r in fuzzy] == [("jira", "Redfern Hottles")]
+    [hottles] = fuzzy
+    assert (hottles["canonical_id"], hottles["match_confidence"]) == (
+        _account(rows, "Redfern Hotels"),
+        "low",
+    )
+    assert hottles["match_score"] == pytest.approx(0.9278, rel=1e-14)
+    assert JOB.FLOOR <= hottles["match_score"] < JOB.HIGH
+
+
 def test_a_personal_mailbox_customer_named_like_its_account_is_matched_by_name(shipped):
     bridges, rows, _ = shipped
     saltmarsh = _by_label(bridges.org, "stripe", "Saltmarsh Brewing Co")
