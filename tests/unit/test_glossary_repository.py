@@ -28,7 +28,13 @@ from provisa.api.admin.read_rights import SERVICE_READER
 from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import domains, glossary_terms, registered_tables, sources
+from provisa.core.schema_org import (
+    domains,
+    glossary_terms,
+    registered_tables,
+    sources,
+    table_columns,
+)
 
 
 @asynccontextmanager
@@ -185,7 +191,17 @@ async def test_relink_revives_deprecated_term(control_plane):
         await table_repo.upsert(conn, _tbl("orders", []))
         deprecated = await _term(conn, "order date")
         assert deprecated is not None and deprecated["deprecated"]
+        # REQ-2248: dropped, the column was retired; listed again, it is the same column (its
+        # table and its name) restored, its retirement cleared.
         await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
+        [column] = (
+            await conn.execute_core(
+                select(table_columns.c.table_id, table_columns.c.retired).where(
+                    table_columns.c.column_name == "order_dt"
+                )
+            )
+        ).fetchall()
+        assert column.retired is False
         revived = await _term(conn, "order date")
         assert revived is not None
         assert revived["deprecated"] is False or revived["deprecated"] == 0

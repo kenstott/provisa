@@ -204,11 +204,38 @@ async def test_a_column_dropped_from_the_registration_is_retired_with_what_is_on
         assert again["status_at"] == amount["status_at"]
 
 
-async def test_a_retired_columns_name_is_refused_to_a_second_column(plane):
+async def test_a_retired_column_listed_again_is_the_same_column_restored(plane):
+    """A column is its physical name in its table: listing that name again is that column coming
+    back, its retirement cleared and what is attached to it still attached (REQ-2248)."""
+    async with model_change.scope("save", actor=lambda: "ada"), plane.acquire() as conn:
+        orders = await _id(conn, "orders")
+        await _tag_on_table(conn, orders, "amount")
+        await table_repo.upsert(conn, _table("orders", "id"))
+        await table_repo.upsert(conn, _table("orders", "id", "amount"))
+        amount = await _row(
+            conn,
+            table_columns,
+            table_columns.c.table_id == orders,
+            table_columns.c.column_name == "amount",
+        )
+        assert (amount["retired"], amount["status_reason"], amount["status_by"]) == (
+            False,
+            None,
+            None,
+        )
+        tagged = await _row(conn, tag_assignments, tag_assignments.c.column_name == "amount")
+        assert tagged["table_id"] == orders
+
+
+async def test_a_different_column_at_a_retired_columns_name_is_refused(plane):
+    """A second column -- another physical name -- whose business name (its alias) is a retired
+    column's is refused naming the retired one; the store tells them apart by physical name."""
     async with model_change.scope("save", actor=lambda: "ada"), plane.acquire() as conn:
         await table_repo.upsert(conn, _table("orders", "id"))
+        other = _table("orders", "id", "amount_v2")
+        other.columns[1].alias = "amount"
         with pytest.raises(RetiredNameTaken) as err:
-            await table_repo.upsert(conn, _table("orders", "id", "amount"))
+            await table_repo.upsert(conn, other)
     assert (err.value.kind, err.value.name) == ("column", "orders.amount")
 
 

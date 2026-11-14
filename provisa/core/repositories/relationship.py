@@ -318,6 +318,15 @@ async def delete(  # REQ-019, REQ-1918, REQ-2248
             .where(relationships.c.id == rel_id)
             .values(**retirement.values(reason))
         )
+        # REQ-2141: retired, it declares no key; the refs its key derived are settled again.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        joined = {
+            t
+            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
+            if t is not None
+        }
+        await glossary_repo.rehome_keys(conn, joined)
     return True
 
 

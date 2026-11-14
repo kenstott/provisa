@@ -179,7 +179,9 @@ async def _references(conn: "Connection", table_id: int) -> dict[str, int]:
             select(relationships).where(
                 (relationships.c.source_table_id == table_id)
                 | (relationships.c.target_table_id == table_id)
-                | (relationships.c.via_table_id == table_id)
+                | (relationships.c.via_table_id == table_id),
+                # REQ-2248: a retired relationship declares no key.
+                relationships.c.retired.is_(False),
             )
         )
     ).fetchall()

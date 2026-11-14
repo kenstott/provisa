@@ -506,6 +506,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
                 table_columns.c.native_platform,
                 table_columns.c.subtype,
                 table_columns.c.retired,
+                table_columns.c.alias,
             )
             .select_from(
                 table_columns.join(
@@ -747,12 +748,24 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
     # REQ-2094: each column's judgments as stored, for their why.
     _decided = {r.column_name: r for r in _held}
     # REQ-2248: a column this registration no longer lists is RETIRED, not removed: its row, its
-    # name and what is attached to it are kept, marked retired. A retired column's name stays
-    # taken: a registration that lists it again is refused naming it (RetiredNameTaken).
-    _retired_columns = {r.column_name for r in _existing_rows if r.retired}
+    # name and what is attached to it are kept, marked retired. A column is its physical name in
+    # its table, so a registration listing a retired column's name lists THAT column, and restores
+    # it: its retirement is cleared and what is attached to it is still there. A DIFFERENT column
+    # whose business name (alias, else column name) is a retired column's is refused naming it
+    # (RetiredNameTaken): the retired name is not taken by another object.
+    _listed = {col.name for col in table.columns}
+    _retired_names = {
+        (r.alias or r.column_name): r.column_name
+        for r in _existing_rows
+        if r.retired and r.column_name not in _listed
+    }
     for col in table.columns:
-        if col.name in _retired_columns:
-            raise retirement.RetiredNameTaken("column", f"{table.table_name}.{col.name}")
+        held = _retired_names.get(getattr(col, "alias", None) or col.name)
+        if held is not None and held != col.name:
+            raise retirement.RetiredNameTaken("column", f"{table.table_name}.{held}")
+    _retired_columns = {r.column_name for r in _existing_rows if r.retired} - _listed
+    for _restored in sorted({r.column_name for r in _existing_rows if r.retired} & _listed):
+        model_change.name("restore", "column", f"{table.table_name}.{_restored}")
     _dropped = sorted(set(_existing_types) - _retired_columns - {col.name for col in table.columns})
     _referred: dict[str, list[Dependent]] = {}
     for _column in _dropped:
