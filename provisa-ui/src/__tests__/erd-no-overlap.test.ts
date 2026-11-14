@@ -21,6 +21,7 @@ import { graphStylesheet } from "../components/provisa-graph/stylesheet";
 import { graphTokens } from "../components/provisa-graph/tokens";
 import { ERD_ELK_LAYOUT } from "../components/provisa-graph/presets";
 import provisaElk, { LAYOUT_FAIL, PROVISA_ELK } from "../components/provisa-graph/elkLayout";
+import type { RunningLayout } from "../components/provisa-graph/cyCanvas";
 import { arrangeLayered, nodesWithEdges } from "../components/provisa-graph/arrange";
 import type { CyInstance } from "../components/graph/cytoscape-types";
 import type { Domain, ListedTable, Relationship } from "../types/admin";
@@ -127,10 +128,10 @@ async function laidOut(columnDetail: ColumnDetail, gridSnap: number, aspectRatio
   cy.nodes(".pg-node").forEach((n) => {
     if (!connected.has((n as { id(): string }).id())) n.style("display", "none");
   });
-  const layout = cy.layout(ERD_ELK_LAYOUT);
+  const layout = cy.layout(ERD_ELK_LAYOUT) as unknown as RunningLayout;
   // A failed layout fails the test, with ELK's error, rather than leaving it waiting.
   const stopped = new Promise<void>((resolve, reject) => {
-    layout.one(LAYOUT_FAIL as "layoutstop", (_evt: unknown, error?: unknown) => reject(error));
+    layout.one(LAYOUT_FAIL, (_evt, error) => reject(error));
     layout.one("layoutstop", () => resolve());
   });
   layout.run();

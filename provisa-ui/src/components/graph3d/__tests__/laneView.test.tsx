@@ -524,7 +524,10 @@ describe("a term's graph in 2D, its focus selected (associations lit)", () => {
   // column, table and product, were drawn faded.
   const readTo = (s: { depth: number }) => {
     const byId = new Map(ASSOCIATION_CHAIN.nodes.map((n) => [n.id, n]));
-    const keep = reach([TEST3], ASSOCIATION_CHAIN.edges, byId, { ...NEIGHBOURHOOD, depth: s.depth });
+    const keep = reach([TEST3], ASSOCIATION_CHAIN.edges, byId, {
+      ...NEIGHBOURHOOD,
+      depth: s.depth,
+    });
     return {
       nodes: ASSOCIATION_CHAIN.nodes.filter((n) => keep.has(n.id)),
       edges: ASSOCIATION_CHAIN.edges.filter((e) => keep.has(e.a) && keep.has(e.b)),
