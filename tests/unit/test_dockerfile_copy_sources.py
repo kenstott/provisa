@@ -141,6 +141,10 @@ def test_the_graph_render_stage_keeps_provisa_ui_layout_for_every_copy():
     for sources, dest in _context_copies(stage):
         for src in sources:
             assert src.startswith("provisa-ui/"), src
+            if not (REPO / src).exists():
+                # A missing source is reported by the tracked-sources test; whether it was a file
+                # or a directory, and so where Docker would place it, cannot be read from the tree.
+                continue
             rel = src.removeprefix("provisa-ui/").rstrip("/")
             target = posixpath.normpath(dest)
             if dest.endswith("/") and (REPO / src).is_file():
