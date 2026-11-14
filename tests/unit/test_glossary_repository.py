@@ -194,13 +194,16 @@ async def test_relink_revives_deprecated_term(control_plane):
 
 
 @pytest.mark.asyncio
-async def test_table_delete_sweeps_terms(control_plane):
+async def test_table_delete_keeps_its_terms(control_plane):
+    """REQ-2248: deleting a table retires it, and its links -- its columns' terms -- are kept;
+    no rule drops a link to a retired object."""
     async with _conn(control_plane) as conn:
         tid = await table_repo.upsert(conn, _tbl("orders", ["order_dt"]))
         assert tid is not None
         assert await _term(conn, "order date") is not None
         await table_repo.delete(conn, tid)
-        assert await _term(conn, "order date") is None
+        kept = await _term(conn, "order date")
+        assert kept is not None and kept["ref_count"] == 1
 
 
 @pytest.mark.asyncio

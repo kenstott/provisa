@@ -1145,8 +1145,9 @@ async def discard(conn: "Connection", table_id: int) -> None:
 async def retire_generated(  # REQ-1918
     conn: "Connection", source_id: str, schema_name: str, current: set[str]
 ) -> list[TableDeleteRefused]:
-    """Remove the tables a source's generated set no longer contains, one at a time through
-    :func:`delete`; returns the refusals of those that could not go.
+    """Retire the tables a source's generated set no longer contains, one at a time through
+    :func:`delete` (REQ-2248: retired, not removed); returns the refusals of those that could
+    not go.
 
     A remote source's tables are generated from its schema, and re-registering the source
     upserts each by its identity (source, schema, name), so a table that is still there keeps its
