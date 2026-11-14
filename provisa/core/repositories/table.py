@@ -245,9 +245,22 @@ async def registered_columns(
 
 
 async def _load_columns(conn: "Connection", table_id: int) -> list[dict]:
+    """A table's columns in service, in registration order (REQ-2248: a retired column is absent
+    from its table, and a save of what this returns leaves it retired)."""
     result = await conn.execute_core(
         select(*_COLUMN_PROJECTION)
-        .where(table_columns.c.table_id == table_id)
+        .where(table_columns.c.table_id == table_id, table_columns.c.retired.is_(False))
+        .order_by(table_columns.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def retired_columns(conn: "Connection", table_id: int) -> list[dict]:
+    """REQ-2248: a table's retired columns in registration order, each with who retired it,
+    when and why."""
+    result = await conn.execute_core(
+        select(*_COLUMN_PROJECTION, *retirement.stamp_of(table_columns))
+        .where(table_columns.c.table_id == table_id, table_columns.c.retired.is_(True))
         .order_by(table_columns.c.id)
     )
     return [dict(r._mapping) for r in result.fetchall()]
@@ -375,14 +388,29 @@ async def _require_not_retired(conn: "Connection", table: Table) -> None:
     """REQ-2248: a retired table keeps its name, and its physical identity with it: registering
     the table again would bring the retired one back by a write that did not ask for it. Refused
     (:class:`RetiredNameTaken`), naming the retired table; restoring it is its own act."""
+    from sqlalchemy import and_, func, or_
+
+    # The same physical table, or another one at a retired table's model name (its alias, else
+    # its table name) in the same domain.
+    model_name = func.coalesce(registered_tables.c.alias, registered_tables.c.table_name)
     held = (
         await conn.execute_core(
-            select(registered_tables.c.alias, registered_tables.c.table_name).where(
-                registered_tables.c.source_id == table.source_id,
-                registered_tables.c.schema_name == table.schema_name,
-                registered_tables.c.table_name == table.table_name,
+            select(registered_tables.c.alias, registered_tables.c.table_name)
+            .where(
                 registered_tables.c.retired.is_(True),
+                or_(
+                    and_(
+                        registered_tables.c.source_id == table.source_id,
+                        registered_tables.c.schema_name == table.schema_name,
+                        registered_tables.c.table_name == table.table_name,
+                    ),
+                    and_(
+                        registered_tables.c.domain_id == table.domain_id,
+                        model_name == (table.alias or table.table_name),
+                    ),
+                ),
             )
+            .limit(1)
         )
     ).fetchone()
     if held is not None:
@@ -1073,21 +1101,32 @@ async def find_by_table_name(
 
 
 async def list_all(
-    conn: "Connection", *, parts_of: "Callable[[dict], bool] | None" = None
+    conn: "Connection",
+    *,
+    parts_of: "Callable[[dict], bool] | None" = None,
+    retired: bool = False,
 ) -> list[dict]:  # REQ-013, REQ-016
-    """Every registered table's row with its ``product_ids`` (REQ-1634: the products it is a
-    member of, in id order), ``columns`` and ``write_grants``. ``parts_of``, when
-    given, says which tables' parts are read: a table it refuses is its row alone, with neither
-    key — for a reader that needs no more of it than its row (``store_model``'s seeded tables)."""
+    """Every registered table's row in service with its ``product_ids`` (REQ-1634: the products
+    it is a member of, in id order), ``columns`` (those in service) and ``write_grants``.
+    ``retired`` lists the retired tables instead (REQ-2248), with who, when and why.
+    ``parts_of``, when given, says which tables' parts are read: a table it refuses is its row
+    alone, with neither key — for a reader that needs no more of it than its row
+    (``store_model``'s seeded tables)."""
     from provisa.core.repositories import write_grant as write_grant_repo
 
-    result = await conn.execute_core(select(registered_tables).order_by(registered_tables.c.id))
+    result = await conn.execute_core(
+        select(registered_tables)
+        .where(registered_tables.c.retired.is_(retired))
+        .order_by(registered_tables.c.id)
+    )
     rows = [dict(row._mapping) for row in result.fetchall()]
     with_parts = [r["id"] for r in rows if parts_of is None or parts_of(r)]
     # Every table's columns in one read, each table's in registration order (as _load_columns
     # reads one table's): a rebuild lists every table, and a query per table was a query for each.
-    columns_read = select(table_columns.c.table_id, *_COLUMN_PROJECTION).order_by(
-        table_columns.c.table_id, table_columns.c.id
+    columns_read = (
+        select(table_columns.c.table_id, *_COLUMN_PROJECTION)
+        .where(table_columns.c.retired.is_(False))
+        .order_by(table_columns.c.table_id, table_columns.c.id)
     )
     if parts_of is not None:
         columns_read = columns_read.where(table_columns.c.table_id.in_(with_parts))
@@ -1104,6 +1143,35 @@ async def list_all(
             r["columns"] = columns.get(r["id"], [])
             r["write_grants"] = grants.get(r["id"], [])  # REQ-2074
     return rows
+
+
+async def restore(conn: "Connection", table_id: int) -> bool:  # REQ-2248
+    """Restore a retired table: the same table, its retirement cleared, served again with the
+    columns and links it kept. A column retired on its own stays retired. False when there is
+    no such table, or it is not retired."""
+    model_change.name("restore", "table", table_id)  # REQ-1524
+    done = await conn.execute_core(
+        update(registered_tables)
+        .where(registered_tables.c.id == table_id, registered_tables.c.retired.is_(True))
+        .values(**retirement.cleared())
+    )
+    return done.rowcount == 1
+
+
+async def restore_column(conn: "Connection", table_id: int, column_name: str) -> bool:  # REQ-2248
+    """Restore a retired column of a table: the same column, its retirement cleared, in its
+    table again with the tags it kept. False when the table has no such retired column."""
+    model_change.name("restore", "column", f"{table_id}.{column_name}")  # REQ-1524
+    done = await conn.execute_core(
+        update(table_columns)
+        .where(
+            table_columns.c.table_id == table_id,
+            table_columns.c.column_name == column_name,
+            table_columns.c.retired.is_(True),
+        )
+        .values(**retirement.cleared())
+    )
+    return done.rowcount == 1
 
 
 async def delete(  # REQ-014, REQ-1918, REQ-2248

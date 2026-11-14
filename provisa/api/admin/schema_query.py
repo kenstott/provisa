@@ -61,6 +61,7 @@ from provisa.api.admin.capabilities import (
     require_capability,
     role_definitions_visible,
 )
+from provisa.api.admin._retired_objects import RetiredObjectType
 from provisa.api.admin.types import (
     JsonScalar,
     CombinedFileType,
@@ -700,6 +701,20 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
+    async def retired_model_objects(
+        self, info: StrawberryInfo
+    ) -> list[RetiredObjectType]:  # REQ-2248
+        """The retired tables, columns, relationships, tags and metrics the caller may act on,
+        with who retired each, when and why: what the ordinary lists leave out, to restore."""
+        from provisa.api.admin._retired_objects import retired_objects
+        from provisa.api.admin.capabilities import require_capability
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await retired_objects(info, cast("Connection", conn))
+
+    @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
         (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
@@ -1221,7 +1236,9 @@ class Query:  # REQ-021, REQ-042
             pool = await _get_pool()
             async with pool.acquire() as conn:
                 _res = await conn.execute_core(
-                    select(registered_tables).order_by(registered_tables.c.id)
+                    select(registered_tables)
+                    .where(registered_tables.c.retired.is_(False))  # REQ-2248
+                    .order_by(registered_tables.c.id)
                 )
                 rows = [dict(r._mapping) for r in _res.fetchall()]
                 _ares = await conn.execute_core(
@@ -1283,6 +1300,7 @@ class Query:  # REQ-021, REQ-042
                 .where(
                     relationships.c.id.not_like("gql_auto__%"),
                     relationships.c.id.not_like("meta:%"),
+                    relationships.c.retired.is_(False),  # REQ-2248
                 )
                 .order_by(relationships.c.id)
             )
@@ -1313,7 +1331,10 @@ class Query:  # REQ-021, REQ-042
                     .join(_tt, relationships.c.target_table_id == _tt.c.id, isouter=True)
                     .join(_vt, relationships.c.via_table_id == _vt.c.id, isouter=True)
                 )
-                .where(relationships.c.id.not_like("gql_auto__%"))
+                .where(
+                    relationships.c.id.not_like("gql_auto__%"),
+                    relationships.c.retired.is_(False),  # REQ-2248
+                )
                 .order_by(relationships.c.id)
             )
             rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]

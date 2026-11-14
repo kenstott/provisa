@@ -272,8 +272,14 @@ async def get(conn: "Connection", rel_id: str) -> dict | None:  # REQ-018, REQ-0
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-018, REQ-019
-    result = await conn.execute_core(select(relationships).order_by(relationships.c.id))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-018, REQ-019
+    """Every relationship in service; ``retired`` lists the retired ones instead (REQ-2248),
+    with who, when and why."""
+    result = await conn.execute_core(
+        select(relationships)
+        .where(relationships.c.retired.is_(retired))
+        .order_by(relationships.c.id)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -319,6 +325,29 @@ async def delete(  # REQ-019, REQ-1918, REQ-2248
             .values(**retirement.values(reason))
         )
         # REQ-2141: retired, it declares no key; the refs its key derived are settled again.
+        from provisa.core.repositories import glossary as glossary_repo
+
+        joined = {
+            t
+            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
+            if t is not None
+        }
+        await glossary_repo.rehome_keys(conn, joined)
+    return True
+
+
+async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
+    """Restore a retired relationship: the same relationship, its retirement cleared, traversable
+    again. Its key declares again, so the refs it derives are settled again (REQ-2141). False
+    when there is none, or it is not retired."""
+    model_change.name("restore", "relationship", rel_id)  # REQ-1524
+    async with conn.transaction():
+        held = await get(conn, rel_id)
+        if held is None or not held["retired"]:
+            return False
+        await conn.execute_core(
+            update(relationships).where(relationships.c.id == rel_id).values(**retirement.cleared())
+        )
         from provisa.core.repositories import glossary as glossary_repo
 
         joined = {

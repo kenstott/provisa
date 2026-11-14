@@ -45,6 +45,13 @@ def _outside_sql_catalog() -> str:
     return f"NOT (domain_id = '{META_DOMAIN_ID}' AND table_name IN ({names}))"
 
 
+#: REQ-2248: a relationship ``r`` that is served: neither it nor a table it joins is retired.
+_TRAVERSABLE = (
+    "NOT r.retired AND NOT EXISTS (SELECT 1 FROM registered_tables x WHERE x.retired "
+    "AND x.id IN (r.source_table_id, r.target_table_id, r.via_table_id))"
+)
+
+
 async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     conn: "Connection", *, draft: bool = False, catalog: bool = True
 ) -> list[dict]:
@@ -53,7 +60,12 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     statement reads: fetched to be refused by name, for their steward's preview
     (admin/table_read.py) and for the replica such a preview lands. ``catalog`` False leaves out
     a SQL catalog's views, for a reader of the tables that hold data."""
-    served = "draft = $1" if catalog else f"draft = $1 AND {_outside_sql_catalog()}"
+    # REQ-2248: a retired table is in no schema, drafts or not, and serves nothing.
+    served = (
+        "draft = $1 AND NOT retired"
+        if catalog
+        else f"draft = $1 AND NOT retired AND {_outside_sql_catalog()}"
+    )
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
         "alias, description, unique_constraints, l1_cluster, l2_cluster, l3_cluster, "
@@ -95,7 +107,9 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "subtype, "  # REQ-2171
         "scope, "  # REQ-1959: who is served the column is decided from it (rights.column_served)
         "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
-        "FROM table_columns WHERE table_id IN (SELECT id FROM served) ORDER BY table_id, id",
+        # REQ-2248: a retired column is absent from its table.
+        "FROM table_columns WHERE table_id IN (SELECT id FROM served) AND NOT retired "
+        "ORDER BY table_id, id",
         draft,
     ):
         columns_of.setdefault(r["table_id"], []).append(r)
@@ -174,6 +188,9 @@ async def fetch_relationships(
         "FROM relationships r "
         "LEFT JOIN registered_tables t ON t.id = r.target_table_id "
         "LEFT JOIN registered_tables v ON v.id = r.via_table_id "
+        # REQ-2248: a retired relationship is not traversable, nor one that reaches a retired
+        # table at either end or through it.
+        f"WHERE {_TRAVERSABLE} "
         "ORDER BY r.id"
     )
     result = []

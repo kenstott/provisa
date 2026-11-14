@@ -34,12 +34,26 @@ from provisa.core import model_change
 
 
 class RetiredNameTaken(Exception):
-    """A write that would put an object at the name of a retired one (REQ-2248)."""
+    """A write that would put an object at the name of a retired one (REQ-2248). Its message
+    names the retired object and says it can be restored."""
 
     def __init__(self, kind: str, name: str) -> None:
         self.kind = kind
         self.name = name
-        super().__init__(f"the {kind} name {name!r} is held by a retired {kind}")
+        super().__init__(
+            f"the name {name!r} belongs to a retired {kind}; restore that {kind} to use it again"
+        )
+
+
+def stamp_of(table: Any) -> list[Any]:
+    """The retirement columns of ``table`` (a model table carrying them): whether it is retired,
+    why, by whom and when."""
+    return [table.c.retired, table.c.status_reason, table.c.status_by, table.c.status_at]
+
+
+def cleared() -> dict[str, Any]:
+    """The column values that restore a retired row (REQ-2248): its retirement cleared."""
+    return {"retired": False, "status_reason": None, "status_by": None, "status_at": None}
 
 
 def values(reason: str | None) -> dict[str, Any]:

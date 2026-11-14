@@ -121,7 +121,7 @@ def _tag_definitions_sql() -> str:
         )
     rows.append(
         "SELECT id, description, CAST(applies_to AS JSONB), is_system, requires_citation, "
-        "required, CAST(allowed_domains AS JSONB) FROM tags"
+        "required, CAST(allowed_domains AS JSONB) FROM tags WHERE NOT retired"  # REQ-2248
     )
     return "\n            UNION ALL\n            ".join(rows)
 
@@ -238,15 +238,18 @@ def _tag_instances_sql() -> str:
             SELECT 'table', rt.draft, 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
                    CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM registered_tables rt
+            WHERE NOT rt.retired
             UNION ALL
             SELECT 'column', rt.draft, 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
                    CAST(tc.table_id AS TEXT) || ':' || tc.column_name, tc.table_id,
                    rt.domain_id, CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
+            WHERE NOT rt.retired AND NOT tc.retired
             UNION ALL
             SELECT 'relationship', FALSE, 'relationship:' || r.id, r.id, CAST(NULL AS INTEGER), rt.domain_id, r.owner,
                    '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM relationships r JOIN registered_tables rt ON rt.id = r.source_table_id
+            WHERE NOT r.retired AND NOT rt.retired
             UNION ALL
             SELECT 'command', FALSE, 'command:' || f.name, f.name, CAST(NULL AS INTEGER), f.domain_id,
                    CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
@@ -280,6 +283,7 @@ def _tag_instances_sql() -> str:
                    (SELECT '|' || STRING_AGG(x, '|') || '|'
                     FROM jsonb_array_elements_text(CAST(m.visible_to AS JSONB)) x)
             FROM metrics m
+            WHERE NOT m.retired
             UNION ALL
             SELECT 'document', FALSE, 'document:' || CAST(d.id AS TEXT), CAST(d.id AS TEXT), CAST(NULL AS INTEGER),
                    CAST(NULL AS TEXT), CAST(NULL AS TEXT), '|', dd.domains, CAST(NULL AS TEXT)
@@ -682,25 +686,25 @@ def _data_product_edges_sql() -> str:
             SELECT m.table_id, m.product_id, rt.dq_contract
             FROM data_product_tables m
             JOIN registered_tables rt ON rt.id = m.table_id
-            WHERE NOT rt.draft
+            WHERE NOT rt.draft AND NOT rt.retired
         ),
         free AS (
             SELECT id AS table_id FROM registered_tables rt
-            WHERE NOT rt.draft
+            WHERE NOT rt.draft AND NOT rt.retired
               AND NOT EXISTS (SELECT 1 FROM data_product_tables m WHERE m.table_id = rt.id)
         ),
         links AS (
             SELECT r.id AS rel_id, r.alias, r.source_table_id AS a, r.target_table_id AS b
             FROM relationships r
-            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft
-            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft
-            WHERE r.source_table_id <> r.target_table_id
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft AND NOT s.retired
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft AND NOT t.retired
+            WHERE r.source_table_id <> r.target_table_id AND NOT r.retired
             UNION ALL
             SELECT r.id, r.alias, r.target_table_id, r.source_table_id
             FROM relationships r
-            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft
-            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft
-            WHERE r.source_table_id <> r.target_table_id
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft AND NOT s.retired
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft AND NOT t.retired
+            WHERE r.source_table_id <> r.target_table_id AND NOT r.retired
         ),
         -- (product, the relationship leaving its member, a table reached): walking on only
         -- through tables in no product, never into the product's own members.
@@ -900,7 +904,7 @@ def _table_inputs_sql() -> str:
                         WHEN t.materialize THEN 'materialized_view'
                         ELSE 'view' END AS kind
             FROM registered_tables t
-            WHERE NOT t.draft
+            WHERE NOT t.draft AND NOT t.retired
         ),
         walk (table_id, relation, relation_id) AS (
             SELECT e.tgt_id, e.src, e.src_id
@@ -941,7 +945,7 @@ def _table_details_sql() -> str:
                                     t.tags), '') AS suffix
             FROM registered_tables rt
             LEFT JOIN table_tags t ON t.table_id = rt.id
-            WHERE NOT rt.draft
+            WHERE NOT rt.draft AND NOT rt.retired
         )
         SELECT id, modeling_role, modeling_history,
                CASE WHEN suffix IS NULL THEN NULLIF(description, '')
@@ -974,7 +978,8 @@ def _column_details_sql() -> str:
                          || COALESCE(NULLIF(rt.modeling_role, '') || ', ', '') || t.tags || ']'
                END AS comment
         FROM registered_tables rt
-        JOIN table_columns tc ON tc.table_id = rt.id AND NOT rt.draft
+        JOIN table_columns tc
+          ON tc.table_id = rt.id AND NOT rt.draft AND NOT rt.retired AND NOT tc.retired
         LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
     """
 
@@ -1042,7 +1047,8 @@ def _table_keys_sql() -> str:
             JOIN served t ON t.id = r.target_table_id
             JOIN table_columns sc
               ON sc.table_id = r.source_table_id AND sc.column_name = r.source_column
-            WHERE r.target_column IS NOT NULL
+              AND NOT sc.retired
+            WHERE r.target_column IS NOT NULL AND NOT r.retired
               AND r.source_table_id IN (SELECT table_id FROM wanted)
               AND r.cardinality IN ('many-to-one', 'one-to-one')
             GROUP BY r.source_table_id, r.source_column, r.target_table_id, r.target_column
@@ -1053,7 +1059,7 @@ def _table_keys_sql() -> str:
                        AS position
             FROM table_columns c
             JOIN served s ON s.id = c.table_id
-            WHERE c.is_primary_key
+            WHERE c.is_primary_key AND NOT c.retired
               AND c.table_id IN (SELECT table_id FROM wanted
                                  UNION SELECT target_table_id FROM links)
         ),
@@ -1168,6 +1174,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                FALSE AS derived, reason_policy, expires_policy, param_policy,
                CAST(tenant_id AS TEXT) AS tenant_id
         FROM tags
+        WHERE NOT retired
     """,
     # REQ-1443: derived tags are computed, never assigned, so they have no rows in
     # tag_assignments and cannot be unioned into it — a governance query that treats a
@@ -1180,13 +1187,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'table:' || CAST(rt.id AS TEXT) AS object_key,
                CAST(rt.tenant_id AS TEXT) AS tenant_id
         FROM registered_tables rt
-        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.draft
+        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.draft AND NOT rt.retired
         UNION ALL
         SELECT 'data_quality', 'table', rt.source_id, rt.id, rt.table_name, rt.domain_id,
                'table:' || CAST(rt.id AS TEXT), CAST(rt.tenant_id AS TEXT)
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
         WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
+              AND NOT rt.retired
     """,
     # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
     # authored -- parsed once at registration (provisa.dq.registration) and stored on the table.
@@ -1201,7 +1209,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
         CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
-        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft AND NOT rt.retired
     """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
@@ -1218,6 +1226,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         CREATE OR REPLACE VIEW metric_definitions AS
         SELECT name, expression, datatype, description, ai_context, visible_to, from_fact
         FROM metrics
+        WHERE NOT retired
     """,
     # REQ-2125: product_id is the tagged data product, when the object is one.
     "tag_assignments": """
@@ -1321,6 +1330,8 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- other). Last, so an existing view is replaced in place.
                rt.draft
         FROM registered_tables rt
+        -- REQ-2248: a retired table is not listed.
+        WHERE NOT rt.retired
     """,
     # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT): the names table of the last model
     # version built -- one row per model object and surface, the name it has there and the
@@ -1366,10 +1377,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                tc.visible_to,
                tc.tenant_id
         -- registered_tables first: schema.sql locks it before table_columns (lock order).
-        -- A draft table's columns are not listed.
+        -- A draft or retired table's columns are not listed, nor a retired column (REQ-2248).
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
-        WHERE NOT rt.draft
+        WHERE NOT rt.draft AND NOT rt.retired AND NOT tc.retired
     """,
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
@@ -1390,7 +1401,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'meta' AS domain_id
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
-        WHERE tc.scope = 'listed' AND NOT rt.draft
+        WHERE tc.scope = 'listed' AND NOT rt.draft AND NOT rt.retired AND NOT tc.retired
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
     "roles_parents": """

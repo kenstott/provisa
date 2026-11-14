@@ -112,8 +112,12 @@ async def get(conn: "Connection", name: str) -> dict | None:  # REQ-1317
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-1317
-    result = await conn.execute_core(_with_term().order_by(metrics.c.name))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-1317
+    """Every metric in service, by name; ``retired`` lists the retired ones instead (REQ-2248),
+    with who, when and why."""
+    result = await conn.execute_core(
+        _with_term().where(metrics.c.retired.is_(retired)).order_by(metrics.c.name)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -153,6 +157,18 @@ async def delete(  # REQ-1317, REQ-1918, REQ-2248
             update(metrics).where(metrics.c.name == name).values(**retirement.values(reason))
         )
     return True
+
+
+async def restore(conn: "Connection", name: str) -> bool:  # REQ-2248
+    """Restore a retired metric: the same metric, its retirement cleared, computed again. False
+    when there is no such metric, or it is not retired."""
+    model_change.name("restore", "metric", name)  # REQ-1524
+    done = await conn.execute_core(
+        update(metrics)
+        .where(metrics.c.name == name, metrics.c.retired.is_(True))
+        .values(**retirement.cleared())
+    )
+    return done.rowcount == 1
 
 
 async def remove_where(conn: "Connection", *where) -> None:
