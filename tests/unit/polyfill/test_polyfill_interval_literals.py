@@ -313,6 +313,17 @@ def _wanted(want: Any) -> list[Any]:
     return list(want) if isinstance(want, tuple) else [want]
 
 
+def _in_defined_order(sql: str, rows: list[Any]) -> list[Any]:
+    """The rows in the order the statement defines. A statement with no ORDER BY defines none:
+    PostgreSQL returns its rows "in whatever order the system finds fastest to produce" (SELECT,
+    ORDER BY clause), and ClickHouse runs each row of a VALUES list's UNION ALL as its own
+    pipeline, so either row may come first. Such rows compare as a multiset: every value and its
+    count still has to match."""
+    if sqlglot.parse_one(sql, read="postgres").args.get("order") is not None:
+        return rows
+    return sorted(rows, key=repr)
+
+
 def _fields(text: str | None) -> tuple[int, int, int] | None:
     return None if text is None else interval_parts(interval_of_text(text))
 
@@ -370,13 +381,13 @@ def test_duckdb_answers_postgresql_s(sql, want):
     wanted = _wanted(want)
     got = _duckdb_rows(sql, wanted)
     expected = [w if w is None or w[:4].isdigit() else _fields(w) for w in wanted]
-    assert got == expected
+    assert _in_defined_order(sql, got) == _in_defined_order(sql, expected)
 
 
 @pytest.mark.parametrize(("sql", "want"), _A_AND_B)
 def test_clickhouse_answers_postgresql_s(runtime, sql, want):
     got = _ch_rows(runtime, sql)
-    assert got == _wanted(want)
+    assert _in_defined_order(sql, got) == _in_defined_order(sql, _wanted(want))
     for text in got:
         if text is not None and not text[:4].isdigit():  # pgwire reads interval_out's text back
             assert _fields(text) is not None
