@@ -600,6 +600,10 @@
         "label": "Principal local MCP",
         "help": "Le principal (identifiant utilisateur) pour lequel agissent les appels MCP locaux (stdio), à côté du rôle local ; les droits de cette personne restreignent le rôle. Tant qu'il n'est pas défini, ces appels sont refusés. Protégé, car quiconque peut lancer le client local agit avec l'accès de cette personne."
       },
+      "tools": {
+        "label": "Outils MCP listés",
+        "help": "Les outils listés à un client MCP dont l'adresse ne nomme aucun mode (tools=full ou tools=sip dans l'adresse). full liste tous les outils ; sip liste les outils pour trouver, décrire, interroger et lire des métriques, plus un outil qui ajoute les autres groupes à la demande du client. Chaque outil peut être appelé dans les deux modes, selon les droits de l'appelant."
+      },
       "external_url": {
         "label": "Adresse externe MCP",
         "help": "L'adresse MCP affichée aux utilisateurs lorsque le déploiement se trouve derrière un proxy."

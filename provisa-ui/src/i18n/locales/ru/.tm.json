@@ -6969,6 +6969,8 @@
   "ru/settings.json::settings.materialized_views.default_ttl.label": "Default materialized view lifetime",
   "ru/settings.json::settings.mcp.chat_model.help": "The model the built-in chat uses, overriding each organization's own choice.",
   "ru/settings.json::settings.mcp.chat_model.label": "Chat model",
+  "ru/settings.json::settings.mcp.tools.label": "MCP tools listed",
+  "ru/settings.json::settings.mcp.tools.help": "The tools listed to an MCP client whose address names none (tools=full or tools=sip on the address). full lists every tool; sip lists the tools for finding, describing, querying and reading metrics, plus one tool that adds the other groups when the client asks. Every tool can be called in either mode, as the caller's rights allow.",
   "ru/settings.json::settings.mcp.external_url.help": "The MCP address shown to users when the deployment sits behind a proxy.",
   "ru/settings.json::settings.mcp.external_url.label": "MCP external address",
   "ru/settings.json::settings.mcp.host.help": "The network address the MCP server binds; 127.0.0.1 keeps it to this machine. Restart required; guarded because it decides who can reach the port.",
