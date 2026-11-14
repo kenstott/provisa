@@ -84,11 +84,7 @@ FEATURES: tuple[Feature, ...] = tuple(
 #: the canonical form) is held too. A range of numbers is held as its digits.
 HELD_ON_CLICKHOUSE: dict[str, tuple[datetime.date, datetime.date, str]] = {
     "timestamptz": (instants.FIRST, instants.LAST, instants.BOUND),
-    "timestamp": (
-        instants.FIRST,
-        instants.LAST,
-        "1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999",
-    ),
+    "timestamp": (instants.FIRST, instants.LAST, instants.STAMP_BOUND),
     "date": (datetime.date(1900, 1, 1), datetime.date(2299, 12, 30), "1900-01-01 .. 2299-12-30"),
 }
 

@@ -81,6 +81,109 @@ def out_of_bound(function: str, bound: str = BOUND) -> str:
     return f"{function}() of a value outside {bound} has no exact form on clickhouse"
 
 
+#: A timestamp's input text as a cast reads it here: a date (its year of any digits), a time, an
+#: offset (read of a timestamptz only: a timestamp's input drops it) and an era.
+_INPUT = re.compile(
+    r"\s*(\d{4,})-(\d{1,2})-(\d{1,2})"
+    r"(?:(?:\s+|T)(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?"
+    r"\s*(?:(Z|UTC|GMT)|([+-])(\d{1,2})(?::?(\d{2}))?(?::?(\d{2}))?)?"
+    r"\s*(BC|AD)?\s*",
+    re.IGNORECASE | re.ASCII,
+)
+_INFINITIES = frozenset({"infinity", "+infinity", "-infinity"})
+
+
+#: PostgreSQL's input function of each timestamp type a cast names, and whether it is zoned.
+_INPUT_FUNCTIONS = {
+    exp.DataType.Type.TIMESTAMP: ("timestamp_in", False),
+    exp.DataType.Type.TIMESTAMPTZ: ("timestamptz_in", True),
+}
+#: A timestamp's bound as DateTime64(6, 'UTC') holds it: a wall time, of the same instants.
+STAMP_BOUND = "1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999"
+
+
+def wall_inputs(tree: exp.Expr) -> exp.Expr:
+    """``tree`` with each string literal cast to a timestamp without its offset, as PostgreSQL's
+    input drops it: ClickHouse's cast reads it. Read before an instant's literal is written as its
+    UTC wall time (transpile._instants_as_utc)."""
+    for cast in tree.find_all(exp.Cast):
+        literal = cast.this
+        if cast.to.this != exp.DataType.Type.TIMESTAMP or not (
+            isinstance(literal, exp.Literal) and literal.is_string
+        ):
+            continue
+        wall = _offset_dropped(literal.this)
+        if wall is not None:
+            literal.replace(exp.Literal.string(wall))
+    return tree
+
+
+#: The meta key of a value a row reads only that it is there (isfinite): ClickHouse's value of a
+#: literal outside the bound answers it as PostgreSQL's does.
+PRESENCE_READ = "provisa_presence_read"
+
+
+def outside_cast(node: exp.Expr) -> exp.Expr | None:
+    """PostgreSQL's 0A000 in place of a string literal cast to a timestamp or a timestamptz that
+    DateTime64(6, 'UTC') does not hold, which ClickHouse's cast would hold at its type's end; None
+    for any other node. Read last (transpile.clickhouse_semantics): a row of this module raises one
+    its call reads with its own name, or answers it where it reads only that it is there."""
+    named = _INPUT_FUNCTIONS.get(node.to.this) if isinstance(node, exp.Cast) else None
+    if named is None or node.meta.get(PRESENCE_READ):
+        return None
+    literal = node.this
+    if not (isinstance(literal, exp.Literal) and literal.is_string):
+        return None
+    function, zoned = named
+    if not input_outside(literal.this, zoned):
+        return None
+    return raised(function, _CLICKHOUSE, returns=INSTANT, bound=BOUND if zoned else STAMP_BOUND)
+
+
+#: The groups of _INPUT that write an offset: a zone of none (Z, UTC, GMT), or a sign and its parts.
+_OFFSET_GROUPS = range(8, 13)
+
+
+def _offset_dropped(text: str) -> str | None:
+    """A timestamp's input text without its offset; None for one that writes none, or a text not
+    read here."""
+    written = _INPUT.fullmatch(text)
+    if written is None:
+        return None
+    present = [g for g in _OFFSET_GROUPS if written.group(g) is not None]
+    if not present:
+        return None
+    start, end = written.start(present[0]), written.end(present[-1])
+    return (text[:start] + text[end:]).strip()
+
+
+def input_outside(text: str, zoned: bool) -> bool | None:
+    """Whether a timestamp's (``zoned``: a timestamptz's) input text is a value outside what
+    DateTime64(6, 'UTC') holds, which ClickHouse's cast holds at its type's end: an infinity, a year
+    BC or past 9999, or an instant outside the bound (a timestamptz's offset read, one with none
+    as UTC, as the cast reads it). None for a text not read here, whose cast is ClickHouse's own."""
+    if text.strip().lower() in _INFINITIES:
+        return True
+    written = _INPUT.fullmatch(text)
+    if written is None:
+        return None
+    year, month, day, hour, minute, second, fraction, utc, sign, oh, om, os_, era = written.groups()
+    if (era or "").upper() == "BC" or int(year) > 9999:  # noqa: PLR2004 -- datetime's last year
+        return True
+    micros = round(int((fraction or "0")[:7].ljust(7, "0")) / 10)
+    try:
+        wall = datetime.datetime(
+            int(year), int(month), int(day), int(hour or 0), int(minute or 0), int(second or 0)
+        ) + datetime.timedelta(microseconds=micros)
+    except ValueError:
+        return None  # no day of the calendar: PostgreSQL's error of it is the engine's to give
+    if zoned and sign is not None:
+        offset = datetime.timedelta(hours=int(oh), minutes=int(om or 0), seconds=int(os_ or 0))
+        wall -= offset if sign == "+" else -offset
+    del utc  # Z, UTC and GMT are an offset of none
+    return not FIRST <= wall <= LAST
+
+
 def _read(text: str, day_only: bool) -> datetime.datetime | None:
     """The value a literal in ISO form writes; None for any other text, and for one no calendar
     holds (PostgreSQL's error of it is the engine's to give)."""
@@ -196,13 +299,18 @@ DAY = "Nullable(Date32)"
 
 
 def raised(
-    function: str, dialect: str, pattern: str | None = None, returns: str | None = None
+    function: str,
+    dialect: str,
+    pattern: str | None = None,
+    returns: str | None = None,
+    bound: str = BOUND,
 ) -> exp.Expr:
     """ClickHouse's raise of 0A000 for a value outside the bound, as the call's answer; ``pattern``
     the call's, where ``function()`` does not parse (an aggregate takes an argument). ``returns``:
     the type of the call's answer, so a call that reads it (date_trunc, toYear) types the raise as
-    the value it stands for, and ClickHouse raises it rather than refuse the statement's types."""
-    form = ch_fail("0A000", out_of_bound(function)).format(condition="1")
+    the value it stands for, and ClickHouse raises it rather than refuse the statement's types.
+    ``bound``: the text of the bound the value is outside (a timestamp's, a wall time)."""
+    form = ch_fail("0A000", out_of_bound(function, bound)).format(condition="1")
     if returns is not None:
         form = f"CAST({form} AS {returns})"
     return replacement(form, dialect, pattern or f"{function}()")
@@ -269,6 +377,9 @@ def _rewrite(
             return None  # read in the session's zone: refused by name off UTC
         if bounded and _Read.OUTSIDE in read and not (strict and _Read.NULL in read):
             return raised(function, dialect, pattern, returns)
+        if not bounded:
+            for argument in call[1]:
+                argument.unnest().meta[PRESENCE_READ] = True
         return graft(replacement(form, dialect, pattern), dict(zip(holes, call[1])))
 
     return rewrite

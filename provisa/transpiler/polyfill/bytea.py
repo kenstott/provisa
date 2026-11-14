@@ -44,7 +44,7 @@ from provisa.transpiler.pg_literals import values_cast
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
 
 FAMILY = "bytea on ClickHouse"
@@ -355,6 +355,9 @@ class _Call:
     kinds: str
     forms: Callable[[list[exp.Expr], list[object]], str | None]
     returns_bytes: bool = False
+    #: PostgreSQL's operator of a LIKE row (~~, !~~): sqlglot's LIKE node is read by
+    #: :func:`_operator_reads`, as PostgreSQL resolves an operator of a bytea.
+    operator: str | None = None
 
 
 def _read(kinds: str, args: list[exp.Expr]) -> list[object] | None:
@@ -376,6 +379,67 @@ def _read(kinds: str, args: list[exp.Expr]) -> list[object] | None:
     return reads
 
 
+def _said_bytea(argument: exp.Expr) -> bool:
+    return trino.said(argument.unnest()) == "bytea"
+
+
+def _type_name(argument: exp.Expr) -> str:
+    """PostgreSQL's name of an operand's type in an operator's error: unknown for an untyped
+    string."""
+    value = argument.unnest()
+    if isinstance(value, exp.Literal) and value.is_string:
+        return "unknown"
+    said = trino.said(value)
+    assert said is not None  # a type no statement says is read as a bytea, never named here
+    return said.split("(")[0]
+
+
+def _operand(argument: exp.Expr) -> _Value | None | bool:
+    """An operand of a LIKE whose other operand is a bytea: PostgreSQL reads an untyped string as
+    a bytea's input, and a value of a type no statement says as a bytea (the operator of a bytea
+    and any other type does not exist). False for a value of another type the statement says."""
+    read = _bytea(argument)
+    if read is not False:
+        return read
+    value = argument.unnest()
+    if isinstance(value, exp.Null):
+        return _NULL
+    if isinstance(value, exp.Literal) and value.is_string:
+        written = literal_bytes(value.this)
+        return _Value(written) if written is not None else False
+    said = trino.said(value)
+    if said is None or said.split("(")[0] == "bytea":
+        return _Value(None)  # ClickHouse's String of it is its bytes, whatever computed it
+    return False
+
+
+def _operator_reads(name: str, operator: str, args: list[exp.Expr]) -> list[object] | None:
+    """A LIKE operator's value and pattern where either is a bytea the statement says, or a value
+    a row here wrote: the value as whatever computes it, the pattern as the statement writes it.
+    None for a LIKE of no bytea (text's); PostgreSQL's 42883 for a bytea beside a value of another
+    type; a refusal by name of a pattern a row computes, or of the escape form."""
+    value, pattern = args
+    if not any(_said_bytea(a) or _bytea(a) is not False for a in args):
+        return None
+    reads: list[object] = [_operand(value), _operand(pattern)]
+    for argument, read in zip(args, reads):
+        if read is not False:
+            continue
+        inner = argument.unnest()
+        if isinstance(inner, exp.Literal) and inner.is_string:
+            raise Refused(_by_name(name))  # the escape form, which ClickHouse holds as its text
+        left, right = _type_name(value), _type_name(pattern)
+        raise Refused(Refusal("42883", f"operator does not exist: {left} {operator} {right}"))
+    written = reads[1]
+    if isinstance(written, _Value) and written.written is None:
+        raise Refused(_by_name(name))  # a pattern a row computes
+    return reads
+
+
+def _by_name(name: str) -> Refusal:
+    return Refusal("0A000", f"{name}() has no form on {_CLICKHOUSE}")
+
+
 def _plain(argument: exp.Expr) -> bool:
     """A column, a NULL, or a cast of a literal: what a rule of no pattern reads, as the walk
     writes no argument of what such a rule writes."""
@@ -393,11 +457,17 @@ def _rewrite(
         args = call.arguments(node)
         if args is None or (plain and not all(_plain(a) for a in args)):
             return None
-        reads = _read(call.kinds, args)
+        operator = call.operator if isinstance(node, exp.Like) else None
+        if operator is not None:
+            reads = _operator_reads(name, operator, args)
+        else:
+            reads = _read(call.kinds, args)
         if reads is None:
             return None
         form = call.forms(args, reads)
         if form is None:
+            if operator is not None:
+                raise Refused(_by_name(name))  # a pattern that ends in its escape
             return None
         holes = dict(zip("abcd", args))
         # ClickHouse's hex of a form is the bytes' digits: transpile.clickhouse_semantics writes
@@ -647,7 +717,7 @@ FEATURES: tuple[Feature, ...] = (
     _feature(
         "like(bytea, bytea)", "Whether a bytea matches a LIKE pattern.",
         ("$a LIKE $b",),
-        _Call(_like_arguments("like"), "bB", _like(False)),
+        _Call(_like_arguments("like"), "bB", _like(False), operator="~~"),
         _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name.",
         plain_call=True, mentions=_LIKE_OF_BYTES,
     ),
@@ -660,7 +730,7 @@ FEATURES: tuple[Feature, ...] = (
     _feature(
         "notlike(bytea, bytea)", "Whether a bytea does not match a LIKE pattern.",
         ("notlike($a, $b)", "$a NOT LIKE $b"),
-        _Call(_like_arguments("notlike"), "bB", _like(True)),
+        _Call(_like_arguments("notlike"), "bB", _like(True), operator="!~~"),
         _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name.",
         plain_call=True, mentions=_LIKE_OF_BYTES,
     ),

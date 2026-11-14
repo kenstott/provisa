@@ -83,8 +83,6 @@ def _split_part(self: Generator, expression: exp.SplitPart) -> str:
 
 
 ClickHouse.Generator.TRANSFORMS[exp.SplitPart] = _split_part
-# Its LIKE has no ESCAPE clause: a backslash escapes there already, and it is the only escape the
-# forms write.
 
 
 def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
@@ -98,7 +96,20 @@ def _truncated(self: Generator, expression: exp.TimestampTrunc) -> str:
 
 
 ClickHouse.Generator.TRANSFORMS[exp.TimestampTrunc] = _truncated
-ClickHouse.Generator.TRANSFORMS[exp.Escape] = lambda self, expression: self.sql(expression.this)
+
+
+def _escaped(self: Generator, expression: exp.Escape) -> str:
+    """LIKE ... ESCAPE '\\', as a form writes it: ClickHouse's LIKE has no ESCAPE clause, and a
+    backslash escapes there already. A statement's own ESCAPE is read before (like_patterns)."""
+    escape = expression.expression
+    if not (isinstance(escape, exp.Literal) and escape.this == "\\"):
+        from provisa.transpiler.function_macros import FunctionRefused
+
+        raise FunctionRefused("like_escape", "clickhouse")
+    return self.sql(expression.this)
+
+
+ClickHouse.Generator.TRANSFORMS[exp.Escape] = _escaped
 
 # REQ-2167: ClickHouse has no bitwise operator: & | ^ ~ << >> are syntax errors there, and a form of
 # the old table (provisa.transpiler.function_macros) writes them in PostgreSQL's SQL. Each is
