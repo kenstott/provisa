@@ -14,6 +14,11 @@ import { useNavigate } from "react-router-dom";
 import { Button, List, Modal, Stack, Text, Title } from "@mantine/core";
 import { FormFooter } from "./form/FormLayout";
 import { getStored, removeStored } from "../lib/browserStorage";
+import { useAuth } from "../context/AuthContext";
+import { meetsRequirement, type CapabilityRequirement } from "../lib/capabilities";
+
+/** Inviting someone into root is Team's work, which asks the right to manage members. */
+const TEAM: CapabilityRequirement = { capability: "user_management" };
 
 /** Set by LoginPage when POST /auth/claim-bootstrap reports the slot was taken by this sign-in. */
 export const CLAIMED_ADMIN_FLAG = "provisa_claimed_platform_admin";
@@ -37,10 +42,19 @@ export const CLAIMED_ADMIN_FLAG = "provisa_claimed_platform_admin";
  *
  * The flag is read once at mount (not on every render) and cleared when the modal is dismissed, so
  * the disclosure survives the post-claim navigation but is never shown twice.
+ *
+ * The invite button goes to Team, which asks `user_management`: root's org_admin holds it and
+ * platform_admin does not. Acting as platform_admin alone, the button first selects the claimant's
+ * role that grants it, so it never lands on a refusal; with no such role it is not offered.
  */
 export function PlatformAdminWelcomeModal() {
   const { t } = useTranslation();
   const navigate = useNavigate();
+  const { capabilities, availableRoles, selectRole } = useAuth();
+  const teamRole = meetsRequirement(capabilities, TEAM)
+    ? null
+    : availableRoles.find((r) => meetsRequirement(r.effectiveCapabilities, TEAM));
+  const mayInvite = teamRole !== undefined;
   const [opened, setOpened] = useState(
     () => getStored(CLAIMED_ADMIN_FLAG, { global: true }) === "1",
   );
@@ -81,15 +95,18 @@ export function PlatformAdminWelcomeModal() {
         </div>
         {/* The action first, then the way out: the order of every form’s last row. */}
         <FormFooter>
-          <Button
-            data-testid="platform-admin-welcome-team"
-            onClick={() => {
-              close();
-              navigate("/team");
-            }}
-          >
-            {t("platformAdminWelcome.goToTeam")}
-          </Button>
+          {mayInvite && (
+            <Button
+              data-testid="platform-admin-welcome-team"
+              onClick={() => {
+                close();
+                if (teamRole) selectRole(teamRole);
+                navigate("/team");
+              }}
+            >
+              {t("platformAdminWelcome.goToTeam")}
+            </Button>
+          )}
           <Button variant="subtle" onClick={close} data-testid="platform-admin-welcome-dismiss">
             {t("platformAdminWelcome.dismiss")}
           </Button>

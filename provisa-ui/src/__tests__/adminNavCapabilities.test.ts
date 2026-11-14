@@ -33,16 +33,17 @@ const SRC = resolve(__dirname, "..");
 function navBarAdminCapabilities(): Record<string, string> {
   const source = readFileSync(resolve(SRC, "components/navGroups.ts"), "utf-8");
   const out: Record<string, string> = {};
-  const entry = /to:\s*"(\/admin\/[^"]+)"[\s\S]*?capability:\s*"([a-z_]+)"/g;
-  for (const m of source.matchAll(entry)) out[m[1]] = m[2];
+  // REQ-1327: `capability: EVERY_MEMBER` is an entry that asks no right.
+  const entry = /to:\s*"(\/admin\/[^"]+)"[\s\S]*?capability:\s*(?:"([a-z_]+)"|(EVERY_MEMBER))/g;
+  for (const m of source.matchAll(entry)) out[m[1]] = m[2] ?? m[3];
   return out;
 }
 
 function routeCapabilities(): Record<string, string> {
   const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
   const out: Record<string, string> = {};
-  const entry = /\[\s*"(\/admin\/[^"]+)",\s*"([a-z_]+)",?\s*\]/g;
-  for (const m of source.matchAll(entry)) out[m[1]] = m[2];
+  const entry = /\[\s*"(\/admin\/[^"]+)",\s*(?:"([a-z_]+)"|(EVERY_MEMBER)),?\s*\]/g;
+  for (const m of source.matchAll(entry)) out[m[1]] = m[2] ?? m[3];
   return out;
 }
 
@@ -76,12 +77,12 @@ const ORG_SCOPED: Record<string, string> = {
   // REQ-1558: the names an org holds and the values behind them are the org's, so an org_admin
   // owns them and a platform admin operating the control plane does not read them (REQ-1361).
   "/admin/secrets": "org_settings",
-  // REQ-1560: a person's own vault. Not a grant an administrator makes — `usage` is the right every
-  // seeded role carries, so every member of an org reaches their own secrets and nobody else's.
-  "/admin/my-secrets": "usage",
+  // REQ-1560, REQ-1327: a person's own vault. Not a grant an administrator makes: the server asks
+  // no capability, so every member of an org reaches their own secrets and nobody else's.
+  "/admin/my-secrets": "EVERY_MEMBER",
   "/admin/scheduled-tasks": "org_settings",
   // REQ-1327: every member sees the requests it made; each row's own right decides it.
-  "/admin/requests": "usage",
+  "/admin/requests": "EVERY_MEMBER",
   // REQ-1412: which engine lane the org runs on (shared / SaaS-isolated / its own external
   // coordinator) is the org's decision. The engine KIND stays deployment-wide, below.
   "/admin/org-engine": "org_settings",
@@ -132,11 +133,19 @@ describe("admin surface capabilities", () => {
     }
   });
 
-  it("gates the approvals route on usage, as its nav entry is", () => {
+  it("opens the requests route to every member, as its nav entry is", () => {
+    // REQ-1327 (amended 2026-11-14): Requests and My Secrets open to every member.
     const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
     const requests = source.slice(source.indexOf('path="/admin/requests"'));
-    expect(requests.slice(0, 400)).toContain('capability="usage"');
-    expect(navBarAdminCapabilities()["/admin/requests"]).toBe("usage");
+    expect(requests.slice(0, 400)).toContain("capability={EVERY_MEMBER}");
+    expect(navBarAdminCapabilities()["/admin/requests"]).toBe("EVERY_MEMBER");
+    expect(navBarAdminCapabilities()["/admin/my-secrets"]).toBe("EVERY_MEMBER");
+    const items = NAV_GROUPS.flatMap((g) => g.items);
+    for (const path of ["/admin/requests", "/admin/my-secrets"]) {
+      const item = items.find((i) => i.to === path);
+      expect(item?.capability, path).toBeNull();
+      expect(meetsRequirement([], item!), path).toBe(true);
+    }
   });
 
   it("gates tags on the tag mutations' rights, route and nav alike", () => {
