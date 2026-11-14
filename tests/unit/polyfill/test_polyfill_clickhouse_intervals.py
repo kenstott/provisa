@@ -31,7 +31,7 @@ from provisa.core.ir_types import interval_parts
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.pgwire.cast_types import interval_of_text
-from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.pg_type_literals import interval_text as pg_interval_text
 from provisa.transpiler.polyfill import GRID, intervals
 from provisa.transpiler.transpile import transpile
@@ -665,6 +665,13 @@ def test_an_interval_answer_read_by_no_row_here_is_refused_by_name(around):
     call = "pg_catalog.\"interval_pl\"('1 day'::interval, '1 hour'::interval)"
     with pytest.raises(FunctionRefused):
         transpile(f"SELECT {around.format(call)} AS v", "clickhouse")
+
+
+def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
+    """It names no function, so no older refusal reads it: on the base it reached ClickHouse as
+    an INTERVAL type it has none of (an engine error)."""
+    with pytest.raises(RowRefused, match="interval_pl"):
+        transpile("SELECT ('1 day'::interval + '1 hour'::interval) * 1 IS NULL AS v", "clickhouse")
 
 
 # --- the grid -----------------------------------------------------------------------------------

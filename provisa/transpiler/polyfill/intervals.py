@@ -47,7 +47,7 @@ import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Rewrite
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail
 
 FAMILY = "interval on ClickHouse"
@@ -778,7 +778,11 @@ def _parts_form(unit: str, x: str, numeric: bool) -> str:
         "day": d,
         "week": f"intDiv({d}, 7)",
         "month": f"({m} % 12)",
-        "quarter": f"if({m} >= 0, intDiv({m} % 12, 3) + 1, -(intDiv((-toInt64({m})) % 12, 3) + 1))",
+        # -month wraps in PostgreSQL's int32 where month is its least: -(-8 / 3 + 1) = 1
+        "quarter": (
+            f"multiIf({m} >= 0, intDiv({m} % 12, 3) + 1, {m} = {_I32_MIN}, 1, "
+            f"-(intDiv((-toInt64({m})) % 12, 3) + 1))"
+        ),
         "year": years,
         "decade": f"intDiv({years}, 10)",
         "century": f"intDiv({years}, 100)",
@@ -1103,8 +1107,50 @@ def _operands(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     return "".join(k for k in kinds if k is not None), args
 
 
+def _mentions_interval(node: exp.Expr) -> bool:
+    """Whether ``node`` may hold an interval: a type of interval, a value a row here wrote, a call
+    of a row here, or a column of a VALUES list of intervals. Read before any operand's type,
+    which is costly to read of a deep expression (function_types reads every call it holds)."""
+    for inner in node.walk():
+        if inner.meta.get(HELD):
+            return True
+        if isinstance(inner, exp.DataType) and inner.this == exp.DataType.Type.INTERVAL:
+            return True
+        if isinstance(inner, exp.Anonymous) and inner.name.lower() in _NAMES - _SHARED:
+            return True
+        if isinstance(inner, exp.Column) and _interval_column(inner):
+            return True
+    return False
+
+
+#: The names of rows here that other types' calls have too: a call of one says no interval.
+_SHARED = frozenset({"max", "min", "sum", "extract", "date_part", "isfinite"})
+
+
+def _interval_column(column: exp.Column) -> bool:
+    """Whether ``column`` is one of a VALUES list whose cells are intervals (cast, or written)."""
+    select = column.find_ancestor(exp.Select)
+    source = select.args.get("from_") if select is not None else None
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or values.args.get("alias") is None:
+        return False
+    names = [c.name for c in values.args["alias"].columns]
+    if column.name not in names:
+        return False
+    index = names.index(column.name)
+    for row in values.expressions:
+        cell = row.expressions[index].unnest()
+        if cell.meta.get(HELD) or (
+            isinstance(cell, exp.Cast) and cell.to.this == exp.DataType.Type.INTERVAL
+        ):
+            return True
+    return False
+
+
 def _call(node: exp.Expr) -> tuple[str, _Row, list[exp.Expr]] | None:
     """The row ``node`` is a call of, by its name or its operator, and its arguments."""
+    if not _mentions_interval(node):
+        return None
     if type(node) in _OPERATORS:
         operands = _operands(node)
         if operands is None:
@@ -1224,6 +1270,10 @@ def _rewrite(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
         if text is None:
             return None
         shown = _answered_as_text(node) if found[1].interval else False
+        if shown is None and type(node) in _OPERATORS:
+            # an operator names no function, so no older refusal reads it (engine_refusals): its
+            # interval would reach ClickHouse as a type it has none of
+            raise Refused(Refusal("0A000", f"{name}() has no form on {_CLICKHOUSE}"), ruling=True)
         if shown is None:
             return None
         tree = sql.parsed(sql.text(text) if shown else text)
