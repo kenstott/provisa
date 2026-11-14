@@ -1938,6 +1938,11 @@ CREATE TABLE IF NOT EXISTS data_product_offers (
     profiles      BOOLEAN NOT NULL DEFAULT FALSE,
     open          BOOLEAN NOT NULL DEFAULT FALSE,
     duration_days INTEGER,
+    -- REQ-2180 (amended 2026-11-11): the offer's terms of use in prose, shown on its card and in
+    -- its contract; empty where it states none.
+    purpose       TEXT NOT NULL DEFAULT '',
+    usage         TEXT NOT NULL DEFAULT '',
+    limitations   TEXT NOT NULL DEFAULT '',
     version       INTEGER NOT NULL DEFAULT 1,
     published_by  TEXT,
     review        TEXT,
@@ -1945,6 +1950,9 @@ CREATE TABLE IF NOT EXISTS data_product_offers (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (product_id, name)
 );
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT '';
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT '';
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS limitations TEXT NOT NULL DEFAULT '';
 
 -- REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: for every offer, each dataset of the product has
 -- the contract that is the offer's terms applied to it, versioned on its own (offer_contracts).
@@ -1972,7 +1980,17 @@ CREATE TABLE IF NOT EXISTS data_product_bids (
     offer_version  INTEGER NOT NULL,
     terms          JSONB NOT NULL,
     requester      TEXT NOT NULL,
+    -- A bid's purpose, or a cancel's reason.
     reason         TEXT NOT NULL,
+    -- REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): a bid's
+    -- kind of consumer (person, team, data_product, agent), who it named as approving it (the
+    -- product's owner role, or the host its hook reaches), and when its requester agreed to the
+    -- offer's terms of use, as ``terms`` holds them. NULL on a cancel.
+    consumer_kind  TEXT
+                   CONSTRAINT data_product_bids_consumer_kind_check
+                   CHECK (consumer_kind IN ('person', 'team', 'data_product', 'agent')),
+    approver       TEXT,
+    agreed_at      TIMESTAMPTZ,
     hook           TEXT NOT NULL,
     payload        JSONB NOT NULL,
     status         TEXT NOT NULL DEFAULT 'pending'
@@ -1984,6 +2002,11 @@ CREATE TABLE IF NOT EXISTS data_product_bids (
     granted        JSONB,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS consumer_kind TEXT
+    CONSTRAINT data_product_bids_consumer_kind_check
+    CHECK (consumer_kind IN ('person', 'team', 'data_product', 'agent'));
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS approver TEXT;
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS agreed_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_data_product_bids_product ON data_product_bids(product_id);
 
 -- Bridge table: every registered user table → its meta:registered_tables row

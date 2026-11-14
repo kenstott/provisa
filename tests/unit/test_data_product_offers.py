@@ -161,6 +161,49 @@ async def test_a_changed_offer_counts_its_version_up_and_an_unchanged_one_does_n
         assert (changed["version"], changed["published_by"]) == (2, "o2")
 
 
+_TERMS_OF_USE = {
+    "purpose": "Churn analysis for the retention team.",
+    "usage": "Monthly churn models and their dashboards.",
+    "limitations": "Not for individual credit decisions; no re-identification.",
+}
+
+
+@pytest.mark.asyncio
+async def test_an_offer_stores_and_returns_its_terms_of_use(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        saved = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="analysts", role_id="viewer", **_TERMS_OF_USE),
+            offer_id=None,
+            by="o1",
+        )
+        held = await offers.get_offer(conn, saved["id"])
+        assert held is not None
+        assert {k: held[k] for k in _TERMS_OF_USE} == _TERMS_OF_USE
+        assert offers.as_offer(held) == DataProductOffer(
+            name="analysts", role_id="viewer", **_TERMS_OF_USE
+        )
+        listed = {o["name"]: o for o in await offers.list_offers(conn, "c360")}
+        assert listed["analysts"]["limitations"] == _TERMS_OF_USE["limitations"]
+        # The default offer states none until its owner writes them.
+        assert (listed["default"]["purpose"], listed["default"]["usage"]) == ("", "")
+
+
+@pytest.mark.asyncio
+async def test_changing_an_offers_terms_of_use_counts_its_version_up(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        offer = await _default(conn)
+        changed = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="default", role_id="viewer", usage="Reporting only."),
+            offer_id=offer["id"],
+            by="o1",
+        )
+        assert (changed["version"], changed["usage"]) == (2, "Reporting only.")
+
+
 @pytest.mark.asyncio
 async def test_two_offers_of_a_product_have_two_names(control_plane):
     async with _store(control_plane) as db, db.acquire() as conn:
@@ -261,8 +304,18 @@ async def test_an_offers_contracts_are_stored_one_per_dataset(control_plane):
 # -- bids ------------------------------------------------------------------------------------------
 
 
-async def _bid(conn, offer: dict, requester: str = "u1", reason: str = "r") -> dict:
-    """``requester`` bids for ``offer``, the request landing in the local queue."""
+async def _bid(
+    conn,
+    offer: dict,
+    requester: str = "u1",
+    reason: str = "r",
+    *,
+    consumer_kind: str = "person",
+    agreed: bool = True,
+) -> dict:
+    """``requester`` bids for ``offer`` for a consumer of ``consumer_kind``, stating its purpose
+    (``reason``) and agreeing (or not) to its terms of use; the request lands in the local queue,
+    the product's owner role approving it."""
     request_id = offer_hooks.new_request_id()
     return await offers.bid(
         conn,
@@ -270,6 +323,9 @@ async def _bid(conn, offer: dict, requester: str = "u1", reason: str = "r") -> d
         offer["id"],
         requester=requester,
         reason=reason,
+        consumer_kind=consumer_kind,
+        agreed=agreed,
+        approver="owner",
         request_id=request_id,
         hook=offer_hooks.LOCAL,
         payload=await offer_hooks.payload(
@@ -279,6 +335,7 @@ async def _bid(conn, offer: dict, requester: str = "u1", reason: str = "r") -> d
             product_id="c360",
             offer_row=offer,
             reason=reason,
+            consumer_kind=consumer_kind,
         ),
     )
 
@@ -315,6 +372,56 @@ async def test_a_bid_states_why_and_one_is_pending_per_requester(control_plane):
         with pytest.raises(OfferRefused) as again:
             await _bid(conn, offer, reason="again")
         assert again.value.code == "bid_pending"
+
+
+@pytest.mark.asyncio
+async def test_a_bid_carries_its_approver_consumer_kind_purpose_and_agreement(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        offer = await _default(conn)
+        offer = await offers.save(
+            conn,
+            "c360",
+            DataProductOffer(name="default", role_id="viewer", **_TERMS_OF_USE),
+            offer_id=offer["id"],
+            by="o1",
+        )
+        held = await _bid(conn, offer, reason="Retention dashboard", consumer_kind="team")
+        assert (held["approver"], held["consumer_kind"], held["reason"]) == (
+            "owner",
+            "team",
+            "Retention dashboard",
+        )
+        assert held["agreed_at"] is not None
+        # What was agreed to is the offer's terms of use as bid.
+        assert {k: held["terms"][k] for k in _TERMS_OF_USE} == _TERMS_OF_USE
+        assert held["payload"]["consumer_kind"] == "team"
+        assert held["payload"]["offer"]["limitations"] == _TERMS_OF_USE["limitations"]
+
+
+@pytest.mark.asyncio
+async def test_a_bid_that_does_not_agree_to_the_terms_is_refused(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        offer = await _default(conn)
+        with pytest.raises(OfferRefused) as refused:
+            await _bid(conn, offer, agreed=False)
+        assert refused.value.code == "terms_not_agreed"
+        assert await offers.list_bids(conn, "c360") == []
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("kind", ["person", "team", "data_product", "agent"])
+async def test_a_bid_is_for_a_person_a_team_a_data_product_or_an_agent(control_plane, kind):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        held = await _bid(conn, await _default(conn), consumer_kind=kind)
+        assert held["consumer_kind"] == kind
+
+
+@pytest.mark.asyncio
+async def test_a_bid_for_another_kind_of_consumer_is_refused(control_plane):
+    async with _store(control_plane) as db, db.acquire() as conn:
+        with pytest.raises(OfferRefused) as refused:
+            await _bid(conn, await _default(conn), consumer_kind="robot")
+        assert refused.value.code == "consumer_kind_unknown"
 
 
 @pytest.mark.asyncio
@@ -441,9 +548,13 @@ async def test_a_bid_carries_who_asks_the_terms_the_contract_versions_the_reason
                 "dq_results": True,
                 "profiles": False,
                 "duration_days": None,
+                "purpose": "",
+                "usage": "",
+                "limitations": "",
             },
             "contracts": {"sales.orders": "1.0.0", "sales.customers": "1.0.0"},
             "reason": "churn study",
+            "consumer_kind": "person",
         }
 
 
@@ -460,6 +571,9 @@ async def test_a_repeated_request_id_is_the_same_request(control_plane):
                 offer["id"],
                 requester="u2",
                 reason="r",
+                consumer_kind="person",
+                agreed=True,
+                approver="owner",
                 request_id=held["request_id"],
                 hook=offer_hooks.LOCAL,
                 payload=held["payload"],

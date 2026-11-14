@@ -132,11 +132,13 @@ async def payload(
     product_id: str,
     offer_row: Mapping[str, Any],
     reason: str,
+    consumer_kind: str,
 ) -> dict[str, Any]:
     """The bid the outbound hook carries: who asks, the offer and its terms (role, data level,
-    sample views, data quality results, profiles, duration), the version of each contract the
-    offer gives, the reason, and the request's id. Datasets and views are named as an entitlement
-    list names them, as what accepting grants is."""
+    sample views, data quality results, profiles, duration, and the terms of use the requester
+    agreed to), the version of each contract the offer gives, the reason (the bid's purpose), the
+    kind of consumer it is for, and the request's id. Datasets and views are named as an
+    entitlement list names them, as what accepting grants is."""
     contracts = await offers.contracts(conn, int(offer_row["id"]))
     names = await offers.sql_names(conn, [*contracts, *offer_row["sample_views"]])
     return {
@@ -152,9 +154,13 @@ async def payload(
             "dq_results": offer_row["dq_results"],
             "profiles": offer_row["profiles"],
             "duration_days": offer_row["duration_days"],
+            "purpose": offer_row["purpose"],
+            "usage": offer_row["usage"],
+            "limitations": offer_row["limitations"],
         },
         "contracts": {names[t]: c.version for t, c in sorted(contracts.items())},
         "reason": reason,
+        "consumer_kind": consumer_kind,
     }
 
 
