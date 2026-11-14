@@ -341,6 +341,8 @@ def _with_value(node: exp.Expr) -> exp.Expr:
 
 
 def _form(node: exp.Expr, engine: _Engine, dialect: str) -> exp.Expr | None:
+    if isinstance(node, exp.TimestampTrunc) and node.args.get("zone") is not None:
+        return None  # the start of a unit at the zone the call names: a function's form, or none
     value = node.expression if isinstance(node, exp.Extract) else node.this
     plain = _plain_form(node, value, engine, dialect)
     held = dialect == "clickhouse" and _computed(value)

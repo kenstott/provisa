@@ -718,6 +718,124 @@ def to_precision(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(replacement(form, dialect, pattern), {"a": value})
 
 
+#: date_trunc's units of an instant, PostgreSQL's names (timestamptz_trunc_internal), and those
+#: whose start is read in the zone's offset at that start (redotz): a day and longer.
+_TRUNC_UNITS = frozenset(
+    {"microseconds", "milliseconds", "second", "minute", "hour", "day", "week", "month",
+     "quarter", "year", "decade", "century", "millennium"}
+)  # fmt: skip
+_REDONE = frozenset({"day", "week", "month", "quarter", "year", "decade", "century", "millennium"})
+
+
+def _offset_of_wall(wall: datetime.datetime, zone: zoneinfo.ZoneInfo) -> datetime.timedelta:
+    """The offset PostgreSQL reads a wall time at ``zone`` in (DetermineTimeZoneOffset): in a gap
+    the offset before the transition, in an overlap the one after it."""
+    before = wall.replace(tzinfo=zone, fold=0).utcoffset()
+    after = wall.replace(tzinfo=zone, fold=1).utcoffset()
+    assert before is not None and after is not None  # a ZoneInfo answers every wall time
+    if before == after:
+        return before
+    overlap = before > after  # a fall-back: the later reading is after the transition
+    return after if overlap else before
+
+
+def _started_at_zone(
+    instant: datetime.datetime, unit: str, zone: zoneinfo.ZoneInfo
+) -> datetime.datetime:
+    """date_trunc(unit, instant, zone) as PostgreSQL computes it, the instant a UTC wall time:
+    its wall time at the zone truncated, then read back at the zone's offset (the instant's own,
+    for a unit shorter than a day)."""
+    utc = instant.replace(tzinfo=datetime.timezone.utc)
+    local = utc.astimezone(zone)
+    offset = local.utcoffset()
+    assert offset is not None
+    wall = local.replace(tzinfo=None)
+    year = wall.year
+    if unit == "millennium":
+        wall = datetime.datetime((year + 999) // 1000 * 1000 - 999, 1, 1)
+    elif unit == "century":
+        wall = datetime.datetime((year + 99) // 100 * 100 - 99, 1, 1)
+    elif unit == "decade":
+        wall = datetime.datetime(year // 10 * 10, 1, 1)
+    elif unit == "year":
+        wall = datetime.datetime(year, 1, 1)
+    elif unit == "quarter":
+        wall = datetime.datetime(year, 3 * ((wall.month - 1) // 3) + 1, 1)
+    elif unit == "month":
+        wall = datetime.datetime(year, wall.month, 1)
+    elif unit == "week":
+        day = wall.date() - datetime.timedelta(days=wall.weekday())
+        wall = datetime.datetime(day.year, day.month, day.day)
+    elif unit == "day":
+        wall = datetime.datetime(year, wall.month, wall.day)
+    elif unit == "hour":
+        wall = wall.replace(minute=0, second=0, microsecond=0)
+    elif unit == "minute":
+        wall = wall.replace(second=0, microsecond=0)
+    elif unit == "second":
+        wall = wall.replace(microsecond=0)
+    elif unit == "milliseconds":
+        wall = wall.replace(microsecond=wall.microsecond // 1000 * 1000)
+    if unit in _REDONE:
+        offset = _offset_of_wall(wall, zone)
+    return wall - offset
+
+
+def started_at_zone(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """date_trunc(unit, instant, zone) of a literal instant, unit and zone: the start computed as
+    the statement is translated (the zone's rules are Python's tzdata), held as DateTime64(6,
+    'UTC'); one inside the bound, else the raise. A NULL of any answers NULL. Any value a row
+    computes keeps the refusal by name."""
+    unit_node, zone_node = node.args.get("unit"), node.args.get("zone")
+    if unit_node is None or zone_node is None:
+        return None
+    pattern = "date_trunc($u, $t)"
+    instants = _literal_instants(node.this)
+    if instants is None or len(instants) != 1:
+        return None
+    (instant,) = instants
+    unit = _unit_text(unit_node)
+    if unit is None:
+        return None
+    if _is_null(zone_node) or instant is None or unit == "":
+        return replacement(_NULL_INSTANT, dialect, pattern)
+    if current_zone.get() is not None:
+        return None  # a literal with no offset is read in the session's zone
+    name = _string_literal(zone_node)
+    if name not in _ZONES or unit.lower() not in _TRUNC_UNITS:
+        return None
+    if not _inside(instant):
+        return raised("date_trunc", dialect, pattern, INSTANT)
+    start = _started_at_zone(instant, unit.lower(), zoneinfo.ZoneInfo(name))
+    if not _inside(start):
+        return raised("date_trunc", dialect, pattern, INSTANT)
+    held = f"CAST('{start.isoformat(sep=' ', timespec='microseconds')}' AS {INSTANT})"
+    return replacement(held, dialect, pattern)
+
+
+def _unit_text(unit: exp.Expr) -> str | None:
+    """A unit's text ('' for a NULL); None for one the statement does not write."""
+    node = unit.unnest()
+    while isinstance(node, exp.Cast):
+        node = node.this.unnest()
+    if isinstance(node, exp.Null):
+        return ""
+    if isinstance(node, exp.Var) or (isinstance(node, exp.Literal) and node.is_string):
+        return node.name
+    return None
+
+
+_AT_ZONE_TRUNC_STATED = (
+    "Of a literal instant, unit and zone (a region's IANA name or UTC): the start is computed as "
+    "the statement is translated, by PostgreSQL's rules (its wall time at the zone truncated, a "
+    "day or longer read back at the zone's offset then, a gap's before and an overlap's after), "
+    "with Python's tzdata; held as DateTime64(6, 'UTC'), exact from 1900-01-01 to 2299-12-31. "
+    f"An instant or a start outside {BOUND} raises 0A000 ({out_of_bound('date_trunc')}). A NULL "
+    "of any answers NULL. An instant, unit or zone a row computes, a VALUES list, an "
+    "abbreviation or a POSIX zone is refused by name; so is any literal on a session off UTC."
+)
+
+
 _LITERALS_STATED = (
     "Held as DateTime64(6, 'UTC'), exact from 1900-01-01 to 2299-12-31, of an instant written as "
     "a literal (or a VALUES list of them): its answer is read here first, and one outside "
@@ -749,6 +867,60 @@ def _literal_feature(
     )
 
 
+#: ClickHouse's instant as pg_ranges writes it: a type of its own, which sqlglot holds by name.
+_CLICKHOUSE_INSTANT = re.compile(r"(?:Nullable\()?DateTime64\(6, 'UTC'\)\)?")
+
+
+def held_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A cast of an instant to ClickHouse's own (DateTime64(6, 'UTC')), as pg_ranges writes a
+    tstzrange's bounds: the instant as it is held, a literal outside the bound raised. On a
+    session off UTC a literal keeps its refusal by name."""
+    if not (
+        isinstance(node, exp.Cast) and _CLICKHOUSE_INSTANT.fullmatch(node.to.sql("clickhouse"))
+    ):
+        return None
+    if not _plain(node.this):
+        return None
+    read = _checked(node.this, _OF["timestamptz"])
+    if read is None:
+        return None
+    if current_zone.get() is not None and read in (_Read.LITERAL, _Read.OUTSIDE):
+        return None
+    pattern = "f($a)"
+    if read is _Read.OUTSIDE:
+        return raised("tstzrange", dialect, pattern, INSTANT)
+    return graft(replacement(f"CAST($a AS {INSTANT})", dialect, pattern), {"a": node.this})
+
+
+def to_char_of_null(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """to_char(timestamptz, text) of a NULL instant or a NULL template: NULL, as the STRICT
+    function answers. Any other call keeps its refusal by name: the template reaches the
+    translator as sqlglot's strftime text, which no longer tells PostgreSQL's YYYY from a literal
+    %Y, so no form can be read as exact."""
+    if not isinstance(node, exp.TimeToStr):
+        return None
+    value, template = node.this, node.args.get("format")
+    if template is None or _checked(value, _OF["timestamptz"]) is None:
+        return None
+    if not (_is_null(value) or _is_null(template)):
+        return None
+    return replacement("CAST(NULL AS Nullable(String))", dialect, "to_char($a, $b)")
+
+
+_TO_CHAR_STATED = (
+    "Of a NULL instant or a NULL template only: NULL, as the strict function answers. Any other "
+    "call is refused by name (to_char() has no form on clickhouse): the template reaches the "
+    "translator as strftime text, in which PostgreSQL's YYYY and a literal %Y are the same, so "
+    "no form of it is exact."
+)
+
+
+_HELD_INSTANT_STATED = (
+    _ONE_HELD.format("tstzrange")
+    + " The cast is the one a tstzrange's form writes of its bounds (pg_ranges); a NULL, a column "
+    "of a VALUES list and a literal are read, any other value is refused by name."
+)
+
 FEATURES += (
     _parts("date_part", "a double precision"),
     _parts("extract", "a numeric"),
@@ -767,7 +939,32 @@ FEATURES += (
         "timestamptz(timestamptz, integer)", "timestamptz($a, $n)", to_precision,
         "An instant rounded to a number of digits of a second.", _PRECISION_STATED,
     ),
+    Feature(
+        "to_char(timestamptz, text)", FAMILY, "An instant's text in a template.",
+        read=Side(
+            rules=(
+                Rule(
+                    "to_char($a, $b)",
+                    {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                     _CLICKHOUSE: Rewrite(to_char_of_null)},
+                    unlisted_keep=True,
+                ),
+            ),
+            limitations={_CLICKHOUSE: (Limitation(_TO_CHAR_STATED),)},
+        ),
+    ),
+    Feature(
+        "cast(timestamptz as DateTime64)", FAMILY,
+        "An instant as ClickHouse holds one, as a tstzrange's form reads its bounds.",
+        read=Side(
+            rules=(Rule(None, {_CLICKHOUSE: Rewrite(held_instant)}),),
+            limitations={_CLICKHOUSE: (Limitation(_HELD_INSTANT_STATED),)},
+        ),
+    ),
 )  # fmt: skip
+
+#: clickhouse's date_trunc row's limitation of a call that names a zone.
+AT_ZONE_TRUNC_STATED = _AT_ZONE_TRUNC_STATED
 
 #: zones' timezone(text, value) row's ClickHouse form, and its limitation there.
 AT_ZONE = Rewrite(at_zone)

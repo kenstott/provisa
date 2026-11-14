@@ -21,7 +21,7 @@ from __future__ import annotations
 from provisa.transpiler.polyfill import (
     aggregates,
     arrays,
-    bytes,
+    bytea,
     calls,
     casts,
     clickhouse,
@@ -83,7 +83,7 @@ GRID = Grid(
     + snapshots.FEATURES
     + instants.FEATURES
     + geometric.FEATURES
-    + bytes.FEATURES
+    + bytea.FEATURES
 )
 
 __all__ = [

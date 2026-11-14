@@ -285,7 +285,7 @@ def started(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     if said in _INSTANTS:
         if node.args.get("zone") is not None:
-            return None  # the start of a unit in the zone it names: refused by name
+            return instants.started_at_zone(node, dialect)  # of literals, or refused by name
         answers, raised = instants.zoned_instant(
             node.this, "date_trunc", dialect, "date_trunc($u, $t)"
         )
@@ -293,6 +293,8 @@ def started(node: exp.Expr, dialect: str) -> exp.Expr | None:
             return None
         if raised is not None:
             return raised
+    elif node.args.get("zone") is not None:
+        return None  # a timestamp PostgreSQL reads as an instant to truncate at the zone
     unit = _unit_said(node.args.get("unit"))
     return None if unit is None else truncated(unit, node.this)
 
@@ -302,7 +304,10 @@ DATE_TRUNC = Feature(
     FAMILY,
     "The start of a unit of a timestamp.",
     read=Side(
-        rules=(Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}, unlisted_keep=True),),
+        rules=(
+            Rule("date_trunc($u, $t)", {"clickhouse": Rewrite(started)}, unlisted_keep=True),
+            Rule("date_trunc($u, $t, $z)", {"clickhouse": Rewrite(started)}, unlisted_keep=True),
+        ),
         limitations={
             "clickhouse": (
                 Limitation(
@@ -313,6 +318,7 @@ DATE_TRUNC = Feature(
                     "clickhouse): the start of a unit is the session zone's. Of an interval, "
                     "refused by name."
                 ),
+                Limitation("At a zone the call names: " + instants.AT_ZONE_TRUNC_STATED),
             )
         },
     ),

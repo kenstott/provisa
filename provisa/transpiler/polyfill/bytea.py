@@ -198,14 +198,14 @@ def _outside(count: str) -> str:
 
 _GET_BIT = (
     f"CASE WHEN {_outside('length($a) * 8')} THEN {_raise('2202E', _INDEX, _INT)} "
-    f"ELSE CAST(bitAnd(bitShiftRight({_BYTE_AT.format(at='intDiv($n, 8) + 1')}, $n % 8), 1) "
+    f"ELSE CAST(bitAnd(bitShiftRight({_BYTE_AT.format(at='intDiv($n, 8) + 1')}, bitAnd($n, 7)), 1) "
     f"AS {_INT}) END"
 )
 _GET_BYTE = (
     f"CASE WHEN {_outside('length($a)')} THEN {_raise('2202E', _INDEX, _INT)} "
     f"ELSE CAST({_BYTE_AT.format(at='$n + 1')} AS {_INT}) END"
 )
-_BIT_OF = "bitShiftLeft(toUInt8(1), $n % 8)"
+_BIT_OF = "bitShiftLeft(toUInt8(1), bitAnd($n, 7))"
 _SET_BIT = (
     f"CASE WHEN {_outside('length($a) * 8')} THEN {_raise('2202E', _INDEX, _BYTES)} "
     f"WHEN $v <> 0 AND $v <> 1 THEN {_raise('22023', _BIT, _BYTES)} "
@@ -550,7 +550,8 @@ def _feature(
     forms = {**kept, _CLICKHOUSE: _rewrite(name, call)}
     rules = tuple(Rule(p, forms, unlisted_keep=True) for p in patterns)
     if plain_call:
-        rules += (Rule(None, {**kept, _CLICKHOUSE: _rewrite(name, call, plain=True)}),)
+        plain = _rewrite(name, call, plain=True)
+        rules += (Rule(None, {**kept, _CLICKHOUSE: plain}, unlisted_keep=True),)
     return Feature(
         feature,
         FAMILY,

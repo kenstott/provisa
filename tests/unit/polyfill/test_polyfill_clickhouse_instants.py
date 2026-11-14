@@ -133,7 +133,7 @@ def test_comparisons_of_an_instant_answer_postgresql_on_clickhouse(runtime, sql,
 def test_every_other_dialect_keeps_what_it_had(dialect):
     sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
     call = sqlglot.parse_one(sql, read="postgres").selects[0].this.expression  # past pg_catalog
-    assert len(instants.FEATURES) == 37 + 10
+    assert len(instants.FEATURES) == 37 + 12
     for feature in instants.FEATURES:
         (rule,) = feature.read.rules
         # A row of no pattern (max, min, date: other rows read those names; date_part, extract: a
@@ -319,9 +319,6 @@ def test_isfinite_reads_only_that_a_value_is_there(runtime):
         # A row of another type: PostgreSQL's coercion of it to an instant is not read here.
         ('SELECT pg_catalog."max"(c1) AS v FROM (VALUES (\'2024-06-15 12:30:45+00\'::timestamp with time zone), '
          "('2024-06-15'::date)) AS t(c1)", "max"),
-        # The start of a unit in the zone the call names.
-        ("SELECT pg_catalog.\"date_trunc\"('day'::text, '1999-12-31 23:59:59+02'::timestamp with time zone, "
-         "'Asia/Tokyo'::text) AS v", "date_trunc"),
     ],
 )  # fmt: skip
 def test_a_function_of_one_instant_the_row_does_not_read_is_refused_by_name(sql, function):
@@ -355,8 +352,8 @@ def test_each_function_of_one_instant_states_its_bound():
         "date_trunc",
     ):
         feature = next(f for f in GRID.features if f.name == name)
-        (stated,) = feature.read.limitations["clickhouse"]
-        assert instants.BOUND in stated.text and "{" not in stated.text
+        for stated in feature.read.limitations["clickhouse"]:  # date_trunc: and at a zone
+            assert instants.BOUND in stated.text and "{" not in stated.text
     isfinite = next(f for f in GRID.features if f.name == "isfinite(timestamptz)")
     (stated,) = isfinite.read.limitations["clickhouse"]
     assert "{" not in stated.text and "infinity" in stated.text
@@ -568,3 +565,123 @@ def test_the_day_of_a_value_a_call_computes_answers_postgresql(runtime, day, val
 def test_the_day_of_a_call_past_the_bound_raises_the_call(runtime, spelled, function, value):
     error = _raised(runtime, spelled(value))
     assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound(function))
+
+
+# --- date_trunc at a zone, tstzrange's bounds, to_char of a NULL (J1305) -------------------------
+
+
+def _trunc_at(unit: str, value: str, zone: str) -> str:
+    return f"SELECT pg_catalog.\"date_trunc\"('{unit}'::text, {value}::{_TZ}, '{zone}'::text) AS v"
+
+
+def _utc(*parts: int) -> datetime.datetime:
+    return datetime.datetime(*parts, tzinfo=_UTC)
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        ('SELECT pg_catalog."date_trunc"(NULL::text, NULL::timestamp with time zone, NULL::text) AS v', None),
+        (_trunc_at("day", "NULL", "Asia/Tokyo"), None),
+        # 20:30 UTC is 05:30 the next day in Tokyo: that day's midnight there.
+        (_trunc_at("day", "'2024-06-15 20:30:45+00'", "Asia/Tokyo"), _utc(2024, 6, 15, 15)),
+        (_trunc_at("month", "'2024-06-15 12:00:00+00'", "America/New_York"), _utc(2024, 6, 1, 4)),
+        (_trunc_at("year", "'2024-06-15 12:00:00+00'", "Europe/London"), _utc(2024, 1, 1)),
+        (_trunc_at("week", "'2024-06-15 12:00:00+00'", "UTC"), _utc(2024, 6, 10)),
+        (_trunc_at("quarter", "'2024-06-15 12:00:00+00'", "Asia/Kolkata"), _utc(2024, 3, 31, 18, 30)),
+        (_trunc_at("century", "'2024-06-15 12:00:00+00'", "UTC"), _utc(2001, 1, 1)),
+        (_trunc_at("millennium", "'2024-06-15 12:00:00+00'", "UTC"), _utc(2001, 1, 1)),
+        (_trunc_at("decade", "'2024-06-15 12:00:00+00'", "UTC"), _utc(2020, 1, 1)),
+        (_trunc_at("minute", "'2024-06-15 12:34:56.789+00'", "Asia/Kathmandu"), _utc(2024, 6, 15, 12, 34)),
+        (_trunc_at("milliseconds", "'2024-06-15 12:34:56.789123+00'", "UTC"), _utc(2024, 6, 15, 12, 34, 56, 789000)),
+        # The second 01:30 of a fall-back (EST): an hour keeps the instant's own offset.
+        (_trunc_at("hour", "'2024-11-03 06:30:00+00'", "America/New_York"), _utc(2024, 11, 3, 6)),
+        # A day read back at the offset of its midnight (EDT), not the instant's (EST).
+        (_trunc_at("day", "'2024-11-03 12:00:00+00'", "America/New_York"), _utc(2024, 11, 3, 4)),
+        # A start the bound holds, of an instant whose day at the zone is past it.
+        (_trunc_at("day", "'2299-12-31 20:00:00+00'", "Asia/Tokyo"), _utc(2299, 12, 31, 15)),
+        # Refused by name before J1305: the start of a unit in the zone the call names.
+        (_trunc_at("day", "'1999-12-31 23:59:59+02'", "Asia/Tokyo"), _utc(1999, 12, 31, 15)),
+        # The call written as PostgreSQL's syntax reads it too.
+        ("SELECT date_trunc('day', '2024-06-15 20:30:45+00'::timestamptz, 'Asia/Tokyo') AS v", _utc(2024, 6, 15, 15)),
+    ],
+)  # fmt: skip
+def test_date_trunc_at_a_zone_answers_postgresql(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+def test_date_trunc_at_a_zone_past_the_bound_raises(runtime):
+    error = _raised(runtime, _trunc_at("day", "'2300-01-01 12:00:00+00'", "UTC"))
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound("date_trunc"))
+    # Its start at the zone is before the bound: 1900-01-01 00:30 UTC is 1899-12-31 in New York.
+    error = _raised(runtime, _trunc_at("day", "'1900-01-01 00:30:00+00'", "America/New_York"))
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound("date_trunc"))
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        # A zone abbreviation, an instant a row computes, a unit PostgreSQL refuses.
+        _trunc_at("day", "'2024-06-15 12:00:00+00'", "EST"),
+        "SELECT pg_catalog.\"date_trunc\"('day'::text, now(), 'Asia/Tokyo'::text) AS v",
+        _trunc_at("fortnight", "'2024-06-15 12:00:00+00'", "UTC"),
+        # A timestamp PostgreSQL reads as an instant first: was answered ignoring the zone.
+        "SELECT pg_catalog.\"date_trunc\"('day'::text, '2024-06-15 20:30:45'::timestamp, 'Asia/Tokyo'::text) AS v",
+    ],
+)  # fmt: skip
+def test_date_trunc_at_a_zone_the_row_does_not_read_is_refused_by_name(sql):
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert str(refused.value) == "date_trunc() has no form on clickhouse"
+
+
+def test_off_utc_date_trunc_at_a_zone_is_refused_by_name(off_utc):
+    with pytest.raises(FunctionRefused):
+        transpile(_trunc_at("day", "'2024-06-15 12:00:00+00'", "Asia/Tokyo"), "clickhouse")
+
+
+def _range(lower: str, upper: str, bounds: str) -> str:
+    return f"SELECT pg_catalog.\"tstzrange\"({lower}::{_TZ}, {upper}::{_TZ}, '{bounds}'::text) AS v"
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        # The run's statement: refused before (cast() has no form on clickhouse).
+        (_range("NULL", "NULL", "[]"), "(,)"),
+        (_range("NULL", "'2024-01-01 00:00:00+00'", "[]"), '(,"2024-01-01 00:00:00+00"]'),
+        ("SELECT pg_catalog.\"tstzrange\"(c, NULL::timestamp with time zone, '[)'::text) AS v "
+         "FROM (VALUES ('2024-01-01 00:00:00+00'::timestamp with time zone)) AS t(c)", '["2024-01-01 00:00:00+00",)'),
+    ],
+)  # fmt: skip
+def test_tstzrange_of_its_bounds_answers_postgresql(runtime, sql, answer):
+    assert _one(runtime, sql) == answer
+
+
+def test_tstzrange_of_a_row_past_the_bound_raises(runtime):
+    sql = (
+        "SELECT pg_catalog.\"tstzrange\"(c, d, '(]'::text) AS v FROM (VALUES "
+        f"('2024-01-01 00:00:00+00'::{_TZ}, '2300-01-01 00:00:00+00'::{_TZ})) AS t(c, d)"
+    )
+    error = _raised(runtime, sql)
+    assert (error.sqlstate, str(error)) == ("0A000", instants.out_of_bound("tstzrange"))
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        f'SELECT pg_catalog."to_char"(NULL::{_TZ}, NULL::text) AS v',
+        f"SELECT pg_catalog.\"to_char\"('2024-01-01 00:00:00+00'::{_TZ}, NULL::text) AS v",
+        f"SELECT pg_catalog.\"to_char\"(NULL::{_TZ}, 'YYYY'::text) AS v",
+    ],
+)
+def test_to_char_of_a_null_is_null(runtime, sql):
+    assert _one(runtime, sql) is None
+
+
+def test_to_char_of_an_instant_keeps_its_refusal_by_name():
+    # The template reaches the translator as strftime text: YYYY and a literal %Y are the same.
+    sql = f"SELECT pg_catalog.\"to_char\"('2024-01-01 00:00:00+00'::{_TZ}, 'YYYY'::text) AS v"
+    with pytest.raises(FunctionRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert str(refused.value) == "to_char() has no form on clickhouse"
