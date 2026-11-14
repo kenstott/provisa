@@ -33,6 +33,7 @@ from __future__ import annotations
 
 import sqlite3
 import time
+from collections import defaultdict
 from pathlib import Path
 
 import httpx
@@ -174,12 +175,45 @@ def tier(tmp_path_factory):
     srv.start(timeout=240)
     try:
         yield srv
+        _close_opened(srv)
     finally:
         srv.stop_process()
 
 
+#: The sandboxes each tier here opened (its visitors' and named ones), by tier: the session's
+#: control plane is shared by every module's tier, and sandbox.max_concurrent counts every
+#: sandbox on it, so a module closes each of its own before its tier stops (_close_opened).
+_OPENED: defaultdict[object, set[str]] = defaultdict(set)
+#: How long the tier's reaper (every minute) has to delete the sandboxes a module aged.
+_CLOSE_WAIT_S = 200
+
+
 def _open(tier, name: str) -> httpx.Response:
-    return httpx.post(f"{tier.base_url}/public/demos/{name}", timeout=240)
+    resp = httpx.post(f"{tier.base_url}/public/demos/{name}", timeout=240)
+    if resp.status_code == 200:
+        _OPENED[tier].add(resp.json()["org_id"])
+    return resp
+
+
+def _close_opened(tier) -> None:
+    """Close every sandbox ``tier`` opened, through the tier's own idle expiry, then read back
+    that none of them remains. A named sandbox has no other close: its tab's closing marks nothing
+    (demo_sandbox_router.closing), and a tier's start keeps it (reap_visitors_of_another_release).
+    Each is aged past ``sandbox.idle_ttl`` and the tier's reaper, which runs every minute, deletes
+    it whole (demo_sandbox.reap: its org, its row, its token and its folder). A request that
+    reaches a sandbox after it is aged starts its expiry again, so the ones left are aged again
+    on every look."""
+    if tier not in _OPENED:  # it opened none
+        return
+    opened = sorted(_OPENED.pop(tier))
+    deadline = time.monotonic() + _CLOSE_WAIT_S
+    while left := _remaining(opened):
+        assert time.monotonic() < deadline, (
+            f"sandboxes still open {_CLOSE_WAIT_S}s after they were aged past their expiry: {left}",
+            tier.dump_stderr_debug()[-6000:],
+        )
+        _age(*left)
+        time.sleep(3)
 
 
 def _opened(tier, name: str) -> dict:
@@ -379,7 +413,7 @@ def test_an_idle_sandbox_is_deleted_whole(tier, beta):
     assert gone.status_code == 401, gone.text
 
 
-def _age(org_id: str) -> None:
+def _age(*org_ids: str) -> None:
     import os
 
     from sqlalchemy import create_engine, update
@@ -391,11 +425,33 @@ def _age(org_id: str) -> None:
         with engine.begin() as conn:
             conn.execute(
                 update(demo_sandboxes)
-                .where(demo_sandboxes.c.org_id == org_id)
+                .where(demo_sandboxes.c.org_id.in_(org_ids))
                 .values(last_active_at="2000-01-01T00:00:00+00:00")
             )
     finally:
         engine.dispose()
+
+
+def _remaining(org_ids: list[str]) -> list[str]:
+    """Those of ``org_ids`` the control plane still holds, as a sandbox or as an org."""
+    import os
+
+    from sqlalchemy import create_engine, select, union
+
+    from provisa.core.schema_admin import demo_sandboxes, orgs
+
+    engine = create_engine(os.environ["PLATFORM_DATABASE_URL"])
+    try:
+        with engine.connect() as conn:
+            rows = conn.execute(
+                union(
+                    select(demo_sandboxes.c.org_id).where(demo_sandboxes.c.org_id.in_(org_ids)),
+                    select(orgs.c.id).where(orgs.c.id.in_(org_ids)),
+                )
+            ).fetchall()
+    finally:
+        engine.dispose()
+    return sorted(r[0] for r in rows)
 
 
 class _Listener:
@@ -499,6 +555,7 @@ def _open_named(tier, name: str) -> dict:
         )
         if resp.status_code != 503 or resp.json().get("code") != "sandbox.demo_not_ready":
             assert resp.status_code == 200, (resp.text, _last_traceback(tier))
+            _OPENED[tier].add(resp.json()["org_id"])
             return resp.json()
         assert time.monotonic() < deadline, tier.dump_stderr_debug()[-6000:]
         time.sleep(2)
