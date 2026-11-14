@@ -3319,6 +3319,15 @@ OWN_FUNCTIONS = [
         ),
         NOT_READ,
     ),
+    (
+        Function(
+            "record_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="record",
+        ),
+        NOT_READ,
+    ),
     (Function("xid8in", "cstring", argtypes=("cstring",), rettype="xid8"), NOT_READ),
     (Function("xid8eq", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="boolean"), "no form"),
     (
@@ -3354,6 +3363,25 @@ GAPS = [
     ),
     (Function("network_eq", "inet, inet", argtypes=("inet", "inet"), rettype="boolean"), NOT_READ),
     (Function("interval_hash", "interval", argtypes=("interval",), rettype="integer"), NOT_READ),
+    # A type with a typmod reads it by the same shape: its own input, not a type's input by oid.
+    (
+        Function(
+            "interval_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="interval",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "numeric_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="numeric",
+        ),
+        NOT_READ,
+    ),
     (Function("row_to_json", "record", argtypes=("record",), rettype="json"), "no form"),
     (
         Function("record_eq", "record, record", argtypes=("record", "record"), rettype="boolean"),
