@@ -44992,7 +44992,20 @@
     delete and duplicate action is shown only to a role holding the right the server requires for that write,
     and a page is gated on the right that governs it, never on another page''s right used as a shared gate.
     (3) The earlier text saying a data steward registers tables, views and data products is withdrawn: a
-    steward governs meaning and access and does nothing operational (REQ-1944, REQ-2188).'
+    steward governs meaning and access and does nothing operational (REQ-1944, REQ-2188). (Amended 2026-11-14,
+    THE GATES FOR VIEWS, METRICS AND COMMANDS; BULK ACTIONS; THE DOMAINS PICKER:) Maintainer 2026-11-14,
+    from the audit of the standard roles. (1) Views: the page and its authoring actions ask create_view;
+    a role holding only query_development may request a view, which queues for approval, and does not author
+    one directly; registering a view never asks table_registration. (2) Metrics: authoring asks create_view,
+    in the UI and on the server; a role reads the metrics granted to it. (3) Commands: authoring asks table_registration;
+    a role holding command_execution is shown a read-only list of the commands assigned to it; marking a
+    command read-safe has a control for a role holding access_config. (4) A bulk action bar is shown only
+    to a role holding the page''s write right; a term''s edit and delete are offered only where the server
+    would accept them. (5) Requests and My Secrets open to every member; a view request is decided by approve_view
+    and a relationship request by approve_relationship. (6) The Roles page opens with access_config or user_management
+    and its definition actions ask user_management; row rule actions ask masking_config; triggers ask query_development
+    throughout; data quality has a page on dq_read with actions on dq_rw, and its checks never ask table_registration.
+    (7) The Domains picker lists a domain only when the acting role can read at least one table in it.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
