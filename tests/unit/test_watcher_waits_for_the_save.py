@@ -73,7 +73,12 @@ class _Commit:
 @pytest.fixture
 def commit() -> Iterator[_Commit]:
     held = _Commit()
-    model_change.attach(object(), commit=held, projected=frozenset({"roles"}))  # type: ignore[arg-type]
+    model_change.attach(
+        object(),  # type: ignore[arg-type]
+        commit=held,
+        projected=frozenset({"roles"}),
+        uri_org=lambda org_id: org_id,
+    )
     yield held
     held.release.set()
     model_change.detach()

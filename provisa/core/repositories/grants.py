@@ -24,7 +24,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, select, update
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from provisa.core.schema_org import (
     metrics,
     table_columns,
@@ -75,7 +75,15 @@ def _without(entry: dict, role_id: str) -> dict:
 async def revoke_from_table(conn: "Connection", table_id: int, role_id: str) -> bool | None:
     """Take ``role_id`` off every grant of the table: its columns' read grants and mask entries,
     and its write grants (REQ-2074)."""
-    model_change.name("revoke", "table grants", f"{role_id} on table {table_id}")
+    # REQ-1524: the grants are written in the table's file; the change is named at its URI.
+    from provisa.core.repositories.table import model_name
+
+    named = await model_name(conn, table_id)
+    if named is not None:
+        model_change.name(
+            f"revoke grants of role {role_id} on",
+            model_change.uri(model_uri.named_table_uri, named.domain_id, named.name),
+        )
     columns = await _revoke(
         conn,
         table_columns,
@@ -104,5 +112,10 @@ _OBJECT_TABLES: dict[str, "SaTable"] = {
 async def revoke_from_object(conn: "Connection", kind: str, name: str, role_id: str) -> bool | None:
     """Take ``role_id`` off a metric's, command's or webhook's assigned roles (``visible_to``)."""
     table = _OBJECT_TABLES[kind]
-    model_change.name("revoke", f"{kind} grants", f"{role_id} on {name}")
+    model_change.name(  # REQ-1524
+        f"revoke grants of role {role_id} on",
+        model_change.uri(model_uri.metric_uri, name)
+        if kind == "metric"
+        else model_change.uri(model_uri.command_uri, name),
+    )
     return await _revoke(conn, table, "name", table.c.name == name, ("visible_to",), role_id)
