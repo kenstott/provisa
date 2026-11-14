@@ -346,7 +346,7 @@ def _feature(function: str, kinds: tuple[str, str], body: str, summary: str) -> 
         FAMILY,
         summary,
         read=Side(
-            rules=(Rule(f"{function}($a, $b)", forms),),
+            rules=(Rule(f"{function}($a, $b)", forms, unlisted_keep=True),),
             limitations={_CLICKHOUSE: (Limitation(_HELD.format(function) + zoned),)},
         ),
     )
@@ -439,7 +439,7 @@ def _one_feature(
     ).format(function)
     if pattern:
         forms = {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, _CLICKHOUSE: rewrite}
-        rule = Rule(f"{function}($a)", forms)
+        rule = Rule(f"{function}($a)", forms, unlisted_keep=True)
     else:
         rule = Rule(None, {_CLICKHOUSE: rewrite})
     return Feature(
@@ -511,7 +511,7 @@ def _call_feature(
             **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
             _CLICKHOUSE: Rewrite(rewrite),
         }
-        rule = Rule(f"{function}({holes})", forms)
+        rule = Rule(f"{function}({holes})", forms, unlisted_keep=True)
     else:
         rule = Rule(None, {_CLICKHOUSE: Rewrite(rewrite)})
     return Feature(
@@ -863,7 +863,10 @@ def _literal_feature(
         feature,
         FAMILY,
         summary,
-        read=Side(rules=(Rule(pattern, forms),), limitations={_CLICKHOUSE: (Limitation(stated),)}),
+        read=Side(
+            rules=(Rule(pattern, forms, unlisted_keep=True),),
+            limitations={_CLICKHOUSE: (Limitation(stated),)},
+        ),
     )
 
 
