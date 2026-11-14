@@ -96122,7 +96122,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and the webhook answers take Provisa''s value, take the other system''s value, or hold. No answer in
     time, an error or any other answer is a hold, the same as a kind with no standing choice. The webhook
     is called the way the approval hook is (REQ-247: its transports and timeout setting), and every applied
-    difference records who decided it: the steward by name, a standing choice, or the webhook.'
+    difference records who decided it: the steward by name, a standing choice, or the webhook. (Amended
+    2026-11-14, AN ENTRY SAYS ITS DIRECTION:) Maintainer 2026-11-14. Each entry says which direction it
+    syncs: Export (Provisa to the system), Import (the system to Provisa), or both. The two directions are
+    named Export and Import everywhere, in place of ''sending'' and ''reading'' above, and each has its
+    own schedule, Run now and last result. A direction that is off never runs, on a schedule or by hand,
+    and lists no differences; an entry with Export only never changes Provisa, and one with Import only
+    never changes the other system.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
