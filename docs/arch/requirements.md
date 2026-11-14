@@ -1104,7 +1104,7 @@ When a Relationship is saved, the target_column on the target table is marked as
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Auto-generate GQL relationships from FK constraints in database schema introspection, so relationships are discoverable from FK metadata in addition to manual steward configuration and AI-assisted hints. (Amended 2026-11-14, DISCOVERY ASKS BEFORE IT RUNS:) Maintainer 2026-11-14: 'accidentally hitting the magic button kicks off the process'. The discovery button on the Relationships page opens a small dialog before anything runs, with two checkboxes, Foreign keys and Semantics, and Run and Cancel. Discovery runs only the kinds checked: foreign keys read from the sources' constraints, semantics inferred by the AI model. Semantics is offered only where an AI key is configured.
+Auto-generate GQL relationships from FK constraints in database schema introspection, so relationships are discoverable from FK metadata in addition to manual steward configuration and AI-assisted hints. (Amended 2026-11-14, DISCOVERY ASKS BEFORE IT RUNS:) Maintainer 2026-11-14: 'accidentally hitting the magic button kicks off the process'. The discovery button on the Relationships page opens a small dialog before anything runs, with two checkboxes, Foreign keys and Semantics, and Run and Cancel. Discovery runs only the kinds checked: foreign keys read from the sources' constraints, semantics inferred by the AI model. When no model for semantic inference is configured, Semantics is shown greyed out, unchecked, with the reason.
 
 **Use case:** Auto-generated FK relationships reduce manual relationship registration overhead while preserving steward control.
 

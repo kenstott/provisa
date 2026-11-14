@@ -3564,7 +3564,8 @@
     the magic button kicks off the process''. The discovery button on the Relationships page opens a small
     dialog before anything runs, with two checkboxes, Foreign keys and Semantics, and Run and Cancel. Discovery
     runs only the kinds checked: foreign keys read from the sources'' constraints, semantics inferred by
-    the AI model. Semantics is offered only where an AI key is configured.'
+    the AI model. When no model for semantic inference is configured, Semantics is shown greyed out, unchecked,
+    with the reason.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
