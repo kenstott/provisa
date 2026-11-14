@@ -24,7 +24,7 @@ it, whose results are granted to ``auditor``, signed in to by the user ``dq_bot`
 Expectations source; and a policy document with the section "Personal data".
 """
 
-# Requirements: REQ-2245
+# Requirements: REQ-2245, REQ-2248
 
 from __future__ import annotations
 
@@ -40,7 +40,7 @@ from provisa.api.errors import ApiError
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, reference_citations, registered_tables, sources
-from provisa.dq import regulation
+from provisa.dq import regulation, scan
 from provisa.dq.catalog import build_check_definition
 from provisa.dq.contract import build_contract, contract_checks
 from provisa.profiler import export
@@ -512,9 +512,12 @@ async def test_removing_the_check_from_its_contract_uncites_it(model):
     assert set(held) == {(None, second["objectKey"])}
 
 
-async def test_deleting_the_checker_table_uncites_its_checks(model):
+async def test_deleting_the_checker_table_retires_it_and_keeps_its_citations(model):
+    """REQ-2248: deleting the checker table retires it, and no rule drops a link to a retired
+    object: its checks' citations stay, for a person to settle (a restore finds them again)."""
     m = model
     await route.keep_regulation_check(_request(), m.orders, _body(m))
     async with m.db.acquire() as conn:
         assert await table_repo.delete(conn, m.soda)
-    assert await _citations(m) == 0
+        assert await scan.checker_tables(conn) == []
+    assert await _citations(m) == 1

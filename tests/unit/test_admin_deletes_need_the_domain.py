@@ -16,7 +16,7 @@ for a relationship, the domains of the tables a metric's expression reads, and t
 command or webhook sits in.
 """
 
-# Requirements: REQ-1531, REQ-1530
+# Requirements: REQ-1531, REQ-1530, REQ-2248
 
 from __future__ import annotations
 
@@ -157,8 +157,13 @@ def _info(role_id: str) -> Any:
 
 
 async def _names(db: Database, table, column: str = "name") -> set[str]:
+    """The objects of ``table`` in service: a deleted model object is retired, its row kept
+    (REQ-2248)."""
+    read = select(table.c[column])
+    if "retired" in table.c:
+        read = read.where(table.c.retired.is_(False))
     async with db.acquire() as conn:
-        return {r[0] for r in (await conn.execute_core(select(table.c[column]))).fetchall()}
+        return {r[0] for r in (await conn.execute_core(read)).fetchall()}
 
 
 # --- relationship: both tables' domains ----------------------------------------------------------

@@ -79,6 +79,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "data_product_commands": "data_product_commands_meta",  # REQ-1634
     "sources": "sources_meta",  # REQ-1443: identity and type only
     "model_names": "model_names_meta",  # REQ-194
+    "relationships": "relationships_meta",  # REQ-2248: a retired relationship is not listed
 }
 
 
