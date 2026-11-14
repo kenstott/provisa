@@ -670,7 +670,8 @@ def test_an_interval_answer_read_by_no_row_here_is_refused_by_name(around):
 def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
     """It names no function, so no older refusal reads it: on the base it reached ClickHouse as
     an INTERVAL type it has none of (an engine error)."""
-    with pytest.raises(RowRefused, match="interval_pl"):
+    # * 1 is interval_mul's row since J1337: the outermost operator no row reads is the one named
+    with pytest.raises(RowRefused, match="interval_mul"):
         transpile("SELECT ('1 day'::interval + '1 hour'::interval) * 1 IS NULL AS v", "clickhouse")
 
 
@@ -679,7 +680,8 @@ def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
 
 def test_every_row_states_its_bound_on_clickhouse():
     rows = [f for f in GRID.features if f.family == intervals.FAMILY]
-    assert len(rows) == 28  # the 27 calls, and the literal where no call reads it (J1337)
+    # the 27 calls, interval_mul, mul_d_interval and interval_div, and the literal (J1337)
+    assert len(rows) == 31
     for feature in rows:
         (limitation,) = feature.read.limitations["clickhouse"]
         assert "Tuple(months Int32, days Int32, microseconds Int64)" in limitation.text

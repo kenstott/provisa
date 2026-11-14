@@ -811,6 +811,186 @@ def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
     return form
 
 
+# --- an interval times or divided by a number ---------------------------------------------------
+
+#: A float8 literal's text, as ClickHouse's Float64 reads it: a special value by its name.
+_SPECIAL_FLOATS = {
+    "nan": "nan",
+    "infinity": "inf",
+    "+infinity": "inf",
+    "inf": "inf",
+    "+inf": "inf",
+    "-infinity": "-inf",
+    "-inf": "-inf",
+}
+#: The numeric types a factor's literal may be cast to: its double's value is the literal's.
+_DOUBLES = frozenset({"double precision", "float", "float8", "double", "numeric", "decimal"})
+_INTEGERS = frozenset({"integer", "int", "int4", "bigint", "int8", "smallint", "int2"})
+_REALS = frozenset({"real", "float4"})
+
+
+def _number_text(node: exp.Expr) -> str | None:
+    """A numeric literal's text, its sign kept (-2.25 is a minus of a literal)."""
+    value = node.unnest()
+    if isinstance(value, exp.Neg):
+        inner = _number_text(value.this)
+        return None if inner is None else ("-" + inner).replace("--", "")
+    if isinstance(value, exp.Literal) and not value.is_string:
+        return value.this
+    return None
+
+
+def _float(text: str) -> str | None:
+    """ClickHouse's Float64 of a float8's input text, as float8in reads it; None for no number."""
+    lowered = text.strip().lower()
+    if lowered in _SPECIAL_FLOATS:
+        return f"toFloat64('{_SPECIAL_FLOATS[lowered]}')"
+    try:
+        float(lowered)
+    except ValueError:
+        return None
+    return f"toFloat64('{lowered}')" if re.fullmatch(r"[+-]?[0-9.e+-]+", lowered) else None
+
+
+def _factor(argument: exp.Expr, untyped: bool) -> str | None:
+    """A factor read here: its Float64 (a numeric literal, one cast to a number, an untyped
+    string where the call takes a float8), "NULL" for a NULL; None for any other value."""
+    value = argument.unnest()
+    if isinstance(value, exp.Null):
+        return "NULL"
+    if isinstance(value, exp.Neg):
+        inner = _factor(value.this, untyped=False)
+        return (
+            None
+            if inner is None or inner == "NULL"
+            else (inner if inner == "NULL" else f"(-{inner})")
+        )
+    if isinstance(value, exp.Cast):
+        said = _said(value)
+        inner = value.this.unnest()
+        if isinstance(inner, exp.Null):
+            return "NULL"
+        text = _number_text(inner) if _string(inner) is None else _string(inner)
+        if text is None or said not in _DOUBLES | _INTEGERS | _REALS:
+            return None
+        if said in _INTEGERS:
+            return (
+                None if not re.fullmatch(r"[+-]?\d+", text.strip()) else f"toFloat64({int(text)})"
+            )
+        read = _float(text)
+        if read is not None and said in _REALS:
+            return f"toFloat64(toFloat32({read}))"
+        return read
+    if untyped and _string(value) is not None:
+        return _float(_string(value) or "")
+    text = _number_text(value)
+    return None if text is None else _float(text)
+
+
+def _fits(value: str, bits: int) -> str:
+    """FLOAT8_FITS_IN_INT32 / _INT64: the double inside the integer's range, NaN not."""
+    low = -(2 ** (bits - 1))
+    return f"({value} >= {float(low)!r} AND {value} < {float(-low)!r})"
+
+
+def _scaled(function: str, divide: bool) -> Callable[[_Sql, list[str]], str]:
+    """interval_mul and interval_div (PostgreSQL 17, timestamp.c), in Float64 as its C does them
+    in doubles: months and days scaled and truncated, their fractions cascaded down (a month's to
+    days at 30, rounded to a microsecond; a day's to seconds at 86400, rounded so), whole days of
+    the seconds carried, then the time scaled with the seconds and rounded half to even (rint).
+    22008 where a field overflows or the factor is NaN; 22012 for a division by zero; an
+    infinite factor's infinite answer (PostgreSQL 17's) has no form here: 0A000."""
+    op = "/" if divide else "*"
+    infinite = (
+        f"{function}() of an infinite factor answers an infinite interval, which has no form on "
+        f"{_CLICKHOUSE}"
+    )
+
+    def form(sql: _Sql, args: list[str]) -> str:
+        held, factor = args
+        if factor == "NULL":
+            return _NULL_HELD
+
+        def body(x: str, f: str) -> str:
+            nan, inf, zero = f"isNaN({f})", f"isInfinite({f})", f"({f} = 0)"
+            sane = f"(NOT {nan} AND NOT {inf}" + (f" AND NOT {zero})" if divide else ")")
+            return sql.let([f"if({sane}, {f}, 1.0)"], lambda g: scaled(x, f, g, sane))
+
+        def scaled(x: str, f: str, g: str, sane: str) -> str:
+            """``g`` the factor where it is a number the arithmetic reads, else 1 (its answer is
+            then a raise): ClickHouse converts a NaN or an infinity to no integer."""
+            m, d, u = (_field(x, i) for i in (1, 2, 3))
+            nan, inf, zero = f"isNaN({f})", f"isInfinite({f})", f"({f} = 0)"
+            rm, rd = f"(toFloat64({m}) {op} {g})", f"(toFloat64({d}) {op} {g})"
+            ok_m, ok_d = _fits(rm, 32), _fits(rd, 32)
+            rm_, rd_ = f"if({ok_m}, {rm}, 0.0)", f"if({ok_d}, {rd}, 0.0)"
+
+            def whole(mm: str, dd: str, fm: str, fd: str) -> str:
+                mrd = f"(roundBankers(({fm} - toFloat64({mm})) * 30 * 1000000.0) / 1000000.0)"
+
+                def remainders(mr: str) -> str:
+                    sr = (
+                        f"(roundBankers(({fd} - toFloat64({dd}) + {mr} - trunc({mr})) * 86400 "
+                        "* 1000000.0) / 1000000.0)"
+                    )
+
+                    def carried(s: str) -> str:
+                        over = f"(abs({s}) >= 86400)"
+                        whole_days = f"toInt64(trunc({s} / 86400))"
+                        days_carry = f"if({over}, {whole_days}, 0)"
+                        s2 = f"if({over}, {s} - toFloat64({whole_days} * 86400), {s})"
+
+                        def last(d2: str, s3: str) -> str:
+                            d3 = f"({d2} + toInt64(trunc({mr})))"
+                            rt = f"roundBankers(toFloat64({u}) {op} {g} + {s3} * 1000000.0)"
+                            ok_t = _fits(rt, 64)
+                            micros = f"toInt128(toInt64(if({ok_t}, {rt}, 0.0)))"
+                            bad = (
+                                f"(NOT {ok_m} OR NOT {ok_d} OR NOT {ok_t} OR "
+                                f"{d2} < {_I32_MIN} OR {d2} > {_I32_MAX} OR "
+                                f"{_outside(mm, d3, micros)})"
+                            )
+                            if divide:
+                                raised = " + ".join(
+                                    (
+                                        _raise("22012", "division by zero", zero),
+                                        _raise("22008", _RANGE, nan),
+                                        _raise("22008", _RANGE, f"({sane} AND {bad})"),
+                                    )
+                                )
+                                zeroed = f"(NOT {sane})"  # by an infinity: a zero interval
+                            else:
+                                raised = " + ".join(
+                                    (
+                                        _raise(
+                                            "22008", _RANGE, f"({nan} OR ({inf} AND {_key(x)} = 0))"
+                                        ),
+                                        _raise("0A000", infinite, f"({inf} AND {_key(x)} != 0)"),
+                                        _raise("22008", _RANGE, f"({sane} AND {bad})"),
+                                    )
+                                )
+                                zeroed = f"(NOT {sane})"
+                            return _fields_raising(
+                                f"if({zeroed}, 0, {mm})",
+                                f"if({zeroed}, 0, {d3})",
+                                f"if({zeroed}, 0, {micros})",
+                                raised,
+                            )
+
+                        return sql.let([f"({dd} + {days_carry})", s2], last)
+
+                    return sql.let([sr], carried)
+
+                return sql.let([mrd], remainders)
+
+            answer = sql.let([f"toInt64(trunc({rm_}))", f"toInt64(trunc({rd_}))", rm_, rd_], whole)
+            return f"if(isNull({m}) OR isNull({f}), {_NULL_HELD}, {answer})"
+
+        return sql.let([held, factor], body)
+
+    return form
+
+
 # --- the rows -----------------------------------------------------------------------------------
 
 
@@ -861,6 +1041,15 @@ def _rows() -> dict[str, _Row]:
     rows["max"] = _Row(frozenset({"max"}), "i", _extreme("max", "Max"), True, aggregate=True)
     rows["min"] = _Row(frozenset({"min"}), "i", _extreme("min", "Min"), True, aggregate=True)
     rows["sum"] = _Row(frozenset({"sum"}), "i", _sum, True, aggregate=True)
+    rows["interval_mul"] = _Row(
+        frozenset({"interval_mul"}), "if", _scaled("interval_mul", False), True, untyped=True
+    )
+    rows["mul_d_interval"] = _Row(
+        frozenset({"mul_d_interval"}), "fi", _scaled("mul_d_interval", False), True, untyped=True
+    )
+    rows["interval_div"] = _Row(
+        frozenset({"interval_div"}), "if", _scaled("interval_div", True), True, untyped=True
+    )
     for function, kinds, negate in (
         ("timestamp_pl_interval", "ti", False),
         ("timestamp_mi_interval", "ti", True),
@@ -896,6 +1085,8 @@ _OPERATORS: dict[type[exp.Expr], dict[str, str]] = {
     },
     exp.Sub: {"ii": "interval_mi", "ti": "timestamp_mi_interval", "di": "date_mi_interval"},
     exp.Neg: {"i": "interval_um"},
+    exp.Mul: {"if": "interval_mul", "fi": "mul_d_interval"},
+    exp.Div: {"if": "interval_div"},
 }
 
 
@@ -909,6 +1100,8 @@ def _kind(argument: exp.Expr) -> str | None:
         return "i"
     if isinstance(value, exp.Column) and _held_column(value):
         return "i"
+    if _factor(value, untyped=False) is not None and not isinstance(value, exp.Null):
+        return "f"
     if said in _KIND_TYPES["timestamp"]:
         return "t"
     if said == "date":
@@ -1028,6 +1221,8 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
                 return None
             unit = text if isinstance(text, str) else None
             continue
+        elif kind == "f":
+            value = _factor(argument, row.untyped)
         else:
             value = _instant(argument, "timestamp" if kind == "t" else "date", row.untyped)
         if value is None:
@@ -1039,6 +1234,8 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
         return row.form(sql, read[0], read[1])
     if row.kinds in ("it", "id"):
         return row.form(sql, read[1], read[0])
+    if row.kinds == "fi":
+        return row.form(sql, [read[1], read[0]])
     return row.form(sql, read)
 
 
@@ -1237,6 +1434,27 @@ _DOCS: dict[str, _Doc] = {
         "window, DISTINCT or FILTER is refused by name.",
     ),
 }
+_SCALED_STATED = (
+    _TEXT_STATED
+    + " PostgreSQL 17's arithmetic, in Float64 as its C does it in doubles: months and "
+    "days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 "
+    "seconds, each rounded to a microsecond), then the time rounded half to even. The factor is "
+    "read as the statement writes it: a number, a NULL, or one cast to a number; one a row "
+    "computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a "
+    "division by zero 22012, as PostgreSQL's do; an infinite factor's infinite answer is refused "
+    "(0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17's does."
+)
+_DOCS["interval_mul"] = _Doc(
+    "interval_mul(interval, double precision)", "An interval times a number (*).", _SCALED_STATED
+)
+_DOCS["mul_d_interval"] = _Doc(
+    "mul_d_interval(double precision, interval)", "A number times an interval (*).", _SCALED_STATED
+)
+_DOCS["interval_div"] = _Doc(
+    "interval_div(interval, double precision)",
+    "An interval divided by a number (/).",
+    _SCALED_STATED,
+)
 _SHIFT_STATED = (
     " The {} is read as a literal in ISO form or a NULL; any other is refused by name. The answer "
     "is held as DateTime64(6, 'UTC'): an answer, or the step of it after the months or after the "

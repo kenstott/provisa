@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-310 of the grid's 310 features are native on PostgreSQL and left out.
+313 of the grid's 313 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-125 of the grid's 310 features are native on DuckDB and left out.
+128 of the grid's 313 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -637,7 +637,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-44 of the grid's 310 features are native on Trino and left out.
+47 of the grid's 313 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1366,7 +1366,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-44 of the grid's 310 features are native on Presto and left out.
+47 of the grid's 313 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2095,7 +2095,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-44 of the grid's 310 features are native on Athena and left out.
+47 of the grid's 313 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2824,7 +2824,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 310 features are native on ClickHouse and left out.
+36 of the grid's 313 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3268,6 +3268,9 @@ function provisa.transpiler.polyfill.intervals.isfinite_of_intervals: isfinite o
 <tr><td><strong>max(interval)</strong><br>The largest of a group&#x27;s intervals.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.max_of_intervals: max of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. PostgreSQL answers the last of intervals that are equal but written apart (&#x27;1 mon&#x27; and &#x27;30 days&#x27;), in its scan&#x27;s order, which ClickHouse does not keep: such a tie for the largest raises 0A000. A window, DISTINCT or FILTER is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>min(interval)</strong><br>The smallest of a group&#x27;s intervals.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.min_of_intervals: min of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. PostgreSQL answers the last of intervals that are equal but written apart, in its scan&#x27;s order, which ClickHouse does not keep: such a tie for the smallest raises 0A000. A window, DISTINCT or FILTER is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>sum(interval)</strong><br>The sum of a group&#x27;s intervals.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.sum_of_intervals: sum of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. A total past a field raises 22008 (interval out of range). PostgreSQL raises it where a running total overflows, which depends on its scan&#x27;s order: where the rows of one sign alone reach a field&#x27;s end and the total does not, 0A000 is raised. A window, DISTINCT or FILTER is refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_mul(interval, double precision)</strong><br>An interval times a number (*).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_mul_of_intervals: interval_mul of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. PostgreSQL 17&#x27;s arithmetic, in Float64 as its C does it in doubles: months and days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 seconds, each rounded to a microsecond), then the time rounded half to even. The factor is read as the statement writes it: a number, a NULL, or one cast to a number; one a row computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a division by zero 22012, as PostgreSQL&#x27;s do; an infinite factor&#x27;s infinite answer is refused (0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17&#x27;s does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>mul_d_interval(double precision, interval)</strong><br>A number times an interval (*).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.mul_d_interval_of_intervals: mul_d_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. PostgreSQL 17&#x27;s arithmetic, in Float64 as its C does it in doubles: months and days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 seconds, each rounded to a microsecond), then the time rounded half to even. The factor is read as the statement writes it: a number, a NULL, or one cast to a number; one a row computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a division by zero 22012, as PostgreSQL&#x27;s do; an infinite factor&#x27;s infinite answer is refused (0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17&#x27;s does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_div(interval, double precision)</strong><br>An interval divided by a number (/).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_div_of_intervals: interval_div of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. PostgreSQL 17&#x27;s arithmetic, in Float64 as its C does it in doubles: months and days scaled and truncated, their fractions cascaded down (a month at 30 days, a day at 86400 seconds, each rounded to a microsecond), then the time rounded half to even. The factor is read as the statement writes it: a number, a NULL, or one cast to a number; one a row computes is refused by name. A field that overflows, or a NaN factor, raises 22008, and a division by zero 22012, as PostgreSQL&#x27;s do; an infinite factor&#x27;s infinite answer is refused (0A000), and a division by an infinite one answers a zero interval, as PostgreSQL 17&#x27;s does.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_pl_interval(timestamp, interval)</strong><br>A timestamp plus an interval (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.timestamp_pl_interval_of_intervals: timestamp_pl_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The timestamp is read as a literal in ISO form or a NULL; any other is refused by name. The answer is held as DateTime64(6, &#x27;UTC&#x27;): an answer, or the step of it after the months or after the days, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (timestamp_pl_interval() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp_mi_interval(timestamp, interval)</strong><br>A timestamp less an interval (-).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.timestamp_mi_interval_of_intervals: timestamp_mi_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The timestamp is read as a literal in ISO form or a NULL; any other is refused by name. The answer is held as DateTime64(6, &#x27;UTC&#x27;): an answer, or the step of it after the months or after the days, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (timestamp_mi_interval() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>interval_pl_timestamp(interval, timestamp)</strong><br>An interval plus a timestamp (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_pl_timestamp_of_intervals: interval_pl_timestamp of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The timestamp is read as a literal in ISO form or a NULL; any other is refused by name. The answer is held as DateTime64(6, &#x27;UTC&#x27;): an answer, or the step of it after the months or after the days, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (interval_pl_timestamp() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
@@ -3563,7 +3566,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-125 of the grid's 310 features are native on Snowflake and left out.
+128 of the grid's 313 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4197,7 +4200,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-125 of the grid's 310 features are native on Databricks and left out.
+128 of the grid's 313 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4831,7 +4834,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-125 of the grid's 310 features are native on BigQuery and left out.
+128 of the grid's 313 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5465,7 +5468,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-125 of the grid's 310 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+128 of the grid's 313 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6099,7 +6102,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-125 of the grid's 310 features are native on Redshift and left out.
+128 of the grid's 313 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6733,7 +6736,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-125 of the grid's 310 features are native on MySQL and left out.
+128 of the grid's 313 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7367,7 +7370,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-125 of the grid's 310 features are native on SingleStore and left out.
+128 of the grid's 313 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8001,7 +8004,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-125 of the grid's 310 features are native on SQLite and left out.
+128 of the grid's 313 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8635,7 +8638,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-125 of the grid's 310 features are native on Oracle and left out.
+128 of the grid's 313 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9269,7 +9272,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-125 of the grid's 310 features are native on Hive and left out.
+128 of the grid's 313 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9903,7 +9906,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-125 of the grid's 310 features are native on Exasol and left out.
+128 of the grid's 313 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10537,7 +10540,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-125 of the grid's 310 features are native on Druid and left out.
+128 of the grid's 313 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
