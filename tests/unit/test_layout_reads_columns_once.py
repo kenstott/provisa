@@ -67,3 +67,44 @@ def test_a_column_the_schema_lacks_is_added(control_plane):
         add_missing_columns(conn, schema_org.metadata.sorted_tables, _SCHEMA)
 
     assert "description" in _columns(engine, "domains")
+
+
+def test_a_table_the_layout_creates_copies_the_metadata_once_per_process(
+    control_plane, monkeypatch
+):
+    """A table schema.sql does not create is created from a JSONB copy of the metadata. The copy
+    was made again for each such table, ~0.1 s of Python each, four per new org schema (REQ-2006);
+    it is made once, and every schema laid out after creates from it."""
+    from sqlalchemy.sql.schema import Table
+
+    engine = control_plane.engine()
+    copied: list[str] = []
+    to_metadata = Table.to_metadata
+
+    def _counted(self, *args, **kwargs):
+        copied.append(self.name)
+        return to_metadata(self, *args, **kwargs)
+
+    monkeypatch.setattr(Table, "to_metadata", _counted)
+    # Tables the schema lacks, as a new org schema lacks the ones schema.sql does not create.
+    gone = ["domains", "sources"]
+    for laid_out in range(2):
+        with engine.begin() as conn:
+            for name in gone:
+                conn.execute(text(f'DROP TABLE "{_SCHEMA}"."{name}" CASCADE'))
+        with engine.begin() as conn:
+            add_missing_columns(conn, schema_org.metadata.sorted_tables, _SCHEMA)
+        assert set(gone) <= _tables(engine), laid_out
+        assert {"description"} <= _columns(engine, "domains")
+    # At most the one copy of the whole metadata (none when an earlier test in this process
+    # made it), never one per table created.
+    assert len(copied) in (0, len(schema_org.metadata.tables)), len(copied)
+
+
+def _tables(engine) -> set[str]:
+    with engine.connect() as conn:
+        rows = conn.execute(
+            text("SELECT tablename FROM pg_catalog.pg_tables WHERE schemaname = :s"),
+            {"s": _SCHEMA},
+        )
+        return {r[0] for r in rows}

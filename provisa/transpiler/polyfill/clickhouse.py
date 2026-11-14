@@ -396,6 +396,29 @@ DATE = Feature(
     ),
 )
 
+STAMP = Feature(
+    "timestamp",
+    FAMILY,
+    "A text cast to a timestamp, or to a timestamp with time zone.",
+    read=Side(
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Held as DateTime64(6, 'UTC'). A text the statement writes is read where the "
+                    "statement is transpiled (provisa.transpiler.transpile): an "
+                    "infinity, a year BC or past 9999, and a value outside "
+                    f"{instants.STAMP_BOUND} (a timestamp's) or {instants.BOUND} (a timestamptz's, its "
+                    "offset read) raise 0A000 "
+                    f"({instants.out_of_bound('timestamptz_in')}), where ClickHouse would hold "
+                    "it at its type's end. A timestamp's offset is dropped, as PostgreSQL's "
+                    "input drops it (ClickHouse's cast reads it). A text in another form, and a "
+                    "text column's cast, keep ClickHouse's own read."
+                ),
+            )
+        },
+    ),
+)
+
 _IN_FRAME = {"lag": "lagInFrame", "lead": "leadInFrame"}
 _RESPECTING = ("first_value", "last_value")
 WINDOW_VALUES = (*_IN_FRAME, *_RESPECTING, "nth_value")
@@ -743,6 +766,7 @@ FEATURES: tuple[Feature, ...] = (
     ARRAY_AGG,
     DATE_TRUNC,
     DATE,
+    STAMP,
     *WINDOW_FEATURES,
     NTILE,
     NUMERIC_MOD,

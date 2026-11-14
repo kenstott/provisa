@@ -166,3 +166,34 @@ def test_full_to_sample_is_breaking():
 def test_an_offer_that_does_not_fit_is_refused(kw):
     with pytest.raises(ValueError):
         DataProductOffer(name="o", role_id="viewer", **kw)
+
+
+def test_a_contract_states_the_offers_terms_of_use():
+    offer = DataProductOffer(
+        name="o",
+        role_id="viewer",
+        purpose="Churn analysis",
+        usage="Monthly models",
+        limitations="No re-identification",
+    )
+    t = _terms(offer)
+    assert (t.purpose, t.usage, t.limitations) == (
+        "Churn analysis",
+        "Monthly models",
+        "No re-identification",
+    )
+
+
+def test_changing_the_terms_of_use_records_each_change_and_takes_the_next_minor_version():
+    before = oc.recorded(None, _terms(DataProductOffer(name="o", role_id="viewer")), at=_AT)
+    offer = DataProductOffer(name="o", role_id="viewer", usage="Reporting only")
+    after = oc.recorded(before, _terms(offer), at=_LATER)
+    (change,) = after.versions[-1].changes
+    assert (change.kind, change.subject, change.before, change.after, change.breaking) == (
+        "terms_of_use_changed",
+        "usage",
+        None,
+        "Reporting only",
+        False,
+    )
+    assert after.version == "1.1.0"

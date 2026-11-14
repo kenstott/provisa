@@ -205,3 +205,26 @@ def test_a_decision_refused_for_another_reason_does_not_list_the_offer(monkeypat
             router._decide(conn, _state(auth_config={}), SimpleNamespace(request_id=3), None)
         )
     assert listed == []
+
+
+def test_a_bid_names_the_products_owner_role_as_its_approver_with_no_hook():
+    """REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): the
+    request form names who approves it -- the product's owner role, where requests stay local."""
+    assert router.approver_of({"owner_role": "data_owner"}, None) == {
+        "via": "owner",
+        "name": "data_owner",
+    }
+    assert router.approver_of({"owner_role": None}, None) == {"via": "owner", "name": None}
+
+
+def test_a_bid_names_the_authority_its_hook_reaches_as_its_approver():
+    from provisa.core.offer_hooks import HookTarget
+
+    target = HookTarget(
+        url="https://user:pw@access.example.com:8443/requests?token=x", secret="${HOOK_SECRET}"
+    )
+    # The host alone: the URL's credentials, path and query are never shown to a requester.
+    assert router.approver_of({"owner_role": "data_owner"}, target) == {
+        "via": "hook",
+        "name": "access.example.com",
+    }

@@ -596,3 +596,32 @@ def test_an_install_over_an_older_trigger_function_replaces_it(tenant_db):
     before = _stamps(tenant_db)
     _update_product(tenant_db, status="live")
     assert _moved(tenant_db, before) == (True, False)
+
+
+def test_installs_of_two_schemas_do_not_wait_on_each_other(control_plane):
+    """REQ-2006: the install's lock is the schema's. A sandbox's open lays its environments out side
+    by side, and one lock for every schema queued each behind the other; two installs of one schema
+    still take turns."""
+    from provisa.core.db import init_schema
+
+    pool = control_plane.org()
+    schema_sql = (Path(config_stamp.__file__).parent / "schema.sql").read_text()
+    asyncio.run(init_schema(pool, schema_sql, org_id="default", env="other"))
+    engine = pool.engine
+
+    def _install(conn, schema: str) -> None:
+        config_stamp.install(
+            conn, config_stamp.TENANT_TABLES, schema, advanced=config_stamp.TENANT_ADVANCED
+        )
+
+    with engine.connect() as holder:
+        with holder.begin():
+            _install(holder, "org_default")  # holds org_default's install lock until it ends
+            with engine.connect() as other:
+                with other.begin():
+                    other.execute(sa.text("SET LOCAL lock_timeout = '2s'"))
+                    _install(other, "org_default_env_other")  # another schema: no wait
+                with pytest.raises(sa.exc.OperationalError, match="lock timeout"):
+                    with other.begin():
+                        other.execute(sa.text("SET LOCAL lock_timeout = '200ms'"))
+                        _install(other, "org_default")  # the same schema: its turn
