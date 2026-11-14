@@ -383,10 +383,11 @@ def test_a_recorded_function_reads_columns_on_each_row():
 
 
 _SHAPE = "SELECT box_add('(3,4),(0,0)'::box, '(1,2)'::point) AS v"
-_ANALYZER_OFF = " SETTINGS allow_experimental_analyzer = 0"
+_ANALYZER_OFF = " SETTINGS allow_experimental_analyzer = 0, precise_float_parsing = 1"
 
 
 def test_clickhouse_plans_a_shapes_form_with_its_old_analyzer():
+    # And reads a shape's numbers as float8in does: the nearest double ('0.3' is not, otherwise).
     assert transpile(_SHAPE, "clickhouse").endswith(_ANALYZER_OFF)
 
 
