@@ -591,14 +591,17 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def list_commands(role: str | None = None) -> list[dict]:
-        """List registered commands the role may invoke: name, domain, kind, arguments (REQ-1156)."""
+        """List registered commands your role may invoke: name, domain, kind, arguments."""
+        # REQ-1156.
         return tools.list_commands(state, _role(role))
 
     @_tool
     async def meta_resolve(
         uri: str, as_of: str | None = None, as_recorded: str | None = None, role: str | None = None
     ) -> dict:
-        """Dereference a semantic address (provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>]) to the governed value it names, optionally as of a point in time and as recorded at one. Physical addresses are refused."""
+        """The governed value a semantic address provisa://<org>/<domain>/tables/<table>/pk=<value>[/<column>]
+        names. as_of (valid time) and as_recorded (record time): optional ISO 8601 instants.
+        Physical addresses are refused."""
         # REQ-1365: the one resolve function; the tool is the meta domain's resolve, named as
         # the GraphQL field is: meta's.
         from provisa.api.data.resolve import resolve as resolve_address
@@ -624,12 +627,11 @@ def build_mcp_server(state: Any):
         redirect: bool = False,
         redirect_format: str | None = None,
     ) -> dict:
-        """Execute SQL through the governed pipeline; returns row-capped JSON rows.
-
-        ``redirect``: deliver the whole result to the results store and answer its handle
-        (``redirect``: a presigned URL, row count and expiry) instead of rows; ``redirect_format``
-        is its file format (parquet or orc). A result over the operator's threshold is delivered
-        the same way when the operator has enabled it."""
+        """Run SQL under your role's governance; returns rows, capped per page (page with
+        limit/offset; total_rows and truncated say whether more remain). redirect=true returns a
+        results-store handle (presigned URL, row count, expiry) instead of rows, as
+        redirect_format parquet or orc; a large result may be redirected that way unasked."""
+        # A result over the operator's threshold is redirected when the operator has enabled it.
         # REQ-1882: governance and execution run on this call's request thread; the license nag
         # below writes to the MCP session, whose streams belong to the MCP loop, so it stays here.
         from provisa.core.statement_warnings import collecting
@@ -662,23 +664,23 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def explain_sql(sql: str, role: str | None = None) -> dict:
-        """Validate and govern a query without executing it; confirms it plans cleanly for the role."""
+        """Check that SQL validates and plans under your role's governance, without running it."""
         return await tools.explain_sql(state, _role(role), sql)
 
     # --- statistics over a SQL-defined dataset (REQ-2090): results only, never the rows ---------
 
     @_tool
     async def describe(sql: str, role: str | None = None) -> dict:
-        """Describe the result of ``sql`` column by column: count, missing, distinct, mean, sd,
-        quantiles and the most frequent values. Answers the statistics, not the rows."""
+        """Per-column statistics of the result of sql: count, missing, distinct, mean, sd,
+        quantiles, most frequent values. Returns statistics, not rows."""
         return await tools.stats_describe(state, _role(role), sql)
 
     @_tool
     async def correlate(
         sql: str, columns: list[str], method: str = "pearson", role: str | None = None
     ) -> dict:
-        """The correlation matrix of numeric ``columns`` of the result of ``sql`` (``pearson`` or
-        ``spearman``) and its n. Answers the matrix, not the rows."""
+        """Correlation matrix (pearson or spearman) of numeric columns of the result of sql,
+        with n. Returns the matrix, not rows."""
         return await tools.stats_correlate(state, _role(role), sql, columns, method)
 
     @_tool
@@ -689,14 +691,14 @@ def build_mcp_server(state: Any):
         kind: str = "linear",
         role: str | None = None,
     ) -> dict:
-        """Regress ``target`` on ``features`` over the result of ``sql``: ``linear`` (R²) or
-        ``logistic`` (AUC, two-valued target). Coefficients, standard errors, p-values and n."""
+        """Regress target on features over the result of sql: kind linear (R²) or logistic (AUC;
+        two-valued target). Returns coefficients, standard errors, p-values, n."""
         return await tools.stats_regress(state, _role(role), sql, target, features, kind)
 
     @_tool
     async def compare(sql: str, value: str, group: str, role: str | None = None) -> dict:
-        """Compare ``value`` across the groups of ``group`` in the result of ``sql``: Welch's
-        t-test for two groups, one-way ANOVA for more, with the effect size."""
+        """Test whether value differs across the groups of column group in the result of sql:
+        Welch's t-test (two groups) or one-way ANOVA (more), with effect size."""
         return await tools.stats_compare(state, _role(role), sql, value, group)
 
     @_tool
@@ -708,66 +710,48 @@ def build_mcp_server(state: Any):
         seasonal_periods: int | None = None,
         role: str | None = None,
     ) -> dict:
-        """Forecast ``value`` ``horizon`` steps past the last ``time`` of the result of ``sql``
-        by exponential smoothing (ETS), with 95% prediction intervals."""
+        """Forecast value horizon steps past the last time in the result of sql by exponential
+        smoothing (ETS), with 95% prediction intervals."""
         return await tools.stats_forecast(
             state, _role(role), sql, time, value, horizon, seasonal_periods
         )
 
     @_tool
     async def search_catalog(query: str, role: str | None = None, k: int = 5) -> list[dict]:
-        """Semantically search the catalog for datasets matching a natural-language query.
-
-        Returns the top table branches (columns + foreign keys + schema breadcrumb) whose
-        schema/table/column detail best matches, scoped to the caller's accessible domains.
-        Use this when the flat table list is too large to scan by hand.
-        """
+        """Semantic search of the catalog for the k tables best matching a natural-language
+        query, each with its columns, foreign keys and schema. Use when you don't know which
+        table holds the data; for business vocabulary use search_terms."""
         return await tools.search_catalog(state, _role(role), query, k=k)
 
     @_tool
     async def search_terms(query: str, role: str | None = None, limit: int = 25) -> list[dict]:
-        """Look up business-glossary terms by name or definition (REQ-1387).
-
-        Only terms a person approved, and defined drafts on a path to data through an
-        approved term (status "draft"), are returned. Each hit carries its status, its
-        grounding (grounded, or grounded_pending when its path to data runs through terms
-        not yet approved), its definition, its physical refs and bindings, its experts, and
-        its paths down to data, where an undefined term appears only as an anonymous hop.
-        Use it to find data and cite where it came from before composing SQL — e.g. find
-        every physical field that means "order date".
-        """
+        """Look up business-glossary terms by name or definition: each with its status, grounding,
+        definition, physical refs, experts and paths down to data. Use to find which physical
+        fields mean a business concept (e.g. "order date") before writing SQL, and cite it."""
+        # REQ-1387: approved terms, and defined drafts on a path to data through an approved term,
+        # are returned; grounded_pending when the path runs through terms not yet approved; an
+        # undefined term appears only as an anonymous hop.
         return await tools.search_terms(state, _role(role), query, limit=limit)
 
     @_tool
     async def search_reference_library(
         question: str, role: str | None = None, k: int = 5
     ) -> list[dict]:
-        """Search the org's reference library -- its policies, regulations, contracts,
-        specifications and standards -- for the passages that answer a question (REQ-2185).
-
-        Only documents the caller's role may read are searched. Each passage carries its
-        document's title and source, its section or page, and the quoted text: cite them
-        whenever an answer uses a passage. ``k`` passages nearest the question come first, then
-        up to as many again of their neighbours (the passages just after and before each in its
-        document, and those nearest it); each passage's ``reached`` says how it was found
-        ("nearest the question", "after passage 3 in 'Client policy'", "near ..."), its
-        ``ordinal`` its number in its document. Passages the glossary terms reached from the
-        question cite come between, labelled with the path
-        ("via currency transaction report -> multiple transactions (part of)") and carrying the
-        term and its definition (``term``, ``term_definition``). Cite only the passages an
-        answer used.
-        """
+        """Search the org's reference documents (policies, regulations, contracts, specifications,
+        standards) for passages answering a question: the k nearest, their neighbours, and
+        passages cited by glossary terms the question reaches. Each carries title, source,
+        section or page, quoted text, and how it was reached. Cite the passages an answer uses."""
+        # REQ-2185: only documents the caller's role may read are searched. Neighbours are up to
+        # k more: the passages just after and before each in its document, and those nearest it.
+        # ``reached`` says how a passage was found, ``ordinal`` is its number in its document; a
+        # term-cited passage carries the path, ``term`` and ``term_definition``.
         return await tools.search_reference_library(state, _role(role), question, k=k)
 
     @_tool
     async def list_metrics(role: str | None = None) -> list[dict]:
-        """List governed metric definitions — agents select meanings by name instead of
-        composing aggregation SQL (REQ-1319).
-
-        Each entry carries name, description, ai_context (definition text written for AI
-        consumers), datatype, and from_fact. Follow up with query_metric to evaluate one
-        at a chosen grain.
-        """
+        """List governed metrics: name, description, ai_context (its definition, for AI),
+        datatype, from_fact. Evaluate one with query_metric instead of writing its SQL."""
+        # REQ-1319.
         return tools.list_metrics(state, _role(role))
 
     @_tool
@@ -777,75 +761,64 @@ def build_mcp_server(state: Any):
         filters: str | None = None,
         role: str | None = None,
     ) -> list[dict]:
-        """Query a governed metric grouped by caller-chosen dimensions (REQ-1319).
-
-        Selects the metric's governed meaning by name from the reserved ``metrics``
-        schema instead of composing aggregation SQL. Empty dimensions returns a single
-        grand-total row. ``filters`` is a raw boolean SQL condition; the governed
-        pipeline validates it.
-        """
+        """Evaluate a governed metric by name, grouped by the dimensions you choose (none: one
+        grand-total row). Use instead of writing the aggregate in run_sql. filters: a SQL
+        boolean condition."""
+        # REQ-1319: reads the reserved ``metrics`` schema; the governed pipeline validates filters.
         return await tools.query_metric(
             state, _role(role), metric, dimensions or [], filters=filters
         )
 
     @_tool
     async def propose_source(source: dict, reason: str, role: str | None = None) -> dict:
-        """Propose a newly-discovered data source for a human to review and register (REQ-1792).
-
-        Never creates a live Source — this always queues a pending creation request (the same
-        REQ-434 queue a low-privilege GraphQL caller falls back to) for a rights-holder to execute
-        or reject on the admin UI's Requests page, regardless of what capability this MCP session's
-        own credential carries. `source` is a SourceInput-shaped dict: at minimum {"id", "type"},
-        plus whatever of host/port/database/username/password/path/description/allowed_domains the
-        discovery turned up. `reason` should say what led to this proposal.
-        """
+        """Queue a newly found data source for a person to review and register; never creates it.
+        source: at least {id, type}, plus any of host, port, database, username, password, path,
+        description, allowed_domains. reason: what led to the proposal."""
+        # REQ-1792: always the REQ-434 pending-request queue (the admin UI's Requests page),
+        # whatever capability the session's credential carries.
         return await tools.propose_source(
             state, _role(role), source, reason, requested_by=_proposer(_role(role))
         )
 
     @_tool
     async def propose_table(table: dict, reason: str, role: str | None = None) -> dict:
-        """Propose registering a table from an already-registered source (REQ-1792).
-
-        Never registers the table itself — queues a pending creation request the same way
-        propose_source does; a rights-holder must execute or reject it on the Requests page.
-        `table` is a TableInput-shaped dict: at minimum {"source_id", "domain_id", "schema_name",
-        "table_name", "columns"} where each column is at least {"name", "visible_to"}. `reason`
-        should say what led to this proposal.
-        """
+        """Queue a table of a registered source for a person to review and register; never
+        registers it. table: at least {source_id, domain_id, schema_name, table_name, columns},
+        each column at least {name, visible_to}. reason: what led to the proposal."""
+        # REQ-1792: the same pending-request queue as propose_source.
         return await tools.propose_table(
             state, _role(role), table, reason, requested_by=_proposer(_role(role))
         )
 
     @_tool
     async def graphql_field_names(schema: str, table: str, role: str | None = None) -> dict:
-        """The REAL GraphQL field names (and gRPC/JSON:API/OpenAPI deep-link identifiers) for a
-        table and its columns — NOT a guessed transform of describe_table's SQL-plane names.
-        ALWAYS call this before writing a GraphQL/gRPC/JSON:API/OpenAPI query for a table."""
+        """The actual GraphQL field names (and gRPC, JSON:API, OpenAPI identifiers) of a table and
+        its columns. Call before writing such a query: they don't follow from the SQL names."""
         return await tools.graphql_field_names(state, _role(role), schema, table)
 
     @_tool
     async def cypher_field_names(schema: str, table: str, role: str | None = None) -> dict:
-        """The REAL Cypher node label, id property, and column property names for a table — NOT
-        a guessed transform. ALWAYS call this before writing a Cypher query for a table."""
+        """The actual Cypher node label, id property and property names of a table. Call before
+        writing Cypher: they don't follow from the SQL names."""
         return await tools.cypher_field_names(state, _role(role), schema, table)
 
     @_tool
     async def run_cypher(
         cypher: str, params: dict | None = None, limit: int | None = None, role: str | None = None
     ) -> dict:
-        """Run a Cypher query under the role and return its rows and the graph they hold as
-        Cytoscape elements ({nodes: [{data: {id, label, tableLabel, properties}}], edges:
-        [{data: {id, source, target, label, properties}}]}), properties as the role sees them.
-        Call cypher_field_names first for the real labels and properties."""
+        """Run Cypher under your role; returns rows and the graph as Cytoscape elements
+        {nodes, edges} (input to render_graph). Get labels and properties from
+        cypher_field_names first."""
+        # Elements: nodes [{data: {id, label, tableLabel, properties}}], edges [{data: {id, source,
+        # target, label, properties}}], properties as the role sees them.
         return await tools.run_cypher(
             state, _role(role), cypher, params, limit, principal=_call_principal(state)
         )
 
     @_tool
     async def clear_graph_session() -> dict:
-        """Clear the caller's graph session: the labels, nodes and relationships its Cypher
-        statements made (on this and every other client) are dropped."""
+        """Drop the labels, nodes and relationships your Cypher statements created, on every
+        client."""
         return await tools.clear_graph_session(state, _call_principal(state))
 
     @_tool
@@ -856,35 +829,34 @@ def build_mcp_server(state: Any):
         width: int = 800,
         height: int = 600,
     ):  # an Image: the SDK answers it as MCP image content (its annotation would not resolve here)
-        """Draw a graph run_cypher returned as the Provisa graph page draws it: a PNG with the
-        page's own stylesheet and layout -- "force" (fcose), "hierarchy" (breadthfirst) or the
-        ERD's "elk" -- on the page's light background, or theme="dark". width and height (100 to
-        4000 pixels) are the canvas the layout fills."""
+        """Draw run_cypher's elements as a PNG. layout: force, hierarchy or elk; theme: light or
+        dark; width, height: 100 to 4000 pixels."""
+        # Drawn as the Provisa graph page draws it: its stylesheet; force is fcose, hierarchy is
+        # breadthfirst, elk the ERD's.
         return Image(data=tools.render_graph(elements, layout, theme, width, height), format="png")
 
     @_tool
     async def generate_explore_queries(question: str, role: str | None = None) -> dict:
-        """Generate ready-to-run queries for all six query surfaces (sql, graphql, cypher, grpc,
-        jsonapi, openapi) from one natural-language question — the same pipeline the NL Explore
-        page runs. Use this for anything beyond a flat single-table browse: aggregation, GROUP
-        BY, a business-term filter, or a question spanning more than one table."""
+        """Generate ready-to-run sql, graphql, cypher, grpc, jsonapi and openapi queries from one
+        natural-language question. Use for aggregation, grouping, a business-term filter, or a
+        question spanning several tables."""
+        # The pipeline the NL Explore page runs.
         return await tools.generate_explore_queries(state, _role(role), question)
 
     @_tool
     async def list_native_tables(
         source_id: str, schema_name: str = "public", role: str | None = None
     ) -> list[dict]:
-        """List a source's own native tables directly from the source, bypassing the governed
-        catalog — for a source with nothing registered on it yet, which the governed catalog
-        tools can never see."""
+        """List a source's tables read from the source itself, outside the governed catalog: for a
+        source with nothing registered yet."""
         return await tools.list_native_tables(state, _role(role), source_id, schema_name)
 
     @_tool
     async def describe_native_table(
         source_id: str, schema_name: str, table_name: str, role: str | None = None
     ) -> list[dict]:
-        """Describe one of a source's own native tables (columns, types) directly from the
-        source — use before propose_table/register_table_now on an unregistered source."""
+        """Columns and types of a table read from the source itself, outside the governed
+        catalog; use before propose_table on an unregistered source."""
         return await tools.describe_native_table(
             state, _role(role), source_id, schema_name, table_name
         )
@@ -893,7 +865,8 @@ def build_mcp_server(state: Any):
     async def list_glossary_terms(
         q: str | None = None, include_deprecated: bool = True, role: str | None = None
     ) -> list[dict]:
-        """The org's glossary terms, optionally filtered by a search string."""
+        """The org's glossary terms for curation, filtered by q if given. To find data by
+        meaning use search_terms."""
         resolved = _role(role)
         return await tools.list_glossary_terms(
             state, resolved, _capability_request(resolved), q, include_deprecated
@@ -920,7 +893,7 @@ def build_mcp_server(state: Any):
         export_excluded: bool | None = None,
         role: str | None = None,
     ) -> dict:
-        """Update an existing glossary term's fields (its status has its own tools)."""
+        """Update a glossary term's fields; its status has its own tools."""
         resolved = _role(role)
         return await tools.update_glossary_term(
             state,
@@ -934,7 +907,7 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def approve_glossary_term(term_id: int, role: str | None = None) -> dict:
-        """Approve a draft ontology term; it needs a definition. Approval is a person's choice."""
+        """Approve a draft glossary term (it needs a definition). Only when a person decides."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state, resolved, _capability_request(resolved), term_id, "approve", {}
@@ -944,8 +917,7 @@ def build_mcp_server(state: Any):
     async def deprecate_glossary_term(
         term_id: int, reason: str, retire_on: str | None = None, role: str | None = None
     ) -> dict:
-        """Deprecate an approved ontology term, with a reason and an optional planned retirement
-        date (ISO), on which it is retired."""
+        """Deprecate an approved glossary term; retire_on: optional ISO date it is retired on."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state,
@@ -965,10 +937,9 @@ def build_mcp_server(state: Any):
         carry_tags: bool = False,
         role: str | None = None,
     ) -> dict:
-        """Retire an ontology term, with a reason. Its columns or tables move to the successor
-        term (required when it has any), which gets the REPLACES edge to it. A move that would
-        take pii off a column is refused unless confirm_tag_loss names it or carry_tags puts it
-        on the successor."""
+        """Retire a glossary term. Its columns and tables move to successor (required if it has
+        any), which gets a REPLACES edge. A move taking pii off a column is refused unless
+        confirm_tag_loss names it or carry_tags puts it on the successor."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state,
@@ -986,8 +957,7 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def restore_glossary_term(term_id: int, role: str | None = None) -> dict:
-        """Restore a retired or deprecated ontology term: a deprecated one is approved again, a
-        retired one a draft."""
+        """Restore a glossary term: deprecated to approved, retired to draft."""
         resolved = _role(role)
         return await tools.change_glossary_term_status(
             state, resolved, _capability_request(resolved), term_id, "restore", {}
@@ -995,8 +965,9 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def list_glossary_findings(role: str | None = None) -> list[dict]:
-        """What a curator should look at in the ontology: each term with its findings
-        ({kind, message, params}). A plain draft term is not a finding."""
+        """Glossary terms needing a curator's attention, each with its findings
+        ({kind, message, params})."""
+        # A plain draft term is not a finding.
         resolved = _role(role)
         return await tools.list_glossary_findings(state, resolved, _capability_request(resolved))
 
@@ -1032,8 +1003,8 @@ def build_mcp_server(state: Any):
     async def ground_glossary_term_to_table(
         term_id: int, table_id: int, role: str | None = None
     ) -> dict:
-        """Make a glossary term the class term of a registered table or view (one per table; the
-        table must have a primary key)."""
+        """Make a glossary term the class term of a registered table or view (one per table; it
+        needs a primary key)."""
         resolved = _role(role)
         return await tools.ground_glossary_term_to_table(
             state, resolved, _capability_request(resolved), term_id, table_id
@@ -1053,8 +1024,8 @@ def build_mcp_server(state: Any):
     async def tag_glossary_term(
         term_id: int, tag_id: str, reason: str | None = None, role: str | None = None
     ) -> dict:
-        """Put a tag (pii) on a glossary term that is a Property: every column the term holds, now
-        and later, carries it."""
+        """Tag (e.g. pii) a Property glossary term: every column it holds, now and later, carries
+        the tag."""
         resolved = _role(role)
         return await tools.tag_glossary_term(
             state, resolved, _capability_request(resolved), term_id, tag_id, reason
@@ -1070,7 +1041,7 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def list_data_products(role: str | None = None) -> list[dict]:
-        """The org's data products (id, domain, name, purpose, owner/team role, status, etc.)."""
+        """The org's data products: id, domain, name, purpose, owner and team roles, status."""
         resolved = _role(role)
         return await tools.list_data_products(state, resolved, _capability_request(resolved))
 
@@ -1088,9 +1059,8 @@ def build_mcp_server(state: Any):
         support: str | None = None,
         role: str | None = None,
     ) -> dict:
-        """Create or replace a data product by id — an id that already exists is overwritten in
-        full. `domain_id` must be a real, existing domain. Its status is kept (a new product is
-        a draft); the publish/deprecate/retire/restore tools change it."""
+        """Create, or fully replace, a data product by id. domain_id must be an existing domain.
+        Status is kept (new: draft); the publish/deprecate/retire/restore tools change it."""
         resolved = _role(role)
         return await tools.create_data_product(
             state,
@@ -1112,8 +1082,8 @@ def build_mcp_server(state: Any):
     async def set_data_product_members(
         id: str, table_ids: list[int], command_names: list[str], role: str | None = None
     ) -> dict:
-        """Make a data product's members exactly these tables (by id) and commands (by name);
-        each must be in the product's domain."""
+        """Set a data product's members to exactly these tables and commands, all in its
+        domain."""
         resolved = _role(role)
         return await tools.set_data_product_members(
             state, resolved, _capability_request(resolved), id, table_ids, command_names
@@ -1137,8 +1107,8 @@ def build_mcp_server(state: Any):
     async def deprecate_data_product(
         id: str, reason: str, retire_on: str | None = None, role: str | None = None
     ) -> dict:
-        """Deprecate a live data product, with a reason and an optional planned retirement date
-        (ISO). It stays in service until then, and is retired on that date."""
+        """Deprecate a live data product; it stays in service until retire_on (optional ISO
+        date), when it is retired."""
         resolved = _role(role)
         return await tools.change_data_product_status(
             state,
@@ -1153,9 +1123,8 @@ def build_mcp_server(state: Any):
     async def retire_data_product(
         id: str, reason: str, successor: str | None = None, role: str | None = None
     ) -> dict:
-        """Retire a live or deprecated data product, with a reason. Its member tables, views and
-        commands move to ``successor`` (a data product of the same domain), required when it has
-        any."""
+        """Retire a live or deprecated data product. Its members move to successor (a product in
+        the same domain), required if it has any."""
         resolved = _role(role)
         return await tools.change_data_product_status(
             state,
@@ -1168,8 +1137,8 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def restore_data_product(id: str, role: str | None = None) -> dict:
-        """Restore a deprecated data product (back to live) or a retired one (back to a draft;
-        the members that moved stay with its successor)."""
+        """Restore a data product: deprecated to live, retired to draft (moved members stay with
+        the successor)."""
         resolved = _role(role)
         return await tools.change_data_product_status(
             state, resolved, _capability_request(resolved), id, "restore", {}
@@ -1177,7 +1146,7 @@ def build_mcp_server(state: Any):
 
     @_tool
     async def list_data_product_findings(role: str | None = None) -> list[dict]:
-        """What a curator should look at in the data products, each product with its findings."""
+        """Data products needing a curator's attention, each with its findings."""
         resolved = _role(role)
         return await tools.list_data_product_findings(
             state, resolved, _capability_request(resolved)
@@ -1193,10 +1162,8 @@ def build_mcp_server(state: Any):
         visible_to: list[str] | None = None,
         role: str | None = None,
     ) -> dict:
-        """Create or replace a governed metric by name — a name that already exists is
-        overwritten in full. `expression` is an aggregate ANSI-SQL expression over semantic
-        table.column references; must parse under sqlglot and contain at least one aggregate
-        function."""
+        """Create, or fully replace, a governed metric by name. expression: ANSI SQL over
+        table.column references, with at least one aggregate function."""
         resolved = _role(role)
         return await tools.upsert_metric(
             state,
@@ -1231,18 +1198,12 @@ def build_mcp_server(state: Any):
             jev_state: Any = None,
             role: str | None = None,
         ) -> dict:
-            """Evaluate typed decision questions via TypeSafe's Jev API — fast, cheap,
-            calibrated machine-native decisions (not text generation).
-
-            Each question in ``questions`` is ``{"id", "type", "instructions", "criteria"}``:
-              - noul: yes/no; criteria = {"true": "...", "false": "..."}; returns P(yes)
-              - choice: pick one of <=255 options; criteria = {option: description}
-              - score: rate on a 2-10 level rubric; criteria = [level description, ...]
-            All questions are evaluated in parallel against the same ``jev_state``
-            (any JSON value — the context to judge). Each answer carries a probability
-            distribution and a confidence score; route low-confidence answers to a human
-            or further reasoning rather than trusting them blind.
-            """
+            """Calibrated typed decisions (not text) via TypeSafe's Jev API, all judged against
+            jev_state (any JSON: the context). Each question is {id, type, instructions,
+            criteria}: noul (yes/no; criteria {true, false}; returns P(yes)), choice (up to 255
+            options; criteria {option: description}) or score (2-10 levels; criteria [level
+            description, ...]). Each answer has a distribution and a confidence: send
+            low-confidence ones to a person or further reasoning."""
             return await tools.jev_evaluate(state, _role(role), jev_state, questions)
 
     return mcp
