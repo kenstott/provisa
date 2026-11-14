@@ -4,13 +4,13 @@
       "total": 3319,
       "passed": 1817,
       "differs_engine_error": 0,
-      "refused_by_name": 638
+      "refused_by_name": 586
     },
     "duckdb": {
       "total": 3319,
       "passed": 2307,
       "differs_engine_error": 0,
-      "refused_by_name": 145
+      "refused_by_name": 100
     },
     "pg": {
       "total": 3319,
@@ -22,7 +22,7 @@
       "total": 3319,
       "passed": 1767,
       "differs_engine_error": 0,
-      "refused_by_name": 689
+      "refused_by_name": 626
     }
   },
   "expected": []
