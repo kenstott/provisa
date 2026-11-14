@@ -575,6 +575,19 @@ def credential_presentation(provider_name: str, username: str, password: str) ->
     return "basic", base64.b64encode(f"{username}:{password}".encode()).decode()
 
 
+def sign_in_validator(auth_provider, provider_name: str, username: str, password: str):
+    """``(scheme, token, validator)`` for a pgwire sign-in: how the startup credential is presented
+    and the provider's validator for that presentation, None when the provider takes none.
+
+    The one place a pgwire credential's validator is chosen, for the connection handler and for
+    anything that must answer "who would this stored pgwire user sign in as" (a checker's scans).
+    """
+    from provisa.auth.models import validator_for_scheme
+
+    scheme, token = credential_presentation(provider_name, username, password)
+    return scheme, token, validator_for_scheme(auth_provider, scheme)
+
+
 def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
     """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
     transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
@@ -3733,11 +3746,11 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         Validators run on this connection's loop (REQ-1882); the PAT store and DB-backed providers
         resolve their loop-bound handles per loop.
         """
-        from provisa.auth.models import validator_for_scheme
         from provisa.auth.throttle import throttled
 
-        scheme, token = credential_presentation(provider_name, username, password)
-        validator = validator_for_scheme(auth_provider, scheme)
+        scheme, token, validator = sign_in_validator(
+            auth_provider, provider_name, username, password
+        )
         if validator is None:
             return None
         # REQ-1393: the startup packet names the account, so failed guesses count against it here

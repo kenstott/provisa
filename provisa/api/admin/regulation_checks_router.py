@@ -85,13 +85,12 @@ async def _checker_role(conn: Any, source_id: str) -> tuple[str, str]:
     user, mapped to a role as pgwire maps a sign-in (provisa.pgwire.server)."""
     import jwt
 
-    from provisa.auth.models import validator_for_scheme
     from provisa.auth.role_mapping import resolve_role
     from provisa.auth.wiring import build_auth_provider
     from provisa.core.schema_org import sources
     from provisa.core.secrets_store import bound_to_request_org
     from provisa.dq.scan import checker_connection
-    from provisa.pgwire.server import credential_presentation, trust_mode, trusted_roles
+    from provisa.pgwire.server import sign_in_validator, trust_mode, trusted_roles
     from provisa.security.meta_role import ensure_meta_role
 
     mapping = (
@@ -113,10 +112,9 @@ async def _checker_role(conn: Any, source_id: str) -> tuple[str, str]:
         if not default_role:
             raise _refused(f"{cannot}: pgwire sign-in requires auth.default_role")
         provider = build_auth_provider(auth_config, admin_pool=state.admin_db)
-        scheme, token = credential_presentation(
-            auth_config["provider"], user, connection["password"]
+        scheme, token, validator = sign_in_validator(
+            provider, auth_config["provider"], user, connection["password"]
         )
-        validator = validator_for_scheme(provider, scheme)
         if validator is None:
             raise _refused(f"{cannot}: the provider takes no {scheme} credential")
         try:
