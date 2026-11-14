@@ -96133,7 +96133,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     named Export and Import everywhere, in place of ''sending'' and ''reading'' above, and each has its
     own schedule, Run now and last result. A direction that is off never runs, on a schedule or by hand,
     and lists no differences; an entry with Export only never changes Provisa, and one with Import only
-    never changes the other system.'
+    never changes the other system. (Amended 2026-11-14, A WEBHOOK PER DIRECTION:) Maintainer 2026-11-14:
+    an approval on the receiving system is that system''s feature, and the webhook is how it is reached.
+    An entry''s standing choices are set per direction and per kind of difference, and an entry has one
+    webhook for Export and one for Import, each optional, since the system that must agree differs by direction.
+    A webhook that answers hold (an approval still open on the other system, for example) leaves the difference
+    in the list, and each later run of that direction asks it again until it answers take or a steward accepts
+    the difference by hand; Provisa keeps no approval state of its own for the other system.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
