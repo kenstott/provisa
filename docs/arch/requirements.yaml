@@ -82339,7 +82339,12 @@
     and a missing parameter is refused by name. (Amended 2026-10-28, AN IMPLICIT CALL TAKES DECLARED DEFAULTS:)
     In an implicit-argument CALL (CALL name, no parentheses), an argument that declares a default takes
     it when no same-named $parameter is given, as in a positional call (REQ-2168); only an argument with
-    no default and no parameter is refused by name.'
+    no default and no parameter is refused by name. (Amended 2026-11-14, A MERGE READS ITS SOURCE FIRST
+    TOO:) Maintainer 2026-11-14. A MERGE whose USING query reads a source other than its target''s (a code
+    query included) takes the same two-step path as INSERT ... SELECT: the USING rows are read first, under
+    the caller''s governance, then the MERGE runs on the target''s source against those rows, WHEN NOT MATCHED
+    BY SOURCE THEN DELETE included. Today such a MERGE passes write admission and is then sent whole to
+    one source that cannot answer it.'
   scenario: 'Given a statement command embed_tickets(since timestamp) whose statement is INSERT INTO kb.docs (id, title, body_vec) SELECT ticket_id, subject, embed(''text-embedding-3-small'', subject) FROM support.tickets WHERE updated_at > {{since}} ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, body_vec = EXCLUDED.body_vec
 
     When a steward runs it with since set to yesterday
@@ -84017,7 +84022,10 @@
     query does the matching and the statement replaces the bridge rows through Provisa''s own write path,
     so the tables refresh without a change signal. (2) The four one-word Jira customer names (Brightwater,
     Elmstead, Ferncliff, Quillon) are spelled in full, so only the four planted records are unresolved.
-    (3) One organization mention is planted with a misspelling that scores in the fuzzy band.'
+    (3) One organization mention is planted with a misspelling that scores in the fuzzy band. (Amended 2026-11-14,
+    THE RERUN IS ONE MERGE PER BRIDGE:) Maintainer 2026-11-14. One statement command cannot delete and insert,
+    so the rerun is two registered statement commands, one MERGE per bridge table from the code query, each
+    replacing its table''s rows in one step, removed mentions included (REQ-2001).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
