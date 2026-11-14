@@ -25,6 +25,7 @@ import pytest
 
 from tests.integration.test_demo_sandboxes_e2e import (
     _JWT_SECRET,
+    _close_opened,
     _demo,
     _deployment_config,
     _opened,
@@ -61,6 +62,7 @@ def tier(tmp_path_factory):
     srv.start(timeout=240)
     try:
         yield srv
+        _close_opened(srv)  # the control plane is shared: none of its sandboxes is left open
     finally:
         srv.stop_process()
 
