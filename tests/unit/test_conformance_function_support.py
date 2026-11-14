@@ -3225,3 +3225,254 @@ def test_domain_in_answering_a_value_breaking_its_check_is_a_wrong_answer(monkey
     entry = _domain_in(monkeypatch, _ok("f", oid=16))
     assert entry["outcome"] == "wrong_answer"
     assert entry["detail"]["difference"].startswith("answered [('f',)], PostgreSQL refused: 23514 ")
+
+
+# --- REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN ---------------------------------
+
+ENGINES = ("clickhouse", "trino", "duckdb")
+NOT_READ = "does not read this value"
+
+
+def _on(fn: Function, engine: str, provisa: dict[str, Any] | None) -> dict[str, Any]:
+    """``fn`` on ``engine`` where PostgreSQL answers every call and Provisa refuses each with
+    ``provisa``'s error, or answers as PostgreSQL does when ``provisa`` is None."""
+    sqls = [c.sql for c in support.calls(fn, fn_family(fn))]
+    want = {s: _ok("1") for s in sqls}
+    got = want if provisa is None else {s: provisa for s in sqls}
+    return support.measure_overload(fn, fn_family(fn), Fake(want), Fake(got), _route, engine=engine)
+
+
+def fn_family(fn: Function) -> str:
+    return "Aggregate and window" if fn.kind == "a" else "System"
+
+
+def _refusal(fn: Function, text: str, engine: str) -> dict[str, Any]:
+    said = f"{fn.name}() has no form on {engine}" if text == "no form" else f"{fn.name} {text}"
+    return {"ok": False, "error": f"ERROR:  {said}"}
+
+
+REGCLASSIN = Function(
+    "regclassin", "cstring", argtypes=("cstring",), rettype="regclass", volatility="s"
+)
+
+#: One overload of each internal type's own functions, and the refusal text it had in the baseline
+#: run: the type decides, whatever the text.
+OWN_FUNCTIONS = [
+    (REGCLASSIN, NOT_READ),
+    (Function("regclasssend", "regclass", argtypes=("regclass",), rettype="bytea"), "no form"),
+    (Function("regprocout", "regproc", argtypes=("regproc",), rettype="cstring"), NOT_READ),
+    (Function("record_out", "record", argtypes=("record",), rettype="cstring"), NOT_READ),
+    (
+        Function("btrecordcmp", "record, record", argtypes=("record", "record"), rettype="integer"),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "hash_record_extended",
+            "record, bigint",
+            argtypes=("record", "bigint"),
+            rettype="bigint",
+        ),
+        NOT_READ,
+    ),
+    (Function("aclitemin", "cstring", argtypes=("cstring",), rettype="aclitem"), NOT_READ),
+    (
+        Function(
+            "aclitemeq", "aclitem, aclitem", argtypes=("aclitem", "aclitem"), rettype="boolean"
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "aclcontains",
+            "aclitem[], aclitem",
+            argtypes=("aclitem[]", "aclitem"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "aclexplode",
+            "acl aclitem[], OUT grantor oid, OUT grantee oid, OUT privilege_type text, "
+            "OUT is_grantable boolean",
+            argtypes=("aclitem[]",),
+            rettype="record",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "array_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype="anyarray",
+        ),
+        NOT_READ,
+    ),
+    (
+        Function(
+            "domain_in",
+            "cstring, oid, integer",
+            argtypes=("cstring", "oid", "integer"),
+            rettype='"any"',
+        ),
+        NOT_READ,
+    ),
+    (Function("xid8in", "cstring", argtypes=("cstring",), rettype="xid8"), NOT_READ),
+    (Function("xid8eq", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="boolean"), "no form"),
+    (
+        Function("xid8_larger", "xid8, xid8", argtypes=("xid8", "xid8"), rettype="xid8"),
+        "no form",
+    ),
+    (Function("xid", "xid8", argtypes=("xid8",), rettype="xid"), "no form"),
+    (Function("age", "xid", argtypes=("xid",), rettype="integer", volatility="s"), NOT_READ),
+    (Function("int8_avg", "bigint[]", argtypes=("bigint[]",), rettype="numeric"), NOT_READ),
+    (
+        Function(
+            "int8inc_float8_float8",
+            "bigint, double precision, double precision",
+            argtypes=("bigint", "double precision", "double precision"),
+            rettype="bigint",
+        ),
+        NOT_READ,
+    ),
+]
+
+#: Refused overloads that stay refused by name: a PostgreSQL-only value type (class B), a value
+#: type an engine does not hold yet (class C), and a user-level function that merely takes or
+#: returns an internal type. Each is a gap.
+GAPS = [
+    (Function("jsonpath_in", "cstring", argtypes=("cstring",), rettype="jsonpath"), NOT_READ),
+    (Function("tsqueryout", "tsquery", argtypes=("tsquery",), rettype="cstring"), NOT_READ),
+    (Function("xml_in", "cstring", argtypes=("cstring",), rettype="xml"), NOT_READ),
+    (
+        Function(
+            "numeric_div", "numeric, numeric", argtypes=("numeric", "numeric"), rettype="numeric"
+        ),
+        NOT_READ,
+    ),
+    (Function("network_eq", "inet, inet", argtypes=("inet", "inet"), rettype="boolean"), NOT_READ),
+    (Function("interval_hash", "interval", argtypes=("interval",), rettype="integer"), NOT_READ),
+    (Function("row_to_json", "record", argtypes=("record",), rettype="json"), "no form"),
+    (
+        Function("record_eq", "record, record", argtypes=("record", "record"), rettype="boolean"),
+        "no form",
+    ),
+    (
+        Function(
+            "record_image_lt",
+            "record, record",
+            argtypes=("record", "record"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "ts_headline",
+            "regconfig, text, tsquery, text",
+            argtypes=("regconfig", "text", "tsquery", "text"),
+            rettype="text",
+        ),
+        "no form",
+    ),
+    (
+        Function("min", "xid8", kind="a", argtypes=("xid8",), rettype="xid8", volatility="i"),
+        "no form",
+    ),
+    (
+        Function(
+            "pg_xact_commit_timestamp",
+            "xid",
+            argtypes=("xid",),
+            rettype="timestamp with time zone",
+        ),
+        "no form",
+    ),
+    (
+        Function(
+            "pg_visible_in_snapshot",
+            "xid8, pg_snapshot",
+            argtypes=("xid8", "pg_snapshot"),
+            rettype="boolean",
+        ),
+        "no form",
+    ),
+    (Function("pg_xact_status", "xid8", argtypes=("xid8",), rettype="text"), "no form"),
+]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(("fn", "text"), OWN_FUNCTIONS, ids=lambda v: getattr(v, "signature", v))
+def test_an_internal_types_own_function_refused_is_by_design_on_each_engine(fn, text, engine):
+    entry = _on(fn, engine, _refusal(fn, text, engine))
+    assert entry["outcome"] == "by_design", entry
+    assert entry["group"] == support.INTERNAL_TYPE_GROUP
+    assert entry["requirement"] == "REQ-2167"
+    assert entry["detail"] == support.GROUPS[support.INTERNAL_TYPE_GROUP]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize(("fn", "text"), GAPS, ids=lambda v: getattr(v, "signature", v))
+def test_a_gap_with_the_same_refusal_text_stays_refused_by_name(fn, text, engine):
+    entry = _on(fn, engine, _refusal(fn, text, engine))
+    assert entry["outcome"] == "refused", entry
+    assert report.result_of(entry["outcome"], ()) == report.REFUSED
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_internal_types_own_function_the_engine_answers_is_never_moved(engine):
+    entry = _on(REGCLASSIN, engine, None)
+    assert entry["outcome"] == "pass"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_internal_types_own_function_with_an_engine_error_stays_a_defect(engine):
+    raw = {"ok": False, "error": "ERROR:  Code: 46. DB::Exception: Unknown function"}
+    assert _on(REGCLASSIN, engine, raw)["outcome"] == "error"
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_per_engine_the_totals_still_add_up(engine):
+    entries = [
+        *(_on(fn, engine, _refusal(fn, text, engine)) for fn, text in OWN_FUNCTIONS),
+        *(_on(fn, engine, _refusal(fn, text, engine)) for fn, text in GAPS),
+        _on(REGCLASSIN, engine, None),
+    ]
+    c = support.counts(entries)
+    assert c["total"] == len(entries)
+    assert c["passed"] + c["skipped_by_design"] + c["failed"] + c["not_tested"] == c["total"]
+    assert sum(c[o] for o in support.OUTCOMES) == c["total"]
+    assert (c["by_design"], c["refused"], c["pass"]) == (len(OWN_FUNCTIONS), len(GAPS), 1)
+    groups = support.by_design_groups(entries)
+    assert len(groups[support.INTERNAL_TYPE_GROUP]) == len(OWN_FUNCTIONS)
+    results = report.result_counts(
+        support._outcome(e)
+        for e in entries  # noqa: SLF001 - the data file's own shape
+    )
+    assert results["refused_by_name"] == len(GAPS)
+
+
+def test_the_internal_types_are_named_in_one_place():
+    assert set(support.INTERNAL_TYPES) == {
+        "regclass",
+        "regcollation",
+        "regconfig",
+        "regdictionary",
+        "regnamespace",
+        "regoper",
+        "regoperator",
+        "regproc",
+        "regprocedure",
+        "regrole",
+        "regtype",
+        "record",
+        "aclitem",
+        "xid",
+        "xid8",
+    }
+    for fn, _text in OWN_FUNCTIONS:
+        assert support.internal_types_own(fn), fn.signature
+    for fn, _text in GAPS:
+        assert not support.internal_types_own(fn), fn.signature
