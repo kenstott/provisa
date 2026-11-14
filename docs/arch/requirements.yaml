@@ -34615,7 +34615,8 @@
   description: 'Sync mechanism: metadata changes push to the external catalog event-driven via the REQ-942
     event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py)
     periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped
-    to that org only.'
+    to that org only. (Amended 2026-11-14, A SCHEDULE PER ENTRY:) Maintainer 2026-11-14 (REQ-2247). The
+    scheduled reconcile is set per entry on the Syncing page, not once for the organisation.'
   use_case: Event-driven sync ensures near-real-time metadata propagation for operational responsiveness;
     scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant
     isolation and per-customer credential management.
@@ -88086,7 +88087,10 @@ Then the form offers Open in VS Code as a vscode://file link to it"
     with Accept, grouped by kind, and the entry''s page holds the steward''s standing choice per kind of
     difference, which scheduled export and import apply; a kind with no choice is held for review. The per-table
     lock to a catalog stays. (Amended 2026-11-14, THE PANEL IS SYNC POINTS:) Maintainer 2026-11-14 (REQ-2247):
-    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology.'
+    this panel is named Sync Points and holds two types of entry, Data Catalog and Ontology. (Amended 2026-11-14,
+    THE PAGE IS SYNCING AND HOLDS THE EXPORT SETTINGS:) Maintainer 2026-11-14 (REQ-2247). The panel is named
+    Syncing, not Sync Points. A metadata export target is no longer a separate object on a separate screen:
+    its settings are on the catalog''s entry, and each entry has its own schedules.'
   use_case: A team that has curated descriptions in Collibra for years connects it once, picks the matching asset for each registered table, and keeps those descriptions in Provisa; Provisa's export then updates the same assets.
   scenario: "Given a Collibra catalog connected in the Catalogs panel holding an asset for the physical table behind sales.orders
 
@@ -96104,7 +96108,21 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     An entry has a type, Data Catalog or Ontology, and the list is shown under those two headings; the difference
     list and the standing choices are the same for both, and a later type of synced system is added as a
     new type here. The panel''s description says it keeps descriptions, owners, tags and terms in step,
-    not data.'
+    not data. (Amended 2026-11-14, THE PAGE IS SYNCING, WITH EXPORT, SCHEDULES AND A WEBHOOK CHOICE:) Maintainer
+    2026-11-14. The page is named Syncing; this replaces the name Sync Points given earlier the same day.
+    The Metadata Export screen becomes part of it: an entry carries what an export target carried (the role
+    it publishes as, its provider''s export settings, Publish now and the result of its last run), so a
+    system is set up in one place and the separate Metadata Export screen and its targets go away. Each
+    entry has its own schedules in place of the one schedule for the whole organisation: one for sending
+    to the system and one for reading from it, each optional, each with Run now and its last result. An
+    ontology entry normally has neither, since its releases are uploaded. Publishing a change as it happens,
+    the plan check and the per-table lock are unchanged. The steward''s standing choice for a kind of difference
+    has a fourth option, ask a webhook: Provisa sends the one difference (the entry and its type, the kind
+    of difference, the object by its name, both values, the value last exchanged and which side changed)
+    and the webhook answers take Provisa''s value, take the other system''s value, or hold. No answer in
+    time, an error or any other answer is a hold, the same as a kind with no standing choice. The webhook
+    is called the way the approval hook is (REQ-247: its transports and timeout setting), and every applied
+    difference records who decided it: the steward by name, a standing choice, or the webhook.'
   scenario: 'Given a catalog entry whose asset descriptions differ from Provisa''s for forty columns and
     two owners
 
