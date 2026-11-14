@@ -47,8 +47,6 @@ from provisa.profiler import export
 from provisa.reference_library import citations, store
 from provisa.security.masking import MaskingRule, MaskType
 
-pytestmark = pytest.mark.asyncio
-
 DATASET = "pg/public/orders"
 SECTION = "Personal data"
 CONDITION = "email NOT LIKE '%@%'"
@@ -139,6 +137,7 @@ async def model(control_plane, monkeypatch):
     app_state = types.SimpleNamespace(
         model_db=db,
         contexts={},
+        view_context=None,
         roles=roles,
         role_chains={},
         surfaces={r: object() for r in roles},
@@ -259,10 +258,12 @@ def test_the_qualifier_is_the_rule_not_its_position():
 def test_the_qualifier_holds_when_another_check_is_added_before_it():
     check = regulation.regulation_check("regulation_q1", CONDITION)
     contract = build_contract("soda", DATASET, [check])
-    before = build_contract("soda", DATASET, [_MISSING, *contract_checks(contract, "soda")])
+    other = regulation.regulation_check("regulation_q0", "email IS NULL")
+    before = build_contract("soda", DATASET, [other, *contract_checks(contract, "soda")])
     assert regulation.held_qualifiers(contract) == {"regulation_q1"}
-    assert regulation.held_qualifiers(before) == {"regulation_q1"}
-    [kept] = [c for c in contract_checks(before, "soda") if c["check_type"] == "failed_rows"]
+    assert regulation.held_qualifiers(before) == {"regulation_q0", "regulation_q1"}
+    [kept] = [c for c in contract_checks(before, "soda") if "regulation_q1" in c["definition"]]
+    # Its position moved; its qualifier, and so its citation's object key, did not.
     assert contract_checks(before, "soda").index(kept) == 1
 
 
