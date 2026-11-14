@@ -285,6 +285,38 @@ def duckdb_reads_alike(text: str) -> bool:
     return clocks <= 1 and bool(words) and interval_read(text) is not None
 
 
+def rejected(text: str) -> bool:
+    """Whether PostgreSQL refuses ``text`` as an interval's input (22007) for a reason read here:
+    a unit given twice ('1 day 1 day', '1 hour 02:03') or a quarter, which no interval's input
+    has. DuckDB's own input answers these (2 days, 3 mons)."""
+    tokens = _tokens(text)
+    if not tokens:
+        return False
+    given: set[str] = set()
+    at = 0
+    while at < len(tokens):
+        token = tokens[at]
+        if ":" in token and _clock(token) is not None:
+            if given & _CLOCK_UNITS:
+                return True
+            given |= _CLOCK_UNITS
+            at += 1
+            continue
+        if at + 1 < len(tokens) and tokens[at + 1][:10] in ("quarter", "quarters", "qtr"):
+            return True
+        unit = INPUT_UNITS.get(tokens[at + 1][:10]) if at + 1 < len(tokens) else None
+        if _NUMBER.fullmatch(token) is None or unit is None:
+            return False
+        units = {unit}
+        if unit == "second" and "." in token:
+            units = set(_ALL_SECONDS)
+        if given & units:
+            return True
+        given |= units
+        at += 2
+    return False
+
+
 __all__ = [
     "DAY_US",
     "HOUR_US",
@@ -299,4 +331,5 @@ __all__ = [
     "duckdb_reads_alike",
     "interval_read",
     "one_amount",
+    "rejected",
 ]

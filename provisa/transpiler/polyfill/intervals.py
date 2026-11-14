@@ -58,6 +58,7 @@ from provisa.transpiler.interval_input import (
     canonical,
     duckdb_reads_alike,
     interval_read,
+    rejected,
 )
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
@@ -1648,9 +1649,10 @@ def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """A string cast to interval on DuckDB, wherever it stands. DuckDB's own interval input reads
     whole amounts of the common units and one clock as PostgreSQL does (interval_input.
     duckdb_reads_alike), and those are kept as written. It rounds a fraction of a microsecond
-    otherwise, fails on '+3 hours', '1 day 02:03 ago' and ISO 8601, and answers '1 day 1 day' and
+    otherwise, fails on '+3 hours' and '1 day 02:03 ago', and answers '1 day 1 day' and
     '1 quarter', which PostgreSQL refuses: any other text read here is sent as its three fields'
-    text, which DuckDB reads exactly, and one not read here is refused by name."""
+    text, which DuckDB reads exactly; one PostgreSQL refuses for a unit given twice or a quarter is
+    refused by name; any other not read here (a bare number, ISO 8601) is DuckDB's own reading."""
     if dialect != "duckdb" or not isinstance(node, exp.Cast):
         return None
     fields = _literal_fields(node)
@@ -1662,7 +1664,9 @@ def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     ):
         return None
     if not isinstance(fields, tuple):
-        raise _refused_literal(f"interval input '{fields}'", dialect)
+        if rejected(fields):
+            raise _refused_literal(f"interval input '{fields}'", dialect)
+        return None  # a form not read here ('0', ISO 8601): DuckDB's own reading, as before
     return exp.Cast(this=exp.Literal.string(canonical(*fields)), to=node.to.copy())
 
 
@@ -1670,8 +1674,9 @@ _DUCKDB_LITERAL_STATED = (
     "A string cast to interval is read as PostgreSQL's interval input reads it (IntervalStyle "
     "postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock "
     "are sent as written, which DuckDB reads alike; any other text is sent as the text of its "
-    "three fields, which DuckDB reads exactly. A form not read here (ISO 8601, the SQL standard's, "
-    "a bare number, infinity) is refused by name: DuckDB fails on it or answers otherwise."
+    "three fields, which DuckDB reads exactly. A text PostgreSQL refuses for a unit given twice or a "
+    "quarter, which DuckDB answers, is refused by name; any other form not read here (a bare "
+    "number, ISO 8601, the SQL standard's) is DuckDB's own reading."
 )
 
 

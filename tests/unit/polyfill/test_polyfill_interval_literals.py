@@ -529,12 +529,19 @@ def test_duckdb_reads_a_cast_s_text_as_postgresql_does(text, want):
     assert _duckdb_rows(f"SELECT '{text}'::interval AS v", ["x"]) == [want]
 
 
-@pytest.mark.parametrize("text", ["1 day 1 day", "1 quarter", "P1D"])
-def test_duckdb_refuses_by_name_an_input_not_read_here(text):
-    """PostgreSQL refuses the first two, which DuckDB answered (2 days, 3 mons); DuckDB fails on
-    ISO 8601."""
+@pytest.mark.parametrize("text", ["1 day 1 day", "1 quarter", "1 hour 02:03"])
+def test_duckdb_refuses_by_name_an_input_postgresql_refuses(text):
+    """PostgreSQL refuses each (22007); DuckDB answered them (2 days, 3 mons, 03:03:00)."""
     with pytest.raises(FunctionRefused, match="duckdb"):
         transpile(f"SELECT '{text}'::interval AS v", "duckdb")
+
+
+@pytest.mark.parametrize("text", ["0", "5"])
+def test_duckdb_keeps_its_own_reading_of_a_form_not_read_here(text):
+    """A bare number is seconds in both: DuckDB reads it as PostgreSQL does."""
+    assert transpile(f"SELECT '{text}'::interval AS v", "duckdb") == (
+        f"SELECT CAST('{text}' AS INTERVAL) AS v"
+    )
 
 
 def test_duckdb_keeps_a_text_it_reads_alike():
