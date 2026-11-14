@@ -283,7 +283,7 @@ async def test_the_check_and_its_citation_are_kept_together(model):
         "checker": "soda",
     }
     checks = contract_checks(await _contract(m, m.soda), "soda")
-    assert checks[0]["check_type"] == "missing"
+    assert [c for c in checks if c["check_type"] == "missing"] == [{**_MISSING, "extra": ""}]
     [failed] = [c for c in checks if c["check_type"] == "failed_rows"]
     assert failed["column_name"] == ""
     assert f"qualifier: {qualifier}" in failed["definition"]
