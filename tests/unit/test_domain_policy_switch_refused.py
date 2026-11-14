@@ -23,6 +23,7 @@ The scenarios run here on a SQLite control plane, and unchanged on PostgreSQL in
 from __future__ import annotations
 
 import types
+from collections.abc import Iterator
 from typing import Any
 
 import pytest
@@ -44,7 +45,7 @@ async def db(control_plane) -> Database:
 
 
 @pytest.fixture(autouse=True)
-def wired(db, monkeypatch) -> list[int]:
+def wired(db, monkeypatch) -> Iterator[list[int]]:
     """The route's surroundings: the acting org's control plane, a caller who may change org
     settings, a deployment with no naming block, and a record of each schema rebuild."""
     rebuilds: list[int] = []
@@ -57,6 +58,11 @@ def wired(db, monkeypatch) -> list[int]:
     monkeypatch.setattr(appmod, "_rebuild_schemas", _rebuild)
     monkeypatch.setattr(settings_router, "require_org_settings", lambda request: None)
     monkeypatch.setattr(settings_router, "read_config", lambda: {})
+    # The route writes the org's settings rows onto the bound org's runtime. That runtime is
+    # the deployment org's, which outlives this test, so they are put back afterwards.
+    monkeypatch.setattr(
+        appmod.state, "settings_overrides", dict(appmod.state.settings_overrides), raising=False
+    )
     before = domain_policy.snapshot()
     yield rebuilds
     domain_policy.configure(*before)
