@@ -9,10 +9,17 @@
 // permission from the copyright holder.
 
 import { useQuery, useMutation } from "@apollo/client/react";
-import type { LibraryCitation, MutationResult, Tag, TagAssignment } from "../types/admin";
+import type {
+  LibraryCitation,
+  MutationResult,
+  Tag,
+  TagAssignment,
+  TagTarget,
+} from "../types/admin";
 import {
   TagsQuery as TAGS_QUERY,
   TagAssignmentsQuery as TAG_ASSIGNMENTS_QUERY,
+  OfferedTags as OFFERED_TAGS_QUERY,
   CreateTag as CREATE_TAG_MUTATION,
   UpdateTag as UPDATE_TAG_MUTATION,
   DeleteTag as DELETE_TAG_MUTATION,
@@ -56,6 +63,17 @@ export function useTagAssignments() {
   };
 }
 
+/** The ids of the tags offered on ``target``, as the server places it in its domains (null until
+ *  read): asked only once ``enabled``, when the picker is first opened. */
+export function useOfferedTags(target: TagTarget, enabled: boolean) {
+  const { data, loading } = useQuery<{ offeredTags: string[] }>(OFFERED_TAGS_QUERY, {
+    variables: { target },
+    skip: !enabled,
+    fetchPolicy: "cache-and-network",
+  });
+  return { offered: data ? new Set(data.offeredTags) : null, loading };
+}
+
 /** A tag saved: a new one is created (an id that exists is refused), one that exists updated. */
 export function useSaveTag() {
   const saved = { refetchQueries: [{ query: TAGS_QUERY }] };
@@ -75,8 +93,11 @@ export function useSaveTag() {
     expiresPolicy: string,
     paramPolicy: string, // REQ-1467
     requiresCitation: boolean, // REQ-2208
+    required: boolean, // REQ-2208: on every object of the kinds in appliesTo
     // The whole set of the definition's citations, saved with the tag; left out, they stay.
     citations?: CitationPlace[],
+    // The domains whose objects the tag is offered on (none: every domain); left out, they stay.
+    allowedDomains?: string[],
   ) => ({
     citations: citations === undefined ? null : citations.map(citationInput),
     input: {
@@ -87,6 +108,8 @@ export function useSaveTag() {
       expiresPolicy,
       paramPolicy,
       requiresCitation,
+      required,
+      allowedDomains: allowedDomains ?? null,
     },
   });
   return {

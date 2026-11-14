@@ -1017,6 +1017,9 @@ class Tag(BaseModel):  # REQ-1373, REQ-1375
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; an object
     # without it is listed by the tags report, never refused.
     required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered for assignment, and assignable, only on objects
+    # of these domains, and required only there; empty = every domain, as a source's.
+    allowed_domains: list[str] = Field(default_factory=list)
 
 
 # REQ-1375: the system tags are code-defined intrinsics — present in EVERY install, never

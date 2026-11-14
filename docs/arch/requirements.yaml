@@ -93934,7 +93934,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     or review-needed citation, and the controls of the tag assignment form and the tag editor, so Polly
     can evaluate the tags on a screen and edit them through the same forms; MCP has the same edits as tools
     (assign, unassign, cite, uncite) through the existing calls with the caller''s rights. Polly proposes
-    an edit and the person confirms before it is written.'
+    an edit and the person confirms before it is written. (Amended 2026-11-13, AN ASSIGNMENT ON AN OBJECT
+    WITH NO DOMAIN RECORDS NO DOMAIN:) Maintainer 2026-11-13: a domain-limited tag assigned to an object
+    with no domain (a role) is checked against the assigner''s acting domains when it is made and records
+    no domain. Narrowing the tag''s domains never lists such an assignment, and such an object is never
+    missing a domain-limited required tag.'
   scenario: 'Given a row rule that cites section "4.2 Access to customer data" of the privacy policy
 
 
@@ -95601,7 +95605,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     outside the exact cases it raises, with PostgreSQL''s error where the case can be detected, and never
     returns an approximate or rounded value; a refusal by name is for a function with no exact common case.
     The order for every function on every engine: the exact answer; an answer within a stated and enforced
-    bound; a refusal by name.'
+    bound; a refusal by name. (Amended 2026-11-13, THE GRID DECIDES BEFORE A TYPE IS REFUSED:) Maintainer
+    2026-11-13: a call whose argument type an engine does not hold (on ClickHouse: timestamptz, interval,
+    timetz, bit, varbit, tid, aclitem, xml) is refused by name only when no grid row answers that call on
+    that engine; a row that answers it is read first. A timestamptz on ClickHouse is held as DateTime64(6,
+    ''UTC''): exact from 1900-01-01 to 2299-12-31, raising outside, stated as the limitation on that engine''s
+    page.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
@@ -95889,3 +95898,89 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then it reads "Expand columns"
     And the control that opens the graph in the large view reads "Enlarge"
     And the control for a layer of the graph reads "Show" or "Hide"
+- id: REQ-2245
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: MCP & AI Integration
+  feature: chat-assistant-actions
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-13: asked which values of a column may indicate non-compliance with
+    a cited library section, the assistant writes a candidate condition from the section''s text, runs
+    it as a governed query under the asker''s rights, and reports counts and examples as "may indicate",
+    quoting the section and saying the counts cover only the rows the asker reads; it never states non-compliance
+    as fact. A column that is masked, faked or not served for the asker answers that it cannot be evaluated,
+    and the asker''s state of each column (plain, masked, faked, hidden) is answerable before anything
+    runs. If the person accepts, the condition is kept as a data quality rule that cites the section,
+    so it reruns on the checker''s schedule and appears in the tags report and the views connecting tags,
+    documents and objects. Accepting needs the right to edit data quality rules. Keeping is refused by
+    name when no checker scans the table, and unless the column is read in plain by the accepting person,
+    by the checker''s own user and by every role that sees the checker''s results. A rule whose cited
+    section has drifted or is broken keeps running and is marked as needing attention. Nothing is stored
+    before the person accepts.'
+  scenario: 'Given a library section cited by a tag on the column orders.email
+
+    And a checker that scans orders, whose results are read only by roles that read email in plain
+
+    When a person who reads email in plain asks which values may indicate non-compliance with the section
+
+    Then the assistant reports a count and examples as "may indicate" and quotes the section
+
+    When the person accepts the condition
+
+    Then a data quality rule citing the section is added to the checker
+
+    And the rule appears in the tags report
+
+    When a person for whom email is masked asks the same question
+
+    Then the answer says the column cannot be evaluated
+
+    '
+- id: REQ-2246
+  status: proposed
+  target: 2026-Q4
+  group: 10. UI & Admin Surfaces
+  category: MCP & AI Integration
+  feature: mcp-server-identity
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-13: an LLM client is sent every MCP tool''s definition on every model
+    call, and the server''s full list is large (88 tools, about 15,000 tokens, measured that day). The MCP
+    server has a sip mode for clients that mostly ask questions. A client chooses its mode when it connects,
+    by a parameter on the MCP address; an operator setting, with its field in the settings UI, gives the
+    mode of a client that names none. In sip mode the client is listed only the tools nearly every question
+    uses: finding, describing, querying and reading a metric by name, plus one tool that lists the other
+    groups of tools, each with a line saying what it is for (statistics, graph, glossary, data products,
+    metric management, proposals, test data and environments), and adds a group to the session when asked,
+    after which the client''s list holds that group too. Nothing is unreachable in sip mode, and a group
+    costs tokens only once it is added. A tool''s rights are unchanged: what a role may call is decided
+    as in full mode. Full mode lists every tool, as before. Sip mode changes only which tools are listed;
+    result sizes keep their own settings.'
+  scenario: 'Given an MCP client that connects in sip mode
+
+    When it lists the tools
+
+    Then it is listed the asking tools and the tool that adds a group, and no statistics or glossary management
+    tool
+
+    When it asks that tool what groups there are
+
+    Then the answer names each group and what it is for
+
+    When it asks for the statistics group
+
+    Then its tool list also holds the statistics tools
+
+    When it asks for the glossary group
+
+    Then its tool list also holds the glossary management tools
+
+    And a call to one of them is allowed or refused by the caller''s rights as in full mode
+
+    Given an MCP client that connects naming no mode
+
+    Then it is listed the tools of the mode the operator setting names
+
+    '

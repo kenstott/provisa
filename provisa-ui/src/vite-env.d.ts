@@ -24,6 +24,7 @@ declare module "*.graphql" {
   export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
+  export const OfferedTags: DocumentNode;
   export const CreateTag: DocumentNode;
   export const UpdateTag: DocumentNode;
   export const DeleteTag: DocumentNode;
@@ -46,6 +47,7 @@ declare module "*.graphql" {
   export const RLSRulesQuery: DocumentNode;
   export const AvailableSchemas: DocumentNode;
   export const AvailableTables: DocumentNode;
+  export const FileGlobPreview: DocumentNode;
   export const KaggleTokenValid: DocumentNode;
   export const KaggleDatasets: DocumentNode;
   export const StageKaggleDataset: DocumentNode;
@@ -180,6 +182,7 @@ declare module "*.gql" {
   export const TableRowsQuery: DocumentNode;
   export const TagsQuery: DocumentNode;
   export const TagAssignmentsQuery: DocumentNode;
+  export const OfferedTags: DocumentNode;
   export const CreateTag: DocumentNode;
   export const UpdateTag: DocumentNode;
   export const DeleteTag: DocumentNode;

@@ -550,13 +550,8 @@ def _held_rows(org_id: str, tables: list[str], schema: str) -> dict[str, int]:
     store = _store_path(org_id)
     if not Path(store).exists():
         return {}
-    broker = get_broker(store)
-    present = set(broker.tables(schema))
-    return {
-        name: int(broker.execute(f'SELECT count(*) FROM mat_store."{schema}"."{name}"')[0][0])
-        for name in tables
-        if name in present
-    }
+    held = get_broker(store).row_counts(schema)
+    return {name: held[name] for name in tables if name in held}
 
 
 def store_counts(org_id: str) -> dict[str, dict[str, int]]:
@@ -576,11 +571,11 @@ def store_counts(org_id: str) -> dict[str, dict[str, int]]:
     if not Path(store).exists():
         return out
     broker = get_broker(store)
+    # Each schema's tables listed and counted in one operation (row_counts): replicas the
+    # template does not wait for are still being built beside it, and one swapped in between a
+    # listing and its counts took its build table away (release 509).
     for kind, schema in (("replicas", _replicas_schema(org_id)), ("views", _views_schema(org_id))):
-        out[kind] = {
-            name: int(broker.execute(f'SELECT count(*) FROM mat_store."{schema}"."{name}"')[0][0])
-            for name in broker.tables(schema)
-        }
+        out[kind] = broker.row_counts(schema)
     return out
 
 

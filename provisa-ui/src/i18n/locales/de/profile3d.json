@@ -1,6 +1,6 @@
 {
   "profile3d": {
-    "expand": "Ansicht erweitern",
+    "expand": "Vergrößern",
     "webglError": "Die 3D-Ansicht konnte nicht gestartet werden: {{error}}",
     "hint": "Ziehen zum Orbit-Drehen · Scrollen zum Zoomen · Rechts ziehen zum Verschieben",
     "hintFlat": "Ziehen zum Verschieben · Scrollen zum Zoomen",
