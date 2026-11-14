@@ -512,6 +512,20 @@ def _values_column(column: exp.Column, sql: _Sql) -> str | None:
     return sql.embed(column)
 
 
+def _held_column(column: exp.Column) -> bool:
+    """Whether ``column`` is one of a VALUES list whose cells a row here wrote as intervals."""
+    select = column.find_ancestor(exp.Select)
+    source = select.args.get("from_") if select is not None else None
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or values.args.get("alias") is None:
+        return False
+    names = [c.name for c in values.args["alias"].columns]
+    if column.name not in names:
+        return False
+    index = names.index(column.name)
+    return any(row.expressions[index].meta.get(HELD) for row in values.expressions)
+
+
 def _read_by_a_row(column: exp.Column) -> bool:
     """Whether ``column`` is an argument of a call or an operator a row here reads."""
     node = column.parent
@@ -533,8 +547,8 @@ _STAMP = re.compile(
 )
 _DATE = re.compile(r"\s*(\d{4})-(\d{2})-(\d{2})\s*", re.ASCII)
 _EPOCH = datetime.datetime(1970, 1, 1)
-_FIRST_US = int((instants.FIRST - _EPOCH) / datetime.timedelta(microseconds=1))
-_LAST_US = int((instants.LAST - _EPOCH) / datetime.timedelta(microseconds=1))
+_FIRST_US = (instants.FIRST - _EPOCH) // datetime.timedelta(microseconds=1)
+_LAST_US = (instants.LAST - _EPOCH) // datetime.timedelta(microseconds=1)
 
 
 def _instant_literal(text: str, day: bool) -> int | None:
@@ -547,29 +561,26 @@ def _instant_literal(text: str, day: bool) -> int | None:
         stamp = datetime.datetime(*parts, microsecond=fraction)  # type: ignore[misc]
     except ValueError:
         return None
-    return int((stamp - _EPOCH) / datetime.timedelta(microseconds=1))
+    return (stamp - _EPOCH) // datetime.timedelta(microseconds=1)
 
 
 def _instant(argument: exp.Expr, kind: str, untyped: bool) -> str | None:
-    """A timestamp or a date ``argument`` as its wall time's microseconds from the epoch (Int64):
-    a literal in ISO form, or a NULL. None for any other value."""
+    """A timestamp or a date ``argument``, read here: its wall time's microseconds from the epoch
+    (a literal in ISO form), or ``NULL``. None for any other value, which no row here reads."""
     value = argument.unnest()
-    if isinstance(value, exp.Null):
-        return "CAST(NULL AS Nullable(Int64))"
     if isinstance(value, exp.Cast):
-        said = _said(value)
-        if said not in _KIND_TYPES[kind]:
+        if _said(value) not in _KIND_TYPES[kind]:
             return None
         value = value.this.unnest()
-        if isinstance(value, exp.Null):
-            return "CAST(NULL AS Nullable(Int64))"
-    elif not untyped:
+    elif not untyped and not isinstance(value, exp.Null):
         return None
+    if isinstance(value, exp.Null):
+        return "NULL"
     text = _string(value)
     if text is None:
         return None
     micros = _instant_literal(text, kind == "date")
-    return None if micros is None else f"toNullable(toInt64({micros}))"
+    return None if micros is None else str(micros)
 
 
 _KIND_TYPES = {
@@ -901,45 +912,29 @@ def _days_from_civil(y: str, m: str, d: str) -> str:
     return f"({era} * 146097 + {doe} - 719468)"
 
 
-def _civil_from_days(sql: _Sql, days: str, body: Callable[[str, str, str], str]) -> str:
-    """``body`` of the year, month and day of ``days`` from 1970-01-01 (Hinnant's
-    civil_from_days)."""
-
-    def of(z: str) -> str:
-        era = f"intDiv({z} - if({z} < 0, 146096, 0), 146097)"
-
-        def from_era(e: str, doe: str) -> str:
-            yoe = f"intDiv({doe} - intDiv({doe}, 1460) + intDiv({doe}, 36524) - intDiv({doe}, 146096), 365)"
-
-            def from_yoe(y: str) -> str:
-                doy = f"({doe} - (365 * {y} + intDiv({y}, 4) - intDiv({y}, 100)))"
-                mp = f"intDiv(5 * {doy} + 2, 153)"
-
-                def from_mp(dy: str, p: str) -> str:
-                    day = f"({dy} - intDiv(153 * {p} + 2, 5) + 1)"
-                    month = f"({p} + if({p} < 10, 3, -9))"
-                    year = f"({y} + {e} * 400 + if({month} <= 2, 1, 0))"
-                    return body(year, month, day)
-
-                return sql.let([doy, mp], from_mp)
-
-            return sql.let([yoe], from_yoe)
-
-        return sql.let([era, f"({z} - {era} * 146097)"], from_era)
-
-    return sql.let([days], of)
+_NULL_STAMP = "CAST(NULL AS Nullable(DateTime64(6, 'UTC')))"
+_MONTH_DAYS = "[31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]"
 
 
 def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
-    """timestamp_pl_interval (and _mi_, the interval negated first): the month added, the day
-    clamped to its month's last day, then the days, then the microseconds; each step inside
-    DateTime64's bound, or 0A000. The answer is DateTime64(6, 'UTC'), its wall time."""
+    """timestamp_pl_interval (and _mi_, the interval negated first, 22008 where a field cannot
+    be): the months added, the day clamped to its month's last day, then the days, then the
+    microseconds; each step inside DateTime64's bound, or 0A000. The timestamp is a literal, so its
+    calendar is read here; the answer is DateTime64(6, 'UTC'), its wall time."""
     message = instants.out_of_bound(function, instants.STAMP_BOUND)
 
     def form(sql: _Sql, stamp: str, interval: str) -> str:
-        def body(t: str, x: str) -> str:
+        if stamp == "NULL":
+            return _NULL_STAMP
+        t = int(stamp)
+        whole = _EPOCH + datetime.timedelta(microseconds=t)
+        tod = t - (t // _DAY_US) * _DAY_US
+        start = whole.year * 12 + whole.month - 1
+
+        def body(x: str) -> str:
             m0, d0 = (f"toInt64({_field(x, i)})" for i in (1, 2))
             u0 = f"toInt128({_field(x, 3)})"
+            negation = "0"
             if negate:
                 m0, d0, u0 = f"(-{m0})", f"(-{d0})", f"(-{u0})"
                 negation = _raise(
@@ -948,53 +943,39 @@ def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
                     f"({m0} > {_I32_MAX} OR {d0} > {_I32_MAX} OR {u0} > {_I64_MAX} "
                     f"OR ({m0} = {_I32_MAX} AND {d0} = {_I32_MAX} AND {u0} = {_I64_MAX}))",
                 )
-            else:
-                negation = "0"
-            days = f"intDiv({t} - if({t} < 0, {_DAY_US} - 1, 0), {_DAY_US})"
-            tod = f"({t} - {days} * {_DAY_US})"
 
-            def civil(year: str, month: str, day: str) -> str:
-                total = f"(toInt64({year}) * 12 + ({month} - 1) + {m0})"
+            def calendar(total: str) -> str:
                 ny = f"intDiv({total} - if({total} < 0, 11, 0), 12)"
-                nm = f"({total} - {ny} * 12 + 1)"
-                leap = f"(({ny} % 4 = 0 AND {ny} % 100 != 0) OR {ny} % 400 = 0)"
-                last = (
-                    f"if({nm} = 2, if({leap}, 29, 28), "
-                    f"arrayElement([31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31], toUInt8({nm})))"
-                )
-                nd = f"least({day}, {last})"
-                first = f"(toInt128({_days_from_civil(ny, nm, nd)}) * {_DAY_US} + {tod})"
-                stepped = f"if({m0} = 0, toInt128({t}), {first})"
 
-                def steps(s1: str) -> str:
-                    s2 = f"({s1} + toInt128({d0}) * {_DAY_US})"
+                def day(y: str, m: str) -> str:
+                    leap = f"(({y} % 4 = 0 AND {y} % 100 != 0) OR {y} % 400 = 0)"
+                    last = f"if({m} = 2 AND {leap}, 29, arrayElement({_MONTH_DAYS}, toUInt8({m})))"
+                    nd = f"least({whole.day}, {last})"
+                    first = f"toInt128({_days_from_civil(y, m, nd)}) * {_DAY_US} + {tod}"
+                    s1 = f"if({m0} = 0, toInt128({t}), {first})"
 
-                    def final(two: str) -> str:
-                        three = f"({two} + {u0})"
+                    def steps(one: str, two: str, three: str) -> str:
+                        outside = " OR ".join(
+                            f"({s} < {_FIRST_US} OR {s} > {_LAST_US})" for s in (one, two, three)
+                        )
+                        raised = _raise("0A000", message, f"({outside})")
+                        held = f"toInt64(if({outside}, {_FIRST_US}, {three}))"
+                        return f"fromUnixTimestamp64Micro({held} + {raised} + {negation}, 'UTC')"
 
-                        def answer(r: str) -> str:
-                            outside = " OR ".join(
-                                f"({s} < {_FIRST_US} OR {s} > {_LAST_US})" for s in (s1, two, r)
-                            )
-                            raised = _raise("0A000", message, f"({outside})")
-                            return (
-                                f"fromUnixTimestamp64Micro(toInt64(if({outside}, {_FIRST_US}, "
-                                f"{r}) + {raised} + {negation}), 'UTC')"
-                            )
+                    def after(one: str) -> str:
+                        two = f"({one} + toInt128({d0}) * {_DAY_US})"
+                        return sql.let(
+                            [two], lambda second: steps(one, second, f"({second} + {u0})")
+                        )
 
-                        return sql.let([three], answer)
+                    return sql.let([s1], after)
 
-                    return sql.let([s2], final)
+                return sql.let([ny, f"({total} - {ny} * 12 + 1)"], day)
 
-                return sql.let([stepped], steps)
+            answer = sql.let([f"(toInt64({start}) + {m0})"], calendar)
+            return f"if(isNull({_field(x, 1)}), {_NULL_STAMP}, {answer})"
 
-            answer = _civil_from_days(sql, days, civil)
-            return (
-                f"if(isNull({t}) OR isNull({_field(x, 1)}), "
-                f"CAST(NULL AS Nullable(DateTime64(6, 'UTC'))), {answer})"
-            )
-
-        return sql.let([stamp, interval], body)
+        return sql.let([interval], body)
 
     return form
 
@@ -1093,7 +1074,7 @@ def _kind(argument: exp.Expr) -> str | None:
     if value.meta.get(HELD):
         return "i"
     said = _said(value)
-    if said == "interval":
+    if said == "interval" or (isinstance(value, exp.Column) and _held_column(value)):
         return "i"
     if said in _KIND_TYPES["timestamp"]:
         return "t"
@@ -1206,8 +1187,8 @@ def _unit(argument: exp.Expr) -> str | None | bool:
 
 
 def _answered_as_text(node: exp.Expr) -> bool | None:
-    """Where an interval answer goes: True to the client (the select list, or a cast to text),
-    False to another row here, None anywhere else (the call is refused by name)."""
+    """Where an interval answer goes: True to the client (the select list), False to another row
+    here, None anywhere else (the call is refused by name)."""
     parent = node.parent
     while isinstance(parent, exp.Paren):
         parent = parent.parent
@@ -1216,10 +1197,10 @@ def _answered_as_text(node: exp.Expr) -> bool | None:
         return True if isinstance(parent, exp.Select) else None
     if isinstance(parent, exp.Select):
         return True if node.arg_key == "expressions" or isinstance(node.parent, exp.Paren) else None
-    if isinstance(parent, exp.Cast) and _said(parent) in ("text", "varchar", "character varying"):
-        return True
     if parent is None:
-        return None
+        # a copy of a pattern rule's argument, read by that rule (function_macros._polyfilled):
+        # the walk's first reading (inline's) saw where it stands, and refused it anywhere else
+        return False
     if type(parent) in _OPERATORS:
         return False
     call = trino.called(parent)
