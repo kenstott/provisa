@@ -29,6 +29,7 @@ import {
 import {
   exportsTo,
   SYNC_DIRECTIONS,
+  startingDirection,
   SYNC_ENTRY_TYPES,
   type SyncEntry,
   type SyncSecretField,
@@ -295,11 +296,24 @@ export function EntryFields({
           onChange={(v) => {
             if (!v) return;
             const type = v as SyncEntry["type"];
+            // A direction still at the old type's start takes the new type's start; one the
+            // administrator chose is kept.
+            const direction =
+              entry.direction === startingDirection(entry.type)
+                ? startingDirection(type)
+                : entry.direction;
             // Only a data catalog has a provider and export settings: another type drops them.
             onChange(
               type === "data_catalog"
-                ? { type }
-                : { type, provider: "", role: null, datazone_project_id: "", delta_share: false },
+                ? { type, direction }
+                : {
+                    type,
+                    direction,
+                    provider: "",
+                    role: null,
+                    datazone_project_id: "",
+                    delta_share: false,
+                  },
             );
           }}
         />

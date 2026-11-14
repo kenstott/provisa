@@ -231,6 +231,41 @@ describe("SyncingTab", () => {
     ]);
   });
 
+  it.each([
+    ["Ontology", "ontology"],
+    ["Custom", "custom"],
+  ])(
+    "%s: a new entry whose direction is not chosen starts as Import, not a data catalog's Export",
+    async (label, type) => {
+      mockFetch.mockResolvedValue(state([]));
+      render(<SyncingTab />);
+
+      fireEvent.click(await screen.findByTestId("syncing-add"));
+      fireEvent.change(screen.getByTestId("syncing-name"), { target: { value: "terms" } });
+      await pick("syncing-type", label);
+      fireEvent.click(screen.getByTestId("syncing-save"));
+
+      await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+      const [made] = mockSet.mock.calls[0][0].entries;
+      expect([made.type, made.direction]).toEqual([type, "import"]);
+    },
+  );
+
+  it("keeps a direction the user chose when the type is changed afterwards", async () => {
+    mockFetch.mockResolvedValue(state([]));
+    render(<SyncingTab />);
+
+    fireEvent.click(await screen.findByTestId("syncing-add"));
+    fireEvent.change(screen.getByTestId("syncing-name"), { target: { value: "terms" } });
+    await pick("syncing-direction", "Export and Import");
+    await pick("syncing-type", "Ontology");
+    fireEvent.click(screen.getByTestId("syncing-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    const [made] = mockSet.mock.calls[0][0].entries;
+    expect([made.type, made.direction]).toEqual(["ontology", "both"]);
+  });
+
   // --- editing each type ------------------------------------------------------------------------
 
   it("edits a data catalog without sending a credential the user did not type", async () => {

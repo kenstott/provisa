@@ -118,11 +118,16 @@ export function entryUpdate(entry: SyncEntry): SyncEntryUpdate {
   return kept as SyncEntryUpdate;
 }
 
+/** The direction a new entry of `type` starts with: a data catalog is published to; an ontology's
+ *  releases are uploaded and a custom system is read from until the administrator says otherwise. */
+export const startingDirection = (type: SyncEntry["type"]): SyncDirection =>
+  type === "data_catalog" ? "export" : "import";
+
 /** A new entry of `type`, empty but for what every entry starts with. */
 export const blankEntry = (type: SyncEntry["type"]): SyncEntry => ({
   id: "",
   type,
-  direction: type === "data_catalog" ? "export" : "import",
+  direction: startingDirection(type),
   provider: "",
   endpoint: "",
   auth_mode: "api_key",
