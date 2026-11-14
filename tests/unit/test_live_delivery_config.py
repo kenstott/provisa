@@ -173,6 +173,17 @@ async def _no_transaction():
     yield
 
 
+def _table_values(conn) -> dict:
+    """What the table upsert wrote to registered_tables: the save writes other rows too (the
+    glossary terms its columns name)."""
+    from provisa.core.schema_org import registered_tables
+
+    (written,) = [
+        c.args[1] for c in conn.upsert_returning.await_args_list if c.args[0] is registered_tables
+    ]
+    return written
+
+
 class TestRepoUpsertSerializesLive:
     @pytest.mark.asyncio
     async def test_live_persisted_as_json(self):
@@ -210,7 +221,7 @@ class TestRepoUpsertSerializesLive:
 
         # The JSON `live` column takes the Python dict directly (SQLAlchemy serializes per dialect) —
         # no manual json.dumps. Assert the value passed to the Core upsert.
-        values = conn.upsert_returning.await_args.args[1]
+        values = _table_values(conn)
         assert values["live"] == live.model_dump()
 
     @pytest.mark.asyncio
@@ -236,7 +247,7 @@ class TestRepoUpsertSerializesLive:
 
         await table_repo.upsert(conn, tbl)
 
-        values = conn.upsert_returning.await_args.args[1]
+        values = _table_values(conn)
         assert values["live"] is None
 
 
