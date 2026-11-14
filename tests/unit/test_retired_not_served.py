@@ -43,7 +43,7 @@ from provisa.core.repositories import relationship as rel_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import tag as tag_repo
 from provisa.core.repositories.retirement import RetiredNameTaken
-from provisa.core.schema_org import domains, registered_tables, roles, sources
+from provisa.core.schema_org import domains, registered_tables, roles, sources, table_columns
 
 ROLE = "seller"
 _ROLE_ROW = {
@@ -159,6 +159,26 @@ async def test_a_retired_relationship_and_one_reaching_a_retired_table_are_not_t
             .values(retired=True)
         )
         assert await fetch_relationships(conn) == []
+
+
+@pytest.mark.parametrize(("table", "column"), [("orders", "customer_id"), ("customers", "id")])
+async def test_a_relationship_joining_a_retired_column_of_a_live_table_is_not_traversable(
+    plane, table, column
+):
+    from provisa.api.admin.db_queries import fetch_relationships
+
+    async with model_change.scope("save", actor=lambda: "ada"), plane.acquire() as conn:
+        # Both tables stay in service; only the joined column is retired (as a merge can leave
+        # it), at the relationship's source end or its target end.
+        table_id = await _id(conn, table)
+        await conn.execute_core(
+            update(table_columns)
+            .where(table_columns.c.table_id == table_id, table_columns.c.column_name == column)
+            .values(retired=True)
+        )
+        assert await fetch_relationships(conn) == []
+        assert await table_repo.restore_column(conn, table_id, column)
+        assert [r["id"] for r in await fetch_relationships(conn)] == ["orders_customer"]
 
 
 async def test_a_retired_tag_is_not_offered_and_its_assignments_are_not_applied(plane):

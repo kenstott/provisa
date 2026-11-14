@@ -52,6 +52,33 @@ _TRAVERSABLE = (
 )
 
 
+async def _retired_columns(conn: "Connection") -> set[tuple[int, str]]:
+    """REQ-2248: the retired columns, as (table id, column name)."""
+    rows = await conn.fetch("SELECT table_id, column_name FROM table_columns WHERE retired")
+    return {(r["table_id"], r["column_name"]) for r in rows}
+
+
+def _joined_columns(rel: dict) -> set[tuple[int, str]]:
+    """The columns relationship ``rel`` joins on, as (table id, column name): each end's key
+    (several columns for a composite key) and, through a junction, the junction's keys and its
+    type column."""
+    from provisa.compiler.sql_types import key_list
+
+    ends = [
+        (rel["source_table_id"], rel["source_column"]),
+        (rel["target_table_id"], rel["target_column"]),
+        (rel["via_table_id"], rel["via_source_column"]),
+        (rel["via_table_id"], rel["via_target_column"]),
+        (rel["via_table_id"], rel["via_type_column"]),
+    ]
+    return {
+        (table_id, column)
+        for table_id, declared in ends
+        if table_id is not None and declared
+        for column in key_list(declared)
+    }
+
+
 async def fetch_tables(  # REQ-155, REQ-393, REQ-399
     conn: "Connection", *, draft: bool = False, catalog: bool = True
 ) -> list[dict]:
@@ -193,9 +220,13 @@ async def fetch_relationships(
         f"WHERE {_TRAVERSABLE} "
         "ORDER BY r.id"
     )
+    retired_columns = await _retired_columns(conn)
     result = []
     for r in rows:
         d = dict(r)
+        # REQ-2248: nor one that joins on a retired column, though both its tables are served.
+        if _joined_columns(d) & retired_columns:
+            continue
         d["graphql_alias"] = d["graphql_alias"] or d["graphql_field"]
         d["computed_cypher_alias"] = None if d["alias"] else d["cypher_type"]
         result.append(d)
