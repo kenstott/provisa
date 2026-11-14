@@ -165,6 +165,38 @@ def test_the_first_example_query_answers_the_bundles_rows_as_its_role(tier):
     _answers_the_bundles_rows(tier)
 
 
+#: How many first queries reach a new sandbox at once: a visitor's tabs, and its tour's warm-up.
+_AT_ONCE = 4
+
+
+@pytest.mark.parametrize("tier", ["retail"], indirect=True)
+def test_first_queries_sent_at_once_each_read_the_other_regions_view(tier):
+    """Several first queries of a new retail sandbox, sent at once, each answer the bundle's rows:
+    each is the sandbox's first read of the EU view (view_eu_customers_pseudonymised), whose
+    store each would attach. One store attached by two reads at once was refused as unreachable
+    (503 query.home_region_unavailable, R509-AQ)."""
+    from concurrent.futures import ThreadPoolExecutor
+
+    (first, *_) = sorted((tier.directory / "queries").glob("*.graphql"))
+    text = first.read_text()
+    role = run_as(text)
+    sandbox = _open_sandbox(tier)
+    headers = {"Authorization": f"Bearer {sandbox['token']}", "x-org-provisa": sandbox["org_id"]}
+    if role is not None:
+        headers["X-Provisa-Role"] = role
+
+    def ask(_: int) -> httpx.Response:
+        return httpx.post(
+            f"{tier.base_url}/data/graphql", json={"query": text}, headers=headers, timeout=300
+        )
+
+    with ThreadPoolExecutor(max_workers=_AT_ONCE) as pool:
+        answers = list(pool.map(ask, range(_AT_ONCE)))
+    refused = [(r.status_code, r.text[:500]) for r in answers if r.status_code != 200]
+    assert refused == [], (first.name, role, refused)
+    assert [_rows(r) for r in answers] == [_EXPECTED["retail"]] * _AT_ONCE
+
+
 @pytest.fixture(params=[d for d in sorted(_EXPECTED) if not serves_on_regions_tier(_NAMED / d)])
 def own_plane_tier(request, tmp_path_factory):
     """As ``tier``, on a control plane of its own, so a restart serves the template it recorded
