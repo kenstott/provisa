@@ -13,8 +13,8 @@
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
 from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
-from provisa.core import model_change
-from typing import TYPE_CHECKING, Any, Callable
+from provisa.core import model_change, model_uri
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 
 from sqlalchemy import delete as _delete, select, update
@@ -354,7 +354,7 @@ async def upsert(
     registration's input does, or (an alternate key) when a relationship is keyed on it. None:
     this registration read no declaration (no driver for the source here), and the input's marks
     are the table's."""
-    model_change.name("upsert", "table", table.table_name)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.table_uri, table))  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
         if view_sql:
@@ -798,8 +798,14 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         if held is not None and held != col.name:
             raise retirement.RetiredNameTaken("column", f"{table.table_name}.{held}")
     _retired_columns = {r.column_name for r in _existing_rows if r.retired} - _listed
-    for _restored in sorted({r.column_name for r in _existing_rows if r.retired} & _listed):
-        model_change.name("restore", "column", f"{table.table_name}.{_restored}")
+    for _restored in sorted(
+        (r for r in _existing_rows if r.retired and r.column_name in _listed),
+        key=lambda r: r.column_name,
+    ):
+        model_change.name(  # REQ-1524
+            "restore",
+            model_change.uri(model_uri.column_uri, table, _restored.column_name, _restored.alias),
+        )
     _dropped = sorted(set(_existing_types) - _retired_columns - {col.name for col in table.columns})
     _referred: dict[str, list[Dependent]] = {}
     for _column in _dropped:
@@ -1035,6 +1041,29 @@ async def keep_unedited(conn: "Connection", table: Table) -> Table:
     return table.model_copy(update={**kept, "columns": columns})
 
 
+class ModelName(NamedTuple):
+    """What a table is named by in the model (REQ-1385): its domain and its business name, the
+    alias when it has one, else its table name. Never its serial."""
+
+    domain_id: str
+    name: str
+
+
+async def model_name(conn: "Connection", table_id: int) -> ModelName | None:  # REQ-1524
+    """The model name of registered table ``table_id``, for naming a change to it in the model's
+    history (:func:`provisa.core.model_uri.named_table_uri`). None when there is no such table."""
+    row = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.domain_id,
+                registered_tables.c.alias,
+                registered_tables.c.table_name,
+            ).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    return None if row is None else ModelName(row.domain_id, row.alias or row.table_name)
+
+
 async def get(conn: "Connection", table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
     result = await conn.execute_core(
         select(registered_tables).where(registered_tables.c.id == table_id)
@@ -1149,29 +1178,61 @@ async def restore(conn: "Connection", table_id: int) -> bool:  # REQ-2248
     """Restore a retired table: the same table, its retirement cleared, served again with the
     columns and links it kept. A column retired on its own stays retired. False when there is
     no such table, or it is not retired."""
-    model_change.name("restore", "table", table_id)  # REQ-1524
-    done = await conn.execute_core(
-        update(registered_tables)
-        .where(registered_tables.c.id == table_id, registered_tables.c.retired.is_(True))
-        .values(**retirement.cleared())
-    )
-    return done.rowcount == 1
+    async with conn.transaction():
+        row = await get(conn, table_id)
+        if row is None or not row["retired"]:
+            return False
+        model_change.name(  # REQ-1524
+            "restore",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == table_id)
+            .values(**retirement.cleared())
+        )
+    return True
 
 
 async def restore_column(conn: "Connection", table_id: int, column_name: str) -> bool:  # REQ-2248
     """Restore a retired column of a table: the same column, its retirement cleared, in its
     table again with the tags it kept. False when the table has no such retired column."""
-    model_change.name("restore", "column", f"{table_id}.{column_name}")  # REQ-1524
-    done = await conn.execute_core(
-        update(table_columns)
-        .where(
-            table_columns.c.table_id == table_id,
-            table_columns.c.column_name == column_name,
-            table_columns.c.retired.is_(True),
-        )
-        .values(**retirement.cleared())
+    retired_column = (
+        table_columns.c.table_id == table_id,
+        table_columns.c.column_name == column_name,
+        table_columns.c.retired.is_(True),
     )
-    return done.rowcount == 1
+    async with conn.transaction():
+        held = (
+            await conn.execute_core(
+                select(
+                    registered_tables.c.domain_id,
+                    registered_tables.c.alias.label("table_alias"),
+                    registered_tables.c.table_name,
+                    table_columns.c.alias,
+                )
+                .join(registered_tables, registered_tables.c.id == table_columns.c.table_id)
+                .where(*retired_column)
+            )
+        ).fetchone()
+        if held is None:
+            return False
+        model_change.name(  # REQ-1524
+            "restore",
+            model_change.uri(
+                model_uri.named_column_uri,
+                held.domain_id,
+                held.table_alias or held.table_name,
+                column_name,
+                held.alias,
+            ),
+        )
+        await conn.execute_core(
+            update(table_columns).where(*retired_column).values(**retirement.cleared())
+        )
+    return True
 
 
 async def delete(  # REQ-014, REQ-1918, REQ-2248
@@ -1189,12 +1250,17 @@ async def delete(  # REQ-014, REQ-1918, REQ-2248
     Data kept for the table outside the control plane (replica, row-level rows, a view's
     storage relation, cache entries) is not removed here; the caller runs what exists for it.
     """
-    model_change.name("retire", "table", table_id)  # REQ-1524
     ref = ObjectRef("table", table_id)
     async with conn.transaction():
         row = await get(conn, table_id)
         if row is None or row["retired"]:
             return False
+        model_change.name(  # REQ-1524
+            "retire",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
         blocking = await guard(conn, ref)
         if blocking:
             raise TableDeleteRefused(table_id, row["table_name"], blocking)

@@ -17,7 +17,7 @@ expression here — an unparsable or non-aggregate expression is a hard error, n
 
 # Requirements: REQ-1317, REQ-1319, REQ-1320
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 import sqlglot
@@ -50,7 +50,7 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
     conn: "Connection", metric: Metric
 ) -> None:
     """Upsert a metric by name. The expression is validated on every write (hard error)."""
-    model_change.name("upsert", "metric", metric.name)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.metric_uri, metric.name))  # REQ-1524
     validate_expression(metric.expression)
     # REQ-2248: a retired metric keeps its name; a save under it would bring it back.
     held = (
@@ -144,7 +144,7 @@ async def delete(  # REQ-1317, REQ-1918, REQ-2248
     Refused (:class:`MetricDeleteRefused`), naming each, while a view is composed from it (its
     ``view_metrics`` lists the metric) or a view's SQL reads it as ``metrics.<name>``. One
     transaction."""
-    model_change.name("retire", "metric", name)  # REQ-1524
+    model_change.name("retire", model_change.uri(model_uri.metric_uri, name))  # REQ-1524
     ref = ObjectRef("metric", name)
     async with conn.transaction():
         held = await get(conn, name)
@@ -162,7 +162,7 @@ async def delete(  # REQ-1317, REQ-1918, REQ-2248
 async def restore(conn: "Connection", name: str) -> bool:  # REQ-2248
     """Restore a retired metric: the same metric, its retirement cleared, computed again. False
     when there is no such metric, or it is not retired."""
-    model_change.name("restore", "metric", name)  # REQ-1524
+    model_change.name("restore", model_change.uri(model_uri.metric_uri, name))  # REQ-1524
     done = await conn.execute_core(
         update(metrics)
         .where(metrics.c.name == name, metrics.c.retired.is_(True))

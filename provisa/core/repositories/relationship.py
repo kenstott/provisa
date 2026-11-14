@@ -12,7 +12,7 @@
 
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
@@ -23,7 +23,7 @@ from provisa.core.repositories import retirement
 from provisa.core.repositories import table as table_repo
 from provisa.core.relationship_names import store_effective_names
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.schema_org import relationships, table_columns
+from provisa.core.schema_org import registered_tables, relationships, table_columns
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -41,10 +41,19 @@ async def upsert(
     conn: "Connection", rel: Relationship
 ) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
     """Upsert a relationship. Resolves table names to registered_tables IDs."""
-    model_change.name("upsert", "relationship", rel.id)  # REQ-1524
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise TableNotRegistered("Source", rel.source_table_id)
+    model_change.name(  # REQ-1524
+        "upsert",
+        model_change.uri(
+            model_uri.named_relationship_uri,
+            source_tbl["domain_id"],
+            source_tbl["alias"] or source_tbl["table_name"],
+            rel.alias,
+            rel.id,
+        ),
+    )
 
     target_tbl_id = None
     if rel.target_function_name:
@@ -297,6 +306,33 @@ class RelationshipDeleteRefused(Exception):
         super().__init__(f"Relationship {rel_id!r} is still relied on by: {named}")
 
 
+async def _name_change(conn: "Connection", action: str, rel_id: str) -> None:  # REQ-1524
+    """Name a change to relationship ``rel_id`` by its model URI: at its source table's model
+    name, by its alias (REQ-1385)."""
+    row = (
+        await conn.execute_core(
+            select(
+                relationships.c.alias,
+                registered_tables.c.domain_id,
+                registered_tables.c.alias.label("table_alias"),
+                registered_tables.c.table_name,
+            )
+            .join(registered_tables, registered_tables.c.id == relationships.c.source_table_id)
+            .where(relationships.c.id == rel_id)
+        )
+    ).one()
+    model_change.name(
+        action,
+        model_change.uri(
+            model_uri.named_relationship_uri,
+            row.domain_id,
+            row.table_alias or row.table_name,
+            row.alias,
+            rel_id,
+        ),
+    )
+
+
 async def delete(  # REQ-019, REQ-1918, REQ-2248
     conn: "Connection", rel_id: str, *, reason: str | None = None
 ) -> bool:
@@ -310,12 +346,12 @@ async def delete(  # REQ-019, REQ-1918, REQ-2248
     a view joins on the relationship's columns and no other relationship approves that join
     (REQ-1140). One transaction.
     """
-    model_change.name("retire", "relationship", rel_id)  # REQ-1524
     ref = ObjectRef("relationship", rel_id)
     async with conn.transaction():
         held = await get(conn, rel_id)
         if held is None or held["retired"]:
             return False
+        await _name_change(conn, "retire", rel_id)
         blocking = await guard(conn, ref)
         if blocking:
             raise RelationshipDeleteRefused(rel_id, blocking)
@@ -340,11 +376,11 @@ async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
     """Restore a retired relationship: the same relationship, its retirement cleared, traversable
     again. Its key declares again, so the refs it derives are settled again (REQ-2141). False
     when there is none, or it is not retired."""
-    model_change.name("restore", "relationship", rel_id)  # REQ-1524
     async with conn.transaction():
         held = await get(conn, rel_id)
         if held is None or not held["retired"]:
             return False
+        await _name_change(conn, "restore", rel_id)
         await conn.execute_core(
             update(relationships).where(relationships.c.id == rel_id).values(**retirement.cleared())
         )

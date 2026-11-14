@@ -33,7 +33,7 @@ from typing import TYPE_CHECKING, Any
 import yaml
 from sqlalchemy import select
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from provisa.core.schema_org import connectors
 
 if TYPE_CHECKING:
@@ -77,7 +77,7 @@ def _platform() -> list[dict[str, Any]]:
 
 async def upsert(conn: "Connection", connector: "ConnectorConfig") -> None:
     """Add the connector, or replace its definition."""
-    model_change.name("upsert", "connector", connector.name)
+    model_change.name("upsert", model_change.uri(model_uri.kind_uri, "connectors", connector.name))
     values = _values(connector)
     await conn.upsert(
         connectors,

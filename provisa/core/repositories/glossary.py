@@ -26,7 +26,7 @@ both (``core.glossary.agent_view``).
 
 # Requirements: REQ-1387, REQ-1591, REQ-2130
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING, Any
 
 import json
@@ -1048,8 +1048,8 @@ async def create_abstract_term(
     # (normalize_term case-folds), so a manually-created one that isn't would be the one
     # inconsistent entry, and silently invite a same-word duplicate differing only in case
     # ("Sepal Length" alongside "sepal length"). Never left to the caller to remember.
-    model_change.name("create", "glossary term", name)  # REQ-1524
     name = name.strip().lower()
+    model_change.name("create", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
     existing = (
@@ -1088,8 +1088,8 @@ async def upsert_declared_term(
     This is also how a config entry grounds an already-physical term: naming an existing
     rooted term adds a definition without touching its column refs.
     """
-    model_change.name("upsert", "glossary term", name)  # REQ-1524
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
+    model_change.name("upsert", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
     held = (
@@ -1173,7 +1173,6 @@ async def set_calculation_method(conn: "Connection", term_id: int, method: str |
 async def set_iri(conn: "Connection", term_id: int, iri: str) -> None:
     """Give the term the IRI of the imported concept it is (REQ-2237). One concept is one term:
     an IRI another term carries is refused, naming that term, and so is replacing the term's own."""
-    model_change.name("align", "glossary term", f"{term_id} with {iri}")  # REQ-1524
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.iri).where(
@@ -1188,6 +1187,9 @@ async def set_iri(conn: "Connection", term_id: int, iri: str) -> None:
             raise ValueError(f"term {row.name!r} already carries the IRI {row.iri}")
     if not any(row.id == term_id for row in held):
         raise ValueError(f"term {term_id} does not exist")
+    model_change.name(  # REQ-1524
+        "align", model_change.uri(model_uri.term_uri, await term_name(conn, term_id)), "with", iri
+    )
     await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(iri=iri)
     )
@@ -1252,7 +1254,9 @@ async def approve_term(conn: "Connection", term_id: int, *, by: "str | None") ->
         .where(glossary_terms.c.id == term_id)
         .values(approved=True, status_by=by, status_at=func.now())
     )
-    model_change.name("approve", "glossary term", str(term_id))
+    model_change.name(  # REQ-1524
+        "approve", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+    )
 
 
 async def bulk_approvable(conn: "Connection") -> list[int]:
@@ -1330,7 +1334,9 @@ async def deprecate_term(
             status_at=func.now(),
         )
     )
-    model_change.name("deprecate", "glossary term", str(term_id))
+    model_change.name(  # REQ-1524
+        "deprecate", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+    )
 
 
 #: A retired term's successor takes its role (REQ-2144): a Class's is a Class or a Concept, a
@@ -1420,7 +1426,9 @@ async def retire_term(
     )
     if successor is not None:
         await add_edge(conn, successor, term_id, "REPLACES")
-    model_change.name("retire", "glossary term", str(term_id))
+    model_change.name(  # REQ-1524
+        "retire", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+    )
 
 
 async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") -> bool:
@@ -1449,8 +1457,12 @@ async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") ->
             & (glossary_term_edges.c.rel_type == "REPLACES")
         )
     )
-    model_change.name("restore", "glossary term", str(term_id))
-    return (result.rowcount or 0) > 0
+    restored = (result.rowcount or 0) > 0
+    if restored:  # no such term: nothing changed, and nothing to name
+        model_change.name(  # REQ-1524
+            "restore", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+        )
+    return restored
 
 
 async def retire_due(conn: "Connection", today: "date") -> list[int]:
@@ -2131,6 +2143,21 @@ async def _home_key_refs(
     await rehome_keys(conn, {table_id}, keep=keep)
 
 
+async def _name_grounding(conn: "Connection", term_id: int, table_id: int) -> None:
+    """Name a table's grounding in a term by both model URIs (REQ-1524)."""
+    from provisa.core.repositories.table import model_name
+
+    named = await model_name(conn, table_id)
+    assert named is not None  # grounded just now
+    term = await term_name(conn, term_id)
+    model_change.name(
+        "ground",
+        model_change.uri(model_uri.term_uri, term),
+        "to",
+        model_change.uri(model_uri.named_table_uri, named.domain_id, named.name),
+    )
+
+
 async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     """Make ``term_id`` the class term of ``table_id``.
 
@@ -2161,7 +2188,7 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
         .values(class_term_id=term_id, class_term_derived=False)
     )
     await _home_key_refs(conn, table_id)
-    model_change.name("ground", "glossary term", f"{term_id} to table {address}")
+    await _name_grounding(conn, term_id, table_id)  # REQ-1524
 
 
 async def declare_class_term(conn: "Connection", table_id: int, term_id: int) -> None:
@@ -2169,7 +2196,7 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     is the source of truth, so it replaces whatever term grounded the table before, and loading
     the same configuration again changes nothing. Another term in its place is refused while a
     same-entity relationship stands on the one it has (identity.TableInIdentity)."""
-    address = await _keyed_table(conn, table_id)
+    await _keyed_table(conn, table_id)  # refuses a table whose rows are not identifiable
     await refuse_class_on_property(conn, term_id, table_id)
     held = await _class_term_of(conn, table_id)
     if held is not None and held != term_id:
@@ -2183,7 +2210,7 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     if held is not None and held != term_id:
         # A draft the configuration replaced keeps what else it holds, or goes (REQ-2141).
         await _settle_terms(conn, {held}, domains_before=await term_domains(conn))
-    model_change.name("ground", "glossary term", f"{term_id} to table {address}")
+    await _name_grounding(conn, term_id, table_id)  # REQ-1524
 
 
 async def unground_table(conn: "Connection", term_id: int, table_id: int) -> bool:

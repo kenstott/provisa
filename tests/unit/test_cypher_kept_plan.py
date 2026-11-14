@@ -77,6 +77,7 @@ def _ctx(table_id: int = 1) -> SimpleNamespace:
         gql_governed_object_cols=set(),
         gql_json_columns=set(),
         exposed_to_physical={},
+        column_aliases={},
     )
 
 
