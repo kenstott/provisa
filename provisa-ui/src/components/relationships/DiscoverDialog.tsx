@@ -102,20 +102,20 @@ function DiscoverChoices({ onCancel, onRun }: Omit<DiscoverDialogProps, "opened"
             />
           </FormField>
         </FormChecks>
+        <FormFooter
+          onCancel={onCancel}
+          cancelProps={{ "data-testid": "discover-cancel" }}
+          action={
+            <Button
+              onClick={() => onRun(chosen)}
+              disabled={kinds === null || chosen.length === 0}
+              data-testid="discover-run"
+            >
+              {t("discoverDialog.run")}
+            </Button>
+          }
+        />
       </FormLayout>
-      <FormFooter
-        onCancel={onCancel}
-        cancelProps={{ "data-testid": "discover-cancel" }}
-        action={
-          <Button
-            onClick={() => onRun(chosen)}
-            disabled={kinds === null || chosen.length === 0}
-            data-testid="discover-run"
-          >
-            {t("discoverDialog.run")}
-          </Button>
-        }
-      />
     </>
   );
 }
