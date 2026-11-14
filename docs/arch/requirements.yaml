@@ -50873,8 +50873,13 @@
     YAML, the converter warnings and per-kind counts while writing NOTHING, and POST /admin/import/hasura/apply
     loads the YAML the administrator approved -- including any edits made in the preview -- through the
     settled org sequence (catalog names first per REQ-1266, then load_config, source pools, PK resolution,
-    schema rebuild), never a second loader. replace defaults to off so an import merges; turned on it
-    is load_config full-replace semantics.'
+    schema rebuild), never a second loader. replace defaults to off so an import merges; turned on it is
+    load_config full-replace semantics. (Amended 2026-11-14, THE TAB IS MIGRATIONS:) Maintainer 2026-11-14:
+    the admin tab is named Migrations, not Import, and Hasura is one type of migration. A migration is a
+    one-time conversion of another product''s project into a Provisa model, previewed before it is applied;
+    nothing stays connected afterwards. The tab lists the types it can convert, today Hasura v2 metadata
+    and Hasura DDN, and a later product is added as a new type there. ''Import'' in the product means only
+    the direction of an entry on the Syncing page (REQ-2247).'
   use_case: An administrator migrating off Hasura converts their metadata export in the admin UI, reads
     what the conversion produced and what it could not convert, corrects the connection details in place,
     and applies it to their org, without a shell on the deployment.
