@@ -218,7 +218,8 @@
         "data_level_changed": "データレベルを {{before}} から {{after}} に変更",
         "dq_results_changed": "品質の結果を {{before}} から {{after}} に変更",
         "profiles_changed": "プロファイルを {{before}} から {{after}} に変更",
-        "duration_changed": "期間を {{before}} から {{after}} に変更"
+        "duration_changed": "期間を {{before}} から {{after}} に変更",
+        "terms_of_use_changed": "利用条件を変更：{{subject}}"
       },
       "howToUse": {
         "column": {

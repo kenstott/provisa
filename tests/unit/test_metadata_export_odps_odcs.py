@@ -942,3 +942,20 @@ def test_a_contracts_dq_promises_are_stated_whether_or_not_its_results_are_given
     assert props["id"]["quality"]
     custom = {p["property"]: p["value"] for p in contract["customProperties"]}
     assert custom["dataQualityResults"] is False
+
+
+def test_an_offers_contract_states_the_offers_terms_of_use():
+    """REQ-2180 (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS): each offer carries its
+    terms of use, shown in its contract: a term the offer states is its contract's, one it leaves
+    unstated is the product's, written once on it."""
+    snapshot, product = _snapshot()
+    orders = next(t for t in snapshot.tables if t.name == "orders")
+    contract = _contract(
+        snapshot, product, orders, usage="Monthly churn models", limitations="No credit decisions"
+    )
+    assert _errors(ODCS, contract) == []
+    assert contract["description"] == {
+        "purpose": "One view of each customer",
+        "usage": "Monthly churn models",
+        "limitations": "No credit decisions",
+    }

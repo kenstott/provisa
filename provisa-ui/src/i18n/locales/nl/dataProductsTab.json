@@ -218,7 +218,8 @@
         "data_level_changed": "Dataniveau gewijzigd van {{before}} naar {{after}}",
         "dq_results_changed": "Kwaliteitsresultaten gewijzigd van {{before}} naar {{after}}",
         "profiles_changed": "Profielen gewijzigd van {{before}} naar {{after}}",
-        "duration_changed": "Duur gewijzigd van {{before}} naar {{after}}"
+        "duration_changed": "Duur gewijzigd van {{before}} naar {{after}}",
+        "terms_of_use_changed": "Gebruiksvoorwaarden gewijzigd: {{subject}}"
       },
       "howToUse": {
         "column": {

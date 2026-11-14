@@ -11,6 +11,7 @@
 """Control-plane org/tenant bootstrap: role hardening and schema seeding."""
 
 import re
+import threading
 import zlib
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
@@ -201,17 +202,36 @@ def _create_table_postgres(sync_conn, table) -> None:
     """CREATE ``table`` in the connection's current schema with every JSON column as JSONB — what
     ``schema.sql`` and the tables' own PostgreSQL DDL declare. Built from a copy, so the shared
     metadata (which the portable backends create from as it is) is not changed."""
+    _jsonb_copies(table.metadata)[table.name].create(sync_conn, checkfirst=True)
+
+
+#: Each metadata's JSONB copy (:func:`_jsonb_copies`), by the metadata and the tables it held.
+_JSONB_COPIES: dict[tuple[Any, tuple[str, ...]], dict[str, Any]] = {}
+_JSONB_COPIES_LOCK = threading.Lock()
+
+
+def _jsonb_copies(metadata) -> dict[str, Any]:
+    """A copy of every table of ``metadata``, each JSON column typed JSONB, made once per process.
+    The whole metadata is copied so a table's foreign keys resolve in the copy. REQ-2006: made
+    again for each table a layout created, it was ~0.1 s of Python per table, four per new org
+    schema, and the environments a sandbox's open lays out side by side waited on each other's."""
     from sqlalchemy import MetaData
+    from sqlalchemy.dialects import postgresql
     from sqlalchemy.dialects.postgresql import JSONB
 
-    scratch = MetaData()
-    # The whole metadata is copied so the table's foreign keys resolve in the copy.
-    copies = {t.name: t.to_metadata(scratch) for t in table.metadata.tables.values()}
-    copy = copies[table.name]
-    for column in copy.columns:
-        if column.type.compile(sync_conn.dialect).upper() == "JSON":
-            column.type = JSONB()
-    copy.create(sync_conn, checkfirst=True)
+    key = (metadata, tuple(metadata.tables))
+    with _JSONB_COPIES_LOCK:
+        copies = _JSONB_COPIES.get(key)
+        if copies is None:
+            scratch = MetaData()
+            copies = {t.name: t.to_metadata(scratch) for t in metadata.tables.values()}
+            dialect = postgresql.dialect()
+            for copy in copies.values():
+                for column in copy.columns:
+                    if column.type.compile(dialect).upper() == "JSON":
+                        column.type = JSONB()
+            _JSONB_COPIES[key] = copies
+    return copies
 
 
 def _live_columns_postgres(sync_conn, schema: str | None) -> dict[str, set[str]]:
@@ -370,36 +390,43 @@ async def init_schema(
 
     The control plane is PostgreSQL (REQ-2014): the raw ``schema.sql`` script runs inside an
     ``org_<id>`` schema."""
+    from provisa.core import step_clock
+
     _validate_org_id(org_id)
     schema_name = org_schema(org_id, env, region=region)
-    async with pool.acquire() as conn:
-        # REQ-2185: the reference library's passages are a pgvector column under a vector index,
-        # and schema.sql declares them so; a control plane without pgvector is refused here.
-        from provisa.core import pgvector
+    stepped = f"layout of {schema_name}"
+    with step_clock.step(f"{stepped}: its script"):
+        async with pool.acquire() as conn:
+            # REQ-2185: the reference library's passages are a pgvector column under a vector index,
+            # and schema.sql declares them so; a control plane without pgvector is refused here.
+            from provisa.core import pgvector
 
-        await pgvector.require(conn)
-        # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
-        # the abstraction so no PG-specific lock SQL appears here.
-        async with conn.advisory_lock(schema_lock_key(schema_name)):
-            await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
-            # The org's view store has creators of its own (an engine landing a view's rows, the
-            # store writer reconciling a view's table) that do not hold this org's lock.
-            await create_schema(conn, org_schema(org_id, env, "_mv_cache", region=region))
-            await conn.execute(f'SET search_path TO "{schema_name}"')
-            # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
-            # runs it natively; the control-plane Database shim auto-detects the
-            # multi-statement case and routes to the raw driver.
-            from provisa.core import model_change
+            await pgvector.require(conn)
+            # This branch is PostgreSQL-only (non-PG returned above); the advisory lock is taken through
+            # the abstraction so no PG-specific lock SQL appears here.
+            async with conn.advisory_lock(schema_lock_key(schema_name)):
+                await conn.execute_core(CreateSchema(schema_name, if_not_exists=True))
+                # The org's view store has creators of its own (an engine landing a view's rows, the
+                # store writer reconciling a view's table) that do not hold this org's lock.
+                await create_schema(conn, org_schema(org_id, env, "_mv_cache", region=region))
+                await conn.execute(f'SET search_path TO "{schema_name}"')
+                # schema_sql is a multi-statement script (DO $$ blocks). Raw asyncpg
+                # runs it natively; the control-plane Database shim auto-detects the
+                # multi-statement case and routes to the raw driver.
+                from provisa.core import model_change
 
-            async with model_change.layout():  # REQ-1524: the layout is not a model change
-                await conn.execute(schema_sql)
+                async with model_change.layout():  # REQ-1524: the layout is not a model change
+                    await conn.execute(schema_sql)
     # Whatever schema.sql's hand-written ADD COLUMN blocks missed, the metadata supplies: a
     # column added to schema_org reaches an org schema created before it (see add_missing_columns).
     engine = getattr(pool, "engine", None)
     if engine is not None:
         from provisa.core import schema_org
 
-        with engine.begin() as sa_conn:
+        with (
+            step_clock.step(f"{stepped}: its columns, roles and stamps"),
+            engine.begin() as sa_conn,
+        ):
             add_missing_columns(sa_conn, schema_org.metadata.sorted_tables, schema_name)
             assert_standard_roles(sa_conn, schema_name)  # REQ-2155
             # REQ-1914: the stamp rows and the triggers that advance them, once every table exists.
