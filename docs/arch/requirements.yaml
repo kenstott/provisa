@@ -84012,7 +84012,12 @@
     whether any is a contact on the renewal opportunity, answered through the canonical tables only. (8)
     Phase 2, a separate job after phase 1 is accepted: mentions of resolved organizations and people in
     long text, found by a deterministic phrase matcher from a term list generated from the bridges, as further
-    evidence for the check.'
+    evidence for the check. (Amended 2026-11-14, THE RERUN COMMAND MATCHES IN CODE AND WRITES IN SQL:) Maintainer
+    2026-11-14. (1) The registered command that reruns entity resolution is a SQL statement command: a code
+    query does the matching and the statement replaces the bridge rows through Provisa''s own write path,
+    so the tables refresh without a change signal. (2) The four one-word Jira customer names (Brightwater,
+    Elmstead, Ferncliff, Quillon) are spelled in full, so only the four planted records are unresolved.
+    (3) One organization mention is planted with a misspelling that scores in the fuzzy band.'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
