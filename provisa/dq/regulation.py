@@ -25,12 +25,17 @@ removed it.
 from __future__ import annotations
 
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
+import sqlglot
+import sqlglot.expressions as exp
 import yaml
 from sqlalchemy import select
+from sqlglot.errors import SqlglotError
 
+from provisa.core.landing_filter import NotOverColumns, columns_read
 from provisa.dq.catalog import build_check_definition
 from provisa.dq.contract import contract_checks
 from provisa.reference_library import citations
@@ -154,3 +159,33 @@ def not_plain_text(column: str, readers: list[tuple[str, str]]) -> str:
         f"column {column!r} must be read in plain by you, by the checker's user and by every "
         f"role that sees the checker's results, but it is {named}"
     )
+
+
+class ConditionUnreadable(ValueError):
+    """A condition that cannot be parsed as a SQL condition."""
+
+
+def condition_refusal(
+    condition: str, column: str, is_the_column: Callable[[exp.Column], bool]
+) -> str | None:
+    """Why ``condition`` may not be kept as a check on ``column``, or None when it reads that
+    column alone: it holds a subquery, names a table, or reads a column ``is_the_column`` does not
+    take for it. Parsed as the SQL path parses (sqlglot, PostgreSQL); :class:`ConditionUnreadable`
+    when it cannot be. Names columns, never a value."""
+    try:
+        tree = sqlglot.parse_one(condition, read="postgres")
+    except SqlglotError:
+        raise ConditionUnreadable(
+            f"the condition on column {column!r} cannot be parsed as a SQL condition"
+        ) from None
+    try:
+        read = columns_read(tree)
+    except NotOverColumns:
+        return (
+            f"the condition may read only column {column!r}, but it holds a subquery or names "
+            "a table"
+        )
+    others = sorted({c.sql(dialect="postgres") for c in read if not is_the_column(c)})
+    if not others:
+        return None
+    return f"the condition may read only column {column!r}, but it also reads {', '.join(others)}"

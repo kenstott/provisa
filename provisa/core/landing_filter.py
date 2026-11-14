@@ -36,15 +36,31 @@ def _parsed(table_name: str, predicate: str) -> exp.Expr:
         ) from exc
 
 
+class NotOverColumns(ValueError):
+    """A predicate that is a query, holds a subquery or names a table."""
+
+
+def columns_read(tree: exp.Expr) -> list[exp.Column]:
+    """The column references of the predicate ``tree``, each as written (qualified or not);
+    :class:`NotOverColumns` when it is a query, holds a subquery or names a table, so that it may
+    read more than the columns it lists. Also read by a kept regulation check's condition
+    (provisa.dq.regulation)."""
+    if isinstance(tree, (exp.Select, exp.Union)) or tree.find(exp.Select, exp.Table):
+        raise NotOverColumns("a predicate over columns alone holds no subquery and names no table")
+    return list(tree.find_all(exp.Column))
+
+
 def check(table_name: str, predicate: str, columns: list[str]) -> None:
     """Refuse, by name, a landing filter that is not a predicate over columns alone."""
     tree = _parsed(table_name, predicate)
-    if isinstance(tree, (exp.Select, exp.Union)) or tree.find(exp.Select, exp.Table):
+    try:
+        read = columns_read(tree)
+    except NotOverColumns:
         raise ValueError(
             f"table {table_name!r}: landing_filter is a predicate over the table's own columns; "
             "it may hold no subquery and name no table"
-        )
-    named = {c.name for c in tree.find_all(exp.Column)}
+        ) from None
+    named = {c.name for c in read}
     unknown = sorted(named - set(columns))
     if unknown:
         raise ValueError(

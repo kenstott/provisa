@@ -16,6 +16,8 @@ checker table that scans the table, and cites the library section the condition 
 transaction (:mod:`provisa.dq.regulation`). It is refused, storing nothing:
 
 - by name, when no checker scans the table, or only Great Expectations ones (a Soda one is needed);
+- when the condition cannot be parsed, or reads anything but the named column -- another column,
+  another table, a subquery -- since the stored failed-rows count depends on all it reads;
 - unless the column is read in plain by the caller, by the checker's own pgwire user, and by every
   role served the checker table's results: each is read from that role's governance context, the
   one the query guard checks a statement against (:func:`provisa.api.mcp.column_state.column_state`);
@@ -201,7 +203,23 @@ async def keep_regulation_check(
         if name is None or await served_columns_request(conn, request, table_id) == set():
             raise ApiError(404, "dq.table_not_found", f"No table {table_id}")
         what = f"table {name!r}"
-        column = registered_name(_governance(role), table_id, body.column)
+        gov = _governance(role)
+        column = registered_name(gov, table_id, body.column)
+
+        def _is_the_column(ref: Any) -> bool:
+            # Named as the plain-read test names it (registered_name), qualified by nothing or by
+            # a name the caller's statements give this table.
+            qualifier = ".".join(p.name for p in ref.parts[:-1])
+            return registered_name(gov, table_id, ref.name) == column and (
+                not qualifier or qualifier == name or gov.table_map.get(qualifier) == table_id
+            )
+
+        try:
+            reads_more = regulation.condition_refusal(body.condition, body.column, _is_the_column)
+        except regulation.ConditionUnreadable as exc:
+            raise ApiError(422, "dq.regulation_check_invalid", str(exc)) from None
+        if reads_more is not None:
+            raise _refused(reads_more)
         found = await _readable_checkers(
             conn, request, await export.checkers_scanning(conn, model_contexts(state), {table_id})
         )

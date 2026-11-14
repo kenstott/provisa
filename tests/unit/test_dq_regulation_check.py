@@ -131,7 +131,12 @@ async def model(control_plane, monkeypatch):
     def _governance(role: str):
         served = {} if role in hidden else {orders: None}
         rules = {(orders, "email"): (masks[role], "text")} if role in masks else {}
-        return types.SimpleNamespace(published={}, visible_columns=served, masking_rules=rules)
+        return types.SimpleNamespace(
+            published={},
+            visible_columns=served,
+            masking_rules=rules,
+            table_map={"orders": orders, "public.orders": orders},
+        )
 
     roles = {r: _role(r) for r in ("analyst", "dq_bot", "auditor")}
     app_state = types.SimpleNamespace(
@@ -310,6 +315,54 @@ async def test_keeping_the_same_rule_twice_is_refused_and_adds_nothing(model):
     assert again.value.status_code == 409 and "already keeps" in str(again.value.detail)
     assert await _contract(m, m.soda) == contract
     assert await _citations(m) == 1
+
+
+# --- the condition reads the named column alone ----------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "condition",
+    ["email NOT LIKE '%@%'", "orders.email NOT LIKE '%@%'", "public.orders.email IS NULL"],
+)
+async def test_the_named_column_unqualified_or_qualified_by_its_table_is_taken(model, condition):
+    m = model
+    kept = await route.keep_regulation_check(_request(), m.orders, _body(m, condition=condition))
+    assert kept["condition"] == condition
+    assert await _citations(m) == 1
+
+
+async def test_a_condition_reading_a_second_column_is_refused_naming_it(model):
+    m = model
+    refused = await _refused(m, _body(m, condition="email LIKE '%x' AND salary > 100000"))
+    detail = str(refused.detail)
+    assert refused.status_code == 409 and "salary" in detail
+    assert "100000" not in detail and "%x" not in detail
+
+
+async def test_a_condition_reading_another_tables_column_is_refused_naming_it(model):
+    m = model
+    refused = await _refused(m, _body(m, condition="customers.email NOT LIKE '%@%'"))
+    detail = str(refused.detail)
+    assert refused.status_code == 409 and "customers.email" in detail
+    assert "%@%" not in detail
+
+
+async def test_a_condition_holding_a_subquery_is_refused(model):
+    m = model
+    refused = await _refused(
+        m, _body(m, condition="email IN (SELECT email FROM banned WHERE reason = 'fraud')")
+    )
+    detail = str(refused.detail)
+    assert refused.status_code == 409 and "subquery" in detail
+    assert "fraud" not in detail
+
+
+async def test_a_condition_that_cannot_be_parsed_is_refused(model):
+    m = model
+    refused = await _refused(m, _body(m, condition="email NOT LIKE ('secret%'"))
+    detail = str(refused.detail)
+    assert refused.status_code == 422 and "cannot be parsed" in detail
+    assert "secret" not in detail
 
 
 async def test_no_checker_scanning_the_table_is_refused_by_name(model, monkeypatch):
