@@ -95947,21 +95947,31 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   priority: SHOULD
   type: behavioral
   description: 'Maintainer 2026-11-13: an LLM client is sent every MCP tool''s definition on every model
-    call, and the server''s full list is large (88 tools, about 15,000 tokens, measured that day). The
-    MCP server has a sip mode for clients that mostly ask questions. A client chooses its mode when it
-    connects, by a parameter on the MCP address; an operator setting, with its field in the settings UI,
-    gives the mode of a client that names none. In sip mode the client is listed only the tools for asking:
-    finding, describing, querying, metrics and statistics, plus one tool that lists the other groups of
-    tools (graph, glossary, data products, metric management, proposals, test data and environments) and
-    adds a group to the session when asked, after which the client''s list holds that group too. Nothing
-    is unreachable in sip mode, and a group costs tokens only once it is added. A tool''s rights are unchanged:
-    what a role may call is decided as in full mode. Full mode lists every tool, as before. Sip mode changes
-    only which tools are listed; result sizes keep their own settings.'
+    call, and the server''s full list is large (88 tools, about 15,000 tokens, measured that day). The MCP
+    server has a sip mode for clients that mostly ask questions. A client chooses its mode when it connects,
+    by a parameter on the MCP address; an operator setting, with its field in the settings UI, gives the
+    mode of a client that names none. In sip mode the client is listed only the tools nearly every question
+    uses: finding, describing, querying and reading a metric by name, plus one tool that lists the other
+    groups of tools, each with a line saying what it is for (statistics, graph, glossary, data products,
+    metric management, proposals, test data and environments), and adds a group to the session when asked,
+    after which the client''s list holds that group too. Nothing is unreachable in sip mode, and a group
+    costs tokens only once it is added. A tool''s rights are unchanged: what a role may call is decided
+    as in full mode. Full mode lists every tool, as before. Sip mode changes only which tools are listed;
+    result sizes keep their own settings.'
   scenario: 'Given an MCP client that connects in sip mode
 
     When it lists the tools
 
-    Then it is listed the asking tools and the tool that adds a group, and no glossary management tool
+    Then it is listed the asking tools and the tool that adds a group, and no statistics or glossary management
+    tool
+
+    When it asks that tool what groups there are
+
+    Then the answer names each group and what it is for
+
+    When it asks for the statistics group
+
+    Then its tool list also holds the statistics tools
 
     When it asks for the glossary group
 
