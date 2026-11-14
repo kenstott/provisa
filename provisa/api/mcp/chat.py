@@ -768,7 +768,7 @@ _CLIENT_TOOLS: list[Any] = [
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
             "/tables (the ERD at /tables?view=erd), /relationships, /admin/ontology, /schema. Explore's query surfaces "
-            "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
+            "(never guess a route for these — NOT /explore, the MCP explorer, a separate chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
             "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
             "already prepared a "

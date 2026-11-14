@@ -43,7 +43,6 @@ const { cy, cytoscape } = vi.hoisted(() => {
   return { cy, cytoscape: Object.assign(() => cy, { use: vi.fn() }) };
 });
 vi.mock("cytoscape", () => ({ default: cytoscape }));
-vi.mock("cytoscape-elk", () => ({ default: vi.fn() }));
 vi.stubGlobal(
   "ResizeObserver",
   class {

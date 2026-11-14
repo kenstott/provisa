@@ -36,7 +36,6 @@ import {
   type NodeSingular,
 } from "./core";
 import { cyCanvas, type CyCanvas } from "./cyCanvas";
-import { PROVISA_ELK } from "./elkLayout";
 import { exportJpeg, exportJson, exportPng, exportSvg } from "./exportImage";
 import { GraphControls, type GraphCopy } from "./GraphControls";
 import { GraphLegend } from "./GraphLegend";
@@ -549,9 +548,9 @@ export function ProvisaGraph({
         cy.nodes('[kind = "node"]').forEach((n) => {
           if (!connected.has(n.id())) n.style("display", "none");
         });
-        // ELK through Provisa's own adapter, which says a failure after the layout started.
-        const elk = { ...ERD_ELK_LAYOUT, name: PROVISA_ELK };
-        laying.run(cy.layout(elk as Parameters<typeof cy.layout>[0]), () => {
+        // ELK through Provisa's own adapter (ERD_ELK_LAYOUT names it), which says a failure after
+        // the layout started.
+        laying.run(cy.layout(ERD_ELK_LAYOUT as Parameters<typeof cy.layout>[0]), () => {
           const opts = latest.current.options;
           const rect = box.getBoundingClientRect();
           const arranged = arrangeLayered(c, {
