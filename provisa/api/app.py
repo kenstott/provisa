@@ -5509,6 +5509,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.regulation_checks_router import (  # REQ-2245
+        router as regulation_checks_router,
+    )
+
+    app.include_router(regulation_checks_router)
     from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
         router as profiler_classifications_router,
     )

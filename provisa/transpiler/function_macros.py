@@ -2827,7 +2827,10 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
         argued = node.copy()  # read where the call stands, as _polyfilled_by_rule reads it
         argued.parent, argued.arg_key = node.parent, node.arg_key
         return applied.form.function(argued, dialect) is not None
-    except polyfill_notation.Refused:
+    except polyfill_notation.Refused as refused:
+        if refused.ruling:  # the row names what of the call it refuses
+            called = node.name.lower() if isinstance(node, exp.Anonymous) else _feature_of(node)
+            raise RowRefused(called, dialect, refused.refusal) from refused
         return False
 
 

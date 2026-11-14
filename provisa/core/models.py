@@ -686,6 +686,7 @@ class ContractChange(BaseModel):  # REQ-2158
         "dq_results_changed",
         "profiles_changed",
         "duration_changed",
+        "terms_of_use_changed",
     ]
     subject: str = Field(min_length=1)
     before: str | None = None
@@ -701,8 +702,10 @@ OFFER_DATA_LEVELS = ("full", "sample", "synthetic")
 class _OfferBase(BaseModel):  # REQ-2180
     """What an offer is, however its sample's views are named: a role its owner may grant, the
     level of data it gives, whether it includes the product's data quality results and its
-    profiles, whether it is open (accepted at once), and how long what accepting it grants lasts
-    (None: no end). A synthetic offer has no profiles."""
+    profiles, whether it is open (accepted at once), how long what accepting it grants lasts
+    (None: no end), and its terms of use in prose -- its purpose, its usage and its limitations,
+    each empty where it states none (amended 2026-11-11, THE PRODUCT PAGE IS SUMMARY ROWS). A
+    synthetic offer has no profiles."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -714,6 +717,9 @@ class _OfferBase(BaseModel):  # REQ-2180
     profiles: bool = False
     open: bool = False
     duration_days: int | None = Field(default=None, gt=0)
+    purpose: str = ""
+    usage: str = ""
+    limitations: str = ""
 
     @model_validator(mode="after")
     def _data_fits(self) -> "_OfferBase":
@@ -746,6 +752,14 @@ DataProduct.model_rebuild()
 #: REQ-2180: the offer every product starts with, and only it.
 DEFAULT_OFFER = DataProductOffer(name="default", role_id="viewer")
 
+#: REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): the kinds of
+#: consumer a request is for.
+CONSUMER_KINDS = ("person", "team", "data_product", "agent")
+
+#: REQ-2180 (amended 2026-11-11): an offer's terms of use, in the order its contract states them.
+TERMS_OF_USE = ("purpose", "usage", "limitations")
+ConsumerKind = Literal["person", "team", "data_product", "agent"]
+
 
 class OfferField(BaseModel):  # REQ-2180
     """A dataset's column as an offer's role sees it: masked (and how) or not."""
@@ -774,6 +788,10 @@ class OfferTerms(BaseModel):  # REQ-2180
     dq_results: bool = True
     profiles: list[str] = Field(default_factory=list)
     duration_days: int | None = None
+    # The offer's terms of use, in prose; empty where it states none.
+    purpose: str = ""
+    usage: str = ""
+    limitations: str = ""
 
 
 class OfferContractVersion(BaseModel):  # REQ-2180

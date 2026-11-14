@@ -144,7 +144,8 @@ describe("DataProductDetailPanel — Data Quality panel (REQ-1443 clause 10)", (
     const dq = screen.getByTestId("data-product-detail-dq-tables-pet_health");
     expect(within(dq).getByText("pet-store.vets_scan")).toBeTruthy();
     expect(within(dq).getByText(/Soda contract over vets/)).toBeTruthy();
-    expect(screen.getByText(t("dataProductsTab.detail.field.dataQuality"))).toBeTruthy();
+    // One heading: the section's row; the expanded section does not repeat it.
+    expect(screen.queryByText(t("dataProductsTab.detail.field.dataQuality"))).toBeNull();
   });
 
   it("keeps checker tables out of Access Patterns and offers only SQL on the scan", () => {

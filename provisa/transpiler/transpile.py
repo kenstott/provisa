@@ -1005,6 +1005,29 @@ def _like_escape_written(pg_sql: str, target_dialect: str) -> str:
     )
 
 
+_LIKE_SAID = re.compile(r"like\b|~~|\bescape\b", re.IGNORECASE)
+
+
+def _like_patterns_read(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each LIKE pattern in ClickHouse's form, its ESCAPE read (REQ-2167):
+    ClickHouse's LIKE has no ESCAPE clause, and its backslash escapes only %, _ and itself."""
+    if target_dialect != "clickhouse" or _LIKE_SAID.search(pg_sql) is None:
+        return pg_sql
+    from provisa.transpiler import like_patterns
+
+    return like_patterns.written(pg_sql)
+
+
+def _stamp_inputs_held(pg_sql: str, target_dialect: str) -> str:
+    """``pg_sql`` with each text cast to a timestamp without its offset, as PostgreSQL's input
+    drops it (REQ-2167): ClickHouse's cast reads it."""
+    if target_dialect != "clickhouse" or "TIMESTAMP" not in pg_sql.upper():
+        return pg_sql
+    from provisa.transpiler.polyfill import instants
+
+    return instants.wall_inputs(pg_sql)
+
+
 def _null_order_as_key(tree: exp.Expr) -> exp.Expr:
     """#294: DuckDB SQL with each ORDER BY key whose nulls come first written as a null-test key
     of its own (codehost.duckdb_sql, the one form every DuckDB answering a statement runs)."""
@@ -1987,6 +2010,8 @@ def transpile(
         pg_sql = unalias_write_target(pg_sql)
     pg_sql = _every_match_unflagged(pg_sql, target_dialect)
     pg_sql = _like_escape_written(pg_sql, target_dialect)
+    pg_sql = _like_patterns_read(pg_sql, target_dialect)
+    pg_sql = _stamp_inputs_held(pg_sql, target_dialect)
     pg_sql = _instants_as_utc(pg_sql, target_dialect)
     lowered = _lower_universal_regex(pg_sql, target_dialect)
     if target_dialect == "postgres" and "FILTER(" in pg_sql.upper():
@@ -2185,7 +2210,13 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
+    from provisa.transpiler.polyfill import instants
+
     def said(node: exp.Expr) -> exp.Expr:
+        outside = instants.outside_cast(node)
+        if outside is not None:
+            # REQ-2167: a literal DateTime64 would hold at its type's end raises 0A000.
+            return outside
         if isinstance(node, exp.CurrentTimestamp):
             return exp.Anonymous(
                 this="now64", expressions=[exp.Literal.number(6), exp.Literal.string("UTC")]

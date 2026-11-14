@@ -30,7 +30,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import and_, delete, func, insert, select
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from provisa.core.repositories.integrity import ObjectRef, discard
 from provisa.core.schema_org import erd_layout_domains, erd_layout_tables, erd_layouts
 
@@ -118,7 +118,7 @@ async def save(
     for t in tables:
         if not readable.table(t["table_id"]):
             raise UnreadablePlace("table", t["table_id"])
-    model_change.name("save", "ERD layout", name)  # REQ-1524
+    model_change.name("save", model_change.uri(model_uri.kind_uri, "erd-layouts", name))  # REQ-1524
     await conn.upsert(
         erd_layouts,
         {"name": name, "options": options, "updated_by": by},
@@ -167,6 +167,8 @@ async def remove(conn: "Connection", name: str) -> bool:
     ).fetchone()
     if found is None:
         return False
-    model_change.name("delete", "ERD layout", name)  # REQ-1524
+    model_change.name(
+        "delete", model_change.uri(model_uri.kind_uri, "erd-layouts", name)
+    )  # REQ-1524
     await discard(conn, ObjectRef("erd_layout", name))
     return True

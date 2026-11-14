@@ -13,8 +13,8 @@
 # Requirements: REQ-013, REQ-014, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
 
 from provisa.core.column_scope import SCOPE_DOMAIN, require_column_scope
-from provisa.core import model_change
-from typing import TYPE_CHECKING, Any, Callable
+from provisa.core import model_change, model_uri
+from typing import TYPE_CHECKING, Any, Callable, NamedTuple
 
 
 from sqlalchemy import delete as _delete, select
@@ -341,14 +341,20 @@ async def upsert(
     registration's input does, or (an alternate key) when a relationship is keyed on it. None:
     this registration read no declaration (no driver for the source here), and the input's marks
     are the table's."""
-    model_change.name("upsert", "table", table.table_name)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.table_uri, table))  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
         if view_sql:
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table, declared)
+        table_id = await _upsert(conn, table, declared)
+        if table_id is not None:
+            from provisa.dq.regulation import uncite_removed
+
+            # REQ-2245: a kept regulation check its contract no longer holds takes its citation.
+            await uncite_removed(conn, table_id)
+        return table_id
 
 
 async def naming_rules(conn: "Connection") -> list[dict]:
@@ -945,6 +951,29 @@ async def keep_unedited(conn: "Connection", table: Table) -> Table:
     return table.model_copy(update={**kept, "columns": columns})
 
 
+class ModelName(NamedTuple):
+    """What a table is named by in the model (REQ-1385): its domain and its business name, the
+    alias when it has one, else its table name. Never its serial."""
+
+    domain_id: str
+    name: str
+
+
+async def model_name(conn: "Connection", table_id: int) -> ModelName | None:  # REQ-1524
+    """The model name of registered table ``table_id``, for naming a change to it in the model's
+    history (:func:`provisa.core.model_uri.named_table_uri`). None when there is no such table."""
+    row = (
+        await conn.execute_core(
+            select(
+                registered_tables.c.domain_id,
+                registered_tables.c.alias,
+                registered_tables.c.table_name,
+            ).where(registered_tables.c.id == table_id)
+        )
+    ).fetchone()
+    return None if row is None else ModelName(row.domain_id, row.alias or row.table_name)
+
+
 async def get(conn: "Connection", table_id: int) -> dict | None:  # REQ-013, REQ-393, REQ-399
     result = await conn.execute_core(
         select(registered_tables).where(registered_tables.c.id == table_id)
@@ -1058,12 +1087,17 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
     Data kept for the table outside the control plane (replica, row-level rows, a view's
     storage relation, cache entries) is not removed here; the caller runs what exists for it.
     """
-    model_change.name("delete", "table", table_id)  # REQ-1524
     ref = ObjectRef("table", table_id)
     async with conn.transaction():
         row = await get(conn, table_id)
         if row is None:
             return False
+        model_change.name(  # REQ-1524
+            "delete",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
         blocking = await guard(conn, ref)
         if blocking:
             raise TableDeleteRefused(table_id, row["table_name"], blocking)
@@ -1071,6 +1105,10 @@ async def delete(conn: "Connection", table_id: int) -> bool:  # REQ-014, REQ-191
         # very table, so the sweep that follows has nothing left to read them from.
         refs_before = await glossary_repo.before_ref_removal(conn)
         await discard(conn, table_id)
+        from provisa.dq.regulation import uncite_removed
+
+        # REQ-2245: a checker table's kept regulation checks go with it, and their citations.
+        await uncite_removed(conn, table_id)
         # REQ-1387: settle the terms that lost their last ref (remove, or deprecate when an
         # abstract term hangs on them).
         await glossary_repo.sweep_refless_terms(conn, before=refs_before)

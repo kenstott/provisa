@@ -46,16 +46,24 @@ import zoneinfo
 from collections.abc import Callable
 from dataclasses import dataclass
 
+import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.core.session_time_zone import current_zone
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
-from provisa.transpiler.pg_literals import values_cast
-from provisa.transpiler import pg_forms
+from provisa.transpiler.pg_literals import (
+    TextEdit,
+    literal_span,
+    pg_string,
+    spliced,
+    values_cast,
+)
+from provisa.transpiler import pg_forms, to_char
+from provisa.transpiler.pg_syntax import TO_CHAR_TEMPLATE
 from provisa.transpiler.engine_refusals import PLAIN_PARTS
 
 FAMILY = "timestamp with time zone on ClickHouse"
@@ -75,9 +83,133 @@ _ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2})(?::(\d{2})(?:\.(\
 _DAY_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def out_of_bound(function: str) -> str:
-    """The message of a value outside the bound, which the form raises with SQLSTATE 0A000."""
-    return f"{function}() of a value outside {BOUND} has no exact form on clickhouse"
+def out_of_bound(function: str, bound: str = BOUND) -> str:
+    """The message of a value outside the bound, which the form raises with SQLSTATE 0A000;
+    ``bound`` the text of another type's (a range's bound of a timestamp or a date)."""
+    return f"{function}() of a value outside {bound} has no exact form on clickhouse"
+
+
+#: A timestamp's input text as a cast reads it here: a date (its year of any digits), a time, an
+#: offset (read of a timestamptz only: a timestamp's input drops it) and an era.
+_INPUT = re.compile(
+    r"\s*(\d{4,})-(\d{1,2})-(\d{1,2})"
+    r"(?:(?:\s+|T)(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d+))?)?)?"
+    r"\s*(?:(Z|UTC|GMT)|([+-])(\d{1,2})(?::?(\d{2}))?(?::?(\d{2}))?)?"
+    r"\s*(BC|AD)?\s*",
+    re.IGNORECASE | re.ASCII,
+)
+_INFINITIES = frozenset({"infinity", "+infinity", "-infinity"})
+
+
+#: PostgreSQL's input function of each timestamp type a cast names, and whether it is zoned.
+_INPUT_FUNCTIONS = {
+    exp.DataType.Type.TIMESTAMP: ("timestamp_in", False),
+    exp.DataType.Type.TIMESTAMPTZ: ("timestamptz_in", True),
+}
+#: A timestamp's bound as DateTime64(6, 'UTC') holds it: a wall time, of the same instants.
+STAMP_BOUND = "1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999"
+
+
+def wall_inputs(sql: str) -> str:
+    """``sql`` with each string literal cast to a timestamp without its offset, as PostgreSQL's
+    input drops it (ClickHouse's cast reads it): its text edited (pg_literals.spliced). Read
+    before an instant's literal is written as its UTC wall time (transpile._instants_as_utc)."""
+    edits: list[TextEdit] = []
+    for cast in sqlglot.parse_one(sql, read="postgres").find_all(exp.Cast):
+        literal = cast.this
+        if cast.to.this != exp.DataType.Type.TIMESTAMP or not (
+            isinstance(literal, exp.Literal) and literal.is_string and "start" in literal.meta
+        ):
+            continue
+        wall = _offset_dropped(literal.this)
+        if wall is not None:
+            edits.append((*literal_span(literal), pg_string(wall)))
+    return spliced(sql, edits) if edits else sql
+
+
+#: The meta key of a literal a row of this module reads: one it raises for with its own name, or
+#: one it reads only that it is there (isfinite), where ClickHouse's value of it answers as
+#: PostgreSQL's does.
+ROW_READ = "provisa_row_read"
+
+
+def _read_by_row(*arguments: exp.Expr) -> None:
+    """Each literal ``arguments`` write, or a VALUES list's column holds, marked :data:`ROW_READ`."""
+    for argument in arguments:
+        value = argument.unnest()
+        if isinstance(value, exp.Cast):
+            value.meta[ROW_READ] = True
+            continue
+        cast = values_cast(value) if isinstance(value, exp.Column) else None
+        values = None if cast is None else cast.find_ancestor(exp.Values)
+        if values is None:
+            continue
+        index = [c.name for c in values.args["alias"].columns].index(value.name)
+        for row in values.expressions:
+            written = row.expressions[index].unnest()
+            if isinstance(written, exp.Cast):
+                written.meta[ROW_READ] = True
+
+
+def outside_cast(node: exp.Expr) -> exp.Expr | None:
+    """PostgreSQL's 0A000 in place of a string literal cast to a timestamp or a timestamptz that
+    DateTime64(6, 'UTC') does not hold, which ClickHouse's cast would hold at its type's end; None
+    for any other node. Read last (transpile.clickhouse_semantics): a row of this module raises one
+    its call reads with its own name, or answers it where it reads only that it is there."""
+    named = _INPUT_FUNCTIONS.get(node.to.this) if isinstance(node, exp.Cast) else None
+    if named is None or node.meta.get(ROW_READ):
+        return None
+    literal = node.this
+    if not (isinstance(literal, exp.Literal) and literal.is_string):
+        return None
+    function, zoned = named
+    if not input_outside(literal.this, zoned):
+        return None
+    return raised(function, _CLICKHOUSE, returns=INSTANT, bound=BOUND if zoned else STAMP_BOUND)
+
+
+#: The groups of _INPUT that write an offset: a zone of none (Z, UTC, GMT), or a sign and its parts.
+_OFFSET_GROUPS = range(8, 13)
+
+
+def _offset_dropped(text: str) -> str | None:
+    """A timestamp's input text without its offset; None for one that writes none, or a text not
+    read here."""
+    written = _INPUT.fullmatch(text)
+    if written is None:
+        return None
+    present = [g for g in _OFFSET_GROUPS if written.group(g) is not None]
+    if not present:
+        return None
+    start, end = written.start(present[0]), written.end(present[-1])
+    return (text[:start] + text[end:]).strip()
+
+
+def input_outside(text: str, zoned: bool) -> bool | None:
+    """Whether a timestamp's (``zoned``: a timestamptz's) input text is a value outside what
+    DateTime64(6, 'UTC') holds, which ClickHouse's cast holds at its type's end: an infinity, a year
+    BC or past 9999, or an instant outside the bound (a timestamptz's offset read, one with none
+    as UTC, as the cast reads it). None for a text not read here, whose cast is ClickHouse's own."""
+    if text.strip().lower() in _INFINITIES:
+        return True
+    written = _INPUT.fullmatch(text)
+    if written is None:
+        return None
+    year, month, day, hour, minute, second, fraction, utc, sign, oh, om, os_, era = written.groups()
+    if (era or "").upper() == "BC" or int(year) > 9999:  # noqa: PLR2004 -- datetime's last year
+        return True
+    micros = round(int((fraction or "0")[:7].ljust(7, "0")) / 10)
+    try:
+        wall = datetime.datetime(
+            int(year), int(month), int(day), int(hour or 0), int(minute or 0), int(second or 0)
+        ) + datetime.timedelta(microseconds=micros)
+    except ValueError:
+        return None  # no day of the calendar: PostgreSQL's error of it is the engine's to give
+    if zoned and sign is not None:
+        offset = datetime.timedelta(hours=int(oh), minutes=int(om or 0), seconds=int(os_ or 0))
+        wall -= offset if sign == "+" else -offset
+    del utc  # Z, UTC and GMT are an offset of none
+    return not FIRST <= wall <= LAST
 
 
 def _read(text: str, day_only: bool) -> datetime.datetime | None:
@@ -195,13 +327,18 @@ DAY = "Nullable(Date32)"
 
 
 def raised(
-    function: str, dialect: str, pattern: str | None = None, returns: str | None = None
+    function: str,
+    dialect: str,
+    pattern: str | None = None,
+    returns: str | None = None,
+    bound: str = BOUND,
 ) -> exp.Expr:
     """ClickHouse's raise of 0A000 for a value outside the bound, as the call's answer; ``pattern``
     the call's, where ``function()`` does not parse (an aggregate takes an argument). ``returns``:
     the type of the call's answer, so a call that reads it (date_trunc, toYear) types the raise as
-    the value it stands for, and ClickHouse raises it rather than refuse the statement's types."""
-    form = ch_fail("0A000", out_of_bound(function)).format(condition="1")
+    the value it stands for, and ClickHouse raises it rather than refuse the statement's types.
+    ``bound``: the text of the bound the value is outside (a timestamp's, a wall time)."""
+    form = ch_fail("0A000", out_of_bound(function, bound)).format(condition="1")
     if returns is not None:
         form = f"CAST({form} AS {returns})"
     return replacement(form, dialect, pattern or f"{function}()")
@@ -267,7 +404,10 @@ def _rewrite(
         if current_zone.get() is not None and (zoned or literal):
             return None  # read in the session's zone: refused by name off UTC
         if bounded and _Read.OUTSIDE in read and not (strict and _Read.NULL in read):
+            _read_by_row(*call[1])
             return raised(function, dialect, pattern, returns)
+        if not bounded:
+            _read_by_row(*call[1])
         return graft(replacement(form, dialect, pattern), dict(zip(holes, call[1])))
 
     return rewrite
@@ -371,7 +511,10 @@ def zoned_instant(
     read = _checked(argument, _OF["timestamptz"])
     if read is None or current_zone.get() is not None:
         return False, None
-    return True, raised(function, dialect, pattern, INSTANT) if read is _Read.OUTSIDE else None
+    if read is not _Read.OUTSIDE:
+        return True, None
+    _read_by_row(argument)
+    return True, raised(function, dialect, pattern, INSTANT)
 
 
 # --- one instant -------------------------------------------------------------------------------
@@ -891,30 +1034,72 @@ def held_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
         return None
     pattern = "f($a)"
     if read is _Read.OUTSIDE:
+        _read_by_row(node.this)
         return raised("tstzrange", dialect, pattern, INSTANT)
     return graft(replacement(f"CAST($a AS {INSTANT})", dialect, pattern), {"a": node.this})
 
 
-def to_char_of_null(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """to_char(timestamptz, text) of a NULL instant or a NULL template: NULL, as the STRICT
-    function answers. Any other call keeps its refusal by name: the template reaches the
-    translator as sqlglot's strftime text, which no longer tells PostgreSQL's YYYY from a literal
-    %Y, so no form can be read as exact."""
-    if not isinstance(node, exp.TimeToStr):
+#: The engines whose to_char this row writes, and the types of the value it reads on each: an
+#: instant only on ClickHouse, which holds it as DateTime64(6, 'UTC'), on a session on UTC.
+_TO_CHAR_KINDS = {_CLICKHOUSE: ("timestamp", "timestamptz"), "trino": ("timestamp",)}
+_TO_CHAR_NULL = {_CLICKHOUSE: "CAST(NULL AS Nullable(String))", "trino": "CAST(NULL AS VARCHAR)"}
+
+
+def to_char_written(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """Each keyword of a literal template written as PostgreSQL's text (provisa.transpiler.to_char).
+
+    Of a timestamp, or of an instant on ClickHouse on a session on UTC; a keyword with no exact
+    form is refused by name. A literal outside DateTime64's bound raises on
+    ClickHouse. NULL of a NULL value or template. None for any other call, refused by name
+    (provisa.transpiler.engine_refusals)."""
+    kinds = _TO_CHAR_KINDS.get(dialect)
+    if kinds is None or not isinstance(node, exp.TimeToStr):
         return None
     value, template = node.this, node.args.get("format")
-    if template is None or _checked(value, _OF["timestamptz"]) is None:
+    found = next(((k, r) for k in kinds if (r := _checked(value, _OF[k])) is not None), None)
+    if found is None or template is None:
         return None
-    if not (_is_null(value) or _is_null(template)):
-        return None
-    return replacement("CAST(NULL AS Nullable(String))", dialect, "to_char($a, $b)")
+    kind, read = found
+    if kind == "timestamptz" and current_zone.get() is not None:
+        return None  # an instant's text is its wall time in the session's zone
+    if read is _Read.NULL or _is_null(template):
+        return replacement(_TO_CHAR_NULL[dialect], dialect, "to_char($a, $b)")
+    written = node.meta.get(TO_CHAR_TEMPLATE)
+    if written is None:
+        return None  # a template that is no literal: refused by name
+    if dialect == _CLICKHOUSE and read is _Read.OUTSIDE:
+        _read_by_row(value)  # raised here by its own name, not as the literal's cast
+        return raised("to_char", dialect, "to_char($a, $b)")
+    held = value.copy()
+    if dialect == "trino" and isinstance(held, exp.Cast) and not held.to.expressions:
+        held.set("to", exp.DataType.build("TIMESTAMP(6)", dialect="trino"))  # Trino's is (3)
+    try:
+        return to_char.written(written, held, dialect, zoned=kind == "timestamptz")
+    except to_char.ElementRefused as refused:
+        message = f"to_char() of the template element {refused.element!r} has no form on {dialect}"
+        raise Refused(Refusal("0A000", message), ruling=True) from refused
 
 
-_TO_CHAR_STATED = (
-    "Of a NULL instant or a NULL template only: NULL, as the strict function answers. Any other "
-    "call is refused by name (to_char() has no form on clickhouse): the template reaches the "
-    "translator as strftime text, in which PostgreSQL's YYYY and a literal %Y are the same, so "
-    "no form of it is exact."
+TO_CHAR_STATED = (
+    "Of a timestamp, and of an instant (timestamp with time zone) on a session on UTC, in a literal "
+    "template: each keyword is written as one expression that yields PostgreSQL's text for it, "
+    "and the pieces are concatenated (provisa.transpiler.to_char); text outside a keyword is a "
+    f"string constant. Exact from 1900-01-01 to 2299-12-31: a literal outside {BOUND} raises "
+    "0A000 (to_char() of a value outside the bound has no exact form on clickhouse). A month's or "
+    "a day's name in lc_time's language (TM before MONTH, Month, month, MON, Mon, mon, DAY, Day, "
+    "day, DY, Dy, dy) is refused by name, naming the keyword. A template that is no literal, a "
+    "value whose type no statement says, and an instant on a session off UTC are refused by name "
+    "(to_char() has no form on clickhouse)."
+)
+TO_CHAR_TRINO_STATED = (
+    "Of a timestamp in a literal template: each keyword is written as one expression that yields "
+    "PostgreSQL's text for it, and the pieces are concatenated (provisa.transpiler.to_char); text "
+    "outside a keyword is a string constant. A literal value is read at microseconds (Trino's "
+    "TIMESTAMP is milliseconds). A month's or a day's name in lc_time's language (TM before "
+    "MONTH, Month, month, MON, Mon, mon, DAY, Day, day, DY, Dy, dy) is refused by name, naming "
+    "the keyword. A template that is no literal, and a value whose type no statement says or that "
+    "is no timestamp, keep the engine's own format where formatting.c reads the template as its "
+    "strftime text (YYYY, MM, DD, HH24, MI, SS and -/: ), and are refused by name otherwise."
 )
 
 
@@ -941,20 +1126,6 @@ FEATURES += (
     _literal_feature(
         "timestamptz(timestamptz, integer)", "timestamptz($a, $n)", to_precision,
         "An instant rounded to a number of digits of a second.", _PRECISION_STATED,
-    ),
-    Feature(
-        "to_char(timestamptz, text)", FAMILY, "An instant's text in a template.",
-        read=Side(
-            rules=(
-                Rule(
-                    "to_char($a, $b)",
-                    {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-                     _CLICKHOUSE: Rewrite(to_char_of_null)},
-                    unlisted_keep=True,
-                ),
-            ),
-            limitations={_CLICKHOUSE: (Limitation(_TO_CHAR_STATED),)},
-        ),
     ),
     Feature(
         "cast(timestamptz as DateTime64)", FAMILY,

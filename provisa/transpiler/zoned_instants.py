@@ -304,8 +304,12 @@ def _written(node: exp.Expr, dialect: str) -> str:
     as the statement's other timestamps are written, never its DateTime."""
     if dialect != "clickhouse":
         return node.sql(dialect=dialect)
+    from provisa.transpiler.polyfill import instants  # the grid's rows read this module
 
     def held(part: exp.Expr) -> exp.Expr:
+        outside = instants.outside_cast(part)
+        if outside is not None:
+            return outside  # REQ-2167: a literal DateTime64 would hold at its type's end raises
         if isinstance(part, exp.DataType) and part.this in _TIMESTAMPS:
             return exp.DataType.build(CLICKHOUSE_INSTANT, dialect="clickhouse")
         return part

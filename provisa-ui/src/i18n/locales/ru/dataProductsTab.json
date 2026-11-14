@@ -218,7 +218,8 @@
         "data_level_changed": "Уровень данных изменён: {{before}} → {{after}}",
         "dq_results_changed": "Результаты качества изменены: {{before}} → {{after}}",
         "profiles_changed": "Профили изменены: {{before}} → {{after}}",
-        "duration_changed": "Срок изменён: {{before}} → {{after}}"
+        "duration_changed": "Срок изменён: {{before}} → {{after}}",
+        "terms_of_use_changed": "Условия использования изменены: {{subject}}"
       },
       "howToUse": {
         "column": {

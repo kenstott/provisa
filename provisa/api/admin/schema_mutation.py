@@ -5339,7 +5339,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from pydantic import ValidationError
 
         from provisa.api.admin.capabilities import require_capability
-        from provisa.core import model_change
+        from provisa.core import model_change, model_uri
         from provisa.core.models import Column as ColumnModel
         from provisa.core.models import Table as TableModel
         from provisa.core.repositories import table as table_repo
@@ -5392,7 +5392,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         refusal = write_grant_predicates_refusal(table_id, models, registry)
         if refusal is not None:
             return refusal
-        model_change.name("set", "write grants", f"on table {table_id}")
+        model_change.name(  # REQ-1524
+            "set write grants on",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
         async with pool.acquire() as conn:
             await write_grant_repo.replace_for_table(
                 cast("Connection", conn), table_id, models, unheld=unheld
@@ -6218,6 +6223,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     select(
                         registered_tables.c.domain_id,
                         registered_tables.c.table_name,
+                        registered_tables.c.alias,
                         registered_tables.c.materialize,
                     ).where(registered_tables.c.id == table_id)
                 )
@@ -6233,9 +6239,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _unread = await _table_unread(info, table_id)  # REQ-2152
             if _unread is not None:
                 return _unread
-            from provisa.core import model_change
+            from provisa.core import model_change, model_uri
 
-            model_change.name("update", "table draft", row.table_name)  # REQ-1524
+            model_change.name(  # REQ-1524
+                "update draft of",
+                model_change.uri(
+                    model_uri.named_table_uri, row.domain_id, row.alias or row.table_name
+                ),
+            )
             await conn.execute_core(
                 _update(registered_tables)
                 .where(registered_tables.c.id == table_id)

@@ -34616,7 +34616,9 @@
     event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py)
     periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped
     to that org only. (Amended 2026-11-14, A SCHEDULE PER ENTRY:) Maintainer 2026-11-14 (REQ-2247). The
-    scheduled reconcile is set per entry on the Syncing page, not once for the organisation.'
+    scheduled reconcile is set per entry on the Syncing page, not once for the organisation. (Amended 2026-11-14,
+    NO ORG-WIDE EXPORT SWITCH:) Maintainer 2026-11-14. There is no org-wide switch for metadata export:
+    an org exports exactly when an entry on the Syncing page has a direction that includes Export.'
   use_case: Event-driven sync ensures near-real-time metadata propagation for operational responsiveness;
     scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant
     isolation and per-customer credential management.
@@ -44983,7 +44985,27 @@
     a materialized view (materialized_views.default_ttl) is the platform''s. (Amended 2026-11-09, TABLE
     REGISTRATION READS THE MATERIALIZED LIST:) Maintainer 2026-11-09: a role holding table_registration
     reads the materialized view list and the materialize store information, limited as that list already
-    is to views over tables the caller can read, so the Cache page''s Materialized tab works for it.'
+    is to views over tables the caller can read, so the Cache page''s Materialized tab works for it. (Amended
+    2026-11-14, THE APP OPENS ON A PAGE THE ROLE HOLDS; A STEWARD DOES NOT REGISTER:) Maintainer 2026-11-14,
+    from the audit of the standard roles. (1) Opening the app goes to the first navigation page the acting
+    role holds the right for, as the Admin tab already does; no role lands on a refusal. (2) Every add,
+    delete and duplicate action is shown only to a role holding the right the server requires for that write,
+    and a page is gated on the right that governs it, never on another page''s right used as a shared gate.
+    (3) The earlier text saying a data steward registers tables, views and data products is withdrawn: a
+    steward governs meaning and access and does nothing operational (REQ-1944, REQ-2188). (Amended 2026-11-14,
+    THE GATES FOR VIEWS, METRICS AND COMMANDS; BULK ACTIONS; THE DOMAINS PICKER:) Maintainer 2026-11-14,
+    from the audit of the standard roles. (1) Views: the page and its authoring actions ask create_view;
+    a role holding only query_development may request a view, which queues for approval, and does not author
+    one directly; registering a view never asks table_registration. (2) Metrics: authoring asks create_view,
+    in the UI and on the server; a role reads the metrics granted to it. (3) Commands: authoring asks table_registration;
+    a role holding command_execution is shown a read-only list of the commands assigned to it; marking a
+    command read-safe has a control for a role holding access_config. (4) A bulk action bar is shown only
+    to a role holding the page''s write right; a term''s edit and delete are offered only where the server
+    would accept them. (5) Requests and My Secrets open to every member; a view request is decided by approve_view
+    and a relationship request by approve_relationship. (6) The Roles page opens with access_config or user_management
+    and its definition actions ask user_management; row rule actions ask masking_config; triggers ask query_development
+    throughout; data quality has a page on dq_read with actions on dq_rw, and its checks never ask table_registration.
+    (7) The Domains picker lists a domain only when the acting role can read at least one table in it.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -47079,7 +47101,11 @@
     the model name, and that change makes a new object; the old one is retired (REQ-2248). SPARQL names
     table classes and column predicates by the model name, not the physical name. Provisa never describes
     the identifier as stable: ''there''s no clean way to create a stable identifier'', and it states only
-    when the name changes.'
+    when the name changes. (Amended 2026-11-14, TRIGGERS AND BASES ARE KINDS; SPARQL USES THE REGISTERED
+    NAME:) Maintainer 2026-11-14. (1) ''triggers'' and ''bases'' are reserved kind words, so a scheduled
+    trigger and a judgment basis are addressed like every other object and neither word can be a domain
+    name. (2) A SPARQL address for a table with no alias uses the table''s registered name, domain-initials
+    prefix kept, the same name every other model address uses; the prefix is no longer removed.'
   use_case: Enables lineage stitching across external catalogs by using business identity rather than
     physical location; preserves catalog continuity when tables are re-platformed to different sources;
     allows lineage and history to follow the business entity through infrastructure changes; supports
@@ -53746,85 +53772,89 @@
   feature: environments-access
   priority: SHOULD
   type: behavioral
-  description: 'Authority over a model is scoped to an ENVIRONMENT, and the ordinary way to acquire it
-    is to create one. A member who holds no model-editing rights in an organization can still create an
-    environment (REQ-1488 creates it by loading a model into a name), and within the environment they
-    created they hold the model-editing rights of an org_admin: they can add and change domains, tables,
-    relationships, metrics, roles, policies and glossary -- every carried class of REQ-1489 -- without
-    holding those rights anywhere else in the org. This is the reason a read-only developer needs no special
-    grant to work: they branch, they own what they branched, and they propose it back through REQ-1504.
-    The rights are the CREATOR''s and are anchored on environments.created_by, which already exists; they
-    are not inherited by everyone who can see the environment, and they end where the environment ends.
-    WHAT THE GRANT IS NOT. It is model-editing rights and nothing adjacent: not user management, not invites,
-    not billing, not platform settings, not the ability to protect or unprotect an environment, not the
-    ability to grant this same authority to somebody else, and not the ability to approve a merge, including a merge out of the environment they own, which REQ-1504 already forbids the requester from approving.
-    An owner is the author of a proposal, never its reviewer. WHY THIS IS SAFE IS AN INTERLOCK AND NOT
-    A JUDGEMENT CALL. The compound failure REQ-1492 names is write authority TOGETHER WITH an inherited
-    binding: a copied environment that both points at production and may be written to. Here the two halves
-    cannot meet, because REQ-1491 strips the bindings from every environment a copy creates and marks
-    the rows unbound. The owner therefore has full authority over a model that addresses NOTHING until
-    the environment is bound, and binding is not theirs to do. It needs a credential scoped to that
-    environment (REQ-1503), which an org_admin issues. Authority over the model and authority over what
-    the model points at are separated by construction, and the environment grant hands out only the first.
-    The grant is therefore a consequence of ownership rather than a row somebody administers: it is derived
-    from created_by at authorization time, so it cannot drift from the environment it describes, and deleting
-    the environment removes it in the same act. (Amended 2026-08-21, this is the ONLY path:) Creating
-    an environment is not one way among several to acquire model-editing authority; it is the only way.
-    There is no request-elevation, no temporary grant, no break-glass, and no administrator action that
-    hands a member model-editing rights in prod directly; a member either holds them from their role or
-    acquires them by creating an environment and owning it. This is what makes the audit trail complete
-    rather than merely thorough: every model change that was not made by someone who already held the
-    right in the org was made inside an environment that names its creator, was reported by REQ-1490,
-    and entered a protected environment only through a REQ-1504 request somebody else approved. There
-    is no fourth way in, so there is nothing to reconcile against. It also means privilege escalation
-    and change proposal are THE SAME ACT rather than two: the thing a developer does to get authority
-    is the thing that scopes it, records it, and guarantees a review before it reaches anywhere protected.
+  description: 'Authority over a model is scoped to an ENVIRONMENT, and the ordinary way to acquire it is
+    to create one. A member who holds no model-editing rights in an organization can still create an environment
+    (REQ-1488 creates it by loading a model into a name), and within the environment they created they hold
+    the model-editing rights of an org_admin: they can add and change domains, tables, relationships, metrics,
+    roles, policies and glossary -- every carried class of REQ-1489 -- without holding those rights anywhere
+    else in the org. This is the reason a read-only developer needs no special grant to work: they branch,
+    they own what they branched, and they propose it back through REQ-1504. The rights are the CREATOR''s
+    and are anchored on environments.created_by, which already exists; they are not inherited by everyone
+    who can see the environment, and they end where the environment ends. WHAT THE GRANT IS NOT. It is model-editing
+    rights and nothing adjacent: not user management, not invites, not billing, not platform settings, not
+    the ability to protect or unprotect an environment, not the ability to grant this same authority to
+    somebody else, and not the ability to approve a merge, including a merge out of the environment they
+    own, which REQ-1504 already forbids the requester from approving. An owner is the author of a proposal,
+    never its reviewer. WHY THIS IS SAFE IS AN INTERLOCK AND NOT A JUDGEMENT CALL. The compound failure
+    REQ-1492 names is write authority TOGETHER WITH an inherited binding: a copied environment that both
+    points at production and may be written to. Here the two halves cannot meet, because REQ-1491 strips
+    the bindings from every environment a copy creates and marks the rows unbound. The owner therefore has
+    full authority over a model that addresses NOTHING until the environment is bound, and binding is not
+    theirs to do. It needs a credential scoped to that environment (REQ-1503), which an org_admin issues.
+    Authority over the model and authority over what the model points at are separated by construction,
+    and the environment grant hands out only the first. The grant is therefore a consequence of ownership
+    rather than a row somebody administers: it is derived from created_by at authorization time, so it cannot
+    drift from the environment it describes, and deleting the environment removes it in the same act. (Amended
+    2026-08-21, this is the ONLY path:) Creating an environment is not one way among several to acquire
+    model-editing authority; it is the only way. There is no request-elevation, no temporary grant, no break-glass,
+    and no administrator action that hands a member model-editing rights in prod directly; a member either
+    holds them from their role or acquires them by creating an environment and owning it. This is what makes
+    the audit trail complete rather than merely thorough: every model change that was not made by someone
+    who already held the right in the org was made inside an environment that names its creator, was reported
+    by REQ-1490, and entered a protected environment only through a REQ-1504 request somebody else approved.
+    There is no fourth way in, so there is nothing to reconcile against. It also means privilege escalation
+    and change proposal are THE SAME ACT rather than two: the thing a developer does to get authority is
+    the thing that scopes it, records it, and guarantees a review before it reaches anywhere protected.
     (Amended 2026-08-21, why the escalation is worthless:) [SUPERSEDED by REQ-1573, 2026-10-03 -- Creation
     is not open to any member: it needs the environment_management capability (branch) or org_admin (base)
-    -- environments_router.py:446-450. The authority is also no longer org_admin''s in full (own later
-    amendments). Kept here for history; do not implement against it.] The reason creating an environment
-    can be left open to any member is not that the authority is small -- it is org_admin''s model-editing
-    authority in full -- but that the authority is USELESS to an attacker. [END SUPERSEDED BLOCK] An environment
-    arrives with its bindings stripped (REQ-1491) and its secrets not copied at all (REQ-1489 classes
-    org_secrets NEVER_SENSITIVE), so to make the model reach any data at all the creator must reconstruct
-    the source URIs and supply the credentials themselves. Someone who can already do that gained nothing
-    by creating the environment; someone who cannot has escalated into a model that queries nothing. The
-    privilege that matters -- reaching the organization''s data -- is held by the credential and not by
-    the rights, and the credential is the one thing the act does not hand over. That is what makes this
-    path safe to leave open rather than merely audited. (Amended 2026-08-21, and this is what makes the
-    rule usable rather than merely safe:) an org_admin ordinarily does NOT grant model-editing rights
-    on a base environment (REQ-1529), not even on dev. Membership in a base buys a developer reading
-    and querying it; it does not buy them editing it. The rights to change a model are obtained the one
-    way this requirement admits, by branching the base, and they exist only inside the branch the developer
-    owns. Nobody edits dev directly, so dev is never in a state nobody proposed; every change to it arrives
-    through a branch and a merge request (REQ-1504), which is the same path production changes take and
-    therefore the same audit trail. The arrangement costs the developer one click -- the branch needs
-    no credentials, because it inherits the base''s -- and it costs the org nothing, because an org_admin
-    who grants no editing rights anywhere has not blocked any work; they have routed all of it through
-    review. (Amended 2026-08-21, WHAT THE GRANT ACTUALLY IS:) the authority branching confers is the seeded
-    ``developer`` role, not org_admin''s rights less a withheld list. That is a smaller grant reached
-    by a shorter argument: developer already exists, already means "may build the model and query it",
-    and already excludes the surfaces an org_admin keeps: registering sources and tables, masking, column
-    grants, view governance, access config and org settings. The withheld-list construction had to name
-    every right that must not travel, and would have silently handed over any right added to org_admin
-    afterwards; naming the role instead means a right reaches a branch owner only because somebody decided
-    a developer should hold it. It also answers, with no new authorization axis, the worry that a branch
-    owner can change anything: they can change what a developer may change. And it bounds the escalation
-    argument above under REQ-1529, where a branch does reach its base''s data through the inherited binding
-    -- [SUPERSEDED by REQ-1539, 2026-10-03 -- Sits in the amendment that defines the grant as the full
-    developer role; REQ-1539 removed write, full_results and usage from it (provisa/core/env_authority.py:74-77).
-    Kept here for history; do not implement against it.] what its owner may do to that data is a developer''s
-    write of the MODEL. [END SUPERSEDED BLOCK] (Amended 2026-08-22, THE GRANT CARRIES NO DATA RIGHT, REQ-1539:)
-    the authority is the seeded developer role LESS write, full_results and usage. Creating an environment
-    is a model-authoring act and confers model-authoring rights; it confers nothing over data, which is
-    the roles'' answer and stays the roles'' answer. This is where the escalation REQ-1492 worried about is bounded at its source, rather than by a policy flag on the base compensating downstream for
-    a right that should never have been handed out. (Amended 2026-08-22, AND ROLES ARE NOT AMONG THEM:)
-    the opening list of carried classes a branch owner may edit names ``roles``, and that is withdrawn. It predates the grant being defined as the seeded ``developer`` role, which holds no ``user_management``,
-    and every role endpoint requires it. A branch owner inherits their environment''s role definitions
-    and may not rewrite them, there or anywhere; changing what a role means in a lane is an org_admin''s
-    act inside that lane (REQ-1539). This is the interlock stated once more at the level of rights: the
-    branch owner has full authority over a model that addresses nothing, and no authority at all over
-    who may do what.'
+    -- environments_router.py:446-450. The authority is also no longer org_admin''s in full (own later amendments).
+    Kept here for history; do not implement against it.] The reason creating an environment can be left
+    open to any member is not that the authority is small -- it is org_admin''s model-editing authority
+    in full -- but that the authority is USELESS to an attacker. [END SUPERSEDED BLOCK] An environment arrives
+    with its bindings stripped (REQ-1491) and its secrets not copied at all (REQ-1489 classes org_secrets
+    NEVER_SENSITIVE), so to make the model reach any data at all the creator must reconstruct the source
+    URIs and supply the credentials themselves. Someone who can already do that gained nothing by creating
+    the environment; someone who cannot has escalated into a model that queries nothing. The privilege that
+    matters -- reaching the organization''s data -- is held by the credential and not by the rights, and
+    the credential is the one thing the act does not hand over. That is what makes this path safe to leave
+    open rather than merely audited. (Amended 2026-08-21, and this is what makes the rule usable rather
+    than merely safe:) an org_admin ordinarily does NOT grant model-editing rights on a base environment
+    (REQ-1529), not even on dev. Membership in a base buys a developer reading and querying it; it does
+    not buy them editing it. The rights to change a model are obtained the one way this requirement admits,
+    by branching the base, and they exist only inside the branch the developer owns. Nobody edits dev directly,
+    so dev is never in a state nobody proposed; every change to it arrives through a branch and a merge
+    request (REQ-1504), which is the same path production changes take and therefore the same audit trail.
+    The arrangement costs the developer one click -- the branch needs no credentials, because it inherits
+    the base''s -- and it costs the org nothing, because an org_admin who grants no editing rights anywhere
+    has not blocked any work; they have routed all of it through review. (Amended 2026-08-21, WHAT THE GRANT
+    ACTUALLY IS:) the authority branching confers is the seeded ``developer`` role, not org_admin''s rights
+    less a withheld list. That is a smaller grant reached by a shorter argument: developer already exists,
+    already means "may build the model and query it", and already excludes the surfaces an org_admin keeps:
+    registering sources and tables, masking, column grants, view governance, access config and org settings.
+    The withheld-list construction had to name every right that must not travel, and would have silently
+    handed over any right added to org_admin afterwards; naming the role instead means a right reaches a
+    branch owner only because somebody decided a developer should hold it. It also answers, with no new
+    authorization axis, the worry that a branch owner can change anything: they can change what a developer
+    may change. And it bounds the escalation argument above under REQ-1529, where a branch does reach its
+    base''s data through the inherited binding -- [SUPERSEDED by REQ-1539, 2026-10-03 -- Sits in the amendment
+    that defines the grant as the full developer role; REQ-1539 removed write, full_results and usage from
+    it (provisa/core/env_authority.py:74-77). Kept here for history; do not implement against it.] what
+    its owner may do to that data is a developer''s write of the MODEL. [END SUPERSEDED BLOCK] (Amended
+    2026-08-22, THE GRANT CARRIES NO DATA RIGHT, REQ-1539:) the authority is the seeded developer role LESS
+    write, full_results and usage. Creating an environment is a model-authoring act and confers model-authoring
+    rights; it confers nothing over data, which is the roles'' answer and stays the roles'' answer. This
+    is where the escalation REQ-1492 worried about is bounded at its source, rather than by a policy flag
+    on the base compensating downstream for a right that should never have been handed out. (Amended 2026-08-22,
+    AND ROLES ARE NOT AMONG THEM:) the opening list of carried classes a branch owner may edit names ``roles``,
+    and that is withdrawn. It predates the grant being defined as the seeded ``developer`` role, which holds
+    no ``user_management``, and every role endpoint requires it. A branch owner inherits their environment''s
+    role definitions and may not rewrite them, there or anywhere; changing what a role means in a lane is
+    an org_admin''s act inside that lane (REQ-1539). This is the interlock stated once more at the level
+    of rights: the branch owner has full authority over a model that addresses nothing, and no authority
+    at all over who may do what. (Amended 2026-11-14, THE OWNER''S RIGHTS APPLY UNDER ROLE: ALL ONLY:) Maintainer
+    2026-11-14. Acting as one picked role in an environment the member owns shows and allows exactly that
+    role. What owning the environment confers is added only when the member acts as all their roles. The
+    UI and the server agree.'
   use_case: A developer with read-only rights in the org creates a dev environment, rebuilds half the
     governed model inside it, and proposes it to prod for review, without anyone granting them org_admin,
     and without their environment being able to write to a production database, because it is not bound
@@ -82339,7 +82369,18 @@
     and a missing parameter is refused by name. (Amended 2026-10-28, AN IMPLICIT CALL TAKES DECLARED DEFAULTS:)
     In an implicit-argument CALL (CALL name, no parentheses), an argument that declares a default takes
     it when no same-named $parameter is given, as in a positional call (REQ-2168); only an argument with
-    no default and no parameter is refused by name.'
+    no default and no parameter is refused by name. (Amended 2026-11-14, A MERGE READS ITS SOURCE FIRST
+    TOO:) Maintainer 2026-11-14. A MERGE whose USING query reads a source other than its target''s (a code
+    query included) takes the same two-step path as INSERT ... SELECT: the USING rows are read first, under
+    the caller''s governance, then the MERGE runs on the target''s source against those rows, WHEN NOT MATCHED
+    BY SOURCE THEN DELETE included. Today such a MERGE passes write admission and is then sent whole to
+    one source that cannot answer it. (Amended 2026-11-14, A MERGE DELETES MISSING ROWS IN THE SAME STATEMENT:)
+    Maintainer 2026-11-14. PostgreSQL 16 has no WHEN NOT MATCHED BY SOURCE. Whatever the target''s version,
+    WHEN NOT MATCHED BY SOURCE [AND condition] THEN DELETE is rewritten into a delete step inside the same
+    statement, so the replace stays one atomic statement on the target and the affected count includes the
+    deleted rows. The UPDATE form of that clause, and several such clauses whose order matters, are refused
+    by name. A MERGE that deletes is admitted only with the delete grant, and the role''s delete row rule
+    and the grant''s row narrowing apply to it.'
   scenario: 'Given a statement command embed_tickets(since timestamp) whose statement is INSERT INTO kb.docs (id, title, body_vec) SELECT ticket_id, subject, embed(''text-embedding-3-small'', subject) FROM support.tickets WHERE updated_at > {{since}} ON CONFLICT (id) DO UPDATE SET title = EXCLUDED.title, body_vec = EXCLUDED.body_vec
 
     When a steward runs it with since set to yesterday
@@ -82534,7 +82575,12 @@
     are made from the template''s prepared environments rather than rebuilt per sandbox. (Amended 2026-11-04,
     SANDBOX ENVIRONMENT BUILT AT OPEN:) Opening a sandbox copies its environments'' rows, generation records
     and synthetic bindings from the template''s prepared environment, and builds each environment''s runtime
-    once during the open, cloned from the template''s, so that no tour step waits on an environment build.'
+    once during the open, cloned from the template''s, so that no tour step waits on an environment build.
+    (Amended 2026-11-14, EVERY DEMO MUST WORK; TIME TO OPEN IS RELAXED:) Maintainer 2026-11-14, for release
+    509: every demo must open and work, and that gates a release. The time a demo takes to open does not:
+    the bound on a demo opened again is 20 s on the server, in place of the 11 s accepted on 2026-11-03,
+    which was measured on the embedded PostgreSQL and is exceeded in the release''s core lane (9.5 to 13.4
+    s against the compose PostgreSQL). Making the open faster continues as ordinary work.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
@@ -84007,7 +84053,15 @@
     whether any is a contact on the renewal opportunity, answered through the canonical tables only. (8)
     Phase 2, a separate job after phase 1 is accepted: mentions of resolved organizations and people in
     long text, found by a deterministic phrase matcher from a term list generated from the bridges, as further
-    evidence for the check.'
+    evidence for the check. (Amended 2026-11-14, THE RERUN COMMAND MATCHES IN CODE AND WRITES IN SQL:) Maintainer
+    2026-11-14. (1) The registered command that reruns entity resolution is a SQL statement command: a code
+    query does the matching and the statement replaces the bridge rows through Provisa''s own write path,
+    so the tables refresh without a change signal. (2) The four one-word Jira customer names (Brightwater,
+    Elmstead, Ferncliff, Quillon) are spelled in full, so only the four planted records are unresolved.
+    (3) One organization mention is planted with a misspelling that scores in the fuzzy band. (Amended 2026-11-14,
+    THE RERUN IS ONE MERGE PER BRIDGE:) Maintainer 2026-11-14. One statement command cannot delete and insert,
+    so the rerun is two registered statement commands, one MERGE per bridge table from the code query, each
+    replacing its table''s rows in one step, removed mentions included (REQ-2001).'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
@@ -92417,7 +92471,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a term the offer leaves empty shows the product''s text, which narrows ''entered once on the product''
     to the product''s own description. An offer may state no terms of use: the bid form says so plainly
     and the bid goes ahead. The Ask row''s questions are written by the product''s owner on the product,
-    each with an optional saved query, and run as the reader''s role.'
+    each with an optional saved query, and run as the reader''s role. (Amended 2026-11-14, A CHANGED LIMITATION
+    IS BREAKING; A BID STATES A PURPOSE:) Maintainer 2026-11-14. (1) Changing an offer''s stated limitation
+    is a breaking change to its contract (next major version), because bidders agreed to the old text. (2)
+    A bid''s stated purpose is named ''purpose'' in storage, the API and the approval hook''s payload; ''reason''
+    is no longer used for it.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
