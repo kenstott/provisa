@@ -198,7 +198,7 @@ def test_a_query_on_the_physical_names_iris_matches_nothing():
 
 def test_a_cypher_query_exported_to_sparql_writes_the_alias_iris():
     lm = _label_map()
-    label = next(iter(lm.nodes.values())).label
+    label = next(iter(lm.nodes.values())).table_label
     sparql = ir_to_sparql(
         parse_cypher(f"MATCH (p:{label}) RETURN p.legalName AS n"), _vocab(lm), lm
     )
@@ -240,8 +240,7 @@ async def _axioms_with_imported_iris(control_plane) -> set[tuple]:
                     text(
                         "SELECT subject, predicate, object_iri FROM _axioms_ontology "
                         "WHERE object_iri IN (:a, :b, :c)"
-                    ),
-                    {"a": IMPORTED_CLASS, "b": IMPORTED_PROPERTY, "c": IMPORTED_CONCEPT},
+                    ).bindparams(a=IMPORTED_CLASS, b=IMPORTED_PROPERTY, c=IMPORTED_CONCEPT)
                 )
             ).fetchall()
     finally:
