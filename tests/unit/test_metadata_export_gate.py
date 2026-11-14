@@ -28,15 +28,19 @@ from provisa.api.metadata_export import publishing
 
 ORG_ID = "acme"
 
-_CONFIGURED = {
-    "catalogs": [
-        {"id": "atlas", "provider": "atlas", "endpoint": "http://atlas:21000", "domains": ["sales"]}
-    ],
-    "metadata_export": {
-        "enabled": True,
-        "targets": [{"catalog": "atlas"}],
-        "reconcile_cron": "0 * * * *",
-    },
+_ATLAS = {
+    "id": "atlas",
+    "type": "data_catalog",
+    "direction": "both",
+    "provider": "atlas",
+    "endpoint": "http://atlas:21000",
+    "domains": ["sales"],
+    "role": "steward",
+}
+# REQ-2247: what a publish reaches is each Syncing entry whose direction includes Export.
+_CONFIGURED: dict = {
+    "catalogs": [_ATLAS],
+    "metadata_export": {"reconcile_cron": "0 * * * *"},
 }
 
 
@@ -45,8 +49,12 @@ def org(monkeypatch):
     """An org with a complete export config, whose tier the test sets."""
     import provisa.core.org_settings as org_settings_mod
 
+    configured = {
+        key: list(value) if isinstance(value, list) else value for key, value in _CONFIGURED.items()
+    }
+
     async def _resolve(_db):
-        return _CONFIGURED
+        return configured
 
     monkeypatch.setattr(org_settings_mod, "resolve_org_config", _resolve)
     monkeypatch.setattr(
@@ -68,6 +76,7 @@ def org(monkeypatch):
     def _at(tier: str):
         tiers[ORG_ID] = tier
 
+    _at.configured = configured  # type: ignore[attr-defined]
     return _at
 
 
@@ -128,3 +137,50 @@ async def test_an_unentitled_org_queues_no_work_when_the_model_changes(org):
     """A work item nobody may ever claim is a queue that only grows."""
     org("standard")
     assert await publishing.notify_model_changed(ORG_ID, reason="schema rebuild") is None
+
+
+# --- the entries publishing reads (REQ-2247) ----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_publishing_reads_the_entries_that_export(org):
+    """Each data catalog entry whose direction includes Export, with its export settings."""
+    org("premium")
+    org.configured["catalogs"] = [
+        _ATLAS,
+        {**_ATLAS, "id": "atlas-in", "direction": "import"},
+        {"id": "terms", "type": "ontology", "direction": "both"},
+    ]
+    _, targets = await publishing._export_config(ORG_ID)
+
+    assert [(t.id, t.role, t.domains) for t in targets] == [("atlas", "steward", ["sales"])]
+
+
+@pytest.mark.asyncio
+async def test_an_org_with_no_entry_that_exports_has_its_sync_jobs_disarmed(org):
+    org("premium")
+    scheduler = _scheduler()
+    await publishing.register_org_jobs(scheduler, ORG_ID)
+
+    org.configured["catalogs"] = [{**_ATLAS, "direction": "import"}]
+    await publishing.register_org_jobs(scheduler, ORG_ID)
+
+    assert scheduler.get_job(publishing.drain_job_id(ORG_ID)) is None
+    assert scheduler.get_job(publishing.reconcile_job_id(ORG_ID)) is None
+
+
+@pytest.mark.asyncio
+async def test_a_run_to_an_entry_whose_export_is_off_is_refused_before_a_snapshot(org, monkeypatch):
+    """A direction that is off never runs: the publish refuses the entry by name and builds no
+    snapshot for it."""
+    from provisa.core.models import SyncDirectionOff
+
+    async def _no_snapshot(org_id, **kwargs):
+        pytest.fail("a snapshot was built for an entry that does not export")
+
+    monkeypatch.setattr(publishing, "org_snapshot", _no_snapshot)
+    org("premium")
+    org.configured["catalogs"] = [_ATLAS, {**_ATLAS, "id": "atlas-in", "direction": "import"}]
+
+    with pytest.raises(SyncDirectionOff, match="'atlas-in' does not export"):
+        await publishing.publish_snapshot(ORG_ID, only="atlas-in")

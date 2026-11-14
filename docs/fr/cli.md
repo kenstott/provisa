@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Déclenche la publication des métadonnées à la demande du serveur en cours d'exécution. La commande envoie à `POST /admin/metadata-export/publish`, le point de terminaison qu'appelle le bouton **Publish now** de l'onglet Admin ; les deux chemins envoient donc le même instantané complet.
+Déclenche la publication des métadonnées à la demande du serveur en cours d'exécution. La commande envoie à `POST /admin/syncing/publish`, le point de terminaison qu'appelle le bouton **Publish now** de l'onglet Admin ; les deux chemins envoient donc le même instantané complet.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

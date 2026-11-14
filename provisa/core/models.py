@@ -3142,8 +3142,8 @@ class MailConfig(BaseModel):  # REQ-1310, REQ-1330, REQ-1576
 
 
 # The fields of a catalog connection: where the catalog is and how to sign in to it (REQ-2122).
-# Export and import both read a catalog through one connection, so these live on the connection,
-# and an export target names its catalog instead of holding them.
+# Export and import both read a catalog through one connection, so these live on its Syncing entry
+# with its export settings (REQ-2247).
 _CATALOG_CONNECTION_FIELDS = (
     "id",
     "provider",
@@ -3166,10 +3166,10 @@ _CATALOG_CONNECTION_FIELDS = (
 )
 
 
-class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122
-    """What an export provider is built from: one catalog's connection with the export's own
-    settings for it (REQ-2122). Never stored: :meth:`CatalogConnection.export_target` builds it
-    from the stored catalog and the export's :class:`CatalogExport` for it.
+class MetadataExportTarget(BaseModel):  # REQ-1068, REQ-2118, REQ-2122, REQ-2247
+    """What an export provider is built from: one data catalog's connection with its export
+    settings (REQ-2247). Never stored: :meth:`CatalogConnection.export_target` builds it from the
+    stored entry.
 
     id: the catalog's name within the org, unique there; its catalog bindings are kept under it,
         so two catalogs of one provider (two OpenMetadata servers) never share them (REQ-2118).
@@ -3260,17 +3260,47 @@ def _check_catalog_connection(catalog: Any) -> None:  # REQ-1068, REQ-2118, REQ-
         )
 
 
-class CatalogConnection(BaseModel):  # REQ-2122
-    """One external catalog an org connects to once, for export and import alike.
+# The types of entry on the Syncing page (REQ-2247): a data catalog Provisa has an adapter for, an
+# ontology system whose releases are uploaded to it, and a custom system its webhooks sync.
+SyncEntryType = Literal["data_catalog", "ontology", "custom"]
+# Which way an entry syncs (REQ-2247): Export is Provisa to the system, Import the system to Provisa.
+SyncDirection = Literal["export", "import", "both"]
+# One direction a run goes in.
+SyncRunDirection = Literal["export", "import"]
 
-    Its fields are :class:`MetadataExportTarget`'s connection fields (``_CATALOG_CONNECTION_FIELDS``),
-    each held as entered and resolved at use. ``domains`` are the domains that work with it: their
-    tables offer only their catalogs, and their tables and data products publish to them. A
-    connection serves at least one domain.
+# An entry's export settings: what a metadata export target carried beside its catalog (REQ-2247).
+_EXPORT_SETTING_FIELDS = ("role", "datazone_project_id", "delta_share")
+
+
+class SyncDirectionOff(ValueError):  # REQ-2247
+    """A run asked of an entry in a direction it does not sync: it never runs, by schedule or by
+    hand."""
+
+
+class CatalogConnection(BaseModel):  # REQ-2122, REQ-2247
+    """One entry of the Syncing page: an outside system kept in sync with Provisa.
+
+    type: ``data_catalog`` (a catalog reached through its provider's adapter), ``ontology`` or
+        ``custom``. Only a data catalog has a provider, a connection and export settings.
+    direction: ``export`` (Provisa to the system), ``import`` (the system to Provisa) or ``both``.
+        A direction that is off never runs, on a schedule or by hand (:meth:`require_runs`).
+
+    A data catalog's connection fields are :class:`MetadataExportTarget`'s
+    (``_CATALOG_CONNECTION_FIELDS``), each held as entered and resolved at use. ``domains`` are the
+    domains that work with it: their tables offer only their catalogs, and their tables and data
+    products publish to them; a data catalog serves at least one domain.
+
+    Its export settings are what a metadata export target carried (REQ-2247): ``role``, the role
+    it is published as -- it is sent exactly what that role reads, and a publish refuses an entry
+    that names none (REQ-2152, ruling Q1); ``datazone_project_id``, the DataZone project that owns
+    the org's data products (REQ-2118); ``delta_share``, whether a unity_catalog catalog also gets
+    each product as a Delta Share (REQ-2117).
     """
 
     id: str
-    provider: str
+    type: SyncEntryType
+    direction: SyncDirection
+    provider: str = ""
     endpoint: str = ""
     api_key: SecretStr = SecretStr("")
     token: SecretStr = SecretStr("")
@@ -3287,35 +3317,74 @@ class CatalogConnection(BaseModel):  # REQ-2122
     aws_access_key_id: SecretStr = SecretStr("")
     aws_secret_access_key: SecretStr = SecretStr("")
     timeout_seconds: int = 30
-    domains: list[str]
+    domains: list[str] = Field(default_factory=list)
+    role: str | None = None
+    datazone_project_id: str = ""
+    delta_share: bool = False
 
     @field_validator("id")
     @classmethod
     def _validate_id(cls, v: str) -> str:
         if not _SAFE_ID_PATTERN.match(v):
-            raise ValueError(f"a catalog's id is a name like 'catalog-1', not {v!r}")
+            raise ValueError(f"an entry's id is a name like 'catalog-1', not {v!r}")
         return v
 
     @model_validator(mode="after")
     def _validate(self) -> "CatalogConnection":
+        if self.type != "data_catalog":
+            # Only a data catalog is reached through a provider's adapter, so only it has one.
+            given = [name for name in ("provider", *_EXPORT_SETTING_FIELDS) if getattr(self, name)]
+            if given:
+                raise ValueError(
+                    f"entry {self.id!r} is of type {self.type!r}, which has no {', '.join(given)}"
+                )
+            return self
+        if not self.provider:
+            raise ValueError(f"catalog {self.id!r} names no provider")
         if not self.domains:
             raise ValueError(f"catalog {self.id!r} is assigned to no domain")
         _check_catalog_connection(self)
+        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
+        if self.exports and self.provider == "datazone" and not self.datazone_project_id:
+            raise ValueError(
+                f"the export to {self.id!r} needs the DataZone project that owns its data products"
+            )
         return self
 
-    def export_target(self, export: "CatalogExport") -> MetadataExportTarget:
-        """The export provider's settings for this catalog: its connection and ``export``."""
+    @property
+    def exports(self) -> bool:
+        """Whether the entry syncs from Provisa to the system."""
+        return self.direction in ("export", "both")
+
+    @property
+    def imports(self) -> bool:
+        """Whether the entry syncs from the system to Provisa."""
+        return self.direction in ("import", "both")
+
+    def runs(self, direction: SyncRunDirection) -> bool:
+        return self.exports if direction == "export" else self.imports
+
+    def require_runs(self, direction: SyncRunDirection) -> None:
+        """Refuse a run in ``direction`` unless the entry syncs that way (REQ-2247)."""
+        if not self.runs(direction):
+            raise SyncDirectionOff(f"{self.id!r} does not {direction}: its direction is off")
+
+    def export_target(self) -> MetadataExportTarget:
+        """The export provider's settings for this data catalog: its connection and its export
+        settings."""
+        if self.type != "data_catalog":
+            raise ValueError(f"entry {self.id!r} is of type {self.type!r}, which has no provider")
         return MetadataExportTarget(
             **{name: getattr(self, name) for name in _CATALOG_CONNECTION_FIELDS},
-            datazone_project_id=export.datazone_project_id,
-            delta_share=export.delta_share,
+            datazone_project_id=self.datazone_project_id,
+            delta_share=self.delta_share,
             domains=list(self.domains),
-            role=export.role,
+            role=self.role,
         )
 
 
-class CatalogsConfig(BaseModel):  # REQ-2122
-    """The org's catalog connections, each held once (the Catalogs panel)."""
+class CatalogsConfig(BaseModel):  # REQ-2122, REQ-2247
+    """The org's Syncing entries, each held once."""
 
     catalogs: list[CatalogConnection] = Field(default_factory=list)
 
@@ -3324,76 +3393,34 @@ class CatalogsConfig(BaseModel):  # REQ-2122
         ids = [c.id for c in self.catalogs]
         repeated = sorted({i for i in ids if ids.count(i) > 1})
         if repeated:
-            raise ValueError(f"catalogs named twice: {', '.join(repeated)}")
+            raise ValueError(f"entries named twice: {', '.join(repeated)}")
         return self
 
     def by_id(self) -> dict[str, CatalogConnection]:
         return {c.id: c for c in self.catalogs}
 
+    def export_targets(self, only: str | None = None) -> list[MetadataExportTarget]:
+        """What a publish reaches: every data catalog whose direction includes Export, or, with
+        ``only``, that one entry, refused (:class:`SyncDirectionOff`) when it does not export
+        (REQ-2247). A missing entry is a ``KeyError``."""
+        if only is None:
+            return [
+                c.export_target() for c in self.catalogs if c.type == "data_catalog" and c.exports
+            ]
+        entry = self.by_id()[only]
+        entry.require_runs("export")
+        return [entry.export_target()]
 
-class CatalogExport(BaseModel):  # REQ-2118, REQ-2122
-    """The export to one catalog: the catalog it names, and its export settings alone.
 
-    datazone_project_id: the DataZone project that owns the org's data products (REQ-2118).
-    delta_share: whether a unity_catalog catalog also gets each product as a Delta Share
-        (REQ-2117).
-    role: the role the catalog is published as -- it is sent exactly what that role reads
-        (REQ-2152, ruling Q1); a publish refuses an export that names none.
+class MetadataExportConfig(BaseModel):  # REQ-1072
+    """The organisation-wide schedule of the publish to its exporting entries (REQ-1072).
+
+    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from dropped
+        events. Empty disables the reconcile and leaves only the event-driven path.
+    What is published, and to which systems, is on each Syncing entry (REQ-2247).
     """
 
-    catalog: str
-    datazone_project_id: str = ""
-    delta_share: bool = False
-    role: str | None = None
-
-
-class MetadataExportConfig(BaseModel):  # REQ-1068, REQ-1072, REQ-1073, REQ-2118, REQ-2122
-    """Outbound publication of governance metadata to external catalogs.
-
-    Per-org, premium-gated (REQ-1073).
-
-    targets: the catalogs the org publishes to, each named by its id in the Catalogs panel with
-        its export settings; one publish reaches each (REQ-2118, REQ-2122).
-    reconcile_cron: schedule for the full-snapshot reconcile that corrects drift from
-        dropped events (REQ-1072). Empty disables the reconcile and leaves only the
-        event-driven path.
-    """
-
-    enabled: bool = False
-    targets: list[CatalogExport] = Field(default_factory=list)
     reconcile_cron: str = "0 * * * *"
-
-    @model_validator(mode="after")
-    def _validate_targets(self) -> "MetadataExportConfig":
-        ids = [t.catalog for t in self.targets]
-        repeated = sorted({i for i in ids if ids.count(i) > 1})
-        if repeated:
-            raise ValueError(f"metadata export targets named twice: {', '.join(repeated)}")
-        # REQ-1068: an enabled export with nowhere to publish cannot publish.
-        if self.enabled and not self.targets:
-            raise ValueError("metadata_export.enabled is true but no target is configured")
-        return self
-
-    def export_targets(self, catalogs: CatalogsConfig) -> list[MetadataExportTarget]:
-        """Each target as its provider is built from: the named catalog with its export settings.
-        A target naming no catalog of the org is refused by name (REQ-2122)."""
-        known = catalogs.by_id()
-        missing = sorted(t.catalog for t in self.targets if t.catalog not in known)
-        if missing:
-            raise ValueError(
-                f"metadata export targets name no catalog of the org: {', '.join(missing)}"
-            )
-        targets = [known[t.catalog].export_target(t) for t in self.targets]
-        # REQ-2118: a DataZone data product is owned by a project, which only the export names.
-        unowned = sorted(
-            t.id for t in targets if t.provider == "datazone" and not t.datazone_project_id
-        )
-        if unowned:
-            raise ValueError(
-                f"the export to {', '.join(unowned)} needs the DataZone project that owns its "
-                "data products"
-            )
-        return targets
 
 
 class SubsystemTracesConfig(BaseModel):  # REQ-1432

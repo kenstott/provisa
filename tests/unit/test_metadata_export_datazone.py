@@ -49,7 +49,6 @@ from provisa.core.models import (
     Column,
     DataProduct,
     Domain,
-    MetadataExportConfig,
     MetadataExportTarget,
     ProvisaConfig,
     Source,
@@ -186,22 +185,22 @@ def test_a_datazone_target_names_its_region_domain_and_project():
 
 
 def test_the_export_to_a_datazone_catalog_names_the_project_that_owns_its_products():  # REQ-2122
-    catalogs = CatalogsConfig(
-        catalogs=[
-            {
-                "id": "dz",
-                "provider": "datazone",
-                "aws_region": "us-east-1",
-                "datazone_domain_id": "dzd_1",
-                "domains": ["sales"],
-            }
-        ]
-    )
+    entry = {
+        "id": "dz",
+        "type": "data_catalog",
+        "direction": "export",
+        "provider": "datazone",
+        "aws_region": "us-east-1",
+        "datazone_domain_id": "dzd_1",
+        "domains": ["sales"],
+    }
+    # REQ-2247: the project is an export setting of the entry itself.
     with pytest.raises(ValueError, match="needs the DataZone project"):
-        MetadataExportConfig(targets=[{"catalog": "dz"}]).export_targets(catalogs)
-    (target,) = MetadataExportConfig(
-        targets=[{"catalog": "dz", "datazone_project_id": "prj_1"}]
-    ).export_targets(catalogs)
+        CatalogsConfig.model_validate({"catalogs": [entry]})
+    catalogs = CatalogsConfig.model_validate(
+        {"catalogs": [{**entry, "datazone_project_id": "prj_1"}]}
+    )
+    (target,) = catalogs.export_targets()
     assert (target.id, target.datazone_domain_id, target.datazone_project_id) == (
         "dz",
         "dzd_1",
