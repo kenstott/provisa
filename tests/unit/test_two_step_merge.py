@@ -166,13 +166,17 @@ async def test_the_rows_read_are_merged_on_the_target_in_one_statement(monkeypat
     result = await _pipeline._run_two_step(SimpleNamespace(two_step=two), object())  # type: ignore[arg-type]
     assert result.rowcount == 5
     ((statement, params),) = writes
+    # One MERGE on the target: the rows read FULL JOINed to it, so the WHEN NOT MATCHED BY
+    # SOURCE is carried as a WHEN MATCHED over the target rows no row read matches.
     assert statement == (
-        'MERGE INTO "er"."bridge" AS "t" USING (VALUES (CAST($1 AS BIGINT), CAST($2 AS TEXT)), '
-        "(CAST($3 AS BIGINT), CAST($4 AS TEXT)), (CAST($5 AS BIGINT), CAST($6 AS TEXT))) "
-        'AS "m"("id", "org") ON "t"."id" = "m"."id" '
-        'WHEN MATCHED THEN UPDATE SET "org" = "m"."org" '
+        'MERGE INTO "er"."bridge" AS "t" USING (SELECT "m".*, "provisa_target".ctid AS '
+        '"provisa_row" FROM (VALUES (CAST($1 AS BIGINT), CAST($2 AS TEXT), TRUE), '
+        "(CAST($3 AS BIGINT), CAST($4 AS TEXT), TRUE), (CAST($5 AS BIGINT), CAST($6 AS TEXT), "
+        'TRUE)) AS "m"("id", "org", "provisa_read") FULL JOIN "er"."bridge" AS "provisa_target" '
+        'ON "provisa_target"."id" = "m"."id") AS "m" ON "t".ctid = "m"."provisa_row" '
+        'WHEN MATCHED AND "m"."provisa_read" IS NOT NULL THEN UPDATE SET "org" = "m"."org" '
         'WHEN NOT MATCHED THEN INSERT ("id", "org") VALUES ("m"."id", "m"."org") '
-        "WHEN NOT MATCHED BY SOURCE THEN DELETE"
+        'WHEN MATCHED AND "m"."provisa_read" IS NULL THEN DELETE'
     )
     assert params == [1, "acme", 2, "globex", 3, "initech"]
 
@@ -183,10 +187,11 @@ async def test_no_rows_read_still_merges_so_the_rows_not_in_the_source_go(monkey
     await _pipeline._run_two_step(SimpleNamespace(two_step=two), object())  # type: ignore[arg-type]
     ((statement, params),) = writes
     assert (
-        'USING (SELECT CAST(NULL AS BIGINT) AS "id", CAST(NULL AS TEXT) AS "org" WHERE FALSE) '
-        'AS "m" ON'
+        '(SELECT CAST(NULL AS BIGINT) AS "id", CAST(NULL AS TEXT) AS "org", TRUE AS '
+        '"provisa_read" WHERE FALSE) AS "m" FULL JOIN "er"."bridge"'
     ) in statement
-    assert "WHEN NOT MATCHED BY SOURCE THEN DELETE" in statement and params == []
+    assert statement.endswith('WHEN MATCHED AND "m"."provisa_read" IS NULL THEN DELETE')
+    assert params == []
 
 
 @pytest.mark.asyncio
@@ -199,3 +204,135 @@ async def test_a_using_column_whose_type_cannot_be_derived_is_refused_by_name(mo
     with pytest.raises(ValueError, match="'org' cannot be derived; CAST it"):
         await _pipeline._run_two_step(SimpleNamespace(two_step=two), object())  # type: ignore[arg-type]
     assert writes == []
+
+
+def test_a_merge_without_a_by_source_clause_merges_the_rows_read_alone():
+    sql = _MERGE.replace(" WHEN NOT MATCHED BY SOURCE THEN DELETE", "")
+    two = _pipeline._two_step_write(_governed(sql), 1, None)
+    assert two is not None
+    statement, params = _pipeline._merged_rows(two, ["id", "org"], _TYPES, [(1, "acme")])
+    assert statement.sql(dialect="postgres").startswith(
+        'MERGE INTO "er"."bridge" AS "t" USING (VALUES (CAST($1 AS BIGINT), CAST($2 AS TEXT))) '
+        'AS "m"("id", "org") ON "t"."id" = "m"."id"'
+    )
+    assert params == [1, "acme"]
+
+
+@pytest.mark.parametrize(
+    ("clauses", "refused"),
+    [
+        (' WHEN NOT MATCHED BY SOURCE THEN UPDATE SET "org" = NULL', "not THEN UPDATE"),
+        (
+            ' WHEN NOT MATCHED BY SOURCE AND "t"."id" > 5 THEN DELETE'
+            " WHEN NOT MATCHED BY SOURCE THEN DELETE",
+            "it holds 2",
+        ),
+    ],
+)
+def test_a_by_source_clause_it_cannot_carry_is_refused_by_name_before_anything_is_read(
+    clauses, refused
+):
+    sql = _MERGE.replace(" WHEN NOT MATCHED BY SOURCE THEN DELETE", clauses)
+    with pytest.raises(ValueError, match=refused):
+        _pipeline._two_step_write(_governed(sql), 1, None)
+
+
+# --- on PostgreSQL 16, which has no WHEN NOT MATCHED BY SOURCE ---------------------------------
+
+_TYPES = [sqlglot.exp.DataType.build("bigint"), sqlglot.exp.DataType.build("text")]
+_TABLES = {
+    "er.bridge": [
+        {"id": 1, "org": "old"},
+        {"id": 2, "org": "globex"},
+        {"id": 9, "org": "stale"},
+    ],
+    "code.matches": [
+        {"id": 1, "org": "acme", "secret": "s1"},
+        {"id": 2, "org": "globex", "secret": "s2"},
+        {"id": 3, "org": "initech", "secret": "s3"},
+        {"id": 4, "org": "hidden", "secret": "s4"},
+    ],
+}
+_RAW = (
+    "MERGE INTO er.bridge AS t USING code.matches AS m ON t.id = m.id "
+    "WHEN MATCHED THEN UPDATE SET org = m.org "
+    "WHEN NOT MATCHED THEN INSERT (id, org) VALUES (m.id, m.org) "
+    "WHEN NOT MATCHED BY SOURCE THEN DELETE"
+)
+
+
+@pytest.fixture(scope="module")
+def pg(embedded_postgres):
+    from tests.governed_pg import governed_database
+
+    return governed_database(embedded_postgres, "test_two_step_merge")
+
+
+def _gov():
+    from provisa.compiler.stage2 import GovernanceContext
+    from tests.write_governance import grants_over
+
+    gov = GovernanceContext()
+    gov.role_id = "steward"
+    gov.can_write = True
+    gov.table_map = {"er.bridge": 1, "code.matches": 2}
+    gov.all_columns = {
+        1: [("id", "bigint"), ("org", "text")],
+        2: [("id", "bigint"), ("org", "text"), ("secret", "text")],
+    }
+    gov.write_grants = {1: grants_over("steward", ("id", "org"))}
+    gov.rls_rules = {2: "org <> 'hidden'"}  # the code table's row rule
+    gov.visible_columns = {2: frozenset({"id", "org"})}  # its secret is not served
+    gov.write_ops = {1: frozenset({"insert", "update", "delete"})}
+    gov.write_returns_rows = {1: True}
+    gov.write_refused_forms = {1: frozenset()}
+    return gov
+
+
+def _replace(pg, raw: str, tables=_TABLES):
+    """``raw`` governed, its USING read on PostgreSQL, then its second step run there."""
+    from provisa.compiler.stage2 import apply_governance
+
+    governed = apply_governance(raw, _gov())
+    two = _pipeline._TwoStepWrite(
+        governed=None,
+        template=sqlglot.parse_one(governed, read="postgres"),
+        target_source="er-pg",
+    )
+    read = two.read_query(two.template).sql(dialect="postgres")
+    rows = pg.answer(read, tables)
+    names = list(pg.names)
+    statement, values = _pipeline._merged_rows(two, names, _TYPES, rows)
+    return names, pg.written(statement.sql(dialect="postgres"), tables, params=values)
+
+
+def test_on_postgresql_16_the_merge_updates_inserts_and_deletes_in_one_statement(pg):
+    names, written = _replace(pg, _RAW)
+    # The code table read under the role: its row rule keeps 'hidden' out, its secret unserved.
+    assert names == ["id", "org"]
+    assert written.after["er.bridge"] == [(1, "acme"), (2, "globex"), (3, "initech")]
+    # Its count is the MERGE's: two updated, one inserted, one deleted.
+    assert written.count == 4
+
+
+def test_on_postgresql_16_no_rows_read_empties_the_target(pg):
+    tables = {**_TABLES, "code.matches": [{"id": 4, "org": "hidden", "secret": "s4"}]}
+    _names, written = _replace(pg, _RAW, tables)
+    assert written.after["er.bridge"] == [] and written.count == 3
+
+
+def test_a_by_source_condition_is_carried_to_the_delete(pg):
+    # A WHEN may read its source and constants (governance), so a BY SOURCE condition is a
+    # constant one; one that admits no row deletes none.
+    raw = _RAW.replace("BY SOURCE THEN DELETE", "BY SOURCE AND 1 = 0 THEN DELETE")
+    _names, written = _replace(pg, raw)
+    assert written.after["er.bridge"] == [(1, "acme"), (2, "globex"), (3, "initech"), (9, "stale")]
+
+
+def test_a_column_the_role_is_not_served_never_reaches_the_merge(pg):
+    from tests.governed_pg import Refused
+
+    # The USING read is the governed relation, which holds no secret: a WHEN naming it names a
+    # column the rows read do not have, and the target refuses the statement.
+    with pytest.raises(Refused, match="secret"):
+        _replace(pg, _RAW.replace("SET org = m.org", "SET org = m.secret"))

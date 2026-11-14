@@ -597,6 +597,16 @@ def _supplied(value: exp.Expression, params: list | None) -> exp.Expression | No
     return None
 
 
+def _merge_deletes(tree: exp.Merge) -> bool:
+    """Whether a MERGE deletes: one of its WHENs, matched or not matched by source, is THEN
+    DELETE."""
+    whens = tree.args.get("whens")
+    return any(
+        w.args["then"].sql(dialect="postgres").upper() == "DELETE"
+        for w in (whens.expressions if whens is not None else [])
+    )
+
+
 def written_columns(tree: exp.Expression, gov: "GovernanceContext", table_id: int) -> list[str]:
     """The columns a write writes: an INSERT the columns it lists (all of the table's when it
     lists none), an UPDATE the columns it sets, a DELETE or MERGE every column (whole rows)."""
@@ -691,6 +701,15 @@ def admit_write(
                     f"MERGE into {name!r}: role {gov.role_id!r}'s {operation} grant limits the "
                     "rows it may write, and the rows a MERGE would write cannot be checked "
                     "against it. Use INSERT and UPDATE."
+                )
+        if _merge_deletes(tree):  # REQ-2001: a WHEN ... THEN DELETE removes rows
+            grant = _grant(gov, table_id, name, "delete")
+            rule = _rule(gov, table_id, "delete")  # REQ-2188
+            if rule is not None or not _every_row(_predicate(gov, table_id, grant.get("rows"))):
+                raise WriteNotAdmitted(
+                    f"MERGE into {name!r}: role {gov.role_id!r}'s delete grant or D rule limits "
+                    "the rows it may delete, and the rows a MERGE would delete cannot be checked "
+                    "against it. Use DELETE."
                 )
         return tree
 
