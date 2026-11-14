@@ -38,6 +38,8 @@
     "policy_hidden": "Nascosto",
     "policy_optional": "Facoltativo",
     "policy_required": "Obbligatorio",
+    "requiredLabel": "Obbligatorio",
+    "requiredDesc": "Ogni oggetto dei tipi indicati in «Si applica a» deve avere questo tag. Un oggetto senza il tag risulta mancante nel report dei tag.",
     "reasonPolicyBadge": "Motivo: {{policy}}",
     "expiresPolicyBadge": "Scadenza: {{policy}}",
     "createButton": "Crea tag",
@@ -60,6 +62,9 @@
     "purposeTitle": "A cosa servono i tag",
     "purposeBody": "Un tag è un'unica etichetta valida per tutta l'organizzazione, con significato fisso, applicata a sorgenti, tabelle, colonne, relazioni o comandi. I tag portano comportamento, non solo documentazione: technical tiene una colonna fuori dall'export Data Product, entity trasforma i valori di una colonna in vocabolario di recupero, deprecated dice ai consumatori di migrare.",
     "purposeAdd": "Il registro è unico. Un tag applicabile a più tipi di oggetto è la stessa identità ovunque, quindi modificarlo in uno degli elenchi lo modifica in tutti.",
-    "purposeAria": "Informazioni sui tag"
+    "purposeAria": "Informazioni sui tag",
+    "outsideTitle": "Assegnazioni fuori dai domini consentiti",
+    "outsideBody": "Il salvataggio ha mantenuto queste assegnazioni. Togli il tag da un oggetto a cui non appartiene più.",
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
   }
 }

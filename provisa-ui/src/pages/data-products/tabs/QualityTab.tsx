@@ -159,9 +159,7 @@ export function QualityTab({
     if (!dq) return null;
     return (
       <Stack gap="sm" data-testid={`data-product-card-dataQuality-${productId}`}>
-        <Text size="sm" fw={500}>
-          {t("dataProductsTab.detail.field.dataQuality")}
-        </Text>
+        {/* The section's own row is its one heading (THE PRODUCT PAGE IS SUMMARY ROWS). */}
         <Text size="xs" c="dimmed">
           {t("dataProductsTab.detail.dataQualityHint")}
         </Text>

@@ -1380,6 +1380,16 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="mcp.tools",
+        card="mcp",
+        type="enum",
+        effect="live",  # read when a client's request names no mode on its address
+        req="REQ-2246",
+        env="PROVISA_MCP_TOOLS",
+        default="full",
+        choices=("full", "sip"),
+    ),
+    Setting(
         key="mcp.external_url",
         card="mcp",
         type="str",

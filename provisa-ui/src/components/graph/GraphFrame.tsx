@@ -503,7 +503,7 @@ export function GraphFrame({
             )}
           </div>
           {!isModal && (
-            <Tip text={t("graphFrame.expand")} named>
+            <Tip text={t("graphFrame.enlarge")} named>
               <ActionIcon
                 variant="subtle"
                 className="gf-icon-btn"
@@ -511,7 +511,7 @@ export function GraphFrame({
                   setExpanded(true);
                   setQueryFocused(true);
                 }}
-                aria-label={t("graphFrame.expand")}
+                aria-label={t("graphFrame.enlarge")}
                 data-testid="graph-frame-expand-btn"
               >
                 <ExpandModalIcon size={14} />

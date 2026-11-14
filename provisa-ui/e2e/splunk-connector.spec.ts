@@ -10,7 +10,7 @@ import { spawnSync } from "child_process";
 import { test, expect, UI_URL, TRINO_BACKEND_URL } from "./coverage";
 import { deleteSourceAndItsTables } from "./delete-source";
 import { isAssignableDomain } from "../src/lib/internalDomains";
-import { addSourceOfType } from "./source-to-query-helpers";
+import { addSourceOfType, listedTableNames } from "./source-to-query-helpers";
 
 const SOURCE_ID = "e2e-splunk";
 // REQ-1730: the splunk catalog's schema is the sql-normalized source id on every engine
@@ -305,10 +305,7 @@ test("splunk connector: add source and query internal_server", async ({ page }) 
   await expect(page.getByRole("option", { name: /^internal_server/ })).toBeVisible({
     timeout: 30000,
   });
-  // An option's text is the table's name, followed by Register where it needs input.
-  const tableOptions = await page
-    .getByRole("option")
-    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  const tableOptions = await listedTableNames(page);
   await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("internal_server");

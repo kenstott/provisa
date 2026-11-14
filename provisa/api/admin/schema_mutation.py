@@ -972,6 +972,13 @@ async def _save_tag(
     pool = await _get_pool()
     async with pool.acquire() as conn:
         existing = await tag_repo.get(cast("Connection", conn), input.id)
+        # REQ-2208 (A TAG IS OFFERED BY DOMAIN): left out, the saved list stands.
+        held_domains = None if existing is None else list(existing["allowed_domains"] or [])
+        model.allowed_domains = (
+            list(held_domains or [])
+            if input.allowed_domains is None
+            else [d.strip() for d in input.allowed_domains if d.strip()]
+        )
         # A create makes a new tag and an update changes one: an id another tag holds, or one
         # no tag holds, is refused by name, and nothing is written.
         if creating and existing is not None:
@@ -996,6 +1003,7 @@ async def _save_tag(
             require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
         else:
             _require_tag_definer(info, was_sensitive)
+        _require_tag_domains_right(info, held_domains, model.allowed_domains)
         c = cast("Connection", conn)
         for citation in cited or []:  # REQ-2208: a document the caller reads
             unread = await _unread_document(info, c, citation.document_id)
@@ -1016,12 +1024,88 @@ async def _save_tag(
             return MutationResult(
                 success=False, message=str(exc), code=exc.code, params={"tag": input.id}
             )
+        outside = [] if creating else await _assignments_outside(info, c, model)
     await _refresh_config_tags()
+    message = f"Tag {input.id!r} saved"
+    if outside:
+        keys = ", ".join(o["objectKey"] for o in outside)
+        message += f"; these assignments are outside its allowed domains and stay: {keys}"
     return MutationResult(
         success=True,
-        message=f"Tag {input.id!r} saved",
+        message=message,
         code="schema.tag_saved",
-        params={"tag": input.id},
+        params={"tag": input.id, **({} if creating else {"outside": outside})},
+    )
+
+
+def _require_tag_domains_right(
+    info: StrawberryInfo, held: list[str] | None, domains: list[str]
+) -> None:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """Changing a tag's allowed domains needs what changing a source's needs
+    (update_source_allowed_domains): source_registration, and reach of each domain the change opens
+    the tag to -- every one, when it empties the list. A new tag that names none, or a save that
+    leaves the list as it is, changes nothing."""
+    from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+    if set(domains) == set(held or []):
+        return
+    require_capability(info, "source_registration")
+    require_reach_of_added_domains(info, held, domains, empty_is_all=True)
+
+
+async def _assignments_outside(
+    info: StrawberryInfo, conn: "Connection", tag: Any
+) -> list[dict]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """The tag's assignments on objects outside its allowed domains, which stay: those the caller
+    may be told of (REQ-2152), each with its object's domains."""
+    from provisa.api.admin.domain_guard import tag_assignments_outside
+    from provisa.api.admin.read_rights import reader_for, tag_assignment_readable
+
+    outside = await tag_assignments_outside(conn, tag.id, tag.allowed_domains)
+    if not outside:
+        return []
+    reader = reader_for(info)
+    return [
+        {
+            "tagId": row["tag_id"],
+            "objectType": row["object_type"],
+            "objectKey": row["object_key"],
+            "domains": sorted(domains),
+        }
+        for row, domains in outside
+        if await tag_assignment_readable(conn, reader, row)
+    ]
+
+
+async def _tag_domain_refusal(
+    info: StrawberryInfo, conn: "Connection", tag_row: dict, model: Any
+) -> "MutationResult | None":  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """An assignment on an object outside the tag's allowed domains, refused by name. An object
+    in no domain (a role) is placed by its assigner: refused unless the caller acts in one of the
+    tag's domains."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+    from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+
+    allowed = sorted(tag_row.get("allowed_domains") or [])
+    domains = await tag_target_domains(conn, model)
+    if tag_offered(allowed, domains, allowed_domains_request(info.context["request"])):
+        return None
+    key = model.object_key()
+    offered_in = ", ".join(allowed)
+    if domains:
+        said = f"{key} is in {', '.join(sorted(domains))}"
+    else:
+        said = f"{key} is in no domain, and you act in none of the tag's"
+    return MutationResult(
+        success=False,
+        message=f"Tag {tag_row['id']!r} is offered only on objects of {offered_in}: {said}",
+        code="schema.tag_domain_not_allowed",
+        params={
+            "tag": tag_row["id"],
+            "objectKey": key,
+            "allowedDomains": allowed,
+            "domains": sorted(domains),
+        },
     )
 
 
@@ -3961,6 +4045,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model, refused = await _on_columns_term(cast("Connection", conn), model)
                 if refused is not None:
                     return refused
+            # REQ-2208 (A TAG IS OFFERED BY DOMAIN): on objects of the tag's domains only.
+            refused = await _tag_domain_refusal(info, cast("Connection", conn), tag_row, model)
+            if refused is not None:
+                return refused
             if model.object_type == "term":  # REQ-2145
                 assert model.term_id is not None
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)

@@ -38,6 +38,8 @@
     "policy_hidden": "非表示",
     "policy_optional": "任意",
     "policy_required": "必須",
+    "requiredLabel": "必須",
+    "requiredDesc": "「適用対象」に挙げた種類のすべてのオブジェクトに、このタグが必要です。付いていないオブジェクトは、タグレポートで欠落として表示されます。",
     "reasonPolicyBadge": "理由: {{policy}}",
     "expiresPolicyBadge": "期限: {{policy}}",
     "createButton": "タグを作成",
@@ -60,6 +62,9 @@
     "purposeTitle": "タグの目的",
     "purposeBody": "タグは組織全体で意味が固定された 1 つのラベルで、ソース・テーブル・列・リレーションシップ・コマンドに付与します。タグは単なる説明ではなく振る舞いを伴います。technical は列を Data Product エクスポートから除外し、entity は列の値を検索用語彙にし、deprecated は利用側に移行を促します。",
     "purposeAdd": "レジストリは 1 つです。複数のオブジェクト型に適用されるタグはどこでも同一の存在なので、いずれかのリストで編集すればすべてに反映されます。",
-    "purposeAria": "タグについて"
+    "purposeAria": "タグについて",
+    "outsideTitle": "許可ドメイン外の割り当て",
+    "outsideBody": "保存後もこれらの割り当ては残っています。不要になったオブジェクトからはタグを外してください。",
+    "outsideItem": "{{kind}} {{name}}（{{domains}}）"
   }
 }

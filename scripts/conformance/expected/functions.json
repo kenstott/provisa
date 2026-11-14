@@ -2,15 +2,15 @@
   "engines": {
     "clickhouse": {
       "total": 3319,
-      "passed": 1709,
+      "passed": 1819,
       "differs_engine_error": 0,
-      "refused_by_name": 746
+      "refused_by_name": 584
     },
     "duckdb": {
       "total": 3319,
       "passed": 2307,
       "differs_engine_error": 0,
-      "refused_by_name": 145
+      "refused_by_name": 100
     },
     "pg": {
       "total": 3319,
@@ -20,9 +20,9 @@
     },
     "trino": {
       "total": 3319,
-      "passed": 1767,
+      "passed": 1768,
       "differs_engine_error": 0,
-      "refused_by_name": 689
+      "refused_by_name": 625
     }
   },
   "expected": []

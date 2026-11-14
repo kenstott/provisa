@@ -29,6 +29,7 @@ from provisa.api.flight.catalog import CatalogColumn, CatalogTable
 from provisa.api.mcp import tools
 from provisa.api.org_runtime import OrgRegistry, OrgRuntime
 from provisa.compiler.sql_types import CompilationContext
+from tests.unit.mcp_described import metas_for, serve_whole
 from provisa.core.request_context import (
     require_current_org,
     reset_current_org,
@@ -93,11 +94,20 @@ def world(monkeypatch):
     embedder = _Embedder()
     monkeypatch.setattr(tools, "_catalog", catalog_of_the_bound_org)
     monkeypatch.setattr("provisa.vector.providers.get_provider", lambda _name: embedder)
+    serve_whole(monkeypatch)
     return SimpleNamespace(state=state, catalogs=catalogs, embedder=embedder)
 
 
 def _add_org(world, org: str, roles: dict[str, list[str]], catalog: list[CatalogTable]) -> None:
     world.state.org_registry.set(org, _runtime(org, roles))
+    _publish(world, org, catalog)
+
+
+def _publish(world, org: str, catalog: list[CatalogTable]) -> None:
+    """``org``'s catalog, and the tables its roles' contexts hold, as one build makes them."""
+    runtime = world.state.org_registry.get(org)
+    for ctx in runtime.contexts.values():
+        ctx.tables = metas_for(catalog)
     world.catalogs[org] = catalog
 
 
@@ -186,7 +196,7 @@ async def test_reloading_one_orgs_catalog_leaves_the_others_index(world):
     await _search(world, "second", "analyst", "sku")
     embedded = world.embedder.embedded
 
-    world.catalogs["second"] = [_table("sales", "offers", "price")]
+    _publish(world, "second", [_table("sales", "offers", "price")])
     token = set_current_org("second")
     world.state.mcp_catalog_index = None  # what _rebuild_schemas_impl does for the org it rebuilds
     reset_current_org(token)

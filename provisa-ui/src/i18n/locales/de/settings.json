@@ -600,6 +600,10 @@
         "label": "Lokaler MCP-Prinzipal",
         "help": "Der Prinzipal (Benutzer-ID), für den lokale (stdio-)MCP-Aufrufe neben der lokalen Rolle handeln; die Berechtigungen dieser Person schränken die Rolle ein. Solange er nicht gesetzt ist, werden diese Aufrufe abgelehnt. Geschützt, weil damit jeder, der den lokalen Client starten kann, mit dem Zugriff dieser Person handelt."
       },
+      "tools": {
+        "label": "Gelistete MCP-Tools",
+        "help": "Die Tools, die einem MCP-Client aufgeführt werden, dessen Adresse keinen Modus nennt (tools=full oder tools=sip in der Adresse). full listet jedes Tool; sip listet die Tools zum Finden, Beschreiben, Abfragen und Lesen von Metriken sowie ein Tool, das auf Anfrage des Clients die anderen Gruppen hinzufügt. Jedes Tool kann in beiden Modi aufgerufen werden, soweit die Rechte des Aufrufers es erlauben."
+      },
       "external_url": {
         "label": "Externe MCP-Adresse",
         "help": "Die MCP-Adresse, die Benutzern angezeigt wird, wenn das Deployment hinter einem Proxy steht."

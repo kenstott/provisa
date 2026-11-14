@@ -672,6 +672,9 @@ tags = Table(
     Column("requires_citation", Boolean, nullable=False, server_default=false()),
     # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
     Column("required", Boolean, nullable=False, server_default=false()),
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered on objects of these domains, as a source's
+    # allowed_domains; empty = every domain.
+    Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -1395,6 +1398,10 @@ data_product_offers = Table(
     Column("profiles", Boolean, nullable=False, server_default=false()),
     Column("open", Boolean, nullable=False, server_default=false()),
     Column("duration_days", Integer),
+    # REQ-2180 (amended 2026-11-11): the offer's terms of use in prose.
+    Column("purpose", Text, nullable=False, server_default=""),
+    Column("usage", Text, nullable=False, server_default=""),
+    Column("limitations", Text, nullable=False, server_default=""),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("published_by", Text),
     Column("review", Text),
@@ -1439,6 +1446,10 @@ data_product_bids = Table(
     Column("terms", JSON, nullable=False),
     Column("requester", Text, nullable=False),
     Column("reason", Text, nullable=False),
+    # REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS).
+    Column("consumer_kind", Text),
+    Column("approver", Text),
+    Column("agreed_at", DateTime(timezone=True)),
     Column("hook", Text, nullable=False),
     Column("payload", JSON, nullable=False),
     Column("status", Text, nullable=False, server_default="pending"),
@@ -1449,6 +1460,10 @@ data_product_bids = Table(
     Column("granted", JSON(none_as_null=True)),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "consumer_kind IN ('person', 'team', 'data_product', 'agent')",
+        name="data_product_bids_consumer_kind_check",
+    ),
     CheckConstraint(
         "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
         name="data_product_bids_status_check",
@@ -2551,7 +2566,7 @@ reference_citations = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
     CheckConstraint(
-        "citer_kind IN ('tag', 'tag_assignment')",
+        "citer_kind IN ('tag', 'tag_assignment', 'dq_check')",
         name="reference_citations_citer_kind_check",
     ),
 )

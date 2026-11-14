@@ -112,14 +112,16 @@ def _tag_definitions_sql() -> str:
     for tag in SYSTEM_TAGS + DERIVED_TAGS:
         desc = sql_literal(tag.description, "postgres")
         applies = sql_literal(_json.dumps(tag.applies_to), "postgres")
+        allowed = sql_literal(_json.dumps(tag.allowed_domains), "postgres")
         rows.append(
             f"SELECT '{tag.id}' AS id, {desc} AS description, CAST({applies} AS JSONB) AS "
             f"applies_to, TRUE AS is_system, {'TRUE' if tag.requires_citation else 'FALSE'} "
-            f"AS requires_citation, {'TRUE' if tag.required else 'FALSE'} AS required"
+            f"AS requires_citation, {'TRUE' if tag.required else 'FALSE'} AS required, "
+            f"CAST({allowed} AS JSONB) AS allowed_domains"
         )
     rows.append(
         "SELECT id, description, CAST(applies_to AS JSONB), is_system, requires_citation, "
-        "required FROM tags"
+        "required, CAST(allowed_domains AS JSONB) FROM tags"
     )
     return "\n            UNION ALL\n            ".join(rows)
 
@@ -331,6 +333,26 @@ def _tag_instances_sql() -> str:
             FROM defs d
             JOIN objects o ON d.applies_to @> jsonb_build_array(o.object_kind)
             WHERE d.required AND NOT o.draft
+              -- A TAG IS OFFERED BY DOMAIN: required only on objects of the tag's allowed
+              -- domains (none: every domain), as assignTag places an object
+              -- (domain_guard.tag_target_domains): a source open to every domain is in all of
+              -- them; an object in no domain (a role) is in none.
+              AND (jsonb_array_length(d.allowed_domains) = 0
+                   OR EXISTS (
+                       SELECT 1 FROM jsonb_array_elements_text(d.allowed_domains) a(domain_id)
+                       WHERE a.domain_id = '*'
+                          OR a.domain_id = o.domain_id
+                          OR (o.object_kind = 'source'
+                              AND (o.read_any_domains = '|'
+                                   OR POSITION('|*|' IN o.read_any_domains) > 0
+                                   OR POSITION('|' || a.domain_id || '|' IN o.read_any_domains) > 0))
+                          OR POSITION('|*|' IN COALESCE(o.read_term_domains, '')) > 0
+                          OR POSITION('|' || a.domain_id || '|' IN COALESCE(o.read_term_domains, '')) > 0
+                          OR (o.object_kind = 'rls_rule'
+                              AND EXISTS (
+                                  SELECT 1 FROM all_domains rd
+                                  WHERE rd.object_key = o.object_key
+                                    AND POSITION('|' || a.domain_id || '|' IN rd.domains) > 0))))
               AND NOT EXISTS (
                   SELECT 1 FROM instances i
                   WHERE i.base_tag_id = d.id AND i.object_key = o.object_key

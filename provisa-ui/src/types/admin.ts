@@ -197,6 +197,11 @@ export interface Tag {
   paramValues: TagParamValue[];
   // Each assignment of the tag must cite a library document or section (a gap when it does not).
   requiresCitation: boolean;
+  // Every object of the kinds in appliesTo must carry the tag; one without it is a missing row in
+  // the tags report.
+  required: boolean;
+  // The domains whose objects the tag is offered on, and required on; none means every domain.
+  allowedDomains: string[];
   // The library sections that define the tag, and whether one of them changed or is gone.
   citations: LibraryCitation[];
   needsReview: boolean;
@@ -232,6 +237,17 @@ export function tagParam(tagId: string): string | null {
 }
 
 // REQ-1377: one tag on one object; exactly the fields implied by objectType are set.
+/** An object a tag may be put on, named as an assignment names it, without the tag. */
+export type TagTarget = Omit<TagAssignment, "tagId" | "reason" | "expiresOn">;
+
+/** An assignment a save of the tag's allowed domains left outside them; it stays. */
+export interface TagOutsideAssignment {
+  tagId: string;
+  objectType: TagObjectType;
+  objectKey: string;
+  domains: string[];
+}
+
 export interface TagAssignment {
   tagId: string;
   objectType: TagObjectType;

@@ -20,7 +20,7 @@ source's path that share a column set); registration is where the operator accep
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 
 
 class FileColumnsDiffer(ValueError):
@@ -223,3 +223,144 @@ def stat_matched_files(source_path: str, file_glob: str) -> list[tuple[str, floa
             out.append((f, float(info.get("mtime", 0) or 0), int(info.get("size", 0) or 0)))
         return out
     return [(f, os.path.getmtime(f), os.path.getsize(f)) for f in files]
+
+
+# --- Combining files into one table (REQ-788, COMBINING FILES IS ITS OWN ACTION) -------------
+
+#: Compression suffixes the file adapter strips before a file's own extension.
+_COMPRESSED = (".gz", ".bz2", ".xz", ".zst")
+
+
+def relative_to_base(source_path: str, path: str) -> str:
+    """``path`` (one of :func:`matched_files`' results) relative to the directory a table's
+    ``file_glob`` is evaluated under, with ``/`` separators: what the glob itself names."""
+    import os
+
+    if "://" in source_path and not source_path.startswith("file://"):
+        base = source_path if source_path.endswith("/") else source_path.rsplit("/", 1)[0] + "/"
+        return path[len(base) :] if path.startswith(base) else path.rsplit("/", 1)[-1]
+    base = source_path if os.path.isdir(source_path) else os.path.dirname(source_path)
+    return os.path.relpath(path, base).replace(os.sep, "/")
+
+
+def table_key(name: str) -> str:
+    """A listed table's name or a file's stem, compared case- and punctuation-free."""
+    import re
+
+    return re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
+
+
+def file_keys(rel: str) -> set[str]:
+    """The table names a file may be listed under: its stem, alone or with its directories."""
+    lowered = rel
+    for suffix in _COMPRESSED:
+        if lowered.lower().endswith(suffix):
+            lowered = lowered[: -len(suffix)]
+    stem = lowered.rsplit(".", 1)[0] if "." in lowered.rsplit("/", 1)[-1] else lowered
+    base = lowered.rsplit("/", 1)[-1]
+    # A listing may name a file by its stem or by its whole name, alone or with its directories.
+    return {
+        table_key(stem),
+        table_key(stem.rsplit("/", 1)[-1]),
+        table_key(lowered),
+        table_key(base),
+    }
+
+
+def column_agreement(
+    per_file: Mapping[str, Sequence[str]],
+) -> tuple[list[str], list[dict]]:
+    """The columns every file carries (in the reference file's order) and each file whose column
+    set differs from the reference, with what it lacks and what it adds. The reference is the
+    column set most files carry (the first file's on a tie), so the odd one out is the one named."""
+    if not per_file:
+        return [], []
+    sets = {path: column_set(cols) for path, cols in per_file.items()}
+    counts: dict[frozenset[str], int] = {}
+    for s in sets.values():
+        counts[s] = counts.get(s, 0) + 1
+    reference = max(counts, key=lambda s: (counts[s], -list(sets.values()).index(s)))
+    ref_file = next(path for path, s in sets.items() if s == reference)
+    everywhere = frozenset.intersection(*sets.values())
+    shared = [c for c in per_file[ref_file] if c in everywhere]
+    differing = [
+        {
+            "file": path,
+            "missing": sorted(reference - s),
+            "extra": sorted(s - reference),
+        }
+        for path, s in sets.items()
+        if s != reference
+    ]
+    return shared, differing
+
+
+def _common_prefix(names: list[str]) -> str:
+    import os
+
+    return os.path.commonprefix(names)
+
+
+def _common_suffix(names: list[str]) -> str:
+    import os
+
+    return os.path.commonprefix([n[::-1] for n in names])[::-1]
+
+
+def glob_candidates(picked: list[str]) -> list[str]:
+    """Globs (in :mod:`glob`'s dialect, relative to the source directory) that match every picked
+    file, most readable first: one name; a common prefix and suffix around ``*``; and, for names
+    of one length, each differing position as a character class."""
+    import glob as _glob
+    import posixpath
+
+    dirs = {posixpath.dirname(p) for p in picked}
+    if len(dirs) == 1:
+        only = dirs.pop()
+        lead = _glob.escape(only) + "/" if only else ""
+    else:
+        common = posixpath.commonpath(list(dirs)) if all(dirs) else ""
+        lead = (_glob.escape(common) + "/" if common else "") + "**/"
+    names = sorted({posixpath.basename(p) for p in picked})
+    if len(names) == 1:
+        return [lead + _glob.escape(names[0])]
+    out = []
+    prefix = _common_prefix(names)
+    suffix = _common_suffix(names)
+    shortest = min(len(n) for n in names)
+    suffix = suffix[max(0, len(prefix) + len(suffix) - shortest) :]
+    out.append(lead + _glob.escape(prefix) + "*" + _glob.escape(suffix))
+    if len({len(n) for n in names}) == 1:
+        parts = []
+        for i in range(len(names[0])):
+            chars = sorted({n[i] for n in names})
+            if len(chars) == 1:
+                parts.append(_glob.escape(chars[0]))
+            elif any(c in "[]!-^\\" for c in chars):
+                parts = []
+                break
+            else:
+                parts.append("[" + "".join(chars) + "]")
+        if parts:
+            out.append(lead + "".join(parts))
+    return out
+
+
+def derive_glob(picked: list[str], matches: "Callable[[str], list[str]]") -> tuple[str, list[str]]:
+    """The narrowest glob over the ``picked`` files (relative paths) and the files it would match
+    besides them. ``matches`` evaluates a glob as the server reads it (relative results). The first
+    candidate that matches exactly the picked set wins; else the one adding the fewest files."""
+    wanted = set(picked)
+    best: tuple[str, list[str]] | None = None
+    for glob in glob_candidates(picked):
+        found = set(matches(glob))
+        if not wanted <= found:
+            continue
+        extra = sorted(found - wanted)
+        if not extra:
+            return glob, []
+        if best is None or len(extra) < len(best[1]):
+            best = (glob, extra)
+    if best is None:
+        raise ValueError(f"no glob matches every picked file: {', '.join(sorted(picked))}")
+    return best

@@ -14,6 +14,7 @@
 
 import { JSDOM } from "jsdom";
 import { buildGraphStylesheet } from "../../src/components/graph/graph-stylesheet";
+import provisaElk, { LAYOUT_FAIL } from "../../src/components/provisa-graph/elkLayout";
 import { BACKGROUND, LAYOUTS, type LayoutName, type Theme } from "./look";
 
 export interface DrawRequest {
@@ -61,8 +62,9 @@ export async function drawPng(req: DrawRequest): Promise<Buffer> {
   try {
     const { default: cytoscape } = await import("cytoscape");
     const { default: fcose } = await import("cytoscape-fcose");
-    const { default: elk } = await import("cytoscape-elk");
-    for (const ext of [fcose, elk]) {
+    // ELK through Provisa's own adapter (the UI's), which says a failed layout: the drawing fails
+    // with ELK's error rather than waiting forever on a layout that never stops.
+    for (const ext of [fcose, provisaElk]) {
       try {
         // The UI's type shims and the package's own types name the extension type differently.
         cytoscape.use(ext as never);
@@ -102,12 +104,15 @@ export async function drawPng(req: DrawRequest): Promise<Buffer> {
       }) as never,
       layout: { name: "null" },
     });
-    await new Promise<void>((done) => {
+    await new Promise<void>((done, failed) => {
       const layout = cy.layout({
         ...(LAYOUTS[req.layout] as object),
         // The canvas's own box, which a browser container reports and jsdom's does not.
         boundingBox: { x1: 0, y1: 0, w: req.width, h: req.height },
       } as never);
+      layout.one(LAYOUT_FAIL as never, (_evt: unknown, error?: unknown) =>
+        failed(new Error(`the ${req.layout} layout failed: ${(error as Error).message}`)),
+      );
       layout.one("layoutstop", () => done());
       layout.run();
     });

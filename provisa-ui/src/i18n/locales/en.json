@@ -47,7 +47,7 @@
     "yes": "Yes",
     "no": "No",
     "none": "—",
-    "expandUser": "Show assignments for {{username}}",
+    "expandUser": "Expand assignments for {{username}}",
     "deleteUser": "Delete {{username}}'s account",
     "assignmentsHeading": "Role:Domain Assignments",
     "noAssignments": "No assignments",

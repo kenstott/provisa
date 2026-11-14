@@ -34,7 +34,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete, func, select, update
 
 from provisa.core import model_change
-from provisa.core.models import DEFAULT_OFFER, DataProductOffer, OfferContract
+from provisa.core.models import CONSUMER_KINDS, DEFAULT_OFFER, DataProductOffer, OfferContract
 from provisa.core.schema_org import (
     checker_targets,
     data_product_bids,
@@ -544,16 +544,32 @@ async def bid(
     *,
     requester: str,
     reason: str,
+    consumer_kind: str,
+    agreed: bool,
+    approver: str | None,
     request_id: str,
     hook: str,
     payload: dict,
 ) -> dict:
-    """``requester`` bids for the product's offer, stating why: the offer as it stands is what
-    is bid for, and ``payload`` the request fired for it, as ``request_id`` to ``hook``. One
+    """``requester`` bids for the product's offer for a consumer of ``consumer_kind``, stating its
+    purpose (``reason``), naming ``approver`` as who approves it, and having agreed to the offer's
+    terms of use (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): the offer
+    as it stands, its terms of use with it, is what is bid for and agreed to, and ``payload`` the
+    request fired for it, as ``request_id`` to ``hook``. A bid that does not agree is refused. One
     pending bid per requester and offer."""
     text = reason.strip()
     if not text:
         raise OfferRefused("reason_required", "a bid states its reason")
+    if consumer_kind not in CONSUMER_KINDS:
+        raise OfferRefused(
+            "consumer_kind_unknown",
+            f"a bid is for a {', a '.join(CONSUMER_KINDS)}; not {consumer_kind!r}",
+            consumer_kind=consumer_kind,
+        )
+    if not agreed:
+        raise OfferRefused(
+            "terms_not_agreed", "a bid is sent only once its requester agrees to the offer's terms"
+        )
     offer = await require_offer(conn, product_id, offer_id)
     pending = (
         await conn.execute_core(
@@ -582,6 +598,9 @@ async def bid(
             "terms": as_offer(offer).model_dump(),
             "requester": requester,
             "reason": text,
+            "consumer_kind": consumer_kind,
+            "approver": approver,
+            "agreed_at": func.now(),
             "hook": hook,
             "payload": payload,
         },

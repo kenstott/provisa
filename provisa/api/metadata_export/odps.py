@@ -51,7 +51,7 @@ from typing import TYPE_CHECKING, Any, Literal
 
 from provisa.api.metadata_export.model import OfferExport
 from provisa.core.cache_ttl import NEVER_EXPIRES
-from provisa.core.models import DEFAULT_OFFER
+from provisa.core.models import DEFAULT_OFFER, TERMS_OF_USE
 
 if TYPE_CHECKING:
     from datetime import datetime
@@ -1097,4 +1097,9 @@ def offer_contract(
         *contract.get("customProperties", []),
         *_offer_terms(offer, table),
     ]
+    # Amended 2026-11-11: the offer's terms of use are its contract's; a term it leaves unstated
+    # is the product's, written once on it.
+    stated = {k: getattr(terms, k) for k in TERMS_OF_USE if getattr(terms, k)}
+    if stated:
+        contract["description"] = {**contract.get("description", {}), **stated}
     return contract

@@ -19,7 +19,7 @@
     "colActions": "Actions",
     "empty": "No organizations",
     "membersButton": "Members",
-    "hideButton": "Hide",
+    "hideButton": "Collapse",
     "expandOrg": "Toggle members for {{name}}",
     "deleteOrg": "Delete {{name}}",
     "membersHeading": "Members",

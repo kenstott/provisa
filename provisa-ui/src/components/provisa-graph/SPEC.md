@@ -121,8 +121,10 @@ titled the same way.
   never painted, and the canvas shows the graph views' loader (ReadState's `Loader`) with
   `provisaGraph.layingOut`. The layout starts once that frame has been painted, so a placement
   that runs as one long task (a large lane diagram's) is seen to be under way. The controls and legend stay; the controls, downloads, the camera and
-  a save act only on a placed drawing. A layout that throws as it starts, or whose placement throws
-  once it answers, ends the laying out and is thrown to the page's error boundary.
+  a save act only on a placed drawing. A layout that throws as it starts, that fails after it
+  started (ELK's answer rejected: `elkLayout.ts` says it as `layoutfail`), or whose placement
+  throws once it answers, ends the laying out and is thrown to the page's error boundary. There
+  is no time limit: a slow layout is not a failed one.
 - The hint (top-left) of a view whose wheel scrolls says so: `provisaGraph.hint`.
 - Controls bottom-left, one vertical bar, always the same order: zoom in, zoom out, fit, full
   screen, download (SVG, PNG, JPEG, and JSON where the view gives it), then copy as text where
@@ -151,7 +153,8 @@ titled the same way.
 
 ## Layout presets
 
-- `layered`: ELK layered, upward, groups laid out with their children; then nodes without edges
+- `layered`: ELK layered (`elkLayout.ts`, Provisa's adapter around elkjs, registered as
+  `provisa-elk`), upward, groups laid out with their children; then nodes without edges
   placed in a grid under their group, groups packed to the pane's aspect, related nodes kept
   apart (the ERD's arrangement).
 - `lanes` (REQ-2239, amended 2026-11-11; REQ-2174, EACH SIBLING TERM ON ITS OWN ROW): no layout

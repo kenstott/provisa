@@ -198,6 +198,8 @@ const PANELS: Readonly<Record<string, Panel>> = {
     notAField: {
       "registerManyTables.tablesLabel":
         "Register Table's pick of the tables to register, not a value of one table",
+      "combineFiles.globLabel":
+        "Register Table's pick of files by a glob; a combined table's glob is shown as its File glob",
       "declaredColumns.name": "a declared column's name: shown as the column in Columns",
       "declaredColumns.type": "a declared column's type: shown as its Data Type in Columns",
       "tableEditForm.loadManagementHelp": "a hint beside the load fields, not a value",

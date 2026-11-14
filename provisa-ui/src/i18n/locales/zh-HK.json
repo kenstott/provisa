@@ -47,7 +47,7 @@
     "yes": "是",
     "no": "否",
     "none": "—",
-    "expandUser": "顯示 {{username}} 的指派",
+    "expandUser": "展開 {{username}} 的指派",
     "deleteUser": "刪除 {{username}} 的帳戶",
     "assignmentsHeading": "角色:網域指派",
     "noAssignments": "沒有指派",

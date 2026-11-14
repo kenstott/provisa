@@ -170,8 +170,8 @@ RULES = (
         "Time zones a distribution packages differently",
         "`pg_timezone_names` lists the pinned upstream IANA tzdata, as upstream PostgreSQL ships "
         "it, and compares by the names both lists hold. A name that differs only through a "
-        "distribution's tzdata packaging is skipped by design (REQ-2167, amended 2026-11-03, "
-        "Time zones follow upstream tzdata): Debian drops the backward links, a link Provisa "
+        "distribution's tzdata packaging is skipped by design (time zones follow upstream "
+        "tzdata): Debian drops the backward links, a link Provisa "
         "lists whose zone both list, and adds `localtime` and `posixrules`.",
     ),
 )
@@ -561,7 +561,7 @@ def by_design_lines(doc: dict[str, Any]) -> list[str]:
         return ["No overload is skipped by design."]
     every = sorted({group for e in engines for group in groups[e]})
     return [
-        "Skipped by design (REQ-2167), by group and engine:",
+        "Skipped by design, by group and engine:",
         "",
         "| Group | " + " | ".join(_label(e) for e in engines) + " |",
         "| --- |" + " ---: |" * len(engines),
@@ -635,7 +635,7 @@ def pgwire_block(doc: dict[str, Any]) -> str:
             "| Equivalent | The answer passes under a numbered rule below, linked from its row. |",
             "| Not checked | The engine answered with PostgreSQL's result type, but nothing was "
             "compared. A call that ran proves nothing, so this is no pass. |",
-            "| Skipped by design | A decision of REQ-2167 skips it: a side-effect function off "
+            "| Skipped by design | A recorded decision skips it: a side-effect function off "
             "the PostgreSQL engine, one whose side effect no client can see, or a refusal by name "
             "a decision makes. |",
             "| Refused by name | Provisa refused the call and said what it refuses. |",

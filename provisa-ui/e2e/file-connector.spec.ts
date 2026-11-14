@@ -10,6 +10,7 @@ import { deleteSourceAndItsTables } from "./delete-source";
 import { isAssignableDomain } from "../src/lib/internalDomains";
 import {
   addSourceOfType,
+  listedTableNames,
   openRegisterForm,
   submitSourceAndExpectListed,
   waitForSourceServing,
@@ -104,9 +105,7 @@ test("file connector: add northwind source and query customers", async ({ page }
   await expect(field).toBeEnabled({ timeout: 60000 });
   await field.click();
   await expect(page.getByRole("option", { name: /^customers/ })).toBeVisible({ timeout: 30000 });
-  const tableOptions = await page
-    .getByRole("option")
-    .evaluateAll((opts) => opts.map((o) => (o.textContent ?? "").replace(/Register$/, "")));
+  const tableOptions = await listedTableNames(page);
   await page.keyboard.press("Escape");
 
   expect(tableOptions).toContain("customers");

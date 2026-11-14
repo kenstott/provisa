@@ -47,7 +47,7 @@
     "yes": "Sim",
     "no": "Não",
     "none": "—",
-    "expandUser": "Mostrar atribuições de {{username}}",
+    "expandUser": "Expandir as atribuições de {{username}}",
     "deleteUser": "Excluir a conta de {{username}}",
     "assignmentsHeading": "Atribuições função:domínio",
     "noAssignments": "Nenhuma atribuição",

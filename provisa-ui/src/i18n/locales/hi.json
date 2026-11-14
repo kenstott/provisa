@@ -47,7 +47,7 @@
     "yes": "हाँ",
     "no": "नहीं",
     "none": "—",
-    "expandUser": "{{username}} के असाइनमेंट दिखाएँ",
+    "expandUser": "{{username}} के असाइनमेंट विस्तृत करें",
     "deleteUser": "{{username}} का खाता हटाएँ",
     "assignmentsHeading": "भूमिका:डोमेन असाइनमेंट",
     "noAssignments": "कोई असाइनमेंट नहीं",
