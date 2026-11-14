@@ -29,9 +29,8 @@ import pytest
 
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
-from provisa.transpiler import pg_ranges
 from provisa.transpiler.function_macros import FunctionRefused
-from provisa.transpiler.polyfill import instants
+from provisa.transpiler.polyfill import instants, ranges
 from provisa.transpiler.transpile import transpile
 
 
@@ -99,17 +98,17 @@ _DAYS = "(VALUES ('2000-01-01'::date)) AS t(c)"
         # The day after it, which an inclusive upper bound is made into, is past Date32's end.
         (f"SELECT daterange(c, '2299-12-31', '[]') AS v FROM {_DAYS}", "daterange"),
         # An element beside a range is read as a bound is.
-        (f"SELECT tsrange(c, '2001-01-01') @> '2299-12-31 12:00:00'::timestamp AS v FROM {_STAMPS}",
+        (f"SELECT tsrange(c, '2001-01-01') @> '2300-01-01 12:00:00'::timestamp AS v FROM {_STAMPS}",
          "tsrange"),
     ],
 )  # fmt: skip
 def test_a_literal_bound_past_what_clickhouse_holds_raises(runtime, sql, constructor):
     error = _raised(runtime, sql)
-    assert (error.sqlstate, str(error)) == ("0A000", pg_ranges.outside_held(constructor))
+    assert (error.sqlstate, str(error)) == ("0A000", ranges.outside_held(constructor))
 
 
 def test_tstzrange_s_bound_is_the_one_its_other_rows_raise_outside():
-    assert pg_ranges.outside_held("tstzrange") == instants.out_of_bound("tstzrange")
+    assert ranges.outside_held("tstzrange") == instants.out_of_bound("tstzrange")
 
 
 @pytest.mark.parametrize(
@@ -189,3 +188,9 @@ def test_to_char_of_a_template_strftime_would_misread_is_refused_by_name(templat
 def test_bytea_like_matches_byte_by_byte_where_no_function_is_named(runtime, sql, answer):
     value = _one(runtime, sql)
     assert value is not None and value == answer  # ClickHouse's own LIKE answers 0 or 1
+
+
+def test_bytea_not_like_beside_a_function_is_notlike(runtime):
+    # sqlglot reads NOT LIKE as LIKE marked negated: the like row had answered it as LIKE.
+    sql = "SELECT '\\xc3a9'::bytea NOT LIKE '_'::bytea AS v, octet_length('\\x01'::bytea) AS w"
+    assert _rows(runtime, sql) == [(True, 1)]

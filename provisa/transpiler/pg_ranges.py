@@ -29,6 +29,7 @@ statement writes as literals are answered here, on every dialect, by provisa.cor
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 
@@ -558,6 +559,19 @@ def _sign(a: _R, b: _R) -> exp.Expr:
     )
 
 
+def _held_by_clickhouse(value: object, element: str) -> bool:  # object-ok: an element
+    """Whether ClickHouse's bound type holds a literal's ``value`` as itself."""
+    held = range_rows.HELD_ON_CLICKHOUSE.get(element)
+    if held is None:
+        return True  # a number, held as its digits
+    if not isinstance(value, datetime.date):
+        return False  # an infinity
+    if isinstance(value, datetime.datetime) and value.tzinfo is not None:
+        value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    first, last, _ = held
+    return first <= value <= last
+
+
 class _Writer:
     """Everything that depends on the target dialect."""
 
@@ -616,6 +630,10 @@ class _Writer:
         return self.typed(node, rtype.element)
 
     def _literal_bound(self, value: object, rtype: RangeType) -> exp.Expr:  # object-ok: an element
+        if self.dialect == "clickhouse" and not _held_by_clickhouse(value, rtype.element):
+            # ClickHouse would clamp it to its type's end (REQ-2167: a bound, stated and enforced).
+            raised = self.raised("0A000", range_rows.outside_held(rtype.name))
+            return exp.Cast(this=raised, to=self.bound_type(rtype.element))
         return self.bound_from_text(_string(pg_range.element_text(value)), rtype.element)
 
     def raised(self, sqlstate: str, message: str) -> exp.Expr:

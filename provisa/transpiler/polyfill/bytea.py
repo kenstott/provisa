@@ -384,7 +384,9 @@ def _plain(argument: exp.Expr) -> bool:
     return isinstance(written, (exp.Column, exp.Null, exp.Literal))
 
 
-def _rewrite(name: str, call: _Call, *, plain: bool = False) -> Rewrite:
+def _rewrite(
+    name: str, call: _Call, *, plain: bool = False, mentions: str | None = None
+) -> Rewrite:
     def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
         if isinstance(node.parent, exp.Escape):
             return None  # LIKE ... ESCAPE: its own escape, read by no row here
@@ -408,7 +410,7 @@ def _rewrite(name: str, call: _Call, *, plain: bool = False) -> Rewrite:
 
     rewrite.__doc__ = f"{name} of a bytea held as ClickHouse's String, its bytes."
     rewrite.__qualname__ = rewrite.__name__ = f"{name}_of_bytes"
-    return Rewrite(rewrite)
+    return Rewrite(rewrite, mentions=mentions)
 
 
 def _own_hex(node: exp.Expr) -> exp.Expr:
@@ -541,16 +543,18 @@ def _feature(
     stated: str,
     *,
     plain_call: bool = False,
+    mentions: str | None = None,
 ) -> Feature:
     """A row of ClickHouse's form, every other dialect keeping what it had. ``plain_call``: a call
     by its name (pg_catalog's) is a node no pattern reaches (sqlglot's LIKE and POSITION are no
-    function of that name), so a rule of no pattern reads it, of plain arguments only."""
+    function of that name), so a rule of no pattern reads it, of plain arguments only.
+    ``mentions``: what a statement that names no function holds where that rule may rewrite it."""
     name = feature.split("(")[0]
     kept = {d: trino.KEPT for d in DIALECTS if d not in NATIVE}
     forms = {**kept, _CLICKHOUSE: _rewrite(name, call)}
     rules = tuple(Rule(p, forms, unlisted_keep=True) for p in patterns)
     if plain_call:
-        plain = _rewrite(name, call, plain=True)
+        plain = _rewrite(name, call, plain=True, mentions=mentions)
         rules += (Rule(None, {**kept, _CLICKHOUSE: plain}, unlisted_keep=True),)
     return Feature(
         feature,
@@ -560,11 +564,21 @@ def _feature(
     )
 
 
+#: A statement that says a bytea and a LIKE (or ~~): its operator names no function, and
+#: ClickHouse's own LIKE reads a String as UTF-8, where '_' matches a character of several bytes.
+_LIKE_OF_BYTES = r"^(?=[\s\S]*\bbytea\b)[\s\S]*(?:\blike\b|~~)"
+
+
 def _like_arguments(name: str) -> _Arguments:
+    """The arguments of a call of ``name`` (like or notlike), or of the operator it is: sqlglot
+    reads NOT LIKE (and !~~) as LIKE marked negated, which is notlike's."""
     named = _named(name, count=(2,))
+    negated = name == "notlike"
 
     def arguments(node: exp.Expr) -> list[exp.Expr] | None:
-        if name == "like" and isinstance(node, exp.Like):
+        if isinstance(node, exp.Like):
+            if bool(node.args.get("negate")) is not negated:
+                return None
             return [node.this, node.expression]
         return named(node)
 
@@ -635,7 +649,7 @@ FEATURES: tuple[Feature, ...] = (
         ("$a LIKE $b",),
         _Call(_like_arguments("like"), "bB", _like(False)),
         _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name.",
-        plain_call=True,
+        plain_call=True, mentions=_LIKE_OF_BYTES,
     ),
     _feature(
         "bytealike(bytea, bytea)", "Whether a bytea matches a LIKE pattern.",
@@ -645,9 +659,10 @@ FEATURES: tuple[Feature, ...] = (
     ),
     _feature(
         "notlike(bytea, bytea)", "Whether a bytea does not match a LIKE pattern.",
-        ("notlike($a, $b)",),
-        _Call(_named("notlike", count=(2,)), "bB", _like(True)),
+        ("notlike($a, $b)", "$a NOT LIKE $b"),
+        _Call(_like_arguments("notlike"), "bB", _like(True)),
         _LITERAL_STATED.format("pattern") + " A pattern that ends in its escape is refused by name.",
+        plain_call=True, mentions=_LIKE_OF_BYTES,
     ),
     _feature(
         "byteanlike(bytea, bytea)", "Whether a bytea does not match a LIKE pattern.",

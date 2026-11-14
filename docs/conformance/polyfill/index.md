@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-278 of the grid's 278 features are native on PostgreSQL and left out.
+281 of the grid's 281 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-95 of the grid's 278 features are native on DuckDB and left out.
+98 of the grid's 281 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -604,7 +604,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -631,7 +633,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-14 of the grid's 278 features are native on Trino and left out.
+17 of the grid's 281 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1327,7 +1329,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1354,7 +1358,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-14 of the grid's 278 features are native on Presto and left out.
+17 of the grid's 281 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2050,7 +2054,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2077,7 +2083,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-14 of the grid's 278 features are native on Athena and left out.
+17 of the grid's 281 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2773,7 +2779,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2800,7 +2808,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 278 features are native on ClickHouse and left out.
+36 of the grid's 281 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3117,6 +3125,9 @@ if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_
 <tr><td><strong>datemultirange</strong><br>A multirange of dates, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> datemultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tsmultirange</strong><br>A multirange of timestamps, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tsmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>tstzmultirange</strong><br>A multirange of timestamps with time zone, of ranges or of a VARIADIC array of them.</td><td></td><td><ul><li>Of a VARIADIC cast to an array of ranges, of anything but the text of an array of one dimension: refused by name, as no array of a range type is held. <code>0A000</code> tstzmultirange() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>tsrange(timestamp, timestamp)</strong><br>A range of timestamps of its two bounds, and of its bounds&#x27; flags.</td><td></td><td><ul><li>A literal bound, and a literal element beside the range, is read where the statement is transpiled (provisa.transpiler.pg_ranges): one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (tsrange() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse), as ClickHouse would hold it at its type&#x27;s end. Every bound a literal: the range is answered there, in full. A bound a row computes is ClickHouse&#x27;s own value.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>tstzrange(timestamptz, timestamptz)</strong><br>A range of timestamps with time zone of its two bounds, and of its bounds&#x27; flags.</td><td></td><td><ul><li>A literal bound, and a literal element beside the range, is read where the statement is transpiled (provisa.transpiler.pg_ranges): one outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (tstzrange() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse), as ClickHouse would hold it at its type&#x27;s end. Every bound a literal: the range is answered there, in full. A bound a row computes is ClickHouse&#x27;s own value.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>daterange(date, date)</strong><br>A range of dates of its two bounds, and of its bounds&#x27; flags.</td><td></td><td><ul><li>A literal bound, and a literal element beside the range, is read where the statement is transpiled (provisa.transpiler.pg_ranges): one outside 1900-01-01 .. 2299-12-30 raises 0A000 (daterange() of a value outside 1900-01-01 .. 2299-12-30 has no exact form on clickhouse), as ClickHouse would hold it at its type&#x27;s end. Every bound a literal: the range is answered there, in full. A bound a row computes is ClickHouse&#x27;s own value.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>json_agg</strong><br>A JSON array of an aggregate&#x27;s values.</td><td><pre><code>function provisa.transpiler.polyfill.json_values.json_array: json_agg of a number, a text or a truth value the statement says: its values as a JSON</code></pre></td><td><ul><li>Of a number, a text or a truth value the statement says the type of: any other value, and an order, DISTINCT, a FILTER or a window, refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>a NULL array</strong><br>A call PostgreSQL answers NULL for its NULL array argument, as that NULL.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.null_of_a_null_array: A call PostgreSQL answers NULL for its NULL array argument, as that NULL, named for the</code></pre></td><td><ul><li>A set-returning call of a NULL array is its own row&#x27;s: generate_subscripts and pg_options_to_table are refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>array_agg($a)
@@ -3476,7 +3487,9 @@ function provisa.transpiler.polyfill.bytea.like_of_bytes: like of a bytea held a
 function provisa.transpiler.polyfill.bytea.bytealike_of_bytes: bytealike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.bytea.notlike_of_bytes: notlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.bytea.notlike_of_bytes: notlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.bytea.notlike_of_bytes: notlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre><pre><code>function provisa.transpiler.polyfill.bytea.notlike_of_bytes: notlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.bytea.byteanlike_of_bytes: byteanlike of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its pattern is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. A pattern that ends in its escape is refused by name.</li></ul></td><td></td><td></td></tr>
@@ -3503,7 +3516,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-94 of the grid's 278 features are native on Snowflake and left out.
+97 of the grid's 281 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4105,7 +4118,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4132,7 +4147,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-94 of the grid's 278 features are native on Databricks and left out.
+97 of the grid's 281 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4734,7 +4749,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4761,7 +4778,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-94 of the grid's 278 features are native on BigQuery and left out.
+97 of the grid's 281 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5363,7 +5380,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -5390,7 +5409,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-94 of the grid's 278 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+97 of the grid's 281 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5992,7 +6011,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -6019,7 +6040,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-94 of the grid's 278 features are native on Redshift and left out.
+97 of the grid's 281 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6621,7 +6642,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -6648,7 +6671,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-94 of the grid's 278 features are native on MySQL and left out.
+97 of the grid's 281 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7250,7 +7273,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7277,7 +7302,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-94 of the grid's 278 features are native on SingleStore and left out.
+97 of the grid's 281 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7879,7 +7904,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7906,7 +7933,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-94 of the grid's 278 features are native on SQLite and left out.
+97 of the grid's 281 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8508,7 +8535,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -8535,7 +8564,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-94 of the grid's 278 features are native on Oracle and left out.
+97 of the grid's 281 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9137,7 +9166,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9164,7 +9195,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-94 of the grid's 278 features are native on Hive and left out.
+97 of the grid's 281 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9766,7 +9797,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9793,7 +9826,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-94 of the grid's 278 features are native on Exasol and left out.
+97 of the grid's 281 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10395,7 +10428,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10422,7 +10457,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-94 of the grid's 278 features are native on Druid and left out.
+97 of the grid's 281 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11024,7 +11059,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>notlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>notlike($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>$a NOT LIKE $b
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>byteanlike(bytea, bytea)</strong><br>Whether a bytea does not match a LIKE pattern.</td><td><pre><code>byteanlike($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>

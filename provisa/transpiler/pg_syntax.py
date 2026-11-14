@@ -223,6 +223,21 @@ def _to_timestamp(args: list[exp.Expr], dialect: Any) -> exp.Expr:
     return _formatted(exp.StrToTime)(args)
 
 
+_TO_CHAR = Postgres.Parser.FUNCTIONS["TO_CHAR"]
+#: The key of a to_char call's meta that holds its template as the statement wrote it.
+TO_CHAR_TEMPLATE = "pg_template"
+
+
+def _to_char(args: list[exp.Expr], dialect: Any) -> exp.Expr:
+    """to_char as sqlglot reads it, its template as the statement wrote it kept in the call's meta:
+    sqlglot's strftime text of it no longer tells PostgreSQL's YYYY from a literal %Y."""
+    call = _TO_CHAR(args, dialect)
+    written = args[1] if len(args) > 1 else None
+    if isinstance(written, exp.Literal) and written.is_string:
+        call.meta[TO_CHAR_TEMPLATE] = written.this
+    return call
+
+
 _JSON_OBJECT = Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"]
 
 _reads_types(Postgres.Parser)
@@ -233,6 +248,7 @@ Postgres.Parser.FUNC_TOKENS = Postgres.Parser.FUNC_TOKENS | {TokenType.OVERLAPS}
 Postgres.Parser.FUNCTIONS["OVERLAPS"] = _overlaps
 Postgres.Parser.FUNCTIONS["TO_DATE"] = _formatted(exp.StrToDate)
 Postgres.Parser.FUNCTIONS["TO_TIMESTAMP"] = _to_timestamp
+Postgres.Parser.FUNCTIONS["TO_CHAR"] = _to_char
 Postgres.Parser.FUNCTION_PARSERS.pop("CONVERT", None)
 Postgres.Parser.FUNCTIONS["CONVERT"] = lambda args: exp.Anonymous(this="convert", expressions=args)
 Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"] = _pg_json_object

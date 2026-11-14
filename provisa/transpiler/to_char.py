@@ -152,6 +152,33 @@ _STRFTIME: dict[str, tuple[str, str | None]] = {
 }
 
 
+#: The elements whose strftime element every engine's own format writes as PostgreSQL's, and the
+#: literal characters no element begins with.
+_PLAIN_ELEMENTS = frozenset({"YYYY", "MM", "DD", "HH24", "MI", "SS"})
+_PLAIN_LITERALS = frozenset("-/: ")
+
+
+def plain_strftime(template: str) -> str | None:
+    """The strftime format of PostgreSQL's to_char ``template``, as formatting.c reads it (the
+    longest element first, then a suffix): where it is made only of YYYY, MM, DD, HH24, MI and SS
+    (either case) and the characters ``-/: ``. None for any other, such as a literal ``%``, which
+    strftime would read as an element, or SSSS, which is not SS twice."""
+    written, i = "", 0
+    while i < len(template):
+        if template[i] in _PLAIN_LITERALS:
+            written += template[i]
+            i += 1
+            continue
+        element = next((e for e in _ELEMENTS if template.startswith(e, i)), None)
+        if element is None or element.upper() not in _PLAIN_ELEMENTS:
+            return None
+        i += len(element)
+        if template[i : i + 2] in ("TH", "th", "SP"):
+            return None
+        written += _STRFTIME[element.upper()][0]
+    return written
+
+
 def _strftime(value: exp.Expr, fmt: str) -> exp.Expr:
     return exp.Anonymous(this="strftime", expressions=[value.copy(), exp.Literal.string(fmt)])
 

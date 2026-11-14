@@ -75,9 +75,10 @@ _ISO = re.compile(r"(\d{4})-(\d{2})-(\d{2})(?: (\d{2}):(\d{2})(?::(\d{2})(?:\.(\
 _DAY_ONLY = re.compile(r"\d{4}-\d{2}-\d{2}")
 
 
-def out_of_bound(function: str) -> str:
-    """The message of a value outside the bound, which the form raises with SQLSTATE 0A000."""
-    return f"{function}() of a value outside {BOUND} has no exact form on clickhouse"
+def out_of_bound(function: str, bound: str = BOUND) -> str:
+    """The message of a value outside the bound, which the form raises with SQLSTATE 0A000;
+    ``bound`` the text of another type's (a range's bound of a timestamp or a date)."""
+    return f"{function}() of a value outside {bound} has no exact form on clickhouse"
 
 
 def _read(text: str, day_only: bool) -> datetime.datetime | None:
