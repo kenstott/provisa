@@ -22,7 +22,7 @@ it. System-tag immutability is enforced at the mutation layer.
 import datetime as _dt
 from collections.abc import Sequence
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, select
@@ -80,7 +80,7 @@ def _user_tag_row(row) -> dict:
 
 async def upsert(conn: "Connection", tag: Tag) -> None:  # REQ-1373, REQ-1919
     """Create the tag, or replace its definition."""
-    model_change.name("upsert", "tag", tag.id)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.tag_uri, tag.id))  # REQ-1524
     await conn.upsert(
         tags,
         {
@@ -159,7 +159,7 @@ async def delete(conn: "Connection", tag_id: str) -> bool:  # REQ-1918, REQ-1384
     """
     # The base id, not tag_id: a parameterized tag's assignments are stored in "{tag}:{value}"
     # form, so matching on tag_id would leave every one of them orphaned (REQ-1467).
-    model_change.name("delete", "tag", tag_id)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     base = base_tag_id(tag_id)
     ref = ObjectRef("tag", base)
     async with conn.transaction():
@@ -220,7 +220,7 @@ async def assign(  # REQ-1377, REQ-1919
 ) -> None:
     """Put the tag on the object, or change that assignment. REQ-2094: its why is stamped with
     who decided it, when and on what evidence when the tag or its why changes."""
-    model_change.name("assign", "tag", assignment.tag_id)  # REQ-1524
+    model_change.name("assign", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
     why = await _stamped_why(conn, assignment)
     await conn.upsert(
         _held_in(assignment.object_type),
@@ -324,7 +324,7 @@ async def unassign(
     it (:func:`_held_in`); left out, the model's."""
     # Matched on the base id so removing "the entity tag" from a column succeeds whether the
     # caller names the parameter or not; (base_tag_id, object_key) is unique, so it is exact.
-    model_change.name("unassign", "tag", tag_id)  # REQ-1524
+    model_change.name("unassign", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     held_in = _held_in(object_type or "")
     result = await conn.execute_core(
         _delete(held_in).where(
@@ -369,7 +369,7 @@ async def cite_definition(  # REQ-2208
     conn: "Connection", tag_id: str, place: "citations.Place", cited_by: str | None
 ) -> "citations.Citation":
     """The tag's definition cites ``place`` (the section that defines it); a system tag's too."""
-    model_change.name("cite", "tag", tag_id)  # REQ-1524
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     base = await _require_tag(conn, tag_id)
     return await citations.cite(conn, citations.TAG, base, "", place, cited_by)
 
@@ -377,7 +377,7 @@ async def cite_definition(  # REQ-2208
 async def uncite_definition(  # REQ-2208
     conn: "Connection", tag_id: str, place: "citations.Place"
 ) -> bool:
-    model_change.name("uncite", "tag", tag_id)  # REQ-1524
+    model_change.name("uncite", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     base = await _require_tag(conn, tag_id)
     return await citations.uncite(conn, citations.TAG, base, "", place)
 
@@ -386,7 +386,7 @@ async def cite_assignment(  # REQ-2208
     conn: "Connection", assignment: TagAssignment, place: "citations.Place", cited_by: str | None
 ) -> "citations.Citation":
     """The assignment cites ``place``: what traces or confirms the tag on that object."""
-    model_change.name("cite", "tag", assignment.tag_id)  # REQ-1524
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
     base, key = await _require_assignment(conn, assignment)
     return await citations.cite(conn, citations.TAG_ASSIGNMENT, base, key, place, cited_by)
 
@@ -394,7 +394,7 @@ async def cite_assignment(  # REQ-2208
 async def uncite_assignment(  # REQ-2208
     conn: "Connection", assignment: TagAssignment, place: "citations.Place"
 ) -> bool:
-    model_change.name("uncite", "tag", assignment.tag_id)  # REQ-1524
+    model_change.name("uncite", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
     base, key = await _require_assignment(conn, assignment)
     return await citations.uncite(conn, citations.TAG_ASSIGNMENT, base, key, place)
 
@@ -430,7 +430,7 @@ async def replace_assignment_citations(  # REQ-2208
 ) -> None:
     """The assignment cites exactly ``places`` (:func:`_replace_citations`). The caller holds the
     transaction that writes the assignment with them."""
-    model_change.name("cite", "tag", assignment.tag_id)  # REQ-1524
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, assignment.tag_id))  # REQ-1524
     base, key = await _require_assignment(conn, assignment)
     await _replace_citations(conn, citations.TAG_ASSIGNMENT, base, key, places, cited_by)
 
@@ -443,7 +443,7 @@ async def replace_definition_citations(  # REQ-2208
 ) -> None:
     """The tag's definition cites exactly ``places`` (:func:`_replace_citations`). The caller holds
     the transaction that writes the tag with them."""
-    model_change.name("cite", "tag", tag_id)  # REQ-1524
+    model_change.name("cite", model_change.uri(model_uri.tag_uri, tag_id))  # REQ-1524
     base = await _require_tag(conn, tag_id)
     await _replace_citations(conn, citations.TAG, base, "", places, cited_by)
 

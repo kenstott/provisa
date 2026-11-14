@@ -51,12 +51,18 @@ import threading
 from collections.abc import AsyncGenerator, Awaitable, Callable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Concatenate, ParamSpec
 
 if TYPE_CHECKING:
     from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
+
+_P = ParamSpec("_P")
+
+#: An object's model URI (REQ-1385) still to be written under its org: what :func:`uri` makes.
+#: The org is the plane's, known when the change commits rather than when a writer names it.
+ObjectUri = Callable[[str | None], str]
 
 
 @dataclass(frozen=True)
@@ -98,7 +104,8 @@ class _Scope:
     written: dict[tuple[ModelPlane, int], tuple["Database", list[tuple[str, str]]]] = field(
         default_factory=dict
     )
-    names: list[str] = field(default_factory=list)
+    # What each writer said it changed (:func:`name`), written out per plane when it commits.
+    names: list[tuple["str | ObjectUri", ...]] = field(default_factory=list)
     closed: bool = False
     # REQ-1914: the save this scope is making of each plane it wrote, until that plane's commit.
     saves: dict[ModelPlane, "concurrent.futures.Future[None]"] = field(default_factory=dict)
@@ -123,12 +130,24 @@ _commit: _Commit | None = None
 _projected_tables: frozenset[str] = frozenset()
 
 
-def attach(admin_db: "Database", *, commit: _Commit, projected: frozenset[str]) -> None:
+# The org segment a commit message's URIs carry for a plane's org: the org itself, or None in a
+# single-tenant deployment, as the metadata export writes them (REQ-697). Handed in by attach.
+_uri_org: Callable[[str], str | None] | None = None
+
+
+def attach(
+    admin_db: "Database",
+    *,
+    commit: _Commit,
+    projected: frozenset[str],
+    uri_org: Callable[[str], str | None],
+) -> None:
     """Attach the platform plane, which holds every environment's position and drift, with the
-    commit (``env_repo.write_through``) and the projected tables (``env_deploy.PROJECTED``). From
-    here on a model write must be owned by a scope."""
-    global _platform, _commit, _projected_tables
-    _platform, _commit, _projected_tables = admin_db, commit, projected
+    commit (``env_repo.write_through``), the projected tables (``env_deploy.PROJECTED``) and the
+    org segment of the model URIs a commit message names (``uri_org``). From here on a model write
+    must be owned by a scope."""
+    global _platform, _commit, _projected_tables, _uri_org
+    _platform, _commit, _projected_tables, _uri_org = admin_db, commit, projected, uri_org
 
 
 def unbind() -> None:
@@ -195,12 +214,24 @@ def _end_saves(current: _Scope) -> None:
     current.saves.clear()
 
 
-def name(action: str, kind: str, ident: str | int) -> None:
-    """Name the change a writer is making, for the commit's message: ``upsert relationship
-    orders-to-customers``. Outside a scope, or in one that commits nothing, it says nothing."""
+def uri(
+    builder: Callable[Concatenate[str | None, _P], str], *args: _P.args, **kwargs: _P.kwargs
+) -> ObjectUri:
+    """An object's model URI for :func:`name`: a :mod:`provisa.core.model_uri` builder and every
+    argument but the org, which the commit supplies. Bound now, so a writer naming objects in a
+    loop names each one."""
+    return lambda org: builder(org, *args, **kwargs)
+
+
+def name(action: str, *parts: "str | ObjectUri") -> None:
+    """Name the change a writer is making, for the commit's message (REQ-1524): the action, then
+    the changed object by its model URI (:func:`uri`) and any words that place it --
+    ``retire provisa://acme/terms/revenue``. Never a serial id: the identifier is the model name
+    (REQ-1385); tests/unit/test_model_history_names_structural.py holds every writer to that.
+    Outside a scope, or in one that commits nothing, it says nothing."""
     current = _SCOPE.get()
     if current is not None and not current.discard:
-        current.names.append(f"{action} {kind} {ident}")
+        current.names.append((action, *parts))
 
 
 def label(text: str) -> None:
@@ -275,12 +306,19 @@ async def layout() -> AsyncGenerator[None]:
         _SCOPE.reset(token)
 
 
-def _message(current: _Scope, writes: list[tuple[str, str]]) -> str:
-    if len(current.names) == 1:
-        return current.names[0]
-    if current.names:
-        shown = current.names[:20]
-        more = len(current.names) - len(shown)
+def _written(parts: tuple["str | ObjectUri", ...], org: str | None) -> str:
+    return " ".join(part if isinstance(part, str) else part(org) for part in parts)
+
+
+def _message(current: _Scope, writes: list[tuple[str, str]], org_id: str) -> str:
+    assert _uri_org is not None  # attached with the commit that calls for this message
+    org = _uri_org(org_id)
+    names = [_written(parts, org) for parts in current.names]
+    if len(names) == 1:
+        return names[0]
+    if names:
+        shown = names[:20]
+        more = len(names) - len(shown)
         body = "\n".join(f"- {n}" for n in shown) + (f"\n- and {more} more" if more else "")
         return f"{current.label}\n\n{body}"
     tables = sorted({table for _verb, table in writes})
@@ -308,7 +346,7 @@ async def _commit_written(current: _Scope) -> None:
     current.written.clear()
     actor = current.actor()
     for (plane, _db_id), (database, writes) in written:
-        message = _message(current, writes)
+        message = _message(current, writes, plane.org_id)
         async with database.acquire() as conn:
             sha = await _commit(
                 conn,
