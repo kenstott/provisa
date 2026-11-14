@@ -273,6 +273,12 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     UNIQUE (source_id, schema_name, table_name)
 );
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
@@ -321,6 +327,12 @@ CREATE TABLE IF NOT EXISTS table_columns (
     embedding_model TEXT,  -- REQ-421
     embedding_source_column TEXT,  -- REQ-421
     encrypted    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1919: surfaced as @encrypted
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     UNIQUE (table_id, column_name)
 );
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS masks JSONB NOT NULL DEFAULT '[]';
@@ -461,6 +473,12 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A join
     -- to a parameterized target (a code table) over this edge calls it with the source's values.
     parameters        JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     CONSTRAINT relationships_via_complete CHECK (
         (via_table_id IS NULL AND via_source_column IS NULL AND via_target_column IS NULL
          AND via_label_source IS NULL)
@@ -752,7 +770,13 @@ CREATE TABLE IF NOT EXISTS tags (
     required       BOOLEAN NOT NULL DEFAULT FALSE,
     -- REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, as
     -- a source's allowed_domains; empty = every domain.
-    allowed_domains JSONB NOT NULL DEFAULT '[]'
+    allowed_domains JSONB NOT NULL DEFAULT '[]',
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ
 );
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1142,7 +1166,13 @@ CREATE TABLE IF NOT EXISTS metrics (
     description TEXT,
     ai_context  TEXT,  -- REQ-1319: definition text for AI consumers
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
-    from_fact   TEXT
+    from_fact   TEXT,
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ
 );
 -- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
 -- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.

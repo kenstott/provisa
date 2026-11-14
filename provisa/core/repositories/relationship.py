@@ -19,6 +19,7 @@ from sqlalchemy import delete as _delete, func, or_, select, update
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
+from provisa.core.repositories import retirement
 from provisa.core.repositories import table as table_repo
 from provisa.core.relationship_names import store_effective_names
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
@@ -63,6 +64,11 @@ async def upsert(
         if via_tbl is None:
             raise TableNotRegistered("Junction", rel.via_table)
         via_tbl_id = via_tbl["id"]
+
+    # REQ-2248: a retired relationship keeps its id; a save under it would bring it back.
+    held = await get(conn, rel.id)
+    if held is not None and held["retired"]:
+        raise retirement.RetiredNameTaken("relationship", rel.id)
 
     if await _provided_elsewhere(conn, rel, source_tbl["id"], target_tbl_id):
         return
@@ -285,35 +291,33 @@ class RelationshipDeleteRefused(Exception):
         super().__init__(f"Relationship {rel_id!r} is still relied on by: {named}")
 
 
-async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
-    """Delete one relationship: THE delete, for every surface. False when there is none.
+async def delete(  # REQ-019, REQ-1918, REQ-2248
+    conn: "Connection", rel_id: str, *, reason: str | None = None
+) -> bool:
+    """Delete one relationship: THE delete, for every surface. It RETIRES the relationship
+    (REQ-2248): the row, its id, its alias and its tag assignments are kept, the relationship
+    marked retired with ``reason``, the acting person and the time. False when there is none, or
+    it is retired already.
 
     A relationship stands on its own — it goes before the tables it joins. It is refused
     (:class:`RelationshipDeleteRefused`) only while a materialized view is published over it:
     a view joins on the relationship's columns and no other relationship approves that join
-    (REQ-1140). Its tag assignments go with it. One transaction; no cascade is relied on.
+    (REQ-1140). One transaction.
     """
-    model_change.name("delete", "relationship", rel_id)  # REQ-1524
+    model_change.name("retire", "relationship", rel_id)  # REQ-1524
     ref = ObjectRef("relationship", rel_id)
     async with conn.transaction():
-        if await get(conn, rel_id) is None:
+        held = await get(conn, rel_id)
+        if held is None or held["retired"]:
             return False
         blocking = await guard(conn, ref)
         if blocking:
             raise RelationshipDeleteRefused(rel_id, blocking)
-        held = await get(conn, rel_id)
-        assert held is not None  # read above, in this transaction
-        joined = {
-            t
-            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
-            if t is not None
-        }
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
-        # REQ-2141: its foreign key is no longer a key; the ref goes back to a Property.
-        from provisa.core.repositories import glossary as glossary_repo
-
-        await glossary_repo.rehome_keys(conn, joined)
+        await conn.execute_core(
+            update(relationships)
+            .where(relationships.c.id == rel_id)
+            .values(**retirement.values(reason))
+        )
     return True
 
 

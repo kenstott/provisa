@@ -23,10 +23,11 @@ from typing import TYPE_CHECKING
 import sqlglot
 from sqlglot import expressions as exp
 from sqlglot.errors import SqlglotError
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.models import Metric
-from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
+from provisa.core.repositories import retirement
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard
 from provisa.core.schema_org import glossary_terms, metrics
 
 if TYPE_CHECKING:
@@ -51,6 +52,12 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
     """Upsert a metric by name. The expression is validated on every write (hard error)."""
     model_change.name("upsert", "metric", metric.name)  # REQ-1524
     validate_expression(metric.expression)
+    # REQ-2248: a retired metric keeps its name; a save under it would bring it back.
+    held = (
+        await conn.execute_core(select(metrics.c.retired).where(metrics.c.name == metric.name))
+    ).fetchone()
+    if held is not None and held.retired:
+        raise retirement.RetiredNameTaken("metric", metric.name)
     term_id = await _term_id(conn, metric) if metric.term is not None else None
     vals = {
         "name": metric.name,
@@ -123,22 +130,28 @@ class MetricDeleteRefused(Exception):
         super().__init__(f"{self.lead}: {named}")
 
 
-async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317, REQ-1918
-    """Delete one metric: THE delete, for every surface. False when there is no such metric.
+async def delete(  # REQ-1317, REQ-1918, REQ-2248
+    conn: "Connection", name: str, *, reason: str | None = None
+) -> bool:
+    """Delete one metric: THE delete, for every surface. It RETIRES the metric (REQ-2248): the
+    row, its name and its tag assignments are kept, the metric marked retired with ``reason``,
+    the acting person and the time. False when there is no such metric, or it is retired already.
 
     Refused (:class:`MetricDeleteRefused`), naming each, while a view is composed from it (its
     ``view_metrics`` lists the metric) or a view's SQL reads it as ``metrics.<name>``. One
-    transaction; no database cascade is relied on."""
-    model_change.name("delete", "metric", name)  # REQ-1524
+    transaction."""
+    model_change.name("retire", "metric", name)  # REQ-1524
     ref = ObjectRef("metric", name)
     async with conn.transaction():
-        if await get(conn, name) is None:
+        held = await get(conn, name)
+        if held is None or held["retired"]:
             return False
         blocking = await guard(conn, ref)
         if blocking:
             raise MetricDeleteRefused(name, blocking)
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(metrics).where(metrics.c.name == name))
+        await conn.execute_core(
+            update(metrics).where(metrics.c.name == name).values(**retirement.values(reason))
+        )
     return True
 
 

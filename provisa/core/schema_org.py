@@ -68,6 +68,18 @@ metadata = MetaData()
 
 # REQ-1921/1922: the stores an org keeps its data in, per region. A store is a connection URL (a
 # secret reference); an org region names, for each kind of data, the store it is kept in there.
+def _retirement() -> list[Column]:
+    """REQ-2248: a model object deleted is retired, not removed -- its row, its name and its file
+    are kept, out of service, with why, who and when, in the shape a glossary term's retirement
+    takes (``retired``, ``status_reason``, ``status_by``, ``status_at``)."""
+    return [
+        Column("retired", Boolean, nullable=False, server_default=false()),
+        Column("status_reason", Text),
+        Column("status_by", Text),
+        Column("status_at", DateTime(timezone=True)),
+    ]
+
+
 stores = Table(
     "stores",
     metadata,
@@ -370,6 +382,8 @@ registered_tables = Table(
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     UniqueConstraint("source_id", "schema_name", "table_name"),
 )
 
@@ -426,6 +440,8 @@ table_columns = Table(
     Column("embedding_model", Text),  # REQ-421
     Column("embedding_source_column", Text),  # REQ-421
     Column("encrypted", Boolean, nullable=False, server_default=false()),  # REQ-1919
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
 )
@@ -474,6 +490,8 @@ relationships = Table(
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
     Column("cypher_type", Text),
     Column("graphql_field", Text),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
@@ -497,6 +515,8 @@ metrics = Table(
     Column("from_fact", Text),
     # REQ-2243: the glossary term the metric names (schema.sql).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
 )
 
 roles = Table(
@@ -675,6 +695,8 @@ tags = Table(
     # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered on objects of these domains, as a source's
     # allowed_domains; empty = every domain.
     Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
