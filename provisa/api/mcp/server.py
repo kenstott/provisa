@@ -1207,6 +1207,7 @@ def build_mcp_server(state: Any):
             low-confidence ones to a person or further reasoning."""
             return await tools.jev_evaluate(state, _role(role), jev_state, questions)
 
+    _install_tool_groups(mcp)  # REQ-2246: sip mode; before the titles go, so its tool loses its own
     # A client is sent every tool's schemas on every model call. Pydantic titles each schema and
     # property after its own name ("Role", "list_tablesArguments"), which says nothing the names
     # do not. A title is an annotation: arguments are validated by each tool's argument model and
@@ -1215,6 +1216,63 @@ def build_mcp_server(state: Any):
         _drop_titles(info.parameters)
         _drop_titles(info.output_schema)
     return mcp
+
+
+def _session_mode(ctx: Any) -> str:
+    """The tool mode of the connection an MCP request came on, which ``_wrap_role_auth`` read
+    from its address (REQ-2246)."""
+    from provisa.api.mcp import tool_groups
+
+    request = ctx.request_context.request
+    if request is None:
+        raise RuntimeError("an MCP request with no HTTP request carries no tool mode")
+    return getattr(request.state, tool_groups.STATE_KEY)
+
+
+def _install_tool_groups(mcp: Any) -> None:
+    """REQ-2246: register ``tool_groups``, check every tool has one group, and list each session
+    the tools of its mode. ``mcp.list_tools()`` stays the whole registry; the protocol's
+    tools/list answers a session the tools its mode and the groups it added list. A call is
+    dispatched as before, listed or not: what the caller may call is decided by its rights."""
+    import functools as _functools
+
+    from mcp import types
+    from mcp.server.fastmcp import Context
+    from mcp.server.lowlevel import NotificationOptions
+
+    from provisa.api.mcp import tool_groups
+
+    async def _registered() -> set[str]:
+        return {t.name for t in await mcp.list_tools()}
+
+    @mcp.tool(name=tool_groups.CATALOG_TOOL, description=tool_groups.CATALOG_DESCRIPTION)
+    @_in_request_span(_tracer, f"mcp.{tool_groups.CATALOG_TOOL}", transport="mcp")
+    async def _tool_groups(ctx: Context, add: str | None = None) -> dict:
+        answer = tool_groups.answer(_session_mode(ctx), ctx.session, add, await _registered())
+        if add is not None:
+            # On this call's own response stream, so the client reads it with the answer.
+            await ctx.session.send_notification(
+                types.ServerNotification(types.ToolListChangedNotification()),
+                related_request_id=ctx.request_context.request_id,
+            )
+        return answer
+
+    tool_groups.check_registered({t.name for t in mcp._tool_manager.list_tools()})
+
+    async def _listed() -> types.ListToolsResult:
+        ctx = mcp.get_context()
+        mode = _session_mode(ctx)
+        every = await mcp.list_tools()
+        return types.ListToolsResult(
+            tools=[t for t in every if tool_groups.listed(mode, ctx.session, t.name)]
+        )
+
+    low = mcp._mcp_server
+    low.list_tools()(_listed)
+    # The capability that tells a client its tool list changes (tools.listChanged).
+    low.create_initialization_options = _functools.partial(
+        low.create_initialization_options, NotificationOptions(tools_changed=True)
+    )
 
 
 # Schema keywords whose values are data, not subschemas: a "title" inside them is not a title.
@@ -1287,6 +1345,23 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             )
             await send({"type": "http.response.body", "body": body})
             return
+        from provisa.api.mcp import tool_groups
+
+        try:
+            # REQ-2246: the tools this connection is listed, by the mode its address names.
+            mode = tool_groups.mode_of_address(scope.get("query_string") or b"")
+        except ValueError as exc:
+            body = _json.dumps({"error": str(exc)}).encode("utf-8")
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 400,
+                    "headers": [(b"content-type", b"application/json")],
+                }
+            )
+            await send({"type": "http.response.body", "body": body})
+            return
+        scope = {**scope, "state": {**(scope.get("state") or {}), tool_groups.STATE_KEY: mode}}
         session_reset = _request_session.set(session)
         try:
             await _authorized(scope, receive, send, headers)

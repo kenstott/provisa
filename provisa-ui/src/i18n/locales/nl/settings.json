@@ -600,6 +600,10 @@
         "label": "Lokale principal voor MCP",
         "help": "De principal (gebruikers-id) namens wie lokale (stdio) MCP-aanroepen handelen, naast de lokale rol; de rechten van die persoon beperken de rol. Zolang die niet is ingesteld, worden die aanroepen geweigerd. Beveiligd, omdat iedereen die de lokale client kan starten met de toegang van die persoon handelt."
       },
+      "tools": {
+        "label": "Getoonde MCP-tools",
+        "help": "De tools die worden getoond aan een MCP-client waarvan het adres geen modus noemt (tools=full of tools=sip in het adres). full toont elke tool; sip toont de tools om te zoeken, te beschrijven, te bevragen en metrieken te lezen, plus één tool die de andere groepen toevoegt wanneer de client erom vraagt. Elke tool kan in beide modi worden aangeroepen, voor zover de rechten van de aanroeper dat toestaan."
+      },
       "external_url": {
         "label": "Extern MCP-adres",
         "help": "Het MCP-adres dat aan gebruikers wordt getoond wanneer de deployment achter een proxy staat."
