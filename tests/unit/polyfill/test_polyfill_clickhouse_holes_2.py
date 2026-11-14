@@ -394,10 +394,25 @@ def test_a_native_string_column_is_read_by_the_driver_s_own_reader():
         "SELECT to_char('2024-06-15 10:00-05'::timestamp, '%Y') AS v",
     ],
 )
-def test_a_pass_that_edits_a_literal_keeps_what_the_parse_reads_of_the_rest(sql):
+def test_a_pass_that_edits_a_literal_keeps_what_the_parse_reads_of_the_rest(runtime, sql):
     # Writing the parsed statement again wrote to_char's '%Y' back as 'YYYY' (pg_syntax keeps the
-    # template in a node's meta): the template is refused by name, as it is where nothing is edited.
-    assert str(_refused(sql)) == "to_char() has no form on clickhouse"
+    # template in a node's meta): PostgreSQL's '%' and the year's last digit, as J1312's writer
+    # answers where nothing is edited.
+    assert _one(runtime, sql) == "%4"
+
+
+def test_to_char_s_template_beside_an_instant_with_an_offset_is_postgresql_s(runtime):
+    # _instants_as_utc writes the statement again: the template still reaches J1312's writer.
+    sql = (
+        "SELECT to_char('2024-06-15'::timestamp, '%Y') AS v, "
+        "'2024-01-01 00:00:00+00'::timestamptz AS w"
+    )
+    assert _rows(runtime, sql)[0][0] == "%4"
+    assert "'%Y'" not in transpile(sql, "trino")
+
+
+def test_to_char_s_template_on_postgresql_is_the_one_written():
+    assert "'%Y'" in transpile("SELECT to_char(c, '%Y') AS v FROM t", "postgres")
 
 
 def test_an_escape_null_clause_is_taken_out_of_the_text(runtime):

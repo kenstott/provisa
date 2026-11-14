@@ -133,7 +133,7 @@ def test_comparisons_of_an_instant_answer_postgresql_on_clickhouse(runtime, sql,
 def test_every_other_dialect_keeps_what_it_had(dialect):
     sql = _call("timestamptz_lt", "'2024-06-15 12:30:45+00'", "'1999-12-31 23:59:59+02'")
     call = sqlglot.parse_one(sql, read="postgres").selects[0].this.expression  # past pg_catalog
-    assert len(instants.FEATURES) == 37 + 12
+    assert len(instants.FEATURES) == 37 + 11  # to_char's row is the dates family's
     for feature in instants.FEATURES:
         (rule,) = feature.read.rules
         # A row of no pattern (max, min, date: other rows read those names; date_part, extract: a
@@ -679,9 +679,8 @@ def test_to_char_of_a_null_is_null(runtime, sql):
     assert _one(runtime, sql) is None
 
 
-def test_to_char_of_an_instant_keeps_its_refusal_by_name():
-    # The template reaches the translator as strftime text: YYYY and a literal %Y are the same.
+def test_to_char_of_an_instant_is_written_from_its_template_s_tokens(runtime):
+    # The template the statement wrote is read as formatting.c reads it (provisa.transpiler.to_char):
+    # on a session on UTC, the instant's UTC wall time (tests/unit/polyfill/test_polyfill_to_char.py).
     sql = f"SELECT pg_catalog.\"to_char\"('2024-01-01 00:00:00+00'::{_TZ}, 'YYYY'::text) AS v"
-    with pytest.raises(FunctionRefused) as refused:
-        transpile(sql, "clickhouse")
-    assert str(refused.value) == "to_char() has no form on clickhouse"
+    assert _one(runtime, sql) == "2024"

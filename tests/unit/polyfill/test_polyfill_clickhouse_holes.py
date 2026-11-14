@@ -14,7 +14,8 @@ name:
 
 1. a raise in a statement holding bytes that are not UTF-8: ClickHouse's message echoes them;
 2. a range's literal bound outside what DateTime64 and Date32 hold, which ClickHouse clamps;
-3. to_char(timestamp, text), whose template sqlglot rewrites as strftime text;
+3. to_char(timestamp, text), whose template sqlglot rewrites as strftime text (now written
+   from PostgreSQL's tokens);
 4. bytea's LIKE operator in a statement that names no function.
 
 Each answer is PostgreSQL 17's."""
@@ -29,7 +30,6 @@ import pytest
 
 from provisa.core.pg_error import PostgresError, from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
-from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.polyfill import instants, ranges
 from provisa.transpiler.transpile import transpile
 
@@ -149,22 +149,24 @@ def test_to_char_of_a_template_postgresql_reads_as_strftime_s_answers(runtime, t
 
 
 @pytest.mark.parametrize(
-    "template",
+    ("template", "answer"),
     [
-        "%Y",  # PostgreSQL: '%' and Y (the year's last digit), '%4'
-        "%Y-%m-%d",
-        "SSSS",  # PostgreSQL: the seconds past midnight, '45045'
-        "DDTHH24",  # PostgreSQL: DD with its TH suffix, then 'H24': '15THH24'
-        "DDDD",  # PostgreSQL: the day of the year and of the week, '1677'
-        "FMDD",
-        '"YYYY"',
+        ("%Y", "%4"),  # PostgreSQL: '%' and Y (the year's last digit)
+        ("%Y-%m-%d", "%4-%m-%7"),
+        ("SSSS", "45045"),  # PostgreSQL: the seconds past midnight
+        ("DDTHH24", "15THH24"),  # PostgreSQL: DD with its TH suffix, then 'H24'
+        ("DDDD", "1677"),  # PostgreSQL: the day of the year and of the week
+        ("FMDD", "15"),
+        ('"YYYY"', "YYYY"),
     ],
 )
-@pytest.mark.parametrize("dialect", ["clickhouse", "trino"])
-def test_to_char_of_a_template_strftime_would_misread_is_refused_by_name(template, dialect):
-    with pytest.raises(FunctionRefused) as refused:
-        transpile(f"SELECT to_char({_STAMP}, '{template}') AS v", dialect)
-    assert str(refused.value) == f"to_char() has no form on {dialect}"
+def test_to_char_of_a_template_strftime_would_misread_is_written_from_its_tokens(
+    runtime, template, answer
+):
+    # Each keyword is written as PostgreSQL's text (provisa.transpiler.to_char), on Trino
+    # too (tests/unit/polyfill/test_polyfill_to_char.py), where these were refused by name.
+    assert _one(runtime, f"SELECT to_char({_STAMP}, '{template}') AS v") == answer
+    assert "DATE_FORMAT" not in transpile(f"SELECT to_char({_STAMP}, '{template}') AS v", "trino")
 
 
 # --- 4. bytea's LIKE in a statement that names no function -------------------------------------

@@ -53,7 +53,7 @@ from provisa.core.session_time_zone import current_zone
 from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
-from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
 from provisa.transpiler.pg_literals import (
     TextEdit,
@@ -62,7 +62,8 @@ from provisa.transpiler.pg_literals import (
     spliced,
     values_cast,
 )
-from provisa.transpiler import pg_forms
+from provisa.transpiler import pg_forms, to_char
+from provisa.transpiler.pg_syntax import TO_CHAR_TEMPLATE
 from provisa.transpiler.engine_refusals import PLAIN_PARTS
 
 FAMILY = "timestamp with time zone on ClickHouse"
@@ -1038,26 +1039,67 @@ def held_instant(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return graft(replacement(f"CAST($a AS {INSTANT})", dialect, pattern), {"a": node.this})
 
 
-def to_char_of_null(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """to_char(timestamptz, text) of a NULL instant or a NULL template: NULL, as the STRICT
-    function answers. Any other call keeps its refusal by name: the template reaches the
-    translator as sqlglot's strftime text, which no longer tells PostgreSQL's YYYY from a literal
-    %Y, so no form can be read as exact."""
-    if not isinstance(node, exp.TimeToStr):
+#: The engines whose to_char this row writes, and the types of the value it reads on each: an
+#: instant only on ClickHouse, which holds it as DateTime64(6, 'UTC'), on a session on UTC.
+_TO_CHAR_KINDS = {_CLICKHOUSE: ("timestamp", "timestamptz"), "trino": ("timestamp",)}
+_TO_CHAR_NULL = {_CLICKHOUSE: "CAST(NULL AS Nullable(String))", "trino": "CAST(NULL AS VARCHAR)"}
+
+
+def to_char_written(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """Each keyword of a literal template written as PostgreSQL's text (provisa.transpiler.to_char).
+
+    Of a timestamp, or of an instant on ClickHouse on a session on UTC; a keyword with no exact
+    form is refused by name. A literal outside DateTime64's bound raises on
+    ClickHouse. NULL of a NULL value or template. None for any other call, refused by name
+    (provisa.transpiler.engine_refusals)."""
+    kinds = _TO_CHAR_KINDS.get(dialect)
+    if kinds is None or not isinstance(node, exp.TimeToStr):
         return None
     value, template = node.this, node.args.get("format")
-    if template is None or _checked(value, _OF["timestamptz"]) is None:
+    found = next(((k, r) for k in kinds if (r := _checked(value, _OF[k])) is not None), None)
+    if found is None or template is None:
         return None
-    if not (_is_null(value) or _is_null(template)):
-        return None
-    return replacement("CAST(NULL AS Nullable(String))", dialect, "to_char($a, $b)")
+    kind, read = found
+    if kind == "timestamptz" and current_zone.get() is not None:
+        return None  # an instant's text is its wall time in the session's zone
+    if read is _Read.NULL or _is_null(template):
+        return replacement(_TO_CHAR_NULL[dialect], dialect, "to_char($a, $b)")
+    written = node.meta.get(TO_CHAR_TEMPLATE)
+    if written is None:
+        return None  # a template that is no literal: refused by name
+    if dialect == _CLICKHOUSE and read is _Read.OUTSIDE:
+        _read_by_row(value)  # raised here by its own name, not as the literal's cast
+        return raised("to_char", dialect, "to_char($a, $b)")
+    held = value.copy()
+    if dialect == "trino" and isinstance(held, exp.Cast) and not held.to.expressions:
+        held.set("to", exp.DataType.build("TIMESTAMP(6)", dialect="trino"))  # Trino's is (3)
+    try:
+        return to_char.written(written, held, dialect, zoned=kind == "timestamptz")
+    except to_char.ElementRefused as refused:
+        message = f"to_char() of the template element {refused.element!r} has no form on {dialect}"
+        raise Refused(Refusal("0A000", message), ruling=True) from refused
 
 
-_TO_CHAR_STATED = (
-    "Of a NULL instant or a NULL template only: NULL, as the strict function answers. Any other "
-    "call is refused by name (to_char() has no form on clickhouse): the template reaches the "
-    "translator as strftime text, in which PostgreSQL's YYYY and a literal %Y are the same, so "
-    "no form of it is exact."
+TO_CHAR_STATED = (
+    "Of a timestamp, and of an instant (timestamp with time zone) on a session on UTC, in a literal "
+    "template: each keyword is written as one expression that yields PostgreSQL's text for it, "
+    "and the pieces are concatenated (provisa.transpiler.to_char); text outside a keyword is a "
+    f"string constant. Exact from 1900-01-01 to 2299-12-31: a literal outside {BOUND} raises "
+    "0A000 (to_char() of a value outside the bound has no exact form on clickhouse). A month's or "
+    "a day's name in lc_time's language (TM before MONTH, Month, month, MON, Mon, mon, DAY, Day, "
+    "day, DY, Dy, dy) is refused by name, naming the keyword. A template that is no literal, a "
+    "value whose type no statement says, and an instant on a session off UTC are refused by name "
+    "(to_char() has no form on clickhouse)."
+)
+TO_CHAR_TRINO_STATED = (
+    "Of a timestamp in a literal template: each keyword is written as one expression that yields "
+    "PostgreSQL's text for it, and the pieces are concatenated (provisa.transpiler.to_char); text "
+    "outside a keyword is a string constant. A literal value is read at microseconds (Trino's "
+    "TIMESTAMP is milliseconds). A month's or a day's name in lc_time's language (TM before "
+    "MONTH, Month, month, MON, Mon, mon, DAY, Day, day, DY, Dy, dy) is refused by name, naming "
+    "the keyword. A template that is no literal, and a value whose type no statement says or that "
+    "is no timestamp, keep the engine's own format where formatting.c reads the template as its "
+    "strftime text (YYYY, MM, DD, HH24, MI, SS and -/: ), and are refused by name otherwise."
 )
 
 
@@ -1084,20 +1126,6 @@ FEATURES += (
     _literal_feature(
         "timestamptz(timestamptz, integer)", "timestamptz($a, $n)", to_precision,
         "An instant rounded to a number of digits of a second.", _PRECISION_STATED,
-    ),
-    Feature(
-        "to_char(timestamptz, text)", FAMILY, "An instant's text in a template.",
-        read=Side(
-            rules=(
-                Rule(
-                    "to_char($a, $b)",
-                    {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
-                     _CLICKHOUSE: Rewrite(to_char_of_null)},
-                    unlisted_keep=True,
-                ),
-            ),
-            limitations={_CLICKHOUSE: (Limitation(_TO_CHAR_STATED),)},
-        ),
     ),
     Feature(
         "cast(timestamptz as DateTime64)", FAMILY,

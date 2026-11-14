@@ -228,14 +228,38 @@ _TO_CHAR = Postgres.Parser.FUNCTIONS["TO_CHAR"]
 TO_CHAR_TEMPLATE = "pg_template"
 
 
+#: The key of the strftime text sqlglot wrote of that template, as it read it.
+_TO_CHAR_STRFTIME = "pg_template_strftime"
+
+
 def _to_char(args: list[exp.Expr], dialect: Any) -> exp.Expr:
     """to_char as sqlglot reads it, its template as the statement wrote it kept in the call's meta:
     sqlglot's strftime text of it no longer tells PostgreSQL's YYYY from a literal %Y."""
     call = _TO_CHAR(args, dialect)
     written = args[1] if len(args) > 1 else None
-    if isinstance(written, exp.Literal) and written.is_string:
+    strftime = call.args.get("format")
+    if isinstance(written, exp.Literal) and written.is_string and isinstance(strftime, exp.Literal):
         call.meta[TO_CHAR_TEMPLATE] = written.this
+        call.meta[_TO_CHAR_STRFTIME] = strftime.this
     return call
+
+
+_TIME_TO_STR_SQL = Postgres.Generator.TRANSFORMS[exp.TimeToStr]
+
+
+def _to_char_sql(self: Any, expression: exp.TimeToStr) -> str:
+    """to_char written back in PostgreSQL's SQL with the template the statement wrote, where its
+    strftime text is still the one sqlglot read: sqlglot's own writes that text back as a template,
+    in which a literal %Y is YYYY and SSSS is SS twice."""
+    strftime = expression.args.get("format")
+    template = expression.meta.get(TO_CHAR_TEMPLATE)
+    if (
+        template is None
+        or not isinstance(strftime, exp.Literal)
+        or strftime.this != expression.meta.get(_TO_CHAR_STRFTIME)
+    ):
+        return _TIME_TO_STR_SQL(self, expression)
+    return self.func("TO_CHAR", expression.this, exp.Literal.string(template))
 
 
 _JSON_OBJECT = Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"]
@@ -253,6 +277,7 @@ Postgres.Parser.FUNCTION_PARSERS.pop("CONVERT", None)
 Postgres.Parser.FUNCTIONS["CONVERT"] = lambda args: exp.Anonymous(this="convert", expressions=args)
 Postgres.Parser.FUNCTION_PARSERS["JSON_OBJECT"] = _pg_json_object
 Postgres.Generator.TRANSFORMS[NegativeInnerProduct] = lambda self, e: self.binary(e, "<#>")
+Postgres.Generator.TRANSFORMS[exp.TimeToStr] = _to_char_sql
 
 
 def _anonymous_sql(self: Any, expression: exp.Anonymous) -> str:

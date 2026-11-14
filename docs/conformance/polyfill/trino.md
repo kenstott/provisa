@@ -340,6 +340,9 @@ CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS DATE) WHEN $y
 <tr><td><strong>transaction_timestamp</strong><br>The time the transaction began: now(), as Provisa answers it.</td><td><pre><code>transaction_timestamp()
 =&gt;
 current_timestamp</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>to_char(timestamp, text)</strong><br>A timestamp&#x27;s or an instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.instants.to_char_written: Each keyword of a literal template written as PostgreSQL&#x27;s text (provisa.transpiler.to_char).</code></pre></td><td><ul><li>Of a timestamp in a literal template: each keyword is written as one expression that yields PostgreSQL&#x27;s text for it, and the pieces are concatenated (provisa.transpiler.to_char); text outside a keyword is a string constant. A literal value is read at microseconds (Trino&#x27;s TIMESTAMP is milliseconds). A month&#x27;s or a day&#x27;s name in lc_time&#x27;s language (TM before MONTH, Month, month, MON, Mon, mon, DAY, Day, day, DY, Dy, dy) is refused by name, naming the keyword. A template that is no literal, and a value whose type no statement says or that is no timestamp, keep the engine&#x27;s own format where formatting.c reads the template as its strftime text (YYYY, MM, DD, HH24, MI, SS and -/: ), and are refused by name otherwise.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>generate_series</strong><br>A series of integers, as rows.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_generate_series: generate_series in a select list: refused by name, as Trino unnests only in FROM.</code></pre></td><td><ul><li>In a select list, refused by name: Trino reads a set of rows only in a FROM clause.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lag</strong><br>The value of the previous row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lag: lag over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>lead</strong><br>The value of the next row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_lead: lead over a window of no order: refused by name, as Trino requires one.</code></pre></td><td><ul><li>Over a window of no order, refused by name: Trino requires one.</li></ul></td><td></td><td></td></tr>
@@ -574,9 +577,6 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz(timestamptz, integer)</strong><br>An instant rounded to a number of digits of a second.</td><td><pre><code>timestamptz($a, $n)
-=&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>to_char(timestamptz, text)</strong><br>An instant&#x27;s text in a template.</td><td><pre><code>to_char($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>area(shape)</strong><br>PostgreSQL&#x27;s box_area, circle_area, path_area.</td><td><pre><code>area($a)
