@@ -951,7 +951,14 @@ async def _init_control_planes(
     from provisa.core.env_deploy import PROJECTED
     from provisa.core.env_repo import write_through
 
-    model_change.attach(state.admin_db, commit=write_through, projected=PROJECTED)
+    model_change.attach(
+        state.admin_db,
+        commit=write_through,
+        projected=PROJECTED,
+        # REQ-697: a single-tenant deployment names no org in a URI; the tenancy is read when a
+        # change commits, since the config that states it is parsed after this attach.
+        uri_org=lambda org_id: org_id if state.multitenancy else None,
+    )
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
     # verbatim, and on SQLite its presence gates the portable create_all bootstrap. A missing file
