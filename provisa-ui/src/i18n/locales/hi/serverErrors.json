@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "Elasticsearch खोज के लिए एक 'index' संकेत आवश्यक है।",
       "elasticsearch_mapping_failed": "इंडेक्स '{{index}}' के लिए Elasticsearch मैपिंग पढ़ने में विफलता: {{error}}",
       "endpoint_already_registered": "एंडपॉइंट पहले से पंजीकृत है: {{error}}",
+      "model_failed": "मॉडल {{model}} विफल रहा: {{error}}",
       "no_adapter_for_source_type": "स्रोत प्रकार '{{source_type}}' के लिए कोई अडैप्टर पंजीकृत नहीं है",
       "no_live_connection": "स्रोत '{{source_id}}' के लिए कोई सक्रिय कनेक्शन नहीं है। MongoDB स्कीमा खोज के लिए स्रोत पूल में एक सक्रिय कनेक्शन आवश्यक है। सत्यापित करें कि स्रोत कनेक्टेड है और सर्वर पहुँच योग्य है।",
       "schema_discovery_unsupported": "स्रोत प्रकार '{{source_type}}' स्कीमा खोज का समर्थन नहीं करता। कॉलम मैन्युअल रूप से परिभाषित करें।",
+      "semantics_unavailable": "सिमेंटिक्स नहीं चल सकता: संबंध अनुमान के लिए निर्धारित मॉडल {{model}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}"

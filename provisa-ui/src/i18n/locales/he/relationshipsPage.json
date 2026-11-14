@@ -12,7 +12,6 @@
     "clearRejections": "ניקוי דחיות",
     "clearedRejections": "נוקתה {{count}} דחייה.",
     "clearedRejections_other": "נוקו {{count}} דחיות.",
-    "discoverZeroCandidates": "ה-AI מצא 0 מועמדים (לפרטים יש לבדוק את יומני השרת)",
     "domain": "דומיין",
     "source": "מקור",
     "target": "יעד",

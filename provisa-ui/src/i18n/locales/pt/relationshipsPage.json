@@ -12,7 +12,6 @@
     "clearRejections": "Limpar rejeições",
     "clearedRejections": "{{count}} rejeição limpa.",
     "clearedRejections_other": "{{count}} rejeições limpas.",
-    "discoverZeroCandidates": "A IA encontrou 0 candidatos (verifique os logs do servidor para obter detalhes)",
     "domain": "Domínio",
     "source": "Origem",
     "target": "Destino",

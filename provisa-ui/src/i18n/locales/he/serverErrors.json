@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "גילוי Elasticsearch דורש רמז 'index'.",
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
+      "model_failed": "המודל {{model}} נכשל: {{error}}",
       "no_adapter_for_source_type": "לא רשום מתאם עבור סוג המקור '{{source_type}}'",
       "no_live_connection": "אין חיבור פעיל עבור המקור '{{source_id}}'. גילוי סכמה של MongoDB דורש חיבור פעיל במאגר המקורות. ודאו שהמקור מחובר ושהשרת נגיש.",
       "schema_discovery_unsupported": "סוג המקור '{{source_type}}' אינו תומך בגילוי סכמה. הגדירו עמודות ידנית.",
+      "semantics_unavailable": "לא ניתן להריץ סמנטיקה: ל-{{model}}, המודל שהוקצה להסקת קשרים, אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "source_not_found": "המקור '{{source_id}}' לא נמצא",
       "table_id_required": "table_id נדרש עבור היקף table",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}"

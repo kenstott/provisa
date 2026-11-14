@@ -197,6 +197,7 @@ async def discover_relationships(state: Any, schema: str, table: str, *, request
     from provisa.api.admin.discovery import (
         DiscoverRequest,
         list_candidates,
+        semantic_model,
         trigger_discovery,
     )
     from provisa.compiler.naming import apply_sql_name
@@ -212,9 +213,18 @@ async def discover_relationships(state: Any, schema: str, table: str, *, request
         raise ValueError(
             f"{schema}.{table} names {len(matches)} registered tables; name exactly one"
         )
+    # Semantics runs where the model assigned to relationship inference has its key; the answer
+    # says which kinds ran and what each found.
+    kinds: list = ["foreign_keys"]
+    if (await semantic_model(state.model_db)).problem is None:
+        kinds.append("semantics")
     found = await trigger_discovery(
-        request, DiscoverRequest(scope="table", table_id=matches[0]["id"])
+        request, DiscoverRequest(scope="table", kinds=kinds, table_id=matches[0]["id"])
     )
     stored = set(found["stored_ids"])
     candidates = [c for c in await list_candidates(request) if c.get("id") in stored]
-    return {"table": f"{schema}.{table}", "candidates": candidates}
+    return {
+        "table": f"{schema}.{table}",
+        "candidates": candidates,
+        **{kind: found[kind] for kind in ("foreign_keys", "semantics") if kind in found},
+    }

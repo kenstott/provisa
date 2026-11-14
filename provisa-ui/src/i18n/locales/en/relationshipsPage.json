@@ -12,7 +12,6 @@
     "clearRejections": "Clear Rejections",
     "clearedRejections": "Cleared {{count}} rejection.",
     "clearedRejections_other": "Cleared {{count}} rejections.",
-    "discoverZeroCandidates": "AI found 0 candidates (check server logs for details)",
     "domain": "Domain",
     "source": "Source",
     "target": "Target",

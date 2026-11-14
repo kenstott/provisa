@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "Die Elasticsearch-Erkennung erfordert einen 'index'-Hinweis.",
       "elasticsearch_mapping_failed": "Elasticsearch-Mapping für Index '{{index}}' konnte nicht gelesen werden: {{error}}",
       "endpoint_already_registered": "Endpunkt bereits registriert: {{error}}",
+      "model_failed": "Das Modell {{model}} ist fehlgeschlagen: {{error}}",
       "no_adapter_for_source_type": "Kein Adapter für Quellentyp '{{source_type}}' registriert",
       "no_live_connection": "Keine aktive Verbindung für Quelle '{{source_id}}'. Die MongoDB-Schemaerkennung erfordert eine aktive Verbindung im Quellen-Pool. Prüfen Sie, ob die Quelle verbunden und der Server erreichbar ist.",
       "schema_discovery_unsupported": "Quellentyp '{{source_type}}' unterstützt keine Schemaerkennung. Definieren Sie die Spalten manuell.",
+      "semantics_unavailable": "Semantik kann nicht ausgeführt werden: {{model}}, das der Beziehungsableitung zugewiesene Modell, hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}"

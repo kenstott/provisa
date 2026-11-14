@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "Descubrir relaciones",
+    "intro": "Elija qué buscar en todos los dominios. No se ejecuta nada hasta que pulse Ejecutar.",
+    "foreignKeys": "Claves foráneas",
+    "semantics": "Semántica",
+    "semanticsNoKey": "Semántica: no disponible. {{model}}, el modelo asignado a la inferencia de relaciones, no tiene clave. Configure una en Administración, Modelos de IA.",
+    "run": "Ejecutar"
+  }
+}
