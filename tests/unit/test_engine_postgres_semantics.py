@@ -144,6 +144,13 @@ _TO_CHAR = [
     ("TIMESTAMP '2026-10-06 17:39:18'", "Day, DD  HH12:MI:SS", "Tuesday  , 06  05:39:18"),
     ("TIMESTAMP '2026-10-06 17:39:18'", "FMDay, FMDD  HH12:MI:SS", "Tuesday, 6  05:39:18"),
     ("DATE '2026-10-06'", 'YYYY-MM-DD"T" Mon MON mon D WW Q', "2026-10-06T Oct OCT oct 3 40 4"),
+    ("TIMESTAMP '2026-10-06 17:39:18'", "J DDth", "2461320 06th"),
+    (
+        "TIMESTAMP '2026-10-06 17:39:18'",
+        "SSSS IYYY-IW-ID Y,YYY CC RM",
+        "63558 2026-41-2 2,026 21 X   ",
+    ),
+    ("TIMESTAMP '2026-10-06 17:39:18'", "%Y \\MM", "%6 \\10"),  # a % and a \ are only text
     ("-0.1", "99.99", "  -.10"),
     ("-0.1", "FM9.99", "-.1"),
     ("-0.1", "FM90.99", "-0.1"),
@@ -172,9 +179,8 @@ def test_to_char_writes_as_postgresql_writes(value, fmt, written):
     "call, element",
     [
         ("to_char(5, '999S')", "'S'"),
-        ("to_char(now(), 'TMMonth')", "'TM'"),
-        ("to_char(now(), 'DDth')", "'DDth'"),
-        ("to_char(now(), 'J')", "'J'"),
+        ("to_char(now(), 'TMMonth')", "'TMMonth'"),
+        ("to_char(now(), 'TZ')", "'TZ'"),  # an instant: the session's zone is not read here
         ("to_char(now(), x) FROM (VALUES ('YYYY')) t(x)", "not a literal"),
     ],
 )

@@ -904,9 +904,10 @@ _TO_CHAR_NULL = {_CLICKHOUSE: "CAST(NULL AS Nullable(String))", "trino": "CAST(N
 
 
 def to_char_written(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """to_char of a timestamp, or of an instant on ClickHouse on a session on UTC, in a literal
-    template: each keyword written as the text PostgreSQL writes of it (provisa.transpiler.to_char),
-    a keyword with no exact form refused by name. A literal outside DateTime64's bound raises on
+    """Each keyword of a literal template written as PostgreSQL's text (provisa.transpiler.to_char).
+
+    Of a timestamp, or of an instant on ClickHouse on a session on UTC; a keyword with no exact
+    form is refused by name. A literal outside DateTime64's bound raises on
     ClickHouse. NULL of a NULL value or template. None for any other call, refused by name
     (provisa.transpiler.engine_refusals)."""
     kinds = _TO_CHAR_KINDS.get(dialect)
