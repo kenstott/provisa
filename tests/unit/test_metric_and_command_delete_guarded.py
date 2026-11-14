@@ -125,11 +125,16 @@ async def test_a_metric_a_views_sql_reads_is_refused_naming_the_view(plane):
     ]
 
 
-async def test_a_metric_nothing_uses_is_deleted(plane):
+async def test_a_metric_nothing_uses_is_retired(plane):
+    """REQ-2248: deleting it retires it; the row is kept."""
     async with plane.acquire() as conn:
         assert await metric_repo.delete(conn, "unused") is True
         assert await metric_repo.delete(conn, "unused") is False
-    assert await _names(plane, metrics) == {"revenue", "margin"}
+        retired = (
+            await conn.execute_core(select(metrics.c.retired).where(metrics.c.name == "unused"))
+        ).scalar_one()
+    assert retired is True
+    assert await _names(plane, metrics) == {"revenue", "margin", "unused"}
 
 
 async def test_a_declared_set_of_metrics_is_removed_without_the_guard(plane):

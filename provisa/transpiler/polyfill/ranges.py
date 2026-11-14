@@ -23,7 +23,10 @@ catalog's CREATE TYPE), and reads such an array as its text."""
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill import trino
+import datetime
+
+from provisa.core.pg_range import RANGE_TYPES
+from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Side
 from provisa.transpiler.polyfill.notation import Refusal
 
@@ -72,4 +75,66 @@ FEATURES: tuple[Feature, ...] = tuple(
         ),
     )
     for base, elements in _BASES.items()
+)
+
+#: What ClickHouse's type of a range's bound holds, by the element type: its first and last value
+#: and their text. DateTime64 holds 1900-01-01 .. 2299-12-31 as wall times of its own zone (a
+#: timestamp's, the session's; a timestamptz's, UTC), and Date32 those days; neither holds an
+#: infinity. A date keeps a day from the end, so the day after it (an inclusive upper bound's, in
+#: the canonical form) is held too. A range of numbers is held as its digits.
+HELD_ON_CLICKHOUSE: dict[str, tuple[datetime.date, datetime.date, str]] = {
+    "timestamptz": (instants.FIRST, instants.LAST, instants.BOUND),
+    "timestamp": (instants.FIRST, instants.LAST, instants.STAMP_BOUND),
+    "date": (datetime.date(1900, 1, 1), datetime.date(2299, 12, 30), "1900-01-01 .. 2299-12-30"),
+}
+
+
+def outside_held(constructor: str) -> str:
+    """The message a range's literal bound outside what ClickHouse holds raises, SQLSTATE 0A000:
+    instants' message of a timestamptz outside its bound, with the bound of the range's element."""
+    held = HELD_ON_CLICKHOUSE.get(RANGE_TYPES[constructor].element)
+    assert held is not None, constructor  # a range of numbers is held as its digits
+    return instants.out_of_bound(constructor, held[2])
+
+
+def unread_bound(constructor: str) -> str:
+    """The message of a range's bound a row writes in no ISO form, SQLSTATE 0A000."""
+    return f"{constructor}() of a bound not in ISO form has no exact form on clickhouse"
+
+
+_HELD_STATED = (
+    "A literal bound, and a literal element beside the range, is read where the statement is "
+    "transpiled (provisa.transpiler.pg_ranges): one outside {bound} raises 0A000 ({message}), "
+    "as ClickHouse would hold it at its type's end. Every bound a literal: the range is answered "
+    "there, in full. A bound a row computes is read with the row: a range's text whose bound is "
+    "outside the bound raises the same 0A000 where its value is read, as does a day an inclusive "
+    "upper bound (or an exclusive lower one) steps past 2299-12-31; a text bound in no ISO form "
+    "raises 0A000 ({unread}) there. A "
+    "range's text is written as the row writes it."
+)
+
+FEATURES += tuple(
+    Feature(
+        f"{name}({element}, {element})",
+        FAMILY,
+        f"A range of {elements} of its two bounds, and of its bounds' flags.",
+        read=Side(
+            limitations={
+                "clickhouse": (
+                    Limitation(
+                        _HELD_STATED.format(
+                            bound=HELD_ON_CLICKHOUSE[element][2],
+                            message=outside_held(name),
+                            unread=unread_bound(name),
+                        )
+                    ),
+                )
+            }
+        ),
+    )
+    for name, element, elements in (
+        ("tsrange", "timestamp", "timestamps"),
+        ("tstzrange", "timestamptz", "timestamps with time zone"),
+        ("daterange", "date", "dates"),
+    )
 )

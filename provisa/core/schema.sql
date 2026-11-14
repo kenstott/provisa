@@ -273,6 +273,12 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     UNIQUE (source_id, schema_name, table_name)
 );
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
@@ -321,6 +327,12 @@ CREATE TABLE IF NOT EXISTS table_columns (
     embedding_model TEXT,  -- REQ-421
     embedding_source_column TEXT,  -- REQ-421
     encrypted    BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-1919: surfaced as @encrypted
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     UNIQUE (table_id, column_name)
 );
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS masks JSONB NOT NULL DEFAULT '[]';
@@ -461,6 +473,12 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A join
     -- to a parameterized target (a code table) over this edge calls it with the source's values.
     parameters        JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ,
     CONSTRAINT relationships_via_complete CHECK (
         (via_table_id IS NULL AND via_source_column IS NULL AND via_target_column IS NULL
          AND via_label_source IS NULL)
@@ -752,7 +770,13 @@ CREATE TABLE IF NOT EXISTS tags (
     required       BOOLEAN NOT NULL DEFAULT FALSE,
     -- REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, as
     -- a source's allowed_domains; empty = every domain.
-    allowed_domains JSONB NOT NULL DEFAULT '[]'
+    allowed_domains JSONB NOT NULL DEFAULT '[]',
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ
 );
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1142,7 +1166,13 @@ CREATE TABLE IF NOT EXISTS metrics (
     description TEXT,
     ai_context  TEXT,  -- REQ-1319: definition text for AI consumers
     visible_to  JSONB NOT NULL DEFAULT '["*"]',
-    from_fact   TEXT
+    from_fact   TEXT,
+    -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
+    -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
+    retired       BOOLEAN NOT NULL DEFAULT FALSE,
+    status_reason TEXT,
+    status_by     TEXT,
+    status_at     TIMESTAMPTZ
 );
 -- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
 -- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
@@ -1938,6 +1968,11 @@ CREATE TABLE IF NOT EXISTS data_product_offers (
     profiles      BOOLEAN NOT NULL DEFAULT FALSE,
     open          BOOLEAN NOT NULL DEFAULT FALSE,
     duration_days INTEGER,
+    -- REQ-2180 (amended 2026-11-11): the offer's terms of use in prose, shown on its card and in
+    -- its contract; empty where it states none.
+    purpose       TEXT NOT NULL DEFAULT '',
+    usage         TEXT NOT NULL DEFAULT '',
+    limitations   TEXT NOT NULL DEFAULT '',
     version       INTEGER NOT NULL DEFAULT 1,
     published_by  TEXT,
     review        TEXT,
@@ -1945,6 +1980,9 @@ CREATE TABLE IF NOT EXISTS data_product_offers (
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (product_id, name)
 );
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS purpose TEXT NOT NULL DEFAULT '';
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS usage TEXT NOT NULL DEFAULT '';
+ALTER TABLE data_product_offers ADD COLUMN IF NOT EXISTS limitations TEXT NOT NULL DEFAULT '';
 
 -- REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: for every offer, each dataset of the product has
 -- the contract that is the offer's terms applied to it, versioned on its own (offer_contracts).
@@ -1972,7 +2010,17 @@ CREATE TABLE IF NOT EXISTS data_product_bids (
     offer_version  INTEGER NOT NULL,
     terms          JSONB NOT NULL,
     requester      TEXT NOT NULL,
+    -- A bid's purpose, or a cancel's reason.
     reason         TEXT NOT NULL,
+    -- REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS): a bid's
+    -- kind of consumer (person, team, data_product, agent), who it named as approving it (the
+    -- product's owner role, or the host its hook reaches), and when its requester agreed to the
+    -- offer's terms of use, as ``terms`` holds them. NULL on a cancel.
+    consumer_kind  TEXT
+                   CONSTRAINT data_product_bids_consumer_kind_check
+                   CHECK (consumer_kind IN ('person', 'team', 'data_product', 'agent')),
+    approver       TEXT,
+    agreed_at      TIMESTAMPTZ,
     hook           TEXT NOT NULL,
     payload        JSONB NOT NULL,
     status         TEXT NOT NULL DEFAULT 'pending'
@@ -1984,6 +2032,11 @@ CREATE TABLE IF NOT EXISTS data_product_bids (
     granted        JSONB,
     created_at     TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS consumer_kind TEXT
+    CONSTRAINT data_product_bids_consumer_kind_check
+    CHECK (consumer_kind IN ('person', 'team', 'data_product', 'agent'));
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS approver TEXT;
+ALTER TABLE data_product_bids ADD COLUMN IF NOT EXISTS agreed_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS idx_data_product_bids_product ON data_product_bids(product_id);
 
 -- Bridge table: every registered user table → its meta:registered_tables row
@@ -2606,7 +2659,7 @@ CREATE TABLE IF NOT EXISTS reference_document_tags (
 CREATE TABLE IF NOT EXISTS reference_citations (
     id              SERIAL PRIMARY KEY,
     citer_kind      TEXT NOT NULL CONSTRAINT reference_citations_citer_kind_check
-                        CHECK (citer_kind IN ('tag', 'tag_assignment')),
+                        CHECK (citer_kind IN ('tag', 'tag_assignment', 'dq_check')),
     tag_id          TEXT,
     object_key      TEXT NOT NULL DEFAULT '',
     document_id     INTEGER REFERENCES reference_documents(id) ON DELETE SET NULL,

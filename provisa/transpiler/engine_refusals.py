@@ -25,6 +25,9 @@ from collections.abc import Callable
 
 import sqlglot.expressions as exp
 
+from provisa.transpiler.pg_syntax import TO_CHAR_TEMPLATE
+from provisa.transpiler.to_char import plain_strftime
+
 _T, _C = "trino", "clickhouse"
 _ENGINES = {"trino": _T, "presto": _T, "athena": _T, "clickhouse": _C}
 _ANY = None
@@ -231,8 +234,15 @@ def _is_empty(value: exp.Expr) -> bool:
 
 
 def _plain_format(node: exp.TimeToStr, engine: str) -> bool:
+    """Whether the engine's format of to_char's template writes PostgreSQL's text. sqlglot's
+    strftime text of a template no longer tells YYYY from a literal %Y, nor SS twice from SSSS, so
+    the template the statement wrote is read (pg_syntax keeps it): its strftime form must be the
+    one sqlglot wrote."""
     written = node.args.get("format")
     if not isinstance(written, exp.Literal):
+        return False
+    template = node.meta.get(TO_CHAR_TEMPLATE)
+    if template is None or plain_strftime(template) != written.this:
         return False
     if engine == _C and "%M" in written.this:  # a month's name there, and a minute here
         return False

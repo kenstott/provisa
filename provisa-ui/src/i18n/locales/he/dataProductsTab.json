@@ -218,7 +218,8 @@
         "data_level_changed": "רמת הנתונים שונתה מ-{{before}} ל-{{after}}",
         "dq_results_changed": "תוצאות האיכות שונו מ-{{before}} ל-{{after}}",
         "profiles_changed": "הפרופילים שונו מ-{{before}} ל-{{after}}",
-        "duration_changed": "המשך שונה מ-{{before}} ל-{{after}}"
+        "duration_changed": "המשך שונה מ-{{before}} ל-{{after}}",
+        "terms_of_use_changed": "תנאי השימוש שונו: {{subject}}"
       },
       "howToUse": {
         "column": {

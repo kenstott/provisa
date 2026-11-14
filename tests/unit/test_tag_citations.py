@@ -265,7 +265,8 @@ async def test_an_assignment_or_a_tag_taken_away_takes_its_citations(library):
         assert await tag_repo.assignment_citations(conn) == {}
         assert await tag_repo.delete(conn, "approved")
         left = (await conn.execute_core(select(reference_citations))).fetchall()
-    assert left == []
+    # REQ-2248: deleting the tag retires it; the citation of its definition is kept with it.
+    assert len(left) == 1
 
 
 async def test_a_citation_is_taken_off_by_its_place(library):

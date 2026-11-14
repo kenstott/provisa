@@ -68,6 +68,18 @@ metadata = MetaData()
 
 # REQ-1921/1922: the stores an org keeps its data in, per region. A store is a connection URL (a
 # secret reference); an org region names, for each kind of data, the store it is kept in there.
+def _retirement() -> list[Column]:
+    """REQ-2248: a model object deleted is retired, not removed -- its row, its name and its file
+    are kept, out of service, with why, who and when, in the shape a glossary term's retirement
+    takes (``retired``, ``status_reason``, ``status_by``, ``status_at``)."""
+    return [
+        Column("retired", Boolean, nullable=False, server_default=false()),
+        Column("status_reason", Text),
+        Column("status_by", Text),
+        Column("status_at", DateTime(timezone=True)),
+    ]
+
+
 stores = Table(
     "stores",
     metadata,
@@ -370,6 +382,8 @@ registered_tables = Table(
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     UniqueConstraint("source_id", "schema_name", "table_name"),
 )
 
@@ -426,6 +440,8 @@ table_columns = Table(
     Column("embedding_model", Text),  # REQ-421
     Column("embedding_source_column", Text),  # REQ-421
     Column("encrypted", Boolean, nullable=False, server_default=false()),  # REQ-1919
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
 )
@@ -474,6 +490,8 @@ relationships = Table(
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
     Column("cypher_type", Text),
     Column("graphql_field", Text),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
@@ -497,6 +515,8 @@ metrics = Table(
     Column("from_fact", Text),
     # REQ-2243: the glossary term the metric names (schema.sql).
     Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
 )
 
 roles = Table(
@@ -675,6 +695,8 @@ tags = Table(
     # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered on objects of these domains, as a source's
     # allowed_domains; empty = every domain.
     Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -1398,6 +1420,10 @@ data_product_offers = Table(
     Column("profiles", Boolean, nullable=False, server_default=false()),
     Column("open", Boolean, nullable=False, server_default=false()),
     Column("duration_days", Integer),
+    # REQ-2180 (amended 2026-11-11): the offer's terms of use in prose.
+    Column("purpose", Text, nullable=False, server_default=""),
+    Column("usage", Text, nullable=False, server_default=""),
+    Column("limitations", Text, nullable=False, server_default=""),
     Column("version", Integer, nullable=False, server_default="1"),
     Column("published_by", Text),
     Column("review", Text),
@@ -1442,6 +1468,10 @@ data_product_bids = Table(
     Column("terms", JSON, nullable=False),
     Column("requester", Text, nullable=False),
     Column("reason", Text, nullable=False),
+    # REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS).
+    Column("consumer_kind", Text),
+    Column("approver", Text),
+    Column("agreed_at", DateTime(timezone=True)),
     Column("hook", Text, nullable=False),
     Column("payload", JSON, nullable=False),
     Column("status", Text, nullable=False, server_default="pending"),
@@ -1452,6 +1482,10 @@ data_product_bids = Table(
     Column("granted", JSON(none_as_null=True)),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "consumer_kind IN ('person', 'team', 'data_product', 'agent')",
+        name="data_product_bids_consumer_kind_check",
+    ),
     CheckConstraint(
         "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
         name="data_product_bids_status_check",
@@ -2554,7 +2588,7 @@ reference_citations = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
     CheckConstraint(
-        "citer_kind IN ('tag', 'tag_assignment')",
+        "citer_kind IN ('tag', 'tag_assignment', 'dq_check')",
         name="reference_citations_citer_kind_check",
     ),
 )

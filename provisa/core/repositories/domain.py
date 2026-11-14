@@ -12,7 +12,7 @@
 
 # Requirements: REQ-021, REQ-154, REQ-367, REQ-402
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -32,7 +32,7 @@ async def upsert(  # REQ-021, REQ-367, REQ-1919
 
     REQ-572: refused (:class:`provisa.compiler.naming.LabelClash`), naming both, when the
     domain's Cypher label is a registered table's. The admin and config load share this path."""
-    model_change.name("upsert", "domain", domain.id)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.domain_uri, domain.id))  # REQ-1524
     await _require_label_not_a_table(conn, domain.id)
     await conn.upsert(
         domains,
@@ -112,7 +112,7 @@ async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-19
     in it, a role lists it, an assignment is scoped to it, or a source allows it. It has no
     parts, so the delete removes the one row. A domain the deployment keeps is refused.
     """
-    model_change.name("delete", "domain", domain_id)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.domain_uri, domain_id))  # REQ-1524
     from provisa.core import domain_policy
 
     ref = ObjectRef("domain", domain_id)

@@ -66,29 +66,29 @@ def _governed(sql: str = _UPSERT, table_ids=(1, 2), embed=None):
 
 
 def test_an_insert_select_reading_another_source_is_written_in_two_steps():
-    two = _pipeline._two_step_insert(_governed(), 1, None)
+    two = _pipeline._two_step_write(_governed(), 1, None)
     assert two is not None and two.target_source == "qdrant"
 
 
 def test_one_reading_only_its_targets_source_is_sent_whole():
     sql = 'INSERT INTO "kb"."docs" ("id") SELECT "n"."id" FROM "kb"."notes" AS "n"'
-    assert _pipeline._two_step_insert(_governed(sql, table_ids=(1, 3)), 1, None) is None
+    assert _pipeline._two_step_write(_governed(sql, table_ids=(1, 3)), 1, None) is None
 
 
 def test_one_that_embeds_the_text_of_its_rows_is_written_in_two_steps():
     sql = 'INSERT INTO "kb"."docs" ("id", "title") SELECT "n"."id", "n"."title" FROM "kb"."notes" AS "n"'
     embed = Folded(sql, rows=(RowEmbed(1, "title", "mini"),))
-    assert _pipeline._two_step_insert(_governed(sql, table_ids=(1, 3), embed=embed), 1, None)
+    assert _pipeline._two_step_write(_governed(sql, table_ids=(1, 3), embed=embed), 1, None)
 
 
 def test_an_insert_of_values_is_sent_whole():
     sql = 'INSERT INTO "kb"."docs" ("id") VALUES ($1)'
-    assert _pipeline._two_step_insert(_governed(sql, table_ids=(1,)), 1, None) is None
+    assert _pipeline._two_step_write(_governed(sql, table_ids=(1,)), 1, None) is None
 
 
 @pytest.mark.asyncio
 async def test_the_rows_read_are_written_in_batches_keeping_the_on_conflict(monkeypatch):
-    two = _pipeline._two_step_insert(_governed(), 1, None)
+    two = _pipeline._two_step_write(_governed(), 1, None)
     assert two is not None
     two.batch = 2
     two.read = SimpleNamespace()
@@ -131,7 +131,7 @@ async def test_the_rows_read_are_written_in_batches_keeping_the_on_conflict(monk
 
 @pytest.mark.asyncio
 async def test_no_rows_read_is_no_write(monkeypatch):
-    two = _pipeline._two_step_insert(_governed(), 1, None)
+    two = _pipeline._two_step_write(_governed(), 1, None)
     assert two is not None
     two.read = SimpleNamespace()
     monkeypatch.setattr(
@@ -152,7 +152,7 @@ async def test_the_plan_reads_its_select_and_carries_the_statements_one_record(m
 
     embed = Folded(_UPSERT, rows=(RowEmbed(1, "title", "mini"),), audit=({"id": "mini"},))
     governed = _governed(embed=embed)
-    two = _pipeline._two_step_insert(governed, 1, None)
+    two = _pipeline._two_step_write(governed, 1, None)
     assert two is not None
     read_plan = SimpleNamespace(sources=frozenset({"pg"}), audit="read-audit", embedded=None)
     captured: dict = {}

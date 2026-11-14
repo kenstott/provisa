@@ -12,7 +12,7 @@
 
 # Requirements: REQ-042, REQ-059, REQ-060, REQ-215
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, select
@@ -77,7 +77,7 @@ async def upsert(  # REQ-042, REQ-059, REQ-060, REQ-1174, REQ-1919
     ``org_id`` is the org an administrator created it in (tenancy); it is recorded at
     creation and never changed, and is None for a role no administrator of an org created.
     """
-    model_change.name("upsert", "role", role.id)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.role_uri, role.id))  # REQ-1524
     from provisa.core.db import STANDARD_ROLES
 
     if role.id in STANDARD_ROLES:
@@ -173,7 +173,7 @@ async def delete(conn: "Connection", role_id: str) -> bool:  # REQ-042, REQ-1677
     who holds it, a role that inherits from it, a grant or ownership that names it. Its row
     filters go with it. One transaction; no database cascade is relied on.
     """
-    model_change.name("delete", "role", role_id)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.role_uri, role_id))  # REQ-1524
     ref = ObjectRef("role", role_id)
     async with conn.transaction():
         row = await get(conn, role_id)
