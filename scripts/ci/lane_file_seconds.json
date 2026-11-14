@@ -463,6 +463,7 @@
   "tests/integration/test_register_env_redemption_failure.py": 1.7,
   "tests/integration/test_registration_governance_integration.py": 49.6,
   "tests/integration/test_registry_schema_concurrent_boot.py": 2.8,
+  "tests/integration/test_regulation_check_scan_e2e.py": 25.6,
   "tests/integration/test_relationship_request_domain_approvals.py": 69.4,
   "tests/integration/test_render_graph_node_e2e.py": 4.4,
   "tests/integration/test_replica_build_locks_pg.py": 0.6,

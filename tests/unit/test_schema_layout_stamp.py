@@ -150,3 +150,33 @@ def test_the_grants_are_asserted_whether_or_not_the_layout_runs(control_plane, r
     ran.clear()
     asyncio.run(app._set_up_org_schema(ORG, "prod"))
     assert ran == [] and granted == [ORG, ORG]
+
+
+def test_each_part_of_a_layout_is_timed_inside_a_timed_act(control_plane, caplog):
+    """Inside a timed act (a sandbox's open, REQ-2006) a layout names what it spent where: its
+    stamp's read, its script, its columns, roles and stamps, its audit schema and its stamp's
+    write; a current stamp names only its read."""
+    from provisa.core import step_clock
+
+    pool = control_plane.org()
+    changed = SCHEMA_SQL + "\n-- a later release's script\n"
+    label = "demo sandbox sbx0 of alpha"
+
+    def _timed(script: str) -> list[str]:
+        caplog.clear()
+        with caplog.at_level("WARNING"), step_clock.every_step_of(label):
+            _lay_out(pool, script)
+        return [
+            message.removeprefix(f"{label}: layout of {SCHEMA}: ").rsplit(" took ", 1)[0]
+            for record in caplog.records
+            if (message := record.getMessage()).startswith(f"{label}: layout of {SCHEMA}: ")
+        ]
+
+    assert _timed(changed) == [
+        "its stamp read",
+        "its script",
+        "its columns, roles and stamps",
+        "its audit schema",
+        "its stamp written",
+    ]
+    assert _timed(changed) == ["its stamp read"]

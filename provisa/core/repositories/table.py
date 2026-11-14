@@ -348,7 +348,13 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        return await _upsert(conn, table, declared)
+        table_id = await _upsert(conn, table, declared)
+        if table_id is not None:
+            from provisa.dq.regulation import uncite_removed
+
+            # REQ-2245: a kept regulation check its contract no longer holds takes its citation.
+            await uncite_removed(conn, table_id)
+        return table_id
 
 
 async def naming_rules(conn: "Connection") -> list[dict]:

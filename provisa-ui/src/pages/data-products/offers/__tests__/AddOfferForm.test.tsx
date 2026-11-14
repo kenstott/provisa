@@ -200,6 +200,9 @@ describe("adding an offer", () => {
     });
     await pickRole("analyst");
     fireEvent.change(screen.getByTestId("add-offer-duration"), { target: { value: "90" } });
+    fireEvent.change(screen.getByTestId("add-offer-usage"), {
+      target: { value: "  Monthly churn models  " },
+    });
     fireEvent.click(screen.getByTestId("add-offer-save"));
     await waitFor(() => expect(onSaved).toHaveBeenCalled());
     expect(api.add).toHaveBeenCalledWith("c360", {
@@ -211,7 +214,30 @@ describe("adding an offer", () => {
       profiles: false,
       open: false,
       duration_days: 90,
+      purpose: "",
+      usage: "Monthly churn models",
+      limitations: "",
     });
+  });
+
+  it("writes the offer's terms of use: its purpose, usage and limitations", async () => {
+    form();
+    await screen.findByTestId("add-offer-name");
+    expect(screen.getByText("Terms of use")).toBeInTheDocument();
+    for (const [term, label] of [
+      ["purpose", "Purpose"],
+      ["usage", "Usage"],
+      ["limitations", "Limitations"],
+    ]) {
+      const field = screen.getByTestId(`add-offer-${term}`);
+      expect(screen.getByRole("textbox", { name: label })).toBe(field);
+      fireEvent.change(field, { target: { value: `${label} text` } });
+      expect(field).toHaveValue(`${label} text`);
+    }
+    // The terms of use are optional: an offer is saved with a name and a role.
+    fireEvent.change(screen.getByTestId("add-offer-name"), { target: { value: "analysts" } });
+    await pickRole("analyst");
+    expect(screen.getByTestId("add-offer-save")).toBeEnabled();
   });
 
   it("shows the server's refusal, by name, and stays open", async () => {
