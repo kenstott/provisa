@@ -9,12 +9,14 @@
 // permission from the copyright holder.
 
 // REQ-2239: the layered preset's ELK layout: layered, upward, children laid out with their
-// parents. The MCP server's render_graph draws with it as "elk" (provisa-ui/graph-render imports it).
+// parents, through Provisa's own adapter (elkLayout), which says a failed layout. The MCP server's
+// render_graph draws with it as "elk" (provisa-ui/graph-render imports it).
 
 import type { CyLayoutOptions } from "../graph/cytoscape-types";
+import { PROVISA_ELK } from "./elkLayout";
 
 export const ERD_ELK_LAYOUT = {
-  name: "elk",
+  name: PROVISA_ELK,
   animate: false,
   elk: {
     algorithm: "layered",

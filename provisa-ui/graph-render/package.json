@@ -5,15 +5,15 @@
   "type": "module",
   "description": "Draws a graph as the UI's graph page draws it, as a PNG: the MCP server's render_graph.",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/render.mjs --external:canvas --external:jsdom",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/render.mjs --external:canvas --external:jsdom --alias:elkjs=./node_modules/elkjs",
     "test": "node --test test/render.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
   "dependencies": {
     "canvas": "3.2.3",
     "cytoscape": "3.33.4",
-    "cytoscape-elk": "2.3.0",
     "cytoscape-fcose": "2.2.0",
+    "elkjs": "0.9.3",
     "jsdom": "29.1.1"
   },
   "devDependencies": {
