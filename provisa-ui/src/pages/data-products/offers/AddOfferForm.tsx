@@ -36,7 +36,6 @@ import {
 import {
   addOffer,
   fetchGrantableRoles,
-  TERMS_OF_USE,
   type DataLevel,
   type OfferInput,
 } from "../../../api/dataProductOffers";
@@ -45,7 +44,7 @@ import { MultiSelect } from "../../../components/MultiSelect";
 import { usePanelDirty } from "../../../components/list/panelLeave";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../../../components/form/FormLayout";
 import { AccessCells, AccessHeads } from "../../security/AccessCells";
-import { offerSummary } from "./offerTerms";
+import { offerSummary, TERMS_OF_USE } from "./offerTerms";
 
 export interface OfferDataset {
   id: number;

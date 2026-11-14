@@ -14,7 +14,8 @@
 
 import { useTranslation } from "react-i18next";
 import { Stack, Text } from "@mantine/core";
-import { TERMS_OF_USE, type TermOfUse } from "../../../api/dataProductOffers";
+import type { TermOfUse } from "../../../api/dataProductOffers";
+import { TERMS_OF_USE } from "./offerTerms";
 
 export function TermsOfUse({
   terms,

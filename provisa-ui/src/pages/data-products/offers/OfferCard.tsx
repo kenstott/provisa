@@ -38,10 +38,8 @@ import {
 import { Trash2 } from "lucide-react";
 import {
   bidForOffer,
-  CONSUMER_KINDS,
   fetchApprover,
   removeOffer,
-  TERMS_OF_USE,
   type Approver,
   type ConsumerKind,
   type Offer,
@@ -57,7 +55,7 @@ import {
 } from "../../../components/form/FormLayout";
 import { Tip } from "../../../components/Tip";
 import { usePanelDirty } from "../../../components/list/panelLeave";
-import { offerSummary } from "./offerTerms";
+import { CONSUMER_KINDS, offerSummary, TERMS_OF_USE } from "./offerTerms";
 import { OfferContracts, type ContractContext } from "./OfferContracts";
 import { TermsOfUse } from "./TermsOfUse";
 
@@ -179,11 +177,11 @@ export function BidForm({
           label={t(`dataProductOffers.term_${term}`)}
           value={offer[term]}
           size="full"
-          testId={`${testId}-${term}`}
+          testId={`${testId}-term-${term}`}
         />
       ))}
       <FormChecks>
-        <FormField size="full">
+        <FormField size="long">
           <Checkbox
             label={t("dataProductOffers.agreeToTerms")}
             checked={agreed}

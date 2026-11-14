@@ -83,13 +83,11 @@ export interface OfferInput {
   limitations: string;
 }
 
-/** The terms of use an offer states, in the order its card and contract show them. */
-export const TERMS_OF_USE = ["purpose", "usage", "limitations"] as const;
-export type TermOfUse = (typeof TERMS_OF_USE)[number];
+/** A term of use an offer states. */
+export type TermOfUse = "purpose" | "usage" | "limitations";
 
 /** The kinds of consumer a request is for. */
-export const CONSUMER_KINDS = ["person", "team", "data_product", "agent"] as const;
-export type ConsumerKind = (typeof CONSUMER_KINDS)[number];
+export type ConsumerKind = "person" | "team" | "data_product" | "agent";
 
 /** Who approves a request for a product: the authority its request hook reaches (by host), or
  *  its owner role (null where it names none). */

@@ -12,10 +12,21 @@
 // the tables page's columns table reads them (REQ-2239, PRODUCT PAGES REUSE TABLE COMPONENTS).
 
 import type { TFunction } from "i18next";
-import type { OfferInput, OfferTerms } from "../../../api/dataProductOffers";
+import type {
+  ConsumerKind,
+  OfferInput,
+  OfferTerms,
+  TermOfUse,
+} from "../../../api/dataProductOffers";
 import type { CoreTable } from "../productCore";
 import type { MaskKind } from "../../../lib/masks";
 import type { ColumnForm } from "../../tables/types";
+
+/** An offer's terms of use, in the order its card, its contracts and a bid show them. */
+export const TERMS_OF_USE: readonly TermOfUse[] = ["purpose", "usage", "limitations"];
+
+/** The kinds of consumer a request is for, in the order the request form offers them. */
+export const CONSUMER_KINDS: readonly ConsumerKind[] = ["person", "team", "data_product", "agent"];
 
 /** The offer as one sentence: who gets what level of data, with which evidence, for how long. */
 export function offerSummary(offer: OfferInput, datasets: number, t: TFunction): string {
