@@ -14,22 +14,20 @@
 
 import { describe, expect, it } from "vitest";
 import cytoscape from "cytoscape";
-import elk from "cytoscape-elk";
 import { buildErdElements, type ColumnDetail } from "../components/erd/erd-model";
 import { erdGraph } from "../components/erd/erd-graph";
 import { graphElements } from "../components/provisa-graph/model";
 import { graphStylesheet } from "../components/provisa-graph/stylesheet";
 import { graphTokens } from "../components/provisa-graph/tokens";
 import { ERD_ELK_LAYOUT } from "../components/provisa-graph/presets";
+import provisaElk, { LAYOUT_FAIL, PROVISA_ELK } from "../components/provisa-graph/elkLayout";
 import { arrangeLayered, nodesWithEdges } from "../components/provisa-graph/arrange";
 import type { CyInstance } from "../components/graph/cytoscape-types";
 import type { Domain, ListedTable, Relationship } from "../types/admin";
 
-type CyExt = Parameters<typeof cytoscape.use>[0];
-try {
-  cytoscape.use(((elk as { default?: CyExt }).default ?? elk) as CyExt);
-} catch {
-  /* already registered */
+// The layout the ERD's graph runs: Provisa's own ELK adapter.
+if (!(cytoscape as unknown as (type: string, name: string) => unknown)("layout", PROVISA_ELK)) {
+  cytoscape.use(provisaElk as unknown as Parameters<typeof cytoscape.use>[0]);
 }
 
 const SPEC: Record<string, string[]> = {
@@ -130,7 +128,11 @@ async function laidOut(columnDetail: ColumnDetail, gridSnap: number, aspectRatio
     if (!connected.has((n as { id(): string }).id())) n.style("display", "none");
   });
   const layout = cy.layout(ERD_ELK_LAYOUT);
-  const stopped = new Promise<void>((resolve) => layout.one("layoutstop", () => resolve()));
+  // A failed layout fails the test, with ELK's error, rather than leaving it waiting.
+  const stopped = new Promise<void>((resolve, reject) => {
+    layout.one(LAYOUT_FAIL as "layoutstop", (_evt: unknown, error?: unknown) => reject(error));
+    layout.one("layoutstop", () => resolve());
+  });
   layout.run();
   await stopped;
   arrangeLayered(cy, { gridSnap, showOrphans: true, aspectRatio });
