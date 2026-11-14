@@ -345,10 +345,7 @@ function App() {
                                     <PageErrorBoundary>
                                       <Suspense fallback={<PageLoading />}>
                                         <Routes>
-                                          <Route
-                                            path="/"
-                                            element={<HomeEntry />}
-                                          />
+                                          <Route path="/" element={<HomeEntry />} />
                                           <Route
                                             path="/setup"
                                             element={<Navigate to="/" replace />}
@@ -725,7 +722,9 @@ function App() {
                                                   // REQ-1922: a demo sandbox reads it.
                                                   <SandboxReadableGate
                                                     capability={capability}
-                                                    andCapability={routeRequirement(capability).andCapability}
+                                                    andCapability={
+                                                      routeRequirement(capability).andCapability
+                                                    }
                                                     fallback={<NotAuthorized />}
                                                   >
                                                     <AdminPage />

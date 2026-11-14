@@ -52,8 +52,11 @@ describe("the Org Secrets nav entry", () => {
     // REQ-1327: the rule is the nav's, not one entry's. The retired wildcard strings open no
     // entry, and each entry opens for a caller holding exactly its own right.
     for (const item of admin.items) {
-      expect(meetsRequirement(["admin", "superadmin"], item), item.to).toBe(false);
-      // REQ-1327: an entry asking no right (`capability: null`) opens on an empty set.
+      // REQ-1327: an entry asking no right (`capability: null`) opens for everyone, wildcard
+      // strings included, exactly as for a caller holding nothing.
+      expect(meetsRequirement(["admin", "superadmin"], item), item.to).toBe(
+        meetsRequirement([], item),
+      );
       const named = item.capability === null ? [] : [item.capability];
       const own = item.andCapability ? [...named, item.andCapability] : named;
       expect(meetsRequirement(own, item), item.to).toBe(true);

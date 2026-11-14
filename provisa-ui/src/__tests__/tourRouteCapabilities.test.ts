@@ -57,6 +57,9 @@ function tourRoutes(): string[] {
   return [...routes];
 }
 
+/** The gate of a route every member opens (`capability={EVERY_MEMBER}`). */
+const EVERY_MEMBER_GATE = "EVERY_MEMBER";
+
 /** path → the capability its <Route> gate names, for the JSX route table in App.tsx. */
 function routeCapabilities(): Record<string, string> {
   const source = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
@@ -66,8 +69,8 @@ function routeCapabilities(): Record<string, string> {
   for (const block of blocks) {
     const path = /^"([^"]+)"/.exec(block);
     if (!path) continue;
-    const cap = /capability=\{?"([a-z_]+)"/.exec(block);
-    if (cap) out[path[1]] = cap[1];
+    const cap = /capability=\{?(?:"([a-z_]+)"|(EVERY_MEMBER)\})/.exec(block);
+    if (cap) out[path[1]] = cap[1] ?? cap[2];
   }
   // Paths sharing one gate are a list mapped onto a single <Route path={path}> (the Python and
   // Notebook tabs).
@@ -93,8 +96,8 @@ describe("guided tour route gates", () => {
 
   it.each(tourRoutes())("an org_admin may reach %s", (route) => {
     const capability = gates[route];
-    // A route with no gate is reachable by anyone signed in; nothing to assert.
-    if (capability === undefined) return;
+    // A route with no gate, or one every member opens, is reachable by anyone signed in.
+    if (capability === undefined || capability === EVERY_MEMBER_GATE) return;
     expect(caps.has(capability)).toBe(true);
   });
 
@@ -114,8 +117,15 @@ describe("guided tour route gates", () => {
   it.each(TOUR_STEPS.filter((s) => s.route).map((s) => [s.key, s.route!, s.capability] as const))(
     "step %s declares the gate its route carries",
     (_key, route, capability) => {
+      // REQ-1327: a route every member opens admits any step; the right a step names there is
+      // stricter than the gate, and must be one the seeds grant.
+      const gate = gates[route.split("?")[0]];
+      if (gate === EVERY_MEMBER_GATE) {
+        expect(caps.has(capability!)).toBe(true);
+        return;
+      }
       const opens = IMPLIED_GATE[capability!] ?? capability;
-      expect(opens).toBe(gates[route.split("?")[0]]);
+      expect(opens).toBe(gate);
     },
   );
 

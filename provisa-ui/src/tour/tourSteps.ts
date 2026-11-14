@@ -555,6 +555,8 @@ export const TOUR_STEPS: TourStep[] = [
   },
   {
     route: "/admin/requests",
+    // The route opens to every member (REQ-1327); the tour keeps the step to a holder of `usage`,
+    // so a role with no other page is not offered a tour of one step.
     capability: "usage",
     element: '[data-testid="requests-tab-pending"]',
     key: "stepRequests",

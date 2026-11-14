@@ -20,7 +20,7 @@
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "fs";
 import { resolve } from "path";
-import { NAV_GROUPS } from "../components/navGroups";
+import { NAV_BAR, NAV_GROUPS, type NavBarLink } from "../components/navGroups";
 import {
   IMPORT_RIGHTS,
   IMPORT_SURFACE,
@@ -29,6 +29,13 @@ import {
 } from "../lib/capabilities";
 
 const SRC = resolve(__dirname, "..");
+
+/** A top-level link of the bar, from the NAV_BAR list NavBar renders. */
+function barLink(to: string): NavBarLink {
+  const link = NAV_BAR.find((e): e is NavBarLink => e.kind === "link" && e.to === to);
+  expect(link, to).toBeDefined();
+  return link!;
+}
 
 function navBarAdminCapabilities(): Record<string, string> {
   const source = readFileSync(resolve(SRC, "components/navGroups.ts"), "utf-8");
@@ -292,18 +299,16 @@ describe("admin surface capabilities", () => {
   it("shows the glossary as a top-level nav entry gated on its route's right", () => {
     // REQ-1387: Glossary is a top-level menu item, not an Admin group item — but the gate
     // must still match the /admin/ontology route or the link 403s (or hides the surface).
-    const source = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
-    const linkAt = source.indexOf('to="/admin/ontology"');
-    expect(linkAt).toBeGreaterThan(-1);
-    const gate = source.slice(Math.max(0, linkAt - 200), linkAt);
-    expect(gate).toContain('capability="glossary_read"'); // REQ-1590
+    // The bar's links are the NAV_BAR list NavBar renders.
+    const link = barLink("/admin/ontology");
+    expect(link.capability).toBe("glossary_read"); // REQ-1590
+    expect(routeCapabilities()["/admin/ontology"]).toBe("glossary_read");
   });
 
   it("gates every top-level nav link on the right its route requires", () => {
     // The Relationships link shipped ungated while /relationships requires create_relationship, so
     // an analyst saw the tab and landed on the permission error. Each of these routes carries its
     // own <Route> rather than a table row, so the gate is read out of App.tsx around the path.
-    const navSource = readFileSync(resolve(SRC, "components/NavBar.tsx"), "utf-8");
     const appSource = readFileSync(resolve(SRC, "App.tsx"), "utf-8");
     for (const path of ["/sources", "/tables", "/relationships"]) {
       const routeAt = appSource.indexOf(`path="${path}"`);
@@ -311,11 +316,7 @@ describe("admin surface capabilities", () => {
       const capability = /capability="([a-z_]+)"/.exec(
         appSource.slice(routeAt, routeAt + 400),
       )?.[1];
-      const linkAt = navSource.indexOf(`to="${path}"`);
-      expect(linkAt, path).toBeGreaterThan(-1);
-      expect(navSource.slice(Math.max(0, linkAt - 300), linkAt), path).toContain(
-        `capability="${capability}"`,
-      );
+      expect(barLink(path).capability, path).toBe(capability);
     }
   });
 

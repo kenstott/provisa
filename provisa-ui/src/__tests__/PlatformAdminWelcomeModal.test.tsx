@@ -19,7 +19,10 @@ import {
 
 // The claimant acts as "All" after the claim: root's org_admin and platform_admin together.
 const ORG_ADMIN = { id: "org_admin", effectiveCapabilities: ["user_management", "org_settings"] };
-const PLATFORM_ADMIN = { id: "platform_admin", effectiveCapabilities: ["platform_settings", "cross_org"] };
+const PLATFORM_ADMIN = {
+  id: "platform_admin",
+  effectiveCapabilities: ["platform_settings", "cross_org"],
+};
 const auth = vi.hoisted(() => ({
   capabilities: [] as string[],
   availableRoles: [] as { id: string; effectiveCapabilities: string[] }[],
@@ -46,7 +49,10 @@ const renderModal = (ui: ReactElement) =>
 
 describe("PlatformAdminWelcomeModal (REQ-1294)", () => {
   beforeEach(() => {
-    auth.capabilities = [...ORG_ADMIN.effectiveCapabilities, ...PLATFORM_ADMIN.effectiveCapabilities];
+    auth.capabilities = [
+      ...ORG_ADMIN.effectiveCapabilities,
+      ...PLATFORM_ADMIN.effectiveCapabilities,
+    ];
     auth.availableRoles = [ORG_ADMIN, PLATFORM_ADMIN];
     auth.selectRole = vi.fn();
   });
