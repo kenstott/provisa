@@ -817,7 +817,7 @@ async def _fetch_checkers(state) -> list[dict]:
                 .join(checked, checked.c.id == targets.c.checked_table_id)
                 .outerjoin(runs, runs.c.table_id == rt.c.id)
             )
-            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
+            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False), rt.c.retired.is_(False))
         )
         rows = res.fetchall()
         products = await data_product_repo.table_memberships(conn)
@@ -916,7 +916,7 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.source_id,
                 rt.c.dq_contract,
                 rt.c.materialize,
-            ).where(rt.c.draft.is_(False))
+            ).where(rt.c.draft.is_(False), rt.c.retired.is_(False))  # REQ-2248
         )
         products = await data_product_repo.table_memberships(conn)
         return [{**dict(r._mapping), "product_ids": products.get(r.id, [])} for r in res.fetchall()]

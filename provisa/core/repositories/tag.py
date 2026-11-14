@@ -569,14 +569,16 @@ def _in_service() -> list:
         )
         .exists()
     )
+    # The query this filters joins registered_tables itself: an alias keeps this read its own.
+    retired_table = registered_tables.alias("retired_table")
     return [
         ~select(tags.c.id)
         .where(tags.c.id == tag_assignments.c.base_tag_id, tags.c.retired.is_(True))
         .exists(),
-        ~select(registered_tables.c.id)
+        ~select(retired_table.c.id)
         .where(
-            registered_tables.c.id == tag_assignments.c.table_id,
-            registered_tables.c.retired.is_(True),
+            retired_table.c.id == tag_assignments.c.table_id,
+            retired_table.c.retired.is_(True),
         )
         .exists(),
         ~retired_column,

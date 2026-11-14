@@ -942,6 +942,8 @@ class Query:  # REQ-021, REQ-042
                     .where(
                         table_columns.c.scope == "listed",
                         registered_tables.c.draft.is_(False),
+                        registered_tables.c.retired.is_(False),  # REQ-2248
+                        table_columns.c.retired.is_(False),
                         registered_tables.c.domain_id.not_in(sorted(scope.reach)),
                     )
                     .order_by(
