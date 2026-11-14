@@ -56,6 +56,7 @@ from provisa.transpiler.interval_input import (
     MINUTE_US as _MINUTE_US,
     SECOND_US as _SECOND_US,
     canonical,
+    duckdb_reads_alike,
     interval_read,
 )
 from provisa.transpiler.polyfill import instants, trino
@@ -1282,18 +1283,25 @@ def _literal_fields(node: exp.Expr) -> tuple[int, int, int] | str | None:
 
 def _standing(node: exp.Expr) -> str | None:
     """Where a value stands: "shown" in the select list (or cast to text there), "read" as an
-    argument of a call or an operand of an interval's operator (the call reads it, or refuses it,
-    as its own), "cell" in a VALUES list, None anywhere else (a predicate, a CASE, an ORDER BY)."""
+    argument of a call (the call reads it, or refuses it, as its own), "operand" of an interval's
+    operator (on ClickHouse its row's), "cell" in a VALUES list, None anywhere else (a predicate, a
+    CASE, an ORDER BY)."""
     child, parent = node, node.parent
     while isinstance(parent, (exp.Paren, exp.Alias)):
         child, parent = parent, parent.parent
+    if parent is None:
+        return "read"  # a copy of a pattern rule's argument, which that rule reads
     if isinstance(parent, exp.Select):
         return "shown" if child.arg_key == "expressions" else None
     if isinstance(parent, exp.Cast):
         return "shown" if _said(parent) in _TEXT_TYPES else None
     if isinstance(parent, exp.Tuple) and isinstance(parent.parent, exp.Values):
         return "cell"
-    if type(parent) in _OPERATORS or isinstance(parent, exp.Anonymous):
+    if type(parent) in _OPERATORS:
+        return "operand"
+    if isinstance(parent, (exp.If, exp.Case)):
+        return None  # a branch: CASE's answer is the select list's, and no row reads it
+    if isinstance(parent, exp.Anonymous):
         return "read"
     if isinstance(parent, exp.Func) and not isinstance(parent, (exp.Binary, exp.Unary)):
         return "read"
@@ -1336,7 +1344,7 @@ def _literal_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if fields is None:
         return None
     where = _standing(node)
-    if where == "read":
+    if where in ("read", "operand"):
         return None
     if where == "cell":
         readers = _cell_readers(node)
@@ -1355,31 +1363,52 @@ def _literal_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
 
 
 def _trino_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """A literal of interval on Trino where no call reads it: sqlglot's INTERVAL 'n' UNIT where
-    its value is one field Trino holds exactly (months, days, or whole seconds); refused by name
-    for any other, which Trino's interval types (year to month, day to second in milliseconds)
-    hold apart or not at all. A literal a call reads is the call's, as before."""
+    """A literal of interval on Trino where no call reads it. Trino has no type named interval,
+    holds months and days in two interval types, and a day and its time as one count of
+    milliseconds, so an interval it answers may be written otherwise than PostgreSQL's
+    ('25:00:00' is its 1 day 01:00:00). Only a timestamp plus or minus the literal is written
+    (a date's answers a date on Trino, a timestamp in PostgreSQL), as Trino's INTERVAL 'n' UNIT (the answer is a timestamp, the same): a value of months
+    alone, or of days and whole seconds. Anywhere else, and for any other value, the literal is
+    refused by name. A NULL is a NULL of Trino's day to second; a literal a call reads is the
+    call's, as before."""
     if dialect not in _TRINO_DIALECTS or not isinstance(node, exp.Cast):
         return None
     fields = _literal_fields(node)
-    if fields is None or _standing(node) == "read":
+    where = _standing(node)
+    if fields is None or where == "read":
         return None
     if fields == "null":  # Trino has no type named interval: a NULL of its day to second
         return exp.cast(exp.null(), exp.DataType.build("INTERVAL DAY TO SECOND", dialect="trino"))
     if isinstance(fields, str):
         raise _refused_literal(f"interval input '{fields}'", dialect)
     months, days, micros = fields
-    amount, unit = None, None
+    text = interval_text(*fields)
+    if not _shifts_an_instant(node):
+        raise _refused_literal(
+            f"interval '{text}' anywhere but a timestamp's plus or minus", dialect
+        )
     if days == 0 and micros == 0:
-        amount, unit = months, "MONTH"
-    elif months == 0 and micros == 0:
-        amount, unit = days, "DAY"
-    elif months == 0 and days == 0 and micros % _SECOND_US == 0:
-        amount, unit = micros // _SECOND_US, "SECOND"
-    if unit is None:
-        text = interval_text(*fields)
-        raise _refused_literal(f"interval '{text}', which no one interval of Trino holds", dialect)
-    return exp.Interval(this=exp.Literal.string(str(amount)), unit=exp.Var(this=unit))
+        return exp.Interval(this=exp.Literal.string(str(months)), unit=exp.Var(this="MONTH"))
+    if months == 0 and micros == 0:
+        return exp.Interval(this=exp.Literal.string(str(days)), unit=exp.Var(this="DAY"))
+    if months == 0 and micros % _SECOND_US == 0:
+        seconds = days * 86400 + micros // _SECOND_US
+        return exp.Interval(this=exp.Literal.string(str(seconds)), unit=exp.Var(this="SECOND"))
+    raise _refused_literal(f"interval '{text}', which no one interval of Trino holds", dialect)
+
+
+def _shifts_an_instant(node: exp.Expr) -> bool:
+    """Whether ``node`` is the interval a timestamp is moved by: an operand of + with a timestamp,
+    or the right one of - from one. Not a date's: Trino answers a date, PostgreSQL a timestamp."""
+    child, parent = node, node.parent
+    while isinstance(parent, exp.Paren):
+        child, parent = parent, parent.parent
+    if not isinstance(parent, (exp.Add, exp.Sub)):
+        return False
+    other = parent.expression if child is parent.this else parent.this
+    if isinstance(parent, exp.Sub) and child is not parent.expression:
+        return False
+    return _kind(other) == "t"
 
 
 _LITERAL_STATED = (
@@ -1389,32 +1418,42 @@ _LITERAL_STATED = (
     "input form not read here."
 )
 _TRINO_LITERAL_STATED = (
-    "A literal of interval where no call reads it is sqlglot's INTERVAL 'n' UNIT where its value "
-    "is one field Trino holds exactly: months, days, or whole seconds. Any other is refused by "
-    "name: Trino holds months and days in two interval types, and a day's time in milliseconds."
+    "A literal of interval where no call reads it is written only where a timestamp is moved by "
+    "it (+, -), as Trino's INTERVAL 'n' UNIT: a value of months alone, or of days and "
+    "whole seconds. Anywhere else, or of any other value, it is refused by name: Trino holds "
+    "months and days in two interval types, and a day and its time as one count of milliseconds, "
+    "which it writes otherwise than PostgreSQL."
 )
 
 
 def _duckdb_rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """A string cast to interval on DuckDB, wherever it stands: the cast of its fields' text, read
-    here as PostgreSQL reads it. DuckDB's own input differs on some ('1.0000005 sec' rounds up a
-    microsecond, '+3 hours' and '1 day 02:03 ago' fail); the text of three integer fields it reads
-    exactly. A text not read here is DuckDB's, as before."""
+    """A string cast to interval on DuckDB, wherever it stands. DuckDB's own interval input reads
+    whole amounts of the common units and one clock as PostgreSQL does (interval_input.
+    duckdb_reads_alike), and those are kept as written. It rounds a fraction of a microsecond
+    otherwise, fails on '+3 hours', '1 day 02:03 ago' and ISO 8601, and answers '1 day 1 day' and
+    '1 quarter', which PostgreSQL refuses: any other text read here is sent as its three fields'
+    text, which DuckDB reads exactly, and one not read here is refused by name."""
     if dialect != "duckdb" or not isinstance(node, exp.Cast):
         return None
     fields = _literal_fields(node)
+    if fields is None or fields == "null":
+        return None
+    text = node.this.unnest().name
+    if duckdb_reads_alike(text) or text == (
+        canonical(*fields) if isinstance(fields, tuple) else None
+    ):
+        return None
     if not isinstance(fields, tuple):
-        return None
-    written = canonical(*fields)
-    if node.this.unnest().name == written:
-        return None
-    return exp.Cast(this=exp.Literal.string(written), to=node.to.copy())
+        raise _refused_literal(f"interval input '{fields}'", dialect)
+    return exp.Cast(this=exp.Literal.string(canonical(*fields)), to=node.to.copy())
 
 
 _DUCKDB_LITERAL_STATED = (
     "A string cast to interval is read as PostgreSQL's interval input reads it (IntervalStyle "
-    "postgres) and sent as the text of its three fields, which DuckDB reads exactly; a form not "
-    "read here (ISO 8601, the SQL standard's) is DuckDB's own reading."
+    "postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock "
+    "are sent as written, which DuckDB reads alike; any other text is sent as the text of its "
+    "three fields, which DuckDB reads exactly. A form not read here (ISO 8601, the SQL standard's, "
+    "a bare number, infinity) is refused by name: DuckDB fails on it or answers otherwise."
 )
 
 

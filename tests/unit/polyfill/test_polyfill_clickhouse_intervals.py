@@ -660,7 +660,7 @@ def test_isfinite_of_an_instant_is_still_instants_row(runtime):
     assert _answer(runtime, _call("isfinite", "'2024-01-01 00:00:00+00'::timestamptz")) is True
 
 
-@pytest.mark.parametrize("around", ["{} IS NULL", "{}::text"])
+@pytest.mark.parametrize("around", ["{} IS NULL"])
 def test_an_interval_answer_read_by_no_row_here_is_refused_by_name(around):
     call = "pg_catalog.\"interval_pl\"('1 day'::interval, '1 hour'::interval)"
     with pytest.raises(FunctionRefused):
@@ -679,7 +679,7 @@ def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
 
 def test_every_row_states_its_bound_on_clickhouse():
     rows = [f for f in GRID.features if f.family == intervals.FAMILY]
-    assert len(rows) == 27
+    assert len(rows) == 28  # the 27 calls, and the literal where no call reads it (J1337)
     for feature in rows:
         (limitation,) = feature.read.limitations["clickhouse"]
         assert "Tuple(months Int32, days Int32, microseconds Int64)" in limitation.text

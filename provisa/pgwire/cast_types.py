@@ -125,6 +125,10 @@ def _cast_type(data_type: Any) -> CastType | None:  # noqa: PLR0911 -- one retur
         return _RETURNED["timestamp without time zone"]
     if kind == t.TIME:
         return _RETURNED["time without time zone"]
+    if kind == t.INTERVAL:
+        # ClickHouse holds no interval: a literal of one is served as interval_out's text
+        # (polyfill.intervals), read back as the interval it is, as an interval call's is.
+        return _CALLED_INTERVAL
     if kind == t.JSONB:
         return _RETURNED["jsonb"]
     if kind == t.XML:  # REQ-2171: held as its text; xml_out writes its declaration
@@ -328,15 +332,7 @@ _RETURNED: dict[str, CastType] = {
         _clock_of,
         of_text=clock_of_text,
     ),
-    # ClickHouse holds no interval: a literal of one is served as interval_out's text
-    # (polyfill.intervals), read back as the interval it is.
-    "interval": CastType(
-        1186,
-        -1,
-        BVType.INTERVAL,
-        frozenset({BVType.INTERVAL, BVType.TEXT}),
-        of_text=interval_of_text,
-    ),
+    "interval": CastType(1186, -1, BVType.INTERVAL, frozenset({BVType.INTERVAL})),
     "timestamp without time zone": CastType(
         1114, -1, BVType.TIMESTAMP, frozenset({BVType.TIMESTAMP}), _of_no_zone
     ),
@@ -444,6 +440,8 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         typed = money_type(expression, columns)
     if typed is not None:
         return _RETURNED[typed]
+    if isinstance(expression, exp.Interval):
+        return _CALLED_INTERVAL  # interval '1 day': its literal, as a cast to interval is
     if isinstance(expression, exp.Cast):
         if _null_alone(expression):
             # ClickHouse holds no NULL of an array (an Array is never Nullable): it is sent a bare

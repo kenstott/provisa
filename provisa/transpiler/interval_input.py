@@ -253,6 +253,38 @@ def canonical(months: int, days: int, micros: int) -> str:
     return f"{months} months {days} days {micros} microseconds"
 
 
+#: The unit words DuckDB's interval input reads as PostgreSQL's does, for a whole amount.
+_DUCKDB_WORDS = frozenset(
+    {
+        "year", "years", "mon", "mons", "month", "months", "week", "weeks", "day", "days",
+        "hour", "hours", "minute", "minutes", "second", "seconds",
+    }
+)  # fmt: skip
+_DUCKDB_AMOUNT = re.compile(r"-?\d+", re.ASCII)
+_DUCKDB_CLOCK = re.compile(r"-?\d+:\d\d(?::\d\d)?", re.ASCII)
+
+
+def duckdb_reads_alike(text: str) -> bool:
+    """Whether DuckDB's own interval input reads ``text`` as PostgreSQL's does: whole amounts,
+    each of a unit word above, and at most one clock (h:mm or h:mm:ss) with no fraction; no '@',
+    'ago', '+' or fraction, which DuckDB rounds or refuses otherwise than PostgreSQL. Checked
+    against PostgreSQL 18.4 over the reader's input forms."""
+    words = text.lower().split()
+    clocks = 0
+    at = 0
+    while at < len(words):
+        if _DUCKDB_CLOCK.fullmatch(words[at]):
+            clocks += 1
+            at += 1
+            continue
+        if at + 1 >= len(words) or not _DUCKDB_AMOUNT.fullmatch(words[at]):
+            return False
+        if words[at + 1] not in _DUCKDB_WORDS:
+            return False
+        at += 2
+    return clocks <= 1 and bool(words) and interval_read(text) is not None
+
+
 __all__ = [
     "DAY_US",
     "HOUR_US",
@@ -264,6 +296,7 @@ __all__ = [
     "MINUTE_US",
     "SECOND_US",
     "canonical",
+    "duckdb_reads_alike",
     "interval_read",
     "one_amount",
 ]
