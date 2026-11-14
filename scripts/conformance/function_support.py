@@ -2405,6 +2405,7 @@ SESSION_CURSORS_GROUP = "The session's own cursors"
 SERVER_EXTENSIONS_GROUP = "The server's installed extensions"
 SINGLE_BYTE_DATABASE_GROUP = "One-argument to_ascii needs a single-byte database"
 NO_SQL_VALUE_GROUP = "Types no SQL value can have"
+INTERNAL_TYPE_GROUP = "Types that exist only inside PostgreSQL"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2482,6 +2483,11 @@ GROUPS = {
     "PostgreSQL errors on every call (the any* and anycompatible* pseudo-types, shell_out, "
     "pg_ddl_command, pg_node_tree_in, the extended statistics inputs, the BRIN bloom and "
     "multi-minmax summaries, gtsvector).",
+    # REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN (INTERNAL_TYPES).
+    INTERNAL_TYPE_GROUP: "The functions of a type that exists only inside PostgreSQL (the reg* "
+    "types, record, aclitem, xid and xid8), a type's input by oid and an aggregate's transition "
+    "state are refused by name: no engine holds such a value. A function that merely takes or "
+    "returns one, such as row_to_json(record) or a record comparison, is a gap and stays refused.",
 }
 
 #: The requirement each group's decision is of, where it is not REQ-2167.
@@ -2641,6 +2647,94 @@ def decided_function(fn: Function) -> str | None:
     if group is not None:
         return group
     return next((g for p, g in _DECIDED_PREFIXES.items() if fn.name.startswith(p)), None)
+
+
+@dataclass(frozen=True)
+class InternalType:
+    """A type that exists only inside PostgreSQL: the stems its own functions are named by, and
+    whether its comparison operators are its own (a record's compare the values it holds)."""
+
+    stems: tuple[str, ...]
+    operators: bool = True
+
+
+#: REQ-2167, amended 2026-11-13, AN INTERNAL TYPE IS BY DESIGN: the types that exist only inside
+#: PostgreSQL. Their own functions are by design; a function that merely takes or returns one is
+#: not (``internal_types_own``).
+INTERNAL_TYPES = {
+    **{
+        oid_alias: InternalType((oid_alias,))
+        for oid_alias in (
+            "regclass",
+            "regcollation",
+            "regconfig",
+            "regdictionary",
+            "regnamespace",
+            "regoper",
+            "regoperator",
+            "regproc",
+            "regprocedure",
+            "regrole",
+            "regtype",
+        )
+    },
+    "record": InternalType(("record",), operators=False),
+    "aclitem": InternalType(("aclitem", "acl")),
+    "xid": InternalType(("xid",)),
+    "xid8": InternalType(("xid8",)),
+}
+
+#: How a type's own functions are named after its stem: its input, output, receive and send
+#: functions, its hash and B-tree support functions, and its operators and functions on it.
+_OWN_IO = ("{s}in", "{s}out", "{s}recv", "{s}send", "{s}_in", "{s}_out", "{s}_recv", "{s}_send")
+_OWN_SUPPORT = ("hash_{s}", "hash_{s}_extended", "bt{s}cmp", "bt{s}imagecmp", "{s}cmp")
+_OWN_OPERATORS = (
+    *(f"{{s}}{op}" for op in ("eq", "ne", "lt", "le", "gt", "ge")),
+    "{s}_larger",
+    "{s}_smaller",
+    *(f"{{s}}{fn}" for fn in ("contains", "explode", "insert", "remove")),
+)
+
+#: A type's input by oid: the type to read is an argument and the result a pseudo-type, so the
+#: call is PostgreSQL's own. A type with a typmod reads it by the same arguments and is not one.
+_INPUT_BY_OID = ("cstring", "oid", "integer")
+_READ_BY_OID = frozenset({"anyarray", '"any"', "anyrange", "anymultirange", "record"})
+
+#: The internal types' own functions not named after a stem, by ``_key``: a transaction id's age
+#: and its cast from xid8, and the aggregates' transition states.
+_OWN_BY_KEY = frozenset(
+    {
+        "age(xid)",
+        "xid(xid8)",
+        "int8_avg(bigint[])",
+        "int8inc_float8_float8(bigint, double precision, double precision)",
+    }
+)
+
+
+def _element(typ: str) -> str:
+    return typ.removesuffix("[]")
+
+
+def internal_types_own(fn: Function) -> bool:
+    """Whether ``fn`` is one of an internal type's own functions (``INTERNAL_TYPES``): decided by
+    the types it takes and returns and by what kind of function it is, never by a refusal's text.
+    An aggregate, or a function that merely takes or returns one (row_to_json(record), a record
+    comparison, ts_headline(regconfig, ...), pg_xact_status(xid8)), is not."""
+    if fn.kind != "f":
+        return False
+    if _key(fn) in _OWN_BY_KEY:
+        return True
+    if fn.argtypes == _INPUT_BY_OID and fn.rettype in _READ_BY_OID:
+        return True
+    for typ in {_element(t) for t in (*fn.argtypes, fn.rettype)}:
+        internal = INTERNAL_TYPES.get(typ)
+        if internal is None:
+            continue
+        forms = _OWN_IO + _OWN_SUPPORT + (_OWN_OPERATORS if internal.operators else ())
+        if any(fn.name == form.format(s=stem) for stem in internal.stems for form in forms):
+            return True
+    return False
 
 
 #: The refusals a decision makes, by name or ``_key``: Provisa refusing one by name is that
@@ -3100,7 +3194,8 @@ def measure_overload(
 ) -> dict[str, Any]:
     """``fn`` on ``engine``, as one outcome. A side-effect function is tested by its side effect on
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
-    see its effect; a refusal a decision makes is skipped by design under it."""
+    see its effect; a refusal a decision makes is skipped by design under it, as is a refusal of an
+    internal type's own function (``internal_types_own``)."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
     group = decided_function(fn)
     if group is not None:
@@ -3110,6 +3205,8 @@ def measure_overload(
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
     if decided is not None and entry["outcome"] == "refused":
         return _by_design(entry, decided)
+    if entry["outcome"] == "refused" and internal_types_own(fn):
+        return _by_design(entry, INTERNAL_TYPE_GROUP)
     if not side_effect(fn):
         return entry
     if engine != SIDE_EFFECT_ENGINE:
