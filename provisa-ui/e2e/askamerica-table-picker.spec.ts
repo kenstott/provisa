@@ -103,7 +103,7 @@ test.describe("AskAmerica: the Register Table pickers", () => {
     await field.click();
     await expect(tableOption(page, "nws_stations")).toBeVisible({ timeout: PICKER_FILLS_MS });
     const filledAfterMs = Date.now() - saved;
-    const weatherTables = await page.getByRole("option").count();
+    const weatherTables = await page.locator("[data-combobox-option]").count();
     expect(weatherTables).toBeGreaterThan(1);
     console.log(
       `[askamerica picker] ${weatherTables} weather tables listed ${filledAfterMs} ms after save`,
@@ -116,9 +116,10 @@ test.describe("AskAmerica: the Register Table pickers", () => {
 
     // 5. A linker schema lists its own tables: the picker follows the schema, not the first answer.
     await schemaSelect.selectOption("geo");
-    await expect(tableSelect.locator("option[value='counties']")).toHaveCount(1, {
-      timeout: PICKER_FILLS_MS,
-    });
-    await expect(tableSelect.locator("option[value='nws_stations']")).toHaveCount(0);
+    await expect(field).toBeEnabled({ timeout: PICKER_FILLS_MS });
+    await field.click();
+    await expect(tableOption(page, "counties")).toBeVisible({ timeout: PICKER_FILLS_MS });
+    await expect(tableOption(page, "nws_stations")).toHaveCount(0);
+    await page.keyboard.press("Escape");
   });
 });

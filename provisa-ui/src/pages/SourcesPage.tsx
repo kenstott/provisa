@@ -521,12 +521,21 @@ export function SourcesPage() {
   // A seed whose remote part (a remote API source's registration) is read after the form was
   // reset or seeded again does not land in it: each reset and seed is a new generation.
   const seedGeneration = useRef(0);
+  // While the seeded source's remote part is being read its form is not saved: a save would send
+  // the empty values the form holds meanwhile (an OpenAPI source's spec path, refused by the
+  // server). A read that fails leaves it unsaved, its error shown.
+  const [seedPending, setSeedPending] = useState(false);
   const seedFrom = (s: Source): boolean => {
     const generation = ++seedGeneration.current;
     const held = applySeed(seedSource(s, govdataCatalog));
+    setSeedPending(hasRemoteSeed(s.type));
     if (hasRemoteSeed(s.type)) {
       fetchRemoteSeed(s).then(
-        (r) => generation === seedGeneration.current && applyRemoteSeed(r),
+        (r) => {
+          if (generation !== seedGeneration.current) return;
+          applyRemoteSeed(r);
+          setSeedPending(false);
+        },
         (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
       );
     }
@@ -616,6 +625,7 @@ export function SourcesPage() {
   // Every part of the form's state at its default: what no source and no type has set.
   const resetFormState = () => {
     seedGeneration.current += 1;
+    setSeedPending(false);
     setDuplicateOf(null);
     setEditingSourceHintsJson(null);
     setEditingSourceMappingJson(null);
@@ -1560,7 +1570,10 @@ export function SourcesPage() {
         form="sources-edit-form"
         saving={submitting}
         onCancel={handleCancelForm}
-        saveProps={{ "data-testid": "sources-edit-submit" }}
+        saveProps={{
+          "data-testid": "sources-edit-submit",
+          disabled: seedPending,
+        }}
         cancelProps={{ "data-testid": "sources-edit-cancel" }}
       />
     </FormLayout>

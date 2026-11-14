@@ -8,6 +8,7 @@
 
 import type { Page } from "@playwright/test";
 import { test, expect } from "./coverage";
+import { openListRow } from "./source-to-query-helpers";
 
 test.beforeEach(async ({ page }) => {
   // Demo mode auto-starts the guided tour in a fresh profile, which navigates away from /tables.
@@ -25,7 +26,7 @@ async function openPetsEditor(page: Page) {
   await petsRow.waitFor({ timeout: 15000 });
   // The source cell: a click at the row's centre lands on the table cell's "Edit tags" button,
   // which opens the tag popover instead of selecting the table.
-  await petsRow.locator("td").first().click();
+  await openListRow(petsRow);
   const editBtn = page.getByTestId("table-read-view-edit").first();
   await editBtn.waitFor({ timeout: 10000 });
   await editBtn.click();

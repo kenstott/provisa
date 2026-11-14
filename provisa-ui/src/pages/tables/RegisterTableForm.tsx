@@ -609,7 +609,10 @@ export function RegisterTableForm({
             count: combine.preview.files.length,
             glob: combine.preview.glob,
           });
-  const listing = !listedSchema || loadingTables;
+  // Listing until the schema's tables first answer. A list already answered stays in use while it
+  // is asked again: each schema change in the org asks every open query again, and a field
+  // disabled meanwhile closed its open list under the person picking.
+  const listing = !listedSchema || (loadingTables && availableTables.length === 0);
   // What the Tables field's hint says: still listing, or that there is nothing to pick.
   const tablesStatus = startingTablesTimedOut
     ? t("registerTableForm.tableStartingTimedOut")

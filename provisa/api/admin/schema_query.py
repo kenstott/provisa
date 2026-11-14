@@ -3057,6 +3057,24 @@ async def _derived_view_columns(schema_name: str, table_name: str) -> list[Avail
     ]
 
 
+# REQ-2234: Register Table reads the columns of every table it lists, one after another, and an
+# OpenAPI table's columns come from its source's parsed spec. Parsing Stripe's spec (273 read
+# operations) took seconds, once per table read. A loaded spec is parsed once; a spec loaded again
+# (a new dict in state.openapi_specs) is parsed again. The held spec keeps its identity unique.
+_parsed_specs: dict[str, tuple[dict, list]] = {}
+
+
+def _spec_queries(source_id: str, spec: dict) -> list:
+    """The read operations of `source_id`'s loaded `spec`, parsed once per loaded spec."""
+    from provisa.openapi.mapper import parse_spec
+
+    held = _parsed_specs.get(source_id)
+    if held is None or held[0] is not spec:
+        held = (spec, parse_spec(spec)[0])
+        _parsed_specs[source_id] = held
+    return held[1]
+
+
 async def _introspect_available_columns(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -3217,12 +3235,10 @@ async def _introspect_available_columns(
     # _source_for_introspection + introspect_columns path below that sharepoint/splunk already
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-        from provisa.openapi.mapper import parse_spec
         from provisa.api.admin.introspect import openapi_parameter_columns
         from provisa.openapi.register import _schema_to_columns
 
-        spec = state.openapi_specs[source_id]["spec"]
-        queries, _ = parse_spec(spec)
+        queries = _spec_queries(source_id, state.openapi_specs[source_id]["spec"])
         q = next((q for q in queries if q.operation_id == table_name), None)
         if q is None:
             return []
