@@ -107,13 +107,20 @@ async def lay_out_schema(
     )
     from provisa.core.environments import org_schema
 
+    from provisa.core import step_clock
+
     schema_name = org_schema(org_id, env)
-    digest = layout_digest(schema_sql, AUDIT_SCHEMA_SQL)
-    if await read_layout_digest(pool, schema_name) == digest:
+    stepped = f"layout of {schema_name}"
+    with step_clock.step(f"{stepped}: its stamp read"):
+        digest = layout_digest(schema_sql, AUDIT_SCHEMA_SQL)
+        current = await read_layout_digest(pool, schema_name) == digest
+    if current:
         return False
     await init_schema(pool, schema_sql, org_id=org_id, env=env)
-    await init_audit_schema(pool, org_id=org_id, env=env)
-    await write_layout_digest(pool, schema_name, digest)
+    with step_clock.step(f"{stepped}: its audit schema"):
+        await init_audit_schema(pool, org_id=org_id, env=env)
+    with step_clock.step(f"{stepped}: its stamp written"):
+        await write_layout_digest(pool, schema_name, digest)
     return True
 
 
@@ -170,8 +177,11 @@ async def provision_org(  # REQ-701
         await lay_out_schema(pool, schema_sql, org_id, env)
         provisioned_pg = True
 
-        async with pool.acquire() as conn:
-            await create_org_role(conn, org_id, env=env)  # type: ignore[arg-type]
+        from provisa.core import step_clock
+
+        with step_clock.step(f"layout of {schema_name}: its role's grant"):
+            async with pool.acquire() as conn:
+                await create_org_role(conn, org_id, env=env)  # type: ignore[arg-type]
         provisioned_role = True
 
         if redis_url and redis_password and (env is None or env == PROD):
