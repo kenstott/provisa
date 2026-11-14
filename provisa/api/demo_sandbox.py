@@ -506,8 +506,9 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         async with _stage(org_id, demo.name, "its record"):
             await _record(rt.model_db, demo, org_id, person)
         await _environments(demo, org_id, person)
-        await _refresh_root_registry_view()
-        async with _admin_pool().acquire() as conn:
+        async with _stage(org_id, demo.name, "the registry view"):
+            await _refresh_root_registry_view()
+        async with _stage(org_id, demo.name, "its ready mark"), _admin_pool().acquire() as conn:
             await conn.execute_core(
                 update(orgs)
                 .where(orgs.c.id == org_id)
@@ -556,7 +557,8 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
 
     # REQ-2053: the template's environments (a test environment of fakes, say), each created from
     # the sandbox's prod after its person's roles are granted, so each carries them.
-    wanted = await template_environments(demo.template_org)
+    async with _stage(org_id, demo.name, "its environments' list"):
+        wanted = await template_environments(demo.template_org)
     # The org's redaction rules and secrets, loaded once (redaction_load.ensure_loaded) by the
     # lookup of its prod runtime: before any environment is created, as the first creation's
     # lookup loaded them when the environments were created one after another. Loaded inside the
@@ -596,20 +598,27 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
         # is: its model was copied from prod a moment ago. Left to the first request, a tour step
         # waited 15-20 s on an ordinary build that seeded the whole model again.
         failed_in[name] = 2
+        waiting = time.monotonic()
         async with building:
+            # The other line's build ahead of this one's: the time a line waits for its turn.
+            step_clock.took(f"environment {name}: its turn to build", time.monotonic() - waiting)
             async with _stage(org_id, demo.name, f"its environment {name}'s runtime"):
                 await ensure_org_runtime(org_id, name, model_cloned=True)
 
-    lines = [
-        run_on_own_thread(partial(_line, env), name=f"sandbox-environment-{env['name']}")
-        for env in wanted
-    ]
-    # Every line is waited for, failed or not, and however this wait ends: the open removes a
-    # sandbox that failed (reap), and a line still writing would write into what is being removed.
-    try:
-        await asyncio.gather(*(asyncio.wrap_future(line) for line in lines), return_exceptions=True)
-    finally:
-        concurrent.futures.wait(lines)
+    async with _stage(org_id, demo.name, "its environments"):
+        lines = [
+            run_on_own_thread(partial(_line, env), name=f"sandbox-environment-{env['name']}")
+            for env in wanted
+        ]
+        # Every line is waited for, failed or not, and however this wait ends: the open removes a
+        # sandbox that failed (reap), and a line still writing would write into what is being
+        # removed.
+        try:
+            await asyncio.gather(
+                *(asyncio.wrap_future(line) for line in lines), return_exceptions=True
+            )
+        finally:
+            concurrent.futures.wait(lines)
     failures = [
         (failed_in[env["name"]], index, failure)
         for index, (env, line) in enumerate(zip(wanted, lines, strict=True))
