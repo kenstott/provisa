@@ -556,22 +556,55 @@ async def _environments(demo: PublishedDemo, org_id: str, person: str) -> None:
     # REQ-2053: the template's environments (a test environment of fakes, say), each created from
     # the sandbox's prod after its person's roles are granted, so each carries them.
     wanted = await template_environments(demo.template_org)
-    for env in wanted:
-        async with _stage(org_id, demo.name, f"its environment {env['name']}"):
+    # The org's redaction rules and secrets, loaded once (redaction_load.ensure_loaded) by the
+    # lookup of its prod runtime: before any environment is created, as the first creation's
+    # lookup loaded them when the environments were created one after another. Loaded inside the
+    # fan-out below, the second creation's lookup found the load under way and went on without it.
+    async with _stage(org_id, demo.name, "its redaction rules and secrets"):
+        await ensure_org_runtime(org_id)
+    synthetic = set(demo_synthetic.synthetic_envs(wanted))
+    # The environments are made side by side, each its own line: created from prod, given its
+    # rows, its runtime built. What two lines share is the org's, and each piece of it is either
+    # keyed by the environment (its registry row, schema, branch, rows and runtime) or written by
+    # a runtime build alone: the domain policy (domain_policy, keyed by the org), which a build
+    # sets to the deployment's naming and then to the org's own, reading it between
+    # (app._build_org_runtime). So one runtime is built at a time: the builds' turn below.
+    # Both lines run on this request's one loop, so an asyncio lock serializes them.
+    building = asyncio.Lock()
+    # The phase each line failed in (its creation, its rows, its runtime), so the failure raised is
+    # the one an open making them one after another would have met first.
+    failed_in: dict[str, int] = {}
+
+    async def _line(env: dict[str, str]) -> None:
+        name = env["name"]
+        failed_in[name] = 0
+        async with _stage(org_id, demo.name, f"its environment {name}"):
             await create_environments(org_id, [env], person)
-    # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is generated
-    # at a visitor's request. REQ-2006: its rows, records and bindings are copied from the
-    # template's prepared environment, through its schema.
-    async with _stage(org_id, demo.name, "its environments' rows"):
-        await demo_synthetic.copy_to_sandbox(
-            demo.template_org, org_id, demo_synthetic.synthetic_envs(wanted)
-        )
-    # REQ-2006 (amended 2026-11-04): then each one's runtime, built once and cloned, as its prod's
-    # is: its model was copied from prod a moment ago. Left to the first request, a tour step
-    # waited 15-20 s on an ordinary build that seeded the whole model again.
-    for env in wanted:
-        async with _stage(org_id, demo.name, f"its environment {env['name']}'s runtime"):
-            await ensure_org_runtime(org_id, env["name"], model_cloned=True)
+        # REQ-1942: a Test (synthetic) one is given the template's generated rows; nothing is
+        # generated at a visitor's request. REQ-2006: its rows, records and bindings are copied
+        # from the template's prepared environment, through its schema.
+        failed_in[name] = 1
+        if name in synthetic:
+            async with _stage(org_id, demo.name, f"its environment {name}'s rows"):
+                await demo_synthetic.copy_to_sandbox(demo.template_org, org_id, [name])
+        # REQ-2006 (amended 2026-11-04): then its runtime, built once and cloned, as its prod's
+        # is: its model was copied from prod a moment ago. Left to the first request, a tour step
+        # waited 15-20 s on an ordinary build that seeded the whole model again.
+        failed_in[name] = 2
+        async with building:
+            async with _stage(org_id, demo.name, f"its environment {name}'s runtime"):
+                await ensure_org_runtime(org_id, name, model_cloned=True)
+
+    # Every line is waited for, failed or not: the open removes a sandbox that failed (reap), and
+    # a line still writing would write into what is being removed.
+    outcomes = await asyncio.gather(*(_line(env) for env in wanted), return_exceptions=True)
+    failures = [
+        (failed_in[env["name"]], index, outcome)
+        for index, (env, outcome) in enumerate(zip(wanted, outcomes, strict=True))
+        if isinstance(outcome, BaseException)
+    ]
+    if failures:
+        raise min(failures, key=lambda failure: failure[:2])[2]
 
 
 async def carry_landed_data(template_org: str, org_id: str, seed: Any, demo: str) -> None:
