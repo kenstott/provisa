@@ -63,6 +63,9 @@ from provisa.api.admin.capabilities import (
 )
 from provisa.api.admin.types import (
     JsonScalar,
+    CombinedFileType,
+    FileColumnsDifferType,
+    FileGlobPreviewType,
     AvailableColumnType,
     AvailableTableType,
     CompanionImportSetType,
@@ -119,6 +122,7 @@ from provisa.api.admin.types import (
     LibraryCitationType,
     TagAssignmentType,
     TagParamValueType,
+    TagTargetInput,
     TagType,
     UserSummaryType,
 )
@@ -1117,10 +1121,36 @@ class Query:  # REQ-021, REQ-042
                 sensitive=bool(r["sensitive"]),
                 requires_citation=bool(r["requires_citation"]),  # REQ-2208
                 required=bool(r["required"]),  # REQ-2208 (THE TAGS REPORT)
+                allowed_domains=list(r["allowed_domains"] or []),  # REQ-2208
                 citations=[citation_type(c) for c in cited.get(r["id"], [])],
                 needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def offered_tags(
+        self, info: StrawberryInfo, target: TagTargetInput
+    ) -> list[str]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+        """The ids of the tags the picker offers on ``target``: those that apply to its kind, are
+        not derived, and are offered in its domains -- or, for an object in no domain, in one the
+        caller acts in. assignTag refuses the same tags by the same rule."""
+        from provisa.api.admin.capabilities import allowed_domains_request
+        from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        acting = allowed_domains_request(info.context["request"])
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            domains = await tag_target_domains(cast("Connection", conn), target)
+            rows = await tag_repo.list_all(cast("Connection", conn))
+        return [
+            r["id"]
+            for r in rows
+            if target.object_type in (r["applies_to"] or [])
+            and not r["derived"]
+            and tag_offered(r["allowed_domains"] or [], domains, acting)
         ]
 
     @strawberry.field
@@ -1449,6 +1479,36 @@ class Query:  # REQ-021, REQ-042
                 if row[0].lower() not in skip
             ]
         return tables
+
+    @strawberry.field
+    async def file_glob_preview(
+        self,
+        info: StrawberryInfo,
+        source_id: str,
+        glob: Optional[str] = None,
+        tables: Optional[list[str]] = None,
+    ) -> FileGlobPreviewType:  # REQ-788
+        """One table over many files of a files source, before it is registered: a typed
+        ``glob`` (``tables`` names the listed tables the files are), or the glob derived from the
+        listed ``tables`` picked; the files it reads, the columns they share and the files that
+        differ. Reads only; registration checks the same again when the table is saved."""
+        require_capability(info, "table_registration")
+        from provisa.api.admin._file_glob import file_glob_preview, source_files_path
+
+        pool = await _get_pool()
+        async with pool.acquire() as config_conn, _bound_to_request_org():
+            path = await source_files_path(config_conn, source_id)
+        # A glob that cannot be read, or picked tables no glob covers, is the query's error.
+        out = await asyncio.to_thread(file_glob_preview, path, glob or None, tables)
+        return FileGlobPreviewType(
+            glob=out["glob"],
+            files=[CombinedFileType(**f) for f in out["files"]],
+            shared_columns=out["shared_columns"],
+            differing=[FileColumnsDifferType(**d) for d in out["differing"]],
+            extra_files=out["extra_files"],
+            unmatched_tables=out["unmatched_tables"],
+            reference_table=out["reference_table"],
+        )
 
     @strawberry.field
     async def crawl_source(

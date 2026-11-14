@@ -749,11 +749,15 @@ CREATE TABLE IF NOT EXISTS tags (
     requires_citation BOOLEAN NOT NULL DEFAULT FALSE,
     -- REQ-2208 (THE TAGS REPORT): the tag is required on every object of the kinds its applies_to
     -- lists; the tags report lists each such object that does not carry it.
-    required       BOOLEAN NOT NULL DEFAULT FALSE
+    required       BOOLEAN NOT NULL DEFAULT FALSE,
+    -- REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, as
+    -- a source's allowed_domains; empty = every domain.
+    allowed_domains JSONB NOT NULL DEFAULT '[]'
 );
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS allowed_domains JSONB NOT NULL DEFAULT '[]';
 
 -- REQ-1384: a row filter on a tag refers to the tag. No ON DELETE action: a tag that carries a
 -- filter is refused deletion (repositories.integrity), never taken with its filter.

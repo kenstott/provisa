@@ -38,6 +38,8 @@
     "policy_hidden": "Verborgen",
     "policy_optional": "Optioneel",
     "policy_required": "Verplicht",
+    "requiredLabel": "Verplicht",
+    "requiredDesc": "Elk object van de soorten onder ‘Geldt voor’ moet deze tag hebben. Een object zonder de tag staat als ontbrekend in het tagrapport.",
     "reasonPolicyBadge": "Reden: {{policy}}",
     "expiresPolicyBadge": "Verval: {{policy}}",
     "createButton": "Tag aanmaken",
@@ -60,6 +62,9 @@
     "purposeTitle": "Waar tags voor zijn",
     "purposeBody": "Een tag is één organisatiebreed label met vaste betekenis, toegepast op bronnen, tabellen, kolommen, relaties of commando's. Tags dragen gedrag, niet alleen documentatie: technical houdt een kolom buiten de Data Product-export, entity maakt van de waarden van een kolom retrieval-vocabulaire, deprecated zegt consumenten dat ze moeten migreren.",
     "purposeAdd": "Er is één registry. Een tag die voor meerdere objecttypen geldt, is overal dezelfde identiteit: bewerken in één van de lijsten bewerkt hem in alle.",
-    "purposeAria": "Over tags"
+    "purposeAria": "Over tags",
+    "outsideTitle": "Toewijzingen buiten de toegestane domeinen",
+    "outsideBody": "Bij het opslaan zijn deze toewijzingen behouden. Haal de tag weg van een object waar hij niet meer bij hoort.",
+    "outsideItem": "{{kind}} {{name}}, in {{domains}}"
   }
 }
