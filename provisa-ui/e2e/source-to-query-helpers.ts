@@ -13,7 +13,7 @@
 
 import type { Locator } from "@playwright/test";
 import { BACKEND_URL, expect, type Page } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { deleteSourceAndItsTables, type AdminGql } from "./delete-source";
 
 export const DOMAIN = "pet-store"; // shipped by both lanes' configs; its SQL schema is pet_store
 
@@ -62,15 +62,7 @@ export async function setSourceCacheTtl(page: Page, seconds: number) {
  * The tests' sources are told from the model's own by their ids: `e2e_<kind>_<13-digit stamp>`,
  * which no source of the demo model has. */
 export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<string[]> {
-  const gql = async (query: string, variables: Record<string, unknown> = {}) => {
-    const res = await fetch(`${baseUrl}/admin/graphql`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-provisa-role": "org_admin" },
-      body: JSON.stringify({ query, variables }),
-    });
-    if (!res.ok) throw new Error(`admin GraphQL answered ${res.status}: ${await res.text()}`);
-    return res.json();
-  };
+  const gql = adminGql(baseUrl);
   const listed = await gql("{ sources { id } }");
   if (listed.errors)
     throw new Error(`sources could not be listed: ${JSON.stringify(listed.errors)}`);
@@ -79,6 +71,28 @@ export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<
     .filter((id) => /^e2e_[a-z0-9_]+_\d{13}$/.test(id));
   for (const id of mine) await deleteSourceAndItsTables(gql, id);
   return mine;
+}
+
+/** One admin GraphQL document posted to the backend at `baseUrl` as org_admin, its parsed body. */
+function adminGql(baseUrl: string): AdminGql {
+  return async (query: string, variables: Record<string, unknown> = {}) => {
+    const res = await fetch(`${baseUrl}/admin/graphql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "x-provisa-role": "org_admin" },
+      body: JSON.stringify({ query, variables }),
+    });
+    if (!res.ok) throw new Error(`admin GraphQL answered ${res.status}: ${await res.text()}`);
+    return res.json();
+  };
+}
+
+/** Remove one source a test created, with its tables (deleteSourceAndItsTables), on the backend at
+ * `baseUrl`. For a test's own cleanup of what it registered. */
+export async function removeTestSource(
+  sourceId: string,
+  baseUrl: string = BACKEND_URL,
+): Promise<void> {
+  await deleteSourceAndItsTables(adminGql(baseUrl), sourceId);
 }
 
 // A source form field, by its label. The sources list behind the form has sortable column headers
