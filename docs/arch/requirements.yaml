@@ -34616,7 +34616,9 @@
     event substrate. A scheduled full reconcile (using the existing scheduler, provisa/scheduler/jobs.py)
     periodically re-syncs the complete metadata projection. Per-org configuration and credentials, scoped
     to that org only. (Amended 2026-11-14, A SCHEDULE PER ENTRY:) Maintainer 2026-11-14 (REQ-2247). The
-    scheduled reconcile is set per entry on the Syncing page, not once for the organisation.'
+    scheduled reconcile is set per entry on the Syncing page, not once for the organisation. (Amended 2026-11-14,
+    NO ORG-WIDE EXPORT SWITCH:) Maintainer 2026-11-14. There is no org-wide switch for metadata export:
+    an org exports exactly when an entry on the Syncing page has a direction that includes Export.'
   use_case: Event-driven sync ensures near-real-time metadata propagation for operational responsiveness;
     scheduled full reconcile handles dropped events and corrects drift. Per-org scoping ensures multi-tenant
     isolation and per-customer credential management.
@@ -47079,7 +47081,11 @@
     the model name, and that change makes a new object; the old one is retired (REQ-2248). SPARQL names
     table classes and column predicates by the model name, not the physical name. Provisa never describes
     the identifier as stable: ''there''s no clean way to create a stable identifier'', and it states only
-    when the name changes.'
+    when the name changes. (Amended 2026-11-14, TRIGGERS AND BASES ARE KINDS; SPARQL USES THE REGISTERED
+    NAME:) Maintainer 2026-11-14. (1) ''triggers'' and ''bases'' are reserved kind words, so a scheduled
+    trigger and a judgment basis are addressed like every other object and neither word can be a domain
+    name. (2) A SPARQL address for a table with no alias uses the table''s registered name, domain-initials
+    prefix kept, the same name every other model address uses; the prefix is no longer removed.'
   use_case: Enables lineage stitching across external catalogs by using business identity rather than
     physical location; preserves catalog continuity when tables are re-platformed to different sources;
     allows lineage and history to follow the business entity through infrastructure changes; supports
@@ -92435,7 +92441,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a term the offer leaves empty shows the product''s text, which narrows ''entered once on the product''
     to the product''s own description. An offer may state no terms of use: the bid form says so plainly
     and the bid goes ahead. The Ask row''s questions are written by the product''s owner on the product,
-    each with an optional saved query, and run as the reader''s role.'
+    each with an optional saved query, and run as the reader''s role. (Amended 2026-11-14, A CHANGED LIMITATION
+    IS BREAKING; A BID STATES A PURPOSE:) Maintainer 2026-11-14. (1) Changing an offer''s stated limitation
+    is a breaking change to its contract (next major version), because bidders agreed to the old text. (2)
+    A bid''s stated purpose is named ''purpose'' in storage, the API and the approval hook''s payload; ''reason''
+    is no longer used for it.'
   scenario: 'Given a role that sees product P but holds no grant on its member tables
     When it requests P and P''s owner role approves
     Then the role holds read grants on each member table of P and can query them
