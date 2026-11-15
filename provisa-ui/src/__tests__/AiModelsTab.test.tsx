@@ -49,7 +49,11 @@ function limits(
   input: number,
   output: number,
   source: ModelLimits["source"],
-  base: [number, number, "known" | "default"] = [input, output, source === "default" ? "default" : "known"],
+  base: [number, number, "known" | "default"] = [
+    input,
+    output,
+    source === "default" ? "default" : "known",
+  ],
 ): ModelLimits {
   return {
     vendor,
@@ -65,7 +69,13 @@ function limits(
 
 const KNOWN_LIMITS: AiModelsState["model_limits"] = {
   anthropic: {
-    "claude-haiku-4-5-20251001": limits("anthropic", "claude-haiku-4-5-20251001", 200000, 64000, "known"),
+    "claude-haiku-4-5-20251001": limits(
+      "anthropic",
+      "claude-haiku-4-5-20251001",
+      200000,
+      64000,
+      "known",
+    ),
     "claude-opus-4-6": limits("anthropic", "claude-opus-4-6", 1000000, 128000, "known"),
     "claude-opus-4-8": limits("anthropic", "claude-opus-4-8", 1000000, 128000, "known"),
   },
@@ -376,7 +386,9 @@ describe("AiModelsTab", () => {
       const input = await screen.findByTestId("ai-model-sql_generation-input-limit");
       expect(input).toHaveValue("32,000");
       expect(screen.getByTestId("ai-model-sql_generation-output-limit")).toHaveValue("4,096");
-      expect(screen.getAllByText("Default: no published figure is known for this model.")).toHaveLength(1);
+      expect(
+        screen.getAllByText("Default: no published figure is known for this model."),
+      ).toHaveLength(1);
     });
 
     it("saves an edited limit as the org's own figures for that model", async () => {
@@ -406,7 +418,9 @@ describe("AiModelsTab", () => {
       fireEvent.click(screen.getByTestId("ai-models-save"));
 
       expect(
-        await screen.findByText("Enter both limits for claude-opus-4-6 as whole numbers above zero."),
+        await screen.findByText(
+          "Enter both limits for claude-opus-4-6 as whole numbers above zero.",
+        ),
       ).toBeInTheDocument();
       expect(mockSet).not.toHaveBeenCalled();
     });
@@ -468,7 +482,9 @@ describe("AiModelsTab", () => {
       expect(reset).toHaveTextContent("Use default limits");
       fireEvent.click(reset);
       expect(screen.getByTestId("ai-model-sql_generation-input-limit")).toHaveValue("32,000");
-      expect(screen.getByText("Default: no published figure is known for this model.")).toBeInTheDocument();
+      expect(
+        screen.getByText("Default: no published figure is known for this model."),
+      ).toBeInTheDocument();
     });
 
     it("looks up the limits of a model newly given to a task", async () => {

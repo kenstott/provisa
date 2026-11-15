@@ -129,9 +129,7 @@ function shownLimits(
 
 /** The digit-group separator of the page's language, so 32000 reads as 32,000 (or 32.000). */
 function groupSeparator(language: string): string {
-  const part = new Intl.NumberFormat(language)
-    .formatToParts(10000)
-    .find((p) => p.type === "group");
+  const part = new Intl.NumberFormat(language).formatToParts(10000).find((p) => p.type === "group");
   return part?.value ?? ",";
 }
 
@@ -233,9 +231,7 @@ export function AiModelsTab() {
 
   // A model given to a task here, not yet saved, has its limits looked up once typing pauses.
   useEffect(() => {
-    const missing = assignedPairs
-      .split("\t")
-      .filter((k) => k && !requestedLimits.current.has(k));
+    const missing = assignedPairs.split("\t").filter((k) => k && !requestedLimits.current.has(k));
     if (missing.length === 0) return;
     const timer = setTimeout(() => {
       for (const key of missing) {
@@ -566,13 +562,7 @@ export function AiModelsTab() {
                   </FieldGroup>
                   {model.trim() && (
                     <FieldGroup row style={{ alignItems: "flex-end" }}>
-                      <FormField
-                        size="short"
-                        hint={
-                          limitErrors[key] ??
-                          (shown?.source === "default" ? t("aiModelsTab.limitsDefaultNote") : undefined)
-                        }
-                      >
+                      <FormField size="short">
                         <NumberInput
                           label={t("aiModelsTab.inputLimitLabel")}
                           data-testid={`ai-model-${k}-input-limit`}
@@ -614,6 +604,11 @@ export function AiModelsTab() {
                         </Button>
                       )}
                     </FieldGroup>
+                  )}
+                  {model.trim() && (limitErrors[key] || shown?.source === "default") && (
+                    <Text c="dimmed" size="xs" data-testid={`ai-model-${k}-limits-note`}>
+                      {limitErrors[key] ?? t("aiModelsTab.limitsDefaultNote")}
+                    </Text>
                   )}
                 </FormLayout>
               </Stack>
