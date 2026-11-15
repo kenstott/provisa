@@ -2678,6 +2678,8 @@ def _carry_by_source(statement: Any, marked: str | None = None) -> Any:
     for column in on.find_all(exp.Column):
         if column.table in own:
             column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
+            column.set("db", None)  # an unaliased target is named schema-qualified
+            column.set("catalog", None)
     source = (
         f"(SELECT {alias}.*, {_quoted(_MERGE_TARGET)}.ctid AS {_quoted(_MERGE_ROW)} "
         f"FROM {marked} FULL JOIN {bare.sql(dialect='postgres')} "
