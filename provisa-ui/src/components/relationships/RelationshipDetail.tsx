@@ -80,7 +80,7 @@ export function RelationshipDetail({
   return (
     <>
       {set !== null && (
-        <Text fz="sm" c="dimmed" data-testid="relationship-detail-resolver-note">
+        <Text fz="sm" c="dimmed" mb="md" data-testid="relationship-detail-resolver-note">
           {t("relationshipRow.resolverNote", { resolver: set })}
         </Text>
       )}
@@ -106,6 +106,7 @@ export function RelationshipDetail({
                 title={t("relationshipRow.retireResolverTitle", { resolver: set })}
                 consequence={t("relationshipRow.retireResolverConsequence")}
                 ariaLabel={t("relationshipRow.retireResolver")}
+                confirmLabel={t("relationshipRow.retireResolver")}
                 testId="relationship-detail-retire-resolver"
                 onDelete={() => (onRetireResolver ? onRetireResolver(set) : Promise.resolve(false))}
               />

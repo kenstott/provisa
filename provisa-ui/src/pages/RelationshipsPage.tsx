@@ -748,8 +748,11 @@ export function RelationshipsPage() {
     />
   ) : null;
   const panelIsReadOnly = !showForm && reverseForm === null && editingRel === null;
+  // A code resolver set being changed is named, as a relationship being edited is.
   const panelTitle = showForm
-    ? t("relationshipsPage.panelNewRelationship")
+    ? rs.changing
+      ? form.originalId
+      : t("relationshipsPage.panelNewRelationship")
     : selectedRel && reverseForm
       ? t("relationshipModals.reverseTitle")
       : selectedRel
