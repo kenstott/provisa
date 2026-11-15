@@ -96416,18 +96416,25 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     that is only called when the code resolver is landed''. A code resolver is a function of a code source
     that decides which rows of one table relate to which rows of another by its own algorithm (a spatial,
     vector or fuzzy match), where equal column values do not. When its result is landed (kept as a table),
-    the resolver provides a function marked @change, and Provisa calls that function, and only then: a
-    resolver whose result is not landed is never asked for changes. The decorator states what only the
-    author knows: the key columns of a match, the column that marks a match as removed, and the cursor
-    column. Provisa passes the cursor it stored after the last successful run and the resolver''s inputs
-    as tables (REQ-2226); the function returns the matches that changed since then, each with its key,
-    its values, its removal flag and its cursor value. Provisa lands them with the existing incremental
-    apply (REQ-874): upsert by key, and a returned row flagged as removed removes its key. The function
-    never learns where its result is stored and holds no connection to it. Called with no cursor, on the
-    first run and on every whole rebuild, it returns every match, so one function serves both and a periodic
-    whole rebuild is required. The result is refreshed when one of its input tables changes. A function
-    whose returned rows lack a key column, repeat a key within one result, or whose cursor goes backwards
-    is refused with the reason.'
+    the resolver provides a function marked @change, and Provisa calls that function, and only then: a resolver
+    whose result is not landed is never asked for changes. The decorator states what only the author knows:
+    the key columns of a match, the column that marks a match as removed, and the cursor column. Provisa
+    passes the cursor it stored after the last successful run and the resolver''s inputs as tables (REQ-2226);
+    the function returns the matches that changed since then, each with its key, its values, its removal
+    flag and its cursor value. Provisa lands them with the existing incremental apply (REQ-874): upsert
+    by key, and a returned row flagged as removed removes its key. The function never learns where its result
+    is stored and holds no connection to it. Called with no cursor, on the first run and on every whole
+    rebuild, it returns every match, so one function serves both and a periodic whole rebuild is required.
+    The result is refreshed when one of its input tables changes. A function whose returned rows lack a
+    key column, repeat a key within one result, or whose cursor goes backwards is refused with the reason.
+    (Amended 2026-11-15, @CHANGE IS A FRESHNESS MECHANISM AND NEEDS THE INCREMENTAL SETTING:) Maintainer
+    2026-11-15. @change is how a landed resolver''s result is kept fresh. Two things are needed before Provisa
+    calls it: the resolver''s result is landed, and that landed result is set to be kept incrementally (the
+    existing incremental apply setting, REQ-874). With the result landed and the incremental setting off,
+    a refresh recomputes the whole result with the resolver''s ordinary function and @change is not called.
+    The @change function is found by its name: it carries the name of the table it keeps fresh. A code resolver
+    with no @change function has the incremental option disabled: it cannot be chosen for that table, in
+    the UI or in configuration, and the reason is shown.'
   scenario: 'Given a code resolver matching stores to regions by distance, with a function marked @change
     naming its key, removal and cursor columns
 
