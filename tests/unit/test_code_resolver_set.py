@@ -68,7 +68,6 @@ def _input(**more) -> CodeResolverInput:
         "target_table": "clips",
         "target_column": "id",
         "target_match": "clip_id",
-        "materialize": True,
     }
     fields.update(more)
     return CodeResolverInput(**fields)
@@ -233,10 +232,10 @@ async def test_a_save_refused_part_way_leaves_nothing_of_the_set(model):
 
 async def test_a_change_saves_the_three_objects_through_their_updates(model):
     model.tables["order_clips"] = _table(3, "order_clips", [], code_resolver="order_clips")
-    result = await code_resolver.save(_INFO, _input(materialize=False), creating=False)
+    result = await code_resolver.save(_INFO, _input(refresh_interval=60), creating=False)
     assert result.success, result.message
     assert _kinds(model) == ["update", "edge", "edge", "mark", "mark"]
-    assert model.calls[0][1].materialize is False
+    assert model.calls[0][1].mv_refresh_interval == 60
 
 
 async def test_a_change_to_a_set_that_does_not_exist_is_refused(model):

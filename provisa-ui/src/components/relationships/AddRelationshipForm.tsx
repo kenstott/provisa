@@ -9,11 +9,11 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Checkbox, Select, Text, TextInput } from "@mantine/core";
+import { Select, Text, TextInput } from "@mantine/core";
 import type { ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { isCodeResolver, tableRef, type RelForm } from "./relationship-types";
-import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 
 interface AddRelationshipFormProps {
   form: RelForm;
@@ -179,16 +179,6 @@ export function AddRelationshipForm({
                 data-testid="rel-form-target-match"
               />
             </FormField>
-            <FormChecks>
-              <FormField size="short" help={t("addRelationshipForm.resolverLandHelp")}>
-                <Checkbox
-                  label={t("addRelationshipForm.resolverLandLabel")}
-                  checked={form.materialize}
-                  onChange={(e) => setForm({ ...form, materialize: e.currentTarget.checked })}
-                  data-testid="rel-form-resolver-land"
-                />
-              </FormField>
-            </FormChecks>
           </>
         ) : form.targetType === "table" ? (
           <>

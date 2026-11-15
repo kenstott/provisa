@@ -57,7 +57,6 @@ export function useCodeResolverForm(page: CodeResolverFormPage) {
           targetTable: form.targetTableId,
           targetColumn: form.targetColumn,
           targetMatch: form.targetMatch,
-          materialize: form.materialize,
           refreshInterval: parseInt(form.refreshInterval) || 300,
         },
         !changing,
@@ -106,7 +105,6 @@ export function useCodeResolverForm(page: CodeResolverFormPage) {
         resolver: set.resolver,
         sourceMatch: set.sourceMatch,
         targetMatch: set.targetMatch,
-        materialize: set.materialize,
         refreshInterval: String(set.refreshInterval),
       });
       setShowForm(true);

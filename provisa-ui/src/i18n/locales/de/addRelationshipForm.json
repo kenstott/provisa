@@ -43,8 +43,6 @@
     "resolverHelp": "Eine Abfrage einer Codequelle, die die Quell- und die Zieltabelle erhält und je Treffer eine Zeile liefert.",
     "resolverNone": "Keine Abfrage einer Codequelle erhält zwei Tabellen",
     "sourceMatchLabel": "Trefferspalte mit dem Quellschlüssel",
-    "targetMatchLabel": "Trefferspalte mit dem Zielschlüssel",
-    "resolverLandLabel": "Treffer als Tabelle speichern",
-    "resolverLandHelp": "Die Treffer werden gespeichert und neu berechnet, wenn sich eine der Tabellen ändert. Andernfalls läuft der Resolver bei jedem Lesen der Beziehung."
+    "targetMatchLabel": "Trefferspalte mit dem Zielschlüssel"
   }
 }

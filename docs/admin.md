@@ -146,6 +146,28 @@ You declare an associative table as an edge; Provisa never discovers one. `viaTa
 
 `viaLabelSource` says where the exposed name comes from, and Cypher gets each form in upper snake case. `column` uses `viaTypeValue` (`BONDED_PAIR`), `table` uses the junction table's own name (`PET_COMPANIONS`), and `fixed` uses the declared `alias`. A junction table declared this way is an edge. Provisa drops it from the node labels, so it never appears as a node pill in the graph UI.
 
+Relate two tables with a code resolver. A code `@query` decides which rows match (see [code resolvers](code-sources.md#code-resolvers)), and Provisa keeps a materialized view of the matches and two relationships through it, saved, changed and retired as one:
+
+```graphql
+mutation {
+  createCodeResolver(input: {
+    id: "store_regions"
+    resolver: "stores_in_regions"
+    sourceTable: "stores"
+    sourceColumn: "id"
+    sourceMatch: "store_id"
+    targetTable: "regions"
+    targetColumn: "id"
+    targetMatch: "region_id"
+  }) {
+    success
+    message
+  }
+}
+```
+
+`updateCodeResolver` takes the same input and changes the set. `retireCodeResolver(id: "store_regions")` retires all three objects. `codeResolvers` lists the sets in service. Each relationship of a set carries its id in `codeResolver`, and `updateRelationship`, `deleteRelationship`, `updateTable`, `deleteTable` and `setTableDraft` refuse an object of a set, naming it.
+
 ### AI Relationship Discovery
 
 Ask Claude for FK candidates over REST:

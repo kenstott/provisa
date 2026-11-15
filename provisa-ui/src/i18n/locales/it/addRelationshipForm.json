@@ -43,8 +43,6 @@
     "resolverHelp": "Una query di un'origine di codice che riceve la tabella di origine e quella di destinazione e restituisce una riga per corrispondenza.",
     "resolverNone": "Nessuna query di un'origine di codice riceve due tabelle",
     "sourceMatchLabel": "Colonna di corrispondenza con la chiave di origine",
-    "targetMatchLabel": "Colonna di corrispondenza con la chiave di destinazione",
-    "resolverLandLabel": "Conserva le corrispondenze come tabella",
-    "resolverLandHelp": "Le corrispondenze vengono salvate e ricalcolate quando una delle tabelle cambia. Altrimenti il resolver viene eseguito a ogni lettura della relazione."
+    "targetMatchLabel": "Colonna di corrispondenza con la chiave di destinazione"
   }
 }

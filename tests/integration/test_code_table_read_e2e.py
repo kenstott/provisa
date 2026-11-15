@@ -81,6 +81,13 @@ class Outcome:
     body: str
 
 
+@dataclass
+class Match:
+    order_id: int
+    clip_id: int
+    score: float
+
+
 def orders() -> list[Order]:
     """@table"""
     return [Order(1, "emea", "s1", "t1"), Order(2, "amer", "s2", "t2")]
@@ -224,6 +231,23 @@ def read_tag(orders: TableRef[Tag]) -> list[Outcome]:
 def read_clips(clips: TableRef[Clip]) -> list[Outcome]:
     """@query"""
     return [_read(clips)]
+
+
+def match_region(orders: TableRef[Lean], clips: TableRef[Clip]) -> list[Match]:
+    """A code resolver: which clip each order relates to. It compares regions here; a real one
+    would match by distance, vector or a fuzzy rule. It reads both tables as its caller.
+
+    @query
+    """
+    read_orders, read_clips = _read(orders), _read(clips)
+    if read_orders.status != "ok" or read_clips.status != "ok":
+        raise RuntimeError(f"{read_orders.body} {read_clips.body}")
+    return [
+        Match(int(o["id"]), int(c["id"]), 1.0)
+        for o in json.loads(read_orders.body)
+        for c in json.loads(read_clips.body)
+        if o["region"] == c["region"]
+    ]
 
 
 def read_star(orders: TableRef[Lean]) -> list[Outcome]:
@@ -390,6 +414,7 @@ def ledger(server):
         "read_clips",
         "read_star",
         "read_qualified_secret",
+        "match_region",
     ):
         _command(server, function)
     return ids
@@ -608,3 +633,111 @@ def test_the_served_grant_of_a_named_column_is_the_named_list(server, ledger):
         assert reader in readers, secret
         assert other not in readers, secret
         assert "viewer" not in readers, secret
+
+
+# REQ-2249: a code resolver set -- one resolver picked, kept as a bridge view over its call and two
+# ordinary relationships through it. Landed, the matches are built as the organisation's
+# administrator and served from the view; following the relationships applies the reader's row
+# rules on the target.
+
+_RESOLVER_SET = (
+    'id: "order_clips", resolver: "match_region", sourceTable: "orders", sourceColumn: "id", '
+    'sourceMatch: "order_id", targetTable: "clips", targetColumn: "id", targetMatch: "clip_id"'
+)
+
+
+def _try(srv, mutation: str) -> dict:
+    """An admin mutation's result, refused or not."""
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={"query": "mutation { " + mutation + " { success message code } }"},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=srv.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    assert "errors" not in response.json(), response.text
+    (result,) = response.json()["data"].values()
+    return result
+
+
+def _graphql(srv, role: str, query: str) -> dict:
+    response = httpx.post(
+        f"{srv.base_url}/data/graphql",
+        json={"query": query},
+        headers={"X-Provisa-Role": role},
+        timeout=srv.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert not body.get("errors"), body
+    return body["data"]
+
+
+@pytest.fixture(scope="module")
+def order_clips(server, ledger):
+    """The set saved landed, and its matches built."""
+    _admin(server, f"createCodeResolver(input: {{{_RESOLVER_SET}}})")
+    refreshed = _admin(server, 'refreshMv(mvId: "view-order_clips")')
+    assert refreshed["success"], refreshed
+
+
+_FOLLOW = "{ orders(order_by: {id: asc}) { id order_clips { score clips { id region } } } }"
+
+
+def test_a_landed_code_resolver_is_followed_to_its_matches_and_the_target(server, order_clips):
+    deadline = time.monotonic() + 300
+    while True:
+        orders = _graphql(server, _ROLE, _FOLLOW)["orders"]
+        if all(o["order_clips"] for o in orders):
+            break
+        assert time.monotonic() < deadline, orders
+        time.sleep(2)
+    assert orders == [
+        {"id": 1, "order_clips": [{"score": 1.0, "clips": {"id": 1, "region": "emea"}}]},
+        {"id": 2, "order_clips": [{"score": 1.0, "clips": {"id": 2, "region": "amer"}}]},
+    ]
+
+
+def test_the_target_is_read_under_the_readers_row_rules(server, order_clips):
+    """The landed matches were built as the administrator, who reads both clips; the analyst's
+    row rule on clips (id = 1) still holds where the relationship reaches the target."""
+    orders = _graphql(server, _ANALYST, _FOLLOW)["orders"]
+    assert orders[0]["order_clips"] == [{"score": 1.0, "clips": {"id": 1, "region": "emea"}}]
+    assert orders[1]["order_clips"] == [{"score": 1.0, "clips": None}]
+
+
+def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason(server, ledger):
+    refused = _try(
+        server,
+        'createCodeResolver(input: {id: "order_regions", resolver: "match_region", '
+        'sourceTable: "orders", sourceColumn: "id", sourceMatch: "order_id", '
+        'targetTable: "clips", targetColumn: "id", targetMatch: "region_id"})',
+    )
+    assert not refused["success"]
+    assert refused["code"] == "schema.code_resolver_refused"
+    assert "its rows carry no 'region_id'" in refused["message"], refused
+
+
+def test_a_part_of_the_set_is_not_retired_apart_from_it(server, order_clips):
+    refused = _try(server, 'deleteRelationship(id: "order_clips_target")')
+    assert not refused["success"]
+    assert refused["code"] == "schema.code_resolver_part", refused
+
+
+def test_retiring_the_set_retires_all_three_and_keeps_the_name(server, order_clips):
+    """Last in the module: it retires the set the tests above follow."""
+    retired = _admin(server, 'retireCodeResolver(id: "order_clips")')
+    assert retired["success"], retired
+    response = httpx.post(
+        f"{server.base_url}/admin/graphql",
+        json={"query": "{ relationships { id } codeResolvers { id } }"},
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    listed = response.json()["data"]
+    assert not {"order_clips_matches", "order_clips_target"} & {
+        r["id"] for r in listed["relationships"]
+    }
+    assert listed["codeResolvers"] == []
+    again = _try(server, f"createCodeResolver(input: {{{_RESOLVER_SET}}})")
+    assert not again["success"], again

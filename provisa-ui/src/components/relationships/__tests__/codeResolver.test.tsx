@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // REQ-2249: a code resolver is picked in the add form as one thing -- the resolver, the columns of
-// its matches holding each table's key, and whether the matches are kept -- and a relationship
+// its matches holding each table's key -- and a relationship
 // that is part of one says so, offering to change or retire the set rather than itself.
 
 import { describe, it, expect, vi } from "vitest";
@@ -61,7 +61,7 @@ describe("isCodeResolver", () => {
 });
 
 describe("the add form's code resolver target", () => {
-  it("asks for the resolver, its match columns and whether to keep the matches", () => {
+  it("asks for the resolver and the columns of its matches holding each key", () => {
     render(
       <AddRelationshipForm
         form={{ ...EMPTY_FORM, targetType: "resolver", resolver: "match_region" }}
@@ -77,7 +77,6 @@ describe("the add form's code resolver target", () => {
     expect(screen.getByTestId("rel-form-resolver")).toBeInTheDocument();
     expect(screen.getByTestId("rel-form-source-match")).toBeInTheDocument();
     expect(screen.getByTestId("rel-form-target-match")).toBeInTheDocument();
-    expect(screen.getByTestId("rel-form-resolver-land")).toBeInTheDocument();
     // A table target's own fields are not asked.
     expect(screen.queryByTestId("rel-form-cardinality")).toBeNull();
     expect(screen.queryByTestId("rel-form-function")).toBeNull();

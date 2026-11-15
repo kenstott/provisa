@@ -846,7 +846,6 @@ export interface CodeResolver {
   targetTable: string;
   targetColumn: string;
   targetMatch: string;
-  materialize: boolean;
   refreshInterval: number;
 }
 

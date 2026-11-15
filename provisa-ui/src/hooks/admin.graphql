@@ -776,7 +776,6 @@ query CodeResolversQuery {
     targetTable
     targetColumn
     targetMatch
-    materialize
     refreshInterval
   }
 }

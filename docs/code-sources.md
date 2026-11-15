@@ -370,6 +370,54 @@ Writing works the way it does for any table:
 
 When two commands fit one operation, tag the one it is with `@insert <table>`, `@update <table>` or `@delete <table>`, where `<table>` is the table's `@table` function. Two that fit with no tag are refused when you register the table, and so is a tag on a command that doesn't fit. A write to a table with no command bound for it is refused, naming the operation.
 
+### Relating two tables: code resolvers {: #code-resolvers }
+
+Sometimes equal column values don't tell you which rows of two tables belong together. A store sits inside a region, a document resembles another, or a name nearly matches. A code resolver decides it with your own algorithm. It is a `@query` that takes the source table and the target table as its two table parameters, in that order, and returns one row per match. Each row carries the key of each side and any other column you compute, such as a score.
+
+```python
+from dataclasses import dataclass
+
+from provisa_services import TableRef
+
+
+@dataclass
+class Store:
+    id: int
+    lat: float
+    lon: float
+
+
+@dataclass
+class Region:
+    id: int
+    polygon: str
+
+
+@dataclass
+class Match:
+    store_id: int
+    region_id: int
+    score: float
+
+
+def stores_in_regions(stores: TableRef[Store], regions: TableRef[Region]) -> list[Match]:
+    """@query"""
+    ...
+```
+
+Register the function as a command. Then, on the Relationships page, add a relationship whose target type is **Code resolver**. Pick the source table and its key, the target table and its key, the resolver, and the columns of its rows that hold each key. Provisa keeps the choice as three objects of kinds it already has:
+
+- a materialized view over the resolver's call, `SELECT * FROM stores_in_regions('retail.stores', 'geo.regions') AS m`, named by the id you give;
+- `<id>_matches`, from the source table to that view (one-to-many), served under the id;
+- `<id>_target`, from the view to the target table (many-to-one), served under the target table's name.
+
+A reader follows them like any relationships: `stores { store_regions { score regions { name } } }`.
+
+- **Landed.** The matches are kept as a table. Provisa works them out again when either table changes, and at the latest after the refresh interval. A view over a command call counts the tables the call is given as its inputs. The matches can't be computed each time they are read: Provisa runs a command call before it expands the views a statement reads, so a view held only as SQL would never call its resolver.
+- **Governed.** The build reads both tables as the organisation's administrator, as any materialized view's build does. A column of the view is visible to the roles that see both keys. Following `<id>_target` reads the target table under the reader's own row rules and column visibility.
+- **Refused.** A command that isn't a code `@query`, doesn't take exactly two tables, takes any other argument, or whose rows lack either key is refused when you save the relationship, with the reason.
+- **One thing.** The three objects carry the set's id, and you change or retire them only as a set. The Relationships page offers **Change code resolver** and **Retire code resolver** on either relationship. Editing or deleting one of them on its own page is refused, naming the set. Retiring the set retires all three, and their names stay taken.
+
 ### Where the code comes from {: #where-the-code-comes-from }
 
 - **A package.** An npm package for Node, a PyPI package for Python, or a Go module for Go, at an exact version (a Go module's is `v1.2.0`).

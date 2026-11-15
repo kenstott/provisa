@@ -1534,8 +1534,8 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
 @strawberry.input
 class CodeResolverInput:  # REQ-2249
     """A code resolver set as the form saves it: the resolver relating ``source_table`` to
-    ``target_table``, each table's key, the resolver's columns carrying them, and whether its
-    matches are landed (provisa/api/admin/code_resolver.py)."""
+    ``target_table``, each table's key, the resolver's columns carrying them, and how often its
+    landed matches are worked out again at the latest (provisa/api/admin/code_resolver.py)."""
 
     id: str
     resolver: str
@@ -1545,7 +1545,6 @@ class CodeResolverInput:  # REQ-2249
     target_table: str
     target_column: str
     target_match: str
-    materialize: bool = False
     refresh_interval: int = 300
 
 
@@ -1561,7 +1560,6 @@ class CodeResolverType:  # REQ-2249
     target_table: str
     target_column: str
     target_match: str
-    materialize: bool
     refresh_interval: int
 
 

@@ -43,8 +43,6 @@
     "resolverHelp": "Una consulta de un origen de código que recibe la tabla de origen y la de destino y devuelve una fila por coincidencia.",
     "resolverNone": "Ninguna consulta de un origen de código recibe dos tablas",
     "sourceMatchLabel": "Columna de coincidencia con la clave de origen",
-    "targetMatchLabel": "Columna de coincidencia con la clave de destino",
-    "resolverLandLabel": "Guardar las coincidencias como tabla",
-    "resolverLandHelp": "Las coincidencias se guardan y se recalculan cuando cambia cualquiera de las tablas. Si no, el resolver se ejecuta cada vez que se lee la relación."
+    "targetMatchLabel": "Columna de coincidencia con la clave de destino"
   }
 }

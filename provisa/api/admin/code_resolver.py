@@ -15,9 +15,10 @@ A person picks one code resolver (``provisa.codesource.resolver``) to relate a s
 target table. Provisa keeps that as three objects of kinds that already exist, saved by the
 mutations that save each kind, with every right and check those ask:
 
-* the bridge, a view over the resolver's call (``call_sql``), named by the set's id, in the source
-  table's domain. Landed when the set says so (a materialized view, refreshed when either table
-  changes), else computed from the call whenever it is read, as the caller;
+* the bridge, a materialized view over the resolver's call (``call_sql``), named by the set's id,
+  in the source table's domain, worked out again when either table changes. It is always landed:
+  a command call is run by the statement that names it, and a view read inline is expanded after
+  that step, so a bridge that is not landed would never call its resolver;
 * ``<id>_matches``, the source table to the bridge, one-to-many, on the source table's key and the
   match's column carrying it, served under the set's id;
 * ``<id>_target``, the bridge to the target table, many-to-one, on the match's column carrying the
@@ -229,7 +230,7 @@ def _bridge_input(
             for c in command.get("output_columns") or []
         ],
         view_sql=call_sql(command, _statement_name(source), _statement_name(target)),
-        materialize=input.materialize,
+        materialize=True,
         mv_refresh_interval=input.refresh_interval,
     )
 
@@ -291,7 +292,7 @@ async def save(
     info: "StrawberryInfo", input: "CodeResolverInput", *, creating: bool
 ) -> "MutationResult":
     """Save the set ``input`` describes: a new set, or a change to one (its resolver, its keys,
-    whether its matches are landed). Each object is saved by its own kind's mutation."""
+    its refresh interval). Each object is saved by its own kind's mutation."""
     from provisa.api.admin.capabilities import require_domain
     from provisa.api.admin.schema_helpers import _get_pool
     from provisa.api.admin.schema_mutation import _save_relationship_as_caller, _single
@@ -477,7 +478,6 @@ async def listed(conn: "Connection") -> list[dict]:
                 "target_table": target.alias or target.table_name,
                 "target_column": to_target.target_column,
                 "target_match": to_target.source_column,
-                "materialize": bool(bridge.materialize),
                 "refresh_interval": int(bridge.mv_refresh_interval),
             }
         )

@@ -43,8 +43,6 @@
     "resolverHelp": "Une requête d'une source de code qui reçoit la table source et la table cible et renvoie une ligne par correspondance.",
     "resolverNone": "Aucune requête de source de code ne reçoit deux tables",
     "sourceMatchLabel": "Colonne de correspondance portant la clé source",
-    "targetMatchLabel": "Colonne de correspondance portant la clé cible",
-    "resolverLandLabel": "Conserver les correspondances dans une table",
-    "resolverLandHelp": "Les correspondances sont stockées et recalculées quand l'une des tables change. Sinon, le resolver s'exécute à chaque lecture de la relation."
+    "targetMatchLabel": "Colonne de correspondance portant la clé cible"
   }
 }

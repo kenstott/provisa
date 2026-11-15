@@ -10591,7 +10591,5 @@
   "zh/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "zh/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "zh/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "zh/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
-  "zh/addRelationshipForm.json::addRelationshipForm.resolverLandLabel": "Keep the matches as a table",
-  "zh/addRelationshipForm.json::addRelationshipForm.resolverLandHelp": "The matches are stored and worked out again when either table changes. Left off, the resolver runs each time the relationship is read."
+  "zh/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
 }
