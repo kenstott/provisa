@@ -3151,7 +3151,7 @@ if(throwIf(ifNull(length($n) &gt; 63, 0), &#x27;postgresql-error 0A000: pg_char_
 <tr><td><strong>a NULL array</strong><br>A call PostgreSQL answers NULL for its NULL array argument, as that NULL.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.null_of_a_null_array: A call PostgreSQL answers NULL for its NULL array argument, as that NULL, named for the</code></pre></td><td><ul><li>A set-returning call of a NULL array is its own row&#x27;s: generate_subscripts and pg_options_to_table are refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>array_agg</strong><br>The values of an aggregate as an array, a NULL kept; NULL of no rows.</td><td><pre><code>array_agg($a)
 =&gt;
-function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows.</code></pre></td><td></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.clickhouse.kept_nulls: array_agg of every value, a NULL kept, and NULL of no rows; of arrays, their array.</code></pre></td><td><ul><li>Of arrays, no rows have no answer: ClickHouse holds no NULL of an array, so the call raises. <code>0A000</code> array_agg of no rows does not read this value</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_trunc</strong><br>The start of a unit of a timestamp.</td><td><pre><code>date_trunc($u, $t)
 =&gt;
 function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. Of a</code></pre><pre><code>date_trunc($u, $t, $z)
