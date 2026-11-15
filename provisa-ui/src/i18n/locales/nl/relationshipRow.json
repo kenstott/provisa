@@ -44,10 +44,10 @@
     "sameEntity": "Dezelfde entiteit",
     "sameEntityHint": "De gekoppelde rijen zijn hetzelfde ding: één term verankert beide tabellen, 1:1 op sleutels",
     "cardinalityOneToOne": "één-op-één",
-    "resolverNote": "Onderdeel van coderesolver {{resolver}}. Zijn overeenkomstenview en zijn twee relaties worden samen gewijzigd en buiten gebruik gesteld.",
+    "resolverNote": "Onderdeel van coderesolver {{resolver}}. Zijn overeenkomstenview en zijn drie relaties worden samen gewijzigd en buiten gebruik gesteld.",
     "changeResolver": "Coderesolver wijzigen",
     "retireResolver": "Coderesolver buiten gebruik stellen",
     "retireResolverTitle": "Coderesolver {{resolver}} buiten gebruik stellen?",
-    "retireResolverConsequence": "Zijn overeenkomstenview en beide relaties worden samen buiten gebruik gesteld. Hun namen blijven bezet."
+    "retireResolverConsequence": "Zijn overeenkomstenview en zijn drie relaties worden samen buiten gebruik gesteld. Hun namen blijven bezet."
   }
 }

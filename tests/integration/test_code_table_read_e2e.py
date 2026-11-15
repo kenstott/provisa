@@ -724,7 +724,28 @@ def test_a_part_of_the_set_is_not_retired_apart_from_it(server, order_clips):
     assert refused["code"] == "schema.code_resolver_part", refused
 
 
-def test_retiring_the_set_retires_all_three_and_keeps_the_name(server, order_clips):
+def test_cypher_serves_the_set_as_one_edge_carrying_the_score(server, order_clips):
+    """The junction relationship is Cypher's edge from an order to its clip; the match's other
+    column is the edge's property. The bridge itself is no node."""
+    response = httpx.post(
+        f"{server.base_url}/data/cypher",
+        json={
+            "query": "MATCH (o)-[m:ORDER_CLIPS]->(c) "
+            "RETURN o.id AS order_id, m.score AS score, c.id AS clip_id ORDER BY order_id"
+        },
+        headers={"X-Provisa-Role": _ROLE},
+        timeout=server.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+    answer = response.json()
+    rows = [
+        tuple(r[c] for c in answer["columns"]) if isinstance(r, dict) else tuple(r)
+        for r in answer["rows"]
+    ]
+    assert rows == [(1, 1.0, 1), (2, 1.0, 2)], answer
+
+
+def test_retiring_the_set_retires_all_four_and_keeps_the_name(server, order_clips):
     """Last in the module: it retires the set the tests above follow."""
     retired = _admin(server, 'retireCodeResolver(id: "order_clips")')
     assert retired["success"], retired
@@ -735,7 +756,7 @@ def test_retiring_the_set_retires_all_three_and_keeps_the_name(server, order_cli
         timeout=server.request_timeout + 120,
     )
     listed = response.json()["data"]
-    assert not {"order_clips_matches", "order_clips_target"} & {
+    assert not {"order_clips", "order_clips_matches", "order_clips_target"} & {
         r["id"] for r in listed["relationships"]
     }
     assert listed["codeResolvers"] == []

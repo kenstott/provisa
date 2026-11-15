@@ -44,10 +44,10 @@
     "sameEntity": "同一实体",
     "sameEntityHint": "它连接的行是同一事物：一个术语关联两张表，按键一对一连接",
     "cardinalityOneToOne": "一对一",
-    "resolverNote": "属于代码解析器 {{resolver}}。其匹配视图和两个关系一起更改和停用。",
+    "resolverNote": "属于代码解析器 {{resolver}}。其匹配视图和三个关系一起更改和停用。",
     "changeResolver": "更改代码解析器",
     "retireResolver": "停用代码解析器",
     "retireResolverTitle": "停用代码解析器 {{resolver}}？",
-    "retireResolverConsequence": "其匹配视图和两个关系会一起停用。它们的名称仍被占用。"
+    "retireResolverConsequence": "其匹配视图和三个关系会一起停用。它们的名称仍被占用。"
   }
 }

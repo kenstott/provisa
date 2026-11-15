@@ -8,9 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A code resolver set: one resolver picked, kept as three objects of kinds that already exist --
-a bridge view over the resolver's call and two ordinary relationships through it -- saved by each
-kind's own mutation, marked with the set, and changed or retired only through the set."""
+"""A code resolver set: one resolver picked, kept as objects of kinds that already exist -- a
+bridge view over the resolver's call, a junction relationship through it (Cypher's one edge) and
+two ordinary relationships to and from it (GraphQL's two levels) -- saved by each kind's own
+mutation, marked with the set, and changed or retired only through the set."""
 
 # Requirements: REQ-2249, REQ-2248
 
@@ -161,10 +162,10 @@ def _kinds(m: _Model) -> list[str]:
     return [kind for kind, _ in m.calls]
 
 
-async def test_a_new_set_saves_the_bridge_then_both_relationships_then_marks_and_releases(model):
+async def test_a_new_set_saves_the_bridge_then_its_relationships_then_marks_and_releases(model):
     result = await code_resolver.save(_INFO, _input(), creating=True)
     assert result.success, result.message
-    assert _kinds(model) == ["register", "edge", "edge", "mark", "mark", "release"]
+    assert _kinds(model) == ["register", "edge", "edge", "edge", "mark", "mark", "release"]
     view = model.calls[0][1]
     assert view.table_name == "order_clips" and view.schema_name == "views"
     assert view.view_sql == "SELECT * FROM match_region('fx.orders', 'fx.clips') AS m"
@@ -175,7 +176,22 @@ async def test_a_new_set_saves_the_bridge_then_both_relationships_then_marks_and
         "clip_id": ["admin", "analyst"],
         "score": ["admin", "analyst"],
     }
-    matches, to_target = model.calls[1][1], model.calls[2][1]
+    junction, matches, to_target = (model.calls[i][1] for i in (1, 2, 3))
+    # One edge from source to target through the bridge, named by a fixed label: Cypher's.
+    assert (junction.id, junction.source_table_id, junction.target_table_id) == (
+        "order_clips",
+        "orders",
+        "clips",
+    )
+    assert (junction.via_table, junction.via_source_column, junction.via_target_column) == (
+        "order_clips",
+        "order_id",
+        "clip_id",
+    )
+    assert (junction.via_label_source, junction.alias) == ("fixed", "ORDER_CLIPS")
+    assert not junction.disable_cypher
+    # The two levels GraphQL nests, left out of Cypher, where the bridge is no node.
+    assert matches.disable_cypher and to_target.disable_cypher
     assert (matches.id, matches.source_table_id, matches.target_table_id) == (
         "order_clips_matches",
         "orders",
@@ -226,7 +242,14 @@ async def test_a_save_refused_part_way_leaves_nothing_of_the_set(model):
     model.refuse_edge = "order_clips_target"
     result = await code_resolver.save(_INFO, _input(), creating=True)
     assert not result.success
-    assert _kinds(model) == ["register", "edge", "edge", "discard_edges", "discard_bridge"]
+    assert _kinds(model) == [
+        "register",
+        "edge",
+        "edge",
+        "edge",
+        "discard_edges",
+        "discard_bridge",
+    ]
     assert model.calls[-1][1] == 3
 
 
@@ -234,7 +257,7 @@ async def test_a_change_saves_the_three_objects_through_their_updates(model):
     model.tables["order_clips"] = _table(3, "order_clips", [], code_resolver="order_clips")
     result = await code_resolver.save(_INFO, _input(refresh_interval=60), creating=False)
     assert result.success, result.message
-    assert _kinds(model) == ["update", "edge", "edge", "mark", "mark"]
+    assert _kinds(model) == ["update", "edge", "edge", "edge", "mark", "mark"]
     assert model.calls[0][1].mv_refresh_interval == 60
 
 

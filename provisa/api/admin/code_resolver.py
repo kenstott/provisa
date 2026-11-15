@@ -12,21 +12,27 @@
 serves.
 
 A person picks one code resolver (``provisa.codesource.resolver``) to relate a source table to a
-target table. Provisa keeps that as three objects of kinds that already exist, saved by the
+target table. Provisa keeps that as four objects of kinds that already exist, saved by the
 mutations that save each kind, with every right and check those ask:
 
 * the bridge, a materialized view over the resolver's call (``call_sql``), named by the set's id,
   in the source table's domain, worked out again when either table changes. It is always landed:
   a command call is run by the statement that names it, and a view read inline is expanded after
   that step, so a bridge that is not landed would never call its resolver;
+* ``<id>``, the junction relationship from the source table to the target table through the
+  bridge, named in Cypher by its fixed label (the id in upper case), each match's other columns
+  (a score) its properties;
 * ``<id>_matches``, the source table to the bridge, one-to-many, on the source table's key and the
   match's column carrying it, served under the set's id;
 * ``<id>_target``, the bridge to the target table, many-to-one, on the match's column carrying the
   target's key and the target table's key, served under the target table's name.
 
+GraphQL nests the two plain relationships; Cypher serves the junction as one edge and leaves the
+plain ones out, as a junction's table is no node.
+
 Each carries the set's id (``code_resolver``), so the set is found again from its objects. They
 are changed and retired together, through the set: the ordinary pages refuse to change or retire
-one of them apart from it (:func:`held_by_set`). Retiring the set retires all three (REQ-2248).
+one of them apart from it (:func:`held_by_set`). Retiring the set retires all four (REQ-2248).
 
 A bridge column is visible to the roles that see both tables' keys: a role that cannot see one
 end's key does not see which rows of it match."""
@@ -64,15 +70,22 @@ _VIEW_SCHEMA = "views"
 
 @dataclass(frozen=True)
 class SetNames:
-    """The names of a set's three objects."""
+    """The names of a set's objects: its bridge view and its three relationships."""
 
     bridge: str
+    edge: str
     matches: str
     target: str
 
+    @property
+    def relationships(self) -> list[str]:
+        return [self.edge, self.matches, self.target]
+
 
 def names(set_id: str) -> SetNames:
-    return SetNames(bridge=set_id, matches=f"{set_id}_matches", target=f"{set_id}_target")
+    return SetNames(
+        bridge=set_id, edge=set_id, matches=f"{set_id}_matches", target=f"{set_id}_target"
+    )
 
 
 @contextmanager
@@ -236,10 +249,26 @@ def _bridge_input(
 
 
 def _edges(input: "CodeResolverInput", target: dict) -> list[Any]:
+    """The set's three relationships. The junction is the one edge Cypher serves, its matches'
+    other columns (a score) its properties; the two plain ones are the levels GraphQL nests, and
+    are left out of Cypher, where a junction's table is no node."""
     from provisa.api.admin.types import RelationshipInput
 
     set_names = names(input.id)
     return [
+        RelationshipInput(
+            id=set_names.edge,
+            source_table_id=input.source_table,
+            target_table_id=input.target_table,
+            source_column=input.source_column,
+            target_column=input.target_column,
+            cardinality="one-to-many",
+            alias=input.id.upper(),
+            via_table=set_names.bridge,
+            via_source_column=input.source_match,
+            via_target_column=input.target_match,
+            via_label_source="fixed",
+        ),
         RelationshipInput(
             id=set_names.matches,
             source_table_id=input.source_table,
@@ -248,6 +277,7 @@ def _edges(input: "CodeResolverInput", target: dict) -> list[Any]:
             target_column=input.source_match,
             cardinality="one-to-many",
             graphql_alias=input.id,
+            disable_cypher=True,
         ),
         RelationshipInput(
             id=set_names.target,
@@ -257,6 +287,7 @@ def _edges(input: "CodeResolverInput", target: dict) -> list[Any]:
             target_column=input.target_column,
             cardinality="many-to-one",
             graphql_alias=target["alias"] or target["table_name"],
+            disable_cypher=True,
         ),
     ]
 
@@ -270,7 +301,7 @@ async def _mark(conn: "Connection", set_id: str, bridge_id: int) -> None:
     )
     await conn.execute_core(
         update(relationships)
-        .where(relationships.c.id.in_([set_names.matches, set_names.target]))
+        .where(relationships.c.id.in_(set_names.relationships))
         .values(code_resolver=set_id)
     )
 
@@ -283,7 +314,7 @@ async def _discard(conn: "Connection", set_id: str, bridge_id: int | None) -> No
     from provisa.core.repositories import table as table_repo
 
     set_names = names(set_id)
-    await rel_repo.remove_where(conn, relationships.c.id.in_([set_names.matches, set_names.target]))
+    await rel_repo.remove_where(conn, relationships.c.id.in_(set_names.relationships))
     if bridge_id is not None:
         await table_repo.discard(conn, bridge_id)
 
@@ -371,7 +402,7 @@ async def save(
 async def retire(
     info: "StrawberryInfo", set_id: str, reason: str | None = None
 ) -> "MutationResult":
-    """Retire the set: its two relationships and its bridge, together (REQ-2248). Their names
+    """Retire the set: its three relationships and its bridge, together (REQ-2248). Their names
     stay taken. Refused as a whole when any of them may not be retired."""
     from provisa.api.admin.capabilities import require_capability
     from provisa.api.admin.domain_guard import require_domains
@@ -394,7 +425,7 @@ async def retire(
                 resolver=set_id,
             )
         domains = {bridge["domain_id"]}
-        for rel_id in (set_names.matches, set_names.target):
+        for rel_id in set_names.relationships:
             rel = await rel_repo.get(conn, rel_id)
             assert rel is not None  # a set holds both its relationships
             for table_id in (rel["source_table_id"], rel["target_table_id"]):
@@ -404,7 +435,7 @@ async def retire(
         require_domains(info, domains)
         try:
             async with conn.transaction():
-                for rel_id in (set_names.matches, set_names.target):
+                for rel_id in set_names.relationships:
                     await rel_repo.delete(conn, rel_id, reason=reason)
                 await table_repo.delete(conn, bridge["id"], reason=reason)
         except (rel_repo.RelationshipDeleteRefused, table_repo.TableDeleteRefused) as refused:
@@ -429,7 +460,7 @@ async def retire(
 
 async def listed(conn: "Connection") -> list[dict]:
     """Every code resolver set in service, as the form shows and edits it: read back from its
-    three objects."""
+    objects."""
     from provisa.codesource.resolver import called
 
     out: list[dict] = []
