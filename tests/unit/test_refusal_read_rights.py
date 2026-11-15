@@ -69,6 +69,7 @@ def _serving(*table_ids: int) -> DependentsReader:
         metric=lambda row: False,
         term=lambda domains: False,
         command=lambda name: False,
+        retired=lambda domain_id: False,
     )
 
 
@@ -94,6 +95,64 @@ async def test_provisas_own_identity_is_told_every_dependent(model):
     async with db.acquire() as conn:
         _said, named = await refusal(conn, SERVICE_READER, refused)
     assert sorted(d["id"] for d in named) == sorted(ids.values())
+
+
+# --- a retired table still holds its source (REQ-2248, maintainer 2026-11-15) ------------------
+
+
+@pytest.fixture
+async def retired_holder(control_plane):
+    """Source ``old`` and domain ``archive`` hold one table, ``ledger``, deleted: retired. The
+    source's delete is refused."""
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(sources).values(id="old", type="postgresql"))
+        await conn.execute_core(insert(domains).values(id="archive"))
+        table_id = await table_repo.upsert(
+            conn,
+            Table(
+                source_id="old",
+                domain_id="archive",
+                schema_name="public",
+                table_name="ledger",
+                columns=[Column(name="id", visible_to=["seller"], data_type="integer")],
+            ),
+        )
+        assert table_id is not None
+        assert await table_repo.delete(conn, table_id) is True
+        with pytest.raises(source_repo.SourceDeleteRefused) as refused:
+            await source_repo.delete(conn, "old")
+    return db, table_id, refused.value
+
+
+def _acting_in(*domain_ids: str) -> DependentsReader:
+    """A caller served no column, acting in ``domain_ids``: it may act on a retired object in
+    them, as the retired listing shows it one to restore (REQ-2248)."""
+    return DependentsReader(
+        column=lambda table_id, column: False,
+        metric=lambda row: False,
+        term=lambda domains: False,
+        command=lambda name: False,
+        retired=lambda domain_id: domain_id in domain_ids,
+    )
+
+
+async def test_a_retired_table_is_named_as_retired_to_a_caller_acting_in_its_domain(
+    retired_holder,
+):
+    db, ledger, refused = retired_holder
+    async with db.acquire() as conn:
+        said, named = await refusal(conn, _acting_in("archive"), refused)
+    assert said == "Source 'old' is still referred to by: retired table ledger"
+    assert [(d["kind"], d["id"], d["retired"]) for d in named] == [("table", ledger, True)]
+
+
+async def test_a_retired_table_outside_the_callers_domains_is_not_named(retired_holder):
+    db, _ledger, refused = retired_holder
+    async with db.acquire() as conn:
+        said, named = await refusal(conn, _acting_in("sales"), refused)
+    assert named == []
+    assert said == "Source 'old' is still referred to by objects outside your grants"
 
 
 def test_a_column_drop_names_per_column_only_what_is_readable():

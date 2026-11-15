@@ -261,7 +261,8 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-19
     """Delete one source: THE delete, for every surface. False when there is no such source.
 
     Refused (:class:`SourceDeleteRefused`), naming each dependent, while a table is registered
-    against it or a command is bound to it: the operator removes those first, each through its
+    against it -- a retired one too, which still holds its source and is never cascaded away
+    (REQ-2248) -- or a command is bound to it: the operator removes those first, each through its
     own action. (It used to delete the source's registered tables with it.) A source the
     deployment keeps is refused. Its parts go with it: its tag assignments and its remote
     registration rows — an API or Kafka registration with its endpoints or topics. One
