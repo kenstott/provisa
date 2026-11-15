@@ -13,6 +13,7 @@
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
 from provisa.core import model_change, model_uri
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
@@ -52,11 +53,9 @@ class ReservedRelationshipPrefix(ValueError):
 
 
 def reserved_prefix_of(rel_id: str) -> str | None:
-    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the seed's
-    own, from the one definition the seed's removal of undeclared rows uses."""
-    from provisa.api._meta_seed import seed_relationship_id_prefixes
-
-    return next((p for p in seed_relationship_id_prefixes() if rel_id.startswith(p)), None)
+    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the one
+    definition in core that the seed's removal of undeclared rows uses too."""
+    return next((p for p in BUILTIN_RELATIONSHIP_ID_PREFIXES if rel_id.startswith(p)), None)
 
 
 async def upsert(

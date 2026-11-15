@@ -10580,5 +10580,6 @@
   "zh-HK/aiModelsTab.json::aiModelsTab.limitsDefaultNote": "Default: no published figure is known for this model.",
   "zh-HK/aiModelsTab.json::aiModelsTab.limitsResetKnown": "Use published limits",
   "zh-HK/aiModelsTab.json::aiModelsTab.limitsResetDefault": "Use default limits",
-  "zh-HK/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
+  "zh-HK/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero.",
+  "zh-HK/serverErrors.json::serverErrors.schema.relationship_id_reserved": "Relationship id '{{id}}' begins with '{{prefix}}', a prefix kept for built-in relationships. Choose another id."
 }

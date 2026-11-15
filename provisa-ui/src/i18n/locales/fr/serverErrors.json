@@ -458,6 +458,7 @@
       "role_id_taken": "Le rôle « {{role}} » existe déjà",
       "role_updated": "Rôle « {{role}} » mis à jour",
       "relationship_id_taken": "La relation « {{relationship}} » existe déjà",
+      "relationship_id_reserved": "L'identifiant de relation « {{id}} » commence par « {{prefix}} », un préfixe réservé aux relations intégrées. Choisissez un autre identifiant.",
       "relationship_graphql_alias_taken": "L'alias GraphQL « {{alias}} » est déjà l'alias de la relation « {{relationship}} » depuis « {{table}} »",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tâche planifiée « {{task}} » mise à jour",

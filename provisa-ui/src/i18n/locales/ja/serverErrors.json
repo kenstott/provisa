@@ -458,6 +458,7 @@
       "role_id_taken": "ロール「{{role}}」はすでに存在します",
       "role_updated": "ロール「{{role}}」を更新しました",
       "relationship_id_taken": "リレーションシップ「{{relationship}}」はすでに存在します",
+      "relationship_id_reserved": "リレーションシップ ID「{{id}}」は、組み込みのリレーションシップ用に予約されている接頭辞「{{prefix}}」で始まっています。別の ID を指定してください。",
       "relationship_graphql_alias_taken": "GraphQL エイリアス「{{alias}}」は、すでに「{{table}}」からのリレーションシップ「{{relationship}}」のエイリアスです",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました",

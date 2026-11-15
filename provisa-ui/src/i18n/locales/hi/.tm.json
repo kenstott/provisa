@@ -10585,5 +10585,6 @@
   "hi/aiModelsTab.json::aiModelsTab.limitsDefaultNote": "Default: no published figure is known for this model.",
   "hi/aiModelsTab.json::aiModelsTab.limitsResetKnown": "Use published limits",
   "hi/aiModelsTab.json::aiModelsTab.limitsResetDefault": "Use default limits",
-  "hi/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
+  "hi/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero.",
+  "hi/serverErrors.json::serverErrors.schema.relationship_id_reserved": "Relationship id '{{id}}' begins with '{{prefix}}', a prefix kept for built-in relationships. Choose another id."
 }

@@ -115,3 +115,14 @@ async def test_the_admin_save_refuses_a_reserved_prefix_with_a_code(
         {"id": "meta:orders:customers", "prefix": "meta:"},
     )
     assert await _ids(plane) == []
+
+
+def test_every_declared_seed_id_carries_a_core_prefix():
+    """The seed declares its ids under the one core definition of the built-in prefixes."""
+    from provisa.api._meta_seed import meta_relationship_seed_rows
+    from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
+
+    ids = [cols["id"] for _s, _t, _v, cols in meta_relationship_seed_rows()]
+    assert ids
+    assert all(i.startswith(BUILTIN_RELATIONSHIP_ID_PREFIXES) for i in ids)
+    assert {i.split(":", 1)[0] + ":" for i in ids} == set(BUILTIN_RELATIONSHIP_ID_PREFIXES)

@@ -458,6 +458,7 @@
       "role_id_taken": "Роль '{{role}}' уже существует",
       "role_updated": "Роль '{{role}}' обновлена",
       "relationship_id_taken": "Связь '{{relationship}}' уже существует",
+      "relationship_id_reserved": "Идентификатор связи '{{id}}' начинается с '{{prefix}}' — префикса, зарезервированного для встроенных связей. Выберите другой идентификатор.",
       "relationship_graphql_alias_taken": "Псевдоним GraphQL '{{alias}}' уже является псевдонимом связи '{{relationship}}' из '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Запланированная задача '{{task}}' обновлена",

@@ -458,6 +458,7 @@
       "role_id_taken": "התפקיד '{{role}}' כבר קיים",
       "role_updated": "התפקיד '{{role}}' עודכן",
       "relationship_id_taken": "הקשר '{{relationship}}' כבר קיים",
+      "relationship_id_reserved": "מזהה הקשר '{{id}}' מתחיל ב-'{{prefix}}', קידומת השמורה לקשרים מובנים. בחרו מזהה אחר.",
       "relationship_graphql_alias_taken": "כינוי ה-GraphQL '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "המשימה המתוזמנת '{{task}}' עודכנה",

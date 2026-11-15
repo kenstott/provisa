@@ -458,6 +458,7 @@
       "role_id_taken": "A função '{{role}}' já existe",
       "role_updated": "Função '{{role}}' atualizada",
       "relationship_id_taken": "O relacionamento '{{relationship}}' já existe",
+      "relationship_id_reserved": "O id do relacionamento '{{id}}' começa com '{{prefix}}', um prefixo reservado para relacionamentos integrados. Escolha outro id.",
       "relationship_graphql_alias_taken": "O alias GraphQL '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada",
