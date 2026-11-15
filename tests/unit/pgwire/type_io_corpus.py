@@ -647,7 +647,10 @@ REFUSALS: dict[str, int] = {
     "txid_snapshot_in": 1,
     "uuid_in": 2,
     "varbit_in": 1,
-    "xid8in": 3,
+    # Its NULL too, 2026-11-15: answered as a NULL of text before, a type that is not xid8; the
+    # form refuses every value of xid8 on the engines, so its NULL is one of its refusals
+    # (REQ-2236, a form refused by name is one with no ordinary value it answers).
+    "xid8in": 4,
     "xid8out": 3,
     "xml_in": 6,
     "xml_out": 4,

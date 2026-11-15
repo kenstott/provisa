@@ -22,7 +22,7 @@ import pytest
 
 from provisa.core import pg_tsearch
 from provisa.core import pg_tsearch_parse as parse
-from provisa.core.pg_error import PostgresError
+from provisa.core.pg_error import PostgresError, from_engine
 from provisa.core.pg_tsearch_english import lexize
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.transpile import transpile
@@ -194,3 +194,50 @@ def test_a_search_of_a_column_reads_its_vector_once_within_clickhouses_max_query
         "FROM (VALUES ('The Fat Rats'::text)) AS t(c1)"
     )
     assert len(transpile(sql, "clickhouse")) < 262144
+
+
+@pytest.mark.parametrize(
+    ("row", "sqlstate", "message"),
+    [
+        ("ARRAY['x', NULL, 'z']", "22004", "lexeme array may not contain nulls"),
+        ("ARRAY['']", "2200F", "lexeme array may not contain empty strings"),
+        # array_to_tsvector reads its items in order: the first that is wrong is the error.
+        ("ARRAY['x', '', NULL]", "2200F", "lexeme array may not contain empty strings"),
+        ("ARRAY['x', NULL, '']", "22004", "lexeme array may not contain nulls"),
+    ],
+)
+def test_array_to_tsvector_of_a_column_raises_postgresqls_error_for_a_null_or_empty_lexeme(
+    row: str, sqlstate: str, message: str
+):
+    connection = duckdb.connect()
+    connection.execute(f"CREATE TABLE t AS SELECT CAST({row} AS VARCHAR[]) AS a")
+    written = transpile("SELECT array_to_tsvector(CAST(a AS text[])) AS v FROM t", "duckdb")
+    with pytest.raises(duckdb.Error) as raised:
+        connection.execute(written).fetchall()
+    said = from_engine(raised.value)
+    assert said is not None
+    assert (said.sqlstate, str(said)) == (sqlstate, message)
+
+
+def test_array_to_tsvector_of_a_column_answers_its_lexemes():
+    connection = duckdb.connect()
+    connection.execute("CREATE TABLE t AS SELECT CAST(ARRAY['z', 'x', 'z'] AS VARCHAR[]) AS a")
+    written = transpile("SELECT array_to_tsvector(CAST(a AS text[])) AS v FROM t", "duckdb")
+    assert connection.execute(written).fetchall() == [("'x' 'z'",)]
+
+
+@pytest.mark.parametrize("dialect", ["trino", "clickhouse"])
+@pytest.mark.parametrize(
+    ("literal", "said"),
+    [
+        ("'{x,NULL,z}'", "22004: lexeme array may not contain nulls"),
+        ("'{\"\"}'", "2200F: lexeme array may not contain empty strings"),
+    ],
+)
+def test_array_to_tsvector_of_a_literal_written_as_its_items_keeps_postgresqls_errors(
+    dialect: str, literal: str, said: str
+):
+    """Trino and ClickHouse read an array's text as its items cast to the array (the array text
+    pass): the call that reads them raises what PostgreSQL raises, on the engine."""
+    written = transpile(f"SELECT pg_catalog.array_to_tsvector({literal}::text[]) AS v", dialect)
+    assert said in written
