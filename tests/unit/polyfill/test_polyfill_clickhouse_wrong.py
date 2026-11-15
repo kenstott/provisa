@@ -42,7 +42,6 @@ def test_each_row_is_in_the_grid():
     [
         'SELECT pg_catalog."array_agg"(NULL::integer) AS v',
         "SELECT array_agg(x) AS v FROM t",
-        "SELECT array_agg('{1}'::integer[]) AS v",
     ],
 )
 def test_array_agg_keeps_its_nulls_and_is_null_of_no_rows(sql):
@@ -98,3 +97,96 @@ def test_current_schemas_on_duckdb_is_unchanged():
 def test_array_agg_of_an_order_is_refused_by_name():
     with pytest.raises(RowRefused, match="array_agg"):
         _clickhouse("SELECT array_agg(x ORDER BY y) AS v FROM t")
+
+
+_OF_ARRAYS = [
+    "SELECT array_agg('{1}'::integer[]) AS v",
+    "SELECT array_agg(ARRAY[1]) AS v",
+    "SELECT array_agg(a) AS v FROM (VALUES (ARRAY[1,2]), (ARRAY[3,4])) t(a)",
+]
+
+
+@pytest.mark.parametrize("sql", _OF_ARRAYS)
+def test_array_agg_of_arrays_writes_no_null_of_an_array(sql):
+    """ClickHouse 24.3 holds no NULL of an array: if(count() = 0, NULL, <array of arrays>) is its
+    error 'some of them are Array and some of them are not' (run 43725815055), not an answer."""
+    written = _clickhouse(sql)
+    assert "groupArray(" in written
+    assert "THEN NULL" not in written.upper() and ", NULL," not in written.upper(), written
+    sqlglot.parse_one(written, read="clickhouse")
+
+
+def _on_chdb(sql: str) -> str:
+    import chdb
+
+    return chdb.query(_clickhouse(sql), "TabSeparated").bytes().decode().strip()
+
+
+def _raised_on_chdb(sql: str) -> tuple[str, str]:
+    from provisa.core.pg_error import from_engine
+
+    with pytest.raises(Exception) as raised:  # noqa: PT011 -- chdb raises its own
+        _on_chdb(sql)
+    said = from_engine(raised.value)
+    assert said is not None, str(raised.value)[:300]
+    return said.sqlstate, str(said)
+
+
+@pytest.mark.parametrize(
+    ("sql", "answer"),
+    [
+        ("SELECT array_agg(ARRAY[1]) AS v", "[[1]]"),
+        ("SELECT array_agg(a) AS v FROM (VALUES (ARRAY[1,2]), (ARRAY[3,4])) t(a)", "[[1,2],[3,4]]"),
+        (
+            "SELECT array_agg(a) AS v FROM (VALUES (ARRAY['a,b', 'c']), (ARRAY['d', 'e'])) t(a)",
+            "[['a,b','c'],['d','e']]",
+        ),
+    ],
+)
+def test_array_agg_of_arrays_answers_their_array(sql, answer):
+    assert _on_chdb(sql) == answer
+
+
+@pytest.mark.parametrize(
+    ("sql", "said"),
+    [
+        # PostgreSQL's NULL of no rows, which ClickHouse has no value of: the edge raises.
+        (
+            "SELECT array_agg(a) AS v FROM (VALUES (ARRAY[1])) t(a) WHERE false",
+            ("0A000", "array_agg of no rows does not read this value"),
+        ),
+        # PostgreSQL 17's accumArrayResultArr.
+        (
+            "SELECT array_agg(a) AS v FROM (VALUES (ARRAY[1]), (CAST(ARRAY[] AS integer[]))) t(a)",
+            ("2202E", "cannot accumulate empty arrays"),
+        ),
+        (
+            "SELECT array_agg(a) AS v FROM (VALUES (ARRAY[1]), (ARRAY[1, 2])) t(a)",
+            ("2202E", "cannot accumulate arrays of different dimensionality"),
+        ),
+        (
+            "SELECT array_agg(a) AS v FROM (VALUES (ARRAY[[1, 2], [3, 4]]), (ARRAY[[1, 2, 3, 4]])) t(a)",
+            ("2202E", "cannot accumulate arrays of different dimensionality"),
+        ),
+    ],
+)
+def test_array_agg_of_arrays_raises_what_postgresql_raises(sql, said):
+    assert _raised_on_chdb(sql) == said
+
+
+def test_array_agg_opens_the_walk_only_where_its_row_has_a_form():
+    """The row has a form on ClickHouse alone: on Trino array_agg is the engine's own, and its name
+    does not walk a statement through every row (run 43725815055: a range form's own substrings,
+    each guarded as a call's, passed Trino's compiler limit)."""
+    from provisa.transpiler.function_macros import mentioned
+
+    assert mentioned("SELECT array_agg(x) AS v FROM t", "clickhouse")
+    assert not mentioned("SELECT array_agg(x) AS v FROM t", "trino")
+
+
+def test_a_multirange_of_an_aggregated_array_on_trino_keeps_its_forms_own_substrings():
+    from provisa.compiler.native_subtype import mark_subtype_operations
+
+    statement = "SELECT tstzmultirange(VARIADIC array_agg(v ORDER BY i))::text AS r FROM s.t"
+    marked = mark_subtype_operations(statement, {("s", "t"): {"v": "tstzrange"}})
+    assert "GREATEST(" not in transpile(marked, "trino").upper()

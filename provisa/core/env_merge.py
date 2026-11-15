@@ -278,15 +278,34 @@ def merged_tree(
     """
     stamp = retirement.stamped(why, by)
     merged = dict(target)
+    kept: list[str] = []
     for path in chosen:
         if path in source:
             merged[path] = _keeping_retired(path, source[path], target.get(path), stamp)
         elif removals and path in merged and table_of(path) not in IDENTITY_ONLY:
             if table_of(path) in RETIRED_NOT_REMOVED:
                 merged[path] = _retired(merged[path], stamp)
+                kept.append(path)
             else:
                 del merged[path]
+    _keep_what_the_retired_stand_on(merged, target, kept)
     return merged
+
+
+def _keep_what_the_retired_stand_on(merged: Tree, target: Tree, kept: list[str]) -> None:
+    """Put back in ``merged`` each object of the target that one the merge ``kept`` retired cannot
+    stand without (:func:`requirements`), and what that one needs in turn.
+
+    A retired table keeps its row, and its row names its domain, its terms and its edges: removing
+    the domain under it leaves a tree naming a domain it does not hold, refused whole by the apply
+    (REQ-2248: the merge retires the table; nothing of the model under it is removed with it)."""
+    queue = sorted(kept)
+    while queue:
+        path = queue.pop()
+        for needed in sorted(requirements(path, merged[path], target)):
+            if needed not in merged and needed in target:
+                merged[needed] = target[needed]
+                queue.append(needed)
 
 
 def _retired(body: dict[str, Any], stamp: dict[str, Any]) -> dict[str, Any]:
