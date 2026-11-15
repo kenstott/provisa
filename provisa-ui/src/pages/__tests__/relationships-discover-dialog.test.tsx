@@ -205,6 +205,19 @@ async function openDialog() {
   await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
 }
 
+// Pick an option from the one select named: every select's options stay in the document, so an
+// option is looked for in the list its own textbox controls.
+async function pick(selectName: string, optionName: string) {
+  const box = screen.getByRole("textbox", { name: selectName });
+  await userEvent.click(box);
+  const list = await waitFor(() => {
+    const found = document.getElementById(box.getAttribute("aria-controls") ?? "");
+    expect(found).not.toBeNull();
+    return found as HTMLElement;
+  });
+  await userEvent.click(within(list).getByRole("option", { name: optionName, hidden: true }));
+}
+
 const lastScope = () => countMock.mock.calls[countMock.mock.calls.length - 1][0];
 
 beforeEach(() => {
@@ -261,8 +274,7 @@ describe("Discovery dialog: the run's scope", () => {
 
   it("sends the source tables chosen", async () => {
     await openDialog();
-    await userEvent.click(screen.getByRole("textbox", { name: "Source tables" }));
-    await userEvent.click(await screen.findByRole("option", { name: "orders", hidden: true }));
+    await pick("Source tables", "orders");
     await waitFor(() => expect(lastScope().source_tables).toEqual([1]), SLOW);
     fireEvent.click(runButton());
     await waitFor(() => expect(startMock).toHaveBeenCalledWith({ ...SCOPE, source_tables: [1] }));
@@ -272,8 +284,7 @@ describe("Discovery dialog: the run's scope", () => {
     await openDialog();
     expect(screen.queryByRole("textbox", { name: "Target domains" })).not.toBeInTheDocument();
     fireEvent.click(sameBox());
-    await userEvent.click(await screen.findByRole("textbox", { name: "Target domains" }));
-    await userEvent.click(await screen.findByRole("option", { name: "crm", hidden: true }));
+    await pick("Target domains", "crm");
     await waitFor(
       () =>
         expect(lastScope()).toEqual({
@@ -344,8 +355,7 @@ describe("Discovery dialog: the request count before Run", () => {
     await openDialog();
     await waitFor(() => expect(countMock).toHaveBeenCalled(), SLOW);
     countMock.mockResolvedValue({ ...COUNT, requests: 5, by_group: { text: 5 } });
-    await userEvent.click(screen.getByRole("textbox", { name: "Source domains" }));
-    await userEvent.click(await screen.findByRole("option", { name: "crm", hidden: true }));
+    await pick("Source domains", "crm");
     await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
@@ -575,7 +585,8 @@ describe("Discovery dialog: the run's suggestions", () => {
       SLOW,
     );
     fireEvent.click(within(dialog()).getByTestId("candidates-accept-all"));
-    const ask = await screen.findByTestId("candidates-accept-all-confirm");
+    // The page's own suggestions list has the same confirmation: the open one is asked.
+    const ask = await screen.findByRole("dialog", { name: "Accept all suggestions" });
     expect(ask).toHaveTextContent(
       "Accept all 2 listed suggestions? Each becomes a registered relationship.",
     );
