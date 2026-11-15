@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} war bereits abgelehnt oder bereits vorhanden",
     "alreadyKnown_other": "{{count}} waren bereits abgelehnt oder bereits vorhanden",
     "invalid": "{{count}} nannte eine Tabelle oder Spalte, die es nicht gibt",
-    "invalid_other": "{{count}} nannten Tabellen oder Spalten, die es nicht gibt"
+    "invalid_other": "{{count}} nannten Tabellen oder Spalten, die es nicht gibt",
+    "semanticsCutShort": "Semantik: keine. Die Antwort des Modells endete an ihrer Längengrenze, bevor ein Vorschlag fertig war.",
+    "cutShortNote": "Die Antwort des Modells endete an ihrer Längengrenze; nur die fertigen Vorschläge wurden gelesen."
   }
 }

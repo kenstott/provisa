@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} ya estaba rechazada o ya existía",
     "alreadyKnown_other": "{{count}} ya estaban rechazadas o ya existían",
     "invalid": "{{count}} nombraba una tabla o columna que no existe",
-    "invalid_other": "{{count}} nombraban tablas o columnas que no existen"
+    "invalid_other": "{{count}} nombraban tablas o columnas que no existen",
+    "semanticsCutShort": "Semántica: ninguna. La respuesta del modelo se detuvo en su límite de longitud antes de terminar una sugerencia.",
+    "cutShortNote": "La respuesta del modelo se detuvo en su límite de longitud, así que solo se leyeron las sugerencias que terminó."
   }
 }

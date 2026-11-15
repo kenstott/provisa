@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} já estava rejeitado ou já existia",
     "alreadyKnown_other": "{{count}} já estavam rejeitados ou já existiam",
     "invalid": "{{count}} indicava uma tabela ou coluna que não existe",
-    "invalid_other": "{{count}} indicavam tabelas ou colunas que não existem"
+    "invalid_other": "{{count}} indicavam tabelas ou colunas que não existem",
+    "semanticsCutShort": "Semântica: nenhuma. A resposta do modelo parou no seu limite de tamanho antes de terminar uma sugestão.",
+    "cutShortNote": "A resposta do modelo parou no seu limite de tamanho, então só as sugestões que ele terminou foram lidas."
   }
 }
