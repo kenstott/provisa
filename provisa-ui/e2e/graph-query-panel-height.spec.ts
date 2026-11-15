@@ -105,10 +105,11 @@ test("query panel in expanded modal shows all lines without clipping", async ({ 
   const inlineEditor = page.locator(".gf-header-query-input .cm-editor").first();
   await expect(inlineEditor).toBeVisible({ timeout: 5000 });
 
-  // Now open the modal; queryFocused=true carries into the modal header so the editor is visible
-  const expandBtn = page.locator(".gf-icon-btn[aria-label='Expand']").first();
-  await expect(expandBtn).toBeVisible({ timeout: 5000 });
-  await expandBtn.click();
+  // Now open the modal; queryFocused=true carries into the modal header so the editor is visible.
+  // Opening the frame in the large view is a change of size, so the control reads Enlarge.
+  const enlargeBtn = page.locator(".gf-icon-btn[aria-label='Enlarge']").first();
+  await expect(enlargeBtn).toBeVisible({ timeout: 5000 });
+  await enlargeBtn.click();
 
   // Modal overlay should be visible
   const modalFrame = page.locator(".gf-modal-frame");
