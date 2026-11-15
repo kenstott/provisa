@@ -1336,6 +1336,13 @@ async def save_relationship(
             return refused.result
         except RetiredNameTaken as taken:  # REQ-2248
             return retired_name_result(taken)
+        except rel_repo.ReservedRelationshipPrefix as reserved:
+            return MutationResult(
+                success=False,
+                message=str(reserved),
+                code="schema.relationship_id_reserved",
+                params={"id": reserved.rel_id, "prefix": reserved.prefix},
+            )
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
         if needs_review:

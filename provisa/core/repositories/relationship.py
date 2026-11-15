@@ -37,10 +37,39 @@ class TableNotRegistered(ValueError):
         self.table_name = table_name
 
 
+class ReservedRelationshipPrefix(ValueError):
+    """A relationship id carries a prefix reserved for Provisa's built-in relationships. The
+    startup seed removes built-in rows it no longer declares, recognising them by that prefix, so
+    a relationship a person saved under one would be removed at the next boot."""
+
+    def __init__(self, rel_id: str, prefix: str) -> None:
+        self.rel_id = rel_id
+        self.prefix = prefix
+        super().__init__(
+            f"relationship id {rel_id!r} starts with {prefix!r}, a prefix reserved for "
+            "built-in relationships"
+        )
+
+
+def reserved_prefix_of(rel_id: str) -> str | None:
+    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the seed's
+    own, from the one definition the seed's removal of undeclared rows uses."""
+    from provisa.api._meta_seed import seed_relationship_id_prefixes
+
+    return next((p for p in seed_relationship_id_prefixes() if rel_id.startswith(p)), None)
+
+
 async def upsert(
     conn: "Connection", rel: Relationship
 ) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
-    """Upsert a relationship. Resolves table names to registered_tables IDs."""
+    """Upsert a relationship. Resolves table names to registered_tables IDs.
+
+    Refuses (:class:`ReservedRelationshipPrefix`) an id with a built-in prefix: the seed writes
+    its own relationships directly (``startup_seed._seed_meta_relationships``) and is the only
+    writer of those ids; every caller of this function is not the seed."""
+    prefix = reserved_prefix_of(rel.id)
+    if prefix is not None:
+        raise ReservedRelationshipPrefix(rel.id, prefix)
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise TableNotRegistered("Source", rel.source_table_id)
