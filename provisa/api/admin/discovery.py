@@ -28,6 +28,8 @@ from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
+from provisa.discovery.run import ChosenModel, Prepared, RunSpec, choose_model, count, prepare
+from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import require_capability_request
@@ -292,6 +294,192 @@ async def trigger_discovery(
 
         span.set_attribute("admin.source_count", len(all_candidates))
         return {"candidates_found": len(all_candidates), "stored_ids": stored_ids, **report}
+
+
+class RunScope(BaseModel):  # REQ-413
+    """A run's kinds, model and sets, as the dialog sends them. Tables None: every table of the
+    chosen domains. ``model`` None: the model assigned to relationship inference."""
+
+    kinds: list[DiscoveryKind] = Field(min_length=1)
+    source_domains: list[str] = Field(default_factory=list)
+    source_tables: list[int] | None = None
+    target_same_as_source: bool = True
+    target_domains: list[str] = Field(default_factory=list)
+    target_tables: list[int] | None = None
+    vendor: str | None = None
+    model: str | None = None
+
+    def spec(self) -> RunSpec:
+        if (self.vendor is None) != (self.model is None):
+            raise ApiError(
+                400,
+                "discovery.model_incomplete",
+                "A chosen model names both its vendor and its model",
+            )
+        return RunSpec(
+            kinds=frozenset(self.kinds),
+            source_domains=tuple(self.source_domains),
+            source_tables=None if self.source_tables is None else tuple(self.source_tables),
+            target_domains=tuple(self.target_domains),
+            target_tables=None if self.target_tables is None else tuple(self.target_tables),
+            same_as_source=self.target_same_as_source,
+            model=None if self.vendor is None or self.model is None else (self.vendor, self.model),
+        )
+
+
+async def _run_model(spec: RunSpec) -> ChosenModel | None:  # REQ-413, REQ-464
+    """The run's model when semantics is asked, refused when its vendor has no key."""
+    if "semantics" not in spec.kinds:
+        return None
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
+
+    pool = state.model_db
+    assert pool is not None
+    chosen = choose_model(await resolve_org_config(pool), await read_org_api_keys(pool), spec.model)
+    if chosen.problem is not None:
+        raise ApiError(
+            409,
+            "discovery.semantics_unavailable",
+            f"Semantics cannot run: {chosen.label} has no key. Set one under {WHERE_TO_SET}.",
+            model=chosen.label,
+            where=WHERE_TO_SET,
+        )
+    return chosen
+
+
+async def _prepared(spec: RunSpec) -> tuple[ChosenModel | None, Prepared]:
+    model = await _run_model(spec)
+    try:
+        prepared = await prepare(state, spec, model)
+    except NoRoomError as exc:
+        raise ApiError(
+            422,
+            "discovery.model_has_no_room",
+            f"The model cannot hold a request: {exc}",
+            model=None if model is None else model.label,
+        ) from exc
+    return model, prepared
+
+
+@router.get("/models")
+async def discovery_models(request: Request):  # REQ-413, REQ-464
+    """The run's Model select: the model assigned to relationship inference with its limits, and
+    every vendor with a key configured for the organization. Anyone who may run discovery may
+    read it."""
+    require_capability_request(request, "create_relationship")
+    from provisa.core.org_secrets import LLM_VENDORS, read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
+
+    pool = state.model_db
+    assert pool is not None
+    config = await resolve_org_config(pool)
+    keys = await read_org_api_keys(pool)
+    assigned = choose_model(config, keys, None)
+    endpoints = [
+        str(ep["id"]) for ep in (config.get("ai_endpoints", []) or []) if ep.get("enabled", True)
+    ]
+    vendors = [
+        v
+        for v in sorted(LLM_VENDORS) + endpoints
+        if choose_model(config, keys, (v, assigned.model)).problem is None
+    ]
+    return {
+        "assigned": {**assigned.describe(), "has_key": assigned.problem is None},
+        "vendors": vendors,
+        "semantics_available": bool(vendors),
+    }
+
+
+@router.get("/vendors/{vendor}/models")
+async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
+    """The models ``vendor`` serves, for the run's Model select; ``vendor`` must have a key."""
+    require_capability_request(request, "create_relationship")
+    import os
+
+    from provisa.api.admin.ai_models_router import _run_model_listing
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
+    from provisa.llm.vendor_models import (
+        VENDOR_API_KEY_ENV,
+        VENDOR_MODEL_APIS,
+        fetch_endpoint_models,
+        fetch_vendor_models,
+    )
+
+    pool = state.model_db
+    assert pool is not None
+    if vendor in VENDOR_MODEL_APIS:
+        # The org's key, else the deployment's, as the LLM client resolves it (REQ-1395).
+        api_key = (await read_org_api_keys(pool)).get(vendor)
+        if not api_key and vendor in VENDOR_API_KEY_ENV:
+            api_key = os.environ.get(VENDOR_API_KEY_ENV[vendor])
+        if not api_key:
+            raise ApiError(
+                409,
+                "discovery.vendor_has_no_key",
+                f"{vendor} has no key. Set one under {WHERE_TO_SET}.",
+                vendor=vendor,
+            )
+        key = api_key
+        models = await _run_model_listing(vendor, lambda: fetch_vendor_models(vendor, key))
+        return {"vendor": vendor, "models": models}
+    config = await resolve_org_config(pool)
+    endpoint = {ep["id"]: ep for ep in (config.get("ai_endpoints", []) or [])}.get(vendor)
+    if endpoint is None or not endpoint.get("enabled", True):
+        raise ApiError(
+            404,
+            "discovery.vendor_unknown",
+            f"{vendor} lists no models here; enter the model name",
+            vendor=vendor,
+        )
+    env = endpoint.get("api_key_env")
+    endpoint_key = os.environ.get(env) if env else None
+    if env and not endpoint_key:
+        raise ApiError(
+            409,
+            "discovery.vendor_has_no_key",
+            f"{vendor} has no key: set the {env} environment variable.",
+            vendor=vendor,
+        )
+    models = await _run_model_listing(
+        vendor,
+        lambda: fetch_endpoint_models(endpoint["style"], endpoint["base_url"], endpoint_key),
+    )
+    return {"vendor": vendor, "models": models}
+
+
+@router.get("/limits")
+async def discovery_model_limits(request: Request, vendor: str, model: str):  # REQ-464
+    """One vendor/model's input and output limits in tokens, shown beside the Model select."""
+    require_capability_request(request, "create_relationship")
+    from provisa.core.org_settings import resolve_org_config
+    from provisa.llm.limits import describe
+
+    pool = state.model_db
+    assert pool is not None
+    return describe(vendor, model, await resolve_org_config(pool))
+
+
+@router.post("/runs/count")
+async def count_run(request: Request, body: RunScope):  # REQ-413
+    """Before any model call: how many requests the run would make, by type group, for the
+    chosen kinds, model and sets."""
+    require_capability_request(request, "create_relationship")
+    spec = body.spec()
+    model, prepared = await _prepared(spec)
+    if model is None:
+        return {
+            "requests": 0,
+            "by_group": {},
+            "suggestions_per_request": 0,
+            "model": None,
+            "source_tables": len(prepared.source),
+            "target_tables": len(
+                prepared.target if prepared.target is not None else prepared.source
+            ),
+        }
+    return count(prepared, model)
 
 
 @router.get("/candidates")
