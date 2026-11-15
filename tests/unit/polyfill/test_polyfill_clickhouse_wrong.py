@@ -172,3 +172,21 @@ def test_array_agg_of_arrays_answers_their_array(sql, answer):
 )
 def test_array_agg_of_arrays_raises_what_postgresql_raises(sql, said):
     assert _raised_on_chdb(sql) == said
+
+
+def test_array_agg_opens_the_walk_only_where_its_row_has_a_form():
+    """The row has a form on ClickHouse alone: on Trino array_agg is the engine's own, and its name
+    does not walk a statement through every row (run 43725815055: a range form's own substrings,
+    each guarded as a call's, passed Trino's compiler limit)."""
+    from provisa.transpiler.function_macros import mentioned
+
+    assert mentioned("SELECT array_agg(x) AS v FROM t", "clickhouse")
+    assert not mentioned("SELECT array_agg(x) AS v FROM t", "trino")
+
+
+def test_a_multirange_of_an_aggregated_array_on_trino_keeps_its_forms_own_substrings():
+    from provisa.compiler.native_subtype import mark_subtype_operations
+
+    statement = "SELECT tstzmultirange(VARIADIC array_agg(v ORDER BY i))::text AS r FROM s.t"
+    marked = mark_subtype_operations(statement, {("s", "t"): {"v": "tstzrange"}})
+    assert "GREATEST(" not in transpile(marked, "trino").upper()
