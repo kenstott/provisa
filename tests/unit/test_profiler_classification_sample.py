@@ -145,14 +145,25 @@ def test_too_few_values_is_not_the_same_statement_as_no_kind():
     assert run.classification_outcome(j("c", "c", matched)) == "matched"
 
 
-@pytest.mark.parametrize("dialect", _ENGINES)
-@pytest.mark.parametrize(
-    "sample",
-    [Sample("whole"), Sample("block", 0.1), Sample("random", 0.1)],
-    ids=["whole", "block", "random"],
-)
-def test_the_statement_is_one_read_of_the_table_on_every_engine(dialect, sample):
-    sql = classification_sql("d.visits", _COLUMNS, sample, 500)
+# The samples each engine can be given: a block sample only where the reach offers TABLESAMPLE
+# SYSTEM (DuckDB and PostgreSQL direct, Trino's lake connectors). The ClickHouse connector offers
+# none (connector_base.block_sample is False for it), so no block sample is ever sent to ClickHouse.
+_ENGINE_SAMPLES = [
+    (dialect, sample)
+    for dialect in _ENGINES
+    for sample in ("whole", "block", "random")
+    if not (dialect == "clickhouse" and sample == "block")
+]
+_SAMPLES = {
+    "whole": Sample("whole"),
+    "block": Sample("block", 0.1),
+    "random": Sample("random", 0.1),
+}
+
+
+@pytest.mark.parametrize("dialect,sample_name", _ENGINE_SAMPLES)
+def test_the_statement_is_one_read_of_the_table_on_every_engine(dialect, sample_name):
+    sql = classification_sql("d.visits", _COLUMNS, _SAMPLES[sample_name], 500)
     physical = sqlglot.transpile(sql, read="postgres", write=dialect)[0]
     tree = sqlglot.parse_one(physical, read=dialect)
     # One statement, one reference to the table, no set operation and no per-column query.
@@ -172,13 +183,15 @@ def test_the_statement_is_one_read_of_the_table_on_every_engine(dialect, sample)
 def test_each_engine_is_given_the_statement_in_its_own_dialect():
     sql = classification_sql("d.visits", _COLUMNS, Sample("block", 0.1), 500)
     physical = {d: sqlglot.transpile(sql, read="postgres", write=d)[0] for d in _ENGINES}
+    random_sql = classification_sql("d.visits", _COLUMNS, Sample("random", 0.1), 500)
+    physical["clickhouse"] = sqlglot.transpile(random_sql, read="postgres", write="clickhouse")[0]
     assert 'RANDOM() AS "__order"' in physical["duckdb"]
     assert 'RANDOM() AS "__order"' in physical["postgres"]
     assert 'RAND() AS "__order"' in physical["trino"]
     assert 'randCanonical() AS "__order"' in physical["clickhouse"]
     assert "TABLESAMPLE SYSTEM (10.0 PERCENT)" in physical["duckdb"]
     assert "TABLESAMPLE SYSTEM (10.0)" in physical["trino"]
-    assert "SAMPLE SYSTEM 10.0 PERCENT" in physical["clickhouse"]
+    assert "randCanonical() < 0.1" in physical["clickhouse"]
     assert f'COUNT(*) OVER () AS "{SAMPLE_ROWS}"' in physical["postgres"]
 
 
