@@ -21,6 +21,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Optional, TypeVar
 
+from provisa.llm.limits import Limits, limits_for
+
 # Requirements: REQ-355, REQ-356, REQ-358
 
 log = logging.getLogger(__name__)
@@ -137,6 +139,9 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         # no key configured here (e.g. a local ollama/lmstudio endpoint) fall through to
         # aisuite's own env/config resolution.
         self._api_keys = api_keys
+        # REQ-464: kept to answer the model's limits (provisa.llm.limits), the org's overrides
+        # being in this same resolved config.
+        self._config = cfg
         # REQ-1790: custom endpoints (id -> {style, base_url, api_key_env}), keyed by the `id` a
         # role assignment names as its "vendor". A role that names one of these is dispatched to
         # aisuite's openai/anthropic provider (per `style`) with `base_url` overridden, rather
@@ -193,6 +198,10 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
     @property
     def model(self) -> str:
         return self._model
+
+    def limits(self) -> Limits:
+        """The primary model's input and output limits in tokens, and their source (REQ-464)."""
+        return limits_for(self._vendor, self._model, self._config)
 
     def key_problem(self) -> str | None:
         """Why the model cannot be called, as far as that shows with no call made: neither its

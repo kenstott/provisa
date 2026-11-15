@@ -47,6 +47,13 @@
     "saveButtonLabel": "AIモデル設定を保存",
     "loading": "読み込み中…",
     "saved": "保存しました。",
-    "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。"
+    "savedRestartRequired": "保存しました。適用するにはサービスを再起動してください。",
+    "limitsIntro": "各モデルにはトークン単位の上限が2つあります。1回のリクエストで読み込める最大量（入力）と、書ける最長の回答（出力）です。公開値のあるモデルはその値から始まります。実際の値が異なる場合は変更してください。",
+    "inputLimitLabel": "入力上限（トークン）",
+    "outputLimitLabel": "出力上限（トークン）",
+    "limitsDefaultNote": "既定値: このモデルの公開値は不明です。",
+    "limitsResetKnown": "公開値の上限を使用",
+    "limitsResetDefault": "既定の上限を使用",
+    "limitsIncomplete": "{{model}} の上限を両方とも、0 より大きい整数で入力してください。"
   }
 }
