@@ -68,7 +68,7 @@ jobs:
       # The real PostgreSQL (the service below) the catalog and type comparisons run against, and
       # the source Provisa registers over it. An ephemeral service on the runner: not a secret.
       CONFORMANCE_PG_HOST: 127.0.0.1
-      CONFORMANCE_PG_PORT: "55432"
+      CONFORMANCE_PG_PORT: "15432"
       CONFORMANCE_PG_DATABASE: conformance
       CONFORMANCE_PG_USER: postgres
       CONFORMANCE_PG_PASSWORD: conformance
@@ -88,7 +88,7 @@ jobs:
           POSTGRES_PASSWORD: conformance
           POSTGRES_DB: conformance
         ports:
-          - 55432:5432
+          - 15432:5432
         options: >-
           --health-cmd "pg_isready -U postgres"
           --health-interval 5s
