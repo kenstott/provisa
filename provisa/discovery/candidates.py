@@ -145,3 +145,17 @@ async def reject(conn: "Connection", candidate_id: int, reason: str) -> None:  #
     )
     if (result.rowcount or 0) == 0:
         raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+
+
+async def withdraw(conn: "Connection", ids: list[int]) -> int:  # REQ-413
+    """Remove suggestions a discovery run stored and no longer shows (a later answer of the same
+    run turned the pair the other way); one a person has decided is left as it is."""
+    if not ids:
+        return 0
+    result = await conn.execute_core(
+        _delete(relationship_candidates).where(
+            relationship_candidates.c.id.in_(ids),
+            relationship_candidates.c.status == "suggested",
+        )
+    )
+    return result.rowcount or 0
