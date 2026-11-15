@@ -13,7 +13,7 @@
 #
 #   postgres  the customer master hub (schema mdm): master customers and people, the crosswalks to
 #             each system's id, and when it last synced; and the narrow entity bridges (schema er,
-#             db/er.sql, written by entity_resolution/er_job.py). Salesforce, ServiceNow, Jira and
+#             db/er.sql, rewritten by each rerun of entity resolution). Salesforce, ServiceNow, Jira and
 #             Stripe need no service: the demo declares their rows (replica_rows/).
 #
 # Port: 30532 the database; it can be moved by its variable.

@@ -15,13 +15,18 @@
         --dsn postgresql://er_writer:er_writer@localhost:30532/customer360 \\
         --provisa http://localhost:8001
 
-It reads every table entity_resolution.ENTITY_SOURCES declares, matches each mention to a record
-of its entity type's authority, and replaces the contents of er.entity_org_bridge and
-er.entity_person_bridge with one row per mention for a new match_run_id. ``run`` writes them in
-the demo's Postgres and then tells Provisa, with the ``signal`` change signal
-(POST /data/sources/er/signal), that they changed. ``seed`` writes db/er.sql instead: the bridges
-the demo ships, one run of the job over the rows it declares (replica_rows/), so the demo starts
-with them and does not match live. Both read the rows from replica_rows/.
+In Provisa the same run is two registered commands, rerun_org_bridge and rerun_person_bridge:
+the code source's queries (er_source.py) call run() over the registry's tables read through
+Provisa, and each command MERGEs one bridge from them, replacing its rows in one statement. A
+write through Provisa needs no signal.
+
+From a shell, it reads every table entity_resolution.ENTITY_SOURCES declares, matches each mention
+to a record of its entity type's authority, and replaces the contents of er.entity_org_bridge and
+er.entity_person_bridge with one row per mention for a new match_run_id. ``run`` writes them in the
+demo's Postgres and then tells Provisa, with the ``signal`` change signal (POST
+/data/sources/er/signal), that they changed. ``seed`` writes db/er.sql instead: the bridges the
+demo ships, one run of the job over the rows it declares (replica_rows/), so the demo starts with
+them and does not match live. Both read the rows from replica_rows/.
 
 The design is govdata's EntityBridgeListener / EntityBridgeOrganizer, its columns and tiers kept:
 
@@ -66,6 +71,7 @@ from entity_resolution import (
     authority,
     check_columns,
     check_registry,
+    columns_read,
     entries,
     render,
 )
@@ -549,19 +555,29 @@ def _cell(text: str) -> str | None:
 
 def read_replica_rows(demo: Path, registry: Sequence[EntitySource] = ()) -> tuple[dict, dict]:
     """Each registry table's rows and column names, as the demo declares them in
-    replica_rows/<source>/<schema>.<table>.tsv."""
+    replica_rows/<source>/<schema>.<table>.tsv, kept to the columns the matching reads
+    (entity_resolution.columns_read), as the code source reads them through Provisa."""
     rows: dict[tuple[str, str], list[dict]] = {}
     columns: dict[tuple[str, str], list[str]] = {}
-    for entry in registry or ENTITY_SOURCES:
-        where = (entry.source, entry.table)
-        if where in rows:
-            continue
-        [path] = sorted((demo / "replica_rows" / entry.source).glob(f"*.{entry.table}.tsv"))
+    for where, read in columns_read(registry).items():
+        source, table = where
+        [path] = sorted((demo / "replica_rows" / source).glob(f"*.{table}.tsv"))
         header, *lines = path.read_text(encoding="utf-8").splitlines()
         names = header.split("\t")
-        columns[where] = names
-        rows[where] = [dict(zip(names, (_cell(c) for c in line.split("\t")))) for line in lines]
+        check_columns_of(where, read, names)
+        columns[where] = read
+        rows[where] = [
+            {n: v for n, v in zip(names, (_cell(c) for c in line.split("\t"))) if n in read}
+            for line in lines
+        ]
     return rows, columns
+
+
+def check_columns_of(where: tuple[str, str], read: Sequence[str], names: Sequence[str]) -> None:
+    """Refuse a table that lacks a column the matching reads of it, naming the table."""
+    missing = sorted(set(read) - set(names))
+    if missing:
+        raise ValueError(f"table {where[0]}.{where[1]} has no column {', '.join(missing)}")
 
 
 SCHEMA_SQL = """\
@@ -627,7 +643,8 @@ SEED_HEADER = """\
 --
 -- The customer360 demo's narrow entity bridges (schema er; REQ-2034), as one run of the matching
 -- job wrote them over the rows the demo declares: written by entity_resolution/er_job.py seed. Do
--- not edit; rerun the job. Only the job writes these tables (role er_writer, db/reader.sql).
+-- not edit; rerun the job. Only a rerun of entity resolution writes these tables (role er_writer,
+-- db/reader.sql): the rerun commands in Provisa, or the job from a shell.
 """
 
 

@@ -9,7 +9,8 @@
 --
 -- The customer360 demo's narrow entity bridges (schema er; REQ-2034), as one run of the matching
 -- job wrote them over the rows the demo declares: written by entity_resolution/er_job.py seed. Do
--- not edit; rerun the job. Only the job writes these tables (role er_writer, db/reader.sql).
+-- not edit; rerun the job. Only a rerun of entity resolution writes these tables (role er_writer,
+-- db/reader.sql): the rerun commands in Provisa, or the job from a shell.
 
 CREATE SCHEMA er;
 

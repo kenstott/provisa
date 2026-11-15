@@ -8,13 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""entity_resolution: the customer360 demo's code source for entity resolution (REQ-2034).
+"""entity_resolution: the customer360 demo's entity-resolution registry (REQ-2034).
 
 ENTITY_SOURCES, at the top, is the one place a table that refers to an organization or a person
 is declared, as govdata's OrgSource / PersonSource registry is (EntityBridgeListener). Adding a
 source is an entry here, not new match logic: the matching job (er_job.py, beside this module)
-reads every entry's rows and matches each by its entity type's algorithm, and nothing else names
-Salesforce, ServiceNow, Jira or Stripe.
+reads every entry's rows and matches each by its entity type's algorithm, from a shell or inside
+Provisa through the code source's queries (er_source.py), and nothing else names Salesforce,
+ServiceNow, Jira or Stripe.
 
 Each entry names:
 
@@ -295,10 +296,8 @@ def _is_column_name(name: str) -> bool:
     return not any(ch in name for ch in ".[]!:{}")
 
 
-def check_columns(entry: EntitySource, columns: Iterable[str]) -> None:
-    """Refuse ``entry`` when its key, a reference column or a template field names a column its
-    table does not have. Checked before any row is read."""
-    have = set(columns)
+def _wanted(entry: EntitySource) -> list[tuple[str, str]]:
+    """Each column ``entry`` reads, with what it reads it as, in a fixed order."""
     wanted = [
         ("key", entry.key.column),
         *((f"reference {role}", column) for role, column in entry.reference.items()),
@@ -309,9 +308,26 @@ def check_columns(entry: EntitySource, columns: Iterable[str]) -> None:
         wanted.append(("organization", entry.organization.column))
     if entry.order_by is not None:
         wanted.append(("order_by", entry.order_by))
-    missing = [f"{what} {column!r}" for what, column in wanted if column not in have]
+    return wanted
+
+
+def check_columns(entry: EntitySource, columns: Iterable[str]) -> None:
+    """Refuse ``entry`` when its key, a reference column or a template field names a column its
+    table does not have. Checked before any row is read."""
+    have = set(columns)
+    missing = [f"{what} {column!r}" for what, column in _wanted(entry) if column not in have]
     if missing:
         raise RegistryRefused(entry, f"names columns its table does not have: {', '.join(missing)}")
+
+
+def columns_read(registry: Iterable[EntitySource] = ()) -> dict[tuple[str, str], list[str]]:
+    """Each registry table, as (source, table), and the columns the matching reads of it, sorted:
+    every column any of its entries names. The matching reads these and no others, whether from
+    the rows the demo declares or through Provisa, so both reads give the same mentions."""
+    read: dict[tuple[str, str], set[str]] = {}
+    for entry in registry or ENTITY_SOURCES:
+        read.setdefault((entry.source, entry.table), set()).update(c for _, c in _wanted(entry))
+    return {where: sorted(columns) for where, columns in read.items()}
 
 
 def render(template: str, row: Mapping[str, str | int | float | bool | None]) -> str:

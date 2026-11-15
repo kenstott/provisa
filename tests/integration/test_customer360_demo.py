@@ -219,14 +219,24 @@ def hub():
 def server(hub, proxy, tmp_path_factory):
     from tests.integration.isolated_server import IsolatedServer
 
+    from tests.port_lease import lease_ports
+
     home = tmp_path_factory.mktemp("customer360_demo")
+    # The entity-resolution code source reads its tables through the minted-token listener.
+    (minted_port,) = lease_ports(1)
     srv = IsolatedServer(
         "customer360_demo",
         engine="duckdb",
         config=str(_DEMO / "config.yaml"),
         control_plane="own",
         materialize_store_url=f"duckdb:///{home / 'store.duckdb'}",
-        env={**hub.env, **proxy.env, "PROVISA_DATA_DIR": str(home / "provisa")},
+        env={
+            **hub.env,
+            **proxy.env,
+            "PROVISA_DATA_DIR": str(home / "provisa"),
+            "PROVISA_MINTED_PGWIRE_PORT": str(minted_port),
+            "PROVISA_RUNTIME_DEPS_CACHE": str(home / "runtime-deps"),
+        },
     )
     srv.start(timeout=400)
     try:
@@ -253,14 +263,14 @@ def set_up(server):
     return server
 
 
-def _post(server, path: str, body: dict) -> httpx.Response:
+def _post(server, path: str, body: dict, role: str = _ROLE) -> httpx.Response:
     return httpx.post(
-        f"{server.base_url}{path}", json=body, headers={"X-Provisa-Role": _ROLE}, timeout=900
+        f"{server.base_url}{path}", json=body, headers={"X-Provisa-Role": role}, timeout=900
     )
 
 
-def _sql(server, sql: str) -> list[dict[str, Any]]:
-    resp = _post(server, "/data/sql", {"sql": sql})
+def _sql(server, sql: str, role: str = _ROLE) -> list[dict[str, Any]]:
+    resp = _post(server, "/data/sql", {"sql": sql}, role)
     assert resp.status_code == 200, f"{sql}: HTTP {resp.status_code}: {resp.text}"
     return resp.json()["data"]["sql"]
 
@@ -346,3 +356,136 @@ def test_no_request_leaves_for_a_live_account(set_up, proxy):
         assert _sql(set_up, f'SELECT * FROM "customer360"."{table}" LIMIT 1'), table
     reached = [r for r in proxy.requests if any(host in r for host in _SAAS_HOSTS)]
     assert reached == [], reached
+
+
+# --------------------------------------------------------------------------------------------- #
+# Rerunning entity resolution from Provisa (REQ-2034, amended 2026-11-14). Last: they rewrite the  #
+# bridges, which the tests above do not read.                                                   #
+# --------------------------------------------------------------------------------------------- #
+
+#: The role that reruns entity resolution: write, the bridges' delete grant, the commands.
+_ENTITY_STEWARD = "entity_steward"
+_BRIDGES = {"rerun_org_bridge": "entity_org_bridge", "rerun_person_bridge": "entity_person_bridge"}
+_KEY = ("source_schema", "source_table", "source_column", "source_key")
+
+
+def _job():
+    """The demo's matching job, er_job, as the shell runs it."""
+    code = str(_DEMO / "entity_resolution")
+    if code not in sys.path:
+        sys.path.insert(0, code)
+    import er_job
+
+    return er_job
+
+
+def _hub_sql(hub: Hub, sql: str, params: tuple = ()) -> list[tuple]:
+    """``sql`` on the demo's database itself, as its owner."""
+    import psycopg
+
+    with psycopg.connect(
+        host="127.0.0.1",
+        port=hub.port,
+        user="postgres",
+        password="postgres",
+        dbname="customer360" + hub.env.get("CUSTOMER360_PG_NS", ""),
+        autocommit=True,
+    ) as conn:
+        cur = conn.execute(sql, params)
+        return cur.fetchall() if cur.description else []
+
+
+def _bridge(hub: Hub, table: str, columns: list[str]) -> dict[tuple, dict]:
+    """The bridge's rows as the database holds them, by key."""
+    rows = _hub_sql(hub, f"SELECT {', '.join(columns)} FROM er.{table}")
+    return {r[:4]: dict(zip(columns, r)) for r in rows}
+
+
+def _expected(job) -> dict[str, dict[tuple, dict]]:
+    """Each bridge's rows as the job matches the rows the demo declares (db/er.sql), by key."""
+    rows, columns = job.read_replica_rows(_DEMO)
+    bridges = job.run(rows, columns, job.SEED_RUN_ID)
+    return {
+        "entity_org_bridge": {tuple(r[k] for k in _KEY): r for r in bridges.org},
+        "entity_person_bridge": {tuple(r[k] for k in _KEY): r for r in bridges.person},
+    }
+
+
+def _without_run(row: dict) -> dict:
+    return {k: v for k, v in row.items() if k != "match_run_id"}
+
+
+def _same(got: dict, want: dict) -> bool:
+    """One bridge row equal to another apart from its run, its scores within a tolerance."""
+    for column, value in _without_run(want).items():
+        held = got[column]
+        if isinstance(value, float) or isinstance(held, float):
+            if value is None or held is None or abs(held - value) > 1e-14 * max(1.0, abs(value)):
+                return False
+        elif held != value:
+            return False
+    return True
+
+
+def _rerun(server, command: str, role: str = _ENTITY_STEWARD) -> httpx.Response:
+    return _post(server, "/data/sql", {"sql": f"SELECT * FROM {command}()"}, role)
+
+
+def test_the_rerun_commands_replace_each_bridge_and_a_second_run_keeps_the_ids(set_up, hub):
+    job = _job()
+    expected = _expected(job)
+    columns = {"entity_org_bridge": job.ORG_COLUMNS, "entity_person_bridge": job.PERSON_COLUMNS}
+    for command, table in _BRIDGES.items():
+        cols = columns[table]
+        shipped = _bridge(hub, table, cols)
+        assert set(shipped) == set(expected[table]), table  # the database holds db/er.sql
+        changed, dropped = sorted(shipped)[:2]
+        # Before the rerun: one row's match changed, one mention's row gone, and a row for a
+        # mention no longer in any system.
+        _hub_sql(
+            hub,
+            f"UPDATE er.{table} SET canonical_id = 'stale' WHERE "
+            + " AND ".join(f"{k} = %s" for k in _KEY),
+            changed,
+        )
+        _hub_sql(
+            hub, f"DELETE FROM er.{table} WHERE " + " AND ".join(f"{k} = %s" for k in _KEY), dropped
+        )
+        gone = ("jira", "bug", shipped[changed]["source_column"], "a mention removed from Jira")
+        stale = {**shipped[changed], **dict(zip(_KEY, gone)), "match_run_id": "er-removed"}
+        _hub_sql(
+            hub,
+            f"INSERT INTO er.{table} ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})",
+            tuple(stale[c] for c in cols),
+        )
+
+        resp = _rerun(set_up, command)
+        assert resp.status_code == 200, f"{command}: HTTP {resp.status_code}: {resp.text}"
+        first = _bridge(hub, table, cols)
+        # Replaced: the removed mention deleted, the dropped one back, the changed one matched
+        # again, every row the job's match of the rows the demo declares, of one new run.
+        assert gone not in first
+        assert set(first) == set(expected[table]), table
+        wrong = [k for k, row in first.items() if not _same(row, expected[table][k])]
+        assert wrong == [], (table, wrong[:3])
+        runs = {row["match_run_id"] for row in first.values()}
+        assert len(runs) == 1 and runs != {job.SEED_RUN_ID}, runs
+
+        resp = _rerun(set_up, command)
+        assert resp.status_code == 200, f"{command}: HTTP {resp.status_code}: {resp.text}"
+        second = _bridge(hub, table, cols)
+        assert {k: r["canonical_id"] for k, r in second.items()} == {
+            k: r["canonical_id"] for k, r in first.items()
+        }, table
+
+
+def test_a_role_without_the_bridges_delete_grant_may_not_rerun(set_up, hub):
+    # The org admin writes, is assigned the commands through data_steward and may insert and update
+    # bridge rows, but holds no delete grant on them, which replacing a bridge needs.
+    job = _job()
+    for command, table in _BRIDGES.items():
+        before = _bridge(hub, table, job.ORG_COLUMNS[:4])
+        resp = _rerun(set_up, command, _ROLE)
+        assert resp.status_code != 200, f"{command}: {resp.text}"
+        assert "delete grant" in resp.text, resp.text
+        assert _bridge(hub, table, job.ORG_COLUMNS[:4]) == before, table

@@ -12,8 +12,9 @@
 --
 --   provisa_reader  what Provisa reads the hub (schema mdm) and the narrow entity bridges (schema
 --                   er) as, read only
---   er_writer       the entity-resolution job (entity_resolution/er_job.py run): the one role that
---                   writes the bridges, replacing their rows on each run (REQ-2034)
+--   er_writer       the one role that writes the bridges, replacing their rows on each run of
+--                   entity resolution (REQ-2034): what Provisa reads and writes schema er as, for
+--                   the rerun commands' MERGE, and what entity_resolution/er_job.py run writes as
 
 CREATE ROLE provisa_reader LOGIN PASSWORD 'provisa_reader';
 GRANT USAGE ON SCHEMA mdm TO provisa_reader;
@@ -23,4 +24,4 @@ GRANT SELECT ON ALL TABLES IN SCHEMA er TO provisa_reader;
 
 CREATE ROLE er_writer LOGIN PASSWORD 'er_writer';
 GRANT USAGE ON SCHEMA er TO er_writer;
-GRANT SELECT, INSERT, DELETE ON ALL TABLES IN SCHEMA er TO er_writer;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA er TO er_writer;

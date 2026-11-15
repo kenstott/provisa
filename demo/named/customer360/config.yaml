@@ -23,8 +23,11 @@
 #               synced
 #   er          the narrow entity bridges (db/er.sql, schema er): each mention of an organization or
 #               a person in the four systems, matched to Salesforce's record of it by the
-#               entity-resolution job (entity_resolution/er_job.py), which alone writes them and
-#               signals when it has. The data steward's alone
+#               entity-resolution job (entity_resolution/er_job.py). Rerun from Provisa by the
+#               commands rerun_org_bridge and rerun_person_bridge (the entity steward's), or from a
+#               shell by the job, which signals when it has written them. The data steward's alone
+#   entity_resolution  the job's matching as a Python code source (entity_resolution/er_source.py),
+#               whose two queries the rerun commands read
 #
 # The four systems hold people as well as customers (REQ-2034, amended 2026-11-14): Salesforce
 # contacts, ServiceNow users, the reporter of each Jira bug and the billing contact of a Stripe
@@ -71,6 +74,203 @@ domains:
   description: Halyard Software's customers across Salesforce, ServiceNow, Jira and Stripe, and the
     customer master that links them
 federation_engine: duckdb
+# The rerun of entity resolution, triggered from Provisa. The two queries are the code source's
+# matching: each reads the registry's tables (entity_resolution.ENTITY_SOURCES) through Provisa as
+# its caller and answers one bridge's rows for a new run. Each rerun command replaces one bridge
+# from its query in one MERGE: rows it matches updated, new mentions inserted, and the rows of
+# mentions no longer in the systems deleted (WHEN NOT MATCHED BY SOURCE). Each runs as its
+# caller, which needs write, the bridge's insert, update and delete grants and the commands'
+# assignment: entity_steward holds them.
+functions:
+- name: match_organizations
+  function_name: match_organizations
+  impl_kind: code_command
+  kind: query
+  domain_id: customer360
+  description: Match each mention of an organization in the four systems to its Salesforce account, for a new run
+  source_id: entity_resolution
+  schema: code
+  returns: ''
+  visible_to: [data_steward]
+  arguments:
+  - name: accounts
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: CreatedDate, type: timestamp}
+    - {name: Id, type: text}
+    - {name: Name, type: text}
+    - {name: Website, type: text}
+  - name: contacts
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: AccountId, type: text}
+    - {name: Email, type: text}
+    - {name: FirstName, type: text}
+    - {name: Id, type: text}
+    - {name: LastName, type: text}
+  - name: companies
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: name, type: text}
+    - {name: sys_id, type: text}
+    - {name: website, type: text}
+  - name: service_desk_users
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: company, type: text}
+    - {name: email, type: text}
+    - {name: first_name, type: text}
+    - {name: last_name, type: text}
+    - {name: sys_id, type: text}
+  - name: bugs
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: customer, type: text}
+    - {name: reporter_email, type: text}
+    - {name: reporter_name, type: text}
+  - name: stripe_customers
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: billing_contact_name, type: text}
+    - {name: email, type: text}
+    - {name: id, type: text}
+    - {name: name, type: text}
+  output_columns:
+  - {name: source_schema, type: text}
+  - {name: source_table, type: text}
+  - {name: source_column, type: text}
+  - {name: source_key, type: text}
+  - {name: name_raw, type: text}
+  - {name: name_norm, type: text}
+  - {name: match_text, type: text}
+  - {name: label, type: text}
+  - {name: canonical_id, type: text}
+  - {name: golden_source, type: text}
+  - {name: match_method, type: text}
+  - {name: match_confidence, type: text}
+  - {name: match_score, type: double}
+  - {name: unresolved_reason, type: text}
+  - {name: candidate_id, type: text}
+  - {name: candidate_score, type: double}
+  - {name: match_run_id, type: text}
+- name: match_people
+  function_name: match_people
+  impl_kind: code_command
+  kind: query
+  domain_id: customer360
+  description: Match each mention of a person in the four systems to its Salesforce contact within its organization, for a new run
+  source_id: entity_resolution
+  schema: code
+  returns: ''
+  visible_to: [data_steward]
+  arguments:
+  - name: accounts
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: CreatedDate, type: timestamp}
+    - {name: Id, type: text}
+    - {name: Name, type: text}
+    - {name: Website, type: text}
+  - name: contacts
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: AccountId, type: text}
+    - {name: Email, type: text}
+    - {name: FirstName, type: text}
+    - {name: Id, type: text}
+    - {name: LastName, type: text}
+  - name: companies
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: name, type: text}
+    - {name: sys_id, type: text}
+    - {name: website, type: text}
+  - name: service_desk_users
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: company, type: text}
+    - {name: email, type: text}
+    - {name: first_name, type: text}
+    - {name: last_name, type: text}
+    - {name: sys_id, type: text}
+  - name: bugs
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: customer, type: text}
+    - {name: reporter_email, type: text}
+    - {name: reporter_name, type: text}
+  - name: stripe_customers
+    type: text
+    arg_kind: table_ref
+    columns:
+    - {name: billing_contact_name, type: text}
+    - {name: email, type: text}
+    - {name: id, type: text}
+    - {name: name, type: text}
+  output_columns:
+  - {name: source_schema, type: text}
+  - {name: source_table, type: text}
+  - {name: source_column, type: text}
+  - {name: source_key, type: text}
+  - {name: name_raw, type: text}
+  - {name: name_norm, type: text}
+  - {name: match_text, type: text}
+  - {name: label, type: text}
+  - {name: canonical_id, type: text}
+  - {name: golden_source, type: text}
+  - {name: org_canonical_id, type: text}
+  - {name: match_method, type: text}
+  - {name: match_confidence, type: text}
+  - {name: match_score, type: double}
+  - {name: unresolved_reason, type: text}
+  - {name: candidate_id, type: text}
+  - {name: candidate_score, type: double}
+  - {name: match_run_id, type: text}
+- name: rerun_org_bridge
+  function_name: rerun_org_bridge
+  impl_kind: statement
+  domain_id: customer360
+  description: Rerun entity resolution for organizations, replacing entity_org_bridge with a new run's matches
+  source_id: ''
+  returns: ''
+  visible_to: [data_steward]
+  binding:
+    sql: |-
+      MERGE INTO "customer360"."entity_org_bridge" AS t
+      USING (SELECT m.source_schema, m.source_table, m.source_column, m.source_key, m.name_raw, m.name_norm, m.match_text, m.label, m.canonical_id, m.golden_source, m.match_method, m.match_confidence, m.match_score, m.unresolved_reason, m.candidate_id, m.candidate_score, m.match_run_id
+        FROM match_organizations('customer360.accounts', 'customer360.contacts', 'customer360.companies', 'customer360.service_desk_users', 'customer360.bugs', 'customer360.stripe_customers') AS m) AS s
+      ON t.source_schema = s.source_schema AND t.source_table = s.source_table AND t.source_column = s.source_column AND t.source_key = s.source_key
+      WHEN MATCHED THEN UPDATE SET name_raw = s.name_raw, name_norm = s.name_norm, match_text = s.match_text, label = s.label, canonical_id = s.canonical_id, golden_source = s.golden_source, match_method = s.match_method, match_confidence = s.match_confidence, match_score = s.match_score, unresolved_reason = s.unresolved_reason, candidate_id = s.candidate_id, candidate_score = s.candidate_score, match_run_id = s.match_run_id
+      WHEN NOT MATCHED THEN INSERT (source_schema, source_table, source_column, source_key, name_raw, name_norm, match_text, label, canonical_id, golden_source, match_method, match_confidence, match_score, unresolved_reason, candidate_id, candidate_score, match_run_id) VALUES (s.source_schema, s.source_table, s.source_column, s.source_key, s.name_raw, s.name_norm, s.match_text, s.label, s.canonical_id, s.golden_source, s.match_method, s.match_confidence, s.match_score, s.unresolved_reason, s.candidate_id, s.candidate_score, s.match_run_id)
+      WHEN NOT MATCHED BY SOURCE THEN DELETE
+- name: rerun_person_bridge
+  function_name: rerun_person_bridge
+  impl_kind: statement
+  domain_id: customer360
+  description: Rerun entity resolution for people, replacing entity_person_bridge with a new run's matches
+  source_id: ''
+  returns: ''
+  visible_to: [data_steward]
+  binding:
+    sql: |-
+      MERGE INTO "customer360"."entity_person_bridge" AS t
+      USING (SELECT m.source_schema, m.source_table, m.source_column, m.source_key, m.name_raw, m.name_norm, m.match_text, m.label, m.canonical_id, m.golden_source, m.org_canonical_id, m.match_method, m.match_confidence, m.match_score, m.unresolved_reason, m.candidate_id, m.candidate_score, m.match_run_id
+        FROM match_people('customer360.accounts', 'customer360.contacts', 'customer360.companies', 'customer360.service_desk_users', 'customer360.bugs', 'customer360.stripe_customers') AS m) AS s
+      ON t.source_schema = s.source_schema AND t.source_table = s.source_table AND t.source_column = s.source_column AND t.source_key = s.source_key
+      WHEN MATCHED THEN UPDATE SET name_raw = s.name_raw, name_norm = s.name_norm, match_text = s.match_text, label = s.label, canonical_id = s.canonical_id, golden_source = s.golden_source, org_canonical_id = s.org_canonical_id, match_method = s.match_method, match_confidence = s.match_confidence, match_score = s.match_score, unresolved_reason = s.unresolved_reason, candidate_id = s.candidate_id, candidate_score = s.candidate_score, match_run_id = s.match_run_id
+      WHEN NOT MATCHED THEN INSERT (source_schema, source_table, source_column, source_key, name_raw, name_norm, match_text, label, canonical_id, golden_source, org_canonical_id, match_method, match_confidence, match_score, unresolved_reason, candidate_id, candidate_score, match_run_id) VALUES (s.source_schema, s.source_table, s.source_column, s.source_key, s.name_raw, s.name_norm, s.match_text, s.label, s.canonical_id, s.golden_source, s.org_canonical_id, s.match_method, s.match_confidence, s.match_score, s.unresolved_reason, s.candidate_id, s.candidate_score, s.match_run_id)
+      WHEN NOT MATCHED BY SOURCE THEN DELETE
 naming:
   domain_prefix: true
   rules: []
@@ -79,6 +279,15 @@ roles:
   parents: [analyst]
   description: "Customer success: reads every system's customer records, the customer master and the renewal risk."
   capabilities: [data_product_read, glossary_read, query_development, usage]
+  domain_access:
+  - customer360
+# Reruns entity resolution from Provisa: a data steward that may write, and the one role that may
+# delete bridge rows, which replacing a bridge does. Any other data steward that may write (the org
+# admin) may correct a bridge row but not replace the bridges.
+- id: entity_steward
+  parents: [data_steward]
+  description: "Entity steward: reruns entity resolution, replacing the narrow entity bridges with a new run's matches."
+  capabilities: [write]
   domain_access:
   - customer360
 server:
@@ -127,17 +336,30 @@ sources:
   username: provisa_reader
   password: provisa_reader
   description: 'Halyard''s customer master: master customers and people, and the crosswalks to each system''s id'
-# The narrow entity bridges, in the hub's database: written only by the entity-resolution job, which
-# signals this source when a run completes (POST /data/sources/er/signal).
+# The narrow entity bridges, in the hub's database, read and written as er_writer (db/reader.sql):
+# rerun from Provisa by the two rerun commands (functions, below), each a MERGE through Provisa's
+# write path, so the tables refresh with no signal; rerun from a shell by
+# entity_resolution/er_job.py run, which signals this source when it is done (POST
+# /data/sources/er/signal).
 - id: er
   type: postgresql
   host: ${env:CUSTOMER360_PG_HOST:-localhost}
   port: ${env:CUSTOMER360_PG_PORT:-30532}
   database: customer360${env:CUSTOMER360_PG_NS}
-  username: provisa_reader
-  password: provisa_reader
+  username: er_writer
+  password: er_writer
   change_signal: signal
   description: 'The entity-resolution job''s narrow bridges: each mention of an organization or a person in the four systems, and the Salesforce record it is matched to'
+# The matching, run inside Provisa: a Python package (code/entity_resolution.tar.gz, packed from
+# entity_resolution/ by its pack.py, which prints the hash) whose two queries read the registry's
+# tables through Provisa as the calling role and answer each bridge's rows for a new run.
+- id: entity_resolution
+  type: python
+  description: 'The entity-resolution matching: each mention of an organization or a person in the four systems matched to its Salesforce record'
+  mapping:
+    runtime: python
+    code: {kind: upload, upload: 46139b6ca77d06b3510305d280a6ccb49d7cff86d05cc9c5c97b541cb478e1c3, filename: entity_resolution.tar.gz}
+    entry: er_source
 tables:
 - source_id: salesforce
   domain_id: customer360
@@ -359,6 +581,17 @@ tables:
   - {name: candidate_id, data_type: varchar, description: 'The golden record it came closest to, when unresolved', visible_to: [data_steward]}
   - {name: candidate_score, data_type: double, description: 'Its score against that record', visible_to: [data_steward]}
   - {name: match_run_id, data_type: varchar, description: 'The job''s run that wrote it', visible_to: [data_steward]}
+  # Data stewards that may write correct a row; only the entity steward deletes, as the rerun
+  # command's MERGE does when it replaces the bridge.
+  write_grants:
+  - role: data_steward
+    operation: insert
+    columns: [source_schema, source_table, source_column, source_key, name_raw, name_norm, match_text, label, canonical_id, golden_source, match_method, match_confidence, match_score, unresolved_reason, candidate_id, candidate_score, match_run_id]
+  - role: data_steward
+    operation: update
+    columns: [source_schema, source_table, source_column, source_key, name_raw, name_norm, match_text, label, canonical_id, golden_source, match_method, match_confidence, match_score, unresolved_reason, candidate_id, candidate_score, match_run_id]
+  - role: entity_steward
+    operation: delete
 - source_id: er
   domain_id: customer360
   schema: er
@@ -383,6 +616,17 @@ tables:
   - {name: candidate_id, data_type: varchar, description: 'The golden record it came closest to, when unresolved', visible_to: [data_steward]}
   - {name: candidate_score, data_type: double, description: 'Its score against that record', visible_to: [data_steward]}
   - {name: match_run_id, data_type: varchar, description: 'The job''s run that wrote it', visible_to: [data_steward]}
+  # Data stewards that may write correct a row; only the entity steward deletes, as the rerun
+  # command's MERGE does when it replaces the bridge.
+  write_grants:
+  - role: data_steward
+    operation: insert
+    columns: [source_schema, source_table, source_column, source_key, name_raw, name_norm, match_text, label, canonical_id, golden_source, org_canonical_id, match_method, match_confidence, match_score, unresolved_reason, candidate_id, candidate_score, match_run_id]
+  - role: data_steward
+    operation: update
+    columns: [source_schema, source_table, source_column, source_key, name_raw, name_norm, match_text, label, canonical_id, golden_source, org_canonical_id, match_method, match_confidence, match_score, unresolved_reason, candidate_id, candidate_score, match_run_id]
+  - role: entity_steward
+    operation: delete
 views:
 # The question answered through the hub: each account renewing this quarter (its open renewal
 # closing in the quarter of the hub's last sync), with what the hub links to it in each system.
