@@ -219,6 +219,9 @@ class CompilationContext:
     # (table_id, physical_column_name) → the GraphQL field name the row type gives it (alias, or
     # the naming convention applied): the name an aggregate's result fields use too.
     physical_to_gql: dict[tuple[int, str], str] = field(default_factory=dict)
+    # REQ-1385: (table_id, physical_column_name) → the column's alias, for a column that has one:
+    # its model name, which a physical rename under the alias leaves as it was.
+    column_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
     native_filter_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}

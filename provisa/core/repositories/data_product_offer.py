@@ -33,7 +33,6 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete, func, select, update
 
-from provisa.core import model_change
 from provisa.core.models import CONSUMER_KINDS, DEFAULT_OFFER, DataProductOffer, OfferContract
 from provisa.core.schema_org import (
     checker_targets,
@@ -368,6 +367,14 @@ async def check(conn: "Connection", product_id: str, offer: DataProductOffer) ->
         await _check_synthetic(conn, datasets)
 
 
+async def _name_change(conn: "Connection", action: str, product_id: str) -> None:  # REQ-1524
+    # An offer is written in its product's file: the change is named at the product's model URI.
+    # The product module imports this one; it is reached when a change is named, not at import.
+    from provisa.core.repositories import data_product
+
+    await data_product.name_change(conn, action, product_id)
+
+
 async def save(
     conn: "Connection",
     product_id: str,
@@ -396,7 +403,7 @@ async def save(
                 status=409,
                 name=offer.name,
             )
-        model_change.name("upsert", "data product offer", f"{product_id}/{offer.name}")
+        await _name_change(conn, f"upsert offer {offer.name} of", product_id)  # REQ-1524
         values = {**offer.model_dump(), "published_by": by, "review": None}
         if offer_id is None:
             saved_id = int(
@@ -428,7 +435,7 @@ async def delete_offer(conn: "Connection", product_id: str, offer_id: int) -> No
     async with conn.transaction():
         offer = await require_offer(conn, product_id, offer_id)
         await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
-        model_change.name("delete", "data product offer", f"{product_id}/{offer['name']}")
+        await _name_change(conn, f"delete offer {offer['name']} of", product_id)  # REQ-1524
         await conn.execute_core(
             update(data_product_bids)
             .where(data_product_bids.c.offer_id == offer_id)

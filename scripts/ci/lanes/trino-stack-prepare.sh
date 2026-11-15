@@ -93,7 +93,8 @@ for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:0.109.0 \
   plugin="${spec%%:*}"
   version="${spec##*:}"
   mkdir -p "trino/plugins/$plugin"
-  curl -fsSL "$MAVEN/$plugin/$version/$plugin-$version.jar" \
+  # Central answered one of these requests 404 (run 43618638224) while the jar was present; retry.
+  curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 "$MAVEN/$plugin/$version/$plugin-$version.jar" \
     -o "trino/plugins/$plugin/$plugin-$version.jar"
   ls "trino/plugins/$plugin"/*.jar >/dev/null
 done

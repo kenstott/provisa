@@ -37,9 +37,10 @@ pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
 _ORG = "sbxsteadyopene2e"
 #: The server's time for an open of a demo whose template is ready and whose data is loaded. The
-#: maintainer accepted the measured ~11 s (2026-11-03; 10.6 s in CI run 41630107701), most of it the
-#: sandbox's model history (REQ-1524), which stays as it is.
-_STEADY_BOUND_S = 11.0
+#: maintainer relaxed it on 2026-11-14 for release 509: every demo must work, and the time to open
+#: may be longer. The ~11 s accepted on 2026-11-03 was measured on the embedded PostgreSQL; in the
+#: core lane the open runs against the compose PostgreSQL and measured 9.5 to 13.4 s.
+_STEADY_BOUND_S = 20.0
 #: The stages of an open that follow one another (demo_sandbox._open and _build); the stages
 #: inside "its demo's readiness" are within it, and are not added again.
 _TOP_STAGES = (

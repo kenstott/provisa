@@ -108,7 +108,14 @@ async def test_upsert_marks_is_foreign_key_on_the_registered_column(monkeypatch)
     rel = _detected_fk_relationship()
 
     async def _find(conn, name):
-        return {"id": 1 if name == "assignments_by_employee" else 2}
+        # The registered_tables row as find_by_table_name returns it: domain_id is NOT NULL, and
+        # the change is named at the source table's model URI (domain + alias or table name).
+        return {
+            "id": 1 if name == "assignments_by_employee" else 2,
+            "domain_id": "src1",
+            "table_name": name,
+            "alias": None,
+        }
 
     monkeypatch.setattr(rel_mod.table_repo, "find_by_table_name", _find)
     monkeypatch.setattr(rel_mod.model_change, "name", lambda *a, **k: None)

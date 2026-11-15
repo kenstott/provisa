@@ -12,7 +12,7 @@
 
 # Requirements: REQ-012, REQ-013, REQ-014, REQ-250, REQ-1695
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, insert, select, update
@@ -147,7 +147,7 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     conn: "Connection", source: Source
 ) -> None:
     """Create the source, or replace its definition."""
-    model_change.name("upsert", "source", source.id)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.source_uri, source.id))  # REQ-1524
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
 
@@ -170,7 +170,7 @@ async def create(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-20
     database, and the second is refused (:class:`SourceIdTaken`) instead of overwriting the first."""
     from sqlalchemy.exc import IntegrityError
 
-    model_change.name("create", "source", source.id)  # REQ-1524
+    model_change.name("create", model_change.uri(model_uri.source_uri, source.id))  # REQ-1524
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
 
@@ -267,7 +267,7 @@ async def delete(conn: "Connection", source_id: str) -> bool:  # REQ-014, REQ-19
     registration rows — an API or Kafka registration with its endpoints or topics. One
     transaction; no database cascade is relied on.
     """
-    model_change.name("delete", "source", source_id)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.source_uri, source_id))  # REQ-1524
     ref = ObjectRef("source", source_id)
     async with conn.transaction():
         if await get(conn, source_id) is None:

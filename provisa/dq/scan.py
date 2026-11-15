@@ -65,7 +65,8 @@ async def checker_tables(conn: Any) -> list[dict]:
     result = await conn.execute_core(
         select(rt.c.id, rt.c.table_name, rt.c.source_id, rt.c.cache_ttl)
         .join(sources, sources.c.id == rt.c.source_id)
-        .where(sources.c.type.in_(sorted(CHECKERS)))
+        # REQ-2248: a retired checker table scans nothing.
+        .where(sources.c.type.in_(sorted(CHECKERS)), rt.c.retired.is_(False))
         .order_by(rt.c.id)
     )
     return [

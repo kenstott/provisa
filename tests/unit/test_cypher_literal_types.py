@@ -70,6 +70,7 @@ def _label_map(text_keyed: bool = False) -> CypherLabelMap:
         gql_governed_object_cols=set(),
         gql_json_columns=set(),
         exposed_to_physical={},
+        column_aliases={},
     )
     return CypherLabelMap.from_schema(ctx, domain_access=["*"])
 
