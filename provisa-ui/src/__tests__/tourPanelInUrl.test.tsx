@@ -18,7 +18,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useEffect, type ReactNode } from "react";
+import { useLayoutEffect, type ReactNode } from "react";
 import { flushSync } from "react-dom";
 import { BrowserRouter, useLocation, useSearchParams } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
@@ -87,7 +87,8 @@ function AppProviders({ children }: { children: ReactNode }) {
 function TablesStandIn() {
   const [params, setParams] = useSearchParams();
   const location = useLocation();
-  useEffect(() => {
+  // Recorded as each location commits, so a check right after a card appears reads it.
+  useLayoutEffect(() => {
     visited.push(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search]);
   const toggle = (id: string) => {
@@ -137,7 +138,7 @@ function TablesStandIn() {
 }
 
 const title = () => document.querySelector(".driver-popover-title")?.textContent;
-const location = () => visited[visited.length - 1];
+const location = () => `${window.location.pathname}${window.location.search}`;
 
 describe("a tour card on its predecessor's page, with a panel open in the URL", () => {
   beforeEach(() => {
