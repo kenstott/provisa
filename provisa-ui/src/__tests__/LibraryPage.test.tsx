@@ -47,6 +47,7 @@ vi.mock("../hooks/useCapability", () => ({ useCapability: () => rights.canEdit }
 
 import { LibraryPage } from "../pages/library/LibraryPage";
 import { scopeChange } from "../components/admin/referenceScope";
+import { NAV_BAR } from "../components/navGroups";
 
 const URL_DOC = {
   id: 3,
@@ -106,14 +107,16 @@ describe("the Library in the app", () => {
   const read = (path: string) => readFileSync(resolve(SRC, path), "utf-8");
 
   it("sits beside the Ontology and before the Security group, on the glossary's read right", () => {
-    const nav = read("components/NavBar.tsx");
-    const ontology = nav.indexOf('to="/admin/ontology"');
-    const library = nav.indexOf('to="/library"');
-    const groups = nav.indexOf("NAV_GROUPS.filter(");
+    // The bar's entries are the NAV_BAR list NavBar renders, in order.
+    const at = (to: string) => NAV_BAR.findIndex((e) => e.kind === "link" && e.to === to);
+    const ontology = at("/admin/ontology");
+    const library = at("/library");
+    const security = NAV_BAR.findIndex((e) => e.kind === "group" && e.group.id === "security");
     expect(ontology).toBeGreaterThan(-1);
-    expect(library).toBeGreaterThan(ontology);
-    expect(library).toBeLessThan(groups);
-    expect(nav.slice(ontology, library)).toContain('<CapabilityGate capability="glossary_read">');
+    expect(library).toBe(ontology + 1);
+    expect(library).toBeLessThan(security);
+    expect(NAV_BAR[library]).toMatchObject({ capability: "glossary_read" });
+    expect(read("components/NavBar.tsx")).toContain("NAV_BAR.map(");
     expect(read("App.tsx")).toMatch(
       /path="\/library"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
     );

@@ -12,7 +12,12 @@
 // file exports only components (react-refresh) — this is the single source the
 // nav, the router capability table test, and App's group-entry navigation read.
 
-import { IMPORT_RIGHTS, meetsRequirement } from "../lib/capabilities";
+import {
+  HIDING_RIGHTS,
+  IMPORT_RIGHTS,
+  meetsRequirement,
+  type CapabilityRequirement,
+} from "../lib/capabilities";
 import { LAST_SUBNAV_KEY } from "../lib/session";
 import type { Capability } from "../types/auth";
 import { getStoredJson, setStored } from "../lib/browserStorage";
@@ -20,7 +25,8 @@ import { getStoredJson, setStored } from "../lib/browserStorage";
 export interface DropdownItem {
   to: string;
   labelKey: string;
-  capability: Capability;
+  // `null`: the entry asks no right, so every member of the org is shown it (EVERY_MEMBER).
+  capability: Capability | null;
   comingSoon?: boolean;
   separatorBefore?: boolean;
   // REQ-1412: the surface exists only where the commercial plugin is installed — its router is
@@ -50,6 +56,9 @@ export interface DropdownItem {
   // sandbox's visitor reading them too (RegionReadableGate).
   regionsCapability?: Capability;
 }
+
+/** REQ-1327: the gate of a page every member of the org opens: it asks no right. */
+export const EVERY_MEMBER = null;
 
 export interface NavGroup {
   id: string;
@@ -194,12 +203,13 @@ export const NAV_GROUPS: NavGroup[] = [
       // REQ-1560: two surfaces, named for whose they are. They are separate entries rather than one
       // Secrets page with a filter because the question "may I see this" is answered differently for
       // each: the org vault is an administrator's list of what the org connects to (org_settings),
-      // and a person's own vault is nobody's to grant -- every member has one, so `usage`, the right
-      // every seeded role carries. This supersedes REQ-1558's single sub-tab under Security.
+      // and a person's own vault is nobody's to grant -- every member has one, and the server's
+      // personal vault consults no capability (secrets_router._personal_owner), so the entry asks
+      // none (REQ-1327). This supersedes REQ-1558's single sub-tab under Security.
       // REQ-1361, REQ-1327: an org's secrets answer to the administrator of that org and to nobody
       // above it. The deployment's choice of secrets SERVICE is a platform setting, under Security.
       { to: "/admin/secrets", labelKey: "navBar.itemOrgSecrets", capability: "org_settings" },
-      { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: "usage" },
+      { to: "/admin/my-secrets", labelKey: "navBar.itemMySecrets", capability: EVERY_MEMBER },
       // REQ-1576: the mail transport platform communications go out through. Deployment-wide, and
       // an invitation is the platform's message rather than any org's, so the deployment check.
       // REQ-1923: the page also holds the organisation's mail platforms (the client its sources
@@ -299,8 +309,9 @@ export const NAV_GROUPS: NavGroup[] = [
         andCapability: "cross_org",
       },
       // REQ-1327: every member sees the requests it made and decides those whose own right it
-      // holds (creation_requests_router), so the page asks `usage`, the right every role carries.
-      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: "usage" },
+      // holds; the server's list asks no capability (creation_requests_router.list_requests), so
+      // neither does the entry.
+      { to: "/admin/requests", labelKey: "navBar.itemRequests", capability: EVERY_MEMBER },
     ],
   },
 ];
@@ -347,4 +358,113 @@ export function entryItem(
   );
   const remembered = readLastSubnav()[group.id];
   return reachable.find((i) => i.to === remembered) ?? reachable[0];
+}
+
+/** A top-level link of the navigation bar, gated as its route is. */
+export interface NavBarLink extends CapabilityRequirement {
+  kind: "link";
+  to: string;
+  labelKey: string;
+  tour: string;
+}
+
+export type NavBarEntry = NavBarLink | { kind: "group"; group: NavGroup };
+
+function group(id: string): NavGroup {
+  const found = NAV_GROUPS.find((g) => g.id === id);
+  if (found === undefined) throw new Error(`no nav group ${id}`);
+  return found;
+}
+
+/**
+ * The navigation bar's entries in the order it draws them. The bar renders this list and the
+ * landing page (`landingPath`) walks it, so the page the app opens on is always the first entry
+ * the bar shows.
+ */
+export const NAV_BAR: NavBarEntry[] = [
+  {
+    kind: "link",
+    to: "/sources",
+    labelKey: "navBar.sources",
+    tour: "nav-sources",
+    capability: "source_registration",
+  },
+  {
+    kind: "link",
+    to: "/tables",
+    labelKey: "navBar.tables",
+    tour: "nav-tables",
+    capability: "table_registration",
+    anyOf: HIDING_RIGHTS,
+  },
+  // Same capability the /relationships route gates on — an ungated link led an analyst straight
+  // to "You do not have permission to view this page."
+  {
+    kind: "link",
+    to: "/relationships",
+    labelKey: "navBar.relationships",
+    tour: "nav-relationships",
+    capability: "create_relationship",
+  },
+  // REQ-1590: gated on the glossary's own read right, not org_settings — every seeded role reads
+  // the vocabulary the model is described in.
+  {
+    kind: "link",
+    to: "/admin/ontology",
+    labelKey: "navBar.itemGlossary",
+    tour: "nav-glossary",
+    capability: "glossary_read",
+  },
+  // REQ-2185: beside the Ontology (meaning, then the documents that give the reasons) and before
+  // Security; everyone browses what they may read.
+  {
+    kind: "link",
+    to: "/library",
+    labelKey: "navBar.itemLibrary",
+    tour: "nav-library",
+    capability: "glossary_read",
+  },
+  { kind: "group", group: group("model") },
+  // REQ-1634: Data Products is a top-level list/detail page, placed right after Model so it reads
+  // as a peer of the modeling surfaces. It is its own entry, gated on the data product read right
+  // every standard role but platform_admin holds, so it stays in the bar where Model is not drawn.
+  {
+    kind: "link",
+    to: "/data-products",
+    labelKey: "navBar.itemDataProducts",
+    tour: "nav-data-products",
+    capability: "data_product_read",
+  },
+  { kind: "group", group: group("security") },
+  { kind: "group", group: group("explore") },
+];
+
+/** Where a bar entry goes for this caller, or `undefined` when the bar does not show it. */
+export function barEntryTarget(
+  entry: NavBarEntry,
+  capabilities: string[],
+  commercial = true,
+): string | undefined {
+  if (entry.kind === "link") return meetsRequirement(capabilities, entry) ? entry.to : undefined;
+  return entryItem(entry.group, capabilities, commercial)?.to;
+}
+
+/**
+ * REQ-1327: the page the app opens on — the first navigation page, in the order the bar and then
+ * the user menu draw them, the caller holds the right for, chosen as the Admin entry is
+ * (`entryItem`). The user menu's entries follow the bar: Billing where the deployment bills, then
+ * Admin, then Docs, which every member opens. No caller lands on a refusal.
+ */
+export function landingPath(capabilities: string[], commercial = true): string {
+  for (const entry of NAV_BAR) {
+    const target = barEntryTarget(entry, capabilities, commercial);
+    if (target !== undefined) return target;
+  }
+  // REQ-1469: Billing, shown only where the deployment mounts it, on the org right that owns it.
+  if (commercial && meetsRequirement(capabilities, { capability: "org_settings" })) {
+    return "/admin/billing";
+  }
+  const admin = entryItem(group("admin"), capabilities, commercial);
+  if (admin !== undefined) return admin.to;
+  return "/docs";
 }

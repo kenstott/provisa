@@ -25,7 +25,13 @@ import {
 import { SubnavExtraProvider } from "./context/SubnavExtraContext";
 import { NavBar } from "./components/NavBar";
 import { AdminRail } from "./components/AdminRail";
-import { NAV_GROUPS, entryItem, sandboxReadable } from "./components/navGroups";
+import {
+  EVERY_MEMBER,
+  NAV_GROUPS,
+  entryItem,
+  landingPath,
+  sandboxReadable,
+} from "./components/navGroups";
 import { CapabilityGate } from "./components/CapabilityGate";
 import { RegionReadableGate } from "./components/admin/RegionReadableGate";
 import { SandboxReadableGate } from "./components/admin/SandboxReadableGate";
@@ -153,6 +159,18 @@ function AdminEntry() {
   const target = group ? entryItem(group, capabilities, billing) : undefined;
   if (!target) return <NotAuthorized />;
   return <Navigate to={target.to} replace />;
+}
+
+/**
+ * REQ-1327: `/` opens the first navigation page the acting role holds the right for, in the order
+ * the bar draws them and chosen as AdminEntry chooses (entryItem). A fixed redirect to /query
+ * needed `query_development` and landed every role without it on NotAuthorized.
+ */
+export function HomeEntry() {
+  const { capabilities, loading, billing } = useAuth();
+  // REQ-1430: rights still arriving are not a denial; resolving now would pick the wrong page.
+  if (loading) return <CredentialCheck />;
+  return <Navigate to={landingPath(capabilities, billing)} replace />;
 }
 
 /** Redirects to /login when auth is enabled and no token is present. */
@@ -327,10 +345,7 @@ function App() {
                                     <PageErrorBoundary>
                                       <Suspense fallback={<PageLoading />}>
                                         <Routes>
-                                          <Route
-                                            path="/"
-                                            element={<Navigate to="/query" replace />}
-                                          />
+                                          <Route path="/" element={<HomeEntry />} />
                                           <Route
                                             path="/setup"
                                             element={<Navigate to="/" replace />}
@@ -632,12 +647,12 @@ function App() {
                                           />
 
                                           {/* REQ-1327: every member sees the requests it made and decides those whose
-                                    own right it holds, so the page asks `usage`, which every role carries. */}
+                                    own right it holds; the server's list asks no capability, so neither does the page. */}
                                           <Route
                                             path="/admin/requests"
                                             element={
                                               <CapabilityGate
-                                                capability="usage"
+                                                capability={EVERY_MEMBER}
                                                 fallback={<NotAuthorized />}
                                               >
                                                 <RequestsPage />
@@ -663,9 +678,9 @@ function App() {
                                               ["/admin/overview", "observability"],
                                               ["/admin/domains", "org_settings"],
                                               ["/admin/secrets", "org_settings"], // REQ-1560: the org vault
-                                              // REQ-1560: a person's own vault is not a grant — `usage` is the
-                                              // right every seeded role carries, so every member reaches it.
-                                              ["/admin/my-secrets", "usage"],
+                                              // REQ-1560: a person's own vault is not a grant; the server's
+                                              // personal vault asks no capability, so every member reaches it.
+                                              ["/admin/my-secrets", EVERY_MEMBER],
                                               ["/admin/scheduled-tasks", "org_settings"],
                                               ["/admin/org-engine", "org_settings"], // REQ-1412
                                               ["/admin/encryption", "platform_settings"],
@@ -702,10 +717,13 @@ function App() {
                                               key={path}
                                               path={path}
                                               element={
-                                                sandboxReadable(path) ? (
+                                                sandboxReadable(path) && capability !== null ? (
                                                   // REQ-1922: a demo sandbox reads it.
                                                   <SandboxReadableGate
-                                                    {...routeRequirement(capability)}
+                                                    capability={capability}
+                                                    andCapability={
+                                                      routeRequirement(capability).andCapability
+                                                    }
                                                     fallback={<NotAuthorized />}
                                                   >
                                                     <AdminPage />
