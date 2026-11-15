@@ -161,16 +161,18 @@ test.describe("Open as query", () => {
       timeout: 60_000,
     });
     // REQ-2143: the search is the query's root filter, read first; its neighbourhood is then read
-    // a hop at a time, each hop by the ids the one before reached.
+    // a hop at a time, each hop by the ids the one before reached. "clinic" has a neighbourhood
+    // whatever else the org holds: the config makes it PART_OF referral, and this suite's
+    // beforeEach relates it to specialty.
     const hops = collectReads(page, (q) => hopNumber(q) !== null);
     const viewed = await nextRead(
       page,
       (q) => ontologyRead(q) && q.includes("ilike"),
-      () => page.getByTestId("glossary-search").fill("species"),
+      () => page.getByTestId("glossary-search").fill("clinic"),
     );
-    expect(viewed.query).toContain('ilike: "%species%"');
+    expect(viewed.query).toContain('ilike: "%clinic%"');
     const terms = (viewed.data as { _terms: { name: string }[] })._terms;
-    expect(terms.map((t) => t.name)).toContain("species");
+    expect(terms.map((t) => t.name)).toContain("clinic");
 
     // Open as query is offered once the search's reads are in: what it opens is what they read.
     await expect(page.getByTestId("ontology-open-as-query")).toBeEnabled({ timeout: 60_000 });
@@ -196,7 +198,7 @@ test.describe("Open as query", () => {
         await page.locator(".graphiql-execute-button").click();
       },
     );
-    expect(run.query).toContain('ilike: "%species%"');
+    expect(run.query).toContain('ilike: "%clinic%"');
     const answered = run.data as Record<string, unknown>;
     const root = viewed.data as Record<string, unknown>;
     expect(Object.keys(answered).sort()).toEqual(
