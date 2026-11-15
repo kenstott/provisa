@@ -243,22 +243,37 @@ _RAISES = re.compile(r"\braises?\s+(?:PostgreSQL's\s+)?([0-9A-Z]{5})\b")
 #: grid has no row of it or the row states none.
 Bounds = Callable[[str, str], tuple[str, ...]]
 
-#: A function named in pg_catalog, as the measure writes its calls.
-_QUALIFIED = re.compile(r'pg_catalog\."([^"]+)"')
-
 
 def grid_bounds(statement: str, engine: str) -> tuple[str, ...]:
     """The limitations the polyfill grid's row of the call ``statement`` makes states on
     ``engine``'s dialect, read as the translator reads it: the function unqualified, the statement
     parsed as PostgreSQL's, its first column's expression looked up. None when the grid has no row
-    of it there. An engine the grid has no dialect of is a mistake in the run."""
+    of it there; a rewrite function refusing the call for its values states that refusal. An
+    engine the grid has no dialect of is a mistake in the run."""
     import polyfill_check
     import sqlglot
+    from sqlglot.errors import ParseError
+
+    from provisa.transpiler import transpile
+
+    from provisa.transpiler.polyfill.notation import Refused
 
     dialect = polyfill_check.ENGINE_DIALECTS[engine]
-    parsed = sqlglot.parse_one(_QUALIFIED.sub(r'"\1"', statement), read="postgres")
-    node = parsed.expressions[0]
-    applied = polyfill_check.GRID.read(node.unalias(), dialect)
+    # pg_catalog."f"(...) as the translator reads it: the function unqualified, read again.
+    try:
+        unqualified = transpile._catalog_functions_unqualified(statement)
+        node = sqlglot.parse_one(unqualified, read="postgres").expressions[0].unalias()
+    except ParseError:
+        # The translator reads no grid row of a call sqlglot cannot read unqualified
+        # (json_object(text[]), normalize(text, text), date_add of three arguments): the grid
+        # states nothing of it.
+        return ()
+    try:
+        applied = polyfill_check.GRID.read(node, dialect)
+    except Refused as refused:
+        # A rewrite function refusing the call for its values: its row lists that refusal as a
+        # limitation (notation.Refused), which is what the row states of the call.
+        return (f"refused: {refused.refusal.sqlstate} {refused.refusal.message}",)
     if applied is None:
         return ()
     return tuple(lim.text for lim in applied.feature.read.limitations.get(dialect, ()))
