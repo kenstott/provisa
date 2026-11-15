@@ -447,13 +447,14 @@ async def test_graphql_governance_runs_on_the_request_thread_in_parallel():
     from provisa.core.request_thread import RequestThreadMiddleware
 
     from provisa.api.app import AppState
+    from provisa.compiler.sql_types import CompilationContext
 
     schema = build_schema("type Query { orders: Int }")
-    # A real AppState, so every attribute the GraphQL path reads exists with its own default; only
-    # what this request needs is set.
+    # A real AppState and a real (empty) context, so every attribute the GraphQL path reads exists
+    # with its own default; only what this request needs is set.
     state = AppState()
     state.schemas = {"analyst": schema}
-    state.contexts = {"analyst": object()}  # type: ignore[dict-item]
+    state.contexts = {"analyst": CompilationContext(role_id="analyst")}
     state.rls_contexts = {}
     state.roles = {
         "analyst": {
