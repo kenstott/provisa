@@ -113,8 +113,8 @@ class Reference:
     path: str | None = None
     ends: tuple[str, ...] = ()
     # REQ-2248 (maintainer 2026-11-15): a retired referring row still holds the object. A
-    # retired object otherwise blocks nothing, but a domain that still holds a table, retired or
-    # not, is kept.
+    # retired object otherwise blocks nothing, but a retired table still holds its domain and its
+    # source: a domain or source that still holds a table, retired or not, is kept.
     retired_holds: bool = False
 
 
@@ -130,9 +130,13 @@ class Dependent:
     # REQ-2240: what its own page shows it as, so it is found where its link leads: a
     # relationship as its two tables, a table or view by its table name.
     label: str = ""
+    # REQ-2248: the dependent is retired -- a retired table that still holds its domain or source.
+    # It is in no ordinary list; it is found, and restored, among the retired objects.
+    retired: bool = False
 
     def as_dict(self) -> dict[str, Any]:
-        """The dependent as a refusal reports it, with its ``owner`` keys when it has any."""
+        """The dependent as a refusal reports it, with its ``owner`` keys when it has any, and
+        ``retired`` when it is retired."""
         return {
             "kind": self.ref.kind,
             "id": self.ref.id,
@@ -140,6 +144,7 @@ class Dependent:
             "label": self.label,
             "via": list(self.via),
             **dict(self.owner),
+            **({"retired": True} if self.retired else {}),
         }
 
 
@@ -212,7 +217,8 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2189: a domain's place in a saved ERD layout goes with it.
     _part("erd_layout_domains", "domain_id", "domain"),
     # --- to a source ---------------------------------------------------------------------------
-    _dep("registered_tables", "source_id", "source", "table", "id"),
+    # REQ-2248: a source that still holds a table, retired or not, is kept.
+    _dep("registered_tables", "source_id", "source", "table", "id", retired_holds=True),
     # REQ-1934: a table's Data Profiler membership.
     _dep("registered_tables", "profiler_source_id", "source", "table", "id"),
     _dep("tracked_functions", "source_id", "source", "command", "name"),
@@ -597,6 +603,21 @@ async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any]
     return () if found is None else ((column, found[0]),)
 
 
+async def _is_retired(conn: "Connection", ref: ObjectRef) -> bool:
+    """Whether ``ref`` is a retired object (REQ-2248): its kind keeps a retirement, and its row
+    is marked retired."""
+    kind = KINDS.get(ref.kind)
+    if kind is None:
+        return False
+    table = metadata.tables[kind.table]
+    if "retired" not in table.c:
+        return False
+    found = (
+        await conn.execute_core(select(table.c.retired).where(table.c[kind.key] == ref.id))
+    ).fetchone()
+    return bool(found is not None and found[0])
+
+
 async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -> list[Dependent]:
     """``blocking`` (object → the columns it refers through) as the sorted, named list."""
     named = []
@@ -609,6 +630,7 @@ async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -
                 name,
                 await _owner_of(conn, referrer),
                 await _label_of(conn, referrer, name),
+                await _is_retired(conn, referrer),
             )
         )
     return sorted(named, key=lambda d: (d.ref.kind, str(d.ref.id)))
