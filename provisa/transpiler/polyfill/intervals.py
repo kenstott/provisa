@@ -414,6 +414,7 @@ def _instant(argument: exp.Expr, kind: str, untyped: bool) -> str | None:
 _KIND_TYPES = {
     "timestamp": frozenset({"timestamp", "timestamp without time zone"}),
     "date": frozenset({"date"}),
+    "time": frozenset({"time", "time without time zone"}),
 }
 
 
@@ -812,6 +813,153 @@ def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
     return form
 
 
+# --- an interval and a time of day ---------------------------------------------------------------
+
+#: A time of day, held as ClickHouse's Time64(6): a NULL of it.
+_NULL_TIME = "accurateCastOrNull(NULL, 'Time64(6)')"
+#: A day's microseconds, signed: ClickHouse's remainder of an Int64 by a UInt64 is unsigned. Its
+#: remainder takes the dividend's sign, as C's does (r -= r / D * D in timestamp.c).
+_DAY = f"toInt64({_DAY_US})"
+#: A time of day's literal PostgreSQL's time input reads (time_in): hours and minutes, seconds,
+#: and a fraction of up to six digits. Any other text (a zone, AM or PM, 'allballs', a seventh
+#: digit, which PostgreSQL rounds) is read by no row here, and refused by name.
+_CLOCK = re.compile(r"\s*(\d{1,2}):(\d{2})(?::(\d{2})(?:\.(\d{1,6}))?)?\s*", re.ASCII)
+
+
+def _clock_literal(text: str) -> int | None:
+    """The microseconds of the day of a time literal; 24:00:00 is PostgreSQL's last."""
+    matched = _CLOCK.fullmatch(text)
+    if matched is None:
+        return None
+    hour, minute = int(matched.group(1)), int(matched.group(2))
+    second = int(matched.group(3) or 0)
+    fraction = int((matched.group(4) or "").ljust(6, "0"))
+    if minute > 59 or second > 59 or hour > 24:
+        return None
+    micros = ((hour * 60 + minute) * 60 + second) * _SECOND_US + fraction
+    return micros if micros <= _DAY_US else None
+
+
+def _clock(argument: exp.Expr, untyped: bool) -> str | None:
+    """A time of day ``argument``, read here: its microseconds of the day (a literal), or
+    ``NULL``. None for any other value, which no row here reads."""
+    value = argument.unnest()
+    if isinstance(value, exp.Cast):
+        if _said(value) not in _KIND_TYPES["time"]:
+            return None
+        value = value.this.unnest()
+    elif not untyped and not isinstance(value, exp.Null):
+        return None
+    if isinstance(value, exp.Null):
+        return "NULL"
+    text = _string(value)
+    if text is None:
+        return None
+    micros = _clock_literal(text)
+    return None if micros is None else str(micros)
+
+
+def _time_of(micros: str) -> str:
+    """A time of day of its microseconds, an Int64 in [0, a day): Time64(6), exact."""
+    return f"toTime64(toDecimal64({micros}, 6) / {_SECOND_US}, 6)"
+
+
+def _time_moved(negate: bool) -> Callable[[_Sql, str, str], str]:
+    """time_pl_interval and time_mi_interval (timestamp.c): the interval's microseconds added in
+    int64, as its C adds them, then brought into the day; its months and days are not read."""
+
+    def form(sql: _Sql, time: str, interval: str) -> str:
+        if time == "NULL":
+            return _NULL_TIME
+
+        def body(x: str) -> str:
+            micros = _field(x, 3)
+            moved = f"(toInt64({time}) {'-' if negate else '+'} toInt64({micros}))"
+
+            def within(r: str) -> str:
+                rest = f"({r} % {_DAY})"
+                return _time_of(f"if({rest} < 0, {rest} + {_DAY}, {rest})")
+
+            return f"if(isNull({micros}), {_NULL_TIME}, {sql.let([moved], within)})"
+
+        return sql.let([interval], body)
+
+    return form
+
+
+def _time_interval(sql: _Sql, args: list[str]) -> str:
+    """interval of a time (time_interval): its microseconds, no months and no days."""
+    del sql
+    if args[0] == "NULL":
+        return _NULL_HELD
+    return _literal(0, 0, int(args[0]))
+
+
+def _interval_time(sql: _Sql, args: list[str]) -> str:
+    """time of an interval (interval_time): its microseconds brought into the day, its months and
+    days not read."""
+
+    def body(x: str) -> str:
+        micros = _field(x, 3)
+        rest = f"(toInt64({micros}) % {_DAY})"
+        within = f"if({rest} < 0, {rest} + {_DAY}, {rest})"
+        return f"if(isNull({micros}), {_NULL_TIME}, {_time_of(within)})"
+
+    return sql.let([args[0]], body)
+
+
+#: overlaps' overloads of an interval (pg_proc's SQL functions: ($1, $1 + $2) overlaps ($3, $4),
+#: and so on), by their arguments' kinds: of timestamps (t), or of times of day (T).
+_OVERLAPS_KINDS = frozenset({"titi", "titt", "ttti", "TiTi", "TiTT", "TTTi"})
+_NULL_BOOL = "CAST(NULL AS Nullable(Bool))"
+
+
+def _overlapped(s1: str, e1: str, s2: str, e2: str) -> str:
+    """overlaps_timestamp's (and overlaps_time's) answer, timestamp.c's steps: each period's start
+    the earlier of its ends, a NULL start its end's place, then the comparisons and their NULLs."""
+
+    def period(start: str, end: str) -> tuple[str, str]:
+        swapped = f"(isNotNull({end}) AND {start} > {end})"
+        first = f"if(isNull({start}), {end}, if({swapped}, {end}, {start}))"
+        last = f"if(isNull({start}), NULL, if({swapped}, {start}, {end}))"
+        return first, last
+
+    (t1, u1), (t2, u2) = period(s1, e1), period(s2, e2)
+    return (
+        f"multiIf(isNull({t1}) OR isNull({t2}), {_NULL_BOOL}, "
+        f"{t1} > {t2}, if(isNull({u2}), {_NULL_BOOL}, if({t1} < {u2}, true, "
+        f"if(isNull({u1}), {_NULL_BOOL}, false))), "
+        f"{t1} < {t2}, if(isNull({u1}), {_NULL_BOOL}, if({t2} < {u1}, true, "
+        f"if(isNull({u2}), {_NULL_BOOL}, false))), "
+        f"if(isNull({u1}) OR isNull({u2}), {_NULL_BOOL}, true))"
+    )
+
+
+def _overlaps(sql: _Sql, kinds: str, read: list[str]) -> str:
+    """overlaps of two periods, either end of each an interval from its start: that end is the
+    start plus the interval, as PostgreSQL's SQL function computes it."""
+    clock = kinds[0] == "T"
+    moved = _time_moved(False) if clock else _shifted("overlaps", False)
+
+    def value(micros: str) -> str:
+        if micros == "NULL":
+            return _NULL_TIME if clock else _NULL_STAMP
+        if clock:
+            return _time_of(micros)
+        return f"fromUnixTimestamp64Micro(toInt64({micros}), 'UTC')"
+
+    def end(start: str, kind: str, given: str) -> str:
+        return moved(sql, start, given) if kind == "i" else value(given)
+
+    ends = [
+        value(read[0]),
+        end(read[0], kinds[1], read[1]),
+        value(read[2]),
+        end(read[2], kinds[3], read[3]),
+    ]
+    return sql.let(ends, _overlapped)
+
+
 # --- an interval times or divided by a number ---------------------------------------------------
 
 #: A float8 literal's text, as ClickHouse's Float64 reads it: a special value by its name.
@@ -1062,6 +1210,19 @@ def _rows() -> dict[str, _Row]:
         rows[function] = _Row(
             frozenset({function}), kinds, _shifted(function, negate), False, untyped=True
         )
+    for function, kinds, negate in (
+        ("time_pl_interval", "Ti", False),
+        ("time_mi_interval", "Ti", True),
+        ("interval_pl_time", "iT", False),
+    ):
+        rows[function] = _Row(
+            frozenset({function}), kinds, _time_moved(negate), False, untyped=True
+        )
+    rows["overlaps_timestamp"] = _Row(
+        frozenset({"overlaps_timestamp", "overlaps"}), "????", _overlaps, False
+    )
+    rows["interval"] = _Row(frozenset({"interval"}), "T", _time_interval, True)
+    rows["time"] = _Row(frozenset({"time"}), "i", _interval_time, False)
     return rows
 
 
@@ -1083,8 +1244,15 @@ _OPERATORS: dict[type[exp.Expr], dict[str, str]] = {
         "it": "interval_pl_timestamp",
         "di": "date_pl_interval",
         "id": "interval_pl_date",
+        "Ti": "time_pl_interval",
+        "iT": "interval_pl_time",
     },
-    exp.Sub: {"ii": "interval_mi", "ti": "timestamp_mi_interval", "di": "date_mi_interval"},
+    exp.Sub: {
+        "ii": "interval_mi",
+        "ti": "timestamp_mi_interval",
+        "di": "date_mi_interval",
+        "Ti": "time_mi_interval",
+    },
     exp.Neg: {"i": "interval_um"},
     exp.Mul: {"if": "interval_mul", "fi": "mul_d_interval"},
     exp.Div: {"if": "interval_div"},
@@ -1101,6 +1269,8 @@ def _kind(argument: exp.Expr) -> str | None:
         return "i"
     if isinstance(value, exp.Column) and _held_column(value):
         return "i"
+    if said in _KIND_TYPES["time"]:
+        return "T"
     if _factor(value, untyped=False) is not None and not isinstance(value, exp.Null):
         return "f"
     if said in _KIND_TYPES["timestamp"]:
@@ -1149,7 +1319,11 @@ def _mentions_interval(node: exp.Expr) -> bool:
 
 
 #: The names of rows here that other types' calls have too: a call of one says no interval.
-_SHARED = frozenset({"max", "min", "sum", "extract", "date_part", "isfinite"})
+_SHARED = frozenset(
+    {"max", "min", "sum", "extract", "date_part", "isfinite", "time", "overlaps_timestamp"}
+)
+#: The rows of a type's own name, each of one overload: a call of another is another row's.
+_CASTS = frozenset({"interval", "time"})
 
 
 def _interval_column(column: exp.Column) -> bool:
@@ -1222,6 +1396,10 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
         return None
     if (name == "isfinite" or row.aggregate) and _said_kinds(args) != "i":
         return None  # max, min, sum and isfinite of another type are other rows'
+    if name in _CASTS and _said_kinds(args) != row.kinds:
+        return None  # interval(interval, integer), time(timestamp): other overloads
+    if name == "overlaps_timestamp":
+        return _overlaps_written(sql, args)
     read: list[str] = []
     unit: str | None = None
     for kind, argument in zip(row.kinds, args):
@@ -1239,6 +1417,8 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
             continue
         elif kind == "f":
             value = _factor(argument, row.untyped)
+        elif kind == "T":
+            value = _clock(argument, row.untyped)
         else:
             value = _instant(argument, "timestamp" if kind == "t" else "date", row.untyped)
         if value is None:
@@ -1246,13 +1426,45 @@ def _written(node: exp.Expr, sql: _Sql) -> str | None:
         read.append(value)
     if row.kinds == "ui":
         return row.form(sql, read, unit)
-    if row.kinds in ("ti", "di"):
+    if row.kinds in ("ti", "di", "Ti"):
         return row.form(sql, read[0], read[1])
-    if row.kinds in ("it", "id"):
+    if row.kinds in ("it", "id", "iT"):
         return row.form(sql, read[1], read[0])
     if row.kinds == "fi":
         return row.form(sql, [read[1], read[0]])
     return row.form(sql, read)
+
+
+def _period_kind(argument: exp.Expr) -> str:
+    """An end of a period's kind, by the type the statement says of it (a NULL's too)."""
+    said = _said(argument.unnest())
+    if said == "interval":
+        return "i"
+    if said in _KIND_TYPES["timestamp"]:
+        return "t"
+    if said in _KIND_TYPES["time"]:
+        return "T"
+    return "?"
+
+
+def _overlaps_written(sql: _Sql, args: list[exp.Expr]) -> str | None:
+    """overlaps of an interval, its arguments read: None for overlaps of four timestamps or four
+    times, which are other rows', and for an argument no row here reads."""
+    kinds = "".join(_period_kind(a) for a in args)
+    if kinds not in _OVERLAPS_KINDS:
+        return None
+    read: list[str] = []
+    for kind, argument in zip(kinds, args):
+        if kind == "i":
+            value = _interval(argument, sql)
+        elif kind == "T":
+            value = _clock(argument, untyped=False)
+        else:
+            value = _instant(argument, "timestamp", untyped=False)
+        if value is None:
+            return None
+        read.append(value)
+    return _overlaps(sql, kinds, read)
 
 
 def _said_kinds(args: list[exp.Expr]) -> str:
@@ -1487,6 +1699,47 @@ for _name, _what, _summary in (
 ):
     _types = ", ".join("interval" if k == "i" else _what for k in _ROWS[_name].kinds)
     _DOCS[_name] = _Doc(f"{_name}({_types})", _summary, _SHIFT_STATED.format(_what, _name))
+_CLOCK_STATED = (
+    " The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
+    "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
+    "A time answer is held as Time64(6), exact."
+)
+_MOVED_STATED = (
+    _CLOCK_STATED + " The interval's microseconds are added in int64 as PostgreSQL's C adds them, "
+    "then brought into the day; its months and days are not read, as PostgreSQL does not read them."
+)
+_DOCS["time_pl_interval"] = _Doc(
+    "time_pl_interval(time, interval)", "A time of day plus an interval (+).", _MOVED_STATED
+)
+_DOCS["time_mi_interval"] = _Doc(
+    "time_mi_interval(time, interval)", "A time of day less an interval (-).", _MOVED_STATED
+)
+_DOCS["interval_pl_time"] = _Doc(
+    "interval_pl_time(interval, time)", "An interval plus a time of day (+).", _MOVED_STATED
+)
+_DOCS["overlaps_timestamp"] = _Doc(
+    "overlaps(timestamp, interval, timestamp, interval)",
+    "Whether two periods overlap, an end of either given as an interval from its start: "
+    "overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, "
+    "timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.",
+    " Each end given as an interval is its start plus the interval, as PostgreSQL's SQL function "
+    "computes it: a timestamp's as timestamp_pl_interval's row writes it (a literal in ISO form "
+    "or a NULL; the answer, or a step of it, outside "
+    f"{instants.STAMP_BOUND} raises 0A000), a time's as time_pl_interval's."
+    + _CLOCK_STATED
+    + " Then timestamp.c's comparisons, with its NULLs.",
+)
+_DOCS["interval"] = _Doc(
+    "interval(time)",
+    "The interval of a time of day: its microseconds, no months and no days.",
+    _TEXT_STATED + _CLOCK_STATED,
+)
+_DOCS["time"] = _Doc(
+    "time(interval)",
+    "The time of day of an interval: its microseconds brought into the day.",
+    _CLOCK_STATED + " The interval's months and days are not read, as PostgreSQL does not read "
+    "them.",
+)
 
 
 # --- an interval's literal where no call reads it -------------------------------------------------
@@ -1775,6 +2028,26 @@ def _isfinite_rewrite() -> Callable[[exp.Expr, str], exp.Expr | None]:
     return rewrite
 
 
+def _overlaps_rewrite() -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """overlaps' rewrite: instants' row reads every overlaps by its pattern, so this row's pattern
+    is read first, and a call of no interval is that row's."""
+    of_intervals = _rewrite("overlaps_timestamp")
+    of_instants = next(
+        rule.forms[_CLICKHOUSE]
+        for feature in instants.FEATURES
+        if feature.name == "overlaps(timestamptz)"
+        for rule in feature.read.rules
+    )
+    assert isinstance(of_instants, Rewrite)
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        return of_intervals(node, dialect) or of_instants.function(node, dialect)
+
+    rewrite.__doc__ = of_intervals.__doc__
+    rewrite.__qualname__ = rewrite.__name__ = of_intervals.__name__
+    return rewrite
+
+
 def _feature(name: str) -> Feature:
     doc = _DOCS[name]
     stated = _HELD_STATED + doc.stated
@@ -1784,6 +2057,12 @@ def _feature(name: str) -> Feature:
             _CLICKHOUSE: Rewrite(_isfinite_rewrite()),
         }
         rule = Rule("isfinite($a)", forms, unlisted_keep=True)
+    elif name == "overlaps_timestamp":
+        forms = {
+            **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+            _CLICKHOUSE: Rewrite(_overlaps_rewrite()),
+        }
+        rule = Rule("overlaps($a, $b, $c, $d)", forms, unlisted_keep=True)
     else:
         rule = Rule(None, {_CLICKHOUSE: Rewrite(_rewrite(name), mentions=_MENTIONS)})
     return Feature(

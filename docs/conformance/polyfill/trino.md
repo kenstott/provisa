@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Trino. A fe
 
 When Trino is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 306, of which 212 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 307, of which 213 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-48 of the grid's 314 features are native on Trino and left out.
+53 of the grid's 320 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -454,6 +454,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>to_oct</strong><br>An integer&#x27;s octal digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>to_bin</strong><br>An integer&#x27;s binary digits.</td><td><pre><code>function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._trino_rewrite: A literal of interval on Trino where no call reads it. Trino has no type named interval,</code></pre></td><td><ul><li>A literal of interval where no call reads it is written only where a timestamp is moved by it (+, -), as Trino&#x27;s INTERVAL &#x27;n&#x27; UNIT: a value of months alone, or of days and whole seconds. Anywhere else, or of any other value, it is refused by name: Trino holds months and days in two interval types, and a day and its time as one count of milliseconds, which it writes otherwise than PostgreSQL.</li></ul></td><td></td><td></td></tr>

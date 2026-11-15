@@ -37,6 +37,7 @@ import sqlglot
 import sqlglot.expressions as exp
 from sqlglot.errors import SqlglotError
 
+from provisa.core.pg_error import END, MARK
 from provisa.transpiler.polyfill.grid import Feature, Rule, Side
 from provisa.transpiler.polyfill.notation import Rewrite
 
@@ -49,6 +50,10 @@ PORTED: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dlog1", ("double precision",)),  # Numeric
     ("text", ("xml",)),  # Other
     ("replace", ("text", "text", "text")),  # String
+    ("int8inc_any", ("bigint", '"any"')),  # Aggregate and window
+    ("int8dec_any", ("bigint", '"any"')),  # Aggregate and window
+    ("max", ("money",)),  # Aggregate and window
+    ("min", ("money",)),  # Aggregate and window
     ("tideq", ("tid", "tid")),  # Type operators
     ("tidge", ("tid", "tid")),  # Type operators
     ("tidgt", ("tid", "tid")),  # Type operators
@@ -66,8 +71,12 @@ _PLACED = re.compile(rf"\b{_PLACEHOLDER}(\d+)\(\)", re.IGNORECASE)
 
 @functools.cache
 def _said(pg_type: str) -> str | None:
-    """A pg_proc argument type as said_type reads a statement's cast to it."""
+    """A pg_proc argument type as said_type reads a statement's cast to it; None for "any", which
+    any type the statement says fits."""
     from provisa.transpiler.function_macros import said_type
+
+    if pg_type == '"any"':
+        return None
 
     tree = sqlglot.parse_one(f"SELECT NULL::{pg_type}", read="postgres")
     assert isinstance(tree, exp.Select)
@@ -162,12 +171,56 @@ def duckdb_form(call: exp.Expr) -> exp.Expr | None:
     return form
 
 
+#: PostgreSQL's integers: their names in its error, and their ranges.
+_INTEGERS = {
+    exp.DataType.Type.SMALLINT: ("smallint", 2**15),
+    exp.DataType.Type.INT: ("integer", 2**31),
+    exp.DataType.Type.BIGINT: ("bigint", 2**63),
+}
+
+
+def _past_its_integer(form: exp.Expr) -> str | None:
+    """PostgreSQL's 22003 of a number cast to an integer it does not fit, which it raises as it
+    reads the statement, wherever the cast stands: ClickHouse's raise of it, or None where the
+    form holds no such cast. ClickHouse's CAST would wrap the number instead."""
+    for node in form.find_all(exp.Cast):
+        value = node.this
+        if isinstance(node, exp.TryCast) or not isinstance(value, exp.Literal):
+            continue
+        named = _INTEGERS.get(node.to.this)
+        if named is None or value.is_string or not value.is_int:
+            continue
+        if not -named[1] <= int(value.this) < named[1]:
+            return f"throwIf(1, '{MARK} 22003: {named[0]} out of range{END}')"
+    return None
+
+
+def _adapted(node: exp.Expr) -> exp.Expr:
+    """What DuckDB's form calls, as ClickHouse calls it: DuckDB's error() raises, as ClickHouse's
+    throwIf does in the branch that runs; a TRY_CAST answers NULL where the value does not fit, as
+    accurateCastOrNull does (ClickHouse's CAST of an integer wraps it)."""
+    if isinstance(node, exp.Anonymous) and node.name.lower() == "error":
+        return exp.Anonymous(this="throwIf", expressions=[exp.Literal.number(1), *node.expressions])
+    if isinstance(node, exp.TryCast) and node.to.is_type(*exp.DataType.INTEGER_TYPES):
+        named = node.to.sql(dialect=_CLICKHOUSE)
+        return exp.Anonymous(
+            this="accurateCastOrNull", expressions=[node.this, exp.Literal.string(named)]
+        )
+    return node
+
+
 def clickhouse_text(form: exp.Expr) -> str:
     """``form`` written in ClickHouse's SQL, with what ClickHouse would read otherwise said for it
     (transpile.clickhouse_semantics)."""
+    from provisa.transpiler.pg_money import exact_on_clickhouse
     from provisa.transpiler.transpile import clickhouse_semantics
 
-    tree = clickhouse_semantics(exp.select(form.copy()))
+    raised = _past_its_integer(form)
+    if raised is not None:
+        return raised
+    # a number cast to a decimal is read as its text there: ClickHouse's number is a Float64
+    adapted = form.copy().transform(exact_on_clickhouse).transform(_adapted)
+    tree = clickhouse_semantics(exp.select(adapted))
     assert isinstance(tree, exp.Select)
     said = tree.selects[0]
     if not isinstance(said, (exp.Func, exp.Column, exp.Literal, exp.Paren)):
