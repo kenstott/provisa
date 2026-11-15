@@ -47,6 +47,13 @@
     "saveButtonLabel": "KI-Modelleinstellungen speichern",
     "loading": "Wird geladen…",
     "saved": "Gespeichert.",
-    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen."
+    "savedRestartRequired": "Gespeichert. Starten Sie den Dienst neu, um die Änderungen zu übernehmen.",
+    "limitsIntro": "Jedes Modell hat zwei Grenzen in Tokens: das Meiste, was es in einer Anfrage lesen kann (Eingabe), und die längste Antwort, die es schreiben kann (Ausgabe). Ein Modell mit veröffentlichten Werten beginnt mit diesen; ändern Sie sie, wenn Ihre abweichen.",
+    "inputLimitLabel": "Eingabegrenze (Tokens)",
+    "outputLimitLabel": "Ausgabegrenze (Tokens)",
+    "limitsDefaultNote": "Standard: Für dieses Modell ist kein veröffentlichter Wert bekannt.",
+    "limitsResetKnown": "Veröffentlichte Grenzen verwenden",
+    "limitsResetDefault": "Standardgrenzen verwenden",
+    "limitsIncomplete": "Geben Sie beide Grenzen für {{model}} als ganze Zahlen größer als null ein."
   }
 }

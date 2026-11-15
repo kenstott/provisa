@@ -169,6 +169,96 @@ class TestAiModels:
         client.put("/admin/ai-models", json={"ai_models": {"sql_generation": ""}})
         assert "ai_models" not in org_overrides
 
+    def test_get_returns_each_assigned_models_limits_and_source(self, client, org_overrides):
+        # REQ-464: a known model's published figures, and the default pair for one not known.
+        org_overrides["ai_models"] = {
+            "sql_generation": {"vendor": "ollama", "model": "llama3:8b"},
+        }
+        limits = client.get("/admin/ai-models").json()["model_limits"]
+        haiku = limits["anthropic"]["claude-haiku-4-5-20251001"]
+        assert (haiku["input_tokens"], haiku["output_tokens"], haiku["source"]) == (
+            200_000,
+            64_000,
+            "known",
+        )
+        llama = limits["ollama"]["llama3:8b"]
+        assert (llama["input_tokens"], llama["output_tokens"], llama["source"]) == (
+            32_000,
+            4_096,
+            "default",
+        )
+
+    def test_put_stores_a_limits_override_and_null_clears_it(self, client, org_overrides):
+        # REQ-464: the override is the org's, beside its role assignments, and is read back.
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "model_limits": {
+                    "anthropic": {
+                        "claude-haiku-4-5-20251001": {
+                            "input_tokens": 100_000,
+                            "output_tokens": 8_000,
+                        }
+                    }
+                }
+            },
+        )
+        assert r.status_code == 200
+        assert org_overrides["ai_models"]["model_limits"] == {
+            "anthropic": {
+                "claude-haiku-4-5-20251001": {"input_tokens": 100_000, "output_tokens": 8_000}
+            }
+        }
+        haiku = client.get("/admin/ai-models").json()["model_limits"]["anthropic"][
+            "claude-haiku-4-5-20251001"
+        ]
+        assert (haiku["input_tokens"], haiku["output_tokens"], haiku["source"]) == (
+            100_000,
+            8_000,
+            "override",
+        )
+        client.put(
+            "/admin/ai-models",
+            json={"model_limits": {"anthropic": {"claude-haiku-4-5-20251001": None}}},
+        )
+        assert "ai_models" not in org_overrides
+        haiku = client.get("/admin/ai-models").json()["model_limits"]["anthropic"][
+            "claude-haiku-4-5-20251001"
+        ]
+        assert haiku["source"] == "known"
+
+    def test_put_of_limits_keeps_the_orgs_role_assignments(self, client, org_overrides):
+        client.put("/admin/ai-models", json={"ai_models": {"sql_generation": "claude-opus-4-8"}})
+        client.put(
+            "/admin/ai-models",
+            json={"model_limits": {"openai": {"gpt-4o": {"input_tokens": 9, "output_tokens": 3}}}},
+        )
+        assert org_overrides["ai_models"]["sql_generation"] == "claude-opus-4-8"
+        assert org_overrides["ai_models"]["model_limits"]["openai"]["gpt-4o"]["output_tokens"] == 3
+
+    @pytest.mark.parametrize("bad", [0, -1, "100", 1.5, True, None])
+    def test_put_refuses_a_limit_that_is_not_a_positive_whole_number(
+        self, client, org_overrides, bad
+    ):
+        r = client.put(
+            "/admin/ai-models",
+            json={
+                "model_limits": {"openai": {"gpt-4o": {"input_tokens": bad, "output_tokens": 3}}}
+            },
+        )
+        assert r.status_code == 400
+        assert "ai_models" not in org_overrides
+
+    def test_limits_lookup_answers_for_an_unassigned_model(self, client, org_overrides):
+        r = client.get("/admin/ai-models/limits", params={"vendor": "openai", "model": "gpt-4.1"})
+        assert r.status_code == 200
+        body = r.json()
+        assert (body["input_tokens"], body["output_tokens"], body["source"]) == (
+            1_047_576,
+            32_768,
+            "known",
+        )
+
     def test_invalid_vector_model_rejected(self, client, org_overrides):
         r = client.put("/admin/ai-models", json={"vector_models": [{"id": "x"}]})
         assert r.status_code == 400

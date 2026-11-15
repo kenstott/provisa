@@ -351,6 +351,32 @@ export async function discoveredColumnCount(page: Page): Promise<number> {
   return (await columnsOf(page, pickedTable as string, 30000)).length;
 }
 
+/**
+ * One admin GraphQL read issued BY THE PAGE (its own fetch, same origin), parsed. A read about what
+ * the form shows must reach the backend the page itself talks to: a spec that points the page at
+ * another backend with `page.route()` (the Trino lane's routeToTrinoBackend, engine-swap's reboot
+ * backend) rewrites only requests the page issues. `page.request` is a separate APIRequestContext
+ * that `page.route()` never intercepts, so a read through it asks the default backend, which has
+ * never heard of a source the page created on the routed one.
+ */
+async function pageGraphql(
+  page: Page,
+  query: string,
+  variables: Record<string, unknown>,
+): Promise<{ data?: Record<string, unknown> | null; errors?: { message: string }[] }> {
+  return page.evaluate(
+    async ({ query, variables }) => {
+      const res = await fetch("/admin/graphql", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query, variables }),
+      });
+      return res.json();
+    },
+    { query, variables },
+  );
+}
+
 /** The columns discovery gives `table` of the source and schema chosen on the form. */
 async function columnsOf(page: Page, table: string, timeout: number): Promise<string[]> {
   const sourceId = await page.getByTestId("register-table-source-select").inputValue();
@@ -361,29 +387,30 @@ async function columnsOf(page: Page, table: string, timeout: number): Promise<st
       : (await availableSchemas(page, sourceId))[0];
   const deadline = Date.now() + timeout;
   for (;;) {
-    const res = await page.request.post("/admin/graphql", {
-      data: {
-        query:
-          "query($s: String!, $sc: String!, $t: String!) { availableColumnsMetadata(sourceId: $s, schemaName: $sc, tableName: $t) { name } }",
-        variables: { s: sourceId, sc: schemaName, t: table },
-      },
-    });
-    const body = await res.json();
+    const body = await pageGraphql(
+      page,
+      "query($s: String!, $sc: String!, $t: String!) { availableColumnsMetadata(sourceId: $s, schemaName: $sc, tableName: $t) { name } }",
+      { s: sourceId, sc: schemaName, t: table },
+    );
     const cols = body.data?.availableColumnsMetadata as { name: string }[] | null | undefined;
     if (cols && cols.length > 0) return cols.map((c) => c.name);
-    if (Date.now() >= deadline) throw new Error(`no columns discovered for ${table}`);
+    if (Date.now() >= deadline) {
+      const errors = (body.errors ?? []).map((e) => e.message).join("; ");
+      throw new Error(
+        `no columns discovered for ${table}` +
+          ` (source ${sourceId}, schema ${schemaName})${errors ? `: ${errors}` : ""}`,
+      );
+    }
     await page.waitForTimeout(2000);
   }
 }
 
 async function availableSchemas(page: Page, sourceId: string): Promise<string[]> {
-  const res = await page.request.post("/admin/graphql", {
-    data: {
-      query: "query($s: String!) { availableSchemas(sourceId: $s) }",
-      variables: { s: sourceId },
-    },
+  const body = await pageGraphql(page, "query($s: String!) { availableSchemas(sourceId: $s) }", {
+    s: sourceId,
   });
-  return (await res.json()).data.availableSchemas as string[];
+  expect(body.errors, JSON.stringify(body.errors)).toBeUndefined();
+  return body.data?.availableSchemas as string[];
 }
 
 /**

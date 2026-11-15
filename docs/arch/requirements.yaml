@@ -45089,7 +45089,9 @@
     dialog, Create Organization does what Log Out does: the sandbox account is deleted and the visitor signs
     out, so their next sign-in has no organization and lands on organization setup. (2) The welcome dialog''s
     invite button is shown only when the roles being acted as hold user_management. No control changes the
-    role picker on the member''s behalf.'
+    role picker on the member''s behalf. (Amended 2026-11-15, A QUERYING ROLE OPENS ON EXPLORE:) Maintainer
+    2026-11-15. A role that holds the query right opens the app on Explore. Every other role opens on its
+    first page in bar order, as before.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -89839,7 +89841,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     values per column, collected for every column in one read of the table, N being what a full column yields
     today. The read has a ceiling on rows, the one the profiler already allows itself. A column with fewer
     than the minimum tested values at the ceiling is reported as too few values to classify, which the profiling
-    results show; it is not reported as matching no kind.'
+    results show; it is not reported as matching no kind. (Amended 2026-11-15, A MASKED COLUMN SHOWS ITS
+    TOO-FEW STATE:) Maintainer 2026-11-15. A masked or pii column shows the ''too few values to classify''
+    state and the count of non-null values its sample held, as any column does: the state says how many
+    values there were, never what they were.'
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -95890,7 +95895,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     timetz, bit, varbit, tid, aclitem, xml) is refused by name only when no grid row answers that call on
     that engine; a row that answers it is read first. A timestamptz on ClickHouse is held as DateTime64(6,
     ''UTC''): exact from 1900-01-01 to 2299-12-31, raising outside, stated as the limitation on that engine''s
-    page.'
+    page. (Amended 2026-11-15, TIMETZ ON CLICKHOUSE IS A PAIR OF NUMBERS:) Maintainer 2026-11-15. On ClickHouse,
+    which holds no time-with-zone type, a timetz value is a pair: microseconds of the day and the zone offset
+    in seconds. It is exact, as the interval representation is, and the timetz overloads are served over
+    it rather than refused. (Amended 2026-11-15, AN EDGE CASE RAISES; IT DOES NOT REFUSE THE FORM:) Maintainer
+    2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty
+    value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error
+    when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values.
+    The conformance measure counts such a form as served within its bound, and tests that the edge raises.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
@@ -96376,15 +96388,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     can''t reuse a retired name. it was retired for a reason''; ''without knowing why something was renamed
     you can''t tell what the right approach would be''. Deleting a table, column, relationship, tag, metric
     or glossary term retires it: it keeps its row, its name and its file in the model repository, marked
-    retired with who, when and why, and it is no longer served. Nothing in the model is hard-deleted,
-    in any environment, and a merge that removes an object retires it. A retired name is never taken by
-    another object; the check is in each kind''s write path and counts retired rows. Restoring clears
-    the retirement on the same object. Changing an object''s model name retires it and creates a new object
-    (REQ-1385). A link to a retired object, or to a name that no longer resolves (a grounding, tag, relationship,
-    catalog binding, citation or ontology alignment), is a finding naming the link and the name. No rule
-    moves or drops such a link; a person does. When retiring an object a person may name its successor
-    and, as an explicit option in the same act, move its links to it, as retiring a glossary term allows;
-    nothing moves unless they choose it.'
+    retired with who, when and why, and it is no longer served. Nothing in the model is hard-deleted, in
+    any environment, and a merge that removes an object retires it. A retired name is never taken by another
+    object; the check is in each kind''s write path and counts retired rows. Restoring clears the retirement
+    on the same object. Changing an object''s model name retires it and creates a new object (REQ-1385).
+    A link to a retired object, or to a name that no longer resolves (a grounding, tag, relationship, catalog
+    binding, citation or ontology alignment), is a finding naming the link and the name. No rule moves or
+    drops such a link; a person does. When retiring an object a person may name its successor and, as an
+    explicit option in the same act, move its links to it, as retiring a glossary term allows; nothing moves
+    unless they choose it. (Amended 2026-11-15, THE REMAINING DELETES: A PERSON''S OBJECTS RETIRE, A SEED
+    DELETES ITS OWN:) Maintainer 2026-11-15. The config loader, metric removal and deploy/undo retire a
+    model object; they no longer delete it. A startup seed may delete Provisa''s own built-in rows that
+    it no longer declares, and de-duplication may remove a true duplicate: neither is a person''s object.'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
@@ -96434,7 +96449,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a refresh recomputes the whole result with the resolver''s ordinary function and @change is not called.
     The @change function is found by its name: it carries the name of the table it keeps fresh. A code resolver
     with no @change function has the incremental option disabled: it cannot be chosen for that table, in
-    the UI or in configuration, and the reason is shown.'
+    the UI or in configuration, and the reason is shown. (Amended 2026-11-15, ONE JUNCTION RELATIONSHIP
+    PLUS TWO PLAIN ONES:) Maintainer 2026-11-15. Saving a resolver relationship saves the bridge view and
+    three relationships over it, managed and retired as one set: one junction relationship from source to
+    target through the bridge, which Cypher serves as a single edge carrying the score; and source to bridge
+    and bridge to target, which GraphQL serves as two nested levels. When GraphQL serves junction relationships,
+    the two plain relationships are no longer saved.'
   scenario: 'Given a code resolver matching stores to regions by distance, with a function marked @change
     naming its key, removal and cursor columns
 
@@ -96456,5 +96476,36 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When a query follows the relationship
 
     Then the @change function is not called
+
+    '
+- id: REQ-2250
+  status: proposed
+  group: 10. UI & Admin Surfaces
+  category: UI
+  feature: product-tour-and-demos-named-demos
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-15. A named demo answers ''how much insured value sits inside this
+    week''s wildfire perimeter, and which policyholders do we call first?''. First version: wildfire only
+    (no flood: govdata holds no flood boundaries). It ships a recorded sequence of several days of one
+    real fire''s perimeters, recorded from NIFC''s interagency perimeters service, each with the moment
+    it was recorded, so the demo is repeatable and its tour steps through the days. Policies are invented.
+    A code resolver (REQ-2249) decides which policy locations fall inside which perimeter; its result
+    is landed and kept fresh by its @change function, so a day''s new perimeter re-matches only the fires
+    that changed and a policy that leaves a perimeter is removed. An underwriter sees only the policies
+    of their own region.'
+  scenario: 'Given the demo with day 1 of a fire''s perimeter loaded
+
+    When the exposure question is asked
+
+    Then the insured value and the policies inside the perimeter are answered
+
+    When day 2''s perimeter is loaded
+
+    Then only that fire''s matches are recomputed
+
+    And a policy now outside the perimeter is no longer counted
+
+    And an underwriter of another region sees none of these policies
 
     '

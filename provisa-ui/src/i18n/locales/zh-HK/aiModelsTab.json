@@ -47,6 +47,13 @@
     "saveButtonLabel": "儲存 AI 模型設定",
     "loading": "正在載入…",
     "saved": "已儲存。",
-    "savedRestartRequired": "已儲存。重新啟動服務後生效。"
+    "savedRestartRequired": "已儲存。重新啟動服務後生效。",
+    "limitsIntro": "每個模型有兩個以權杖計的上限：一次請求中最多能讀取的量（輸入）和能寫出的最長回答（輸出）。有公開數值的模型以這些數值為起點；如果您的數值不同，請修改。",
+    "inputLimitLabel": "輸入上限（權杖）",
+    "outputLimitLabel": "輸出上限（權杖）",
+    "limitsDefaultNote": "預設值：此模型沒有已知的公開數值。",
+    "limitsResetKnown": "使用公開上限",
+    "limitsResetDefault": "使用預設上限",
+    "limitsIncomplete": "請將 {{model}} 的兩個上限都輸入為大於零的整數。"
   }
 }

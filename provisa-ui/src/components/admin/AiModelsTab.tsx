@@ -30,6 +30,7 @@ import {
 import { Plus, Trash2, TriangleAlert } from "lucide-react";
 import {
   fetchAiModels,
+  fetchModelLimits,
   fetchVendorModels,
   JEV_KEY,
   LLM_VENDORS,
@@ -37,6 +38,9 @@ import {
   type AiEndpoint,
   type AiModelAssignments,
   type AiModelsState,
+  type ModelLimits,
+  type ModelLimitsOverride,
+  type ModelLimitsSource,
   type VectorModel,
 } from "../../api/aiModels";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
@@ -88,6 +92,47 @@ function serializeRole(v: string | Record<string, unknown>): string | Record<str
   return v;
 }
 
+// REQ-464: a model's limits are kept per vendor and model id; this joins the two into one key.
+// A newline appears in neither a vendor nor a model id.
+function limitsKey(vendor: string, model: string): string {
+  return `${vendor}\n${model}`;
+}
+
+function flattenLimits(byVendor: AiModelsState["model_limits"] | undefined) {
+  const out: Record<string, ModelLimits> = {};
+  for (const models of Object.values(byVendor ?? {})) {
+    for (const l of Object.values(models)) out[limitsKey(l.vendor, l.model)] = l;
+  }
+  return out;
+}
+
+/** A limit being edited: a whole number, or "" while the field is empty. */
+type LimitDraft = { input_tokens: number | ""; output_tokens: number | "" };
+
+/** What a model's limit fields show: the loaded limits with any unsaved edit laid over them. */
+function shownLimits(
+  loaded: ModelLimits,
+  edit: LimitDraft | null | undefined,
+): { input: number | ""; output: number | ""; source: ModelLimitsSource } {
+  if (edit === null) {
+    return {
+      input: loaded.base_input_tokens,
+      output: loaded.base_output_tokens,
+      source: loaded.base_source,
+    };
+  }
+  if (edit !== undefined) {
+    return { input: edit.input_tokens, output: edit.output_tokens, source: "override" };
+  }
+  return { input: loaded.input_tokens, output: loaded.output_tokens, source: loaded.source };
+}
+
+/** The digit-group separator of the page's language, so 32000 reads as 32,000 (or 32.000). */
+function groupSeparator(language: string): string {
+  const part = new Intl.NumberFormat(language).formatToParts(10000).find((p) => p.type === "group");
+  return part?.value ?? ",";
+}
+
 const EMPTY_VECTOR_MODEL: VectorModel = {
   id: "",
   provider: "openai",
@@ -134,7 +179,7 @@ function Panel({
 }
 
 export function AiModelsTab() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [s, setS] = useState<AiModelsState | null>(null);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -151,11 +196,80 @@ export function AiModelsTab() {
   const [loadingVendors, setLoadingVendors] = useState<Record<string, boolean>>({});
   const requestedVendors = useRef<Set<string>>(new Set());
 
+  // REQ-464: each assigned model's limits as loaded, and the unsaved edits to them (null: return
+  // the model to its published figure, or to the default pair).
+  const [limits, setLimits] = useState<Record<string, ModelLimits>>({});
+  const [limitEdits, setLimitEdits] = useState<Record<string, LimitDraft | null>>({});
+  const [limitErrors, setLimitErrors] = useState<Record<string, string>>({});
+  const requestedLimits = useRef<Set<string>>(new Set());
+
   useEffect(() => {
     fetchAiModels()
-      .then(setS)
+      .then((loaded) => {
+        setS(loaded);
+        const flat = flattenLimits(loaded.model_limits);
+        for (const k of Object.keys(flat)) requestedLimits.current.add(k);
+        setLimits(flat);
+      })
       .catch((e) => setError(String(e)));
   }, []);
+
+  // The vendor/model pairs assigned right now, sorted and joined so the lookup below re-runs only
+  // when the set changes.
+  const assignedPairs = s
+    ? [
+        ...new Set(
+          ROLE_KEYS.map((k) => {
+            const model = roleModel(s.ai_models[k]).trim();
+            return model ? limitsKey(roleVendor(s.ai_models[k]), model) : "";
+          }).filter(Boolean),
+        ),
+      ]
+        .sort()
+        .join("\t")
+    : "";
+
+  // A model given to a task here, not yet saved, has its limits looked up once typing pauses.
+  useEffect(() => {
+    const missing = assignedPairs.split("\t").filter((k) => k && !requestedLimits.current.has(k));
+    if (missing.length === 0) return;
+    const timer = setTimeout(() => {
+      for (const key of missing) {
+        if (requestedLimits.current.has(key)) continue;
+        requestedLimits.current.add(key);
+        const [vendor, model] = key.split("\n");
+        fetchModelLimits(vendor, model)
+          .then((l) => setLimits((p) => ({ ...p, [key]: l })))
+          .catch((e: unknown) => setLimitErrors((p) => ({ ...p, [key]: String(e) })));
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [assignedPairs]);
+
+  const editLimit = (key: string, field: keyof LimitDraft, value: number | "") => {
+    const loaded = limits[key];
+    if (!loaded) return;
+    setLimitEdits((prev) => {
+      const now = shownLimits(loaded, prev[key]);
+      const draft: LimitDraft = { input_tokens: now.input, output_tokens: now.output };
+      return { ...prev, [key]: { ...draft, [field]: value } };
+    });
+  };
+
+  const resetLimit = (key: string) => {
+    const loaded = limits[key];
+    if (!loaded) return;
+    setLimitEdits((prev) => {
+      const next = { ...prev };
+      // Unsaved figures over a saved override return to the published figure on save; unsaved
+      // figures over a model's own published figure are simply dropped.
+      if (loaded.source === "override") next[key] = null;
+      else delete next[key];
+      return next;
+    });
+  };
+
+  const separator = groupSeparator(i18n.language);
 
   // Vendors named by the five roles right now. Sorted+joined so the effect re-runs only when the
   // SET changes, not on every keystroke in a model field.
@@ -188,6 +302,22 @@ export function AiModelsTab() {
     setSaving(true);
     setMsg("");
     setError("");
+    // REQ-464: each edited model's limits, or null where an override is cleared.
+    const model_limits: Record<string, Record<string, ModelLimitsOverride | null>> = {};
+    for (const [key, edit] of Object.entries(limitEdits)) {
+      const [vendor, model] = key.split("\n");
+      if (edit !== null) {
+        const { input_tokens, output_tokens } = edit;
+        if (input_tokens === "" || output_tokens === "" || input_tokens < 1 || output_tokens < 1) {
+          setError(t("aiModelsTab.limitsIncomplete", { model }));
+          setSaving(false);
+          return;
+        }
+        (model_limits[vendor] ??= {})[model] = { input_tokens, output_tokens };
+      } else {
+        (model_limits[vendor] ??= {})[model] = null;
+      }
+    }
     try {
       const ai_models: Partial<Record<keyof AiModelAssignments, string | Record<string, unknown>>> =
         {};
@@ -204,8 +334,32 @@ export function AiModelsTab() {
         vector_models: s.vector_models,
         ai_endpoints: s.ai_endpoints,
         nl: s.nl,
+        ...(Object.keys(model_limits).length ? { model_limits } : {}),
         ...(Object.keys(api_keys).length ? { api_keys } : {}),
       });
+      setLimits((prev) => {
+        const next = { ...prev };
+        for (const [key, edit] of Object.entries(limitEdits)) {
+          const loaded = next[key];
+          if (!loaded) continue;
+          next[key] =
+            edit === null
+              ? {
+                  ...loaded,
+                  input_tokens: loaded.base_input_tokens,
+                  output_tokens: loaded.base_output_tokens,
+                  source: loaded.base_source,
+                }
+              : {
+                  ...loaded,
+                  input_tokens: Number(edit.input_tokens),
+                  output_tokens: Number(edit.output_tokens),
+                  source: "override",
+                };
+        }
+        return next;
+      });
+      setLimitEdits({});
       setMsg(res.restart_required ? t("aiModelsTab.savedRestartRequired") : t("aiModelsTab.saved"));
       setS((prev) => {
         if (!prev) return prev;
@@ -368,11 +522,17 @@ export function AiModelsTab() {
         <Text c="dimmed" size="sm">
           {t("aiModelsTab.modelsIntro")}
         </Text>
+        <Text c="dimmed" size="sm">
+          {t("aiModelsTab.limitsIntro")}
+        </Text>
         <Stack gap="sm">
           {ROLE_KEYS.map((k) => {
             const v = s.ai_models[k];
             const vendor = roleVendor(v);
             const model = roleModel(v);
+            const key = limitsKey(vendor, model.trim());
+            const loaded = model.trim() ? limits[key] : undefined;
+            const shown = loaded ? shownLimits(loaded, limitEdits[key]) : undefined;
             return (
               <Stack key={k} gap={4}>
                 <Text size="sm" fw={500}>
@@ -400,6 +560,56 @@ export function AiModelsTab() {
                       />
                     </FormField>
                   </FieldGroup>
+                  {model.trim() && (
+                    <FieldGroup row style={{ alignItems: "flex-end" }}>
+                      <FormField size="short">
+                        <NumberInput
+                          label={t("aiModelsTab.inputLimitLabel")}
+                          data-testid={`ai-model-${k}-input-limit`}
+                          value={shown?.input ?? ""}
+                          disabled={!loaded}
+                          min={1}
+                          allowDecimal={false}
+                          allowNegative={false}
+                          thousandSeparator={separator}
+                          onChange={(val) =>
+                            editLimit(key, "input_tokens", val === "" ? "" : Number(val))
+                          }
+                        />
+                      </FormField>
+                      <FormField size="short">
+                        <NumberInput
+                          label={t("aiModelsTab.outputLimitLabel")}
+                          data-testid={`ai-model-${k}-output-limit`}
+                          value={shown?.output ?? ""}
+                          disabled={!loaded}
+                          min={1}
+                          allowDecimal={false}
+                          allowNegative={false}
+                          thousandSeparator={separator}
+                          onChange={(val) =>
+                            editLimit(key, "output_tokens", val === "" ? "" : Number(val))
+                          }
+                        />
+                      </FormField>
+                      {loaded && shown?.source === "override" && (
+                        <Button
+                          variant="subtle"
+                          data-testid={`ai-model-${k}-limits-reset`}
+                          onClick={() => resetLimit(key)}
+                        >
+                          {loaded.base_source === "known"
+                            ? t("aiModelsTab.limitsResetKnown")
+                            : t("aiModelsTab.limitsResetDefault")}
+                        </Button>
+                      )}
+                    </FieldGroup>
+                  )}
+                  {model.trim() && (limitErrors[key] || shown?.source === "default") && (
+                    <Text c="dimmed" size="xs" data-testid={`ai-model-${k}-limits-note`}>
+                      {limitErrors[key] ?? t("aiModelsTab.limitsDefaultNote")}
+                    </Text>
+                  )}
                 </FormLayout>
               </Stack>
             );

@@ -695,7 +695,36 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
     the same ``relationships`` row, differing only in whether the via_* columns are filled, so the
     glossary's edges go in the same way a modeller-declared junction does.
     """
-    from provisa.api._meta_seed import RELATIONSHIP_SEED_COLUMNS, meta_relationship_seed_rows
+    from provisa.api._meta_seed import (
+        RELATIONSHIP_SEED_COLUMNS,
+        meta_relationship_seed_rows,
+        seed_relationship_id_prefixes,
+        undeclared_seed_relationship_ids,
+    )
+    from provisa.core.repositories import relationship as _relationship_repo
+    from provisa.core.repositories.integrity import ObjectRef, remove_parts
+
+    # R510: the seed's relationships are a SET it declares, as meta's tables are
+    # (_seed_meta_domain). An edge whose id changed between versions left its old row holding the
+    # edge's (source_table_id, alias), and the new id's insert was refused
+    # (relationships_source_alias_unique): the boot stopped. The rows are the seed's own, never a
+    # person's, so the ones it no longer declares are removed (as the table seed removes its
+    # tables), not retired: a retired row keeps its alias and would refuse the insert the same.
+    held = (
+        await conn.execute_core(
+            select(_relationships_t.c.id).where(
+                _sa_or(
+                    *(
+                        _relationships_t.c.id.startswith(p, autoescape=True)
+                        for p in seed_relationship_id_prefixes()
+                    )
+                )
+            )
+        )
+    ).scalars()
+    for stale_id in undeclared_seed_relationship_ids(held):
+        await remove_parts(conn, ObjectRef("relationship", stale_id))
+        await _relationship_repo.remove_where(conn, _relationships_t.c.id == stale_id)
 
     async def _table_id(source_id: str, table_name: str) -> int | None:
         return (
