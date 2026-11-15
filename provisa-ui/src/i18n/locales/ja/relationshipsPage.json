@@ -7,7 +7,7 @@
     "addRelationship": "+ リレーションシップ",
     "sqlModelingTool": "SQLモデリングツール",
     "viewErd": "ERDを表示",
-    "discovering": "検出中...",
+    "discovering": "検出を実行中です。開くと進行状況を確認できます。",
     "suggestWithAi": "AIで提案",
     "clearRejections": "却下履歴をクリア",
     "clearedRejections": "{{count}} 件の却下をクリアしました。",

@@ -44,6 +44,7 @@ export function DestructiveConfirmButton({
       loading={loading}
       disabled={disabled}
       data-testid={testId}
+      data-tone="destructive"
       // REQ-2115: what Polly presses here destroys something; she asks the user first.
       data-changes="true"
     >

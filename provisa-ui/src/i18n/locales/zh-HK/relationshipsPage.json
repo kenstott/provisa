@@ -7,7 +7,7 @@
     "addRelationship": "+ 關係",
     "sqlModelingTool": "SQL 建模工具",
     "viewErd": "檢視 ERD",
-    "discovering": "正在探索…",
+    "discovering": "正在發現關係。開啟即可查看進度。",
     "suggestWithAi": "以 AI 建議",
     "clearRejections": "清除拒絕記錄",
     "clearedRejections": "已清除 {{count}} 項拒絕記錄。",

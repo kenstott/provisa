@@ -13,7 +13,7 @@ import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { ArrowLeft, Sparkles, Code2, X, Link2 } from "lucide-react";
+import { ArrowLeft, Code2, X, Link2 } from "lucide-react";
 import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
@@ -28,10 +28,9 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
 import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
-import { discoveryResultLines } from "../components/relationships/discoveryResult";
+import { DiscoverButton, DiscoverResultBanner } from "../components/relationships/DiscoverControls";
+import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
 import {
-  type DiscoveryKind,
-  discoverRelationships,
   fetchCandidates,
   fetchRejectedCount,
   acceptCandidate,
@@ -112,11 +111,8 @@ export function RelationshipsPage() {
   const [saving, setSaving] = useState<string | null>(null);
   // What the open form has to say of a save that did not go through.
   const [saveProblem, setSaveProblem] = useState("");
-  const [discovering, setDiscovering] = useState(false);
   const [discoverError, setDiscoverError] = useState("");
   const [discoverMsg, setDiscoverMsg] = useState("");
-  // REQ-413: what the last discovery run found, one line per kind it ran.
-  const [discoverResult, setDiscoverResult] = useState<string[]>([]);
   const [discoverAsk, setDiscoverAsk] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
@@ -378,7 +374,6 @@ export function RelationshipsPage() {
     onStart: () => {
       setDiscoverError("");
       setDiscoverMsg("");
-      setDiscoverResult([]);
     },
     onMessage: setDiscoverMsg,
     onError: setDiscoverError,
@@ -397,7 +392,6 @@ export function RelationshipsPage() {
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
-    setDiscoverResult([]);
     clearAtOnce();
     try {
       const result = await clearRejectedCandidates();
@@ -408,28 +402,19 @@ export function RelationshipsPage() {
     }
   }, [t, clearAtOnce]);
 
-  // REQ-413: runs only the kinds the dialog asked for, and says what each found.
-  const handleDiscover = useCallback(
-    async (kinds: DiscoveryKind[]) => {
-      setDiscoverAsk(false);
-      setDiscovering(true);
-      setDiscoverError("");
-      setDiscoverMsg("");
-      setDiscoverResult([]);
-      clearAtOnce();
-      try {
-        const result = await discoverRelationships("cross-domain", kinds);
-        const c = await fetchCandidates();
-        setCandidates(c as Candidate[]);
-        setDiscoverResult(discoveryResultLines(result, t));
-      } catch (e) {
-        setDiscoverError(e instanceof Error ? e.message : String(e));
-      } finally {
-        setDiscovering(false);
-      }
-    },
-    [t, clearAtOnce],
-  );
+  // REQ-413: the discovery run is the server's; the suggestions are read again as it stores more.
+  const loadCandidates = useCallback(async () => {
+    try {
+      setCandidates((await fetchCandidates()) as Candidate[]);
+    } catch (e) {
+      setDiscoverError(e instanceof Error ? e.message : String(e));
+    }
+  }, []);
+  const discovery = useDiscoveryRun(loadCandidates);
+  const openDiscover = () => {
+    setDiscoverAsk(true);
+    void discovery.refresh();
+  };
 
   const handleAccept = useCallback(
     async (id: number, name: string) => {
@@ -828,23 +813,7 @@ export function RelationshipsPage() {
               paragraphs={[t("relationshipsPage.suggestHelpBody")]}
               ariaLabel={t("relationshipsPage.suggestWithAi")}
               testId="rels-suggest-help"
-              target={
-                <ActionIcon
-                  data-tour="rels-suggest"
-                  variant="subtle"
-                  aria-label={
-                    discovering
-                      ? t("relationshipsPage.discovering")
-                      : t("relationshipsPage.suggestWithAi")
-                  }
-                  onClick={() => setDiscoverAsk(true)}
-                  loading={discovering}
-                  disabled={discovering}
-                  data-testid="rels-discover"
-                >
-                  <Sparkles size={14} />
-                </ActionIcon>
-              }
+              target={<DiscoverButton running={discovery.running} onOpen={openDiscover} />}
             />
           )}
           <HelpBubble
@@ -867,19 +836,25 @@ export function RelationshipsPage() {
         </Alert>
       )}
       <CandidatesBulkFailures failures={atOnce.failures} />
-      {discoverResult.length > 0 && (
-        <Alert color="blue" mb="md" data-testid="rels-discover-result">
-          {discoverResult.map((line) => (
-            <Text key={line} fz="0.875rem">
-              {line}
-            </Text>
-          ))}
-        </Alert>
-      )}
+      <DiscoverResultBanner run={discovery.run} />
       <DiscoverDialog
         opened={discoverAsk}
-        onCancel={() => setDiscoverAsk(false)}
-        onRun={(kinds) => void handleDiscover(kinds)}
+        onClose={() => setDiscoverAsk(false)}
+        discovery={discovery}
+        tables={tables}
+        defaultDomains={domainsEnabled ? [...checkedDomains] : []}
+        suggestions={{
+          candidates,
+          tableDomainById,
+          tableNameById,
+          onAccept: (id, name) => void handleAccept(id, name),
+          onReject: (id) => void handleReject(id),
+          onAcceptAll: atOnce.acceptAll,
+          onRejectAll: atOnce.rejectAll,
+          failures: atOnce.failures,
+          message: discoverMsg,
+          error: discoverError,
+        }}
       />
       {discoverMsg && (
         <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="rels-discover-msg">

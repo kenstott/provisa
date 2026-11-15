@@ -7,7 +7,7 @@
     "addRelationship": "+ Связь",
     "sqlModelingTool": "Инструмент моделирования SQL",
     "viewErd": "Показать ERD",
-    "discovering": "Поиск...",
+    "discovering": "Поиск связей выполняется. Откройте его, чтобы увидеть ход выполнения.",
     "suggestWithAi": "Предложить с помощью ИИ",
     "clearRejections": "Очистить отклонения",
     "clearedRejections": "Очищено {{count}} отклонение.",
