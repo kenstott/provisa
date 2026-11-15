@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "L'individuazione Elasticsearch richiede un hint 'index'.",
       "elasticsearch_mapping_failed": "Lettura del mapping Elasticsearch per l'indice '{{index}}' non riuscita: {{error}}",
       "endpoint_already_registered": "Endpoint già registrato: {{error}}",
+      "model_failed": "Il modello {{model}} non è riuscito: {{error}}",
       "no_adapter_for_source_type": "Nessun adattatore registrato per il tipo di origine '{{source_type}}'",
       "no_live_connection": "Nessuna connessione attiva per l'origine '{{source_id}}'. L'individuazione dello schema MongoDB richiede una connessione attiva nel pool dell'origine. Verificare che l'origine sia connessa e che il server sia raggiungibile.",
       "schema_discovery_unsupported": "Il tipo di origine '{{source_type}}' non supporta l'individuazione dello schema. Definire le colonne manualmente.",
+      "semantics_unavailable": "La semantica non può essere eseguita: {{model}}, il modello assegnato all'inferenza delle relazioni, non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "source_not_found": "Origine '{{source_id}}' non trovata",
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}"

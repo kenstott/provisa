@@ -130,27 +130,39 @@ async def test_discovery_runs_for_the_named_table_as_the_user(monkeypatch):
     seen = {}
 
     async def fake_trigger(request, body):
-        seen.update(request=request, scope=body.scope, table_id=body.table_id)
-        return {"candidates_found": 2, "stored_ids": [11, 12]}
+        seen.update(request=request, scope=body.scope, table_id=body.table_id, kinds=body.kinds)
+        return {"candidates_found": 2, "stored_ids": [11, 12], "foreign_keys": {"found": 2}}
+
+    async def fake_model(pool):
+        # The model assigned to relationship inference has no key: semantics is not asked for.
+        return discovery.SemanticModel("openai", "gpt-test", "openai has no API key", {}, {})
 
     async def fake_list(request):
         return [{"id": 11, "confidence": 0.9}, {"id": 12, "confidence": 0.8}, {"id": 3}]
 
     monkeypatch.setattr(discovery, "trigger_discovery", fake_trigger)
     monkeypatch.setattr(discovery, "list_candidates", fake_list)
+    monkeypatch.setattr(discovery, "semantic_model", fake_model)
     state = SimpleNamespace(
+        model_db=object(),
         tables=[
             {"id": 7, "domain_id": "sales", "schema_name": "public", "table_name": "orders"},
             {"id": 8, "domain_id": "sales", "schema_name": "public", "table_name": "customers"},
-        ]
+        ],
     )
     request = object()
     found = await admin_api.discover_relationships(state, "sales", "orders", request=request)
-    assert seen == {"request": request, "scope": "table", "table_id": 7}
+    assert seen == {
+        "request": request,
+        "scope": "table",
+        "table_id": 7,
+        "kinds": ["foreign_keys"],
+    }
     # Only the candidates this run found, not every pending one.
     assert found == {
         "table": "sales.orders",
         "candidates": [{"id": 11, "confidence": 0.9}, {"id": 12, "confidence": 0.8}],
+        "foreign_keys": {"found": 2},
     }
     with pytest.raises(ValueError, match="names 0 registered tables"):
         await admin_api.discover_relationships(state, "sales", "returns", request=request)

@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "發現關係",
+    "intro": "選擇要在所有網域中尋找的內容。按下「執行」之前不會執行任何操作。",
+    "foreignKeys": "外部索引鍵",
+    "semantics": "語意",
+    "semanticsNoKey": "語意：無法使用。指派給關係推斷的模型 {{model}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+    "run": "執行"
+  }
+}

@@ -12,7 +12,6 @@
     "clearRejections": "अस्वीकृतियाँ साफ़ करें",
     "clearedRejections": "{{count}} अस्वीकृति साफ़ की गई।",
     "clearedRejections_other": "{{count}} अस्वीकृतियाँ साफ़ की गईं।",
-    "discoverZeroCandidates": "AI को 0 उम्मीदवार मिले (विवरण के लिए सर्वर लॉग देखें)",
     "domain": "डोमेन",
     "source": "स्रोत",
     "target": "लक्ष्य",

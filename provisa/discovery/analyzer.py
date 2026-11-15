@@ -10,7 +10,7 @@
 
 """Analyze prompt via Claude API and parse relationship candidates."""
 
-# Requirements: REQ-018, REQ-167, REQ-612
+# Requirements: REQ-018, REQ-167, REQ-413, REQ-612
 
 from __future__ import annotations
 
@@ -87,45 +87,75 @@ def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:  # 
     return True
 
 
-def analyze(
+class ModelAnswerError(RuntimeError):
+    """The model gave no answer discovery can use: an empty one, or one with no list in it (a
+    refusal, or prose in place of the list asked for)."""
+
+
+@dataclass
+class Analysis:  # REQ-413
+    """What the model's answer held: the candidates kept, and what became of the rest."""
+
+    candidates: list[RelationshipCandidate]
+    #: The answer held something list-like that could not be read as a list of relationships.
+    unreadable: bool = False
+    #: How many relationships the answer proposed, kept or not.
+    proposed: int = 0
+    #: How many fell below ``min_confidence``.
+    below_threshold: int = 0
+    #: How many named a table or column that does not exist, or lacked a required field.
+    invalid: int = 0
+
+
+def analyze_answer(
     prompt: str,
     api_keys: dict[str, str],
     discovery_input: DiscoveryInput,
     min_confidence: float = 0.7,
-) -> list[RelationshipCandidate]:  # REQ-018, REQ-167, REQ-612
-    """Call LLM with prompt, parse and validate response."""
+    *,
+    config: dict | None = None,
+) -> Analysis:  # REQ-018, REQ-167, REQ-413, REQ-612
+    """Ask the model assigned to relationship inference, and read its answer. A failure of the
+    model (its client's error, an empty answer, an answer with no list) is raised, never
+    returned as an empty result."""
     with _tracer.start_as_current_span("discovery.analyze"):
         from provisa.llm.client import ProvisaLLMClient
 
-        llm = ProvisaLLMClient("relationship_inference", api_keys=api_keys)
+        llm = ProvisaLLMClient("relationship_inference", config=config, api_keys=api_keys)
         response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
         log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
+        if not response_text.strip():
+            raise ModelAnswerError(f"{llm.vendor}:{llm.model} gave an empty answer")
+        if "[" not in response_text:
+            raise ModelAnswerError(
+                f"{llm.vendor}:{llm.model} did not answer with a list of relationships: "
+                f"{response_text.strip()[:300]}"
+            )
 
         try:
-            raw_json = _extract_json(response_text)
-            candidates_raw = json.loads(raw_json)
+            candidates_raw = json.loads(_extract_json(response_text))
         except (json.JSONDecodeError, TypeError) as e:
             log.warning("Malformed LLM response (%s). Raw text: %s", e, response_text[:500])
-            return []
+            return Analysis(candidates=[], unreadable=True)
 
         if not isinstance(candidates_raw, list):
             log.warning("LLM response is not a JSON array. Raw: %s", response_text[:500])
-            return []
+            return Analysis(candidates=[], unreadable=True)
 
-        results: list[RelationshipCandidate] = []
+        analysis = Analysis(candidates=[], proposed=len(candidates_raw))
         for raw in candidates_raw:
-            if not isinstance(raw, dict):
-                continue
-            if not _validate_candidate(raw, discovery_input):
+            if not isinstance(raw, dict) or not _validate_candidate(raw, discovery_input):
                 log.warning("Invalid candidate filtered: %s", raw)
+                analysis.invalid += 1
                 continue
             confidence = float(raw["confidence"])
             if confidence < min_confidence:
                 log.warning(
                     "Candidate below threshold (%.2f < %.2f): %s", confidence, min_confidence, raw
                 )
+                analysis.below_threshold += 1
                 continue
-            results.append(
+            analysis.candidates.append(
                 RelationshipCandidate(
                     source_table_id=int(raw["source_table_id"]),
                     source_column=str(raw["source_column"]),
@@ -137,5 +167,14 @@ def analyze(
                     suggested_name=str(raw.get("suggested_name", "")),
                 )
             )
+        return analysis
 
-        return results
+
+def analyze(
+    prompt: str,
+    api_keys: dict[str, str],
+    discovery_input: DiscoveryInput,
+    min_confidence: float = 0.7,
+) -> list[RelationshipCandidate]:  # REQ-018, REQ-167, REQ-612
+    """The candidates :func:`analyze_answer` kept."""
+    return analyze_answer(prompt, api_keys, discovery_input, min_confidence).candidates

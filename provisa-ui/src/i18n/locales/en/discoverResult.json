@@ -1,0 +1,18 @@
+{
+  "discoverResult": {
+    "foreignKeys": "Foreign keys: {{count}} found.",
+    "foreignKeys_other": "Foreign keys: {{count}} found.",
+    "semanticsFound": "Semantics: {{count}} suggestion.",
+    "semanticsFound_other": "Semantics: {{count}} suggestions.",
+    "semanticsUnreadable": "Semantics: none. The model's answer could not be read.",
+    "semanticsNoneProposed": "Semantics: none. The model proposed no relationships.",
+    "semanticsFiltered": "Semantics: none kept of the {{count}} relationship the model proposed: {{why}}.",
+    "semanticsFiltered_other": "Semantics: none kept of the {{count}} relationships the model proposed: {{why}}.",
+    "belowThreshold": "{{count}} was below the {{threshold}}% confidence threshold",
+    "belowThreshold_other": "{{count}} were below the {{threshold}}% confidence threshold",
+    "alreadyKnown": "{{count}} was already rejected or already present",
+    "alreadyKnown_other": "{{count}} were already rejected or already present",
+    "invalid": "{{count}} named a table or column that does not exist",
+    "invalid_other": "{{count}} named tables or columns that do not exist"
+  }
+}

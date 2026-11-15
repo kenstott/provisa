@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "Relazioni suggerite dall'AI",
+    "heading": "Relazioni suggerite",
     "colName": "Nome",
     "colSource": "Origine",
     "colTarget": "Destinazione",

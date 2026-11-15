@@ -645,21 +645,66 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
+/** The kinds of relationship discovery: foreign keys read from the sources' own constraints, and
+ *  semantics inferred by the model assigned to relationship inference. */
+export type DiscoveryKind = "foreign_keys" | "semantics";
+
+/** Which kinds can run. Semantics needs the assigned model's own key; `reason` says why not. */
+export interface DiscoveryKinds {
+  foreign_keys: { available: true };
+  semantics: { available: boolean; model: string; reason: "no_key" | null };
+}
+
+/** What semantic inference found, and when it found none, why. */
+export interface SemanticsReport {
+  suggested: number;
+  proposed: number;
+  below_threshold: number;
+  threshold: number;
+  already_known: number;
+  invalid: number;
+  empty_reason: "unreadable" | "none_proposed" | "filtered" | null;
+}
+
+/** What a discovery run found: one entry per kind it was asked for. */
+export interface DiscoveryResult {
+  candidates_found: number;
+  stored_ids: number[];
+  foreign_keys?: { found: number };
+  semantics?: SemanticsReport;
+}
+
+export async function fetchDiscoveryKinds(): Promise<DiscoveryKinds> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover/kinds`);
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(body, requestFailed("fetchDiscoveryKinds", resp.status)));
+  }
+  return resp.json();
+}
+
+/** Run the kinds of discovery asked for. A model that failed, or semantics asked for with no
+ *  key for its model, is thrown with the server's words. */
 export async function discoverRelationships(
   scope: string,
+  kinds: DiscoveryKind[],
   tableId?: number,
   domainId?: string,
-): Promise<{ candidates_found: number; stored_ids: number[] }> {
+): Promise<DiscoveryResult> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/relationships`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       scope,
+      kinds,
       table_id: tableId,
       domain_id: domainId,
     }),
   });
-  if (!resp.ok) throw httpError("Discovery", resp.status);
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(body, requestFailed("Discovery", resp.status)));
+  }
   return resp.json();
 }
 
