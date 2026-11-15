@@ -59,26 +59,6 @@ PORTED: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("tidsmaller", ("tid", "tid")),  # Type operators
 )
 
-#: A function and argument count whose every pg_catalog overload is listed: an argument whose type
-#: the statement does not say matches any of them.
-ALONE: frozenset[tuple[str, int]] = frozenset(
-    {
-        ("dexp", 1),
-        ("dlog1", 1),
-        ("replace", 3),
-        ("tideq", 2),
-        ("tidge", 2),
-        ("tidgt", 2),
-        ("tidlarger", 2),
-        ("tidle", 2),
-        ("tidlt", 2),
-        ("tidne", 2),
-        ("tidsmaller", 2),
-    }
-)
-
-#: Argument types any said type fits.
-_POLYMORPHIC = re.compile(r"^(any\w*|\"any\"|record|internal)$")
 #: The placeholder a carried call's place is held by, until the statement is written.
 _PLACEHOLDER = "provisa_ported_"
 _PLACED = re.compile(rf"\b{_PLACEHOLDER}(\d+)\(\)", re.IGNORECASE)
@@ -86,12 +66,9 @@ _PLACED = re.compile(rf"\b{_PLACEHOLDER}(\d+)\(\)", re.IGNORECASE)
 
 @functools.cache
 def _said(pg_type: str) -> str | None:
-    """A pg_proc argument type as said_type reads a statement's cast to it; None for a type any
-    argument fits."""
+    """A pg_proc argument type as said_type reads a statement's cast to it."""
     from provisa.transpiler.function_macros import said_type
 
-    if _POLYMORPHIC.match(pg_type):
-        return None
     tree = sqlglot.parse_one(f"SELECT NULL::{pg_type}", read="postgres")
     assert isinstance(tree, exp.Select)
     return said_type(tree.selects[0])
@@ -131,15 +108,24 @@ def _name_and_args(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
     return None
 
 
-def _fits(want: str | None, got: str | None) -> bool:
-    return want is None or got is None or want == got.split("(")[0]
+def _told(argument: exp.Expr) -> str | None:
+    """The type the statement says of ``argument``: a minus sign keeps its operand's."""
+    from provisa.transpiler.function_macros import said_type
+
+    while isinstance(argument, (exp.Neg, exp.Paren)):
+        argument = argument.this
+    return said_type(argument)
+
+
+def _fits(want: str | None, got: str) -> bool:
+    return want is None or want == got.split("(")[0]
 
 
 def is_ported(node: exp.Expr) -> bool:
     """Whether ``node`` calls an overload of :data:`PORTED`: its name, its argument count, and each
-    argument's said type that overload's (an unsaid one fits where the name and count are
-    :data:`ALONE`)."""
-    from provisa.transpiler.function_macros import said_type
+    argument's type, which the statement says (a cast, or a VALUES column's cast). An argument
+    whose type is not said fits none: a call Provisa's own forms write holds such arguments, and
+    keeps what ClickHouse has."""
 
     found = _name_and_args(node)
     if found is None:
@@ -148,10 +134,11 @@ def is_ported(node: exp.Expr) -> bool:
     rows = _overloads().get((name, len(args)))
     if rows is None:
         return False
-    said = [said_type(a) for a in args]
-    if any(s is None for s in said) and (name, len(args)) not in ALONE:
+    said = [_told(a) for a in args]
+    told = [s for s in said if s is not None]
+    if len(told) != len(said):
         return False
-    return any(all(_fits(want, got) for want, got in zip(row, said)) for row in rows)
+    return any(all(_fits(want, got) for want, got in zip(row, told)) for row in rows)
 
 
 def duckdb_form(call: exp.Expr) -> exp.Expr | None:
