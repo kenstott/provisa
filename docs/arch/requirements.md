@@ -27049,3 +27049,15 @@ Maintainer 2026-11-14: 'when keeping things in sync you must have soft deletes';
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2249 · Source Connectors {#REQ-2249}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** behavioral
+
+Maintainer 2026-11-15: 'add a requirement to code resolvers to use a @change decorator, that is only called when the code resolver is landed'. A code resolver is a function of a code source that decides which rows of one table relate to which rows of another by its own algorithm (a spatial, vector or fuzzy match), where equal column values do not. When its result is landed (kept as a table), the resolver provides a function marked @change, and Provisa calls that function, and only then: a resolver whose result is not landed is never asked for changes. The decorator states what only the author knows: the key columns of a match, the column that marks a match as removed, and the cursor column. Provisa passes the cursor it stored after the last successful run and the resolver's inputs as tables ([REQ-2226](#REQ-2226)); the function returns the matches that changed since then, each with its key, its values, its removal flag and its cursor value. Provisa lands them with the existing incremental apply ([REQ-874](#REQ-874)): upsert by key, and a returned row flagged as removed removes its key. The function never learns where its result is stored and holds no connection to it. Called with no cursor, on the first run and on every whole rebuild, it returns every match, so one function serves both and a periodic whole rebuild is required. The result is refreshed when one of its input tables changes. A function whose returned rows lack a key column, repeat a key within one result, or whose cursor goes backwards is refused with the reason.
+
+**Code:** —
+
+**Tests:** —
