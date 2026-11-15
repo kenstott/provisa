@@ -56,7 +56,7 @@ function Compass() {
 const visited: string[] = [];
 
 /**
- * The Tables page as the quality topic reads it: a row opens its table's panel by writing `table`
+ * The Tables page as the quality topic reads it, drawn on /tables: a row opens its table's panel by writing `table`
  * into the URL, as useDetailParam does, and clicking the open row closes it, removing `table` and
  * `section`. While a table is open its read view, editor and Quality section's panels are shown.
  */
@@ -76,6 +76,8 @@ function TablesStandIn() {
     }
     setParams(next);
   };
+  // Its rows are on the Tables page only, as the real page's are.
+  if (location.pathname !== "/tables") return null;
   const open = params.get("table") !== null;
   return (
     <div>
