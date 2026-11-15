@@ -14,6 +14,7 @@
 
 import {
   HIDING_RIGHTS,
+  hasCapability,
   IMPORT_RIGHTS,
   meetsRequirement,
   type CapabilityRequirement,
@@ -450,12 +451,23 @@ export function barEntryTarget(
 }
 
 /**
- * REQ-1327: the page the app opens on — the first navigation page, in the order the bar and then
+ * REQ-1327: the page the app opens on — Explore for a role holding the query right, else the
+ * first navigation page, in the order the bar and then
  * the user menu draw them, the caller holds the right for, chosen as the Admin entry is
  * (`entryItem`). The user menu's entries follow the bar: Billing where the deployment bills, then
  * Admin, then Docs, which every member opens. No caller lands on a refusal.
  */
 export function landingPath(capabilities: string[], commercial = true): string {
+  // A role holding the query right opens on Explore: the same right the Explore group's pages
+  // are gated on.
+  if (hasCapability(capabilities, "query_development")) {
+    const explore = barEntryTarget(
+      { kind: "group", group: group("explore") },
+      capabilities,
+      commercial,
+    );
+    if (explore !== undefined) return explore;
+  }
   for (const entry of NAV_BAR) {
     const target = barEntryTarget(entry, capabilities, commercial);
     if (target !== undefined) return target;
