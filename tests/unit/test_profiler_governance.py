@@ -277,5 +277,5 @@ def test_a_masked_and_a_pii_column_show_the_classification_state_and_count():
         assert cols[c]["classification_values"] == 3
         # no value-bearing field passes
         for f in ("min_value", "max_value", "mean", "row_count"):
-            assert cols[c][f] is None
+            assert cols[c].get(f) is None
     assert cols["id"]["classification"] == "too_few_values"
