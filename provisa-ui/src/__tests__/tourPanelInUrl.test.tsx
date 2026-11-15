@@ -19,8 +19,8 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useLayoutEffect, type ReactNode } from "react";
-import { flushSync } from "react-dom";
-import { BrowserRouter, useLocation, useSearchParams } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
 import { I18nextProvider } from "react-i18next";
@@ -80,34 +80,23 @@ function AppProviders({ children }: { children: ReactNode }) {
 
 /**
  * The Tables page as the quality topic reads it, drawn on /tables with the rows of the ?source=
- * filtered on: a row opens its table's panel by writing `table` into the URL, as useDetailParam
- * does, and clicking the open row closes it, removing `table` and `section`. While a table is open
- * its read view, editor and Quality section's panels are shown.
+ * filtered on: a row opens its table's panel through the page's own useDetailParam, which writes
+ * `table` into the URL and shows the write at once, and clicking the open row closes it. While a
+ * table is open its read view, editor and Quality section's panels are shown.
  */
 function TablesStandIn() {
-  const [params, setParams] = useSearchParams();
+  const detail = useDetailParam("tables");
   const location = useLocation();
   // Recorded as each location commits, so a check right after a card appears reads it.
   useLayoutEffect(() => {
     visited.push(`${location.pathname}${location.search}`);
   }, [location.pathname, location.search]);
-  const toggle = (id: string) => {
-    const next = new URLSearchParams(params);
-    if (next.get("table") === id) {
-      next.delete("table");
-      next.delete("section");
-    } else {
-      next.set("table", id);
-    }
-    // Shown at once, as the page's own write is (useDetailParam's pending store): the runner reads
-    // the page right after its click.
-    flushSync(() => setParams(next));
-  };
+  const toggle = (id: string) => (detail.id === id ? detail.close() : detail.open(id));
   // Its rows are on the Tables page only, as the real page's are.
   if (location.pathname !== "/tables") return null;
-  const open = params.get("table") !== null;
+  const open = detail.id !== null;
   // The filter box follows ?source=: only that source's rows are listed.
-  const source = params.get("source");
+  const source = new URLSearchParams(location.search).get("source");
   return (
     <div>
       {source === "dq-checker" && (
