@@ -49,6 +49,8 @@ PORTED: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("dlog1", ("double precision",)),  # Numeric
     ("text", ("xml",)),  # Other
     ("replace", ("text", "text", "text")),  # String
+    ("max", ("money",)),  # Aggregate and window
+    ("min", ("money",)),  # Aggregate and window
     ("tideq", ("tid", "tid")),  # Type operators
     ("tidge", ("tid", "tid")),  # Type operators
     ("tidgt", ("tid", "tid")),  # Type operators
@@ -165,9 +167,11 @@ def duckdb_form(call: exp.Expr) -> exp.Expr | None:
 def clickhouse_text(form: exp.Expr) -> str:
     """``form`` written in ClickHouse's SQL, with what ClickHouse would read otherwise said for it
     (transpile.clickhouse_semantics)."""
+    from provisa.transpiler.pg_money import exact_on_clickhouse
     from provisa.transpiler.transpile import clickhouse_semantics
 
-    tree = clickhouse_semantics(exp.select(form.copy()))
+    # a number cast to a decimal is read as its text there: ClickHouse's number is a Float64
+    tree = clickhouse_semantics(exp.select(form.copy().transform(exact_on_clickhouse)))
     assert isinstance(tree, exp.Select)
     said = tree.selects[0]
     if not isinstance(said, (exp.Func, exp.Column, exp.Literal, exp.Paren)):
