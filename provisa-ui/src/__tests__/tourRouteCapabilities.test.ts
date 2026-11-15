@@ -79,8 +79,11 @@ function routeCapabilities(): Record<string, string> {
   )) {
     for (const path of m[1].matchAll(/"([^"]+)"/g)) out[path[1]] = m[2];
   }
-  // The Admin surfaces are a `[path, capability]` table rather than JSX routes.
-  for (const m of source.matchAll(/\["(\/admin\/[^"]+)",\s*"([a-z_]+)"\]/g)) out[m[1]] = m[2];
+  // The Admin surfaces are a `[path, capability]` table rather than JSX routes; a row every member
+  // opens names EVERY_MEMBER.
+  for (const m of source.matchAll(/\["(\/admin\/[^"]+)",\s*(?:"([a-z_]+)"|(EVERY_MEMBER))\]/g)) {
+    out[m[1]] = m[2] ?? m[3];
+  }
   return out;
 }
 
