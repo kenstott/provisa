@@ -4935,8 +4935,8 @@
   "he/profileTerrain.json::profileTerrain.zoom": "Zoom to this column",
   "he/profilerFormSection.json::profilerFormSection.categoryMaxDescription": "How many category columns enter the correlations and joint counts; those holding a value in the most rows are kept.",
   "he/profilerFormSection.json::profilerFormSection.categoryMaxLabel": "Most category columns",
-  "he/profilerFormSection.json::profilerFormSection.classificationSampleDescription": "How many rows, drawn at random from the run's sample, have their values tested against the classification kinds. The values are tested and not stored.",
-  "he/profilerFormSection.json::profilerFormSection.classificationSampleLabel": "Rows sampled for classification",
+  "he/profilerFormSection.json::profilerFormSection.classificationSampleDescription": "How many values of each column, drawn at random from the run's sample and skipping empty ones, are tested against the classification kinds. The values are tested and not stored.",
+  "he/profilerFormSection.json::profilerFormSection.classificationSampleLabel": "Values sampled per column for classification",
   "he/profilerFormSection.json::profilerFormSection.correlationMaxDescription": "How many numeric columns, the table's and its parent tables', enter the correlation matrix and the dependency network.",
   "he/profilerFormSection.json::profilerFormSection.correlationMaxLabel": "Most numeric columns correlated",
   "he/profilerFormSection.json::profilerFormSection.cronDescription": "When the profiler runs, as a cron expression, e.g. 0 3 * * * for 03:00 daily.",
@@ -10573,5 +10573,8 @@
   "candidatesTable.json::candidatesTable.rejectFailed_other": "{{count}} suggestions could not be rejected:",
   "candidatesTable.json::candidatesTable.failedOne": "{{name}}: {{error}}",
   "discoverResult.json::discoverResult.semanticsCutShort": "Semantics: none. The model's answer stopped at its length limit before it finished a suggestion.",
-  "discoverResult.json::discoverResult.cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read."
+  "discoverResult.json::discoverResult.cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read.",
+  "he/profileClassificationsModal.json::profileClassificationsModal.tooFewTitle": "Too few values to classify",
+  "he/profileClassificationsModal.json::profileClassificationsModal.tooFewNote": "These columns held too few values in the run's sample to say what they hold. That is not the same as matching no kind.",
+  "he/profileClassificationsModal.json::profileClassificationsModal.tooFew": "{{column}}: {{count}} values in the sample, too few to classify."
 }

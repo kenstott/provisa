@@ -208,6 +208,9 @@ def _column_rows(spec: Any, fact: Any, rows: int, key: dict) -> dict[str, list[d
             "zero_share": None,
             "length_min": None,
             "length_max": None,
+            # A declared profile has no classification sample.
+            "classification": None,
+            "classification_values": None,
         }
     )
     if sketch is not None:
