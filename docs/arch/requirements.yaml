@@ -3580,7 +3580,29 @@
     failed by name. (2) A model answer cut off at its length limit is never silently dropped: the request
     is shaped so the answer fits, or the complete suggestions in a cut-off answer are kept and the result
     says the answer was cut short. (3) The run''s result does not cover or displace the list of registered
-    relationships.'
+    relationships. (Amended 2026-11-15, DISCOVERY HAS A SOURCE SET, A TARGET SET AND WINDOWS:) Maintainer
+    2026-11-15; this replaces running one request over every registered table. (1) Scope: the dialog, on
+    the Relationships page, has source domains and source tables, and target domains and target tables (multiselects;
+    tables default to all in the chosen domains; domains default to those ticked in the Domains picker),
+    with ''same as source'' for the target, ticked by default. System domains (meta, ontology, ops) are
+    never included. (2) A relationship starts at its source and ends at its target: a run proposes only
+    relationships that start in the source set and end in the target set, for foreign keys and semantics
+    alike; with ''same as source'' both directions between any two tables are considered. (3) Windows: a
+    table''s weight is the length in characters of the text sent for it (its name and description, each
+    column''s name, type and description, its sample values); whole tables are packed into windows sized
+    from the assigned model''s input limit (REQ-464); each request compares one source window with one target
+    window. (4) Each request asks for at most as many suggestions as the model''s output limit holds at
+    150 tokens each; an answer that is cut off or full, or a request the vendor refuses as too long, is
+    split in half and asked again, and the result says how many were split. (5) Before Run the dialog shows
+    about how many requests the run will make, recalculated as the scope changes, so a very large run can
+    be cancelled before it starts. (6) The run is in the background with its progress shown; the button
+    animates until it ends; suggestions appear as each request returns; one failed request is reported and
+    the rest continue; a Stop control ends the run and keeps what has been returned. (7) Removed before
+    anything is shown: a suggestion from a column to that same column; one matching an existing relationship
+    in either direction; one already pending; one rejected, until rejections are cleared; a semantic suggestion
+    matching a foreign key found in the same run, the foreign key being kept. A relationship between two
+    different columns of one table is kept. (8) The shared confirmation dialog has a non-destructive form,
+    which Accept all uses.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -76530,17 +76552,22 @@
   feature: source-registration-explicit-tables
   priority: SHOULD
   type: behavioral
-  description: 'NL-assisted table candidate discovery for registration. When a registered source has a
-    large schema (hundreds or thousands of tables), stewards search across registered source schemas —
-    table names, column names, descriptions — using natural language ("customer invoicing and payment
-    tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides
-    semantic ranking with confidence scores. Steward judgment is required: the feature surfaces candidates and
-    does not claim them. Implementation in admin API and unclaimed tables UI. The search reads an index
-    of each source. Table names are indexed when the source is installed. Column names are filled in
-    afterwards, a schema at a time, by one rule for every kind of source, so a search made soon after
-    install may not find a table by a column name; the answer says whether table names are complete
-    and whether column names are complete, still loading or unavailable. Selecting a table reads its
-    columns from the source at once, whatever the index holds, and records them in the index.'
+  description: 'NL-assisted table candidate discovery for registration. When a registered source has a large
+    schema (hundreds or thousands of tables), stewards search across registered source schemas — table names,
+    column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass
+    approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with
+    confidence scores. Steward judgment is required: the feature surfaces candidates and does not claim
+    them. Implementation in admin API and unclaimed tables UI. The search reads an index of each source.
+    Table names are indexed when the source is installed. Column names are filled in afterwards, a schema
+    at a time, by one rule for every kind of source, so a search made soon after install may not find a
+    table by a column name; the answer says whether table names are complete and whether column names are
+    complete, still loading or unavailable. Selecting a table reads its columns from the source at once,
+    whatever the index holds, and records them in the index. (Amended 2026-11-15, A MODEL HAS AN INPUT LIMIT
+    AND AN OUTPUT LIMIT:) Maintainer 2026-11-15. Each assigned model on the AI models page shows two limits,
+    in tokens: the most it can read in one request and the longest answer it can write. A model Provisa
+    knows is prefilled from the vendor''s published figures and can be changed; a model it does not know
+    uses a default pair (32,000 in, 4,096 out), shown in the same fields and marked as the default. Text
+    is converted to tokens at one fixed ratio, 3 characters per token. There is no spending cap per request.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Backend fuzzy+haiku search at table_search_router.py:122; no reference to the endpoint in provisa-ui/src, so the unclaimed-tables UI is missing. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - provisa/discovery/table_search.py
