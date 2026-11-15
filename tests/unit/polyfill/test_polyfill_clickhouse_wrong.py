@@ -184,6 +184,16 @@ def test_array_agg_opens_the_walk_only_where_its_row_has_a_form():
     assert not mentioned("SELECT array_agg(x) AS v FROM t", "trino")
 
 
+def test_a_rewrite_opens_the_walk_only_on_its_own_column():
+    """A ClickHouse rewrite mentions ::text; on Trino that cast is the engine's own, and it does not
+    walk the statement (main after b4d5f79d7b: the range form's substrings were guarded again)."""
+    from provisa.transpiler.function_macros import mentioned
+
+    assert mentioned("SELECT v::text AS r FROM t", "clickhouse")
+    assert not mentioned("SELECT v::text AS r FROM t", "trino")
+    assert mentioned("SELECT interval '1 day' AS r", "trino")
+
+
 def test_a_multirange_of_an_aggregated_array_on_trino_keeps_its_forms_own_substrings():
     from provisa.compiler.native_subtype import mark_subtype_operations
 
