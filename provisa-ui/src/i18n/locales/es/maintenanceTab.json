@@ -15,6 +15,7 @@
     "dangerTitle": "Zona de peligro",
     "dangerIntro": "Detiene el backend y el servidor de desarrollo de la interfaz en esta máquina. Solo funciona con un inicio de escritorio --demo/--native; se rechaza en cualquier otro caso.",
     "stopAll": "Detener todos los servicios",
-    "stopConfirm": "¿Detener el backend y el servidor de desarrollo de la interfaz en esta máquina? Su sesión terminará de inmediato."
+    "stopTitle": "¿Detener todos los servicios?",
+    "stopConsequence": "Esto detiene el backend y el servidor de desarrollo de la interfaz en esta máquina. Mientras estén detenidos, esta página, todas las consultas y las sesiones de los demás usuarios dejan de funcionar, y su sesión termina. Nada vuelve a funcionar hasta que los servicios se inicien de nuevo en esta máquina."
   }
 }

@@ -177,6 +177,7 @@ const revenueMetric: Metric = {
   aiContext: null,
   visibleTo: ["admin"],
   fromFact: "orders",
+  term: null,
 };
 
 describe("groupModelingTables", () => {

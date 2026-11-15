@@ -18,6 +18,7 @@ import type {
   DataProduct,
   ListedNames,
   Metric,
+  DatasetMetric,
   RefreshPolicySummary,
   DqContract,
   DqContractText,
@@ -64,6 +65,7 @@ import {
   CreateMetric as CREATE_METRIC_MUTATION,
   UpdateMetric as UPDATE_METRIC_MUTATION,
   DeleteMetric as DELETE_METRIC_MUTATION,
+  TableMetricsQuery as TABLE_METRICS_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
   AvailableSchemas,
@@ -100,13 +102,19 @@ import {
   UpdateSourceAllowedDomains,
   SuggestTableAlias,
   ResolveOwners,
+  DeleteMetrics,
+  DeleteDomains,
+  DeleteRelationships,
+  DeleteSources,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 import { firstLoad } from "./firstLoad";
 import { useShownTableQueries } from "./useTableQueries";
 
 export { firstLoad } from "./firstLoad";
 export {
   useDeleteTable,
+  useDeleteTables,
   useReadTableDetails,
   useRegisterEntity,
   useRegisterFact,
@@ -253,6 +261,16 @@ export interface MetricInput {
   description?: string | null;
   aiContext?: string | null;
   visibleTo?: string[];
+  term?: string | null; // REQ-2243
+}
+
+// REQ-2243: the governed metrics a dataset uses, as the caller's role may see them.
+export function useTableMetrics(tableId: number) {
+  const { data, loading, error } = useQuery<{ tableMetrics: DatasetMetric[] }>(
+    TABLE_METRICS_QUERY,
+    { variables: { tableId }, fetchPolicy: "cache-and-network" },
+  );
+  return { metrics: data?.tableMetrics, loading, error };
 }
 
 export function useUpsertMetric() {
@@ -1075,4 +1093,30 @@ export function useDeployViewToDb() {
     },
     loading,
   };
+}
+
+/** REQ-2240: several metrics deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteMetrics() {
+  return useBulkDelete(DeleteMetrics, "deleteMetrics", "names", [{ query: METRICS_QUERY }]);
+}
+
+/** REQ-2240: several domains deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDomains() {
+  return useBulkDelete(DeleteDomains, "deleteDomains", "ids", [{ query: DOMAINS_QUERY }]);
+}
+
+/** REQ-2240: several relationships deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteRelationships() {
+  return useBulkDelete(DeleteRelationships, "deleteRelationships", "ids", [
+    { query: RELATIONSHIPS_QUERY },
+  ]);
+}
+
+/** REQ-2240: several sources deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteSources() {
+  return useBulkDelete(DeleteSources, "deleteSources", "ids");
 }

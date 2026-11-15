@@ -203,7 +203,7 @@ import { TablesPage } from "../TablesPage";
 async function openEditor(name = "orders") {
   render(<TablesPage />);
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
   // The load settings are on the "Load and timeliness" section, shown in full.
   const tab = await screen.findByTestId("table-section-load");

@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "Breekt een verversing af en houdt de vorige kopie, wanneer de laatste run van een controletabel die een van de invoeren van deze view scant is mislukt. Draait vóór de voorcontrole hierboven; beide moeten doorgaan.",
     "holdOnFailingChecksShowCode": "Code tonen",
     "holdOnFailingChecksHideCode": "Code verbergen",
-    "holdOnFailingChecksCodeHelp": "De controle die deze optie toepast. Kopieer haar naar de voorcontrole hierboven om haar te wijzigen."
+    "holdOnFailingChecksCodeHelp": "De controle die deze optie toepast. Kopieer haar naar de voorcontrole hierboven om haar te wijzigen.",
+    "discoverHint": "Opslaan leest de kolommen van de live bron en voegt toe wat deze tabel mist; de bestaande kolommen blijven zoals ze zijn. Een toegevoegde kolom is voor geen enkele rol zichtbaar totdat hij wordt toegekend."
   }
 }

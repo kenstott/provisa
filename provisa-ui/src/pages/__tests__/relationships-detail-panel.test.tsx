@@ -72,6 +72,7 @@ vi.mock("../../hooks/useAdminQueries", () => ({
   useDomains: () => DOMAINS,
   useUpsertRelationship: () => UPSERT,
   useDeleteRelationship: () => DELETE,
+  useDeleteRelationships: () => vi.fn(),
 }));
 vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
@@ -95,10 +96,10 @@ const rowOf = (text: string) =>
 const panel = () => screen.getByTestId("relationships-split-panel");
 
 describe("RelationshipsPage: the list's search", () => {
-  it("lists the relationships matching any word of the search", () => {
+  it("lists the relationships matching every word of the search, or either side of or", () => {
     render(<RelationshipsPage />);
     fireEvent.change(screen.getByTestId("filter-input"), {
-      target: { value: "customers payments" },
+      target: { value: "customers or payments" },
     });
     const list = within(screen.getByTestId("relationships-list"));
     expect(list.getByText("orders.customer_id")).toBeInTheDocument();
@@ -270,7 +271,7 @@ describe("RelationshipsPage: a delete that takes tags off columns", () => {
     render(<RelationshipsPage />);
     fireEvent.click(rowOf("orders.customer_id"));
     fireEvent.click(within(panel()).getByRole("button", { name: "Delete" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Confirm" }));
+    fireEvent.click(within(await screen.findByRole("dialog")).getByRole("button", { name: "Delete" }));
     expect(await screen.findByTestId("glossary-tag-loss")).toHaveTextContent("Loses: pii");
     fireEvent.click(screen.getByTestId("glossary-tag-loss-move"));
     await waitFor(() =>

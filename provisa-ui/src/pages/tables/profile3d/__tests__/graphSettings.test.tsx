@@ -179,11 +179,12 @@ describe("the Ontology View's remembered settings", () => {
 
   it("forget everything on Set Defaults", async () => {
     render(explorer());
-    fireEvent.click(screen.getByRole("checkbox", { name: "Rotate" }));
-    expect(screen.getByRole("checkbox", { name: "Rotate" })).toBeChecked();
+    const rotate = () => screen.getByRole("button", { name: "Rotate", hidden: true });
+    fireEvent.click(rotate());
+    expect(rotate()).toHaveAttribute("aria-pressed", "true");
     expect(getStored("graph3d.ontology.org")).not.toBeNull();
     fireEvent.click(screen.getByTestId("x-reset-settings"));
-    expect(screen.getByRole("checkbox", { name: "Rotate" })).not.toBeChecked();
+    expect(rotate()).toHaveAttribute("aria-pressed", "false");
     expect(getStored("graph3d.ontology.org")).toBeNull();
   });
 });

@@ -19,10 +19,13 @@ roles and meta-roles are made per request and never expire.
 - ``last_used_at`` is the last day a request depended on the grant (:func:`used_roles`), written
   at most once a day by the audit writer (:func:`mark_used`).
 - A role's ``inactivity_days``: a grant of it unused for longer is removed.
-- Each org's sweep (:func:`sweep_org`, on the scheduler) deletes expired and unused grants into
-  the org's administrative trail (``role.expired``, ``role.removed_inactive``), tells the holder
-  and the org's admins ``auth.role_grant_notice_days`` before either, and the admins when a
-  grant goes.
+- A grant given again keeps the latest of its expiries, and no expiry is later than any date
+  (:func:`regrant`). A rule that ends the whole grant is the grant's own expiry: it sets or
+  shortens ``expires_at`` (:func:`end_grant`).
+- The sweep (:func:`sweep`) deletes expired and unused grants into the org's administrative trail
+  (``role.expired``, ``role.removed_inactive``) and finds the ones ending within
+  ``auth.role_grant_notice_days``, the one expiring-soon setting for a grant and its entries. It
+  runs in each org's one expiry run, which tells of them (``provisa.entitlements.expiry_run``).
 """
 
 # Requirements: REQ-2077
@@ -35,19 +38,15 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from sqlalchemy import delete, func, or_, select, update
+from sqlalchemy import DateTime, case, delete, func, literal, null, or_, select, update
 
 from provisa.core.schema_org import roles, user_directory, user_role_assignments
 
 if TYPE_CHECKING:
-    from apscheduler.schedulers.asyncio import AsyncIOScheduler
-
     from provisa.core.database import Database
 
 log = logging.getLogger(__name__)
 
-JOB_ID = "roles:sweep_grants"
-SWEEP_MINUTES = 15
 NOTICE_SETTING = "auth.role_grant_notice_days"
 
 _t = user_role_assignments
@@ -56,6 +55,102 @@ _t = user_role_assignments
 def in_force() -> Any:
     """The grants held now: no expiry, or one still ahead."""
     return or_(_t.c.expires_at.is_(None), _t.c.expires_at > func.now())
+
+
+def _latest(held: Any, given: Any) -> Any:
+    """The later of two expiries, where no expiry (NULL) is later than any date."""
+    return case(
+        (or_(held.is_(None), given.is_(None)), null()),
+        else_=func.greatest(held, given),
+    )
+
+
+async def regrant(
+    conn: Any, user_id: str, role_id: str, domain_id: str, expires_at: datetime | None
+) -> None:
+    """Grant ``role_id`` in ``domain_id`` to ``user_id`` until ``expires_at`` (None: no end). A
+    person holds a role once: given again, the grant keeps the latest of its expiries, and its
+    holder is told again before an end it moved."""
+    given = literal(expires_at, DateTime(timezone=True))
+    latest = _latest(_t.c.expires_at, given)
+    await conn.upsert(
+        _t,
+        {
+            "user_id": user_id,
+            "role_id": role_id,
+            "domain_id": domain_id,
+            "expires_at": expires_at,
+            "expiry_notified_at": None,
+        },
+        index_elements=["user_id", "role_id", "domain_id"],
+        update_columns=[],
+        set_extra={
+            "expires_at": latest,
+            "expiry_notified_at": case(
+                (latest.is_distinct_from(_t.c.expires_at), null()),
+                else_=_t.c.expiry_notified_at,
+            ),
+        },
+    )
+
+
+async def end_grant(conn: Any, user_id: str, role_id: str, ends_at: datetime) -> int:
+    """End ``user_id``'s grants of ``role_id`` at ``ends_at``: a rule that ends a whole grant is
+    the grant's own expiry. It sets the expiry, or shortens one that is later, and never extends
+    one. Returns how many grants it holds; 0 when Provisa holds none of the role for them."""
+    result = await conn.execute_core(
+        update(_t)
+        .where(_t.c.user_id == user_id, _t.c.role_id == role_id, in_force())
+        .values(
+            expires_at=func.least(func.coalesce(_t.c.expires_at, ends_at), ends_at),
+            expiry_notified_at=case(
+                (or_(_t.c.expires_at.is_(None), _t.c.expires_at > ends_at), null()),
+                else_=_t.c.expiry_notified_at,
+            ),
+        )
+        .returning(_t.c.id)
+    )
+    return len(result.fetchall())
+
+
+@dataclass(frozen=True)
+class HeldGrant:
+    """A grant Provisa holds now: its role, domain and expiry (None: no end)."""
+
+    role_id: str
+    domain_id: str
+    expires_at: datetime | None
+
+
+async def held_grants(conn: Any, user_id: str) -> list[HeldGrant]:
+    """``user_id``'s grants in force, by role and domain."""
+    rows = await conn.execute_core(
+        select(_t.c.role_id, _t.c.domain_id, _t.c.expires_at)
+        .where(_t.c.user_id == user_id, in_force())
+        .order_by(_t.c.role_id, _t.c.domain_id)
+    )
+    return [HeldGrant(r.role_id, r.domain_id, r.expires_at) for r in rows.fetchall()]
+
+
+async def grant_ended(conn: Any, user_id: str, role_id: str) -> bool:
+    """Whether ``user_id``'s grants of ``role_id`` have all expired, and the sweep has not yet
+    removed them."""
+    rows = await conn.execute_core(
+        select(_t.c.expires_at, in_force().label("held")).where(
+            _t.c.user_id == user_id, _t.c.role_id == role_id
+        )
+    )
+    held = [r.held for r in rows.fetchall()]
+    return bool(held) and not any(held)
+
+
+def grant_end(grants: Iterable[HeldGrant], role_id: str) -> tuple[bool, datetime | None]:
+    """Whether ``grants`` hold ``role_id``, and when the role ends: the latest of its grants'
+    expiries, None when one has no end."""
+    ends = [g.expires_at for g in grants if g.role_id == role_id]
+    if not ends:
+        return False, None
+    return True, None if None in ends else max(e for e in ends if e is not None)
 
 
 async def holder_emails(conn: Any) -> dict[str, tuple[str, ...]]:
@@ -289,32 +384,6 @@ async def sweep(db: "Database", *, notify: bool) -> Sweep:
     return Sweep(expired, inactive, expiring, going_unused)
 
 
-def _when(at: datetime) -> str:
-    return at.strftime("%Y-%m-%d %H:%M UTC")
-
-
-def _notice(g: Grant, org_id: str, *, holder: bool) -> tuple[str, str]:
-    """The subject and body telling of ``g``'s coming end (``holder``: to its holder)."""
-    who = "Your" if holder else f"{g.user_id}'s"
-    scope = "" if g.domain_id == "*" else f" in the domain {g.domain_id}"
-    return (
-        f"{who} role {g.role_id} in {org_id} ends {_when(g.at)}",
-        f"{who} role {g.role_id}{scope} in the organization {org_id} ends {_when(g.at)}.",
-    )
-
-
-def _ended(g: Grant, org_id: str, why: str) -> tuple[str, str]:
-    scope = "" if g.domain_id == "*" else f" in the domain {g.domain_id}"
-    return (
-        f"{g.user_id}'s role {g.role_id} in {org_id} was removed",
-        f"{g.user_id}'s role {g.role_id}{scope} in the organization {org_id} was removed: {why}.",
-    )
-
-
-async def _send(org_id: str, to: str, subject: str, body: str) -> None:
-    await send_notice(org_id, to, subject, body, kind="role_grant")
-
-
 async def send_notice(org_id: str, to: str, subject: str, body: str, *, kind: str) -> None:
     """One notice through the org mail channel, recorded as every send is (REQ-1576) under
     ``kind``. A failed send is logged and recorded, never raised: what it tells of has happened."""
@@ -343,76 +412,4 @@ async def send_notice(org_id: str, to: str, subject: str, body: str, *, kind: st
     await record(
         state.admin_db,
         MailAttempt(provider=provider, kind=kind, recipient=to, succeeded=True, org_id=org_id),
-    )
-
-
-async def _tell(db: "Database", org_id: str, outcome: Sweep) -> None:
-    from provisa.core.org_membership import org_admin_user_ids
-
-    admins = await org_admin_user_ids(db)
-    told = [*outcome.expiring, *outcome.going_unused]
-    removed = [(g, "the grant expired") for g in outcome.expired] + [
-        (g, "the grant went unused") for g in outcome.inactive
-    ]
-    async with db.acquire() as conn:
-        emails = await emails_of(conn, [*admins, *(g.user_id for g in told)])
-    admin_emails = sorted({emails[a] for a in admins if a in emails})
-    for g in told:
-        if g.user_id in emails:
-            await _send(org_id, emails[g.user_id], *_notice(g, org_id, holder=True))
-        for to in admin_emails:
-            await _send(org_id, to, *_notice(g, org_id, holder=False))
-    for g, why in removed:
-        for to in admin_emails:
-            await _send(org_id, to, *_ended(g, org_id, why))
-
-
-async def sweep_org(org_id: str) -> Sweep:
-    """``org_id``'s sweep, run by the scheduler. Notices go wherever mail is configured
-    (``mail.provider``), a single-org deployment included; where it is not, the trail entry is
-    the record."""
-    from provisa.api.app import state
-    from provisa.core.request_context import reset_current_org, set_current_org
-
-    token = set_current_org(org_id)
-    try:
-        db = state.model_db
-        assert db is not None, "the org's model store is bound with its runtime"
-        assert state.config is not None, "the deployment's configuration is loaded"
-        notify = bool(state.config.mail.provider)
-        outcome = await sweep(db, notify=notify)
-        if notify:
-            await _tell(db, org_id, outcome)
-    finally:
-        reset_current_org(token)
-    if outcome.expired or outcome.inactive:
-        log.info(
-            "org %s: %d expired and %d unused role grant(s) removed",
-            org_id,
-            len(outcome.expired),
-            len(outcome.inactive),
-        )
-    return outcome
-
-
-def sweep_job_id(org_id: str) -> str:
-    return f"{JOB_ID}:org_{org_id}"
-
-
-def register_org_role_grants(scheduler: "AsyncIOScheduler", org_id: str) -> None:
-    """Sweep ``org_id``'s grants every SWEEP_MINUTES. A job already held is kept."""
-    from apscheduler.triggers.interval import IntervalTrigger
-
-    job_id = sweep_job_id(org_id)
-    if scheduler.get_job(job_id) is not None:
-        return
-    scheduler.add_job(
-        sweep_org,
-        trigger=IntervalTrigger(minutes=SWEEP_MINUTES),
-        args=[org_id],
-        id=job_id,
-        name=JOB_ID,
-        replace_existing=True,
-        max_instances=1,
-        coalesce=True,
     )

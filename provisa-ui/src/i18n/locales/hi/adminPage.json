@@ -157,6 +157,7 @@
       "odata": "OData",
       "sql_http": "HTTP पर SQL",
       "cypher_http": "HTTP पर Cypher",
+      "sparql_http": "HTTP पर SPARQL",
       "pgwire": "PostgreSQL wire",
       "flight": "Arrow Flight",
       "bolt": "Bolt",

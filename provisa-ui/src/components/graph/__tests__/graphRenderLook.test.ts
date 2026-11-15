@@ -19,7 +19,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { BACKGROUND, LAYOUTS } from "../../../../graph-render/src/look";
 import { LAYOUT_OPTIONS } from "../canvas/canvas-types";
-import { ERD_ELK_LAYOUT } from "../../erd/erd-layout-options";
+import { ERD_ELK_LAYOUT } from "../../provisa-graph/presets";
 
 const tokens = readFileSync(resolve(__dirname, "../../../theme/tokens.css"), "utf8");
 

@@ -1,0 +1,29 @@
+{
+  "engines": {
+    "clickhouse": {
+      "total": 3319,
+      "passed": 1849,
+      "differs_engine_error": 0,
+      "refused_by_name": 554
+    },
+    "duckdb": {
+      "total": 3319,
+      "passed": 2307,
+      "differs_engine_error": 0,
+      "refused_by_name": 100
+    },
+    "pg": {
+      "total": 3319,
+      "passed": 2478,
+      "differs_engine_error": 0,
+      "refused_by_name": 0
+    },
+    "trino": {
+      "total": 3319,
+      "passed": 1768,
+      "differs_engine_error": 0,
+      "refused_by_name": 625
+    }
+  },
+  "expected": []
+}

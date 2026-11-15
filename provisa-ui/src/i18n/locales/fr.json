@@ -2,6 +2,9 @@
   "common": {
     "loading": "Chargement...",
     "cancel": "Annuler",
+    "stop": "Arrêter",
+    "stopped": "Arrêtée",
+    "stopQuery": "Arrêter la requête",
     "save": "Enregistrer",
     "delete": "Supprimer",
     "confirm": "Confirmer",
@@ -44,7 +47,7 @@
     "yes": "Oui",
     "no": "Non",
     "none": "—",
-    "expandUser": "Afficher les affectations de {{username}}",
+    "expandUser": "Développer les affectations de {{username}}",
     "deleteUser": "Supprimer le compte de {{username}}",
     "assignmentsHeading": "Affectations rôle:domaine",
     "noAssignments": "Aucune affectation",

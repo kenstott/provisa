@@ -354,6 +354,17 @@ describe("the Views page", () => {
     expect(screen.getByTestId("table-read-view-edit-definition")).toBeInTheDocument();
   });
 
+  it("edit definition from the preview leaves the preview and shows the definition editor", async () => {
+    render(<TablesPage viewsOnly />);
+    const list = await screen.findByTestId("tables-list");
+    await userEvent.click(within(list).getByText("sales_by_day"));
+    await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+    await screen.findByTestId("table-preview-modal");
+    await userEvent.click(screen.getByTestId("table-read-view-edit-definition"));
+    expect(await screen.findByTestId("view-form-stub")).toBeInTheDocument();
+    expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+  });
+
   it("returns to the view's detail when its definition has been saved", async () => {
     render(<TablesPage viewsOnly />);
     const list = await screen.findByTestId("tables-list");

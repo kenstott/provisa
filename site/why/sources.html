@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>79 connectors, and one of them is a crawler — Provisa</title>
-  <meta name="description" content="79 connectors reaching over 200 data sources, including Salesforce, ServiceNow, Jira and Stripe and a file crawler: point it at a folder, bucket, SFTP host, or SharePoint site and every database file and tabular document under it is discovered and cataloged, ready to register as a governed table, alongside graph, RDF, and API endpoints." />
+  <title>Connect any database, API or file store — Provisa</title>
+  <meta name="description" content="Connect any SQL database, any REST, GraphQL, gRPC or OData API, any file or object store, or your own code in Node, Python, Go or Rust, and query it in 5 minutes. Every connector is built on one contract and inherits its base's tests. Today that means 79 connectors reaching over 200 named sources." />
   <link rel="icon" type="image/svg+xml" href="../favicon.svg" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -44,25 +44,172 @@
     <div class="container">
       <div class="doc-head">
         <p class="crumb"><a href="/">Provisa</a> <span>/</span> <span>Sources</span></p>
-        <h1>Skip the next discussion about data ingestion.</h1>
+        <h1>Connect your databases, APIs and files. Query in 5 minutes.</h1>
         <p class="lead">
-          Every new source usually starts a pipeline project: what to copy, where to land it,
-          how to keep it current. Here, 79 connectors reach over 200 data sources where the data
-          already lives, and you copy data only when you declare a copy.
+          Any SQL database. Any REST, GraphQL, gRPC or OData API. Any file or object store.
+          Your own code in Node, Python, Go or Rust. Each becomes a governed table you query
+          where the data already lives, joined to everything else, and you copy data only when
+          you declare a copy.
         </p>
         <p class="lead">
-          Seventy-nine connectors, and one of them finds the rest of your data. Seventy-eight of them connect to a system you already know you have. The seventy-ninth
-          is a crawler, and it tends to find the half of your estate nobody put on the
-          inventory.
+          A long list of logos proves little on its own, so here is how the list is built.
+          Today that means 79 connectors reaching over 200 named sources.
         </p>
       </div>
 
       <div class="doc-body">
+        <h2 id="classes">Four classes of source</h2>
+        <div class="grid src-classes">
+          <div class="card">
+            <h4>Any SQL database</h4>
+            <p>PostgreSQL, Snowflake, Oracle, BigQuery and the rest of the SQL family. The query engines read them natively.</p>
+          </div>
+          <div class="card">
+            <h4>Any API</h4>
+            <p>REST with an OpenAPI description, GraphQL, gRPC and OData. Provisa reads the API's own description to find its tables.</p>
+          </div>
+          <div class="card">
+            <h4>Any file or object store</h4>
+            <p>A folder, a bucket, an SFTP host or a SharePoint site. CSV, Parquet, Excel and the tables inside documents.</p>
+          </div>
+          <div class="card">
+            <h4>Your own code</h4>
+            <p>A function in Node, Python, Go or Rust that returns rows. It becomes a table like any other.</p>
+          </div>
+        </div>
+
+        <h2 id="tree">One contract, a tree of connectors</h2>
+        <p>
+          Every connector answers the same questions. Which tables and columns does the source
+          have, with what types and descriptions? How are rows read? Which filters can it take?
+          What does it need to connect, and how does it sign in? Does it run inside Provisa or
+          on a host of its own? Those answers are the source contract.
+        </p>
+        <p>
+          Four runtimes implement the contract, one each for Node, Python, Go and Rust. On those
+          runtimes sit a handful of bases: OpenAPI and REST, GraphQL, gRPC and OData. A
+          named source such as Stripe or Jira is one of those bases plus a short configuration
+          giving its URL, how it signs in and a few fixed values. Hand-built connectors are
+          kept for the few sources whose logic fits no base.
+        </p>
+        <p>
+          The other root is everything the query engines read natively, with no runtime in between:
+          SQL databases and warehouses, files and lakes such as Parquet, Delta and Iceberg, and stores
+          like MongoDB, Kafka and Elasticsearch.
+        </p>
+
+        <figure class="tree" aria-labelledby="tree-cap">
+          <svg viewBox="0 0 340 472" role="img" aria-labelledby="tree-title tree-desc">
+            <title id="tree-title">The connector tree</title>
+            <desc id="tree-desc">One source contract is implemented by four runtimes: Node, Python, Go and Rust. The bases (OpenAPI and REST, GraphQL, gRPC, OData) are built on those runtimes, and named sources are built on the bases. Your own code sits directly on a runtime. A second root is what the query engines read natively: SQL databases, files and lakes, and native stores.</desc>
+
+            <rect class="n-root" x="50" y="4" width="240" height="46" rx="10" />
+            <text class="t-b" x="170" y="24" text-anchor="middle">One source contract</text>
+            <text class="t-m" x="170" y="41" text-anchor="middle">catalog · rows · pushdown · sign-in</text>
+
+            <path class="e" d="M170 50V64M38 64H302M38 64V78M126 64V78M214 64V78M302 64V78" />
+
+            <rect class="n" x="2" y="78" width="72" height="34" rx="8" />
+            <rect class="n" x="90" y="78" width="72" height="34" rx="8" />
+            <rect class="n" x="178" y="78" width="72" height="34" rx="8" />
+            <rect class="n" x="266" y="78" width="72" height="34" rx="8" />
+            <text x="38" y="100" text-anchor="middle">Node</text>
+            <text x="126" y="100" text-anchor="middle">Python</text>
+            <text x="214" y="100" text-anchor="middle">Go</text>
+            <text x="302" y="100" text-anchor="middle">Rust</text>
+
+            <path class="e" d="M38 112V128M126 112V128M214 112V128M302 112V128M38 128H302M133 128V144M302 128V144" />
+
+            <rect class="n-group" x="2" y="144" width="262" height="96" rx="12" />
+            <text class="t-k" x="14" y="162">BASES</text>
+            <rect class="chip" x="12" y="170" width="112" height="26" rx="13" />
+            <rect class="chip" x="132" y="170" width="68" height="26" rx="13" />
+            <rect class="chip" x="208" y="170" width="46" height="26" rx="13" />
+            <rect class="chip" x="12" y="204" width="58" height="26" rx="13" />
+            <text class="t-s" x="68" y="187" text-anchor="middle">OpenAPI · REST</text>
+            <text class="t-s" x="166" y="187" text-anchor="middle">GraphQL</text>
+            <text class="t-s" x="231" y="187" text-anchor="middle">gRPC</text>
+            <text class="t-s" x="41" y="221" text-anchor="middle">OData</text>
+
+            <rect class="n-own" x="271" y="144" width="62" height="96" rx="12" />
+            <text class="t-s" x="302" y="184" text-anchor="middle">Your</text>
+            <text class="t-s" x="302" y="200" text-anchor="middle">own</text>
+            <text class="t-m" x="302" y="222" text-anchor="middle">15 min</text>
+
+            <path class="e" d="M133 240V262" />
+            <rect class="n" x="2" y="262" width="262" height="48" rx="10" />
+            <text class="t-b" x="133" y="282" text-anchor="middle">Named sources</text>
+            <text class="t-m" x="133" y="299" text-anchor="middle">Stripe · Jira · Salesforce · Shopify · …</text>
+
+            <path class="e-soft" d="M2 336H338" />
+            <text class="t-k" x="170" y="356" text-anchor="middle">THE OTHER ROOT</text>
+
+            <rect class="n-sql" x="50" y="368" width="240" height="46" rx="10" />
+            <text class="t-b" x="170" y="388" text-anchor="middle">Read natively</text>
+            <text class="t-m" x="170" y="405" text-anchor="middle">by the query engines</text>
+
+            <path class="e" d="M170 414V428" />
+            <rect class="n" x="2" y="428" width="336" height="40" rx="10" />
+            <text class="t-m" x="170" y="453" text-anchor="middle">PostgreSQL · Snowflake · Parquet · Iceberg · MongoDB · …</text>
+          </svg>
+          <figcaption id="tree-cap">One contract, four runtimes, a handful of bases, then the named sources. What the engines read natively is the other root.</figcaption>
+        </figure>
+
+        <h2 id="conformance">Every connector inherits its base's tests</h2>
+        <p>
+          Each base has a conformance suite, and every connector built on that base inherits it.
+          Discovery, types, paging, the filters it accepts, sign-in and errors are tested once, at
+          the base. A named source's own tests then cover only what it adds, its configuration and
+          any overrides.
+        </p>
+        <p>
+          So the two-hundredth source on a base is held to the same bar as the first one.
+        </p>
+
+        <h2 id="source-pages">A page for every source</h2>
+        <p>
+          Each named source has a page generated from its definition. It shows the base the
+          source is built on, what Provisa pushes down to it, what you need to connect, and when
+          it was last verified against a live account. Where no live check has run yet, the page
+          says when the source last passed its base's suite.
+        </p>
+        <p>
+          Nobody writes these pages by hand, so they can't drift from what the connector does.
+        </p>
+        <p><a class="more" href="/docs/sources/">Browse the source pages</a></p>
+
+        <h2 id="code-resolvers">Not on the list? Write it in 15 minutes</h2>
+        <p>
+          Write a function in Node, Python, Go or Rust that returns typed rows, and it becomes a
+          table. It gets the same catalog entry, governance, hosting and protocols as every named
+          source. Visibility, masks and row rules apply to what it returns, you can join it to
+          the rest of the model, and SQL, GraphQL and Cypher clients all reach it. Its code is
+          pinned by version, commit or hash, so it is promoted with the model.
+        </p>
+        <p>
+          Run it inside Provisa, or on a host of its own beside the data, on a GPU box or inside
+          another network. Provisa builds the container image for you and pairs with it over
+          mutual TLS.
+        </p>
+        <p><a class="more" href="/docs/code-sources/">How code resolvers work</a></p>
+
+        <h2 id="today">Today: 79 connectors</h2>
+        <p>
+          Here is the tree as it stands, grouped the way the product's source picker shows it.
+          Those 79 connectors reach over 200 named sources, and the list grows one short
+          configuration at a time.
+        </p>
+
         <!-- source-picker:start -->
 <div class="picker" data-count="79" data-kinds="95"><section class="picker-cat" data-category="Enterprise"><h3>Enterprise</h3><ul><li class="picker-row"><span class="picker-tile" style="background:#4b5563" aria-hidden="true">SH</span><span class="picker-name">SharePoint</span></li><li class="picker-row"><span class="picker-tile" style="background:#4b5563" aria-hidden="true">SA</span><span class="picker-name">Salesforce</span></li><li class="picker-row"><span class="picker-tile" style="background:#4b5563" aria-hidden="true">SE</span><span class="picker-name">ServiceNow</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-jira"/></svg><span class="picker-name">Jira</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-quickbooks"/></svg><span class="picker-name">QuickBooks Online</span></li><li class="picker-row"><span class="picker-tile" style="background:#4b5563" aria-hidden="true">CI</span><span class="picker-name">Cloud Inventory</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-google"/></svg><span class="picker-name">Google Workspace</span></li><li class="picker-row"><span class="picker-tile" style="background:#4b5563" aria-hidden="true">M3</span><span class="picker-name">Microsoft 365</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-github"/></svg><span class="picker-name">GitHub</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-gitlab"/></svg><span class="picker-name">GitLab</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-shopify"/></svg><span class="picker-name">Shopify</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-stripe"/></svg><span class="picker-name">Stripe</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-splunk"/></svg><span class="picker-name">Splunk</span></li></ul></section><section class="picker-cat" data-category="Subscriptions"><h3>Subscriptions</h3><ul><li class="picker-row"><img class="picker-mark" src="/assets/source-logo-askamerica.3d7a8bb401.svg" width="20" height="20" alt="" aria-hidden="true"><span class="picker-name">AskAmerica</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-kaggle"/></svg><span class="picker-name">Kaggle</span></li></ul></section><section class="picker-cat" data-category="RDBMS"><h3>RDBMS</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-postgresql"/></svg><span class="picker-name">PostgreSQL</span><ul class="picker-sub"><li>RDS</li><li>Aurora</li><li>Cloud SQL</li><li>AlloyDB</li><li>Azure</li><li>Supabase</li><li>Neon</li></ul></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-mysql"/></svg><span class="picker-name">MySQL</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-singlestore"/></svg><span class="picker-name">SingleStore</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-mariadb"/></svg><span class="picker-name">MariaDB</span></li><li class="picker-row"><span class="picker-tile" style="background:#3b6ea8" aria-hidden="true">SS</span><span class="picker-name">SQL Server</span></li><li class="picker-row"><span class="picker-tile" style="background:#3b6ea8" aria-hidden="true">OR</span><span class="picker-name">Oracle</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-duckdb"/></svg><span class="picker-name">DuckDB</span></li><li class="picker-row"><span class="picker-tile" style="background:#3b6ea8" aria-hidden="true">EX</span><span class="picker-name">Exasol</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-sap"/></svg><span class="picker-name">SAP HANA</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-cockroachlabs"/></svg><span class="picker-name">CockroachDB</span></li><li class="picker-row"><span class="picker-tile" style="background:#3b6ea8" aria-hidden="true">YU</span><span class="picker-name">YugabyteDB</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-postgresql"/></svg><span class="picker-name">Greenplum</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-tidb"/></svg><span class="picker-name">TiDB</span></li><li class="picker-row"><span class="picker-tile" style="background:#3b6ea8" aria-hidden="true">FI</span><span class="picker-name">Firebird</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apachehive"/></svg><span class="picker-name">HiveServer2</span></li><li class="picker-row"><span class="picker-tile" style="background:#3b6ea8" aria-hidden="true">JD</span><span class="picker-name">JDBC</span></li></ul></section><section class="picker-cat" data-category="Cloud DW"><h3>Cloud DW</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-snowflake"/></svg><span class="picker-name">Snowflake</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-googlebigquery"/></svg><span class="picker-name">BigQuery</span></li><li class="picker-row"><span class="picker-tile" style="background:#2f8f83" aria-hidden="true">AA</span><span class="picker-name">Amazon Athena</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-databricks"/></svg><span class="picker-name">Databricks</span></li><li class="picker-row"><span class="picker-tile" style="background:#2f8f83" aria-hidden="true">RE</span><span class="picker-name">Redshift</span></li><li class="picker-row"><span class="picker-tile" style="background:#2f8f83" aria-hidden="true">MF</span><span class="picker-name">Microsoft Fabric Warehouse</span></li><li class="picker-row"><span class="picker-tile" style="background:#2f8f83" aria-hidden="true">AS</span><span class="picker-name">Azure Synapse SQL</span></li><li class="picker-row"><span class="picker-tile" style="background:#2f8f83" aria-hidden="true">MO</span><span class="picker-name">MotherDuck</span></li></ul></section><section class="picker-cat" data-category="Analytics"><h3>Analytics</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-clickhouse"/></svg><span class="picker-name">ClickHouse</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-elasticsearch"/></svg><span class="picker-name">Elasticsearch</span></li><li class="picker-row"><span class="picker-tile" style="background:#8a5cc2" aria-hidden="true">AP</span><span class="picker-name">Apache Pinot</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apachedruid"/></svg><span class="picker-name">Apache Druid</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-trino"/></svg><span class="picker-name">Trino / Presto</span></li></ul></section><section class="picker-cat" data-category="Data Lake"><h3>Data Lake</h3><ul><li class="picker-row"><span class="picker-tile" style="background:#2d7d46" aria-hidden="true">DL</span><span class="picker-name">Delta Lake</span></li><li class="picker-row"><span class="picker-tile" style="background:#2d7d46" aria-hidden="true">AI</span><span class="picker-name">Apache Iceberg</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apachehive"/></svg><span class="picker-name">Hive Metastore</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apachehive"/></svg><span class="picker-name">Hive on S3</span></li></ul></section><section class="picker-cat" data-category="NoSQL"><h3>NoSQL</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-mongodb"/></svg><span class="picker-name">MongoDB</span></li><li class="picker-row"><span class="picker-tile" style="background:#b5651d" aria-hidden="true">AC</span><span class="picker-name">Azure Cosmos DB</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-qdrant"/></svg><span class="picker-name">Qdrant</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apachecassandra"/></svg><span class="picker-name">Cassandra</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-redis"/></svg><span class="picker-name">Redis</span></li></ul></section><section class="picker-cat" data-category="Code"><h3>Code Resolvers</h3><ul><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">NO</span><span class="picker-name">Node.js</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">PY</span><span class="picker-name">Python</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">GO</span><span class="picker-name">Go</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">RU</span><span class="picker-name">Rust</span></li></ul></section><section class="picker-cat" data-category="Graph"><h3>Graph</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-neo4j"/></svg><span class="picker-name">Neo4j</span></li><li class="picker-row"><span class="picker-tile" style="background:#a33d6b" aria-hidden="true">SP</span><span class="picker-name">SPARQL</span></li></ul></section><section class="picker-cat" data-category="File"><h3>File</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-sqlite"/></svg><span class="picker-name">SQLite</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">CF</span><span class="picker-name">CSV File</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apacheparquet"/></svg><span class="picker-name">Parquet File</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">FC</span><span class="picker-name">File Crawler</span><ul class="picker-sub"><li>CSV</li><li>TSV</li><li>JSON</li><li>YAML</li><li>Excel (XLS, XLSX)</li><li>Parquet</li><li>Arrow</li><li>HTML</li><li>Markdown</li><li>DOCX</li><li>PPTX</li></ul></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">LF</span><span class="picker-name">Log files</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">WI</span><span class="picker-name">Wikipedia</span></li></ul></section><section class="picker-cat" data-category="Other"><h3>Other</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-googlesheets"/></svg><span class="picker-name">Google Sheets</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-prometheus"/></svg><span class="picker-name">Prometheus</span></li><li class="picker-row"><span class="picker-tile" style="background:#6b7280" aria-hidden="true">AI</span><span class="picker-name">Airport</span></li></ul></section><section class="picker-cat" data-category="API"><h3>API</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-openapiinitiative"/></svg><span class="picker-name">REST API</span></li><li class="picker-row"><span class="picker-tile" style="background:#c0392b" aria-hidden="true">DB</span><span class="picker-name">dbt</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-graphql"/></svg><span class="picker-name">GraphQL</span></li><li class="picker-row"><span class="picker-tile" style="background:#c0392b" aria-hidden="true">GR</span><span class="picker-name">gRPC</span></li></ul></section><section class="picker-cat" data-category="Streaming"><h3>Streaming</h3><ul><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-apachekafka"/></svg><span class="picker-name">Kafka</span></li><li class="picker-row"><span class="picker-tile" style="background:#b7791f" aria-hidden="true">WF</span><span class="picker-name">WebSocket Feed</span></li><li class="picker-row"><svg class="picker-mark" width="20" height="20" aria-hidden="true"><use href="/assets/source-marks.40e079f30d.svg#m-rss"/></svg><span class="picker-name">RSS / Atom Feed</span></li><li class="picker-row"><span class="picker-tile" style="background:#b7791f" aria-hidden="true">IN</span><span class="picker-name">Ingest</span></li></ul></section><section class="picker-cat" data-category="Data Quality"><h3>Data Quality</h3><ul><li class="picker-row"><span class="picker-tile" style="background:#0e7490" aria-hidden="true">SO</span><span class="picker-name">Soda</span></li><li class="picker-row"><span class="picker-tile" style="background:#0e7490" aria-hidden="true">GE</span><span class="picker-name">Great Expectations</span></li><li class="picker-row"><span class="picker-tile" style="background:#0e7490" aria-hidden="true">DP</span><span class="picker-name">Data Profiler</span></li></ul></section></div>
 <!-- source-picker:end -->
 
         <h2>The file crawler</h2>
+        <p>
+          Seventy-nine connectors, and one of them finds the rest of your data. Seventy-eight of
+          them connect to a system you already know you have. The seventy-ninth is a crawler,
+          and it tends to find the half of your estate nobody put on the inventory.
+        </p>
         <p>
           It is one source type, and the only one where you register a <em>location</em>
           rather than a system. Point it at a folder, a bucket, an FTP or SFTP host, or a
@@ -99,24 +246,6 @@
           you register lands under the same row-level security, masking and relationship
           rules as the databases.
         </p>
-
-        <h2 id="code-resolvers">If nobody makes a connector, write a function</h2>
-        <p>
-          Code resolvers are the contract for integrating any data source. A Python or Node
-          function returns typed rows, and that function becomes a table. It's governed like any
-          other, with visibility, masks and row rules applied to what it returns, you can join it
-          to the rest of the model, and it's served on every language and transport. A function
-          that takes a loader gets every key of a join in one call, and filters can reach it as
-          parameters. Its code is pinned by version, commit or hash, so it is promoted with the model.
-        </p>
-        <p>
-          In production, code resolvers don't sit in the control plane. Provisa builds each one its
-          own container image, with no Docker daemon. The image holds the code at its pinned hash
-          and its dependencies on a minimal base, and it's pushed to your registry or downloaded.
-          Run it wherever it belongs, beside the data, on a GPU box or inside another network, and
-          Provisa pairs with it over mutual TLS.
-        </p>
-        <p><a class="more" href="/docs/code-sources/">How code resolvers work</a></p>
 
         <figure class="shot">
           <div class="shot-frame">

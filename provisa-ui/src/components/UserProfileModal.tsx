@@ -8,6 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
+import { DestructiveConfirmButton } from "./form/DestructiveConfirmButton";
 import {
   Alert,
   Badge,
@@ -367,14 +368,13 @@ export function UserProfileModal({ onClose }: Props) {
                   data-testid="profile-delete-confirm"
                 />
               </FormField>
-              <Button
-                color="red"
+              <DestructiveConfirmButton
                 disabled={!userId || confirmDelete !== userId}
                 onClick={handleDeleteAccount}
-                data-testid="profile-delete-submit"
+                testId="profile-delete-submit"
               >
                 {t("userProfileModal.deleteAccountButton")}
-              </Button>
+              </DestructiveConfirmButton>
             </FieldGroup>
           </FormLayout>
         </section>

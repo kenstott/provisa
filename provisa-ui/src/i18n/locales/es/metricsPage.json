@@ -34,6 +34,8 @@
     "fieldAiContext": "Contexto de IA",
     "fieldTags": "Etiquetas",
     "fieldAiContextPlaceholder": "Indicaciones para la generación de consultas asistida por IA",
+    "fieldTerm": "Término del glosario",
+    "fieldTermHint": "Su definición y su método de cálculo se muestran con la métrica",
     "saveFailed": "Error al guardar.",
     "editMetric": "Editar métrica {{name}}",
     "deleteMetric": "Eliminar métrica {{name}}",

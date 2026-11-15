@@ -2,6 +2,9 @@
   "common": {
     "loading": "加载中…",
     "cancel": "取消",
+    "stop": "停止",
+    "stopped": "已停止",
+    "stopQuery": "停止查询",
     "save": "保存",
     "delete": "删除",
     "confirm": "确认",
@@ -44,7 +47,7 @@
     "yes": "是",
     "no": "否",
     "none": "—",
-    "expandUser": "显示 {{username}} 的分配",
+    "expandUser": "展开 {{username}} 的分配",
     "deleteUser": "删除 {{username}} 的账户",
     "assignmentsHeading": "角色:域 分配",
     "noAssignments": "暂无分配",

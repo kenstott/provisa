@@ -7,7 +7,7 @@
     "relationships": "Связи",
     "team": "Команда",
     "docs": "Документация",
-    "groupModel": "Модель",
+    "groupModel": "Производные",
     "groupSecurity": "Безопасность",
     "groupExplore": "Обзор",
     "groupAdmin": "Администрирование",
@@ -48,7 +48,6 @@
     "itemAuthentication": "Аутентификация",
     "itemAiModels": "Модели ИИ",
     "itemPackageRegistries": "Реестры пакетов",
-    "itemMetadataExport": "Экспорт",
     "itemImport": "Импорт",
     "itemTags": "Теги",
     "itemClassificationKinds": "Классификация",
@@ -79,8 +78,8 @@
     "itemNotebook": "Блокнот",
     "itemContainerRegistries": "Реестры контейнеров",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Каталоги",
     "itemLibrary": "Библиотека",
-    "itemPlatformObservability": "Наблюдаемость платформы"
+    "itemPlatformObservability": "Наблюдаемость платформы",
+    "itemSyncing": "Синхронизация"
   }
 }

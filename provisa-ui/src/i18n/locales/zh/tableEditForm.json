@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "当扫描此视图某个输入的检查表最近一次运行失败时，中止刷新并保留上一份副本。在上方的预检之前运行；两者都必须通过才会继续。",
     "holdOnFailingChecksShowCode": "显示代码",
     "holdOnFailingChecksHideCode": "隐藏代码",
-    "holdOnFailingChecksCodeHelp": "此选项应用的检查。要修改它，请将其复制到上方的预检中。"
+    "holdOnFailingChecksCodeHelp": "此选项应用的检查。要修改它，请将其复制到上方的预检中。",
+    "discoverHint": "保存时会读取实时数据源的列，并添加此表缺少的列；已有的列保持不变。新增的列在授予之前对任何角色都不可见。"
   }
 }

@@ -68,6 +68,8 @@
     "bindingTemplate": "SQL-Ausdruck",
     "bindingTemplateHint": "Ein SQL-Ausdruck. Schreiben Sie jedes Argument als {{placeholder}}; er wird innerhalb der aufrufenden Abfrage ausgeführt.",
     "argDefault": "Standardwert des Arguments {{name}}",
-    "argDefaultPlaceholder": "Standardwert (leer lassen, wenn erforderlich)"
+    "argDefaultPlaceholder": "Standardwert (leer lassen, wenn erforderlich)",
+    "nativeSql": "Natives SQL",
+    "nativeSqlHint": "SQL im eigenen Dialekt der Quelle, eine Anweisung oder mehrere, in einer Transaktion auf der Quelle ausgeführt: Alle werden festgeschrieben oder keine. Schreiben Sie ein Argument als {{placeholder}}; jedes wird als Wert gebunden. Die Antwort sind die Zeilen der letzten Anweisung."
   }
 }

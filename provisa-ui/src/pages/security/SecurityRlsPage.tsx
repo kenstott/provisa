@@ -50,7 +50,9 @@ import {
 } from "../../components/list/ListTable";
 import { useListSortGroup, type ListColumn } from "../../components/list/useListSortGroup";
 import { PanelActions, SplitPane } from "../../components/list/SplitPane";
+import { useDetailParam } from "../../components/list/useDetailParam";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { relationName } from "../../naming";
 import { serverMessage } from "../../i18n/serverMessage";
 import { FormField, FormFooter, FormLayout } from "../../components/form/FormLayout";
@@ -107,7 +109,11 @@ export function SecurityRlsPage() {
   const [ruleForm, setRuleForm] = useState(EMPTY_RULE);
   // REQ-1679: the tracked functions and webhooks a rule may target, with their domains.
   const [actions, setActions] = useState<{ name: string; domainId: string }[]>([]);
-  const [expandedRule, setExpandedRule] = useState<number | null>(null);
+  // REQ-2241: `?rule=<id>` is the open rule's panel.
+  const detail = useDetailParam("rls");
+  const expandedRule = detail.id === null ? null : Number(detail.id);
+  const setExpandedRule = (id: number | null) =>
+    id === null ? detail.close() : detail.open(String(id));
   const [editingRuleInRow, setEditingRuleInRow] = useState<number | null>(null);
   const [ruleSearch, setRuleSearch] = useState("");
   // A table handed to the page ("rules for this table") filters the rules list, whether the page
@@ -280,6 +286,16 @@ export function SecurityRlsPage() {
     }
     setEditingRuleInRow(rule.id);
     setError("");
+  };
+
+  // Duplicate, from a rule's panel head: the new-rule form filled with the rule's target, role,
+  // rights, filter and description. A rule has no name of its own (the server numbers it): the
+  // copy is told apart by what the form lets the caller change, and a rule that already exists
+  // is refused on save by the create.
+  const handleDuplicateRule = (rule: RLSRule) => {
+    startEditingRule(rule);
+    setEditingRuleInRow(null);
+    setShowRuleForm(true);
   };
 
   const filtered = rules.filter((r) => {
@@ -569,6 +585,11 @@ export function SecurityRlsPage() {
                     <Pencil size={14} />
                   </ActionIcon>
                 </Tip>
+                <PanelDuplicate
+                  name={t("securityPage.panelRule", { id: r.id })}
+                  onDuplicate={() => handleDuplicateRule(r)}
+                  testId={`duplicate-rule-${r.id}`}
+                />
                 <PanelDelete
                   itemKey={r.id}
                   title={t("securityPage.deleteRuleTitle")}
@@ -734,9 +755,7 @@ export function SecurityRlsPage() {
                         )}
                       </Table.Td>
                       <Table.Td>{r.roleId}</Table.Td>
-                      <Table.Td data-testid={`rule-right-${r.id}`}>
-                        {rightsLabel(r)}
-                      </Table.Td>
+                      <Table.Td data-testid={`rule-right-${r.id}`}>{rightsLabel(r)}</Table.Td>
                       <Table.Td>
                         <Text component="code">{r.filterExpr}</Text>
                       </Table.Td>

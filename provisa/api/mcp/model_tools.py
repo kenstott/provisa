@@ -353,7 +353,8 @@ async def list_fake_kinds(state: Any, role: str, request: Any) -> dict:
     require_role(role, state)
     from provisa.api.admin.fakes_router import fake_catalog
 
-    full = await fake_catalog(request)
+    # The tool names no column type: it lists every kind, and asks for no type's family.
+    full = await fake_catalog(request, [])
     return {
         "kinds": [
             {

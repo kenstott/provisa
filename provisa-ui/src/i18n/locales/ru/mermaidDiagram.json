@@ -1,5 +1,7 @@
 {
   "mermaidDiagram": {
-    "unavailable": "Диаграмма недоступна"
+    "unavailable": "Диаграмма недоступна",
+    "fitWidth": "По ширине",
+    "canvasLabel": "Схема плана запроса"
   }
 }

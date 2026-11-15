@@ -20,7 +20,7 @@ from provisa.gql.translator import _Translator
 from provisa.gql.translator_helpers import _rewrite_cypher_fn_node
 
 
-def _label_map() -> CypherLabelMap:
+def _label_map(parameterized: bool = True) -> CypherLabelMap:
     person = NodeMapping(
         label="Person",
         type_name="Person",
@@ -34,7 +34,7 @@ def _label_map() -> CypherLabelMap:
         schema_name="public",
         table_name="persons",
         properties={"name": "name", "age": "age_col"},
-        native_filter_columns={"status": "varchar"},
+        native_filter_columns={"status": "varchar"} if parameterized else {},
     )
     knows = RelationshipMapping(
         rel_type="KNOWS",
@@ -47,8 +47,11 @@ def _label_map() -> CypherLabelMap:
     return CypherLabelMap(nodes={"Person": person}, relationships={"KNOWS": knows}, domains={})
 
 
-def _translator() -> _Translator:
-    lm = _label_map()
+def _translator(parameterized: bool = True) -> _Translator:
+    """Over Person, a parameterized table (``status``) unless ``parameterized`` is False: a
+    pattern's free end never reads a parameterized table (REQ-2135), so a pattern read from the
+    outer row reads a plain one."""
+    lm = _label_map(parameterized)
     ast = parse_cypher("MATCH (n:Person) RETURN n")
     t = _Translator(ast, lm, {})
     t._var_table = {"n": ("n", lm.nodes["Person"])}
@@ -133,14 +136,16 @@ class TestMapProjection:
 
 class TestPatternComprehension:
     def test_correlated_array_subquery(self):
-        out = _sql("[(n)-[:KNOWS]->(m) | m.name]")
+        out = _sql("[(n)-[:KNOWS]->(m) | m.name]", _translator(parameterized=False))
         assert out == (
             'ARRAY(SELECT m."name" FROM "postgresql"."public"."persons" AS m '
             'WHERE n."person_id" = m."id")'
         )
 
     def test_with_predicate(self):
-        out = _sql("[(n)-[:KNOWS]->(m) WHERE m.age > 20 | m.name]")
+        out = _sql(
+            "[(n)-[:KNOWS]->(m) WHERE m.age > 20 | m.name]", _translator(parameterized=False)
+        )
         assert out == (
             'ARRAY(SELECT m."name" FROM "postgresql"."public"."persons" AS m '
             'WHERE n."person_id" = m."id" AND m."age_col" > 20)'
@@ -149,7 +154,7 @@ class TestPatternComprehension:
 
 class TestSubqueryRecursion:
     def test_exists_becomes_correlated_subquery(self):
-        out = _sql("EXISTS { MATCH (n)-[:KNOWS]->(m) }").upper()
+        out = _sql("EXISTS { MATCH (n)-[:KNOWS]->(m) }", _translator(parameterized=False)).upper()
         assert out.startswith("EXISTS(SELECT 1 FROM")
         # The inner statement goes on from the outer row n: it reads m and is tied to n by the
         # relationship's condition, never reads n's table again (#160).
@@ -157,5 +162,5 @@ class TestSubqueryRecursion:
         assert 'WHERE N."PERSON_ID" = M."ID"' in out, out
 
     def test_count_becomes_scalar_subquery(self):
-        out = _sql("COUNT { MATCH (n)-[:KNOWS]->(m) }").upper()
+        out = _sql("COUNT { MATCH (n)-[:KNOWS]->(m) }", _translator(parameterized=False)).upper()
         assert "SELECT COUNT(*)" in out and out.strip().startswith("(SELECT COUNT(*)")

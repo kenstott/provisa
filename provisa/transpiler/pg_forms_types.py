@@ -234,9 +234,6 @@ _ORDERED: tuple[_Ordered, ...] = (
     _Ordered("pg_lsn_", _lsn_key("{}"), cmp=True, picks=True, shown=_lsn_text(_lsn_number("{}"))),
     _Ordered("tid", _tid_key("{}"), picks=True, shown=_TEXT),
     _Ordered("name", _NAME),
-    _Ordered("array_", "{}", picks=True),
-    _Ordered("record_", "({})"),
-    _Ordered("record_image_", "({})"),
 )
 
 

@@ -822,6 +822,9 @@ def _decompose(  # noqa: C901 -- allow-complex: one branch per projected kind, a
                 rows["tag_assignments"].extend(
                     _tags(nested["tags"], path, problems, metric_name=entry["name"])
                 )
+                # REQ-2243: the term the metric names, by its path.
+                named_term = entry.pop("term", None)
+                entry["term_id"] = None if named_term is None else resolve_term(named_term, path)
             rows[table].append(entry)
 
     # REQ-1363: the domain files state a tree. A parent that is no domain of this tree, or a

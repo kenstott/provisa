@@ -10,6 +10,16 @@
 
 import { describe, it, expect } from "vitest";
 import { buildTableLabel, buildErdElements, erdJson } from "../components/erd/erd-model";
+import { erdGraph } from "../components/erd/erd-graph";
+import { graphElements } from "../components/provisa-graph/model";
+import { graphStylesheet } from "../components/provisa-graph/stylesheet";
+import {
+  NODE_TYPES,
+  SIZE,
+  graphTokens,
+  typeShape,
+  type NodeType,
+} from "../components/provisa-graph/tokens";
 import type { RegisteredTable, Relationship, Domain, TableColumn } from "../types/admin";
 
 // ── fixtures ──────────────────────────────────────────────────────────────────
@@ -512,6 +522,41 @@ describe("buildErdElements — junction relationships", () => {
     expect(jn?.data.type === "table" && jn.data.displayLabel).toBe("pet_companions");
     const entity = nodes.find((n) => n.data.type === "table" && n.data.tableId === 10);
     expect(entity?.data.type === "table" && entity.data.junction).toBe(false);
+  });
+
+  it("the erd-junction tag draws the junction as the graph's one diamond, legs in its grape", () => {
+    // REQ-2239 (A JUNCTION IS A DIAMOND): the one exception to the single node shape.
+    const erd = buildErdElements(
+      [pets, owners, companions],
+      [viaRel({ targetTableId: 12 })],
+      domains,
+      new Set(),
+      NO_HIDDEN,
+      "all",
+    );
+    const spec = erdGraph(erd, []);
+    expect(spec.nodes.find((n) => n.id === "t:11")?.type).toBe("junction");
+    expect(spec.nodes.find((n) => n.id === "t:10")?.type).toBe("table");
+    const els = graphElements(spec, (type) => type, "all");
+    const junction = els.find((e) => e.data.id === "t:11");
+    const entity = els.find((e) => e.data.id === "t:10");
+    expect(junction?.data.shape).toBe("diamond");
+    expect(junction?.data.w).toBe(SIZE.diamondWidth);
+    expect(junction?.data.h).toBe(SIZE.diamondHeight);
+    // Its name and type, no body.
+    expect(junction?.data.label).toBe("pet_companions\nJUNCTION");
+    expect(entity?.data.shape).toBe("box");
+    expect(entity?.data.w).toBe(SIZE.nodeWidth);
+    // Its legs keep the via tone; a junction's lines are solid.
+    const legs = spec.edges.filter((e) => e.source === "t:11" || e.target === "t:11");
+    expect(legs).toHaveLength(2);
+    expect(legs.every((e) => e.tone === "via" && !e.dashed)).toBe(true);
+    // The stylesheet draws a diamond for that shape, and for nothing else.
+    const sheet = graphStylesheet(graphTokens(false));
+    const diamonds = sheet.filter((r) => (r.style as Record<string, unknown>).shape === "diamond");
+    expect(diamonds.map((r) => r.selector)).toEqual(['node[kind = "node"][shape = "diamond"]']);
+    const shaped = (Object.keys(NODE_TYPES) as NodeType[]).filter((t) => typeShape(t) === "diamond");
+    expect(shaped).toEqual(["junction"]);
   });
 
   it("a hidden junction collapses to a direct A→B edge labeled with the type", () => {

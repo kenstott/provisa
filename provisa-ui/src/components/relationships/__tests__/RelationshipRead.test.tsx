@@ -58,6 +58,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       setEditingRel={vi.fn()}
       canManage={false}
       onStartEdit={vi.fn()}
+      onDuplicate={vi.fn()}
       onReverse={vi.fn()}
       onDelete={vi.fn()}
       onEditSave={vi.fn()}
@@ -86,7 +87,6 @@ describe("a relationship's read view", () => {
       ["CQL Alias (UPPER_SNAKE)", "BONDED_PAIR"],
       ["GQL Alias (camelCase)", "bondedPairs"],
       ["SQL Name", "bonded_pairs"],
-      ["Auto-tracked", "No"],
     ]);
     expect(fields("relationship-read-source")).toEqual([
       ["Domain", "zoo"],

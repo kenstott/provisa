@@ -338,6 +338,11 @@ def _table(table: exp.Table, dialect: str) -> exp.Expr:
     return exp.Subquery(this=query.transform(bound), alias=alias.copy())
 
 
+#: The key of a node's meta that holds the json type a statement said of a value ClickHouse holds
+#: as its text: "json" or "jsonb" (provisa.transpiler.polyfill.trino.said reads it).
+SAID = "provisa_said_json_type"
+
+
 def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
     """A cast to a json type as the engine reads one: Trino's cast of text is a json string, and
     ClickHouse holds json as its text."""
@@ -345,7 +350,11 @@ def _cast(node: exp.Cast, dialect: str) -> exp.Expr:
     if dialect in _OF[_T]:
         return exp.ParseJSON(this=node.this) if literal else exp.cast(node.this, "JSON")
     text = exp.DataType.build("Nullable(String)", dialect=_C)
-    return node.this if literal else exp.cast(node.this, text)
+    held = node.this if literal else exp.cast(node.this, text)
+    # Its text, still the json value the statement says: a polyfill grid row reads the type of
+    # what it is handed (bool and numeric of a jsonb value refuse it by name).
+    held.meta[SAID] = node.to.this.value.lower()
+    return held
 
 
 #: DuckDB's UDF of a function: its name, each parameter's kind (j a json, t a text, p a jsonpath,

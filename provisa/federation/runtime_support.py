@@ -444,6 +444,14 @@ def arrow_type_name(t: Any) -> str:
     that wire type's encoder takes."""
     import pyarrow as pa
 
+    if pa.types.is_union(t):
+        # ClickHouse's value of a type that cannot be Nullable (an array) or NULL is its Variant
+        # of that type and NULL: the type it holds.
+        held = [t.field(i).type for i in range(t.num_fields)]
+        values = [h for h in held if not pa.types.is_null(h)]
+        if len(values) == 1:
+            return arrow_type_name(values[0])
+        return "VARCHAR"
     if pa.types.is_boolean(t):
         return "BOOLEAN"
     if pa.types.is_integer(t):
@@ -462,16 +470,29 @@ def arrow_type_name(t: Any) -> str:
         return "INTERVAL"
     if pa.types.is_binary(t) or pa.types.is_large_binary(t) or pa.types.is_fixed_size_binary(t):
         return "BLOB"
-    if pa.types.is_list(t) or pa.types.is_large_list(t) or pa.types.is_fixed_size_list(t):
+    if _is_list(t):
+        # PostgreSQL has one array type of an element, whatever its dimensions.
         v = t.value_type
+        while _is_list(v):
+            v = v.value_type
         if pa.types.is_integer(v):
             return "INTEGER[]"
         if pa.types.is_string(v) or pa.types.is_large_string(v):
             return "VARCHAR[]"
+        if pa.types.is_float64(v):
+            return "DOUBLE[]"
+        if pa.types.is_float32(v):
+            return "REAL[]"
         return "JSON"
     if pa.types.is_struct(t) or pa.types.is_map(t):
         return "JSON"
     return "VARCHAR"
+
+
+def _is_list(t: Any) -> bool:
+    import pyarrow as pa
+
+    return pa.types.is_list(t) or pa.types.is_large_list(t) or pa.types.is_fixed_size_list(t)
 
 
 def columns_from_describe(rows: Any) -> dict[str, str]:

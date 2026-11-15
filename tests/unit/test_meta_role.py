@@ -67,6 +67,7 @@ def _state(*, rls: dict[str, RLSContext], reads: dict[str, list[int]], roles: di
             # Each stored role's chain, as the build keeps it: these roles have no parent.
             "role_chains": {r: [r] for r in roles},
             "tables": tables,
+            "draft_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

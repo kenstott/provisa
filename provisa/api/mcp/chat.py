@@ -46,6 +46,7 @@ from typing import Any
 
 from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usage
 from provisa.api.mcp import tools as mcp_tools
+from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
@@ -67,7 +68,7 @@ _TOOLS: list[Any] = [
     },
     {
         "name": "describe_table",
-        "description": "Describe a table: columns (name, type, description) and foreign keys.",
+        "description": DESCRIBE_TABLE,
         "input_schema": {
             "type": "object",
             "properties": {"schema": {"type": "string"}, "table": {"type": "string"}},
@@ -167,7 +168,7 @@ _TOOLS: list[Any] = [
             "your answer uses a passage, cite it by its document title and section or page, and "
             "quote it. Each also carries reached, how it was found: 'nearest the question', or "
             "a neighbour of another passage ('after passage 3 in <document>', 'before ...', "
-            "'near ...'; ordinal is a passage's number), or, under graph retrieval, a passage a "
+            "'near ...'; ordinal is a passage's number), or a passage a "
             "glossary term cites, reached over the glossary's relationships ('via <term> -> "
             "<term> (part of)'), with that term and its definition (term, term_definition). A "
             "neighbour or a glossary passage is context that may or may not bear on the "
@@ -767,7 +768,7 @@ _CLIENT_TOOLS: list[Any] = [
         "description": (
             "Navigate the browser to a route within the Provisa app. Common ones: /sources, "
             "/tables (the ERD at /tables?view=erd), /relationships, /admin/ontology, /schema. Explore's query surfaces "
-            "(never guess a route for these — NOT /explore, which is this same chat, and NOT "
+            "(never guess a route for these — NOT /explore, the MCP explorer, a separate chat, and NOT "
             "/admin/explorer, which doesn't exist): /query (GraphQL), /graph (Cypher), /sparql "
             "(SPARQL), /sql, /grpc, /jsonapi, /openapi, /nl (Natural Language). When you have "
             "already prepared a "

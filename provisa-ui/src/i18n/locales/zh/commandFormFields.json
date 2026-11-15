@@ -68,6 +68,8 @@
     "bindingTemplate": "SQL 表达式",
     "bindingTemplateHint": "一个 SQL 表达式。将每个参数写为 {{placeholder}}；它在调用它的查询中运行。",
     "argDefault": "参数 {{name}} 的默认值",
-    "argDefaultPlaceholder": "默认值（必填则留空）"
+    "argDefaultPlaceholder": "默认值（必填则留空）",
+    "nativeSql": "原生 SQL",
+    "nativeSqlHint": "使用数据源自身方言的 SQL，可为一条或多条语句，在数据源上以同一个事务运行：要么全部提交，要么全部不提交。参数写作 {{placeholder}}，每个参数都作为值绑定。返回最后一条语句的行。"
   }
 }

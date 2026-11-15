@@ -111,6 +111,7 @@ const SUMMARY: GlossaryTermSummary = {
   id: 1,
   name: "Customer",
   definition: "One who buys.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 0,

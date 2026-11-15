@@ -36,7 +36,12 @@ class _State:
 
     def __init__(self) -> None:
         self._runtime = OrgRuntime(org_id="default")
-        self._runtime.role_build_inputs = {"tables": [], "metrics": [], "field_numbers": {}}
+        self._runtime.role_build_inputs = {
+            "tables": [],
+            "metrics": [],
+            "field_numbers": {},
+            "draft_tables": [],
+        }
 
     def _active_runtime(self) -> OrgRuntime:
         return self._runtime
@@ -245,7 +250,12 @@ async def test_the_warm_up_builds_every_role_and_stops_when_superseded(builds, m
     builds.counted.clear()
     _register(state, "analyst", "steward")
     app_loaders.warm_role_surfaces(state)
-    state._runtime.role_build_inputs = {"tables": [], "metrics": [], "field_numbers": {}}
+    state._runtime.role_build_inputs = {
+        "tables": [],
+        "metrics": [],
+        "field_numbers": {},
+        "draft_tables": [],
+    }
     await scheduled.pop()
     assert builds.counted == []
 
@@ -454,7 +464,7 @@ def test_a_surface_is_built_against_the_runtime_that_registered_it(monkeypatch) 
         raise _Stop
 
     monkeypatch.setattr(app_loaders, "schema_input_for", _schema_input)
-    inputs = {"tables": [], "metrics": [], "field_numbers": {}}
+    inputs = {"tables": [], "metrics": [], "field_numbers": {}, "draft_tables": []}
     with pytest.raises(_Stop):
         app_loaders._RoleParts(appmod.state, runtime, inputs, {"id": "analyst"}, None).surface()
     assert seen == [runtime]

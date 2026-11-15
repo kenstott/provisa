@@ -27,6 +27,7 @@ import { OwnerResolutionIcon } from "../../components/OwnerResolution";
 import { LatestProfilePanel } from "./LatestProfilePanel";
 import { ProfileRunsButton } from "./ProfileRunsButton";
 import { PanelActions } from "../../components/list/SplitPane";
+import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
@@ -63,6 +64,8 @@ interface TableReadViewProps {
   deployViewToDb: (id: number) => Promise<{ success: boolean; message: string }>;
   reload: () => void;
   startEditing: (t: RegisteredTable) => void;
+  /** Opens the create form filled from this table, under a new name. */
+  onDuplicate?: (t: RegisteredTable) => void;
   /** REQ-2198: resolves once the table is deleted and the list read again (PanelDelete). */
   handleDelete: (id: number) => Promise<boolean | void>;
   handleProfile: (id: number) => void;
@@ -113,6 +116,7 @@ export function TableReadView({
   deployViewToDb,
   reload,
   startEditing,
+  onDuplicate,
   handleDelete,
   handleProfile,
   hidingOnly = false,
@@ -296,6 +300,13 @@ export function TableReadView({
           >
             <Pencil size={14} />
           </ActionIcon>
+          {!hidingOnly && onDuplicate && (
+            <PanelDuplicate
+              name={table.tableName}
+              onDuplicate={() => onDuplicate(table)}
+              testId="table-read-view-duplicate"
+            />
+          )}
           {!hidingOnly && (
             <PanelDelete
               itemKey={table.id}
@@ -380,9 +391,7 @@ export function TableReadView({
                 );
               if (typeof p === "string")
                 return (
-                  <Box
-                    ref={profileRef}
-                    px="0.75rem" py="0.5rem" c="var(--destructive)" fz="0.8rem">
+                  <Box ref={profileRef} px="0.75rem" py="0.5rem" c="var(--destructive)" fz="0.8rem">
                     {p}
                   </Box>
                 );

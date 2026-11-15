@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "KI-vorgeschlagene Beziehungen",
+    "heading": "Vorgeschlagene Beziehungen",
     "colName": "Name",
     "colSource": "Quelle",
     "colTarget": "Ziel",
@@ -10,6 +10,23 @@
     "accept": "Übernehmen",
     "reject": "Ablehnen",
     "acceptAria": "Vorgeschlagene Beziehung {{name}} übernehmen",
-    "rejectAria": "Vorgeschlagene Beziehung {{name}} ablehnen"
+    "rejectAria": "Vorgeschlagene Beziehung {{name}} ablehnen",
+    "acceptAll": "Alle übernehmen",
+    "rejectAll": "Alle ablehnen",
+    "acceptAllTitle": "Alle Vorschläge übernehmen",
+    "rejectAllTitle": "Alle Vorschläge ablehnen",
+    "acceptAllConsequence": "Den {{count}} aufgeführten Vorschlag übernehmen? Er wird zu einer registrierten Beziehung.",
+    "acceptAllConsequence_other": "Alle {{count}} aufgeführten Vorschläge übernehmen? Jeder wird zu einer registrierten Beziehung.",
+    "rejectAllConsequence": "Den {{count}} aufgeführten Vorschlag ablehnen? Er wird erst wieder vorgeschlagen, wenn die Ablehnungen gelöscht sind.",
+    "rejectAllConsequence_other": "Alle {{count}} aufgeführten Vorschläge ablehnen? Sie werden erst wieder vorgeschlagen, wenn die Ablehnungen gelöscht sind.",
+    "acceptedAll": "{{count}} Vorschlag übernommen.",
+    "acceptedAll_other": "{{count}} Vorschläge übernommen.",
+    "rejectedAll": "{{count}} Vorschlag abgelehnt.",
+    "rejectedAll_other": "{{count}} Vorschläge abgelehnt.",
+    "acceptFailed": "{{count}} Vorschlag konnte nicht übernommen werden:",
+    "acceptFailed_other": "{{count}} Vorschläge konnten nicht übernommen werden:",
+    "rejectFailed": "{{count}} Vorschlag konnte nicht abgelehnt werden:",
+    "rejectFailed_other": "{{count}} Vorschläge konnten nicht abgelehnt werden:",
+    "failedOne": "{{name}}: {{error}}"
   }
 }

@@ -68,6 +68,18 @@ metadata = MetaData()
 
 # REQ-1921/1922: the stores an org keeps its data in, per region. A store is a connection URL (a
 # secret reference); an org region names, for each kind of data, the store it is kept in there.
+def _retirement() -> list[Column]:
+    """REQ-2248: a model object deleted is retired, not removed -- its row, its name and its file
+    are kept, out of service, with why, who and when, in the shape a glossary term's retirement
+    takes (``retired``, ``status_reason``, ``status_by``, ``status_at``)."""
+    return [
+        Column("retired", Boolean, nullable=False, server_default=false()),
+        Column("status_reason", Text),
+        Column("status_by", Text),
+        Column("status_at", DateTime(timezone=True)),
+    ]
+
+
 stores = Table(
     "stores",
     metadata,
@@ -184,6 +196,7 @@ sources = Table(
     Column("cache_catalog", Text),
     Column("cache_schema", Text, nullable=False, server_default="api_cache"),
     Column("approval_hook", Boolean, nullable=False, server_default=false()),
+    Column("is_system", Boolean, nullable=False, server_default=false()),
 )
 
 domains = Table(
@@ -232,6 +245,8 @@ data_products = Table(  # REQ-1634
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     # REQ-2219: who created it, set on insert only; it grants nothing.
     Column("created_by", Text),
+    # REQ-2180: the freshness every contract of the product promises, in seconds.
+    Column("freshness", Integer),
 )
 
 naming_rules = Table(
@@ -291,9 +306,6 @@ registered_tables = Table(
     # REQ-1318: declarative metric-composed view spec ({metrics, dimensions, filters});
     # NULL for ordinary tables/free-hand views. view_sql holds the generated SELECT.
     Column("view_metrics", JSON(none_as_null=True)),
-    # REQ-2158: a data product member's ODCS contract, its output port, declared and versioned on
-    # its own (provisa.core.models.DataContract); NULL for a table in no product.
-    Column("contract", JSON(none_as_null=True)),
     # REQ-2130: the glossary term this table's rows are instances of; one per table (schema.sql).
     Column("class_term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
     # REQ-2141: derived by sync, not declared by config or grounded by a person (schema.sql).
@@ -370,6 +382,8 @@ registered_tables = Table(
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     UniqueConstraint("source_id", "schema_name", "table_name"),
 )
 
@@ -426,6 +440,8 @@ table_columns = Table(
     Column("embedding_model", Text),  # REQ-421
     Column("embedding_source_column", Text),  # REQ-421
     Column("encrypted", Boolean, nullable=False, server_default=false()),  # REQ-1919
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("table_id", "column_name"),
 )
@@ -474,6 +490,8 @@ relationships = Table(
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
     Column("cypher_type", Text),
     Column("graphql_field", Text),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     UniqueConstraint("source_table_id", "alias", name="relationships_source_alias_unique"),
     CheckConstraint(
@@ -495,6 +513,10 @@ metrics = Table(
     Column("ai_context", Text),  # REQ-1319: definition text for AI consumers
     Column("visible_to", JSON, nullable=False, default=list, server_default="[]"),
     Column("from_fact", Text),
+    # REQ-2243: the glossary term the metric names (schema.sql).
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="SET NULL")),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
 )
 
 roles = Table(
@@ -665,6 +687,16 @@ tags = Table(
     Column("param_policy", Text, nullable=False, server_default="none"),
     # REQ-1943: the Sensitive data option.
     Column("sensitive", Boolean, nullable=False, server_default=false()),
+    # REQ-2208: each assignment must cite a library document or section; one that does not is a
+    # gap, never refused.
+    Column("requires_citation", Boolean, nullable=False, server_default=false()),
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
+    Column("required", Boolean, nullable=False, server_default=false()),
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): offered on objects of these domains, as a source's
+    # allowed_domains; empty = every domain.
+    Column("allowed_domains", JSON, nullable=False, default=list, server_default="[]"),
+    # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
+    *_retirement(),
     Column("tenant_id", Uuid),
     CheckConstraint(
         "reason_policy IN ('hidden', 'optional', 'required')",
@@ -750,8 +782,8 @@ catalog_bindings = Table(
     "catalog_bindings",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-2118: the export target (its id in the org's metadata_export.targets), not the provider:
-    # two targets of one provider keep their bindings apart.
+    # REQ-2118, REQ-2247: the Syncing entry the export publishes to (its id), not the provider:
+    # two entries of one provider keep their bindings apart.
     Column("target", Text, nullable=False),
     Column("semantic_uri", Text, nullable=False),
     Column("vendor_ref", Text, nullable=False),
@@ -771,6 +803,8 @@ glossary_terms = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("name", Text, nullable=False),
     Column("definition", Text),
+    # REQ-2243: the term's calculation method (schema.sql).
+    Column("calculation_method", Text),
     Column("deprecated", Boolean, nullable=False, server_default=false()),
     # Curator-set soft delete: bound but out of service. See schema.sql for the full rule.
     Column("retired", Boolean, nullable=False, server_default=false()),
@@ -837,6 +871,20 @@ glossary_term_domains = Table(
     Column("domain_id", Text, nullable=False),
     Column("tenant_id", Uuid),
     UniqueConstraint("term_id", "domain_id"),
+)
+
+# REQ-2237: what an imported ontology states about a term that the term does not model, one row a
+# statement (provisa/ontology_import/kept.py). See schema.sql.
+glossary_term_statements = Table(
+    "glossary_term_statements",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("term_id", Integer, ForeignKey("glossary_terms.id", ondelete="CASCADE"), nullable=False),
+    Column("ordinal", Integer, nullable=False),
+    Column("kind", Text, nullable=False),
+    Column("statement", Text, nullable=False),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("term_id", "ordinal"),
 )
 
 # People who can answer questions about the term or who authored its definition.
@@ -1356,6 +1404,92 @@ data_product_commands = Table(
         nullable=False,
     ),
     PrimaryKeyConstraint("product_id", "command_name"),
+)
+
+# REQ-2180 OFFERS: a product's offers (see schema.sql).
+data_product_offers = Table(
+    "data_product_offers",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("name", Text, nullable=False),
+    Column("role_id", Text, nullable=False),
+    Column("data_level", Text, nullable=False, server_default="full"),
+    Column("sample_views", JSON, nullable=False, default=list, server_default="[]"),
+    Column("dq_results", Boolean, nullable=False, server_default=true()),
+    Column("profiles", Boolean, nullable=False, server_default=false()),
+    Column("open", Boolean, nullable=False, server_default=false()),
+    Column("duration_days", Integer),
+    # REQ-2180 (amended 2026-11-11): the offer's terms of use in prose.
+    Column("purpose", Text, nullable=False, server_default=""),
+    Column("usage", Text, nullable=False, server_default=""),
+    Column("limitations", Text, nullable=False, server_default=""),
+    Column("version", Integer, nullable=False, server_default="1"),
+    Column("published_by", Text),
+    Column("review", Text),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    UniqueConstraint("product_id", "name"),
+    CheckConstraint(
+        "data_level IN ('full', 'sample', 'synthetic')",
+        name="data_product_offers_data_level_check",
+    ),
+)
+
+# REQ-2180: each offer's contract for each dataset of its product, versioned on its own.
+data_product_offer_contracts = Table(
+    "data_product_offer_contracts",
+    metadata,
+    Column(
+        "offer_id",
+        Integer,
+        ForeignKey("data_product_offers.id", ondelete="CASCADE"),
+        nullable=False,
+    ),
+    Column(
+        "table_id", Integer, ForeignKey("registered_tables.id", ondelete="CASCADE"), nullable=False
+    ),
+    Column("contract", JSON, nullable=False),
+    PrimaryKeyConstraint("offer_id", "table_id"),
+)
+
+# REQ-2180: a bid, or the cancel of an accepted one, as the request it fired through the outbound
+# request hook, and its outcome (see schema.sql).
+data_product_bids = Table(
+    "data_product_bids",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("request_id", Text, nullable=False, unique=True),
+    Column("kind", Text, nullable=False, server_default="bid"),
+    Column("cancels", Integer, ForeignKey("data_product_bids.id", ondelete="CASCADE")),
+    Column("product_id", Text, ForeignKey("data_products.id", ondelete="CASCADE"), nullable=False),
+    Column("offer_id", Integer, ForeignKey("data_product_offers.id", ondelete="SET NULL")),
+    Column("offer_version", Integer, nullable=False),
+    Column("terms", JSON, nullable=False),
+    Column("requester", Text, nullable=False),
+    Column("reason", Text, nullable=False),
+    # REQ-2180 (amended 2026-11-11, A BID NAMES ITS CONSUMER AND AGREES TO THE TERMS).
+    Column("consumer_kind", Text),
+    Column("approver", Text),
+    Column("agreed_at", DateTime(timezone=True)),
+    Column("hook", Text, nullable=False),
+    Column("payload", JSON, nullable=False),
+    Column("status", Text, nullable=False, server_default="pending"),
+    Column("decided_by", Text),
+    Column("decided_at", DateTime(timezone=True)),
+    Column("decline_reason", Text),
+    # none_as_null: a bid with nothing granted (None) is SQL NULL, never the JSON value null.
+    Column("granted", JSON(none_as_null=True)),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    CheckConstraint("kind IN ('bid', 'cancel')", name="data_product_bids_kind_check"),
+    CheckConstraint(
+        "consumer_kind IN ('person', 'team', 'data_product', 'agent')",
+        name="data_product_bids_consumer_kind_check",
+    ),
+    CheckConstraint(
+        "status IN ('pending', 'accepted', 'declined', 'withdrawn', 'cancelled')",
+        name="data_product_bids_status_check",
+    ),
 )
 
 tracked_webhooks = Table(
@@ -2424,6 +2558,41 @@ reference_document_tags = Table(
     ),
 )
 
+# REQ-2208: citations of reference library documents and their sections, one shape for whatever
+# cites the library: a tag's definition (citer_kind "tag", object_key "") and each assignment of a
+# tag (citer_kind "tag_assignment", object_key the assignment's). The section is named by heading or
+# page, the whole document by neither; cite_key is that name. text_sha256 is of the section's text
+# when cited, so a revised section flags its citer for review (provisa.reference_library.citations).
+# The document's title and source are kept, so a citation outlives the document.
+reference_citations = Table(
+    "reference_citations",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("citer_kind", Text, nullable=False),
+    Column("tag_id", Text),  # the BASE tag id
+    Column("object_key", Text, nullable=False, server_default=""),
+    Column(
+        "document_id",
+        Integer,
+        ForeignKey("reference_documents.id", ondelete="SET NULL"),
+        nullable=True,
+    ),
+    Column("document_title", Text, nullable=False),
+    Column("document_source", Text, nullable=False),
+    Column("section_heading", Text),
+    Column("section_page", Integer),
+    Column("cite_key", Text, nullable=False),
+    Column("text_sha256", Text, nullable=False),
+    Column("cited_by", Text),
+    Column("cited_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("tenant_id", Uuid),
+    UniqueConstraint("citer_kind", "tag_id", "object_key", "cite_key"),
+    CheckConstraint(
+        "citer_kind IN ('tag', 'tag_assignment', 'dq_check')",
+        name="reference_citations_citer_kind_check",
+    ),
+)
+
 # REQ-2185 (GRAPH RETRIEVAL): each in-service glossary term's embedding -- its name and definition,
 # embedded by the org's vector model -- that governed retrieval finds the terms nearest a question
 # by. ``digest`` is of the model and the text embedded, so a term whose name or definition changed,
@@ -2549,7 +2718,7 @@ glossary_ontology_imports = Table(
     Column("id", Integer, primary_key=True, autoincrement=True),
     Column("title", Text, nullable=False),
     Column("file_name", Text, nullable=False),
-    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld
+    Column("format", Text, nullable=False),  # ossie | turtle | xml | nt | json-ld | archive
     Column("domains", Text, nullable=False),
     Column("summary", Text, nullable=False),
     Column("imported_by", Text, nullable=True),
@@ -2558,7 +2727,7 @@ glossary_ontology_imports = Table(
     Column("applied_at", DateTime(timezone=True), nullable=True),
     Column("tenant_id", Uuid),
     CheckConstraint(
-        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld')",
+        "format IN ('ossie', 'turtle', 'xml', 'nt', 'json-ld', 'archive')",
         name="glossary_ontology_imports_format_check",
     ),
 )
@@ -2578,7 +2747,7 @@ glossary_ontology_items = Table(
     ),
     Column("ordinal", Integer, nullable=False),
     Column("name", Text, nullable=False),
-    Column("kind", Text, nullable=False),  # class | property | value | concept
+    Column("kind", Text, nullable=False),  # class | property | value | concept | individual
     Column("definition", Text, nullable=True),
     Column("iri", Text, nullable=True),
     Column("payload", Text, nullable=False),
@@ -2592,7 +2761,7 @@ glossary_ontology_items = Table(
     Column("tenant_id", Uuid),
     UniqueConstraint("import_id", "ordinal"),
     CheckConstraint(
-        "kind IN ('class', 'property', 'value', 'concept')",
+        "kind IN ('class', 'property', 'value', 'concept', 'individual')",
         name="glossary_ontology_items_kind_check",
     ),
     CheckConstraint(

@@ -31,7 +31,7 @@ def _fake_state():
     """Minimal AppState reaching the physical-ref guard: one role context + one source catalog."""
     return RoleState(
         admin_db=None,  # as AppState without a control plane: no debug-trace settings
-        contexts={"analyst": SimpleNamespace()},
+        contexts={"analyst": SimpleNamespace(draft_ids={})},  # a context naming no draft
         rls_contexts={},
         # A context is written together with its role; governance reads the role, never a default.
         roles={"analyst": {"id": "analyst", "capabilities": [], "domain_access": ["*"]}},

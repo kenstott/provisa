@@ -1,0 +1,20 @@
+{
+  "discoverResult": {
+    "foreignKeys": "विदेशी कुंजियाँ: {{count}} मिली।",
+    "foreignKeys_other": "विदेशी कुंजियाँ: {{count}} मिलीं।",
+    "semanticsFound": "सिमेंटिक्स: {{count}} सुझाव।",
+    "semanticsFound_other": "सिमेंटिक्स: {{count}} सुझाव।",
+    "semanticsUnreadable": "सिमेंटिक्स: कोई नहीं। मॉडल का उत्तर पढ़ा नहीं जा सका।",
+    "semanticsNoneProposed": "सिमेंटिक्स: कोई नहीं। मॉडल ने कोई संबंध प्रस्तावित नहीं किया।",
+    "semanticsFiltered": "सिमेंटिक्स: मॉडल द्वारा प्रस्तावित {{count}} संबंध नहीं रखा गया: {{why}}।",
+    "semanticsFiltered_other": "सिमेंटिक्स: मॉडल द्वारा प्रस्तावित {{count}} संबंधों में से कोई नहीं रखा गया: {{why}}।",
+    "belowThreshold": "{{count}} {{threshold}}% विश्वास सीमा से नीचे था",
+    "belowThreshold_other": "{{count}} {{threshold}}% विश्वास सीमा से नीचे थे",
+    "alreadyKnown": "{{count}} पहले ही अस्वीकृत या पहले से मौजूद था",
+    "alreadyKnown_other": "{{count}} पहले ही अस्वीकृत या पहले से मौजूद थे",
+    "invalid": "{{count}} ने ऐसी तालिका या कॉलम का नाम लिया जो मौजूद नहीं है",
+    "invalid_other": "{{count}} ने ऐसी तालिकाओं या कॉलमों के नाम लिए जो मौजूद नहीं हैं",
+    "semanticsCutShort": "सिमेंटिक्स: कोई नहीं। मॉडल का उत्तर कोई सुझाव पूरा करने से पहले अपनी लंबाई सीमा पर रुक गया।",
+    "cutShortNote": "मॉडल का उत्तर अपनी लंबाई सीमा पर रुक गया, इसलिए केवल पूरे हुए सुझाव पढ़े गए।"
+  }
+}

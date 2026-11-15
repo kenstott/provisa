@@ -75,6 +75,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -101,6 +102,7 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),

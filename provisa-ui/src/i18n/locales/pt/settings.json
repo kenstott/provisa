@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL sobre HTTP",
           "cypher_http": "Cypher sobre HTTP",
+          "sparql_http": "SPARQL sobre HTTP",
           "pgwire": "Protocolo PostgreSQL",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -246,14 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes do fim de uma atribuição de função",
-        "help": "Quantos dias antes de uma atribuição de função expirar, ou ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Aviso de expiração próxima de direitos de acesso",
-        "help": "Quantos dias antes da data de uma regra de expiração de direitos de acesso o evento de expiração próxima é emitido e a pessoa e os administradores da organização recebem um e-mail. As telas de direitos de acesso destacam as regras tão próximas da data."
+        "label": "Aviso antes do fim de uma atribuição de função ou de suas entradas",
+        "help": "Quantos dias antes de uma atribuição de função, ou uma de suas entradas de direitos, terminar, ou de a atribuição ser removida por falta de uso, o titular e os administradores da organização recebem um e-mail."
       }
     },
     "server": {
@@ -604,6 +599,10 @@
       "principal": {
         "label": "Principal local do MCP",
         "help": "O principal (id de usuário) em nome de quem as chamadas MCP locais (stdio) agem, ao lado da função local; os direitos dessa pessoa restringem a função. Enquanto não estiver definido, essas chamadas são recusadas. Protegido porque qualquer pessoa que possa iniciar o cliente local age com o acesso dessa pessoa."
+      },
+      "tools": {
+        "label": "Ferramentas MCP listadas",
+        "help": "As ferramentas listadas para um cliente MCP cujo endereço não indica nenhum modo (tools=full ou tools=sip no endereço). full lista todas as ferramentas; sip lista as ferramentas para encontrar, descrever, consultar e ler métricas, mais uma ferramenta que adiciona os outros grupos quando o cliente pede. Qualquer ferramenta pode ser chamada em ambos os modos, conforme os direitos de quem chama permitirem."
       },
       "external_url": {
         "label": "Endereço externo do MCP",

@@ -45,7 +45,11 @@ async def reconcile_live_engine(conn: "Connection", engine) -> None:  # REQ-565,
             _rt.c.live,
             _rt.c.change_signal,
             _rt.c.watermark_column,
-        ).where(_rt.c.live.isnot(None), _rt.c.draft.is_(False))  # REQ-1921: no draft is polled
+        ).where(
+            _rt.c.live.isnot(None),
+            _rt.c.draft.is_(False),  # REQ-1921: no draft is polled
+            _rt.c.retired.is_(False),  # REQ-2248: nor a retired table
+        )
     )
     rows = [dict(r._mapping) for r in result.fetchall()]
     specs: list[LiveSpec] = []

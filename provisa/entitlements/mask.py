@@ -128,8 +128,6 @@ class EntitlementMask:
 
 def _ends(rule: ExpiryRule, obj: IndexedObject) -> bool:
     """Whether a passed ``rule`` removes ``obj``."""
-    if not rule.ends:
-        return True
     for capability, identifiers in rule.ends.items():
         if capability == "*" and rule.list_kind not in (None, *SEMANTIC_LISTS):
             continue  # set with a list outside the mask: its identifiers name none of its objects

@@ -13,7 +13,9 @@
 A grant held by Provisa with an expiry is absent from the held roles the moment it expires; one
 of a role with ``inactivity_days`` goes once unused that long. A request uses the roles it
 depended on, recorded once a day. The sweep deletes expired and unused grants into the org's
-trail and finds the ones to give notice of."""
+trail and finds the ones to give notice of; the one expiry run tells of them
+(test_entitlement_expiry_run.py). A grant given again keeps the latest of its expiries, and a rule
+ending the whole grant sets or shortens the grant's own expiry (REQ-2077, amended 2026-11-11)."""
 
 # Requirements: REQ-2077
 
@@ -28,7 +30,7 @@ from sqlalchemy import insert, select, update
 from provisa.auth import role_grants
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity
-from provisa.core.schema_org import admin_audit_log, roles, user_directory, user_role_assignments
+from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
 
 pytestmark = pytest.mark.unit
 
@@ -182,58 +184,84 @@ async def test_notice_is_given_once_before_expiry_and_again_after_each_use(org, 
     assert [g.user_id for g in third.going_unused] == ["bo"]
 
 
-async def test_the_holder_and_the_admins_are_told_and_the_admins_of_a_removal(org, monkeypatch):
-    sent: list[tuple[str, str]] = []
+async def _regrant(db, user: str, role: str, expires_at) -> dict:
+    async with db.acquire() as conn:
+        await role_grants.regrant(conn, user, role, "*", expires_at)
+    return (await _grants(db))[user, role]
 
-    async def _send(org_id, to, subject, body):
-        sent.append((to, subject))
 
-    monkeypatch.setattr(role_grants, "_send", _send)
-    await _grant(org, "boss", "org_admin")
-    async with org.acquire() as conn:
-        await conn.execute_core(
-            insert(user_directory).values(
-                [
-                    {"user_id": "boss", "email": "boss@example.com"},
-                    {"user_id": "ada", "email": "ada@example.com"},
-                ]
-            )
-        )
-    soon = role_grants.Grant("ada", "checker", "*", _NOW + timedelta(days=3))
-    gone = role_grants.Grant("ada", "reader", "*", _NOW)
-    await role_grants._tell(org, "acme", role_grants.Sweep([gone], [], [soon], []))
-    assert sorted(sent) == sorted(
-        [
-            ("ada@example.com", f"Your role checker in acme ends {role_grants._when(soon.at)}"),
-            ("boss@example.com", "ada's role reader in acme was removed"),
-            ("boss@example.com", f"ada's role checker in acme ends {role_grants._when(soon.at)}"),
-        ]
+async def test_a_grant_given_again_keeps_the_latest_of_its_expiries(org):
+    first = _NOW + timedelta(days=10)
+    assert (await _regrant(org, "ada", "reader", first))["expires_at"] == first
+    assert (await _regrant(org, "ada", "reader", _NOW + timedelta(days=2)))["expires_at"] == first
+    later = _NOW + timedelta(days=20)
+    assert (await _regrant(org, "ada", "reader", later))["expires_at"] == later
+
+
+async def test_no_expiry_is_later_than_any_date(org):
+    await _regrant(org, "ada", "reader", _NOW + timedelta(days=10))
+    assert (await _regrant(org, "ada", "reader", None))["expires_at"] is None
+    assert (await _regrant(org, "ada", "reader", _NOW + timedelta(days=99)))["expires_at"] is None
+
+
+async def test_a_grant_given_again_is_told_again_only_of_an_end_it_moved(org):
+    await _grant(
+        org,
+        "ada",
+        "reader",
+        expires_at=_NOW + timedelta(days=3),
+        expiry_notified_at=_NOW - timedelta(hours=1),
     )
+    sooner = await _regrant(org, "ada", "reader", _NOW + timedelta(days=1))
+    assert sooner["expiry_notified_at"] is not None
+    moved = await _regrant(org, "ada", "reader", _NOW + timedelta(days=30))
+    assert moved["expiry_notified_at"] is None
 
 
-@pytest.mark.parametrize(("provider", "told"), [("smtp", True), ("", False)])
-async def test_notices_go_wherever_mail_is_configured_single_org_included(
-    monkeypatch, provider, told
-):
-    from provisa.api import app as app_module
+async def test_a_grant_wide_rule_sets_or_shortens_the_grants_own_expiry(org):
+    await _grant(org, "ada", "reader")
+    ends = _NOW + timedelta(days=10)
+    async with org.acquire() as conn:
+        assert await role_grants.end_grant(conn, "ada", "reader", ends) == 1
+        assert (await _grants(org))["ada", "reader"]["expires_at"] == ends
+        await role_grants.end_grant(conn, "ada", "reader", _NOW + timedelta(days=20))
+        assert (await _grants(org))["ada", "reader"]["expires_at"] == ends  # never extends
+        sooner = _NOW + timedelta(days=5)
+        await role_grants.end_grant(conn, "ada", "reader", sooner)
+        assert (await _grants(org))["ada", "reader"]["expires_at"] == sooner
 
-    calls: list[str] = []
 
-    async def _sweep(db, *, notify):
-        calls.append(f"sweep notify={notify}")
-        return role_grants.Sweep([], [], [], [])
+async def test_a_grant_wide_rule_on_a_role_provisa_does_not_grant_ends_nothing(org):
+    await _grant(org, "ada", "reader")
+    async with org.acquire() as conn:
+        assert await role_grants.end_grant(conn, "ada", "checker", _NOW + timedelta(days=1)) == 0
+        assert await role_grants.end_grant(conn, "bo", "reader", _NOW + timedelta(days=1)) == 0
 
-    async def _tell(db, org_id, outcome):
-        calls.append("told")
 
-    monkeypatch.setattr(role_grants, "sweep", _sweep)
-    monkeypatch.setattr(role_grants, "_tell", _tell)
-    state = app_module.state
-    monkeypatch.setattr(type(state), "model_db", property(lambda s: object()))
-    config = SimpleNamespace(multitenancy=False, mail=SimpleNamespace(provider=provider))
-    monkeypatch.setattr(state, "config", config, raising=False)
-    await role_grants.sweep_org("acme")
-    assert calls == ([f"sweep notify={told}", "told"] if told else ["sweep notify=False"])
+async def test_a_grant_ended_by_a_grant_wide_rule_is_not_held_from_that_instant(org):
+    await _grant(org, "ada", "reader")
+    await _grant(org, "ada", "checker")
+    async with org.acquire() as conn:
+        await role_grants.end_grant(conn, "ada", "reader", _NOW - timedelta(seconds=1))
+        assert await role_grants.grant_ended(conn, "ada", "reader")
+        assert not await role_grants.grant_ended(conn, "ada", "checker")
+        assert [g.role_id for g in await role_grants.held_grants(conn, "ada")] == ["checker"]
+    reader = SimpleNamespace(_db_pool=org, _default_assignments=[])
+    held = await AuthMiddleware._read_assignments(reader, _identity("ada"))  # type: ignore[arg-type]
+    assert [a.role_id for a in held] == ["checker"]
+
+
+def test_a_role_ends_at_the_latest_of_its_grants():
+    soon, late = _NOW + timedelta(days=1), _NOW + timedelta(days=9)
+    grants = [
+        role_grants.HeldGrant("reader", "sales", soon),
+        role_grants.HeldGrant("reader", "finance", late),
+        role_grants.HeldGrant("checker", "*", soon),
+        role_grants.HeldGrant("checker", "sales", None),
+    ]
+    assert role_grants.grant_end(grants, "reader") == (True, late)
+    assert role_grants.grant_end(grants, "checker") == (True, None)
+    assert role_grants.grant_end(grants, "contractor") == (False, None)
 
 
 async def test_a_roles_inactivity_days_is_kept_and_served(org):

@@ -951,7 +951,14 @@ async def _init_control_planes(
     from provisa.core.env_deploy import PROJECTED
     from provisa.core.env_repo import write_through
 
-    model_change.attach(state.admin_db, commit=write_through, projected=PROJECTED)
+    model_change.attach(
+        state.admin_db,
+        commit=write_through,
+        projected=PROJECTED,
+        # REQ-697: a single-tenant deployment names no org in a URI; the tenancy is read when a
+        # change commits, since the config that states it is parsed after this attach.
+        uri_org=lambda org_id: org_id if state.multitenancy else None,
+    )
 
     # schema.sql ships in the wheel (pyproject package-data). It is REQUIRED: the PG path runs it
     # verbatim, and on SQLite its presence gates the portable create_all bootstrap. A missing file
@@ -1049,9 +1056,10 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                 "username": pg_user or "",
                 "dialect": cp_dialect,
                 "description": _admin_desc,
+                "is_system": True,
             },
             index_elements=["id"],
-            update_columns=_DERIVED_FROM_DEPLOYMENT,
+            update_columns=[*_DERIVED_FROM_DEPLOYMENT, "is_system"],
             set_extra={
                 "description": _sa_func.coalesce(
                     _sa_func.nullif(_sources_t.c.description, ""), _admin_desc
@@ -1070,12 +1078,13 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
             "username": "provisa",
             "dialect": _engine_name,
             "description": _otel_desc,
+            "is_system": True,
         }
         if engine_endpoint is not None:
             _otel_row["host"], _otel_row["port"] = engine_endpoint
         # REQ-1619: an address the boot does not have is not a column it can update — naming it in
         # update_columns without supplying it is an update of a value this statement never wrote.
-        _otel_update = [c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row]
+        _otel_update = [*(c for c in _DERIVED_FROM_DEPLOYMENT if c in _otel_row), "is_system"]
         await _conn.upsert(
             _sources_t,
             _otel_row,
@@ -1096,12 +1105,13 @@ async def _seed_built_in_sources(  # REQ-012, REQ-016, REQ-510
                     "Provisa-managed virtual views — cross-source SQL views defined and "
                     "published by the data team as governed data products"
                 ),
+                "is_system": True,
             },
             index_elements=["id"],
             # `type` alone: the sentinel has no address of its own, so the rest of
             # _DERIVED_FROM_DEPLOYMENT is not in the inserted row and naming it here would be
             # an update of a value this statement never supplies.
-            update_columns=["type"],
+            update_columns=["type", "is_system"],
         )
         # The virtual-views sentinel was renamed __provisa__ -> __derived__ (REQ-1328). The
         # rename only changed what this seed writes, so every schema seeded before it still

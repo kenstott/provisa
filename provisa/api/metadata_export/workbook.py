@@ -158,10 +158,12 @@ HEADERS: dict[str, tuple[str, ...]] = {
         "inputs",
         "description",
     ),
-    # REQ-1592 (2026-10-27): each output port's contract (REQ-2158), its columns those served.
+    # REQ-1592 (2026-10-27): each output port's contract -- one per offer and dataset, derived
+    # from the offer (REQ-2180) -- its columns those its offer's role reads and the reader is served.
     DATA_CONTRACTS: (
         "id",
         "product",
+        "offer",
         "output port",
         "version",
         "status",
@@ -504,31 +506,40 @@ def _products_rows(
 
 
 def _contracts_rows(snapshot: "MetadataSnapshot") -> list[list[Any]]:
-    """Each output port's contract: a member of a product the workbook shows, with the contract
-    its owner declared. Its schema is its member's columns, those the reader is served
-    (REQ-2158)."""
-    product_of = {
-        member: product for product in snapshot.data_products for member in product.members
-    }
+    """Each contract a product the workbook shows gives: one per offer and dataset, derived from
+    the offer (REQ-2180), with the terms the product writes once for all of them. Its columns are
+    those the offer's role reads, a masked one marked so, and the reader is served."""
+    from provisa.api.metadata_export.odps import contract_status, offer_contract_id
+
+    tables = {table.ref.fqn(): table for table in snapshot.tables}
     rows: list[list[Any]] = []
-    for table in snapshot.tables:
-        contract = table.contract
-        product = product_of.get(table.ref)
-        if contract is None or product is None:
-            continue
-        rows.append(
-            [
-                table.semantic_uri,
-                product.name,
-                table.name,
-                contract.version,
-                contract.status,
-                contract.description or "",
-                contract.terms.usage or "",
-                contract.terms.limitations or "",
-                ", ".join(f"{column.name} ({column.data_type})" for column in table.columns),
-            ]
-        )
+    for product in snapshot.data_products:
+        for offer in snapshot.offers.get(product.id, ()):
+            for member in product.members:
+                table = tables.get(member.fqn())
+                derived = offer.contracts.get(member.fqn())
+                if table is None or derived is None:
+                    continue
+                served = {column.name for column in table.columns}
+                rows.append(
+                    [
+                        offer_contract_id(offer, table),
+                        product.name,
+                        offer.name,
+                        table.name,
+                        derived.version,
+                        contract_status(product),
+                        product.description,
+                        product.usage,
+                        product.limitations,
+                        ", ".join(
+                            f"{field.name} ({field.type}"
+                            + (f", masked: {field.masked})" if field.masked else ")")
+                            for field in derived.terms.fields
+                            if field.name in served
+                        ),
+                    ]
+                )
     return rows
 
 

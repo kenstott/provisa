@@ -272,6 +272,8 @@ _REPORT_VIEW_NAMES = {
     "sensitive_column_coverage",
     # REQ-194 (THE NAMES TABLE IS A META TABLE WITH A REPORT)
     "names_report",
+    # REQ-2208 (THE TAGS REPORT)
+    "tags_report",
 }
 
 

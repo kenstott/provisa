@@ -90,6 +90,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -117,6 +118,7 @@ const detailOf = (term: GlossaryTermSummary): GlossaryTermDetail => ({
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 });
 const REVENUE_DETAIL: GlossaryTermDetail = {
   ...detailOf(REVENUE),
@@ -280,6 +282,10 @@ describe("Related to guidance", () => {
     render(<GlossaryTab />);
     const dialog = await chooseRelatedTo();
     expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogWhy"));
+    expect(within(dialog).getByTestId("glossary-related-to-example")).toHaveTextContent(
+      t("glossaryTab.relatedToDialogExample"),
+    );
+    expect(dialog).toHaveTextContent(t("glossaryTab.relatedToDialogShapes"));
     expect(mockSuggest).toHaveBeenCalledWith(1, 5);
     await within(dialog).findByText(/revenue line/);
     const shapes = within(dialog)

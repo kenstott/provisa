@@ -15,6 +15,7 @@
 
 import type { TermGrounding, TermRole } from "../../api/glossary";
 import { NEIGHBOURHOOD, type Neighbourhood } from "./neighbourhood";
+import type { SearchGroups } from "../../lib/searchItems";
 import { forceLayout } from "../../pages/tables/profile3d/forceLayout";
 import { layeredFit, layeredLayout } from "./layeredLayout";
 
@@ -118,6 +119,10 @@ export interface GraphNode {
   /** REQ-2174 (amended 2026-10-28, EVERY LANE NODE INFORMS AND LINKS): what helps a reader of
    * the node, as its hover card and the detail panel say it (nodeFacts). Never drawn. */
   info?: NodeInfo;
+  /** How many columns a table has that the role reads, where the graph read them apart from the
+   * columns it draws (a term's graph reads only those its terms reach): its columns are offered
+   * on asking when there are more than are drawn. */
+  columns?: number;
   /** REQ-2174 (amended 2026-11-07): a table's columns tied to no term drawn, folded into this one
    * node (foldUnbound): their ids. */
   folded?: string[];
@@ -209,6 +214,9 @@ export interface GraphScope {
    * of the given type is drawn, since the read of every layer the controls choose from leaves
    * them out. */
   readWhenOn: Partial<Record<LayerId, NodeType>>;
+  /** Layers off on opening and read -- in what is drawn and in what the controls choose from --
+   * only once the reader turns them on: offered whenever a node of the given type is drawn. */
+  readOnAsking?: Partial<Record<LayerId, NodeType>>;
 }
 
 /** REQ-2130: the Ontology View, an ontology with its grounding (amended 2026-10-29): only what a
@@ -284,6 +292,16 @@ export const PRODUCT_MAP_SCOPE: GraphScope = {
   readWhenOn: { lineage: "product", related: "table" },
 };
 
+/** REQ-2174 (amended 2026-11-12, THE PRODUCT MAP OPENS ON PRODUCTS): the whole Product map's
+ * rules -- PRODUCT_MAP_SCOPE's, opened on every product, its member tables and the links between
+ * products. Its terms (Ontology, Domains) and its columns are layers like any other, chosen in
+ * the Layers menu, and read only once on: no whole-ontology read on opening. */
+export const PRODUCT_MAP_WHOLE_SCOPE: GraphScope = {
+  ...PRODUCT_MAP_SCOPE,
+  implicitLayers: [],
+  readOnAsking: { ontology: "product", domains: "product", columns: "table" },
+};
+
 export interface GraphFilters {
   domains: string[];
   tags: string[];
@@ -309,9 +327,9 @@ export interface QueryScope {
   /** Whether a term with no relationship drawn (no edge of the types kept to a term kept, and no
    * column it IS under Columns) is drawn: the Ontology View's Orphans. */
   orphans: boolean;
-  /** The page's search, as searchItems splits it: the terms it matches and their neighbourhood
+  /** The page's search, as searchItems reads it: the terms it matches and their neighbourhood
    * (neighbourhood.ts) are read; none, the whole graph. */
-  search: string[];
+  search: SearchGroups;
   /** REQ-2174: drawn as the 2D lane diagram, whose product lane names the product each table
    * drawn belongs to, whatever the layers. Absent: drawn in 3D. */
   lanes?: boolean;
@@ -362,7 +380,10 @@ export function availableLayers(data: GraphData, scope: GraphScope): Set<LayerId
   const out = new Set<LayerId>();
   for (const e of data.edges) for (const l of edgeLayers(scope, e)) out.add(l);
   for (const n of data.nodes) for (const l of nodeLayers(scope, n)) out.add(l);
-  for (const [l, type] of Object.entries(scope.readWhenOn) as [LayerId, NodeType][])
+  for (const [l, type] of Object.entries({ ...scope.readWhenOn, ...scope.readOnAsking }) as [
+    LayerId,
+    NodeType,
+  ][])
     if (data.nodes.some((n) => n.type === type)) out.add(l);
   return out;
 }
@@ -490,9 +511,9 @@ export function visibleGraph(
   }
   const anchors = filters.focus.filter((f) => drawn.has(f));
   if (anchors.length > 0) {
-    // REQ-2174 (amended 2026-11-07): one neighbourhood, counted from every focus at once and from
-    // the focus alone -- a product's tables and commands (1), their columns (2), the terms those
-    // are tied to (3), the other columns tied to those terms (4). What is drawn beside the tables
+    // REQ-2174 (amended 2026-11-07; 2026-11-12, A HOP IS A STEP BETWEEN TERMS): one
+    // neighbourhood, counted from every focus at once and from the focus alone, each hop a step
+    // between terms, each term drawn with its grounding (reach). What is drawn beside the tables
     // reached (a related table, an input, an upstream column) is no hop.
     const reached = reach(
       anchors,
@@ -587,10 +608,17 @@ const judged = (n: GraphNode) =>
   n.tags !== undefined ||
   n.sensitivities !== undefined;
 
-/** What is reached from ``starts`` within ``rule.depth`` hops, counted from the nearest start,
- * passing through no product or domain (``rule.stopAt``). A table is an end too -- drawn where a
- * reached column, term or table touches it, its other columns and relationships not followed --
- * unless it is a start or entered by a member edge (a member of a product). */
+/** REQ-2174 (amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS): what is reached from ``starts``
+ * within ``rule.depth`` hops, each hop a step along a term link (``rule.depth`` Infinity: to the
+ * end of the connected part).
+ * - A start brings its own at no hop: a term itself; a product its tables and commands, their
+ *   columns and the terms tied to them (a table's class terms too), and its domain; a table its
+ *   columns and their terms; a column its table and its terms. A product or domain is drawn where reached and never
+ *   passed through (``rule.stopAt``), nor a table entered by anything but a product's member edge
+ *   (``rule.tableEnteredBy``).
+ * - Every term reached brings its grounding at no hop: the columns it IS, those columns' tables,
+ *   the tables it grounds, the products holding those tables, and its domains. Grounding extends no
+ *   walk: a table reached so brings neither its other columns nor their terms. */
 export function reach(
   starts: readonly string[],
   edges: GraphEdge[],
@@ -602,28 +630,60 @@ export function reach(
     next.set(e.a, [...(next.get(e.a) ?? []), [e.b, e.kind]]);
     next.set(e.b, [...(next.get(e.b) ?? []), [e.a, e.kind]]);
   }
-  const begin = new Set(starts);
+  const type = (id: string) => byId.get(id)?.type;
   const seen = new Set(starts);
-  // Breadth first, so each node is met at its fewest hops.
-  let frontier: [string, EdgeKind | null][] = starts.map((s) => [s, null]);
+  const terms = new Set<string>();
+  // Each start's own: its parts, to the terms tied to them; its term links are hops.
+  const own: [string, EdgeKind | null][] = starts.map((s) => [s, null]);
+  while (own.length > 0) {
+    const [id, via] = own.pop() as [string, EdgeKind | null];
+    const t = type(id);
+    if (t === "term") {
+      terms.add(id);
+      continue;
+    }
+    if (via !== null) {
+      if (t !== undefined && rule.stopAt.includes(t)) continue;
+      if (t === "table" && via !== rule.tableEnteredBy) continue;
+    }
+    for (const [m, kind] of next.get(id) ?? []) {
+      if (kind === "term_edge" || seen.has(m)) continue;
+      seen.add(m);
+      own.push([m, kind]);
+    }
+  }
+  // The steps along the term links, breadth first, so each term is met at its fewest.
+  let frontier = [...terms];
   for (let hop = 0; hop < rule.depth && frontier.length > 0; hop++) {
-    const out: [string, EdgeKind | null][] = [];
-    for (const [id, via] of frontier) {
-      if (!begin.has(id)) {
-        const t = byId.get(id)?.type;
-        if (t !== undefined && rule.stopAt.includes(t)) continue;
-        if (t === "table" && via !== rule.tableEnteredBy) continue;
-      }
-      for (const [m, kind] of next.get(id) ?? []) {
-        if (seen.has(m)) continue;
-        seen.add(m);
-        // A term a table IS (a class term) is drawn beside the table and passed through no
-        // further: the other tables it grounds are no part of what the focus reaches.
-        if (kind === "term_binding" && byId.get(id)?.type === "table") continue;
-        out.push([m, kind]);
+    const out: string[] = [];
+    for (const id of frontier)
+      for (const [m, kind] of next.get(id) ?? [])
+        if (kind === "term_edge" && !terms.has(m) && type(m) === "term") {
+          terms.add(m);
+          out.push(m);
+        }
+    frontier = out;
+  }
+  // Each term's grounding: term to column or table, column to table, table to product.
+  const table = (id: string) => {
+    seen.add(id);
+    for (const [m, kind] of next.get(id) ?? [])
+      if (kind === "member" && type(m) === "product") seen.add(m);
+  };
+  for (const term of terms) {
+    seen.add(term);
+    for (const [m, kind] of next.get(term) ?? []) {
+      if (kind === "in_domain") seen.add(m);
+      if (kind !== "term_binding") continue;
+      if (type(m) === "table") table(m);
+      if (type(m) !== "column") continue;
+      seen.add(m);
+      for (const [x, k] of next.get(m) ?? []) {
+        if (k === "has_column" && type(x) === "table") table(x);
+        // A column whose table is not drawn: the product owning it.
+        if (k === "owns") seen.add(x);
       }
     }
-    frontier = out;
   }
   return seen;
 }

@@ -448,22 +448,32 @@ def _table_entity(snapshot: MetadataSnapshot, table: TableAsset) -> Entity:
 
 def _data_contract_entities(snapshot: MetadataSnapshot) -> list[Entity]:
     """Each data product member's ODCS 3.1 contract, through OpenMetadata's ODCS import
-    (REQ-2118): the same document Provisa serves at /data-products/{id}/contracts/."""
-    from provisa.api.metadata_export.odps import odcs_contract
+    (REQ-2118): the contract the product's default offer gives on it (REQ-2180), the same document
+    Provisa serves at /data-products/{id}/offers/default/contracts/. OpenMetadata holds one
+    contract per entity, so a member is published under the offer every product starts with; a
+    member that offer gives no contract on (a checker table, or a product whose owner removed it)
+    has none published."""
+    from provisa.api.metadata_export.odps import offer_contract
+    from provisa.core.models import DEFAULT_OFFER
 
     by_fqn = {table.ref.fqn(): table for table in snapshot.tables}
     entities = []
     for product in snapshot.data_products:
+        default = next(
+            (o for o in snapshot.offers.get(product.id, ()) if o.name == DEFAULT_OFFER.name), None
+        )
+        if default is None:
+            continue
         for member in product.members:
             table = by_fqn[member.fqn()]
-            if table.contract is None:
-                continue  # REQ-2158: a checker the product owns is no output port of it
+            if member.fqn() not in default.contracts:
+                continue
             entities.append(
                 Entity(
                     asset=table.ref,
                     path="/api/v1/dataContracts/odcs",
                     kind="data_contract",
-                    body=_for_openmetadata(odcs_contract(snapshot, product, table)),
+                    body=_for_openmetadata(offer_contract(snapshot, product, table, default)),
                     for_table=_table_fqn(table),
                 )
             )
@@ -477,6 +487,11 @@ def _for_openmetadata(contract: dict[str, Any]) -> dict[str, Any]:
     unwraps a 3.1 Team object only to its ``members``, so the members go as that array, each by its
     address with its role; a team whose roles have no holders has no member to send. ``latency``: OpenMetadata's units are minute, hour and day, so a latency
     in seconds is stated in whole minutes, rounded up: still an upper bound on how far a read trails.
+    ``customProperties``: OpenMetadata's model reads them as an object of name to value on a schema
+    element, a quality rule, a role and a server, where ODCS 3.1 writes a list of
+    ``{property, value}`` at every level, so each of those goes as that object
+    (:func:`_custom_properties_object`); the contract's own stays a list, each value typed a
+    string there, so a list or object value goes as its JSON (:func:`_custom_property_as_text`).
     """
     out = dict(contract)
     if "team" in out:
@@ -485,6 +500,53 @@ def _for_openmetadata(contract: dict[str, Any]) -> dict[str, Any]:
             out["team"] = team["members"]
     if "slaProperties" in out:
         out["slaProperties"] = [_latency_in_minutes(p) for p in out["slaProperties"]]
+    if "customProperties" in out:
+        out["customProperties"] = [_custom_property_as_text(p) for p in out["customProperties"]]
+    if "schema" in out:
+        out["schema"] = [_schema_element(e) for e in out["schema"]]
+    for key in ("quality", "roles", "servers"):
+        if key in out:
+            out[key] = [_with_custom_object(e) for e in out[key]]
+    return out
+
+
+def _custom_property_as_text(prop: dict[str, Any]) -> dict[str, Any]:
+    """A contract-level custom property as OpenMetadata types it: its value a string. A list or
+    object goes as its JSON; a scalar as it is, which OpenMetadata's import reads as text."""
+    value = prop["value"]
+    if isinstance(value, list | dict):
+        return {**prop, "value": json.dumps(value)}
+    return prop
+
+
+def _custom_properties_object(props: list[dict[str, Any]]) -> dict[str, Any]:
+    """ODCS's ``[{property, value}]`` as OpenMetadata's ``{property: value}``. Each name is one
+    property of its element, so a name given twice is a contract no object can carry."""
+    out: dict[str, Any] = {}
+    for prop in props:
+        name = prop["property"]
+        if name in out:
+            raise ValueError(f"custom property {name!r} is given twice")
+        out[name] = prop["value"]
+    return out
+
+
+def _with_custom_object(element: dict[str, Any]) -> dict[str, Any]:
+    if "customProperties" not in element:
+        return element
+    return {**element, "customProperties": _custom_properties_object(element["customProperties"])}
+
+
+def _schema_element(element: dict[str, Any]) -> dict[str, Any]:
+    """A schema object or property, and those nested in it, with their own and their quality
+    rules' custom properties as OpenMetadata reads them."""
+    out = _with_custom_object(element)
+    if "properties" in out:
+        out = {**out, "properties": [_schema_element(p) for p in out["properties"]]}
+    if "items" in out:
+        out = {**out, "items": _schema_element(out["items"])}
+    if "quality" in out:
+        out = {**out, "quality": [_with_custom_object(q) for q in out["quality"]]}
     return out
 
 

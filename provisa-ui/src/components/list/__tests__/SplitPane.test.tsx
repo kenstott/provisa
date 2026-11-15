@@ -32,7 +32,7 @@ const KEY = "provisa.test.splitWidth";
 const LABELS = {
   panel: "Table details",
   resize: "Resize the detail panel",
-  expand: "Expand the panel",
+  expand: "Enlarge the panel",
   restore: "Restore the panel",
   close: "Close the detail panel",
   backToList: "Back to the list",
@@ -232,7 +232,7 @@ describe("SplitPane", () => {
     render(<Page />);
     fireEvent.click(screen.getByText("orders"));
     const list = screen.getByText("customers").parentElement as HTMLElement;
-    fireEvent.click(screen.getByRole("button", { name: "Expand the panel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Enlarge the panel" }));
     expect(list).not.toBeVisible();
     expect(screen.queryByRole("separator")).toBeNull();
     expect(screen.getByTestId("split-panel").style.width).toBe("");
@@ -261,7 +261,7 @@ describe("SplitPane", () => {
       const back = screen.getByRole("button", { name: "Back to the list" });
       expect(screen.getByText("customers").parentElement).not.toBeVisible();
       expect(screen.queryByRole("separator")).toBeNull();
-      expect(screen.queryByRole("button", { name: "Expand the panel" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Enlarge the panel" })).toBeNull();
       fireEvent.click(back);
       expect(screen.queryByTestId("split-panel")).toBeNull();
       expect(screen.getByText("customers").parentElement).toBeVisible();
@@ -410,6 +410,24 @@ describe("SplitPane — leaving a form that has unsaved changes", () => {
     await userEvent.click(screen.getByText("+ Table"));
     await userEvent.click(await screen.findByTestId("discard-changes-confirm"));
     expect(await screen.findByText("creating")).toBeInTheDocument();
+  });
+
+  it("asks for Escape too, as for its close, and closes on Discard", async () => {
+    render(<Tables />);
+    await edit();
+    fireEvent.keyDown(screen.getByLabelText("alias"), { key: "Escape" });
+    expect(await screen.findByRole("dialog")).toHaveTextContent("Discard your changes?");
+    // Nothing has moved yet: the panel and the edit are there.
+    expect(title()).toHaveTextContent("orders");
+    expect(screen.getByLabelText("alias")).toHaveValue("orders_v2");
+    await userEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", { name: "Cancel" }),
+    );
+    await waitFor(() => expect(asked()).toBeNull());
+    expect(screen.getByLabelText("alias")).toHaveValue("orders_v2");
+    fireEvent.keyDown(screen.getByLabelText("alias"), { key: "Escape" });
+    await userEvent.click(await screen.findByTestId("discard-changes-confirm"));
+    await waitFor(() => expect(screen.queryByTestId("split-panel")).toBeNull());
   });
 
   it("does not ask when nothing was changed", async () => {

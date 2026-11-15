@@ -487,14 +487,16 @@ def written_table(state, source_id: str, schema_table: str) -> dict | None:
 
 
 def _writes(command: dict) -> bool:
-    """Whether ``command`` is a source's write operation or a code source's @command (REQ-2226);
-    one registered as a query reads."""
+    """Whether ``command`` is a source's write operation, a code source's @command (REQ-2226) or
+    a writing native SQL command (REQ-1988); one registered as a query reads."""
+    from provisa.core.native_sql import BINDING_KEY
     from provisa.security.mutation_authz import MutationKind, classify_kind
 
-    return (
-        command.get("impl_kind") in ("source_operation", "code_command")
-        and classify_kind(command.get("kind")) is MutationKind.WRITE
-    )
+    kind = command.get("impl_kind")
+    native_sql = kind == "source_query" and BINDING_KEY in (command.get("binding") or {})
+    return (kind in ("source_operation", "code_command") or native_sql) and classify_kind(
+        command.get("kind")
+    ) is MutationKind.WRITE
 
 
 def writes_called_in(tree, commands: dict) -> list[str]:

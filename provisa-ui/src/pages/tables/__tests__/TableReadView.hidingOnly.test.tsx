@@ -25,6 +25,18 @@ vi.mock("../../../api/glossary", async (importOriginal) => ({
     { id: 2, name: "Revenue", definition: null, is_abstract: true, live: true, domains: [] },
   ]),
 }));
+// The relationships a person made: the server's `relationships` read, which leaves out the system's
+// own. The `relationships` prop is what the page read with them (`allRelationships`).
+const PERSONS: { ids: number[] } = { ids: [] };
+vi.mock("../../../hooks/useAdminQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../../hooks/useAdminQueries")>()),
+  useRelationships: () => ({
+    relationships: PERSONS.ids.map((id) => ({ id })),
+    loading: false,
+    error: undefined,
+    refetch: vi.fn(),
+  }),
+}));
 import { TableReadView } from "../TableReadView";
 import type { Relationship } from "../../../types/admin";
 import type { RegisteredTable } from "../../../types/admin";
@@ -302,6 +314,7 @@ describe("TableReadView — the table's seven sections", () => {
   });
 
   it("lists the relationships the table takes part in and the terms that name its columns", async () => {
+    PERSONS.ids = [1, 2];
     renderView(false, makeTable({ id: 7 }), {
       relationships: [rel(1, "orders", "customers", 7), rel(2, "returns", "orders", 9)],
     });
@@ -311,13 +324,35 @@ describe("TableReadView — the table's seven sections", () => {
     );
     expect(screen.getByTestId("table-association-relationship-2")).toHaveAttribute(
       "href",
-      "/relationships?search=returns",
+      "/relationships?relationship=2&search=returns",
     );
     expect(await screen.findByText("Customer")).toBeInTheDocument();
     expect(screen.getByTestId("table-associations-terms")).not.toHaveTextContent("Revenue");
   });
 
+  it("leaves out the system's own relationships, listing only a person's beside them", () => {
+    PERSONS.ids = [1];
+    renderView(false, makeTable({ id: 7 }), {
+      relationships: [rel(1, "orders", "customers", 7), rel(2, "orders", "registered_tables", 7)],
+    });
+    fireEvent.click(screen.getByTestId("table-section-associations"));
+    expect(screen.getByTestId("table-association-relationship-1")).toBeInTheDocument();
+    expect(screen.queryByTestId("table-association-relationship-2")).toBeNull();
+  });
+
+  it("says no relationship when the table's only ones are the system's", () => {
+    PERSONS.ids = [];
+    renderView(false, makeTable({ id: 7 }), {
+      relationships: [rel(2, "orders", "registered_tables", 7)],
+    });
+    fireEvent.click(screen.getByTestId("table-section-associations"));
+    expect(screen.getByTestId("table-associations-relationships")).toHaveTextContent(
+      "This table takes part in no relationship",
+    );
+  });
+
   it("says when the table takes part in no relationship", () => {
+    PERSONS.ids = [];
     renderView(false, makeTable({ id: 7 }));
     fireEvent.click(screen.getByTestId("table-section-associations"));
     expect(screen.getByTestId("table-associations-relationships")).toHaveTextContent(

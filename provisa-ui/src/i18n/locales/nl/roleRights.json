@@ -35,6 +35,7 @@
     "scope_own-domain": "eigen domein",
     "write_insert": "invoegen",
     "write_update": "bijwerken",
-    "write_delete": "verwijderen"
+    "write_delete": "verwijderen",
+    "draft": "Concept"
   }
 }

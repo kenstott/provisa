@@ -339,6 +339,19 @@ export function TermEditForm({
             />
           </Stack>
         </FormField>
+        <FormField size="long">
+          <Stack gap={2} data-testid="glossary-calculation-method-input">
+            <Text size="sm" fw={500}>
+              {t("glossaryTab.calculationMethodLabel")}
+            </Text>
+            <DescriptionField
+              value={draft.calculationMethod}
+              onChange={(calculationMethod) => set({ calculationMethod })}
+              placeholder={t("glossaryTab.calculationMethodPlaceholder")}
+              rows={2}
+            />
+          </Stack>
+        </FormField>
         <FormChecks>
           <FormField size="short" help={t("glossaryTab.excludeFromExportHelp")}>
             <Checkbox

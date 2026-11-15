@@ -782,14 +782,15 @@ def _consumer(table: dict) -> dict:
 
 async def _fetch_checkers(state) -> list[dict]:
     """Every checker table that is not a draft (REQ-2157): its names, description, owning product,
-    the table its contract scans (checker_targets), the columns its checks name (dq_rules) and its
-    latest run."""
+    the table its contract scans (checker_targets), the columns its checks name (dq_rules), its
+    latest run and the checks of that run that did not pass (REQ-2180)."""
     if getattr(state, "model_db", None) is None:
         return []
     from sqlalchemy import select
 
     from provisa.core.schema_org import checker_latest_runs as runs
     from provisa.core.schema_org import checker_targets as targets
+    from provisa.dq.scan import failing_checks
     from provisa.core.schema_org import registered_tables as rt
 
     checked = rt.alias("checked")
@@ -809,16 +810,22 @@ async def _fetch_checkers(state) -> list[dict]:
                 checked.c.alias.label("checked_alias"),
                 runs.c.outcome,
                 runs.c.scan_time,
+                runs.c.scan_id,
             )
             .select_from(
                 rt.join(targets, targets.c.table_id == rt.c.id)
                 .join(checked, checked.c.id == targets.c.checked_table_id)
                 .outerjoin(runs, runs.c.table_id == rt.c.id)
             )
-            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False))
+            .where(rt.c.dq_contract.is_not(None), rt.c.draft.is_(False), rt.c.retired.is_(False))
         )
         rows = res.fetchall()
         products = await data_product_repo.table_memberships(conn)
+        failing = {
+            r.id: await failing_checks(conn, r.table_name, r.scan_id)
+            for r in rows
+            if r.scan_id is not None
+        }
     return [
         {
             "id": r.id,
@@ -845,6 +852,7 @@ async def _fetch_checkers(state) -> list[dict]:
             ],
             "latest_outcome": r.outcome,
             "latest_run_at": r.scan_time.isoformat() if r.scan_time is not None else None,
+            "failing_checks": failing[r.id] if r.scan_id is not None else [],
         }
         for r in rows
     ]
@@ -908,7 +916,7 @@ async def _fetch_tables(state) -> list[dict]:
                 rt.c.source_id,
                 rt.c.dq_contract,
                 rt.c.materialize,
-            ).where(rt.c.draft.is_(False))
+            ).where(rt.c.draft.is_(False), rt.c.retired.is_(False))  # REQ-2248
         )
         products = await data_product_repo.table_memberships(conn)
         return [{**dict(r._mapping), "product_ids": products.get(r.id, [])} for r in res.fetchall()]

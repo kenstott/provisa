@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 import { PageTitle } from "../components/PageTitle";
-import { useState, useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
+import { useState, useEffect, useMemo } from "react";
+import { useLocation } from "react-router-dom";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { useTranslation } from "react-i18next";
 import { Plus, Trash2, Settings } from "lucide-react";
 import {
@@ -36,6 +37,7 @@ import {
   useRoles,
   useCreateDomain,
   useDeleteDomain,
+  useDeleteDomains,
 } from "../hooks/useAdminQueries";
 import { useRLSRules } from "../hooks/useSecurityQueries";
 import { fetchSettings } from "../api/admin";
@@ -58,8 +60,7 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
-import { CatalogsTab } from "../components/admin/CatalogsTab";
-import { MetadataExportTab } from "../components/admin/MetadataExportTab";
+import { SyncingTab } from "../components/admin/syncing/SyncingTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
@@ -86,6 +87,8 @@ import { useListSortGroup, pageItems, type ListColumn } from "../components/list
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../components/form/FormLayout";
 import { assignableDomainIds } from "../lib/internalDomains";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 const ROUTE_TO_SECTION: Record<string, string> = {
   // Both routes open the merged dashboard; /admin/system-health keeps working as a deep link.
   "/admin/overview": "Dashboard",
@@ -111,8 +114,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
-  "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
-  "/admin/metadata-export": "Metadata Export",
+  "/admin/syncing": "Syncing", // REQ-2247: every outside system kept in step with Provisa
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
@@ -244,10 +246,13 @@ export function AdminPage() {
     },
   ];
   const domainSortGroup = useListSortGroup(userDomains, domainColumns, "domains");
-  // `?domain=<id>` (a graph's domain link, lib/entityHref): that domain's row is marked, on the
-  // page that holds it, and brought into view.
-  const [searchParams] = useSearchParams();
-  const linkedDomain = searchParams.get("domain");
+  // REQ-2240: domains selected and deleted together.
+  const shownDomainIds = useMemo(() => userDomains.map((d) => d.id), [userDomains]);
+  const selection = useListSelection(shownDomainIds);
+  const deleteDomains = useDeleteDomains();
+  // `?domain=<id>` (a graph's or a refused delete's link, detailHref): that domain's row is
+  // marked, on the page that holds it, and brought into view.
+  const linkedDomain = useDetailParam("domains").id;
   const [seededDomain, setSeededDomain] = useState<string | null>(null);
   if (linkedDomain !== seededDomain && userDomains.length > 0) {
     setSeededDomain(linkedDomain);
@@ -467,7 +472,13 @@ export function AdminPage() {
                 const totalPages = Math.max(1, Math.ceil(userDomains.length / PAGE_SIZE));
                 return (
                   <Stack gap="sm">
-                    <ListTable minWidth={480} testId="domains-list">
+                    <ListBulkBar
+                      selection={selection}
+                      nameOf={(id) => id}
+                      onDelete={deleteDomains}
+                      testId="domains-bulk"
+                    />
+                    <ListTable minWidth={480} testId="domains-list" selection={selection}>
                       <ListHead
                         sortGroup={domainSortGroup}
                         columns={[
@@ -519,6 +530,7 @@ export function AdminPage() {
                                 <ConfirmDialog
                                   title={t("adminPage.deleteDomainTitle", { id: d.id })}
                                   consequence={t("adminPage.deleteDomainConsequence")}
+                                  confirmLabel={t("common.delete")}
                                   onConfirm={() => handleDeleteDomain(d.id)}
                                 >
                                   {(open) => (
@@ -574,8 +586,7 @@ export function AdminPage() {
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
-        {activeTab === "Catalogs" && <CatalogsTab />}
-        {activeTab === "Metadata Export" && <MetadataExportTab />}
+        {activeTab === "Syncing" && <SyncingTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Classification" && <ClassificationKindsTab />}

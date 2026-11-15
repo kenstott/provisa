@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "Annule une actualisation, en gardant la copie précédente, quand la dernière exécution d'une table de contrôle qui analyse l'une des entrées de cette vue a échoué. S'exécute avant le contrôle préalable ci-dessus ; les deux doivent continuer.",
     "holdOnFailingChecksShowCode": "Afficher son code",
     "holdOnFailingChecksHideCode": "Masquer son code",
-    "holdOnFailingChecksCodeHelp": "Le contrôle qu'applique cette option. Copiez-le dans le contrôle préalable ci-dessus pour le modifier."
+    "holdOnFailingChecksCodeHelp": "Le contrôle qu'applique cette option. Copiez-le dans le contrôle préalable ci-dessus pour le modifier.",
+    "discoverHint": "L'enregistrement lit les colonnes de la source en direct et ajoute celles qui manquent à cette table ; ses colonnes restent telles quelles. Aucun rôle ne voit une colonne ajoutée tant qu'elle n'est pas accordée."
   }
 }

@@ -336,6 +336,57 @@ async def test_a_table_the_caller_reads_nothing_of_is_not_found(wired):
     assert refused.value.code == "schema.table_not_found"
 
 
+def _drafted(monkeypatch, gate):
+    """Table 1 registered as a draft (REQ-1921): in no role's catalog, and answered through the
+    gate its preview takes (admin/table_read.table_for_steward), stood in for by ``gate``."""
+    from provisa.api.admin import table_read
+
+    state = _two_role_state()
+    state.role_build_inputs = {"draft_tables": [{**state.tables[0], "draft": True}]}
+    state.tables = []
+    monkeypatch.setattr("provisa.api.app.state", state)
+    asked: list[int] = []
+
+    def _gate(_request, _state, table_id):
+        asked.append(table_id)
+        return gate(table_id)
+
+    monkeypatch.setattr(table_read, "table_for_steward", _gate)
+    return asked
+
+
+@pytest.mark.asyncio
+async def test_a_draft_is_answered_marked_to_a_caller_holding_its_previews_right(
+    wired, monkeypatch
+):
+    wired({}, {"clinical_reviewer", "steward"})
+    asked = _drafted(monkeypatch, lambda tid: _state().tables[0] | {"draft": True})
+    access = await table_access_router.table_access_endpoint(1, _request())
+    assert asked == [1]
+    assert access["draft"] is True
+    # Every column of it: a draft is in no catalog scope, so its preview's right is what reads it.
+    assert {c["name"] for c in access["columns"]} == {"amount", "diagnosis", "ssn"}
+
+
+@pytest.mark.asyncio
+async def test_a_draft_is_refused_to_a_caller_without_that_right(wired, monkeypatch):
+    def _refuse(_tid):
+        raise ApiError(403, "auth.missing_capability", "Missing capability: 'table_registration'")
+
+    wired({}, {"clinical_reviewer", "steward"})
+    _drafted(monkeypatch, _refuse)
+    with pytest.raises(ApiError) as refused:
+        await table_access_router.table_access_endpoint(1, _request())
+    assert refused.value.code == "auth.missing_capability"
+
+
+@pytest.mark.asyncio
+async def test_a_table_in_service_is_answered_unmarked(wired):
+    wired({1: {"diagnosis"}}, {"clinical_reviewer"})
+    access = await table_access_router.table_access_endpoint(1, _request())
+    assert access["draft"] is False
+
+
 def test_a_write_grant_outside_the_role_s_reach_is_not_its_write():
     tables = [
         {
@@ -432,6 +483,7 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
         role_build_inputs={
             "role_chains": {"east": ["east"], "west": ["west"]},
             "tables": tables,
+            "draft_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

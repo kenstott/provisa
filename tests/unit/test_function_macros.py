@@ -31,6 +31,7 @@ from provisa.transpiler.function_macros import (
     inline,
     outcome,
 )
+from provisa.transpiler.polyfill import GRID
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb, transpile_to_trino
 
 _DIALECTS = (
@@ -109,7 +110,14 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         # ClickHouse reads the Nth match's pattern as a constant, and refuses a column's by name.
         constant = dialect == "clickhouse" and name == "regexp_replace"
         said = [args[0], "'x'", *args[2:]] if constant else said
-        out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        try:
+            out = transpile(f"SELECT {name}({', '.join(said)}) AS v", dialect)
+        except FunctionRefused:
+            # A row of the polyfill grid refuses it on this dialect (REQ-2236), or this dialect is
+            # no column of the grid, which refuses a call a row matches by name: no form is written.
+            # (a row is named by its call, or by its signature: interval_eq(interval, interval))
+            assert name in {f.name.split("(")[0] for f in GRID.features}
+            continue
         tree = sqlglot.parse_one(out, read=dialect)
         # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).
         tree.set("settings", None)
@@ -150,7 +158,8 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         ("SELECT dcbrt(x) AS v FROM t", "trino", "SELECT CBRT(x) AS v FROM t"),
         ("SELECT dtrunc(x) AS v FROM t", "trino", "SELECT TRUNCATE(CAST(x AS DOUBLE)) AS v FROM t"),
         ("SELECT unicode_version() AS v", "mysql", "SELECT '15.1' AS v"),
-        # array_cat: PostgreSQL's NULL with an array is the array, NULL with NULL is NULL.
+        # array_cat (its grid row, provisa.transpiler.polyfill.arrays): PostgreSQL's NULL with an
+        # array is the array, NULL with NULL is NULL.
         (
             "SELECT array_cat(a, b) AS v FROM t",
             "duckdb",
@@ -165,20 +174,17 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         (
             "SELECT array_cat(NULL, b) AS v FROM t",
             "trino",
-            "SELECT CASE WHEN NULL IS NULL THEN b WHEN b IS NULL THEN NULL ELSE CONCAT(NULL, b) END "
-            "AS v FROM t",
+            "SELECT b AS v FROM t",
         ),
         (
             "SELECT array_cat(a, NULL) AS v FROM t",
             "trino",
-            "SELECT CASE WHEN a IS NULL THEN NULL WHEN NULL IS NULL THEN a ELSE CONCAT(a, NULL) END "
-            "AS v FROM t",
+            "SELECT a AS v FROM t",
         ),
         (
             "SELECT array_cat(NULL, NULL) AS v FROM t",
             "trino",
-            "SELECT CASE WHEN NULL IS NULL THEN NULL WHEN NULL IS NULL THEN NULL "
-            "ELSE CONCAT(NULL, NULL) END AS v FROM t",
+            "SELECT NULL AS v FROM t",
         ),
     ],
 )

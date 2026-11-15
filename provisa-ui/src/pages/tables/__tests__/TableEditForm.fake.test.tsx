@@ -153,6 +153,9 @@ const CATALOG = {
       positional: true,
       ruleOnly: false,
       args: [{ name: "share", kind: "number", required: false }],
+      families: ["boolean"],
+      stable: true,
+      stableNeeds: ["share"],
     },
     {
       category: "rule",
@@ -160,10 +163,20 @@ const CATALOG = {
       positional: true,
       ruleOnly: true,
       args: [{ name: "expression", kind: "expression", required: true }],
+      families: ["text", "integer"],
+      stable: true,
+      stableNeeds: [],
     },
   ],
   methods: [
-    { name: "email", category: "internet", params: [], stable: true },
+    {
+      name: "email",
+      category: "internet",
+      params: [],
+      families: ["text"],
+      stable: true,
+      stableNeeds: [],
+    },
     {
       name: "pyint",
       category: "python",
@@ -171,9 +184,12 @@ const CATALOG = {
         { name: "min_value", required: false, default: "0" },
         { name: "max_value", required: false, default: "9999" },
       ],
+      families: ["integer", "numeric"],
       stable: false,
+      stableNeeds: [],
     },
   ],
+  typeFamilies: { varchar: "text" },
 };
 
 beforeEach(() => {
@@ -192,7 +208,7 @@ function testDataMode() {
 }
 
 describe("TableEditForm — a column's test data (REQ-1494)", () => {
-  it("offers a column's test data as the fourth tab of one bar, the fake edited in its cell", () => {
+  it("offers a column's test data as the fourth tab of one bar, the fake edited in its cell", async () => {
     const updateEditCol = vi.fn();
     renderForm(makeTable({ columns: [{ ...EMAIL, fake: "email()" }] }), [SOURCE], updateEditCol);
     // One tab bar of column topics, and no switch above it.
@@ -212,6 +228,8 @@ describe("TableEditForm — a column's test data (REQ-1494)", () => {
       target: { value: "sql_group(1)" },
     });
     expect(updateEditCol).toHaveBeenCalledWith(0, "syntheticRule", "sql_group(1)");
+    // Stable is offered once the catalog says the column's fake can be stable.
+    await waitFor(() => expect(screen.getByTestId("testdata-stable-email")).not.toBeDisabled());
     fireEvent.click(screen.getByTestId("testdata-stable-email"));
     expect(updateEditCol).toHaveBeenCalledWith(0, "fakeStable", true);
     // The column's name comes first on this tab as on the others.
@@ -237,6 +255,8 @@ describe("TableEditForm — a column's test data (REQ-1494)", () => {
     await waitFor(() => expect(open).not.toBeDisabled());
     fireEvent.click(open);
     api.checkColumnFake.mockRejectedValueOnce(new Error("orders.email: emial() is no fake"));
+    // The text the column saves is folded under "Edit as text" until a choice is made.
+    fireEvent.click(screen.getByTestId("testdata-dialog-fake-edit-as-text"));
     fireEvent.change(screen.getByTestId("testdata-dialog-fake-text"), {
       target: { value: "emial()" },
     });

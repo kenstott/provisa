@@ -70,8 +70,9 @@ from provisa.transpiler import (
     pg_forms_types,
     pg_zones,
 )
-from provisa.transpiler.metadata_functions import ENCODINGS, VALUE_FORMS
+from provisa.transpiler.metadata_functions import VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
+from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 from provisa.transpiler.pg_literals import values_cast
 
@@ -496,8 +497,7 @@ VALUE_FUNCTIONS_OF_THE_SERVER = (
             + " END",
         ),
     ),
-    # The pinned release's zones, and PostgreSQL's Default abbreviations (pg_zones).
-    _macro("pg_timezone_names", "", f"unnest((SELECT list(_z) FROM ({pg_zones.NAMES}) _z))"),
+    # PostgreSQL's Default abbreviations (pg_zones); its zones are the polyfill grid's row.
     _macro("pg_timezone_abbrevs", "", f"unnest((SELECT list(_z) FROM ({pg_zones.ABBREVS}) _z))"),
     _macro(
         "pg_indexam_has_property",
@@ -707,9 +707,8 @@ _ABBREVS: tuple[Macro, ...] = (
 )
 
 #: Money over its numeric base, for provisa.transpiler.pg_money: no name of PostgreSQL's, so these
-#: never read a statement's own call.
+#: never read a statement's own call. money_text is the polyfill grid's (polyfill.money).
 _MONEY: tuple[Macro, ...] = (
-    _macro("money_text", "value", pg_forms.MONEY_TEXT, {_TRINO: pg_forms.TRINO_MONEY_TEXT}),
     _macro("money_words", "value", pg_forms.MONEY_WORDS),
     _macro("money_bytes", "value", pg_forms.MONEY_BYTES, own={_TRINO: pg_forms.TRINO_MONEY_BYTES}),
     _macro("money_input", "value", pg_forms.MONEY_INPUT),
@@ -1318,20 +1317,7 @@ _ROWS: tuple[Macro, ...] = (
         "CASE WHEN substr(CAST(value AS VARCHAR), 20, 1) IN ('8', '9', 'a', 'b') "
         "THEN uuid_extract_version(value) END",
     ),
-    # PostgreSQL's array_cat: a NULL array is the other one, two NULL arrays are NULL. Trino's
-    # concat of arrays is reached only with neither NULL.
-    _macro(
-        "array_cat",
-        "a, b",
-        "CASE WHEN a IS NOT NULL OR b IS NOT NULL THEN list_concat(a, b) END",
-        {_TRINO: "CASE WHEN a IS NULL THEN b WHEN b IS NULL THEN a ELSE concat(a, b) END"},
-    ),
     _macro("array_remove", "a, v", "list_filter(a, _x -> _x IS DISTINCT FROM v)"),
-    _macro(
-        "array_position",
-        "a, v, start",
-        "list_position(a[greatest(start, 1):], v) + greatest(start, 1) - 1",
-    ),
     _pg("like", "a, b", _LIKE, _NO_CASE_SENSITIVE_LIKE),
     _pg("notlike", "a, b", f"NOT {_LIKE}", _NO_CASE_SENSITIVE_LIKE),
     _pg("textcat", "a, b", "CAST(a || b AS TEXT)"),
@@ -1608,17 +1594,6 @@ _ROWS: tuple[Macro, ...] = (
     ),
     # A character value of a "char".
     _pg("bpchar", "value", "CAST(value AS TEXT)"),
-    # An encoding's number, its name compared as PostgreSQL's does; a name naming none -1.
-    _macro(
-        "pg_char_to_encoding",
-        "name",
-        "CASE lower(regexp_replace(name, '[^A-Za-z0-9]', '', 'g')) WHEN 'unicode' THEN 6 "
-        + " ".join(
-            f"WHEN '{encoding.lower().replace('_', '')}' THEN {number}"
-            for number, encoding in enumerate(ENCODINGS)
-        )
-        + " ELSE CASE WHEN name IS NOT NULL THEN -1 END END",
-    ),
     *_NUMBERS,
     *_DATES,
     *_ENUMS,
@@ -1896,7 +1871,8 @@ _MENTIONED = re.compile(
     r"\b("
     + "|".join(sorted(_NAMES | pg_forms_textsearch.NAMES))
     + r")\"?\s*\(|"
-    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}",
+    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}"
+    + "".join(f"|{mentioned}" for mentioned in polyfill.GRID.mentions),
     re.IGNORECASE,
 )
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.
@@ -2132,9 +2108,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
 def _replacement(form: str, dialect: str, pattern: str) -> exp.Expr:
     """A grid rule's replacement on ``dialect``, as a form here is read: on ClickHouse, with its
     refusals thrown (:func:`_thrown`). The tree is shared: graft copies it."""
-    engine = polyfill.engine_of(dialect)
-    assert engine is not None
-    tree = polyfill_notation.replacement(form, engine, pattern)
+    tree = polyfill_notation.replacement(form, polyfill.written_in(dialect), pattern)
     return tree.transform(_thrown) if dialect == "clickhouse" else tree
 
 
@@ -2158,23 +2132,49 @@ def _polyfilled(
     target: exp.Expr, node: exp.Expr, dialect: str, rewrite: Callable[[exp.Expr], exp.Expr]
 ) -> exp.Expr | None:
     """A call a rule of the polyfill grid matches (REQ-2236), written in the routed engine's form;
-    None where no rule matches. A dialect that is no engine of the grid has no form of it, and the
-    call is refused by name."""
+    None where no rule matches. A dialect that is no column of the grid has no form of it, and the
+    call is refused by name. A rewrite function's refusal of a value is raised as the row's."""
+    try:
+        return _polyfilled_by_rule(target, node, dialect, rewrite)
+    except polyfill_notation.Refused as refused:
+        called = target.name.lower() if isinstance(target, exp.Anonymous) else _feature_of(target)
+        raise RowRefused(called, dialect, refused.refusal) from refused
+
+
+def _feature_of(target: exp.Expr) -> str:
+    """The name of the grid's feature a typed node's rule is of."""
+    names = type(target).sql_names() if isinstance(target, exp.Func) else ()
+    return names[0].lower() if names else type(target).__name__.lower()
+
+
+def _polyfilled_by_rule(
+    target: exp.Expr, node: exp.Expr, dialect: str, rewrite: Callable[[exp.Expr], exp.Expr]
+) -> exp.Expr | None:
+    """:func:`_polyfilled`, a rewrite function's refusal raised as it is."""
     applied = polyfill.GRID.read(target, dialect)
     if applied is None:
         return None
     called = target.name.lower() if isinstance(target, exp.Anonymous) else applied.feature.name
     form = applied.form
-    if polyfill.engine_of(dialect) is None:
+    if polyfill.column_of(dialect) is None:
+        if applied.rule.unlisted_keep:
+            return None  # the row polyfills its columns only: this dialect keeps what it had
         raise FunctionRefused(called, dialect)
     if form is None:
-        return target  # the engine's own
+        return node  # the engine's own, as the statement writes it (by pg_catalog on DuckDB)
     if isinstance(form, polyfill.Refusal):
         raise RowRefused(called, dialect, form)
     if isinstance(form, polyfill.Rewrite):
         written = applied.rewritten
         if written is None:
-            written = form.function(target, dialect)
+            # A rule's own pattern: its arguments in their forms first, as a form's holes are
+            # bound, since the walk does not descend into what a rule writes.
+            argued = target.copy()
+            # The copy reads where the call stands (a window's, a filter's), as the call does.
+            argued.parent, argued.arg_key = target.parent, target.arg_key
+            for argument in list(argued.iter_expressions()):
+                argument.replace(argument.transform(rewrite))
+            written = form.function(argued, dialect)
         if written is None:
             return None
     else:
@@ -2529,9 +2529,6 @@ def _call(node: exp.Expr) -> tuple[str, list[exp.Expr]] | None:
         return "repeat", [node.this, node.args["times"]]
     if isinstance(node, exp.ArrayRemove):
         return "array_remove", [node.this, node.expression]
-    if isinstance(node, exp.ArrayPosition) and isinstance(node.args.get("zero_based"), exp.Expr):
-        if not isinstance(node.args["zero_based"], exp.Boolean):  # sqlglot's reading of its start
-            return "array_position", [node.this, node.expression, node.args["zero_based"]]
     if isinstance(node, exp.Substring) and not _counts_from_the_first(node.args.get("start")):
         length = node.args.get("length")
         return "substr", [node.this, node.args["start"], *([] if length is None else [length])]
@@ -2700,64 +2697,6 @@ def _array_as_text(value: exp.Expr) -> exp.Expr:
 _KEPT_BY_NAME = frozenset(name for name, _ in MACROS) | {"char"}
 
 
-def _said_text_read(value: exp.Expr) -> exp.Expr:
-    """A string literal cast to text as the literal, which is what sqlglot reads a format from."""
-    if isinstance(value, exp.Cast) and value.to.is_type("text") and value.this.is_string:
-        return value.this
-    return value
-
-
-#: Marks a regexp_replace with no 'g' flag, for a dialect whose own replaces every match
-#: (transpile._every_match_unflagged).
-FIRST_MATCH = "provisa_first_match"
-_BACKREFERENCE = re.compile(r"\\\d")
-#: What a pattern's text can be: an escape, a bracket expression, or a group it captures by.
-_PATTERN_PART = re.compile(r"\\.|\[\^?\]?(?:\\.|\[:\w+:\]|[^\]])*\]|\((?!\?)", re.DOTALL)
-#: What a replacement says other than its literal text: \\, \N, or a $.
-_REPLACEMENT_PART = re.compile(r"\\(\\|\d)|\$")
-
-
-def _past_the_text_before(replacement: str, pattern: str, dialect: str) -> str:
-    """``replacement`` for the form _first_match writes, where the text before the match is group
-    1: PostgreSQL's \\N is the engine's $N+1, nothing for a group the pattern lacks, and a $ is
-    literal."""
-    groups = sum(part.group() == "(" for part in _PATTERN_PART.finditer(pattern))
-
-    def written(part: re.Match[str]) -> str:
-        said = part.group(1)
-        if said is None:
-            return "\\$"
-        if said == "\\":
-            return part.group()
-        if said == "0":
-            raise FunctionRefused("regexp_replace", dialect)
-        return f"${int(said) + 1}" if int(said) <= groups else ""
-
-    return _REPLACEMENT_PART.sub(written, replacement)
-
-
-def _first_match(node: exp.RegexpReplace, dialect: str) -> exp.Expr:
-    """regexp_replace of the first match, or a refusal of what neither engine's can write."""
-    value = node.this
-    pattern, replacement = (
-        _said_text_read(node.expression),
-        _said_text_read(node.args["replacement"]),
-    )
-    node.set("modifiers", None)
-    if not (isinstance(pattern, exp.Literal) and isinstance(replacement, exp.Literal)):
-        raise FunctionRefused("regexp_replace", dialect)
-    if dialect == "clickhouse":
-        return exp.Anonymous(this="replaceRegexpOne", expressions=[value, pattern, replacement])
-    if _BACKREFERENCE.search(pattern.this):  # its group numbers move with the text before
-        raise FunctionRefused("regexp_replace", dialect)
-    written = _past_the_text_before(replacement.this, pattern.this, dialect)
-    return exp.RegexpReplace(
-        this=value,
-        expression=exp.Literal.string(f"(?s)^(?<before>.*?)(?:{pattern.this})(?<after>.*)$"),
-        replacement=exp.Literal.string(f"${{before}}{written}${{after}}"),
-    )
-
-
 #: PostgreSQL's reading of a position before the value, or a negative length, which these engines
 #: read from its end.
 _FROM_THE_END = frozenset({"trino", "presto", "athena", "clickhouse"})
@@ -2815,7 +2754,10 @@ def _past_the_edge(node: exp.Expr, dialect: str) -> exp.Expr | None:
             return _argument(values[part.name]).copy()
         return part
 
-    return sqlglot.parse_one(_EDGE_FORMS[key], read="postgres").transform(bound)
+    form = _EDGE_FORMS[key]
+    if dialect == "clickhouse":  # its length is unsigned, which no position mixes with a signed n
+        form = form.replace("LENGTH(v)", "CAST(LENGTH(v) AS BIGINT)")
+    return sqlglot.parse_one(form, read="postgres").transform(bound)
 
 
 #: The most digits past the point a decimal of 38 holds and leaves room for a whole part.
@@ -2843,7 +2785,7 @@ def _unqualified(tree: exp.Expr) -> exp.Expr:
         if isinstance(call, exp.Anonymous) and call.name.lower() in _KEPT_BY_NAME:
             call = exp.Anonymous(this=call.name.lower(), expressions=call.expressions)
         elif isinstance(call, exp.Anonymous):
-            args = [_said_text_read(a) for a in call.expressions]
+            args = [said_text(a) for a in call.expressions]
             call = exp.func(call.name, *args, dialect="postgres")
         if isinstance(call, (exp.Func, exp.Binary)):  # mod is a binary as sqlglot reads it
             replaced = dot.replace(call)
@@ -2871,6 +2813,27 @@ def _said_scale(scale: exp.Expr, called: str, dialect: str) -> int | None:
     return digits
 
 
+def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
+    """Whether a row of the polyfill grid answers ``node`` on ``dialect`` (REQ-2236; REQ-2167, AN
+    ANSWER WITHIN A STATED BOUND COMES BEFORE A REFUSAL): its form is the engine's SQL, or a
+    rewrite that writes this call. A row that keeps the old table's form, a rewrite that leaves
+    this call or refuses it, and a refusal answer nothing: the call is refused as it was."""
+    try:
+        applied = polyfill.GRID.read(node, dialect)  # a rule of no pattern runs its rewrite here
+        if applied is None or applied.form is None or isinstance(applied.form, polyfill.Refusal):
+            return False
+        if isinstance(applied.form, str) or applied.rewritten is not None:
+            return True
+        argued = node.copy()  # read where the call stands, as _polyfilled_by_rule reads it
+        argued.parent, argued.arg_key = node.parent, node.arg_key
+        return applied.form.function(argued, dialect) is not None
+    except polyfill_notation.Refused as refused:
+        if refused.ruling:  # the row names what of the call it refuses
+            called = node.name.lower() if isinstance(node, exp.Anonymous) else _feature_of(node)
+            raise RowRefused(called, dialect, refused.refusal) from refused
+        return False
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -2880,6 +2843,8 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     if dialect not in _DUCKDB:
         tree = _unqualified(tree)
         for node in tree.walk():
+            if _answered_by_a_row(node, dialect):
+                continue  # REQ-2167: an answer within a stated bound comes before a refusal
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
             if refused_call is not None:
                 raise FunctionRefused(refused_call, dialect)
@@ -2905,15 +2870,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and dialect in _DUCKDB
         ):
             return _columns_of(node, rewrite)
-        if isinstance(node, exp.Window) and isinstance(node.this, exp.Ntile):
-            return exp.cast(node, "INT")  # PostgreSQL's is an integer, every engine's a bigint
         if isinstance(node, exp.RegexpReplace) and dialect in _FROM_THE_END:
             parts = (node.this, node.expression, node.args["replacement"])
             if any(_is_null(part) for part in parts):
                 return exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT"))
-            flagged = node.args.get("modifiers")
-            if isinstance(flagged, exp.Literal) and flagged.this == FIRST_MATCH:
-                return _first_match(node, dialect)
         if (
             isinstance(node, exp.Anonymous)
             and node.name.lower() in ("date_part", "extract")
@@ -2932,6 +2892,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and node.this.name.lower() == "pg_catalog"
         ):
             target = node.expression
+        first = polyfill.GRID.read_first(target, dialect)  # a grid rule over every call
+        if first is not None and first.rewritten is not None:
+            in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
+            return first.rewritten if in_select else first.rewritten.unalias()
         polyfilled = _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled
@@ -2981,3 +2945,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         return written
 
     return tree.transform(rewrite, copy=False)
+
+
+#: The name and arguments of a call the table may hold, for the grid's rules that read calls.
+call_of = _call

@@ -112,17 +112,17 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
     async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, domain_id, table_name, description, modeling_role, modeling_history "
-            # REQ-1921: a draft table is in no catalog.
-            "FROM registered_tables WHERE NOT draft ORDER BY domain_id, table_name"
+            # REQ-1921, REQ-2248: a draft or retired table is in no catalog.
+            "FROM registered_tables WHERE NOT draft AND NOT retired ORDER BY domain_id, table_name"
         )
         col_rows = await conn.fetch(
             "SELECT tc.table_id, tc.column_name, tc.alias, tc.data_type, tc.description, "
-            "tc.is_primary_key FROM table_columns tc ORDER BY tc.id"
+            "tc.is_primary_key FROM table_columns tc WHERE NOT tc.retired ORDER BY tc.id"
         )
         rel_rows = await conn.fetch(
             "SELECT source_table_id, source_column, target_table_id, target_column "
             "FROM relationships "
-            "WHERE target_table_id IS NOT NULL AND target_column IS NOT NULL "
+            "WHERE target_table_id IS NOT NULL AND target_column IS NOT NULL AND NOT retired "
             "AND cardinality IN ('many-to-one', 'one-to-one') ORDER BY id"
         )
         # REQ-1415: the tag ids on each table and column, listed in the description suffix.

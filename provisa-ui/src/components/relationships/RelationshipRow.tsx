@@ -15,6 +15,7 @@ import type { Relationship } from "../../types/admin";
 import { relationshipTargetLabel } from "./relationship-types";
 import { TagControl } from "../TagControl";
 import { ListRow } from "../list/ListTable";
+import { FkBadge } from "./FkBadge";
 
 interface RelationshipRowProps {
   rel: Relationship;
@@ -59,17 +60,7 @@ export function RelationshipRow({
         )}
         <td>
           <Group gap="0.4rem" wrap="wrap">
-            {r.autoSuggested && (
-              <Badge
-                title={t("relationshipRow.autoTrackedTitle")}
-                size="xs"
-                color="gray"
-                variant="filled"
-                style={{ flexShrink: 0 }}
-              >
-                {t("relationshipRow.fkBadge")}
-              </Badge>
-            )}
+            {r.autoSuggested && <FkBadge />}
             {r.viaTableName && (
               <Badge
                 title={t("relationshipRow.junctionBadgeTitle", { table: r.viaTableName })}

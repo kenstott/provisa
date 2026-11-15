@@ -12,7 +12,6 @@
     "clearRejections": "Borrar rechazos",
     "clearedRejections": "Se borró {{count}} rechazo.",
     "clearedRejections_other": "Se borraron {{count}} rechazos.",
-    "discoverZeroCandidates": "La IA encontró 0 candidatos (revise los registros del servidor para más detalles)",
     "domain": "Dominio",
     "source": "Origen",
     "target": "Destino",

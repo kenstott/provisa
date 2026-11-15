@@ -12,7 +12,6 @@
     "clearRejections": "却下履歴をクリア",
     "clearedRejections": "{{count}} 件の却下をクリアしました。",
     "clearedRejections_other": "{{count}} 件の却下をクリアしました。",
-    "discoverZeroCandidates": "AIは候補を0件検出しました（詳細はサーバーログを確認してください）",
     "domain": "ドメイン",
     "source": "ソース",
     "target": "ターゲット",

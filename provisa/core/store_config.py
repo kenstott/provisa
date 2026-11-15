@@ -38,6 +38,7 @@ from provisa.core.models import (
     CalendarConfig,
     ConnectorConfig,
     DataProduct,
+    DeclaredOffer,
     Domain,
     Function,
     GlossaryTermConfig,
@@ -199,6 +200,10 @@ def _profile_result_of(
 
 def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     fields = _fields(Table, {**row, "class_term": class_term})
+    if fields.get("view_metrics") is not None:
+        # REQ-1318: registration stores a metrics view's declaration and the SQL it compiles to;
+        # a configuration states the declaration alone, and loading it compiles the SQL again.
+        fields.pop("view_sql", None)
     fields["columns"] = [{**c, "name": c["column_name"]} for c in row["columns"]]
     fields["columns"] = [
         {k: v for k, v in c.items() if v is not None and k != "column_name"}
@@ -206,12 +211,6 @@ def _table(row: dict[str, Any], class_term: str | None) -> dict[str, Any]:
     ]
     table = Table.model_validate(fields)
     written = _written(table)
-    if "contract" in written:
-        # REQ-2118: created_at is the store's record of when the contract was first created, as a
-        # product's created_at is: the config declares the contract, the store stamps its creation.
-        written["contract"].pop("created_at", None)
-        # REQ-2158: so are its saved versions: a save records them, a configuration declares none.
-        written["contract"].pop("versions", None)
     # A table's identity is written out whole, defaults included: readers of a configuration key
     # tables by (source, schema, table).
     written["schema"] = table.schema_name
@@ -266,6 +265,7 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
                 glossary_terms.c.id,
                 glossary_terms.c.name,
                 glossary_terms.c.definition,
+                glossary_terms.c.calculation_method,
                 glossary_terms.c.retired,
                 glossary_terms.c.approved,
                 glossary_terms.c.deprecation_asserted,
@@ -297,6 +297,7 @@ async def _glossary_terms(conn: "Connection") -> list[dict[str, Any]]:
             GlossaryTermConfig(
                 name=r.name,
                 definition=r.definition,
+                calculation_method=r.calculation_method,  # REQ-2243
                 domains=declared[r.id],
                 # By what names each edge, never its serial: the same model reads the same.
                 edges=sorted(edges.get(r.id, []), key=lambda e: (e.to, e.rel_type)),
@@ -404,6 +405,7 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
     from provisa.core.repositories import calendar as calendar_repo
     from provisa.core.repositories import connector as connector_repo
     from provisa.core.repositories import data_product as data_product_repo
+    from provisa.core.repositories import data_product_offer as offer_repo
     from provisa.core.repositories import function as function_repo
     from provisa.core.repositories import kafka_source as kafka_repo
     from provisa.core.repositories import metric as metric_repo
@@ -493,6 +495,14 @@ async def store_model(conn: "Connection") -> dict[str, Any]:
                             "commands": await data_product_repo.member_command_names(
                                 conn, row["id"]
                             ),
+                            # REQ-2180: its offers, a sample's views named as its tables are.
+                            "offers": [
+                                {
+                                    **_fields(DeclaredOffer, offer),
+                                    "sample_views": [name_of[v] for v in offer["sample_views"]],
+                                }
+                                for offer in await offer_repo.list_offers(conn, row["id"])
+                            ],
                         },
                     )
                 )

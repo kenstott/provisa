@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "FK制約から自動追跡",
-    "fkBadge": "FK",
+    "fkBadge": "FK由来",
+    "fkBadgeTitle": "ソースの外部キーから作成されました",
     "yes": "はい",
     "no": "いいえ",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "マテリアライズ",
     "excludeFromCypher": "Cypherから除外",
     "sqlName": "SQL 名",
-    "autoTracked": "自動追跡",
     "cardinalityWarning": "警告: このJOINが親ごとに複数行を返す場合、最初の値のみが使用されます。",
     "toggleDetails": "リレーションシップ詳細の表示切替",
     "junctionBadge": "プロパティ",

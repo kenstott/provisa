@@ -13,7 +13,7 @@
 
 import { useMemo } from "react";
 import { useMutation, useQuery } from "@apollo/client/react";
-import type { ContractSlaProperty, ContractTerms, MutationResult } from "../types/admin";
+import type { MutationResult } from "../types/admin";
 import type { Finding } from "../components/lifecycle/ToReview";
 import {
   DataProductsQuery as DATA_PRODUCTS_QUERY,
@@ -21,13 +21,14 @@ import {
   UpdateDataProduct,
   DeleteDataProduct,
   SetDataProductMembers,
-  SaveDataContract,
   PublishDataProduct,
   DeprecateDataProduct,
   RetireDataProduct,
   RestoreDataProduct,
   DataProductFindingsQuery,
+  DeleteDataProducts,
 } from "./admin.graphql";
+import { useBulkDelete } from "./useBulkDelete";
 
 // REQ-1660: mirrors the DataProductInput GraphQL input type field-for-field.
 export interface DataProductInput {
@@ -107,30 +108,6 @@ export function useDeleteDataProduct() {
   };
 }
 
-// REQ-2158: mirrors the DataContractInput GraphQL input type field-for-field.
-export interface DataContractInput {
-  version: string;
-  status: string;
-  description: string | null;
-  terms: ContractTerms;
-  sla: ContractSlaProperty[];
-}
-
-export function useSaveDataContract() {
-  // REQ-2158: a member's contract is saved on its own; a break at the same version is refused.
-  const [saveDataContract, { loading }] = useMutation<{ saveDataContract: MutationResult }>(
-    SaveDataContract,
-    { refetchQueries: [{ query: DATA_PRODUCTS_QUERY }] },
-  );
-  return {
-    saveDataContract: async (tableId: number, contract: DataContractInput) => {
-      const result = await saveDataContract({ variables: { tableId, contract } });
-      return (result.data?.saveDataContract ?? { success: false, message: "" }) as MutationResult;
-    },
-    loading,
-  };
-}
-
 /** A product's status actions (REQ-1634 STATUS). Each answers the server's MutationResult; a
  * refusal names its code (data_product.status.<code>). */
 export function useDataProductStatus() {
@@ -188,4 +165,12 @@ export function useDataProductFindings() {
     [data],
   );
   return { findings, refetch, error };
+}
+
+/** REQ-2240: several data products deleted in one call, each through its single delete; the same lists
+ *  read again. */
+export function useDeleteDataProducts() {
+  return useBulkDelete(DeleteDataProducts, "deleteDataProducts", "ids", [
+    { query: DATA_PRODUCTS_QUERY },
+  ]);
 }

@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "Découvrir des relations",
+    "intro": "Choisissez ce qu'il faut rechercher dans tous les domaines. Rien ne s'exécute avant que vous appuyiez sur Exécuter.",
+    "foreignKeys": "Clés étrangères",
+    "semantics": "Sémantique",
+    "semanticsNoKey": "Sémantique : indisponible. {{model}}, le modèle affecté à l'inférence des relations, n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+    "run": "Exécuter"
+  }
+}

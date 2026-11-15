@@ -185,13 +185,24 @@ vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   }),
 }));
 
+// REQ-2234: the Tables field reads each table's columns, and registers the tables picked in one
+// action.
+const readColumns = (...args: unknown[]) => getAvailableColumnsMetadata(...args);
+vi.mock("../../hooks/useAvailableColumnsMetadataLazy", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useAvailableColumnsMetadataLazy")>()),
+  useReadColumns: () => readColumns,
+}));
+const registerTables = vi.fn();
+vi.mock("../../hooks/useTableQueries", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../hooks/useTableQueries")>()),
+  useRegisterTables: () => ({ registerTables, loading: false }),
+}));
+
 import { TablesPage } from "../TablesPage";
 
-// The RegisterTableForm pickers are native <select> elements (RegisterTableForm.tsx:276-355),
-// each with a leading placeholder <option value="">. Option value and label are identical for
-// all four, so selecting by value is selecting by visible name. The schema and table selects
-// stay `disabled` until their prerequisite fetch resolves and are repopulated when the source
-// changes, so wait for the option to exist and the select to be enabled before choosing.
+// The source and schema pickers are native <select> elements, each with a leading placeholder
+// <option value="">; the schema select stays `disabled` until its fetch resolves, so wait for
+// the option to exist and the select to be enabled before choosing.
 async function selectOption(select: HTMLElement, name: string) {
   await waitFor(() => {
     const el = select as HTMLSelectElement;
@@ -201,35 +212,35 @@ async function selectOption(select: HTMLElement, name: string) {
   await userEvent.selectOptions(select, name);
 }
 
-// Clearing a native select means selecting its placeholder back — there is no click-the-
-// selected-option-again deselect the way a Mantine Select offers.
-async function clearOption(select: HTMLElement) {
-  await userEvent.selectOptions(select, "");
+const sourceSelect = () => screen.getByTestId("register-table-source-select");
+const schemaSelect = () => screen.getByTestId("register-table-schema-select");
+const tablesField = () => screen.getByRole("textbox", { name: "Tables" });
+
+/** `table` picked in the Tables field once its columns are read. */
+async function pick(table: string) {
+  await waitFor(() => expect(tablesField()).not.toBeDisabled());
+  await userEvent.click(tablesField());
+  const option = () => screen.getByRole("option", { name: new RegExp(`^${table}`), hidden: true });
+  await waitFor(() => expect(option()).not.toHaveAttribute("data-combobox-disabled"));
+  await userEvent.click(option());
 }
 
-// Each picker carries its own data-testid; keep the original index layout the tests relied on
-// (0=source, 1=domain, 2=schema, 3=table) so per-test references stay unchanged.
-function formSelects(): HTMLElement[] {
-  const arr: HTMLElement[] = [];
-  arr[0] = screen.getByTestId("register-table-source-select");
+// The description the source's comment gave is not asked on Register Table: it is registered
+// with the table (REQ-2234) and edited in its Identity section.
+async function registeredDescription(): Promise<unknown> {
+  await userEvent.click(screen.getByTestId("register-many-tables-submit"));
+  await waitFor(() => expect(registerTables).toHaveBeenCalled());
+  return registerTables.mock.calls.at(-1)![0][0].description;
+}
+
+async function openForm() {
+  render(<TablesPage />);
+  await waitFor(() => {
+    expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
+  });
+  await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
   // One domain is offered here, so it is the domain and is not asked: there is no select.
   expect(screen.queryByTestId("register-table-domain-select")).toBeNull();
-  arr[2] = screen.getByTestId("register-table-schema-select");
-  arr[3] = screen.getByTestId("register-table-table-select");
-  return arr;
-}
-
-// The description the source's comment gave is not asked in the short step: it is carried to the
-// table's Identity section that follows (REQ-2109), and sent with the registration its Save makes.
-async function registeredDescription(): Promise<unknown> {
-  await userEvent.click(screen.getByTestId("register-table-submit"));
-  await userEvent.click(await screen.findByTestId("table-edit-save"));
-  await waitFor(() => expect(registerTable).toHaveBeenCalled());
-  return registerTable.mock.calls.at(-1)![0].description;
-}
-
-function renderPage() {
-  return render(<TablesPage />);
 }
 
 // clearAllMocks wipes implementations too, so re-seed the module-level lazy-hook
@@ -238,14 +249,16 @@ function resetSpies() {
   vi.clearAllMocks();
   sourcesData = [SALES_PG_SOURCE];
   mockUseAvailableSchemas.mockReturnValue({ schemas: ["public", "private"], loading: false });
-  mockUseAvailableTables.mockReturnValue({
-    tables: [
-      { name: "customers", comment: "Registered customer accounts" },
-      { name: "orders", comment: "Customer purchase orders" },
-      { name: "products", comment: null },
-    ],
+  mockUseAvailableTables.mockImplementation((_source: unknown, schema: unknown) => ({
+    tables: schema
+      ? [
+          { name: "customers", comment: "Registered customer accounts" },
+          { name: "orders", comment: "Customer purchase orders" },
+          { name: "products", comment: null },
+        ]
+      : [],
     loading: false,
-  });
+  }));
   getAvailableColumnsMetadata.mockResolvedValue([
     {
       name: "id",
@@ -262,6 +275,9 @@ function resetSpies() {
       isPrimaryKey: false,
     },
   ]);
+  registerTables.mockResolvedValue([
+    { tableName: "t", result: { success: true, message: "", params: { id: 1 } } },
+  ]);
 }
 
 describe("Table description auto-fill from physical database", () => {
@@ -269,64 +285,37 @@ describe("Table description auto-fill from physical database", () => {
     resetSpies();
   });
 
-  it("prefills table description from comment when table is selected", async () => {
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "sales-pg");
-    await selectOption(selects[2], "public");
-    await selectOption(selects[3], "customers");
-    await screen.findByTestId("register-table-columns-summary");
-
+  it("registers the table's comment as its description", async () => {
+    await openForm();
+    await selectOption(sourceSelect(), "sales-pg");
+    await selectOption(schemaSelect(), "public");
+    await pick("customers");
     expect(await registeredDescription()).toBe("Registered customer accounts");
   });
 
   it("leaves description empty when table has no comment", async () => {
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "sales-pg");
-    await selectOption(selects[2], "public");
-    await selectOption(selects[3], "products");
-    await screen.findByTestId("register-table-columns-summary");
-
+    await openForm();
+    await selectOption(sourceSelect(), "sales-pg");
+    await selectOption(schemaSelect(), "public");
+    await pick("products");
     expect(await registeredDescription()).toBeUndefined();
   });
 
-  it("clears description when schema changes", async () => {
-    renderPage();
-
-    await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /registered tables/i })).toBeInTheDocument();
-    });
-
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "sales-pg");
-    await selectOption(selects[2], "public");
-    await selectOption(selects[3], "customers");
-    await screen.findByTestId("register-table-columns-summary");
-
-    // Clearing the schema clears table and description with it: a table picked again without a
-    // comment is registered with none, not the one before.
-    await clearOption(selects[2]);
-    await selectOption(selects[2], "public");
-    await selectOption(selects[3], "products");
-    await screen.findByTestId("register-table-columns-summary");
-
+  it("drops what was picked when the schema changes", async () => {
+    await openForm();
+    await selectOption(sourceSelect(), "sales-pg");
+    await selectOption(schemaSelect(), "public");
+    await pick("customers");
+    expect(screen.getByTestId("register-many-tables-submit")).toHaveTextContent("Register 1 table");
+    // Another schema: nothing of the first is kept, and a table picked there without a comment
+    // is registered with none.
+    await selectOption(schemaSelect(), "private");
+    await waitFor(() =>
+      expect(screen.getByTestId("register-many-tables-submit")).toHaveTextContent(
+        "Register 0 tables",
+      ),
+    );
+    await pick("products");
     expect(await registeredDescription()).toBeUndefined();
   });
 });
@@ -337,119 +326,68 @@ describe("Schema population — source type routing", () => {
   });
 
   it("calls available-schemas for RDBMS sources", async () => {
-    renderPage();
-
-    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "sales-pg");
-
+    await openForm();
+    await selectOption(sourceSelect(), "sales-pg");
     await waitFor(() => {
       expect(mockUseAvailableSchemas).toHaveBeenCalledWith("sales-pg");
     });
   });
 
   it("populates schema dropdown after API response", async () => {
-    renderPage();
-
-    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "sales-pg");
-
+    await openForm();
+    await selectOption(sourceSelect(), "sales-pg");
     // A native <select> renders its options inline, so assert on the element's own option list.
     await waitFor(() => {
-      const schemaOptions = within(selects[2]).getAllByRole("option", { name: "public" });
+      const schemaOptions = within(schemaSelect()).getAllByRole("option", { name: "public" });
       expect(schemaOptions.length).toBeGreaterThan(0);
     });
   });
 
-  it("auto-selects single schema returned by backend for fixed-schema sources", async () => {
-    sourcesData = [
-      {
-        id: "my-gql",
-        type: "graphql",
-        host: "",
-        port: 0,
-        database: "",
-        username: "",
-        dialect: "graphql",
-        cacheEnabled: false,
-        cacheTtl: null,
-        allowedDomains: [],
-        namingConvention: null,
-        path: null,
-        description: "",
-      },
-    ];
-    mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
+  it.each([
+    ["fixed-schema", "my-gql", "graphql"],
+    ["kafka", "my-kafka", "kafka"],
+  ])(
+    "takes the one schema returned by backend for %s sources, with no Schema field",
+    async (_kind, id, type) => {
+      sourcesData = [
+        {
+          id,
+          type,
+          host: "",
+          port: 0,
+          database: "",
+          username: "",
+          dialect: type,
+          cacheEnabled: false,
+          cacheTtl: null,
+          allowedDomains: [],
+          namingConvention: null,
+          path: null,
+          description: "",
+        },
+      ];
+      mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
+      await openForm();
+      await selectOption(sourceSelect(), id);
+      await waitFor(() => {
+        expect(mockUseAvailableSchemas).toHaveBeenCalledWith(id);
+        expect(mockUseAvailableTables).toHaveBeenLastCalledWith(id, "default");
+      });
+      expect(screen.queryByTestId("register-table-schema-select")).toBeNull();
+    },
+  );
 
-    renderPage();
+  it("resets schema and tables when source changes", async () => {
+    await openForm();
+    await selectOption(sourceSelect(), "sales-pg");
+    await selectOption(schemaSelect(), "public");
+    await pick("customers");
 
-    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "my-gql");
-
+    // Change source — clear it; the schema and tables go with it.
+    await userEvent.selectOptions(sourceSelect(), "");
     await waitFor(() => {
-      expect(mockUseAvailableSchemas).toHaveBeenCalledWith("my-gql");
-      expect(selects[2]).toHaveValue("default");
-    });
-  });
-
-  it("auto-selects single schema returned by backend for kafka sources", async () => {
-    sourcesData = [
-      {
-        id: "my-kafka",
-        type: "kafka",
-        host: "",
-        port: 0,
-        database: "",
-        username: "",
-        dialect: "kafka",
-        cacheEnabled: false,
-        cacheTtl: null,
-        allowedDomains: [],
-        namingConvention: null,
-        path: null,
-        description: "",
-      },
-    ];
-    mockUseAvailableSchemas.mockReturnValue({ schemas: ["default"], loading: false });
-
-    renderPage();
-
-    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "my-kafka");
-
-    await waitFor(() => {
-      expect(mockUseAvailableSchemas).toHaveBeenCalledWith("my-kafka");
-      expect(selects[2]).toHaveValue("default");
-    });
-  });
-
-  it("resets schema and table when source changes", async () => {
-    renderPage();
-
-    await waitFor(() => screen.getByRole("heading", { name: /registered tables/i }));
-    await userEvent.click(screen.getByRole("button", { name: "+ Table" }));
-
-    const selects = formSelects();
-    await selectOption(selects[0], "sales-pg");
-    await selectOption(selects[2], "public");
-    await selectOption(selects[3], "customers");
-
-    // Change source — clear it; schema/table reset.
-    await clearOption(selects[0]);
-
-    await waitFor(() => {
-      expect(selects[2]).toHaveValue("");
+      expect(screen.queryByTestId("register-table-schema-select")).toBeNull();
+      expect(screen.queryByRole("textbox", { name: "Tables" })).toBeNull();
     });
   });
 });

@@ -207,7 +207,7 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
     it would otherwise change the rights of every later request."""
     from provisa.compiler.stage2 import build_governance_context
     from provisa.fakes.measurement import MEASURING
-    from provisa.security.rights import effective_domain_access_role
+    from provisa.security.rights import draft_reach, effective_domain_access_role
 
     # What the model build's measurement reads differs: no fakes (stage2._bind_fakes).
     slot = PlanSlot(
@@ -244,6 +244,9 @@ def governance_reader(state: Any, surface: Any, role_id: str) -> Callable[[], An
                     source_types=source_types,
                     engine=engine,
                     source_hints=source_hints,
+                    # REQ-1921: the drafts' rows of the model table it reads, asked only of a
+                    # statement reading that table.
+                    draft_reach=lambda: draft_reach(role, state.roles),
                 )
             )
             slot.keep(governance)

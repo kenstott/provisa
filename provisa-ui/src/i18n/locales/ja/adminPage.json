@@ -157,6 +157,7 @@
       "odata": "OData",
       "sql_http": "HTTP 経由の SQL",
       "cypher_http": "HTTP 経由の Cypher",
+      "sparql_http": "HTTP 経由の SPARQL",
       "pgwire": "PostgreSQL wire",
       "flight": "Arrow Flight",
       "bolt": "Bolt",

@@ -211,6 +211,10 @@ class _Plan:
     # stream's thread (the ``run`` it gave the source stream itself) -- what the check at the
     # end of that stream is run with. None for a plan not streamed from a source.
     loop_run: Callable[[Coroutine[Any, Any, Any]], Any] | None = field(default=None, repr=False)
+    # REQ-1921: the view of the state a statement reading drafts was governed in, and so the one
+    # it runs in (admin/table_read.plan_reading_drafts): the drafts' routes and engine face are
+    # this view's alone. None for every other plan.
+    reads_in: Any = field(default=None, repr=False)
     # Guards against a second finalize for one statement: the streaming surfaces finalize at their
     # own terminal, and a plan that also passes through _execute_plan must still write one row.
     audit_written: bool = field(default=False)
@@ -247,8 +251,9 @@ class _Plan:
     sources: frozenset[str] = field(default_factory=frozenset)
     route_reason: str | None = field(default=None)
     optimizations: tuple[str, ...] = field(default=())
-    # REQ-2001 (GitHub issue 253): an INSERT ... SELECT written in two steps (_TwoStepInsert): its
-    # governed SELECT read as any read, then its rows written through the target's write route.
+    # REQ-2001 (GitHub issue 253): a write that reads another source, in two steps (_TwoStepWrite):
+    # its governed read (an INSERT's SELECT, a MERGE's USING) read as any read, then its rows
+    # written on the target's source.
     two_step: Any = field(default=None)
     # REQ-2100: a write to a code table (codesource.writes.CodeWrite), with the plan of the read it
     # needs (an UPDATE's or a DELETE's keys, an INSERT ... SELECT's rows), carried out by the
@@ -541,7 +546,7 @@ async def _optimize_and_route(
         decision = RouteDecision(
             route=Route.DIRECT,
             source_id="provisa-admin",
-            dialect=state.source_dialects.get("provisa-admin", "postgres"),
+            dialect=state.source_dialects["provisa-admin"],
             reason="a catalog statement reads the control plane",
         )
     if "provisa-admin" in routed and (
@@ -1579,6 +1584,26 @@ async def _govern_and_route_planned(
     from provisa.mv.time_travel import bind_travel_params
 
     sql, params = bind_travel_params(sql, params)
+    from provisa.api.app import state
+    from provisa.api.admin.table_read import drafts_a_statement_names, plan_reading_drafts
+
+    # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a statement naming drafts served to its role
+    # (table registration in their domains) reads them as served tables, through the one path a draft is read by.
+    drafts = drafts_a_statement_names(state, sql, role_id)
+    if drafts:
+        plan, seen = await plan_reading_drafts(
+            state,
+            sql,
+            role_id,
+            drafts,
+            exec_params=params,
+            deliver=deliver,
+            buffered=buffered,
+            explain=explain,
+            as_of=as_of,
+        )
+        plan.reads_in = seen
+        return plan
     # REQ-2092: what governing costs a request (a kept plan's lookup included), beside the others
     with _stage(_tracer, "pipeline.governance", name="governance", request_only=True):
         governed = await govern_statement(
@@ -1860,8 +1885,9 @@ async def govern_statement(
     from provisa.compiler import temp_tables
 
     # REQ-615: a statement governed in a session that holds temporary tables is kept for that
-    # session alone, as its tables stand: the same words name another session's table, at
-    # another address, or the same session's after it dropped and created one of that name.
+    # session alone, as its tables are shaped (temp_tables.plan_key): the same words name another
+    # session's table, at another address, or the same session's after it made one of that name
+    # with other columns. A write that leaves the tables' columns as they were keeps the plan.
     _slot = PlanSlot(
         state,
         "sql",
@@ -1869,7 +1895,7 @@ async def govern_statement(
         sql,
         [
             *sorted(_session_vars.items()),
-            *temp_tables.slot_key(),
+            *temp_tables.plan_key(),
             # A statement governed as the product's is never the one kept for a role's same words.
             *([("provisa.product_statement", "1")] if product_statement else []),
             # Nor is a catalog statement, whose guard is its own (REQ-2190).
@@ -2190,27 +2216,66 @@ async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
 
 
 @dataclass
-class _TwoStepInsert:  # REQ-2001
-    """An INSERT ... SELECT written in two steps: ``read`` is its governed SELECT's plan, and the
-    rows it answers are written through the target's write route as INSERT ... VALUES under
-    ``template`` (the governed INSERT, its ON CONFLICT clause kept), ``batch`` rows a statement."""
+class _TwoStepWrite:  # REQ-2001
+    """A write that reads another source, in two steps: ``read`` is the plan of its governed read
+    -- an INSERT ... SELECT's SELECT, a MERGE's USING query -- and the rows it answers are then
+    written on the target's source under ``template``, the governed write:
 
-    governed: Any  # the governed INSERT ... SELECT
-    template: Any  # its parsed governed form, the SELECT to be replaced by VALUES
+    - an INSERT as INSERT ... VALUES, its ON CONFLICT clause kept, ``batch`` rows a statement;
+    - a MERGE as one MERGE, its USING the rows read (a VALUES list under the USING's alias and
+      the read's column names), so its WHENs, a WHEN NOT MATCHED BY SOURCE included, act on the
+      target in one statement there."""
+
+    governed: Any  # the governed write
+    template: Any  # its parsed governed form, its read to be replaced by the rows read
     target_source: str
-    read: Any = None  # the SELECT's plan
+    read: Any = None  # the plan of its read
     batch: int = 500
 
+    @property
+    def merge(self) -> bool:
+        import sqlglot.expressions as exp
 
-def _two_step_insert(governed: "_Governed", written_table_id: int | None, state: Any):
-    """The two-step form of an INSERT ... SELECT that needs one, else None (REQ-2001, issue 253):
-    its SELECT reads a source other than its target's, or embeds the text of its rows (REQ-2002).
-    Such a statement sent whole to one source would be sent to a source that cannot answer it."""
+        return isinstance(self.template, exp.Merge)
+
+    def read_query(self, tree: Any) -> Any:
+        """The read of ``tree`` -- the governed write, or the statement as written: an INSERT's
+        SELECT, a MERGE's USING query (its subquery, or every column of the table it names)."""
+        import sqlglot.expressions as exp
+
+        if not isinstance(tree, exp.Merge):
+            return tree.expression
+        using = tree.args["using"]
+        if isinstance(using, exp.Subquery):
+            return using.this
+        return exp.select("*").from_(using.copy())
+
+
+#: The most values a MERGE written in two steps binds: its rows are one statement on the target,
+#: and a PostgreSQL driver binds at most this many values a statement.
+_MERGE_VALUES_CAP = 32767
+
+
+def _two_step_write(governed: "_Governed", written_table_id: int | None, state: Any):
+    """The two-step form of a write that needs one, else None (REQ-2001, issue 253): an INSERT
+    ... SELECT whose SELECT, or a MERGE whose USING query, reads a source other than its
+    target's, or embeds the text of its rows (REQ-2002). Such a statement sent whole to one
+    source would be sent to a source that cannot answer it."""
     import sqlglot
     import sqlglot.expressions as exp
 
     template = sqlglot.parse_one(governed.governed_semantic, read="postgres")
-    if not isinstance(template, exp.Insert) or not isinstance(template.expression, exp.Query):
+    if isinstance(template, exp.Insert):
+        if not isinstance(template.expression, exp.Query):
+            return None
+    elif isinstance(template, exp.Merge):
+        target = template.this
+        if not any(
+            (t.db, t.name) != (target.db, target.name)
+            for t in template.args["using"].find_all(exp.Table)
+        ):
+            return None  # its USING is rows already (the second step's own statement)
+    else:
         return None
     sources = {m.table_id: m.source_id for m in governed.ctx.tables.values()}
     target_source = sources[written_table_id]
@@ -2219,30 +2284,31 @@ def _two_step_insert(governed: "_Governed", written_table_id: int | None, state:
     transformed = governed.memo.get("columns")  # REQ-2131: its rows' outputs, computed once read
     if reads <= {target_source} and (folded is None or not folded.rows) and transformed is None:
         return None
-    return _TwoStepInsert(governed=governed, template=template, target_source=target_source)
+    if isinstance(template, exp.Merge):
+        _by_source(template)  # refused by name before anything is read
+    return _TwoStepWrite(governed=governed, template=template, target_source=target_source)
 
 
 async def _two_step_plan(
     governed: "_Governed",
-    two: _TwoStepInsert,
+    two: _TwoStepWrite,
     *,
     params: list | None,
     as_of: str | None,
     audit: Any,
     state: Any,
 ) -> "_Plan":
-    """The plan of a two-step INSERT ... SELECT: its governed SELECT routed as any read, and the
+    """The plan of a write in two steps: its governed read routed as any read, and the
     statement's own record (one audit row, one after-write for its target)."""
     import dataclasses
 
-    import sqlglot.expressions as exp
     from provisa.transpiler.router import Route
 
-    select = two.template.expression
+    select = two.read_query(two.template)
     read_governed = dataclasses.replace(
         governed,
         governed_semantic=select.sql(dialect="postgres"),
-        parsed=governed.parsed.expression,
+        parsed=two.read_query(governed.parsed),
         memo={},
     )
     read = await route_governed(read_governed, params=params, as_of=as_of)
@@ -2250,7 +2316,6 @@ async def _two_step_plan(
     read.embedded = governed.memo.get("embed")  # REQ-2002: its rows' texts, embedded once read
     read.columns = governed.memo.get("columns")  # REQ-2131: its rows' outputs, computed once read
     two.read = read
-    assert isinstance(two.template, exp.Insert)
     from provisa.compiler.write_admission import written_table_id
 
     return _Plan(
@@ -2262,7 +2327,9 @@ async def _two_step_plan(
         audit=audit,
         stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         route_reason=(
-            "INSERT ... SELECT whose rows are read first, then written to its target's source"
+            "MERGE whose USING rows are read first, then merged on its target's source"
+            if two.merge
+            else "INSERT ... SELECT whose rows are read first, then written to its target's source"
         ),
         role_id=governed.role_id,
         table_ids=governed.table_ids,
@@ -2523,15 +2590,170 @@ async def _run_keyed_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-039
     return QueryResult(rows=returned, column_names=two.returned, rowcount=written)
 
 
+async def _merge_types(read: "_Plan", names: list[str]) -> list[Any]:  # REQ-2001
+    """The type of each column a MERGE's USING read answers, as the model types it (the read's
+    result shape): the type the rows read are bound as on the target. A column whose type cannot
+    be derived is refused by name."""
+    from provisa.compiler.result_shape import Underived, _registered_type
+
+    shape = None if read.result_shape is None else await read.result_shape()
+    if shape is None or len(shape) != len(names):
+        raise ValueError(
+            "a MERGE whose USING query reads another source binds the rows it reads as typed "
+            "values, and the types of the USING query's columns cannot be derived; CAST each of "
+            "its columns to a type"
+        )
+    types = []
+    for name, declared in zip(names, shape, strict=True):
+        typed = None if isinstance(declared[1], Underived) else _registered_type(declared[1])
+        if typed is None:
+            raise ValueError(
+                f"a MERGE whose USING query reads another source binds the rows it reads as "
+                f"typed values, and the type of its column {name!r} cannot be derived; CAST it "
+                "to a type in the USING query"
+            )
+        types.append(typed)
+    return types
+
+
+#: The names the MERGE written in two steps gives what it adds: the target read again beside the
+#: rows read, each target row's own row id there, and the marker of a row that was read.
+_MERGE_TARGET = "provisa_target"
+_MERGE_ROW = "provisa_row"
+_MERGE_READ = "provisa_read"
+
+
+def _by_source(merge: Any) -> Any:
+    """The MERGE's WHEN NOT MATCHED BY SOURCE clause, or None. Only one, and only a DELETE: one
+    written in two steps carries it as a WHEN MATCHED over the target rows no row read matches
+    (:func:`_merged_rows`), which an UPDATE of such a row, or several such clauses in order, are
+    refused by name."""
+    whens = merge.args.get("whens")
+    clauses = [w for w in (whens.expressions if whens is not None else []) if w.args.get("source")]
+    if not clauses:
+        return None
+    if len(clauses) > 1:
+        raise ValueError(
+            "a MERGE whose USING query reads another source may hold one WHEN NOT MATCHED BY "
+            f"SOURCE clause, a DELETE; it holds {len(clauses)}"
+        )
+    (clause,) = clauses
+    if clause.args["then"].sql(dialect="postgres").upper() != "DELETE":
+        raise ValueError(
+            "a MERGE whose USING query reads another source may hold WHEN NOT MATCHED BY SOURCE "
+            "THEN DELETE, not THEN UPDATE"
+        )
+    return clause
+
+
+def _merged_rows(
+    two: _TwoStepWrite, names: list[str], types: list[Any], rows: list[tuple]
+) -> tuple[Any, list]:
+    """The MERGE of ``two`` over ``rows``, the rows its USING read answered, and the values it
+    binds: its USING those rows, bound, under the USING's alias and the read's column names.
+
+    A WHEN NOT MATCHED BY SOURCE THEN DELETE is carried in the same statement, whatever the
+    target's version (PostgreSQL before 17 has no such clause): the USING is the rows read FULL
+    JOINed to the target on the MERGE's ON, each joined row carrying its target row's id
+    (``ctid``) and whether a row read is in it; the MERGE matches by that id, so a target row no
+    row read matches is matched with no row read, and the clause becomes WHEN MATCHED AND no row
+    read THEN DELETE. Its count is the MERGE's, the rows deleted included."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    width = len(names)
+    if len(rows) * width > _MERGE_VALUES_CAP:
+        raise ValueError(
+            f"a MERGE whose USING query reads another source writes the rows it reads in one "
+            f"statement, which binds at most {_MERGE_VALUES_CAP} values; its USING query read "
+            f"{len(rows)} rows of {width} columns"
+        )
+    statement = two.template.copy()
+    by_source = _by_source(statement)
+
+    def quoted(name: str) -> str:
+        return exp.to_identifier(name, quoted=True).sql()
+
+    cast = [t.sql(dialect="postgres") for t in types]
+    alias = quoted(statement.args["using"].alias_or_name)
+    marked = [*names, _MERGE_READ] if by_source is not None else names
+    columns = ", ".join(quoted(n) for n in marked)
+    if rows:
+        mark = ", TRUE" if by_source is not None else ""
+        values = ", ".join(
+            "("
+            + ", ".join(f"CAST(${i * width + j + 1} AS {cast[j]})" for j in range(width))
+            + mark
+            + ")"
+            for i in range(len(rows))
+        )
+        source = f"(VALUES {values}) AS {alias}({columns})"
+    else:
+        nulls = [f"CAST(NULL AS {cast[j]}) AS {quoted(n)}" for j, n in enumerate(names)]
+        if by_source is not None:
+            nulls.append(f"TRUE AS {quoted(_MERGE_READ)}")
+        source = f"(SELECT {', '.join(nulls)} WHERE FALSE) AS {alias}"
+    if by_source is not None:
+        target = statement.this
+        own = {target.alias_or_name, target.name}
+        bare = target.copy()
+        bare.set("alias", None)
+        on = statement.args["on"].copy()
+        for column in on.find_all(exp.Column):
+            if column.table in own:
+                column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
+        source = (
+            f"(SELECT {alias}.*, {quoted(_MERGE_TARGET)}.ctid AS {quoted(_MERGE_ROW)} "
+            f"FROM {source} FULL JOIN {bare.sql(dialect='postgres')} "
+            f"AS {quoted(_MERGE_TARGET)} ON {on.sql(dialect='postgres')}) AS {alias}"
+        )
+        statement.set(
+            "on",
+            sqlglot.parse_one(
+                f"{quoted(target.alias_or_name)}.ctid = {alias}.{quoted(_MERGE_ROW)}",
+                read="postgres",
+            ),
+        )
+        read = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NOT NULL", read="postgres")
+        for when in statement.args["whens"].expressions:
+            if when.args.get("source"):
+                when.set("source", False)
+                when.set("matched", True)
+                gone = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NULL", read="postgres")
+                condition = when.args.get("condition")
+                when.set("condition", exp.and_(gone, condition) if condition else gone)
+            elif when.args.get("matched"):
+                condition = when.args.get("condition")
+                when.set(
+                    "condition", exp.and_(read.copy(), condition) if condition else read.copy()
+                )
+    using = sqlglot.parse_one(f"SELECT * FROM {source}", read="postgres").args["from_"].this
+    statement.set("using", using)
+    return statement, [v for r in rows for v in r]
+
+
 async def _run_two_step(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2001
-    """Read the statement's rows, then write them through the target's write route, a batch of
-    rows an INSERT ... VALUES under the statement's own target, columns and ON CONFLICT."""
+    """Read the statement's rows, then write them on the target's source: a MERGE as one MERGE
+    over the rows read, an INSERT a batch of rows an INSERT ... VALUES under the statement's own
+    target, columns and ON CONFLICT."""
     import dataclasses
 
     import sqlglot
 
     two = plan.two_step
-    rows = (await _execute_plan_bound(two.read, state)).materialize().rows
+    answered = (await _execute_plan_bound(two.read, state)).materialize()
+    rows = answered.rows
+    if two.merge:
+        names = list(answered.column_names)
+        statement, values = _merged_rows(two, names, await _merge_types(two.read, names), rows)
+        write_governed = dataclasses.replace(
+            two.governed,
+            governed_semantic=statement.sql(dialect="postgres"),
+            comment_params=None,
+            memo={},
+        )
+        write = await route_governed(write_governed, params=values)
+        return await _run_plan_terminal(write, state)
     written = 0
     for start in range(0, len(rows), two.batch):
         chunk = rows[start : start + two.batch]
@@ -2591,7 +2813,7 @@ async def route_governed(
     from provisa.api.app import state
     from provisa.audit.pipeline import begin_audit
     from provisa.transpiler.router import Route
-    from provisa.transpiler.transpile import transpile
+    from provisa.transpiler.transpile import direct_physical, transpile
 
     if not stamp_is_valid(governed.stamp):
         raise PermissionError(
@@ -2681,8 +2903,8 @@ async def route_governed(
         raise ValueError("EXPLAIN is only supported for read statements")
     if _staged_read is not None:
         return _staged_plan(governed, _staged_read, params=params, as_of=as_of, audit=_audit)
-    if _is_mutation and isinstance(_parsed_input, exp.Insert):
-        _two = _two_step_insert(governed, _written_table_id, state)
+    if _is_mutation and isinstance(_parsed_input, (exp.Insert, exp.Merge)):
+        _two = _two_step_write(governed, _written_table_id, state)
         if _two is not None:
             return await _two_step_plan(
                 governed, _two, params=params, as_of=as_of, audit=_audit, state=state
@@ -3212,12 +3434,15 @@ async def route_governed(
                 from provisa.compiler.stage2 import apply_row_cap
 
                 _physical = apply_row_cap(_physical, _cap)
-            _direct = transpile(
-                _physical,
+            _direct = direct_physical(
+                transpile(
+                    _physical,
+                    dialect,
+                    pgvector=_similarity.mentions(_physical)
+                    and state.source_pools.vector_capability(_direct_sid) == "pgvector",
+                    quote_identifiers=_quoted,
+                ),
                 dialect,
-                pgvector=_similarity.mentions(_physical)
-                and state.source_pools.vector_capability(_direct_sid) == "pgvector",
-                quote_identifiers=_quoted,
             )
             if not _optimized:
                 governed.memo[_direct_key] = _direct
@@ -3809,7 +4034,9 @@ async def _execute_plan(plan: _Plan, state: Any | None = None) -> QueryResult:  
     surface passes through, so no transport has to establish it for itself.
     """
     require_governed_plan(plan)  # SECURITY: refuse any plan the top of the pipeline did not mint
-    if state is None:
+    if plan.reads_in is not None:
+        state = plan.reads_in  # REQ-1921: a read of drafts runs in the view it was governed in
+    elif state is None:
         from provisa.api.app import state  # type: ignore[assignment]
     if plan.cache_hit is not None:
         # REQ-1897: answered before routing — nothing to wake, land or execute.
@@ -3981,6 +4208,8 @@ def streams_from_terminal(plan: _Plan, *, applies_columns: bool = False) -> bool
     are applied as its rows stream where the terminal serves them through
     :func:`serve_stream_through_cache` (``applies_columns``); anywhere else, by the pipeline
     terminal."""
+    if plan.reads_in is not None:
+        return False  # REQ-1921: a read of drafts runs in its own view, by the pipeline terminal
     if plan.two_step is not None:
         return False  # REQ-2001: its rows are read, then written, by the pipeline terminal
     if plan.code_write is not None:
@@ -5291,8 +5520,10 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # The validation a plan was kept with depends on whether its joins were the SDL's.
     # A request-level as-of decides which bitemporal views keep their reference.
     # REQ-615, REQ-2176: as on the raw-SQL stage, a statement compiled in a session holding
-    # temporary tables (a Bolt connection's ephemeral graph) is kept for that session alone, as
-    # its tables stand: its kept engine form names the session's store schema, gone with it.
+    # temporary tables (a principal's graph session) is kept for that session alone, as its
+    # tables are shaped (temp_tables.plan_key): its kept engine form names the session's store
+    # schema and reads its tables' columns, never their rows, so a write that leaves the columns
+    # as they were (the graph session's generation advanced) is served the same plan.
     _slot = PlanSlot(
         state,
         "compiled",
@@ -5301,7 +5532,7 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
         sorted(_session_vars.items()),
         sdl_joins,
         as_of or "",
-        temp_tables.slot_key(),
+        temp_tables.plan_key(),
     )
     # REQ-2066: a stored view a user's read names, outside its read window -- judged per call on the
     # statement as written: a kept plan outlives the window, and governance expands the view.
@@ -5343,6 +5574,12 @@ async def _govern_and_route_compiled_planned(  # REQ-262, REQ-263, REQ-265, REQ-
     # REQ-1910: request entry on the compiled path (GraphQL over Flight, Cypher, gRPC, MCP, REST).
     await resolve_trace_scope(state, role_id, hint=cache_hint.debug_trace)
     _audit = begin_audit(sql, role_id, _compiled_tree, gov_ctx, state.model_stamp)
+    # REQ-1921: a read of a draft is recorded as a draft preview, naming the drafts it read. Only
+    # the view a draft preview reads through names any (admin/table_read.py).
+    _previewed = getattr(state, "previewed_draft_ids", None)
+    if _audit is not None and _previewed is not None:
+        _enforced = _audit.enforced() if callable(_audit.enforced) else _audit.enforced
+        _audit.enforced = {**_enforced, "draft_preview": sorted(_previewed)}
 
     # REQ-1897 (amended 2026-10-01): the cache before the route (see route_governed). A sink
     # delivery returns a handle, not rows, and is never answered from it.
@@ -5783,7 +6020,7 @@ async def _route_compiled(
         rewrite_semantic_to_physical,
     )
     from provisa.transpiler.router import Route
-    from provisa.transpiler.transpile import transpile
+    from provisa.transpiler.transpile import direct_physical, transpile
 
     _compiled_tree = compiled_tree
     _table_ids = table_ids
@@ -6198,12 +6435,15 @@ async def _route_compiled(
 
                 physical_sql = apply_row_cap(physical_sql, _cap)
             _direct = (
-                transpile(
-                    physical_sql,
+                direct_physical(
+                    transpile(
+                        physical_sql,
+                        dialect,
+                        pgvector=_similarity.mentions(physical_sql)
+                        and state.source_pools.vector_capability(_direct_sid) == "pgvector",
+                        quote_identifiers=_quoted,
+                    ),
                     dialect,
-                    pgvector=_similarity.mentions(physical_sql)
-                    and state.source_pools.vector_capability(_direct_sid) == "pgvector",
-                    quote_identifiers=_quoted,
                 ),
                 physical_sql,
             )

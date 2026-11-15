@@ -67,7 +67,7 @@
     "progressMerging": "Unione di quanto trovato in termini candidati...",
     "progressModel": "Modello: {{model}}",
     "budgetLimited": "Il budget di IA del ruolo ha limitato una chiamata a {{tokens}} token di output, quindi una risposta può risultare troncata.",
-    "cancel": "Annulla scansione",
+    "stopTip": "Interrompi la scansione",
     "failed": "La scansione si è interrotta: {{error}}",
     "summary": "{{passages}} passaggi letti, {{mentions}} menzioni, {{candidates}} termini candidati.",
     "leftOut": "Esclusi: {{count}} che non sono concetti dell'ontologia (come persone o aziende con nome proprio), {{misquoted}} non citati dal loro passaggio, {{unresolved}} non ricondotti a un termine.",

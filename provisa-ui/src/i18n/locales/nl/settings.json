@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL via HTTP",
           "cypher_http": "Cypher via HTTP",
+          "sparql_http": "SPARQL via HTTP",
           "pgwire": "PostgreSQL wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -246,14 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Bericht voordat een roltoewijzing afloopt",
-        "help": "Hoeveel dagen voordat een roltoewijzing verloopt, of wordt verwijderd omdat ze ongebruikt blijft, de houder en de beheerders van de organisatie een e-mail krijgen."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Melding voordat rechten verlopen",
-        "help": "Hoeveel dagen vóór de datum van een vervalregel voor rechten de gebeurtenis 'verloopt binnenkort' wordt verzonden en de persoon en de beheerders van de organisatie worden gemaild. De schermen voor rechten markeren regels die zo dicht bij hun datum liggen."
+        "label": "Melding voordat een roltoewijzing of haar items eindigen",
+        "help": "Hoeveel dagen voordat een roltoewijzing, of een van haar rechtenitems, eindigt of de toewijzing wegens ongebruik wordt verwijderd, de houder en de beheerders van de organisatie worden gemaild."
       }
     },
     "server": {
@@ -604,6 +599,10 @@
       "principal": {
         "label": "Lokale principal voor MCP",
         "help": "De principal (gebruikers-id) namens wie lokale (stdio) MCP-aanroepen handelen, naast de lokale rol; de rechten van die persoon beperken de rol. Zolang die niet is ingesteld, worden die aanroepen geweigerd. Beveiligd, omdat iedereen die de lokale client kan starten met de toegang van die persoon handelt."
+      },
+      "tools": {
+        "label": "Getoonde MCP-tools",
+        "help": "De tools die worden getoond aan een MCP-client waarvan het adres geen modus noemt (tools=full of tools=sip in het adres). full toont elke tool; sip toont de tools om te zoeken, te beschrijven, te bevragen en metrieken te lezen, plus één tool die de andere groepen toevoegt wanneer de client erom vraagt. Elke tool kan in beide modi worden aangeroepen, voor zover de rechten van de aanroeper dat toestaan."
       },
       "external_url": {
         "label": "Extern MCP-adres",

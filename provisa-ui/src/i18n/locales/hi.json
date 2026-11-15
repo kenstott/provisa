@@ -2,6 +2,9 @@
   "common": {
     "loading": "लोड हो रहा है...",
     "cancel": "रद्द करें",
+    "stop": "रोकें",
+    "stopped": "रोकी गई",
+    "stopQuery": "क्वेरी रोकें",
     "save": "सहेजें",
     "delete": "हटाएँ",
     "confirm": "पुष्टि करें",
@@ -44,7 +47,7 @@
     "yes": "हाँ",
     "no": "नहीं",
     "none": "—",
-    "expandUser": "{{username}} के असाइनमेंट दिखाएँ",
+    "expandUser": "{{username}} के असाइनमेंट विस्तृत करें",
     "deleteUser": "{{username}} का खाता हटाएँ",
     "assignmentsHeading": "भूमिका:डोमेन असाइनमेंट",
     "noAssignments": "कोई असाइनमेंट नहीं",

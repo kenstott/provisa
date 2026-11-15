@@ -401,6 +401,7 @@ sources:
 - description: "Great Expectations quality scans \u2014 each results table is one\
     \ suite's per-check outcomes, kept across scans"
   id: dq-checker
+  is_system: true
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
@@ -416,6 +417,7 @@ sources:
 - description: "Soda quality scans \u2014 each results table is one contract's per-check\
     \ outcomes, kept across scans"
   id: dq-soda
+  is_system: true
   mapping:
     database: provisa
     host: ${env:PROVISA_DQ_HOST:-localhost}
@@ -430,6 +432,7 @@ sources:
 - description: "Nightly profile of the pet store's tables \u2014 distributions, drift, duplicates,\
     \ dependence and proposed constraints, one run per night"
   id: demo-profiler
+  is_system: true
   mapping:
     cron: "0 2 * * *"
     low_cardinality_max: 100

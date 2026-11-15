@@ -30,8 +30,10 @@ test("the Data quality topic walks from the checker through to the profiler pane
   const next = page.locator(".driver-popover-next-btn");
 
   // Starting the topic navigates to /tables and pays that route's first-visit chunk fetch and data load.
+  // The table the step opens is named in the URL after the source (REQ-2241: an open panel is its
+  // URL), so the source is matched up to the next parameter.
   await expect(title).toHaveText("A quality checker is just a source", { timeout: 60000 });
-  await expect(page).toHaveURL(/\/tables\?source=dq-checker$/);
+  await expect(page).toHaveURL(/\/tables\?source=dq-checker(&|$)/);
   // The opened table is the selected row, and its detail is in the panel on the right.
   await expect(page.locator('[data-table-row="dq-checker.pets_quality_dq_checker_dq"].row-selected')).toBeVisible();
   await expect(page.getByTestId("tables-split-panel")).toBeVisible();
@@ -42,7 +44,7 @@ test("the Data quality topic walks from the checker through to the profiler pane
 
   await next.click();
   await expect(title).toHaveText("Profile a table", { timeout: 30000 });
-  await expect(page).toHaveURL(/\/tables\?source=pet-store-sqlite$/);
+  await expect(page).toHaveURL(/\/tables\?source=pet-store-sqlite(&|$)/);
   // The filter follows the new ?source=, and the row opened is the pet-store table with its editor.
   await expect(page.locator('[data-table-row^="dq-checker."]')).toHaveCount(0);
   // The opened table is the selected row, and its detail is in the panel on the right.
@@ -68,7 +70,7 @@ test("the Test data topic walks from the map through the profiler to a fake", as
   const next = page.locator(".driver-popover-next-btn");
 
   await expect(title).toHaveText("How the parts fit", { timeout: 60000 });
-  await expect(page).toHaveURL(/\/tables\?source=pet-store-sqlite$/);
+  await expect(page).toHaveURL(/\/tables\?source=pet-store-sqlite(&|$)/);
   await expect(page.locator('[data-testid="table-read-view-edit"]')).toBeVisible();
 
   await next.click();

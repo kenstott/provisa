@@ -2,6 +2,9 @@
   "common": {
     "loading": "Wird geladen...",
     "cancel": "Abbrechen",
+    "stop": "Stoppen",
+    "stopped": "Gestoppt",
+    "stopQuery": "Abfrage stoppen",
     "save": "Speichern",
     "delete": "Löschen",
     "confirm": "Bestätigen",
@@ -44,7 +47,7 @@
     "yes": "Ja",
     "no": "Nein",
     "none": "—",
-    "expandUser": "Zuweisungen für {{username}} anzeigen",
+    "expandUser": "Zuweisungen für {{username}} aufklappen",
     "deleteUser": "Konto von {{username}} löschen",
     "assignmentsHeading": "Rolle:Domäne-Zuweisungen",
     "noAssignments": "Keine Zuweisungen",

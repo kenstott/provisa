@@ -645,21 +645,69 @@ export async function fetchSdl(roleId: string): Promise<string> {
 
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
+/** The kinds of relationship discovery: foreign keys read from the sources' own constraints, and
+ *  semantics inferred by the model assigned to relationship inference. */
+export type DiscoveryKind = "foreign_keys" | "semantics";
+
+/** Which kinds can run. Semantics needs the assigned model's own key; `reason` says why not. */
+export interface DiscoveryKinds {
+  foreign_keys: { available: true };
+  semantics: { available: boolean; model: string; reason: "no_key" | null };
+}
+
+/** What semantic inference found, and when it found none, why. */
+export interface SemanticsReport {
+  suggested: number;
+  proposed: number;
+  below_threshold: number;
+  threshold: number;
+  already_known: number;
+  invalid: number;
+  empty_reason: "unreadable" | "cut_short" | "none_proposed" | "filtered" | null;
+  /** The model's answer stopped at its length limit before its list closed: what was suggested is
+   *  what it finished. */
+  cut_short: boolean;
+}
+
+/** What a discovery run found: one entry per kind it was asked for. */
+export interface DiscoveryResult {
+  candidates_found: number;
+  stored_ids: number[];
+  foreign_keys?: { found: number };
+  semantics?: SemanticsReport;
+}
+
+export async function fetchDiscoveryKinds(): Promise<DiscoveryKinds> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover/kinds`);
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(body, requestFailed("fetchDiscoveryKinds", resp.status)));
+  }
+  return resp.json();
+}
+
+/** Run the kinds of discovery asked for. A model that failed, or semantics asked for with no
+ *  key for its model, is thrown with the server's words. */
 export async function discoverRelationships(
   scope: string,
+  kinds: DiscoveryKind[],
   tableId?: number,
   domainId?: string,
-): Promise<{ candidates_found: number; stored_ids: number[] }> {
+): Promise<DiscoveryResult> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/relationships`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       scope,
+      kinds,
       table_id: tableId,
       domain_id: domainId,
     }),
   });
-  if (!resp.ok) throw httpError("Discovery", resp.status);
+  if (!resp.ok) {
+    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(body, requestFailed("Discovery", resp.status)));
+  }
   return resp.json();
 }
 
@@ -692,6 +740,40 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   });
   if (!resp.ok) throw httpError("Clear rejections", resp.status);
   return resp.json();
+}
+
+/** The outcome of one suggestion in an Accept all or Reject all: done, or why not. */
+export type CandidateOutcome =
+  | { id: number; ok: true; relationship_id?: string }
+  | { id: number; ok: false; error: string };
+
+async function candidatesAtOnce(
+  action: "accept" | "reject",
+  body: unknown,
+  label: string,
+): Promise<CandidateOutcome[]> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${action}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!resp.ok) {
+    const failure = await resp.json().catch(() => ({ detail: resp.statusText }));
+    throw new Error(serverMessage(failure, requestFailed(label, resp.status)));
+  }
+  return ((await resp.json()) as { results: CandidateOutcome[] }).results;
+}
+
+/** Accept every suggestion given, each under its own name, in one request: one outcome each. */
+export function acceptCandidates(
+  candidates: { id: number; name: string }[],
+): Promise<CandidateOutcome[]> {
+  return candidatesAtOnce("accept", { candidates }, "Accept all");
+}
+
+/** Reject every suggestion given with the one reason, in one request: one outcome each. */
+export function rejectCandidates(ids: number[], reason: string): Promise<CandidateOutcome[]> {
+  return candidatesAtOnce("reject", { ids, reason }, "Reject all");
 }
 
 export async function rejectCandidate(id: number, reason: string): Promise<void> {
@@ -1203,10 +1285,7 @@ export async function fetchPlatformOrgEngine(orgId: string): Promise<OrgEngineSt
   return resp.json();
 }
 
-export function setPlatformOrgEngine(
-  orgId: string,
-  body: OrgEngineSave,
-): Promise<OrgEngineSaved> {
+export function setPlatformOrgEngine(orgId: string, body: OrgEngineSave): Promise<OrgEngineSaved> {
   return putOrgEngine(platformOrgEnginePath(orgId), body);
 }
 
@@ -1771,9 +1850,10 @@ export async function fetchApprovedJoins(): Promise<ApprovedJoin[]> {
 
 /** The statements of a batch, as /data/sql splits it (a `;` in a string, a comment or a
  * dollar-quoted block does not split). Nothing is run. */
-export async function splitSql(sql: string): Promise<string[]> {
+export async function splitSql(sql: string, signal?: AbortSignal): Promise<string[]> {
   const resp = await fetch(`${API_BASE_RAW}/data/sql/statements`, {
     method: "POST",
+    signal,
     headers: { "Content-Type": "application/json", Accept: "application/json" },
     body: JSON.stringify({ sql }),
   });
@@ -1801,10 +1881,13 @@ export async function runSqlEach(
   // REQ-1937: the values of the statement's $1…$n placeholders, bound by the server; none sent
   // when there are none.
   params: (string | number)[] = [],
+  // Aborts the request (Stop in the SQL editor).
+  signal?: AbortSignal,
 ): Promise<{ answers: StatementAnswer[]; provisa_stats?: unknown; error?: string }> {
   try {
     const resp = await fetch(`${API_BASE_RAW}/data/sql`, {
       method: "POST",
+      signal,
       headers: sqlHeaders(role, statsEnabled),
       body: JSON.stringify(
         params.length > 0 ? { sql, results: "each", params } : { sql, results: "each" },

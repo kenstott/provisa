@@ -57,6 +57,7 @@ ROLE = {
     "description": "Reads sales.",
     "capabilities": ["usage"],
     "domain_access": ["sales"],
+    "acting_chain": [READER],  # REQ-2188: as the build records it
 }
 
 

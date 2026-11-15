@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL over HTTP",
           "cypher_http": "Cypher over HTTP",
+          "sparql_http": "SPARQL over HTTP",
           "pgwire": "PostgreSQL wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -246,14 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Notice before a role grant ends",
-        "help": "How many days before a role grant expires, or is removed for going unused, its holder and the organization's administrators are emailed."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Expiring-soon notice for entitlements",
-        "help": "How many days before an entitlement expiry rule's date the expiring-soon event is emitted and the person and the organization's administrators are emailed. The entitlement screens highlight rules this close to their date."
+        "label": "Notice before a role grant or its entries end",
+        "help": "How many days before a role grant, or one entitlement entry of it, ends, or the grant is removed for going unused, its holder and the organization's administrators are emailed."
       }
     },
     "server": {
@@ -604,6 +599,10 @@
       "principal": {
         "label": "MCP local principal",
         "help": "The principal (user id) local (stdio) MCP calls act for, beside the local role; that person's entitlements narrow the role. Until it is set those calls are refused. Guarded because it acts with that person's access for anyone who can start the local client."
+      },
+      "tools": {
+        "label": "MCP tools listed",
+        "help": "The tools listed to an MCP client whose address names none (tools=full or tools=sip on the address). full lists every tool; sip lists the tools for finding, describing, querying and reading metrics, plus one tool that adds the other groups when the client asks. Every tool can be called in either mode, as the caller's rights allow."
       },
       "external_url": {
         "label": "MCP external address",

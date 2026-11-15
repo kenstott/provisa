@@ -68,6 +68,8 @@
     "bindingTemplate": "Expresión SQL",
     "bindingTemplateHint": "Una expresión SQL. Escriba cada argumento como {{placeholder}}; se ejecuta dentro de la consulta que la llama.",
     "argDefault": "Valor predeterminado del argumento {{name}}",
-    "argDefaultPlaceholder": "Valor predeterminado (vacío si es obligatorio)"
+    "argDefaultPlaceholder": "Valor predeterminado (vacío si es obligatorio)",
+    "nativeSql": "SQL nativo",
+    "nativeSqlHint": "SQL en el dialecto propio del origen, una sentencia o varias, ejecutadas en el origen en una sola transacción: se confirman todas o ninguna. Escriba un argumento como {{placeholder}}; cada uno se enlaza como valor. La respuesta son las filas de la última sentencia."
   }
 }

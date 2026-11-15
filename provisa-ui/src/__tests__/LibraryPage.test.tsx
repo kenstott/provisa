@@ -31,8 +31,6 @@ const api = vi.hoisted(() => ({
   reembedLibrary: vi.fn(),
   uploadLibraryVersion: vi.fn(),
   removeLibraryDocument: vi.fn(),
-  fetchRetrieval: vi.fn(),
-  saveRetrieval: vi.fn(),
 }));
 vi.mock("../api/referenceLibrary", () => api);
 vi.mock("../hooks/useAdminQueries", () => ({
@@ -49,6 +47,7 @@ vi.mock("../hooks/useCapability", () => ({ useCapability: () => rights.canEdit }
 
 import { LibraryPage } from "../pages/library/LibraryPage";
 import { scopeChange } from "../components/admin/referenceScope";
+import { NAV_BAR } from "../components/navGroups";
 
 const URL_DOC = {
   id: 3,
@@ -85,10 +84,8 @@ const PROPOSED = {
 beforeEach(() => {
   Object.values(api).forEach((fn) => fn.mockReset());
   rights.canEdit = true;
-  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0 });
+  api.fetchCitedBy.mockResolvedValue({ terms: [], drifted: 0, tags: [], tag_assignments: [] });
   api.fetchLibrary.mockResolvedValue([URL_DOC, PROPOSED]);
-  api.fetchRetrieval.mockResolvedValue("passage");
-  api.saveRetrieval.mockImplementation(async (r: string) => r);
   api.fetchLibraryDocument.mockImplementation(async (id: number) => ({
     ...(id === 3 ? URL_DOC : PROPOSED),
     passage_list: [
@@ -110,14 +107,16 @@ describe("the Library in the app", () => {
   const read = (path: string) => readFileSync(resolve(SRC, path), "utf-8");
 
   it("sits beside the Ontology and before the Security group, on the glossary's read right", () => {
-    const nav = read("components/NavBar.tsx");
-    const ontology = nav.indexOf('to="/admin/ontology"');
-    const library = nav.indexOf('to="/library"');
-    const groups = nav.indexOf("NAV_GROUPS.filter(");
+    // The bar's entries are the NAV_BAR list NavBar renders, in order.
+    const at = (to: string) => NAV_BAR.findIndex((e) => e.kind === "link" && e.to === to);
+    const ontology = at("/admin/ontology");
+    const library = at("/library");
+    const security = NAV_BAR.findIndex((e) => e.kind === "group" && e.group.id === "security");
     expect(ontology).toBeGreaterThan(-1);
-    expect(library).toBeGreaterThan(ontology);
-    expect(library).toBeLessThan(groups);
-    expect(nav.slice(ontology, library)).toContain('<CapabilityGate capability="glossary_read">');
+    expect(library).toBe(ontology + 1);
+    expect(library).toBeLessThan(security);
+    expect(NAV_BAR[library]).toMatchObject({ capability: "glossary_read" });
+    expect(read("components/NavBar.tsx")).toContain("NAV_BAR.map(");
     expect(read("App.tsx")).toMatch(
       /path="\/library"\s+element=\{\s+<CapabilityGate\s+capability="glossary_read"/,
     );
@@ -158,7 +157,6 @@ describe("LibraryPage", () => {
     for (const control of ["reflib-add", "reflib-retrieval", "reflib-refresh", "reflib-remove"]) {
       expect(screen.queryByTestId(control)).toBeNull();
     }
-    expect(api.fetchRetrieval).not.toHaveBeenCalled();
     fireEvent.click(screen.getByTestId("reflib-tab-readers"));
     expect(await screen.findByTestId("reflib-readers-3")).toHaveTextContent("sales");
     expect(screen.queryByTestId("reflib-domains")).toBeNull();
@@ -177,6 +175,8 @@ describe("LibraryPage", () => {
   it("lists what cites a document and flags a drifted citation", async () => {
     api.fetchCitedBy.mockResolvedValue({
       drifted: 1,
+      tags: [],
+      tag_assignments: [],
       terms: [
         {
           term_id: 1,
@@ -206,6 +206,53 @@ describe("LibraryPage", () => {
     expect(screen.getByTestId("reflib-cite-2")).toHaveTextContent("A dormant account is closed.");
     expect(within(screen.getByTestId("reflib-cite-2")).getByTestId("reflib-drifted")).toBeTruthy();
     expect(within(screen.getByTestId("reflib-cite-1")).queryByTestId("reflib-drifted")).toBeNull();
+  });
+
+  it("lists the tags and the tag assignments that cite a document, each linked", async () => {
+    const place = { text_sha256: "x", cited_by: null, cited_at: "2026-11-13T00:00:00" };
+    api.fetchCitedBy.mockResolvedValue({
+      drifted: 0,
+      terms: [],
+      tags: [
+        {
+          tag_id: "finance",
+          section_heading: "Scope",
+          section_page: null,
+          state: "current",
+          needs_review: false,
+          ...place,
+        },
+      ],
+      tag_assignments: [
+        {
+          tag_id: "finance",
+          object_type: "table",
+          object_key: "table:7",
+          section_heading: null,
+          section_page: 4,
+          state: "drifted",
+          needs_review: true,
+          ...place,
+        },
+      ],
+    });
+    render(<LibraryPage />);
+    fireEvent.click(await screen.findByTestId("reflib-row-3"));
+    await screen.findByTestId("reflib-detail-3");
+    fireEvent.click(screen.getByTestId("reflib-tab-cited"));
+    const definition = await screen.findByTestId("reflib-cite-tag-finance");
+    expect(definition).toHaveTextContent("Scope");
+    expect(within(definition).getByRole("link", { name: "finance" })).toHaveAttribute(
+      "href",
+      "/admin/tags?tag=finance",
+    );
+    const onObject = screen.getByTestId("reflib-cite-assignment-finance-table:7");
+    expect(within(onObject).getByRole("link", { name: /7/ })).toHaveAttribute(
+      "href",
+      "/tables?table=7",
+    );
+    expect(onObject).toHaveTextContent("Page 4");
+    expect(within(onObject).getByTestId("reflib-cite-drifted")).toBeInTheDocument();
   });
 
   it("says when nothing cites a document", async () => {
@@ -326,31 +373,23 @@ describe("LibraryPage", () => {
     expect(screen.getByTestId("reflib-index-9")).toHaveTextContent("Indexing");
   });
 
-  it("shows the library's retrieval setting and saves a change to it", async () => {
+  it("offers no choice of retrieval: the library has one", async () => {
     render(<LibraryPage />);
-    const setting = await screen.findByTestId("reflib-retrieval");
-    expect(setting).toHaveTextContent("Retrieval");
-    const passage = within(setting).getByLabelText("Passage") as HTMLInputElement;
-    await waitFor(() => expect(passage.checked).toBe(true));
-    fireEvent.click(within(setting).getByText("Graph"));
-    await waitFor(() => expect(api.saveRetrieval).toHaveBeenCalledWith("graph"));
-    await waitFor(() =>
-      expect((within(setting).getByLabelText("Graph") as HTMLInputElement).checked).toBe(true),
-    );
+    await screen.findByTestId("reflib-row-3");
+    expect(screen.queryByTestId("reflib-retrieval")).toBeNull();
+    expect(screen.queryByText("Retrieval")).toBeNull();
   });
 
-  it("puts the setting back and says why when it is refused", async () => {
-    api.saveRetrieval.mockRejectedValue(new Error("the org has no vector model"));
+  it("heads the page as the other list pages do: the filter beside the title, then + Document", async () => {
     render(<LibraryPage />);
-    const setting = await screen.findByTestId("reflib-retrieval");
-    await waitFor(() =>
-      expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true),
-    );
-    fireEvent.click(within(setting).getByText("Graph"));
-    expect(await screen.findByTestId("reflib-error")).toHaveTextContent(
-      "the org has no vector model",
-    );
-    expect((within(setting).getByLabelText("Passage") as HTMLInputElement).checked).toBe(true);
+    await screen.findByTestId("reflib-row-3");
+    const filter = screen.getByTestId("reflib-filter");
+    const header = filter.closest(".page-header");
+    expect(header).not.toBeNull();
+    expect(filter.closest("[data-toolbar], .page-actions")).toBeNull();
+    const add = screen.getByTestId("reflib-add");
+    expect(add).toHaveTextContent(/^\+ Document$/);
+    expect(add.closest(".page-actions")?.parentElement).toBe(header);
   });
 
   it("lists each document with its source, index status and readers, marking a proposed one", async () => {

@@ -1,0 +1,32 @@
+{
+  "combineFiles": {
+    "globLabel": "Ou fichiers correspondant à",
+    "globPlaceholder": "complaints_2026_*.csv",
+    "globHint": "Un glob sur les fichiers de la source, en une table ou une par fichier.",
+    "modeLabel": "Comment les fichiers sont enregistrés",
+    "perFile": "Une table par fichier",
+    "combine": "Combiner en une table",
+    "checking": "Vérification des fichiers…",
+    "noMatch": "Aucun fichier ne correspond à ce glob.",
+    "unmatched": "Aucun fichier trouvé pour {{tables}}.",
+    "matched_one": "{{count}} fichier correspond à {{glob}}",
+    "matched_other": "{{count}} fichiers correspondent à {{glob}}",
+    "sharedColumns": "Colonnes communes : {{columns}}",
+    "noSharedColumns": "Ils n'ont aucune colonne en commun.",
+    "differHeading": "Les colonnes de ces fichiers diffèrent, ils ne peuvent donc pas former une table. Retirez-les ou saisissez un glob qui ne les inclut pas :",
+    "differ": "{{file}} {{how}}",
+    "lacks": "il manque {{columns}}",
+    "adds": "ajoute {{columns}}",
+    "differUnreadable": "Impossible de lire {{file}} : {{error}}",
+    "extra": "Le glob {{glob}} correspond aussi à {{files}}, que vous n'avez pas choisis.",
+    "includeExtra": "Les inclure aussi",
+    "extraUnconfirmed": "Incluez les fichiers que le glob couvre aussi, ou saisissez un glob qui ne couvre que les fichiers voulus.",
+    "nameLabel": "Nom de la nouvelle table",
+    "namePlaceholder": "complaints",
+    "nameRequired": "Nommez la nouvelle table.",
+    "notRegistrable": "Ces fichiers ne peuvent pas être enregistrés comme une seule table.",
+    "sourceFileColumnLabel": "Colonne du fichier source",
+    "sourceFileColumnPlaceholder": "source_file",
+    "sourceFileColumnHint": "Facultatif : une colonne indiquant le fichier d'où vient chaque ligne."
+  }
+}

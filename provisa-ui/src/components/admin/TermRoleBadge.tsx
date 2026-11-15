@@ -54,7 +54,11 @@ function IconChip({
         role="img"
         aria-label={word}
         data-testid={testId}
-        style={{ display: "inline-flex", alignItems: "center", color: `var(--mantine-color-${colour}-6)` }}
+        style={{
+          display: "inline-flex",
+          alignItems: "center",
+          color: `var(--mantine-color-${colour}-6)`,
+        }}
         {...data}
       >
         <Icon size={ICON_SIZE} aria-hidden />
@@ -68,9 +72,13 @@ export function TermStatusBadge({
   status,
   testId,
   iconOnly = false,
+  draftHelp,
 }: {
   status: TermStatus;
   testId?: string;
+  /** What a draft's tip says in place of the general draft help (the term's panel: which test it
+   * still fails). */
+  draftHelp?: string;
   /** A draft as its icon alone (the term list); other statuses keep their word. */
   iconOnly?: boolean;
 }) {
@@ -90,7 +98,7 @@ export function TermStatusBadge({
     <StatusBadge
       status={status}
       label={t(`glossaryTab.status_${status}`)}
-      help={status === "draft" ? t("glossaryTab.draftHelp") : undefined}
+      help={status === "draft" ? (draftHelp ?? t("glossaryTab.draftHelp")) : undefined}
       testId={testId}
     />
   );
@@ -137,11 +145,14 @@ export function TermGroundingChip({
 
 export function TermRoleBadge({
   term,
+  role: given,
   dangling = false,
   testId,
   iconOnly = false,
 }: {
-  term: { table_count: number; ref_count: number };
+  /** The term, its role read from what grounds it; or the role itself, where the server gave it. */
+  term?: { table_count: number; ref_count: number };
+  role?: TermRole;
   /** The role as its icon alone; the word is its name and tip (the term list). */
   iconOnly?: boolean;
   /** A concept connected to no term that names data: said in red. */
@@ -149,7 +160,8 @@ export function TermRoleBadge({
   testId?: string;
 }) {
   const { t } = useTranslation();
-  const role = termRole(term);
+  const role = given ?? (term ? termRole(term) : null);
+  if (role === null) throw new Error("TermRoleBadge: a term or a role is given");
   if (iconOnly)
     return (
       <IconChip

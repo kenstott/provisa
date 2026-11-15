@@ -12,6 +12,8 @@
 // thing is reached the same way whichever graph it is picked in. A link is a plain URL -- followed
 // as any link is, and Back returns to the graph as it was.
 
+import { detailHref } from "../components/list/useDetailParam";
+
 /** Each thing a graph draws or joins, by the page it lives on. */
 export type EntityKind =
   | "term"
@@ -29,34 +31,35 @@ export type EntityKind =
 
 const q = (v: string | number) => encodeURIComponent(String(v));
 
-/** The link to ``kind`` ``id``. A column is named by its table and its name (``table`` and
- * ``id``); a profile and a checker by the table they belong to. */
+/** The link to ``kind`` ``id``: its panel's link, from detailHref (REQ-2240). A column is named by
+ * its table and its name (``table`` and ``id``); a profile and a checker by the table they belong
+ * to. A command's ``id`` is its ``commands`` id (commandId). */
 export function entityHref(kind: EntityKind, id: string | number, table?: number): string {
   switch (kind) {
     case "term":
-      return `/admin/ontology?term=${q(id)}`;
+      return detailHref("ontology", id);
     case "product":
-      return `/data-products?product=${q(id)}`;
+      return detailHref("products", id);
     case "command":
-      return `/commands?command=${q(id)}`;
+      return detailHref("commands", id);
     case "table":
-      return `/tables?table=${q(id)}`;
+      return detailHref("tables", id);
     case "column":
-      return `/tables?table=${q(table ?? "")}&section=columns&column=${q(id)}`;
+      return detailHref("tables", table ?? "", "columns", { column: String(id) });
     case "checker":
     case "profile":
       // Its table's quality: the checks it runs, the profiles it holds.
-      return `/tables?table=${q(table ?? id)}&section=quality`;
+      return detailHref("tables", table ?? id, "quality");
     case "domain":
-      return `/admin/domains?domain=${q(id)}`;
+      return detailHref("domains", id);
     case "source":
-      // The Sources page opens the source named by ``expanded``.
-      return `/sources?expanded=${q(id)}`;
+      return detailHref("sources", id);
     case "relationship":
-      return `/relationships?relationship=${q(id)}`;
+      return detailHref("relationships", id);
     case "tag":
-      return `/admin/tags?tag=${q(id)}`;
+      return detailHref("tags", id);
     case "lineage":
+      // The lineage graph centred on it: a view of the graph, not a panel.
       return `/lineage?focus=${q(id)}`;
   }
 }

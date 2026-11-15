@@ -467,6 +467,7 @@ def test_a_column_transform_plan_streams_only_where_its_terminal_applies_the_tra
     from provisa.pgwire._pipeline import streams_from_terminal
 
     plan = SimpleNamespace(
+        reads_in=None,  # as _Plan: no draft read (REQ-1921)
         two_step=None,
         code_write=None,
         keyed_write=None,

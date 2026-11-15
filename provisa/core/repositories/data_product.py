@@ -10,7 +10,7 @@
 
 """DataProduct repository — CRUD, domain-scoped, via SQLAlchemy Core (dialect-portable)."""
 
-# Requirements: REQ-1634
+# Requirements: REQ-1634, REQ-2180
 
 import logging
 from collections.abc import Iterable
@@ -18,8 +18,8 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, func, insert, select, update
 
-from provisa.core import model_change
-from provisa.core.models import ContractCheck, DataContract, DataProduct
+from provisa.core import model_change, model_uri
+from provisa.core.models import ContractCheck, DataProduct
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import (
     checker_targets,
@@ -49,8 +49,14 @@ async def refs(conn: "Connection") -> tuple[tuple[str, str], ...]:  # REQ-2219
 async def upsert(  # REQ-1634, REQ-1919
     conn: "Connection", product: DataProduct
 ) -> None:
-    """Create the data product, or replace its definition."""
-    model_change.name("upsert", "data product", product.id)  # REQ-1524
+    """Create the data product, or replace its definition. A product created starts with its one
+    default offer (REQ-2180)."""
+    from provisa.core.repositories import data_product_offer
+
+    model_change.name(  # REQ-1524
+        "upsert", model_change.uri(model_uri.data_product_uri, product.domain_id, product.id)
+    )
+    is_new = await get(conn, product.id) is None
     await conn.upsert(
         data_products,
         {
@@ -70,6 +76,7 @@ async def upsert(  # REQ-1634, REQ-1919
             "support": product.support,
             "support_contact": product.support_contact,
             "custom_properties": product.custom_properties,
+            "freshness": product.freshness,  # REQ-2180
             "created_by": product.created_by,  # REQ-2219: on insert; update_columns leaves it
         },
         index_elements=["id"],
@@ -89,8 +96,22 @@ async def upsert(  # REQ-1634, REQ-1919
             "support",
             "support_contact",
             "custom_properties",
+            "freshness",
         ],
     )
+    if is_new:
+        await data_product_offer.add_default(conn, product.id, by=product.created_by)
+
+
+async def name_change(conn: "Connection", action: str, product_id: str) -> None:  # REQ-1524
+    """Name a change to data product ``product_id`` by its model URI, under its owning domain
+    (REQ-1385). The product exists: the caller has read it."""
+    domain_id = (
+        await conn.execute_core(
+            select(data_products.c.domain_id).where(data_products.c.id == product_id)
+        )
+    ).scalar_one()
+    model_change.name(action, model_change.uri(model_uri.data_product_uri, domain_id, product_id))
 
 
 async def get(conn: "Connection", product_id: str) -> dict | None:  # REQ-1634
@@ -143,40 +164,17 @@ async def delete(conn: "Connection", product_id: str) -> bool:  # REQ-1634, REQ-
     it — the operator takes them out of the product first. (PostgreSQL used to detach them
     silently; SQLite left them naming a product that was gone.) Its tag assignments go with it.
     One transaction."""
-    model_change.name("delete", "data product", product_id)  # REQ-1524
     ref = ObjectRef("data_product", product_id)
     async with conn.transaction():
         if await get(conn, product_id) is None:
             return False
+        await name_change(conn, "delete", product_id)  # REQ-1524
         blocking = await guard(conn, ref)
         if blocking:
             raise DataProductDeleteRefused(product_id, blocking)
         await remove_parts(conn, ref)
         await conn.execute_core(_delete(data_products).where(data_products.c.id == product_id))
     return True
-
-
-async def member_contracts(conn: "Connection", product_id: str | None = None) -> list[dict]:
-    """REQ-2158: each product member's contract, with its table's id and address and the product it
-    is a member of: one row per product and member, every product's, or ``product_id``'s."""
-    query = (
-        select(
-            registered_tables.c.id,
-            data_product_tables.c.product_id,
-            registered_tables.c.source_id,
-            registered_tables.c.schema_name,
-            registered_tables.c.table_name,
-            registered_tables.c.contract,
-        )
-        .join(data_product_tables, data_product_tables.c.table_id == registered_tables.c.id)
-        .where(registered_tables.c.contract.is_not(None))
-    )
-    if product_id is not None:
-        query = query.where(data_product_tables.c.product_id == product_id)
-    result = await conn.execute_core(
-        query.order_by(registered_tables.c.id, data_product_tables.c.product_id)
-    )
-    return [dict(r._mapping) for r in result.fetchall()]
 
 
 async def promised_checks(  # REQ-2158
@@ -216,46 +214,6 @@ async def promised_checks(  # REQ-2158
         for row in rows
         for rule in row.dq_rules
     ]
-
-
-async def save_contract(  # REQ-2158
-    conn: "Connection", table_id: int, contract: DataContract
-) -> dict:
-    """A member's contract replaced, the version saved recorded on it: refused
-    (data_contracts.ContractRefused) when the table is no product's output port. The member's row,
-    as it is now."""
-    from provisa.core import contract_versions, data_contracts
-    from provisa.core.repositories.table import load_columns
-
-    async with conn.transaction():
-        row = (
-            await conn.execute_core(
-                select(registered_tables).where(registered_tables.c.id == table_id)
-            )
-        ).fetchone()
-        products = await products_of_table(conn, table_id)
-        if row is None or not products or row.contract is None:
-            raise data_contracts.ContractRefused(
-                f"table {table_id} is no data product's output port: it has no contract"
-            )
-        # REQ-2188: a contract belongs to its products: each one's U rule holds its save.
-        await conn.require_admitted(update(data_products).where(data_products.c.id.in_(products)))
-        cid = data_contracts.contract_id(products[0], row.schema_name, row.table_name)
-        model_change.name("upsert", "data contract", cid)  # REQ-1524
-        previous = DataContract.model_validate(row.contract)
-        contract = data_contracts.created_as(previous, contract)
-        contract = contract_versions.recorded(
-            previous,
-            contract,
-            await promised_checks(conn, table_id),
-            contract_versions.snapshot(await load_columns(conn, table_id)),
-        )
-        await conn.execute_core(
-            update(registered_tables)
-            .where(registered_tables.c.id == table_id)
-            .values(contract=contract.model_dump(mode="json"))
-        )
-    return {**dict(row._mapping), "contract": contract.model_dump(mode="json")}
 
 
 # REQ-1634 STATUS: a data product's lifecycle. Every state is asserted by an action: publish takes
@@ -322,7 +280,7 @@ async def publish(conn: "Connection", product_id: str, *, by: "str | None") -> N
             status=status,
         )
     await _set_status(conn, product_id, by, status="live")
-    model_change.name("publish", "data product", product_id)
+    await name_change(conn, "publish", product_id)
 
 
 async def deprecate(
@@ -353,7 +311,7 @@ async def deprecate(
     await _set_status(
         conn, product_id, by, status="deprecated", status_reason=text, retire_on=retire_on
     )
-    model_change.name("deprecate", "data product", product_id)
+    await name_change(conn, "deprecate", product_id)
 
 
 async def retire(
@@ -376,7 +334,7 @@ async def retire(
     # REQ-2188: one transaction: a retirement refused by a row rule moves no member.
     async with conn.transaction():
         await _retire(conn, product, text, successor, by)
-    model_change.name("retire", "data product", product_id)
+    await name_change(conn, "retire", product_id)
 
 
 async def _retire(
@@ -467,7 +425,7 @@ async def restore(conn: "Connection", product_id: str, *, by: "str | None") -> s
         retire_on=None,
         successor_id=None,
     )
-    model_change.name("restore", "data product", product_id)
+    await name_change(conn, "restore", product_id)
     return back
 
 
@@ -665,8 +623,8 @@ async def _require_member_commands(conn: "Connection", product: dict, names: lis
 async def _add_members(
     conn: "Connection", product_id: str, table_ids: Iterable[int], commands: Iterable[str]
 ) -> None:
-    """``product_id`` gains each table and command it does not hold yet; a table joining its first
-    product is given a draft contract (REQ-2158) when it has none."""
+    """``product_id`` gains each table and command it does not hold yet. Its offers' contracts on
+    a new dataset are derived by the build that follows (REQ-2180)."""
     held_tables = set(await member_table_ids(conn, product_id))
     held_commands = set(await member_command_names(conn, product_id))
     for table_id in table_ids:
@@ -675,55 +633,11 @@ async def _add_members(
         await conn.execute_core(
             insert(data_product_tables).values(product_id=product_id, table_id=table_id)
         )
-        await _give_draft_contract(conn, table_id)
     for name in commands:
         if name not in held_commands:
             await conn.execute_core(
                 insert(data_product_commands).values(product_id=product_id, command_name=name)
             )
-
-
-async def _give_draft_contract(conn: "Connection", table_id: int) -> None:
-    """REQ-2158: a member with no contract is given a draft, its first version snapshotting the
-    member's columns as they are stored. A checker table (a data-quality contract's scan results)
-    has none."""
-    from provisa.core import contract_versions, data_contracts
-    from provisa.core.repositories.table import load_columns
-
-    row = (
-        await conn.execute_core(
-            select(registered_tables.c.contract, registered_tables.c.dq_contract).where(
-                registered_tables.c.id == table_id
-            )
-        )
-    ).fetchone()
-    if row is None or row.contract is not None or row.dq_contract is not None:
-        return
-    contract = contract_versions.recorded(
-        None,
-        data_contracts.draft(),
-        await promised_checks(conn, table_id),
-        contract_versions.snapshot(await load_columns(conn, table_id)),
-    )
-    await conn.execute_core(
-        update(registered_tables)
-        .where(registered_tables.c.id == table_id)
-        .values(contract=contract.model_dump(mode="json"))
-    )
-
-
-async def _drop_orphan_contracts(conn: "Connection", table_ids: Iterable[int]) -> None:
-    """REQ-2158: a table that is no product's member any more has no contract: it is no output
-    port."""
-    still = select(data_product_tables.c.table_id)
-    gone = list(table_ids)
-    if gone:
-        await conn.execute_core(
-            update(registered_tables)
-            .where(registered_tables.c.id.in_(gone))
-            .where(registered_tables.c.id.not_in(still))
-            .values(contract=None)
-        )
 
 
 async def set_members(  # REQ-1634
@@ -736,23 +650,20 @@ async def set_members(  # REQ-1634
     """The product's members become exactly ``table_ids`` and ``commands``: THE membership write.
     Refused (:class:`MembershipRefused`) when the product or a member does not exist, when a member
     is in another domain, or when a table is parameterized; nothing changes then. A table may be a
-    member of any number of products; one leaving its last product loses its contract. One
-    transaction."""
+    member of any number of products. One transaction."""
     wanted_tables = sorted(set(table_ids))
     wanted_commands = sorted(set(commands))
-    model_change.name("upsert", "data product members", product_id)  # REQ-1524
     async with conn.transaction():
         product = await get(conn, product_id)
         if product is None:
             raise MembershipRefused(
                 "not_found", f"data product {product_id!r} not found", data_product=product_id
             )
+        await name_change(conn, "upsert members of", product_id)  # REQ-1524
         # REQ-2188: a product's membership is the product's: its U rule holds the write.
         await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
         await _require_member_tables(conn, product, wanted_tables)
         await _require_member_commands(conn, product, wanted_commands)
-        held = await member_table_ids(conn, product_id)
-        dropped = [t for t in held if t not in set(wanted_tables)]
         await conn.execute_core(
             _delete(data_product_tables)
             .where(data_product_tables.c.product_id == product_id)
@@ -764,7 +675,6 @@ async def set_members(  # REQ-1634
             .where(data_product_commands.c.command_name.not_in(wanted_commands))
         )
         await _add_members(conn, product_id, wanted_tables, wanted_commands)
-        await _drop_orphan_contracts(conn, dropped)
 
 
 async def require_domain_of_products(  # REQ-1634

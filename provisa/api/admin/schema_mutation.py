@@ -53,12 +53,14 @@ from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import glossary as glossary_repo, rls as rls_repo
 from provisa.api.admin.capabilities import require_capability, require_right_in_domains
 from provisa.security.rights import ALL_DOMAINS
+from provisa.api.admin._retired_objects import restore as restore_retired
+from provisa.api.admin._retired_objects import retired_name_result
+from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin.types import (
     CalendarInput,
     ColumnAliasType,
     CompileQueryInput,
     CompileQueryResult,
-    DataContractInput,
     DataProductInput,
     DomainInput,
     DqDryRunCheckType,
@@ -79,7 +81,9 @@ from provisa.api.admin.types import (
     SourceInput,
     TableInput,
     TableRegistrationOutcome,
+    BulkDeleteResult,
     ColumnInput,
+    LibraryCitationInput,
     TagAssignmentInput,
     TagInput,
     TagParamValueInput,
@@ -382,8 +386,15 @@ async def _relationship_id_refusal(
     """A create makes a new relationship and an update changes one: an id another relationship
     holds, or one no relationship holds, is refused by name."""
     held = (
-        await conn.execute_core(select(relationships.c.id).where(relationships.c.id == input.id))
+        await conn.execute_core(
+            select(relationships.c.id, relationships.c.retired).where(
+                relationships.c.id == input.id
+            )
+        )
     ).fetchone()
+    if held is not None and held.retired:
+        # REQ-2248: a retired relationship keeps its id; it is restored, not saved over.
+        return retired_name_result(RetiredNameTaken("relationship", input.id))
     if creating and held is not None:
         return MutationResult(
             success=False,
@@ -461,7 +472,7 @@ async def _relationship_alias_refusal(
         return None
     held = (
         await conn.execute_core(
-            select(relationships.c.id).where(
+            select(relationships.c.id, relationships.c.retired).where(
                 relationships.c.source_table_id == source_table_id,
                 relationships.c.alias == input.alias,
                 relationships.c.id != input.id,
@@ -470,6 +481,8 @@ async def _relationship_alias_refusal(
     ).fetchone()
     if held is None:
         return None
+    if held.retired:  # REQ-2248: a retired relationship's alias stays taken
+        return retired_name_result(RetiredNameTaken("relationship", input.alias))
     return MutationResult(
         success=False,
         message=(
@@ -606,6 +619,7 @@ async def _save_data_product(
             support_contact=input.support_contact or None,
             # Absent or null is "no custom properties" (DataProductInput says why).
             custom_properties=({} if input.custom_properties is None else input.custom_properties),
+            freshness=input.freshness,  # REQ-2180
             created_by=creator if stored is None else None,  # REQ-2219: set on insert only
         )
         await data_product_repo.upsert(conn, model)
@@ -677,65 +691,6 @@ async def _set_data_product_members(
             "tables": len(set(table_ids)),
             "commands": len(set(command_names)),
         },
-    )
-
-
-async def _save_data_contract(
-    info: StrawberryInfo, table_id: int, contract: DataContractInput
-) -> MutationResult:  # REQ-2158
-    """A product member's contract replaced, by whoever may curate its product's domain. Its
-    schema is its member's columns, so the save holds none."""
-    from provisa.api.admin.capabilities import require_capability, require_right_in_domains
-    from provisa.core.data_contracts import ContractRefused
-    from provisa.core.models import DataContract
-    from provisa.core.repositories import data_product as data_product_repo
-    from provisa.core.repositories import table as table_repo
-
-    require_capability(info, "data_product_rw")
-    try:
-        declared = DataContract.model_validate(
-            {
-                "version": contract.version,
-                "status": contract.status,
-                "description": contract.description,
-                "terms": vars(contract.terms),
-                "sla": [vars(s) for s in contract.sla],
-            }
-        )
-    except ValueError as invalid:
-        return MutationResult(
-            success=False,
-            message=str(invalid),
-            code="schema.data_contract_invalid",
-            params={"table_id": table_id},
-        )
-    pool = await _get_pool()
-    async with pool.acquire() as conn:
-        conn = cast("Connection", conn)
-        stored = await table_repo.get(conn, table_id)
-        if stored is None or not stored["product_ids"]:
-            return MutationResult(
-                success=False,
-                message=f"Table {table_id} is no data product's member",
-                code="schema.data_contract_no_member",
-                params={"table_id": table_id},
-            )
-        # REQ-1634: a member's products are all of its domain, the table's own.
-        require_right_in_domains(info, "data_product_rw", {stored["domain_id"]})
-        try:
-            await data_product_repo.save_contract(conn, table_id, declared)
-        except ContractRefused as refused:
-            return MutationResult(
-                success=False,
-                message=str(refused),
-                code="schema.data_contract_refused",
-                params={"table_id": table_id},
-            )
-    return MutationResult(
-        success=True,
-        message=f"Contract of table {table_id} saved at version {declared.version}",
-        code="schema.data_contract_saved",
-        params={"table_id": table_id, "version": declared.version},
     )
 
 
@@ -926,9 +881,16 @@ async def _save_role(
 
 
 async def _save_tag(
-    info: StrawberryInfo, input: TagInput, *, creating: bool
-) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
-    """A tag saved: a create makes a new one, an update changes one that exists."""
+    info: StrawberryInfo,
+    input: TagInput,
+    *,
+    creating: bool,
+    cited: "list[LibraryCitationInput] | None" = None,
+) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944, REQ-2208
+    """A tag saved: a create makes a new one, an update changes one that exists. ``cited``, when
+    given, is the whole set of the tag's definition citations (the sections that say why it
+    exists), written with the tag in one transaction: one the library refuses leaves the tag
+    and every citation unwritten. None leaves the citations as they are."""
     _require_tag_editor(info)
     from provisa.core.models import (
         DERIVED_TAG_IDS,
@@ -940,6 +902,7 @@ async def _save_tag(
         Tag as TagModel,
     )
     from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
 
     # REQ-1467: a registry id is a base id. Accepting "entity:customer" here would define a
     # tag whose id parses as the system `entity` tag carrying a parameter, and every base-id
@@ -952,6 +915,17 @@ async def _save_tag(
                 "the separator introduces a parameter value on an assignment"
             ),
             code="schema.tag_id_has_separator",
+            params={"tag": input.id},
+        )
+    # REQ-2238: the grounded term is landed as the PROVISA_GOVERNANCE.TERM tag, so a steward tag of
+    # that name (any case) would be overwritten by the term value unannounced.
+    from provisa.core.modeling_tags import is_reserved_tag_name
+
+    if is_reserved_tag_name(input.id):
+        return MutationResult(
+            success=False,
+            message=f"Tag id {input.id!r} is reserved for the grounded term",
+            code="schema.tag_id_reserved",
             params={"tag": input.id},
         )
     # REQ-1415: the id is listed in the catalog description suffix, so it is a slug: it can
@@ -1004,10 +978,19 @@ async def _save_tag(
         expires_policy=input.expires_policy,
         param_policy=input.param_policy,
         sensitive=input.sensitive,
+        requires_citation=input.requires_citation,  # REQ-2208
+        required=input.required,  # REQ-2208 (THE TAGS REPORT)
     )
     pool = await _get_pool()
     async with pool.acquire() as conn:
         existing = await tag_repo.get(cast("Connection", conn), input.id)
+        # REQ-2208 (A TAG IS OFFERED BY DOMAIN): left out, the saved list stands.
+        held_domains = None if existing is None else list(existing["allowed_domains"] or [])
+        model.allowed_domains = (
+            list(held_domains or [])
+            if input.allowed_domains is None
+            else [d.strip() for d in input.allowed_domains if d.strip()]
+        )
         # A create makes a new tag and an update changes one: an id another tag holds, or one
         # no tag holds, is refused by name, and nothing is written.
         if creating and existing is not None:
@@ -1030,19 +1013,113 @@ async def _save_tag(
             # column carrying the tag -- in every domain, so the right must reach them all
             # (REQ-1944).
             require_right_in_domains(info, SENSITIVE_DATA, {ALL_DOMAINS})
-        elif was_sensitive:
-            # REQ-1944: a sensitive tag's definition is maintained by whoever governs
-            # sensitive columns across the org, or by a table editor as before.
-            _require_sensitive_tag_definer(info)
         else:
-            require_capability(info, "table_registration")
-        await tag_repo.upsert(cast("Connection", conn), model)
+            _require_tag_definer(info, was_sensitive)
+        _require_tag_domains_right(info, held_domains, model.allowed_domains)
+        c = cast("Connection", conn)
+        for citation in cited or []:  # REQ-2208: a document the caller reads
+            unread = await _unread_document(info, c, citation.document_id)
+            if unread is not None:
+                return unread
+        try:
+            async with c.transaction():
+                await tag_repo.upsert(c, model)
+                if cited is not None:
+                    places = [
+                        citations.Place(x.document_id, x.section_heading, x.section_page)
+                        for x in cited
+                    ]
+                    await tag_repo.replace_definition_citations(
+                        c, input.id, places, _caller_id(info)
+                    )
+        except library.LibraryRefused as exc:
+            return MutationResult(
+                success=False, message=str(exc), code=exc.code, params={"tag": input.id}
+            )
+        except RetiredNameTaken as exc:  # REQ-2248
+            return retired_name_result(exc)
+        outside = [] if creating else await _assignments_outside(info, c, model)
     await _refresh_config_tags()
+    message = f"Tag {input.id!r} saved"
+    if outside:
+        keys = ", ".join(o["objectKey"] for o in outside)
+        message += f"; these assignments are outside its allowed domains and stay: {keys}"
     return MutationResult(
         success=True,
-        message=f"Tag {input.id!r} saved",
+        message=message,
         code="schema.tag_saved",
-        params={"tag": input.id},
+        params={"tag": input.id, **({} if creating else {"outside": outside})},
+    )
+
+
+def _require_tag_domains_right(
+    info: StrawberryInfo, held: list[str] | None, domains: list[str]
+) -> None:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """Changing a tag's allowed domains needs what changing a source's needs
+    (update_source_allowed_domains): source_registration, and reach of each domain the change opens
+    the tag to -- every one, when it empties the list. A new tag that names none, or a save that
+    leaves the list as it is, changes nothing."""
+    from provisa.api.admin.capabilities import require_reach_of_added_domains
+
+    if set(domains) == set(held or []):
+        return
+    require_capability(info, "source_registration")
+    require_reach_of_added_domains(info, held, domains, empty_is_all=True)
+
+
+async def _assignments_outside(
+    info: StrawberryInfo, conn: "Connection", tag: Any
+) -> list[dict]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """The tag's assignments on objects outside its allowed domains, which stay: those the caller
+    may be told of (REQ-2152), each with its object's domains."""
+    from provisa.api.admin.domain_guard import tag_assignments_outside
+    from provisa.api.admin.read_rights import reader_for, tag_assignment_readable
+
+    outside = await tag_assignments_outside(conn, tag.id, tag.allowed_domains)
+    if not outside:
+        return []
+    reader = reader_for(info)
+    return [
+        {
+            "tagId": row["tag_id"],
+            "objectType": row["object_type"],
+            "objectKey": row["object_key"],
+            "domains": sorted(domains),
+        }
+        for row, domains in outside
+        if await tag_assignment_readable(conn, reader, row)
+    ]
+
+
+async def _tag_domain_refusal(
+    info: StrawberryInfo, conn: "Connection", tag_row: dict, model: Any
+) -> "MutationResult | None":  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+    """An assignment on an object outside the tag's allowed domains, refused by name. An object
+    in no domain (a role) is placed by its assigner: refused unless the caller acts in one of the
+    tag's domains."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+    from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+
+    allowed = sorted(tag_row.get("allowed_domains") or [])
+    domains = await tag_target_domains(conn, model)
+    if tag_offered(allowed, domains, allowed_domains_request(info.context["request"])):
+        return None
+    key = model.object_key()
+    offered_in = ", ".join(allowed)
+    if domains:
+        said = f"{key} is in {', '.join(sorted(domains))}"
+    else:
+        said = f"{key} is in no domain, and you act in none of the tag's"
+    return MutationResult(
+        success=False,
+        message=f"Tag {tag_row['id']!r} is offered only on objects of {offered_in}: {said}",
+        code="schema.tag_domain_not_allowed",
+        params={
+            "tag": tag_row["id"],
+            "objectKey": key,
+            "allowedDomains": allowed,
+            "domains": sorted(domains),
+        },
     )
 
 
@@ -1070,6 +1147,7 @@ async def _save_metric(
             datatype=input.datatype,
             description=input.description,
             ai_context=input.ai_context,
+            term=input.term,  # REQ-2243
             visible_to=named
             if named is not None
             else (default_read_grant(acting_role_of(info)) if creating else []),
@@ -1119,6 +1197,8 @@ async def _save_metric(
             from provisa.api.admin._metric_views import regenerate_metric_views
 
             regenerated = await regenerate_metric_views(cast("Connection", conn), input.name)
+    except RetiredNameTaken as taken:  # REQ-2248
+        return retired_name_result(taken)
     except ValueError as e:  # REQ-1317/1318: invalid expression / spec no longer compiles
         return MutationResult(success=False, message=str(e))
     # Always rebuild: state.metrics (raw-SQL `metrics.<name>` expansion) and the
@@ -1254,6 +1334,8 @@ async def save_relationship(
                 )
         except _FakeRefusedSave as refused:
             return refused.result
+        except RetiredNameTaken as taken:  # REQ-2248
+            return retired_name_result(taken)
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
         if needs_review:
@@ -1552,6 +1634,16 @@ def _require_tag_editor(info: StrawberryInfo, object_type: str | None = None) ->
         require_capability(info, "table_registration")
 
 
+def _require_tag_definer(info: StrawberryInfo, sensitive: bool) -> None:  # REQ-1944, REQ-2208
+    """Editing a tag's definition, its option left as it is: a sensitive tag's is maintained by
+    whoever governs sensitive columns across the org, or by a table editor as before
+    (:func:`_require_sensitive_tag_definer`); any other tag's by a table editor."""
+    if sensitive:
+        _require_sensitive_tag_definer(info)
+    else:
+        require_capability(info, "table_registration")
+
+
 def _require_sensitive_tag_definer(info: StrawberryInfo) -> None:  # REQ-1944
     """Editing a sensitive tag's definition (not its option): a table editor as before, or a
     holder of sensitive_data reaching every domain -- the tag hides columns in all of them."""
@@ -1618,6 +1710,164 @@ async def _require_tag_assignment_right(  # REQ-1943, REQ-1944
 
     assert table_id is not None  # _assignment_target_problem: a column names its table
     require_right_in_domains(info, SENSITIVE_DATA, {await table_domain(conn, table_id)})
+
+
+# ---------------------------------------------------------------------------
+# Citations of the reference library by tags and their assignments (REQ-2208)
+# ---------------------------------------------------------------------------
+
+
+def _assignment_model(input: TagAssignmentInput) -> Any:
+    """The assignment a ``TagAssignmentInput`` names (its object; the why is not read)."""
+    from provisa.core.models import TagAssignment as TagAssignmentModel
+
+    return TagAssignmentModel(
+        tag_id=input.tag_id,
+        object_type=input.object_type,
+        source_id=input.source_id,
+        table_id=input.table_id,
+        column_name=input.column_name,
+        relationship_id=input.relationship_id,
+        command_name=input.command_name,
+        term_id=input.term_id,
+        product_id=input.product_id,
+        document_id=input.document_id,
+        section_heading=input.section_heading,
+        section_page=input.section_page,
+        rls_rule_id=input.rls_rule_id,
+        role_id=input.role_id,
+        metric_name=input.metric_name,
+    )
+
+
+async def _require_assignment_editor(
+    info: StrawberryInfo, conn: "Connection", model: Any, tag_row: dict
+) -> "MutationResult | None":  # REQ-2208
+    """What changing the assignment ``model`` asks, as assignTag asks it: the surface's right, the
+    target's domains, a term's curation, and the tag's own right on that object. A target that
+    is not there is answered as one."""
+    _require_tag_editor(info, model.object_type)
+    problem = _assignment_target_problem(model)
+    if problem is not None:
+        return problem
+    refused = await _require_tag_target_domains(info, conn, model)
+    if refused is not None:
+        return refused
+    if model.object_type == "term":
+        assert model.term_id is not None
+        await _require_term_tagger(info, conn, model.term_id)
+    await _require_tag_assignment_right(
+        info,
+        conn,
+        tag_row,
+        model.object_type,
+        model.table_id,
+        model.term_id,
+        model.product_id,
+        await _rule_domains_of(conn, model),
+    )
+    return None
+
+
+async def _unread_document(
+    info: StrawberryInfo, conn: "Connection", document_id: int
+) -> "MutationResult | None":  # REQ-2208
+    """A cited document must be one the caller reads, as the Library page reads it (its
+    domains): one it may not read is answered as one the library does not hold."""
+    from provisa.api.admin.capabilities import allowed_domains_request
+    from provisa.reference_library import store
+    from provisa.reference_library.retrieve import readable
+
+    document = await store.document(conn, document_id)
+    scope = allowed_domains_request(info.context["request"])
+    if document is not None and readable(scope, frozenset(document.domains)):
+        return None
+    return MutationResult(
+        success=False,
+        message=f"the reference library holds no document {document_id}",
+        code="reference_library.not_found",
+        params={"documentId": document_id},
+    )
+
+
+def _caller_id(info: StrawberryInfo) -> str | None:
+    request = info.context["request"]
+    identity = getattr(getattr(request, "state", None), "identity", None)
+    return getattr(identity, "user_id", None)
+
+
+async def _change_citation(
+    info: StrawberryInfo,
+    tag_id: str,
+    assignment: "TagAssignmentInput | None",
+    citation: LibraryCitationInput,
+    *,
+    adding: bool,
+) -> MutationResult:  # REQ-2208
+    """Add or take off a citation on a tag's definition (``assignment`` None) or on one of its
+    assignments, with the right that edits that definition or that assignment."""
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
+
+    place = citations.Place(citation.document_id, citation.section_heading, citation.section_page)
+    params: dict[str, Any] = {"tag": tag_id, "documentId": citation.document_id}
+    if assignment is None:
+        _require_tag_editor(info)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        c = cast("Connection", conn)
+        tag_row = await tag_repo.get(c, tag_id)
+        if tag_row is None:
+            return MutationResult(
+                success=False,
+                message=f"Tag {tag_id!r} not found",
+                code="schema.tag_not_found",
+                params={"tag": tag_id},
+            )
+        model = None
+        if assignment is None:
+            _require_tag_definer(info, bool(tag_row["sensitive"]))
+        else:
+            model = _assignment_model(assignment)
+            refused = await _require_assignment_editor(info, c, model, tag_row)
+            if refused is not None:
+                return refused
+            params["objectKey"] = model.object_key()
+        refused = await _unread_document(info, c, citation.document_id)
+        if refused is not None:
+            return refused
+        removed = True
+        try:
+            if model is None and adding:
+                await tag_repo.cite_definition(c, tag_id, place, _caller_id(info))
+            elif model is None:
+                removed = await tag_repo.uncite_definition(c, tag_id, place)
+            elif adding:
+                await tag_repo.cite_assignment(c, model, place, _caller_id(info))
+            else:
+                removed = await tag_repo.uncite_assignment(c, model, place)
+        except tag_repo.CitationTargetNotFound as missing:
+            return MutationResult(
+                success=False,
+                message=str(missing),
+                code="schema.tag_assignment_not_found",
+                params=params,
+            )
+        except library.LibraryRefused as exc:
+            return MutationResult(success=False, message=str(exc), code=exc.code, params=params)
+    if not adding and not removed:
+        return MutationResult(
+            success=False,
+            message=f"Tag {tag_id!r} does not cite that document or section",
+            code="tag.citation_not_found",
+            params=params,
+        )
+    return MutationResult(
+        success=True,
+        message=f"Tag {tag_id!r} citation {'added' if adding else 'removed'}",
+        code="tag.citation_added" if adding else "tag.citation_removed",
+        params=params,
+    )
 
 
 async def _rule_domains_of(conn: "Connection", model: Any) -> set[str] | None:  # REQ-2208
@@ -1821,6 +2071,49 @@ async def store_tag_assignment(  # REQ-1375, REQ-1377, REQ-1443, REQ-1467
             params={"tag": model.tag_id, "objectType": model.object_type},
         )
     await tag_repo.assign(cast("Connection", conn), model)
+    return None
+
+
+class _AssignRefused(Exception):
+    """Carries a refusal out of the assignment's transaction, rolling it back."""
+
+    def __init__(self, result: MutationResult) -> None:
+        super().__init__(result.message)
+        self.result = result
+
+
+async def _store_with_citations(  # REQ-2208
+    info: StrawberryInfo,
+    conn: "Connection",
+    model: Any,
+    tag_row: dict,
+    cited: "list[LibraryCitationInput] | None",
+) -> "MutationResult | None":
+    """The assignment and, when ``cited`` is given, the whole set of its citations, in one
+    transaction: a citation the library refuses (no such document, no such section) leaves
+    neither the assignment nor any citation written."""
+    from provisa.core.repositories import tag as tag_repo
+    from provisa.reference_library import citations, library
+
+    try:
+        async with conn.transaction():
+            refused = await store_tag_assignment(conn, model, tag_row)
+            if refused is not None:
+                raise _AssignRefused(refused)
+            if cited is not None:
+                places = [
+                    citations.Place(c.document_id, c.section_heading, c.section_page) for c in cited
+                ]
+                await tag_repo.replace_assignment_citations(conn, model, places, _caller_id(info))
+    except _AssignRefused as stopped:
+        return stopped.result
+    except library.LibraryRefused as exc:
+        return MutationResult(
+            success=False,
+            message=str(exc),
+            code=exc.code,
+            params={"tag": model.tag_id, "objectKey": model.object_key()},
+        )
     return None
 
 
@@ -2347,6 +2640,14 @@ async def _register_draft_table(
     table = default_table_input(input.id, input.table_domain_id, "main", input.id, columns)
     result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
     return None if result.success else _without(result.message)
+
+
+def _single() -> Any:  # REQ-2240
+    """The mutation as its resolvers are called from Python: a strawberry field's declared
+    signature hides the plain method a bulk delete calls for each row. A new object, as every
+    other caller of a resolver from Python makes: strawberry runs a root resolver with no object
+    (``self`` is None there)."""
+    return Mutation()
 
 
 @strawberry.type
@@ -3515,12 +3816,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _set_data_product_members(info, id, table_ids, command_names)
 
     @strawberry.mutation
-    async def save_data_contract(
-        self, info: StrawberryInfo, table_id: int, contract: DataContractInput
-    ) -> MutationResult:  # REQ-2158
-        return await _save_data_contract(info, table_id, contract)
-
-    @strawberry.mutation
     async def delete_data_product(
         self, info: StrawberryInfo, id: str
     ) -> MutationResult:  # REQ-1634
@@ -3618,16 +3913,42 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def restore_model_object(
+        self, info: StrawberryInfo, kind: str, key: str
+    ) -> MutationResult:  # REQ-2248
+        """Restore a retired table, column, relationship, tag or metric (``kind``) named by
+        ``key`` as the retired listing names it: the same object, served again."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _conn = cast("Connection", conn)
+            async with _conn.transaction():
+                # The gate is the kind's delete right, in its domains (restore_retired).
+                result = await restore_retired(info, _conn, kind, key)
+        if result.success:
+            if kind == "tag":
+                await _refresh_config_tags()
+            await _rebuild_schemas()
+        return result
+
+    @strawberry.mutation
     async def create_tag(
-        self, info: StrawberryInfo, input: TagInput
-    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
-        return await _save_tag(info, input, creating=True)
+        self,
+        info: StrawberryInfo,
+        input: TagInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944, REQ-2208
+        """``citations``, when given, is the tag's whole set of definition citations."""
+        return await _save_tag(info, input, creating=True, cited=citations)
 
     @strawberry.mutation
     async def update_tag(
-        self, info: StrawberryInfo, input: TagInput
-    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944
-        return await _save_tag(info, input, creating=False)
+        self,
+        info: StrawberryInfo,
+        input: TagInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1373, REQ-1375, REQ-1944, REQ-2208
+        """``citations``, when given, is the tag's whole set of definition citations."""
+        return await _save_tag(info, input, creating=False, cited=citations)
 
     @strawberry.mutation
     async def delete_tag(
@@ -3690,8 +4011,13 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
     @strawberry.mutation
     async def assign_tag(
-        self, info: StrawberryInfo, input: TagAssignmentInput
-    ) -> MutationResult:  # REQ-1376/1377, REQ-1944
+        self,
+        info: StrawberryInfo,
+        input: TagAssignmentInput,
+        citations: list[LibraryCitationInput] | None = None,
+    ) -> MutationResult:  # REQ-1376/1377, REQ-1944, REQ-2208
+        """Put the tag on the object, or change that assignment. ``citations``, when given, is the
+        whole set the assignment cites, written with it in one transaction: all of it or none."""
         _require_tag_editor(info, input.object_type)
         from provisa.core.models import TagAssignment as TagAssignmentModel
         from provisa.core.repositories import tag as tag_repo
@@ -3755,6 +4081,10 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model, refused = await _on_columns_term(cast("Connection", conn), model)
                 if refused is not None:
                     return refused
+            # REQ-2208 (A TAG IS OFFERED BY DOMAIN): on objects of the tag's domains only.
+            refused = await _tag_domain_refusal(info, cast("Connection", conn), tag_row, model)
+            if refused is not None:
+                return refused
             if model.object_type == "term":  # REQ-2145
                 assert model.term_id is not None
                 await _require_term_tagger(info, cast("Connection", conn), model.term_id)
@@ -3782,7 +4112,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 model.product_id,
                 await _rule_domains_of(cast("Connection", conn), model),
             )
-            refused = await store_tag_assignment(cast("Connection", conn), model, tag_row)
+            for citation in citations or []:  # REQ-2208: a document the caller reads
+                refused = await _unread_document(
+                    info, cast("Connection", conn), citation.document_id
+                )
+                if refused is not None:
+                    return refused
+            refused = await _store_with_citations(
+                info, cast("Connection", conn), model, tag_row, citations
+            )
             if refused is not None:
                 return refused
             covers = await _covers(cast("Connection", conn), model)  # REQ-2145
@@ -3892,6 +4230,34 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             code="schema.tag_unassigned",
             params={"tag": input.tag_id, "objectKey": model.object_key()},
         )
+
+    @strawberry.mutation
+    async def cite_tag_definition(
+        self, info: StrawberryInfo, tag_id: str, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        """The tag's definition cites a library document or section (the one that defines it);
+        citing it again records the section's text as it is now, confirming a flagged one."""
+        return await _change_citation(info, tag_id, None, citation, adding=True)
+
+    @strawberry.mutation
+    async def uncite_tag_definition(
+        self, info: StrawberryInfo, tag_id: str, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        return await _change_citation(info, tag_id, None, citation, adding=False)
+
+    @strawberry.mutation
+    async def cite_tag_assignment(
+        self, info: StrawberryInfo, assignment: TagAssignmentInput, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        """One assignment of a tag cites a library document or section that traces or confirms
+        it; citing it again records the section's text as it is now."""
+        return await _change_citation(info, assignment.tag_id, assignment, citation, adding=True)
+
+    @strawberry.mutation
+    async def uncite_tag_assignment(
+        self, info: StrawberryInfo, assignment: TagAssignmentInput, citation: LibraryCitationInput
+    ) -> MutationResult:  # REQ-2208
+        return await _change_citation(info, assignment.tag_id, assignment, citation, adding=False)
 
     @strawberry.mutation
     async def upsert_tag_param_value(
@@ -4511,6 +4877,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     except LabelClash as _clash:
                         # REQ-572: a label never names both a domain and a table; both are named.
                         raise TableSaveRefused(label_clash_result(_clash))
+                    except RetiredNameTaken as _retired:
+                        # REQ-2248: a retired name stays taken; the retired object is named.
+                        raise TableSaveRefused(retired_name_result(_retired))
                     except SqlAddressTaken as _taken:
                         # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                         raise TableSaveRefused(
@@ -4717,6 +5086,115 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def delete_tables(
+        self, info: StrawberryInfo, ids: list[int]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several tables deleted in one call, each by deleteTable."""
+        from provisa.api.admin._bulk_delete import delete_each
+        from provisa.core.repositories import table as table_repo
+
+        # The right deleteTable needs, asked once before any table is attempted.
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+
+        async def _name(table_id: int) -> str:
+            async with pool.acquire() as conn:
+                found = await table_repo.get(cast("Connection", conn), table_id)
+            # A table that is not registered has no name but the id it was asked by; its own
+            # delete then refuses it as not found.
+            return str(table_id) if found is None else found["table_name"]
+
+        return await delete_each(
+            ids, _name, lambda table_id: _single().delete_table(info, table_id)
+        )
+
+    @strawberry.mutation
+    async def delete_relationships(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several relationships deleted in one call, each by deleteRelationship."""
+        from provisa.api.admin._bulk_delete import delete_each, relationship_name
+
+        require_capability(info, "create_relationship")
+        return await delete_each(
+            ids, relationship_name, lambda i: _single().delete_relationship(info, i)
+        )
+
+    @strawberry.mutation
+    async def delete_metrics(
+        self, info: StrawberryInfo, names: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several metrics deleted in one call, each by deleteMetric."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "table_registration")
+        return await delete_each(names, same_name, lambda n: _single().delete_metric(info, n))
+
+    @strawberry.mutation
+    async def delete_sources(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several sources deleted in one call, each by deleteSource."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "source_registration")
+        return await delete_each(ids, same_name, lambda i: _single().delete_source(info, i))
+
+    @strawberry.mutation
+    async def delete_roles(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several roles deleted in one call, each by deleteRole."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "user_management")
+        return await delete_each(ids, same_name, lambda i: _single().delete_role(info, i))
+
+    @strawberry.mutation
+    async def delete_domains(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several domains deleted in one call, each by deleteDomain."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "org_settings")
+        return await delete_each(ids, same_name, lambda i: _single().delete_domain(info, i))
+
+    @strawberry.mutation
+    async def delete_data_products(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several data products deleted in one call, each by deleteDataProduct."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        require_capability(info, "data_product_rw")
+        return await delete_each(ids, same_name, lambda i: _single().delete_data_product(info, i))
+
+    @strawberry.mutation
+    async def delete_tags(
+        self, info: StrawberryInfo, ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several tags deleted in one call, each by deleteTag."""
+        from provisa.api.admin._bulk_delete import delete_each, same_name
+
+        _require_tag_editor(info)
+        return await delete_each(ids, same_name, lambda i: _single().delete_tag(info, i))
+
+    @strawberry.mutation
+    async def delete_scheduled_tasks(
+        self, info: StrawberryInfo, task_ids: list[str]
+    ) -> BulkDeleteResult:  # REQ-2240
+        """Several scheduled tasks deleted in one call, each by deleteScheduledTask."""
+        from provisa.api.admin._bulk_delete import delete_each, scheduled_task_name
+
+        require_capability(info, "org_settings")
+        return await delete_each(
+            task_ids,
+            scheduled_task_name,
+            lambda i: _single().delete_scheduled_task(info, i),
+        )
+
+    @strawberry.mutation
     async def delete_role(self, info: StrawberryInfo, id: str) -> MutationResult:  # REQ-1531
         from provisa.api.admin.capabilities import require_capability
         from provisa.core.repositories import role as role_repo
@@ -4900,7 +5378,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         from pydantic import ValidationError
 
         from provisa.api.admin.capabilities import require_capability
-        from provisa.core import model_change
+        from provisa.core import model_change, model_uri
         from provisa.core.models import Column as ColumnModel
         from provisa.core.models import Table as TableModel
         from provisa.core.repositories import table as table_repo
@@ -4953,7 +5431,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         refusal = write_grant_predicates_refusal(table_id, models, registry)
         if refusal is not None:
             return refusal
-        model_change.name("set", "write grants", f"on table {table_id}")
+        model_change.name(  # REQ-1524
+            "set write grants on",
+            model_change.uri(
+                model_uri.named_table_uri, row["domain_id"], row["alias"] or row["table_name"]
+            ),
+        )
         async with pool.acquire() as conn:
             await write_grant_repo.replace_for_table(
                 cast("Connection", conn), table_id, models, unheld=unheld
@@ -5779,6 +6262,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     select(
                         registered_tables.c.domain_id,
                         registered_tables.c.table_name,
+                        registered_tables.c.alias,
                         registered_tables.c.materialize,
                     ).where(registered_tables.c.id == table_id)
                 )
@@ -5794,9 +6278,14 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _unread = await _table_unread(info, table_id)  # REQ-2152
             if _unread is not None:
                 return _unread
-            from provisa.core import model_change
+            from provisa.core import model_change, model_uri
 
-            model_change.name("update", "table draft", row.table_name)  # REQ-1524
+            model_change.name(  # REQ-1524
+                "update draft of",
+                model_change.uri(
+                    model_uri.named_table_uri, row.domain_id, row.alias or row.table_name
+                ),
+            )
             await conn.execute_core(
                 _update(registered_tables)
                 .where(registered_tables.c.id == table_id)

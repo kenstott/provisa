@@ -919,7 +919,7 @@ start_backend() {
     # Bind 0.0.0.0 under WSL so Windows Claude Desktop can reach the backend via the WSL VM IP
     # (the localhost relay drops MCP's streamed response); loopback-only otherwise.
     PROVISA_MCP_HOST="${PROVISA_MCP_HOST:-$(is_wsl && echo 0.0.0.0 || echo 127.0.0.1)}"
-    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-admin}"
+    PROVISA_MCP_ROLE="${PROVISA_MCP_ROLE:-org_admin}"
     PROVISA_MCP_BRIDGE_COMMAND="${PROVISA_MCP_BRIDGE_COMMAND:-$SCRIPT_DIR/.venv/bin/python}"
   )
   # Native tier: in-process DuckDB engine + embedded fakeredis, so no Trino/Redis

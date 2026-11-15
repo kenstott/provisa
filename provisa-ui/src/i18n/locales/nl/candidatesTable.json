@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "Door AI voorgestelde relaties",
+    "heading": "Voorgestelde relaties",
     "colName": "Naam",
     "colSource": "Bron",
     "colTarget": "Doel",
@@ -10,6 +10,23 @@
     "accept": "Accepteren",
     "reject": "Afwijzen",
     "acceptAria": "Voorgestelde relatie {{name}} accepteren",
-    "rejectAria": "Voorgestelde relatie {{name}} afwijzen"
+    "rejectAria": "Voorgestelde relatie {{name}} afwijzen",
+    "acceptAll": "Alles accepteren",
+    "rejectAll": "Alles afwijzen",
+    "acceptAllTitle": "Alle voorstellen accepteren",
+    "rejectAllTitle": "Alle voorstellen afwijzen",
+    "acceptAllConsequence": "Het {{count}} vermelde voorstel accepteren? Het wordt een geregistreerde relatie.",
+    "acceptAllConsequence_other": "Alle {{count}} vermelde voorstellen accepteren? Elk wordt een geregistreerde relatie.",
+    "rejectAllConsequence": "Het {{count}} vermelde voorstel afwijzen? Het wordt niet opnieuw voorgesteld tot de afwijzingen zijn gewist.",
+    "rejectAllConsequence_other": "Alle {{count}} vermelde voorstellen afwijzen? Ze worden niet opnieuw voorgesteld tot de afwijzingen zijn gewist.",
+    "acceptedAll": "{{count}} voorstel geaccepteerd.",
+    "acceptedAll_other": "{{count}} voorstellen geaccepteerd.",
+    "rejectedAll": "{{count}} voorstel afgewezen.",
+    "rejectedAll_other": "{{count}} voorstellen afgewezen.",
+    "acceptFailed": "{{count}} voorstel kon niet worden geaccepteerd:",
+    "acceptFailed_other": "{{count}} voorstellen konden niet worden geaccepteerd:",
+    "rejectFailed": "{{count}} voorstel kon niet worden afgewezen:",
+    "rejectFailed_other": "{{count}} voorstellen konden niet worden afgewezen:",
+    "failedOne": "{{name}}: {{error}}"
   }
 }

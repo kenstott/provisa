@@ -37,6 +37,7 @@ const term: GlossaryTermDetail = {
   id: 1,
   name: "Customer",
   definition: null,
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -69,6 +70,7 @@ const term: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 /** ``term`` as the ontology's query reads it around the term: its neighbours, its column and

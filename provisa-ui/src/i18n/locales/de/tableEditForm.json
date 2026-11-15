@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "Bricht eine Aktualisierung ab und behält die vorherige Kopie, wenn der letzte Lauf einer Prüftabelle, die eine der Eingaben dieser Ansicht prüft, fehlgeschlagen ist. Läuft vor der obigen Vorabprüfung; beide müssen fortfahren.",
     "holdOnFailingChecksShowCode": "Code anzeigen",
     "holdOnFailingChecksHideCode": "Code ausblenden",
-    "holdOnFailingChecksCodeHelp": "Die Prüfung, die diese Option anwendet. Kopieren Sie sie in die obige Vorabprüfung, um sie zu ändern."
+    "holdOnFailingChecksCodeHelp": "Die Prüfung, die diese Option anwendet. Kopieren Sie sie in die obige Vorabprüfung, um sie zu ändern.",
+    "discoverHint": "Beim Speichern werden die Spalten der Live-Quelle gelesen und die fehlenden zu dieser Tabelle hinzugefügt; ihre vorhandenen Spalten bleiben unverändert. Eine hinzugefügte Spalte ist für keine Rolle sichtbar, bis sie freigegeben wird."
   }
 }

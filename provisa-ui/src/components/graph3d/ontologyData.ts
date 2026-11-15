@@ -31,7 +31,8 @@ import {
   type Selection,
   type Where,
 } from "../../api/metaGraph";
-import type { MaskEntry } from "../../lib/masks";
+import { COLUMN_FACTS, columnFacts, facts, type ColumnFacts } from "./columnFacts";
+import { searchWhere } from "./ontologySearch";
 import type { ProductInput, ProductLineage } from "../../api/lineage";
 import { catalogTableName, relationName } from "../../naming";
 import { TERM_STATUSES } from "./graphModel";
@@ -44,6 +45,8 @@ import type {
   QueryScope,
   TermStatus,
 } from "./graphModel";
+
+export { COLUMN_FACTS, columnFacts, facts };
 
 /** A product's node id. */
 export const productNode = (id: string) => `p:${id}`;
@@ -58,9 +61,6 @@ export const TERM_FACTS: Selection = {
   rels: { experts: { sel: { fields: ["user_id", "kind"] } } },
 };
 
-/** A column's facts: its type, description and masks (its sensitivity is read beside them). */
-export const COLUMN_FACTS = ["data_type", "description", "masks"];
-
 /** A table's facts: its source and description, and its checkers' latest scans (its quality). */
 export const TABLE_FACTS: Selection = {
   fields: ["source_id", "description"],
@@ -72,18 +72,17 @@ export const TABLE_FACTS: Selection = {
 /** A product's facts: its status and owner (its members are counted from the graph). */
 export const PRODUCT_FACTS = ["status", "owner_role"];
 
+/** A table's columns by their keys alone: how many the role reads, so a term's graph offers to
+ * expand a table only when it has columns beyond those its terms reach (a product's graph reads
+ * its member tables' columns whole). */
+const COLUMN_COUNT: NonNullable<Selection["rels"]> = {
+  tableColumns: { to: "table_columns", sel: { fields: ["column_key"] } },
+};
+
 /** A column's or a table's tags, which the Product map's tag filter judges. */
 const TAGS: NonNullable<Selection["rels"]> = {
   tags: { sel: { fields: ["tag_id"] } },
 };
-
-/** A column's facts as COLUMN_FACTS reads them. */
-interface ColumnFacts {
-  dataType?: string | null;
-  description?: string | null;
-  // table_columns.masks: the ordered mask list (REQ-2059), as JSON.
-  masks?: unknown;
-}
 
 /** A table's facts as TABLE_FACTS reads them. */
 interface TableFacts {
@@ -94,29 +93,6 @@ interface TableFacts {
 
 interface Tagged {
   tags?: { tagId: string }[] | null;
-}
-
-/** ``info`` on a node, its facts not read left out; nothing when none was read. */
-export function facts(info: NodeInfo): { info?: NodeInfo } {
-  const kept = Object.fromEntries(
-    Object.entries(info).filter(([, v]) => v !== undefined && v !== null && v !== ""),
-  ) as NodeInfo;
-  return Object.keys(kept).length === 0 ? {} : { info: kept };
-}
-
-/** A column's facts, as COLUMN_FACTS reads them. */
-export function columnFacts(c: ColumnFacts): NodeInfo {
-  // A JSON column comes back as its text or as its value, as the role's schema types it
-  // (asProduct reads custom_properties the same way).
-  const masks = (typeof c.masks === "string" ? JSON.parse(c.masks) : c.masks) as
-    | MaskEntry[]
-    | null
-    | undefined;
-  return {
-    dataType: c.dataType ?? undefined,
-    description: c.description ?? undefined,
-    masked: masks == null ? undefined : masks.some((m) => m.mask !== null),
-  };
 }
 
 /** A table's facts, as TABLE_FACTS reads them: its quality is its checkers' worst latest scan. */
@@ -263,18 +239,6 @@ function related(s: QueryScope): Where {
   };
 }
 
-/** A search item as an ILIKE pattern: anywhere in the text, its own % _ and \\ taken literally. */
-const anywhere = (item: string) => `%${item.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
-
-/** REQ-2143: the terms the page's search matches, searchItems' rule -- any item, in the name or the
- * definition, whatever its case. */
-export function searchWhere(items: string[]): Where {
-  const any: Where[] = [];
-  for (const i of items)
-    any.push({ name: { ilike: anywhere(i) } }, { definition: { ilike: anywhere(i) } });
-  return { _or: any };
-}
-
 const TERM_FIELDS = [
   "id",
   "name",
@@ -287,45 +251,37 @@ const TERM_FIELDS = [
   "identity_gap",
 ];
 
-/** The hops from a product to its own terms, the root a product's focus reads: its tables (1),
- * their columns (2) and the terms tied to them (3), as reach() and laneDiagram count them. */
-export const PRODUCT_TERM_HOPS = 3;
-
-/** How many steps across the term links ``s``'s hops take from the terms at its root. A search's
- * matches and a term's focus are at hop 0, so each hop is a step. A product's own terms are
- * PRODUCT_TERM_HOPS from it, so only the hops past them step across a link: read further, each
- * level nested both ways, the query grows some 2.5 times a level for nothing drawn. */
+/** How many steps across the term links ``s``'s hops take from the terms at its root: a search's
+ * matches, a term's focus, or a product's own terms (those its tables' columns are, and those its
+ * tables are), each read at no hop (REQ-2174, amended 2026-11-12, A HOP IS A STEP BETWEEN TERMS).
+ * Infinity (All) reads to the end of the connected part. */
 export function termLevels(s: Pick<QueryScope, "search" | "focus" | "depth">): number {
   if (s.search.length === 0 && s.focus === null) return 0;
-  return focusProduct(s) === null ? s.depth : Math.max(0, s.depth - PRODUCT_TERM_HOPS);
+  return s.depth;
 }
 
-/** A term's selection at ``level`` steps from the search's matches or the focus's terms. Under a
- * search or a focus the terms a term's edges reach are read with it, a level further, to
- * termLevels: a term at the last level is read with its edges' ends alone, so an edge between two
- * of them is drawn and nothing past them is. With neither every term is read at level 0, its
- * edges' ends by id. */
-function termSelection(s: QueryScope, level: number): Selection {
+/** A term's selection: its edges with their ends by id, and what it touches -- its grounding, drawn
+ * with every term whatever the hop it is read at (REQ-2174, amended 2026-11-12). Under a search or
+ * a focus a hop's terms are read with their edges both ways, each edge's end kept by the filters,
+ * so the next hop reads the ends no hop has read (readOntology); an edge to a term no hop read has
+ * no end to draw. With neither every term is read at the root, the edges leaving it. */
+function termSelection(s: QueryScope): Selection {
   const depth = termLevels(s);
-  const last = level >= depth;
   const kept = termKept(s);
   const rels: NonNullable<Selection["rels"]> = {};
-  const end = (side: "targetTerm" | "sourceTerm") => ({
-    [side]: { sel: last ? { fields: ["id"] } : termSelection(s, level + 1) },
-  });
   const edgeWhere = (other: "target_term" | "source_term"): Where | undefined =>
     all([
       ...(s.edgeTypes.length === 0 ? [] : [{ rel_type: { in: s.edgeTypes } }]),
       // Under a search the term an edge reaches is read: one the filters leave out is not.
       ...(depth > 0 && kept ? [{ [other]: kept }] : []),
     ]);
-  // A term's edges are read with it, from the term they leave (each edge once), so the view is one
-  // query: terms with their edges to other terms. An edge to a term not read has no end to draw.
+  // A term's edges are read with it, each end by its id: an end the role cannot read is null, and
+  // an edge to a term not read has no end to draw.
   if (s.layers.has("ontology")) {
     rels.edgesOut = {
       sel: {
         fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-        rels: end("targetTerm"),
+        rels: { targetTerm: { sel: { fields: ["id"] } } },
       },
       where: edgeWhere("target_term"),
     };
@@ -334,61 +290,60 @@ function termSelection(s: QueryScope, level: number): Selection {
       rels.edgesIn = {
         sel: {
           fields: ["id", "from_term_id", "to_term_id", "rel_type"],
-          rels: end("sourceTerm"),
+          rels: { sourceTerm: { sel: { fields: ["id"] } } },
         },
         where: edgeWhere("source_term"),
       };
   }
-  // What a term touches is a hop past it: the last level's is past the neighbourhood.
-  if (!last || depth === 0) {
-    // A class term's tables are the ontology's: what the term names the rows of.
-    if (s.layers.has("ontology"))
-      rels.tables = {
-        // A class term's table has no columns drawn: its product is read only to be named.
-        sel: {
-          fields: ["id", "table_name", "domain_id"],
-          ...(productsNamed(s) ? { rels: productOf(s) } : {}),
-        },
-        where: inDomains(s.domains),
-      };
-    if (s.layers.has("domains"))
-      rels.domains = {
-        sel: { fields: ["domain_id"] },
-        where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
-      };
-    if (s.layers.has("columns"))
-      rels.refs = {
-        sel: {
-          fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
-          rels: {
-            // REQ-2174: the column's and its table's facts, for the hover card and detail panel;
-            // under the Product map their tags too, which its tag filter judges.
-            column: {
-              sel: {
-                fields: COLUMN_FACTS,
-                rels: {
-                  sensitivity: { sel: { fields: ["tags"] } },
-                  ...(s.products ? TAGS : {}),
-                },
+  // What a term touches comes with it at no hop: its grounding.
+  // A class term's tables are the ontology's: what the term names the rows of.
+  if (s.layers.has("ontology"))
+    rels.tables = {
+      // A class term's table has no columns drawn: its product is read only to be named.
+      sel: {
+        fields: ["id", "table_name", "domain_id"],
+        ...(productsNamed(s) ? { rels: productOf(s) } : {}),
+      },
+      where: inDomains(s.domains),
+    };
+  if (s.layers.has("domains"))
+    rels.domains = {
+      sel: { fields: ["domain_id"] },
+      where: inDomains(s.domains.length === 0 ? [] : [...s.domains, ENTERPRISE_DOMAIN]),
+    };
+  if (s.layers.has("columns"))
+    rels.refs = {
+      sel: {
+        fields: ["column_key", "column_name", "table_id", "table_name", "domain_id"],
+        rels: {
+          // REQ-2174: the column's and its table's facts, for the hover card and detail panel;
+          // under the Product map their tags too, which its tag filter judges.
+          column: {
+            sel: {
+              fields: COLUMN_FACTS,
+              rels: {
+                sensitivity: { sel: { fields: ["tags"] } },
+                ...(s.products ? TAGS : {}),
               },
             },
-            registeredTable: {
-              to: "registered_tables",
-              sel: {
-                fields: ["id", ...TABLE_FACTS.fields],
-                rels: {
-                  ...TABLE_FACTS.rels,
-                  ...(s.products ? TAGS : {}),
-                  ...productOf(s),
-                  ...relationships(s),
-                },
+          },
+          registeredTable: {
+            to: "registered_tables",
+            sel: {
+              fields: ["id", ...TABLE_FACTS.fields],
+              rels: {
+                ...TABLE_FACTS.rels,
+                ...(s.products ? TAGS : {}),
+                ...productOf(s),
+                ...relationships(s),
+                ...(s.products ? {} : COLUMN_COUNT),
               },
             },
           },
         },
-        where: inDomains(s.domains),
-      };
-  }
+      },
+      where: inDomains(s.domains),
+    };
   // REQ-2174: its experts, its stewards on the graph's hover card and detail panel.
   rels.experts = { sel: { fields: ["user_id", "kind"] } };
   return { fields: TERM_FIELDS, rels };
@@ -414,16 +369,49 @@ function focusWhere(focus: string): Where {
  * and under a focus those it starts from. */
 function rootWhere(s: QueryScope): Where | undefined {
   const kept = termKept(s);
+  const searched = searchWhere(s.search);
   return all([
     ...(kept ? [kept] : []),
     ...(s.orphans ? [] : [related(s)]),
-    ...(s.search.length > 0 ? [searchWhere(s.search)] : []),
+    ...(searched ? [searched] : []),
     ...(s.focus !== null ? [focusWhere(s.focus)] : []),
   ]);
 }
 
 function termsField(m: MetaReader, s: QueryScope): string | null {
-  return rootField(m, "_terms", termSelection(s, 0), rootWhere(s));
+  // Under a search or a focus the root's terms are hop 0; else they are all there is.
+  return rootField(m, "_terms", termSelection(s), rootWhere(s));
+}
+
+/** REQ-2174: the terms hop ``hop`` of ``s``'s neighbourhood reads -- ``ids``, the terms the last
+ * hop's edges reach that no hop has read -- with their edges and what they touch; null when the
+ * role cannot read the terms. */
+export function ontologyHopQuery(
+  m: MetaReader,
+  s: QueryScope,
+  hop: number,
+  ids: number[],
+): string | null {
+  const field = hopField(m, s, ids);
+  return field === null ? null : operation(`OntologyHop${hop}`, [field]);
+}
+
+function hopField(m: MetaReader, s: QueryScope, ids: number[]): string | null {
+  return rootField(m, "_terms", termSelection(s), { id: { in: ids } });
+}
+
+/** REQ-2136, REQ-2174: what a snippet opens as -- one query of what it read: the root's fields
+ * (its terms, whatever the count found) and each hop's terms, ``hops[i]`` the ids hop i + 1 read,
+ * answered under ``_termsHop<n>``. Each term is named once, at the hop that read it, so the query
+ * grows with what is drawn, as the reads do; null when the role cannot read the terms. */
+export function ontologyOpenedQuery(m: MetaReader, s: QueryScope, hops: number[][]): string | null {
+  const root = ontologyFields(m, s, true);
+  const read = hops.map((ids) => hopField(m, s, ids));
+  if (root === null || read.some((f) => f === null)) return null;
+  return operation("Ontology", [
+    ...root,
+    ...read.map((f, i) => (f as string).replace(/^_terms:/, `_termsHop${i + 1}:`)),
+  ]);
 }
 
 /** REQ-2143: how many terms the view's query would read at its root -- the matches under a search,
@@ -512,6 +500,19 @@ function memberQuality(s: QueryScope): NonNullable<Selection["rels"]> {
     : {};
 }
 
+/** A member table's columns: read under Columns, and always for a product's own snippet; the
+ * whole Product map reads none until Columns is on (REQ-2174, amended 2026-11-12, THE PRODUCT MAP
+ * OPENS ON PRODUCTS). */
+function memberColumns(s: QueryScope): NonNullable<Selection["rels"]> {
+  const sel = {
+    fields: ["column_name", "column_key", ...COLUMN_FACTS],
+    rels: { glossaryRef: { sel: { fields: ["term_id"] } }, ...TAGS },
+  };
+  return s.focus !== null || s.layers.has("columns")
+    ? { tableColumns: { to: "table_columns", sel } }
+    : {};
+}
+
 function productsField(m: MetaReader, s: QueryScope): string | null {
   const memberDomain = inDomains(s.domains);
   return rootField(
@@ -534,13 +535,7 @@ function productsField(m: MetaReader, s: QueryScope): string | null {
                     ...TABLE_FACTS.rels,
                     ...TAGS,
                     ...memberQuality(s),
-                    tableColumns: {
-                      to: "table_columns",
-                      sel: {
-                        fields: ["column_name", "column_key", ...COLUMN_FACTS],
-                        rels: { glossaryRef: { sel: { fields: ["term_id"] } }, ...TAGS },
-                      },
-                    },
+                    ...memberColumns(s),
                     ...relationships(s),
                   },
                 },
@@ -571,34 +566,32 @@ export function readsProducts(s: QueryScope): boolean {
   );
 }
 
+/** Whether ``s`` reads the terms: always, but for the whole Product map unsearched, which reads
+ * them only under Ontology or Domains (REQ-2174, amended 2026-11-12, THE PRODUCT MAP OPENS ON
+ * PRODUCTS): opened on its products, it reads no term. */
+export function readsTerms(s: QueryScope): boolean {
+  const whole = s.products && s.focus === null && s.search.length === 0;
+  return !whole || s.layers.has("ontology") || s.layers.has("domains");
+}
+
 /** The ontology's one query for ``s``: its terms, each with the edges leaving it under the
  * Ontology layer, what it grounds, and those tables' data products under Data, with the data
  * products readsProducts says; null when the role cannot read the terms. A part the role cannot
  * read is left out. Without ``terms`` (the count found none at the root, so none nests under it)
  * it reads the products alone, and is null when it reads none. */
 export function ontologyQuery(m: MetaReader, s: QueryScope, terms = true): string | null {
-  const termsRead = termsField(m, s);
-  if (termsRead === null) return null;
-  const products = readsProducts(s) ? productsField(m, s) : null;
-  const fields = [terms ? termsRead : null, products].filter((f): f is string => f !== null);
-  return fields.length === 0 ? null : operation("Ontology", fields);
+  const fields = ontologyFields(m, s, terms);
+  return fields === null || fields.length === 0 ? null : operation("Ontology", fields);
 }
 
-/** Every term the query read, at whatever level of a search's neighbourhood, once: a term read at
- * two levels keeps what the fuller read holds. */
-export function flatTerms(rows: TermRow[]): TermRow[] {
-  const byId = new Map<number, TermRow>();
-  const visit = (t: TermRow) => {
-    const seen = byId.get(t.id);
-    // The fuller read: a nearer level reads what a term touches, the last its edges' ends alone.
-    if (!seen || Object.keys(t).length > Object.keys(seen).length) byId.set(t.id, t);
-    for (const e of t.edgesOut ?? [])
-      if (e.targetTerm && "name" in e.targetTerm) visit(e.targetTerm as TermRow);
-    for (const e of t.edgesIn ?? [])
-      if (e.sourceTerm && "name" in e.sourceTerm) visit(e.sourceTerm as TermRow);
-  };
-  rows.forEach(visit);
-  return [...byId.values()];
+/** ontologyQuery's root fields; null when the role cannot read the terms. */
+function ontologyFields(m: MetaReader, s: QueryScope, terms: boolean): string[] | null {
+  const termsRead = readsTerms(s) ? termsField(m, s) : undefined;
+  if (termsRead === null) return null;
+  const products = readsProducts(s) ? productsField(m, s) : null;
+  return [terms ? termsRead : undefined, products].filter(
+    (f): f is string => typeof f === "string",
+  );
 }
 
 /** The edges the terms were read with, each once: from the term it leaves or the one it reaches. */
@@ -669,10 +662,10 @@ export interface TermRow {
   domains?: { domainId: string }[] | null;
   // Its experts (its stewards); null when it has none.
   experts?: { userId: string; kind: string }[] | null;
-  // Under Ontology: the edges leaving the term (null when none; see rowsOf).
-  // Under a search, the term an edge reaches is read in full to the neighbourhood's depth.
-  edgesOut?: (TermEdgeRow & { targetTerm?: TermRow | { id: number } | null })[] | null;
-  edgesIn?: (TermEdgeRow & { sourceTerm?: TermRow | { id: number } | null })[] | null;
+  // Under Ontology: the edges leaving the term (null when none; see rowsOf), each end by its id
+  // (null where the role cannot read it). Under a search or a focus, the edges reaching it too.
+  edgesOut?: (TermEdgeRow & { targetTerm?: { id: number } | null })[] | null;
+  edgesIn?: (TermEdgeRow & { sourceTerm?: { id: number } | null })[] | null;
   // REQ-2130 (class grounding): the tables whose rows the term names.
   tables?:
     | { id: number; tableName: string; domainId: string; dataProductTables?: Memberships }[]
@@ -692,6 +685,8 @@ export interface TermRow {
                 dataProductTables?: Memberships;
                 // Under the Product map's Tables (with Columns).
                 sourceRelationships?: RelationshipRow[] | null;
+                // By the Ontology preset's rules: its columns' keys, which count them.
+                tableColumns?: { columnKey: string }[] | null;
               })
           | null;
       }[]
@@ -774,6 +769,7 @@ function builder() {
       if (n.inProduct) seen.inProduct = true;
       // Met first where its facts were not read (a class term's table): they are read here.
       if (n.info && !seen.info) seen.info = n.info;
+      if (n.columns !== undefined && seen.columns === undefined) seen.columns = n.columns;
     }
   };
   const edge = (
@@ -907,6 +903,7 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
         stored: true,
         layers: [],
         ...(r.registeredTable ? facts(tableFacts(r.registeredTable)) : {}),
+        ...columnCount(r.registeredTable?.tableColumns),
       });
       // Its sensitivity: its row in sensitive_coverage when sensitive; absent when not read.
       const sensitivity = r.column ? rowsOf(r.column.sensitivity) : undefined;
@@ -938,11 +935,17 @@ export function glossaryGraph(terms: TermRow[], edges: TermEdgeRow[]): GraphData
   return b.graph();
 }
 
+/** How many columns a table has, from its columns' keys as read; nothing when they were not. */
+function columnCount(keys: { columnKey: string }[] | null | undefined): { columns?: number } {
+  const rows = rowsOf(keys);
+  return rows === undefined ? {} : { columns: rows.length };
+}
+
 /** The graph the ontology's query answer draws, under the rules ``s`` reads it by: each term once
- * (a search's or a focus's neighbourhood is read nested, a level to each hop), with its edges --
+ * (readOntology reads a search's or a focus's neighbourhood a hop at a time), with its edges --
  * the Ontology preset's term reach, or the Product map's with its products. */
 export function ontologyGraph(rows: OntologyRows, s?: Pick<QueryScope, "products">): GraphData {
-  const terms = flatTerms(rows._terms ?? []);
+  const terms = rows._terms ?? [];
   return s?.products
     ? productMapGraph(terms, termEdges(terms), rows.data_products ?? [])
     : glossaryGraph(terms, termEdges(terms));

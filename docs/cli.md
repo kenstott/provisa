@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/metadata-export/publish`, the endpoint the Admin tab's **Publish now** button calls, so both paths send the same full snapshot.
+Trigger the running server's on-demand metadata publish. The command posts to `POST /admin/syncing/publish`, the publish the Syncing page's **Publish now** runs, to every entry whose direction includes Export, so both paths send the same full snapshot.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]
@@ -223,7 +223,7 @@ provisa api PUT /admin/config \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN"
 
 # Trigger a metadata publish and pipe the JSON response through jq
-provisa api POST /admin/metadata-export/publish \
+provisa api POST /admin/syncing/publish \
   --api "$PROVISA_API_URL" --token "$PROVISA_API_TOKEN" | jq .
 ```
 

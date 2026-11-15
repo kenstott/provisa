@@ -449,7 +449,7 @@ write_protocol_overlay() {
     # MCP must bind 0.0.0.0 to be reachable from outside the container; role picks
     # the query identity (defaults set by the deploy env).
     env="${env}      PROVISA_MCP_HOST: \"0.0.0.0\""$'\n'
-    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-admin}\""$'\n'
+    env="${env}      PROVISA_MCP_ROLE: \"${PROVISA_MCP_ROLE:-org_admin}\""$'\n'
   fi
 
   if [ -z "$ports" ]; then

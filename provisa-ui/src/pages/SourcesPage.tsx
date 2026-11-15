@@ -22,7 +22,7 @@ import {
   FormRead,
   FormSections,
 } from "../components/form/FormLayout";
-import React, { useState, useEffect, useMemo, type ReactNode } from "react";
+import React, { useState, useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Group, Select, Table, Text, TextInput } from "@mantine/core";
@@ -38,6 +38,7 @@ import {
   useUpdateSource,
   useRenameSource,
   useDeleteSource,
+  useDeleteSources,
   useUpdateSourceCache,
   useUpdateSourceLoadProtection,
   useUpdateSourceAllowedDomains,
@@ -119,15 +120,19 @@ import { SourceOperations } from "./sources/SourceOperations";
 import { shownSourceSections, type SourceSection } from "./sources/sourceSections";
 import {
   EMPTY_CDC,
+  emptySourceForm,
   fetchRemoteSeed,
   hasRemoteSeed,
   remoteAuth,
   seedSource,
   type RemoteSeed,
+  type SourceSeed,
 } from "./sources/sourceSeed";
+import { duplicateRemote, duplicateSeed } from "./sources/sourceDuplicate";
 import { PanelWorking } from "./sources/PanelWorking";
 import { AfterSaveSteps } from "./sources/AfterSaveSteps";
 import { PanelActions, SplitPane } from "../components/list/SplitPane";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { ListTable, ListHead, ListRow, ListEmpty, ListItems } from "../components/list/ListTable";
@@ -139,6 +144,8 @@ import { SourceTypePicker, type PickerGroup } from "../components/SourceTypePick
 import { athenaHints } from "./sources/athena";
 import { matchesQuery } from "../lib/searchItems";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 export function SourcesPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -154,9 +161,13 @@ export function SourcesPage() {
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
   // The tables registered from each source, for its panel's Tables section.
   const { tables: registeredTables } = useTables({ columns: false });
-  // The section of the source's panel in view, the same in its read view and its edit form, and
-  // the form's sections that have fields for the source's kind (reported by the form as drawn).
-  const [section, setSection] = useState<SourceSection>("connection");
+  // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
+  // The section is the same in its read view and its edit form.
+  const detail = useDetailParam("sources");
+  const section = (detail.tab ?? "connection") as SourceSection;
+  const setSection = detail.setTab;
+  const expanded = detail.id;
+  // The form's sections that have fields for the source's kind (reported by the form as drawn).
   const [formSections, setFormSections] = useState<string[]>([]);
   const noteFormSections = (found: string[]) =>
     setFormSections((held) =>
@@ -196,7 +207,12 @@ export function SourcesPage() {
   // The edited source's mapping, so that a field the form shows is saved over it and the rest of
   // it is kept (a files source's Excel hints beside its crawl).
   const [editingSourceMappingJson, setEditingSourceMappingJson] = useState<string | null>(null);
-  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("expanded"));
+  // The source the create form was opened from by Duplicate, and whether a credential of it was
+  // left empty (the form then says it must be entered); null for an empty form.
+  const [duplicateOf, setDuplicateOf] = useState<{
+    source: string;
+    credentialsLeft: boolean;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sourceSearch, setSourceSearch] = useState(() => searchParams.get("search") ?? "");
   const [page, setPage] = useState(0);
@@ -257,30 +273,15 @@ export function SourcesPage() {
     ? { visible: filteredSources, hidden: 0 }
     : filterByRegion(filteredSources, regionSel, connected, (s) => s.region ?? null);
   const sortGroup = useListSortGroup(regionSources, listColumns, "sources");
-  const [form, setForm] = useState<SourceFormState>({
-    id: "",
-    type: opensKaggle ? "kaggle" : "postgresql",
-    host: "",
-    port: opensKaggle ? getDefaultPort("kaggle") : 5432,
-    database: "",
-    username: "",
-    password: "",
-    gqlNamingConvention: "",
-    cacheTtl: "",
-    cacheEnabled: true,
-    replicate: null,
-    region: null,
-    loadProtected: false,
-    offPeakWindow: "",
-    offPeakTz: "UTC",
-    changeSignal: "ttl",
-    sentinelPath: "",
-    freshnessGate: false,
-    maxLiveConcurrency: "",
-    path: "" as string,
-    allowedDomains: "" as string,
-    description: "" as string,
-  });
+  // REQ-2240: sources selected and deleted together.
+  const shownSourceIds = useMemo(() => regionSources.map((s) => s.id), [regionSources]);
+  const selection = useListSelection(shownSourceIds);
+  const deleteSources = useDeleteSources();
+  const [form, setForm] = useState<SourceFormState>(() =>
+    opensKaggle
+      ? { ...emptySourceForm(), type: "kaggle", port: getDefaultPort("kaggle") }
+      : emptySourceForm(),
+  );
   // Whether the server says a source of this kind states its Cache TTL itself (REQ-1907).
   const cacheTtlRequired = useCacheTtlRequired(form.type);
   // REQ-824: source-level CDC transport (Debezium), entered once per source
@@ -337,18 +338,7 @@ export function SourcesPage() {
       { replace: true },
     );
   };
-  const updateExpanded = (v: string | null) => {
-    setExpanded(v);
-    setSearchParams(
-      (p) => {
-        const n = new URLSearchParams(p);
-        if (v) n.set("expanded", v);
-        else n.delete("expanded");
-        return n;
-      },
-      { replace: true },
-    );
-  };
+  const updateExpanded = (v: string | null) => (v === null ? detail.close() : detail.open(v));
 
   // A new source's description is filled from what it is until one is typed; a registered source
   // (read or edited) shows the description it has.
@@ -369,7 +359,8 @@ export function SourcesPage() {
   }, [form.type, form.host, form.database, editingSourceId, showForm]);
 
   useEffect(() => {
-    if (!showForm || editingSourceId) return;
+    // A duplicate keeps the description of the source it was made from.
+    if (!showForm || editingSourceId || duplicateOf) return;
     if (!DB_DESCRIPTION_TYPES.has(form.type)) return;
     if (!form.host || !form.database || !form.username || !form.password) return;
     fetch("/admin/source-meta/db-description", {
@@ -398,6 +389,7 @@ export function SourcesPage() {
     form.password,
     editingSourceId,
     showForm,
+    duplicateOf,
   ]);
 
   const load = () => {
@@ -488,16 +480,18 @@ export function SourcesPage() {
     setSpPassword("");
   };
 
-  const handleTypeChange = (picked: string) => {
+  // The type picked, over the form's state `base`: the form's own, where its type is changed, or
+  // the empty form, where "+ Source" opens it.
+  const applyType = (picked: string, base: SourceFormState) => {
     // A connector the organization offers is made as a source of its own language.
     const offered = pickedConnector(picked, connectors);
     setConnector(offered);
     const type = offered ? offered.language : picked;
     // REQ-929: keep change_signal valid for the new type's capabilities.
     const signals = sourceChangeSignals(type);
-    const changeSignal = signals.includes(form.changeSignal) ? form.changeSignal : signals[0];
+    const changeSignal = signals.includes(base.changeSignal) ? base.changeSignal : signals[0];
     setForm({
-      ...form,
+      ...base,
       type,
       port: getDefaultPort(type),
       description: "",
@@ -511,11 +505,44 @@ export function SourcesPage() {
     setBrandSetup(brandSetupDefaults(type));
     resetSpFields();
   };
+  const handleTypeChange = (picked: string) => applyType(picked, form);
+
+  // "+ Source": the create form opens EMPTY, with the picked type's defaults. Nothing is read from
+  // the source selected in the list or the one last edited, whose settings the form's state held.
+  const openEmptyForm = (picked: string) => {
+    resetFormState();
+    applyType(picked, emptySourceForm());
+    setEditingSourceId(null);
+    setShowForm(true);
+  };
 
   // A source's stored settings into the form's state: the state its edit form opens with and its
   // read view shows. False when that state cannot be read whole (the error says why).
+  // A seed whose remote part (a remote API source's registration) is read after the form was
+  // reset or seeded again does not land in it: each reset and seed is a new generation.
+  const seedGeneration = useRef(0);
+  // While the seeded source's remote part is being read its form is not saved: a save would send
+  // the empty values the form holds meanwhile (an OpenAPI source's spec path, refused by the
+  // server). A read that fails leaves it unsaved, its error shown.
+  const [seedPending, setSeedPending] = useState(false);
   const seedFrom = (s: Source): boolean => {
-    const seed = seedSource(s, govdataCatalog);
+    const generation = ++seedGeneration.current;
+    const held = applySeed(seedSource(s, govdataCatalog));
+    setSeedPending(hasRemoteSeed(s.type));
+    if (hasRemoteSeed(s.type)) {
+      fetchRemoteSeed(s).then(
+        (r) => {
+          if (generation !== seedGeneration.current) return;
+          applyRemoteSeed(r);
+          setSeedPending(false);
+        },
+        (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      );
+    }
+    return held;
+  };
+
+  const applySeed = (seed: SourceSeed): boolean => {
     setForm(seed.form);
     setFilesTransport(seed.filesTransport);
     setCdc(seed.cdc);
@@ -535,11 +562,6 @@ export function SourcesPage() {
     setRssFeedUrl(seed.rss.feedUrl);
     setRssPollInterval(seed.rss.pollInterval);
     setRssUseSsl(seed.rss.useSsl);
-    if (hasRemoteSeed(s.type)) {
-      fetchRemoteSeed(s).then(applyRemoteSeed, (e: unknown) =>
-        setError(e instanceof Error ? e.message : String(e)),
-      );
-    }
     if (seed.govdataSubjects === null) {
       setError(t("sourceFormFieldsExtended.govdataSubjectsUnavailable"));
       return false;
@@ -600,35 +622,15 @@ export function SourcesPage() {
     }
   };
 
-  const handleCancelForm = () => {
-    setShowForm(false);
-    setEditingSourceId(null);
+  // Every part of the form's state at its default: what no source and no type has set.
+  const resetFormState = () => {
+    seedGeneration.current += 1;
+    setSeedPending(false);
+    setDuplicateOf(null);
     setEditingSourceHintsJson(null);
     setEditingSourceMappingJson(null);
-    setForm({
-      id: "",
-      type: "postgresql",
-      host: "",
-      port: 5432,
-      database: "",
-      username: "",
-      password: "",
-      gqlNamingConvention: "",
-      cacheTtl: "",
-      cacheEnabled: true,
-      replicate: null,
-      region: null,
-      loadProtected: false,
-      offPeakWindow: "",
-      offPeakTz: "UTC",
-      changeSignal: "ttl",
-      sentinelPath: "",
-      freshnessGate: false,
-      maxLiveConcurrency: "",
-      path: "",
-      allowedDomains: "",
-      description: "",
-    });
+    setConnector(null);
+    setForm(emptySourceForm());
     setFilesTransport("file://");
     setFilesAuthMode("userpass");
     setFilesCertPath("");
@@ -638,6 +640,8 @@ export function SourcesPage() {
     setAuthFields({});
     resetSpFields();
     setGovdataSubjects([]);
+    setSplunkDisableSsl(false);
+    setSplunkAuthMode("token");
     setWsUseSsl(false);
     setWsSubscribePayload("");
     setWsEventPath("");
@@ -645,6 +649,66 @@ export function SourcesPage() {
     setRssFeedUrl("");
     setRssPollInterval("");
     setRssUseSsl(true);
+    setGqlNamespace("");
+    setGqlCacheTtl("300");
+    setBrandSetup({});
+    setOpenapiSpecMode("path");
+    setOpenapiSpecPath("");
+    setOpenapiSpecInline("");
+    setOpenapiBaseUrl("");
+    setOpenapiCacheTtl("300");
+    setOpenapiPreview(null);
+    setOpenapiPreviewError(null);
+    setGrpcProtoPath("");
+    setGrpcServerAddress("");
+    setGrpcNamespace("");
+    setGrpcTls(false);
+    setGrpcImportPaths("");
+    setGrpcCacheTtl("300");
+    dbt.seed({
+      spec: "location",
+      location: "",
+      commandLine: "",
+      host: "",
+      accountId: "",
+      jobId: "",
+    });
+  };
+
+  const handleCancelForm = () => {
+    setShowForm(false);
+    setEditingSourceId(null);
+    resetFormState();
+  };
+
+  // Duplicate, from a source's panel head: the CREATE form, prefilled from the source under
+  // "<id>-copy" (editable; an id that exists is refused on save by the create). A credential is
+  // carried as the reference the source uses, or left empty with the form saying so; the
+  // source's tables are not copied: once saved, Register tables follows as for any new source.
+  const handleDuplicate = (s: Source) => {
+    resetFormState();
+    const generation = ++seedGeneration.current;
+    const { seed, credentialsLeft } = duplicateSeed(seedSource(s, govdataCatalog));
+    if (!applySeed(seed)) return;
+    setDuplicateOf({ source: s.id, credentialsLeft });
+    if (hasRemoteSeed(s.type)) {
+      fetchRemoteSeed(s).then(
+        (r) => {
+          if (generation !== seedGeneration.current) return;
+          const dropped = { any: false };
+          applyRemoteSeed(duplicateRemote(r, dropped));
+          if (dropped.any) setDuplicateOf({ source: s.id, credentialsLeft: true });
+        },
+        (e: unknown) => setError(e instanceof Error ? e.message : String(e)),
+      );
+    }
+    setAfterSave(null);
+    setDiscoverSourceId(null);
+    setDiscoverSourceType(null);
+    setMappingSourceId(null);
+    setMappingSourceType(null);
+    setEditingSourceId(null);
+    setShowForm(true);
   };
 
   const handleCreate = async (e: React.FormEvent) => {
@@ -1506,7 +1570,10 @@ export function SourcesPage() {
         form="sources-edit-form"
         saving={submitting}
         onCancel={handleCancelForm}
-        saveProps={{ "data-testid": "sources-edit-submit" }}
+        saveProps={{
+          "data-testid": "sources-edit-submit",
+          disabled: seedPending,
+        }}
         cancelProps={{ "data-testid": "sources-edit-cancel" }}
       />
     </FormLayout>
@@ -1634,6 +1701,19 @@ export function SourcesPage() {
             </label>
           </FormField>
         </FormIdentifiers>
+        {duplicateOf?.credentialsLeft && (
+          <FormField size="full">
+            <Alert
+              color="yellow"
+              variant="light"
+              py={4}
+              px="sm"
+              data-testid="sources-duplicate-note"
+            >
+              {t("sourcesPage.duplicateCredentialsNote", { source: duplicateOf.source })}
+            </Alert>
+          </FormField>
+        )}
         <SourceTypePicker
           opened={typePickerOpen}
           onClose={() => setTypePickerOpen(false)}
@@ -1698,7 +1778,9 @@ export function SourcesPage() {
                     </FormRead>
                   ) : null
                 }
+                // eslint-disable-next-line react-hooks/refs -- called on a press: the seed's generation ref is read then, and in the seed's promise, never while rendering
                 onEdit={() => handleEdit(s)}
+                onDuplicate={() => handleDuplicate(s)}
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
                 // REQ-2198: resolves once the list is read again without the source; the
                 // panel's Delete closes the panel and says why a failed one did not go through.
@@ -1763,10 +1845,7 @@ export function SourcesPage() {
             onClose={() => setAddPickerOpen(false)}
             groups={typeSelectData()}
             value={form.type}
-            onPick={(type) => {
-              handleTypeChange(type);
-              setShowForm(true);
-            }}
+            onPick={openEmptyForm}
           />
           <HelpBubble
             title={t("sourcesPage.purposeTitle")}
@@ -1809,7 +1888,17 @@ export function SourcesPage() {
             {/* REQ-1587: the page owns the vertical scroll, so the table's own scroller is the plain
                 horizontal one — a Table.ScrollContainer would become the scrollport the header sticks to
                 and, growing to its content, would never scroll vertically. */}
-            <ListTable minWidth={860} testId="sources-list">
+            <ListBulkBar
+              selection={selection}
+              nameOf={(id) => id}
+              onDelete={async (ids) => {
+                const result = await deleteSources(ids);
+                await refetchSources();
+                return result;
+              }}
+              testId="sources-bulk"
+            />
+            <ListTable minWidth={860} testId="sources-list" selection={selection}>
               <ListHead
                 sortGroup={sortGroup}
                 columns={[

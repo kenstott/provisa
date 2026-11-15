@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "Tracciata automaticamente dal vincolo FK",
-    "fkBadge": "FK",
+    "fkBadge": "Da FK",
+    "fkBadgeTitle": "Creata da una chiave esterna nell'origine",
     "yes": "Sì",
     "no": "No",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "Materializza",
     "excludeFromCypher": "Escludi da Cypher",
     "sqlName": "Nome SQL",
-    "autoTracked": "Tracciato automaticamente",
     "cardinalityWarning": "Attenzione: se questo join restituisce più di una riga per elemento padre, verrà usato solo il primo valore.",
     "toggleDetails": "Mostra/nascondi dettagli della relazione",
     "junctionBadge": "prop.",

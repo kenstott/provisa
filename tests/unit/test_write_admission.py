@@ -312,6 +312,56 @@ def test_a_merge_by_a_filtered_role_is_refused():
         )
 
 
+_MERGE_DELETES = [
+    "MERGE INTO sales.orders USING s ON sales.orders.id = s.id WHEN MATCHED THEN DELETE",
+    "MERGE INTO sales.orders USING s ON sales.orders.id = s.id "
+    "WHEN MATCHED THEN UPDATE SET region = s.region WHEN NOT MATCHED BY SOURCE THEN DELETE",
+]
+
+
+@pytest.mark.parametrize("sql", _MERGE_DELETES)
+def test_a_merge_that_deletes_needs_the_delete_grant(sql):
+    gov = _gov()
+    del gov.write_grants[1]["delete"]
+    with pytest.raises(WriteNotAdmitted, match="holds no delete grant"):
+        apply_governance(sql, gov)
+
+
+@pytest.mark.parametrize("sql", _MERGE_DELETES)
+def test_a_merge_that_deletes_under_a_narrowed_delete_grant_is_refused(sql):
+    from tests.rules import rule_of
+
+    gov = _gov()
+    gov.write_grants[1]["delete"]["rows"] = rule_of("region = 'east'")
+    with pytest.raises(WriteNotAdmitted, match="delete grant or D rule"):
+        apply_governance(sql, gov)
+
+
+@pytest.mark.parametrize("sql", _MERGE_DELETES)
+def test_a_merge_that_deletes_under_a_d_rule_is_refused(sql):
+    from tests.rules import rules_of
+
+    gov = _gov()
+    gov.write_rules = {"delete": rules_of({1: "region = 'east'"})}
+    with pytest.raises(WriteNotAdmitted, match="delete grant or D rule"):
+        apply_governance(sql, gov)
+
+
+@pytest.mark.parametrize("sql", _MERGE_DELETES)
+def test_a_merge_that_deletes_under_a_whole_delete_grant_is_admitted(sql):
+    assert "DELETE" in apply_governance(sql, _gov())
+
+
+def test_a_merge_that_deletes_nothing_needs_no_delete_grant():
+    gov = _gov()
+    del gov.write_grants[1]["delete"]
+    assert "MERGE" in apply_governance(
+        "MERGE INTO sales.orders USING s ON sales.orders.id = s.id "
+        "WHEN MATCHED THEN UPDATE SET region = s.region",
+        gov,
+    )
+
+
 def test_a_write_is_not_bounded_by_the_roles_row_ceiling(pg):
     """The ceiling bounds the rows a read returns. Applied to a write it failed with an error
     about having no SELECT to bound — which was, by accident, the only thing stopping a write by

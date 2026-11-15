@@ -17,17 +17,18 @@ expression here — an unparsable or non-aggregate expression is a hard error, n
 
 # Requirements: REQ-1317, REQ-1319, REQ-1320
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
 import sqlglot
 from sqlglot import expressions as exp
 from sqlglot.errors import SqlglotError
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.models import Metric
-from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.schema_org import metrics
+from provisa.core.repositories import retirement
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard
+from provisa.core.schema_org import glossary_terms, metrics
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -49,8 +50,15 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
     conn: "Connection", metric: Metric
 ) -> None:
     """Upsert a metric by name. The expression is validated on every write (hard error)."""
-    model_change.name("upsert", "metric", metric.name)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.metric_uri, metric.name))  # REQ-1524
     validate_expression(metric.expression)
+    # REQ-2248: a retired metric keeps its name; a save under it would bring it back.
+    held = (
+        await conn.execute_core(select(metrics.c.retired).where(metrics.c.name == metric.name))
+    ).fetchone()
+    if held is not None and held.retired:
+        raise retirement.RetiredNameTaken("metric", metric.name)
+    term_id = await _term_id(conn, metric) if metric.term is not None else None
     vals = {
         "name": metric.name,
         "expression": metric.expression,
@@ -59,6 +67,7 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
         "ai_context": metric.ai_context,  # REQ-1319
         "visible_to": list(metric.visible_to),
         "from_fact": metric.from_fact,  # REQ-1320
+        "term_id": term_id,  # REQ-2243
     }
     await conn.upsert(
         metrics,
@@ -71,18 +80,44 @@ async def upsert(  # REQ-1317, REQ-1320, REQ-1919
             "ai_context",
             "visible_to",
             "from_fact",
+            "term_id",
         ],
     )
 
 
+async def _term_id(conn: "Connection", metric: Metric) -> int:  # REQ-2243
+    """The id of the glossary term ``metric`` names; a name no term holds is refused."""
+    row = (
+        await conn.execute_core(
+            select(glossary_terms.c.id).where(glossary_terms.c.name == metric.term)
+        )
+    ).fetchone()
+    if row is None:
+        raise ValueError(
+            f"metric {metric.name!r} names the glossary term {metric.term!r}, which does not exist"
+        )
+    return row.id
+
+
+def _with_term():
+    """Each metric with the name of the glossary term it names (REQ-2243), None when none."""
+    return select(metrics, glossary_terms.c.name.label("term")).outerjoin(
+        glossary_terms, glossary_terms.c.id == metrics.c.term_id
+    )
+
+
 async def get(conn: "Connection", name: str) -> dict | None:  # REQ-1317
-    result = await conn.execute_core(select(metrics).where(metrics.c.name == name))
+    result = await conn.execute_core(_with_term().where(metrics.c.name == name))
     row = result.fetchone()
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-1317
-    result = await conn.execute_core(select(metrics).order_by(metrics.c.name))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-1317
+    """Every metric in service, by name; ``retired`` lists the retired ones instead (REQ-2248),
+    with who, when and why."""
+    result = await conn.execute_core(
+        _with_term().where(metrics.c.retired.is_(retired)).order_by(metrics.c.name)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -99,23 +134,41 @@ class MetricDeleteRefused(Exception):
         super().__init__(f"{self.lead}: {named}")
 
 
-async def delete(conn: "Connection", name: str) -> bool:  # REQ-1317, REQ-1918
-    """Delete one metric: THE delete, for every surface. False when there is no such metric.
+async def delete(  # REQ-1317, REQ-1918, REQ-2248
+    conn: "Connection", name: str, *, reason: str | None = None
+) -> bool:
+    """Delete one metric: THE delete, for every surface. It RETIRES the metric (REQ-2248): the
+    row, its name and its tag assignments are kept, the metric marked retired with ``reason``,
+    the acting person and the time. False when there is no such metric, or it is retired already.
 
     Refused (:class:`MetricDeleteRefused`), naming each, while a view is composed from it (its
     ``view_metrics`` lists the metric) or a view's SQL reads it as ``metrics.<name>``. One
-    transaction; no database cascade is relied on."""
-    model_change.name("delete", "metric", name)  # REQ-1524
+    transaction."""
+    model_change.name("retire", model_change.uri(model_uri.metric_uri, name))  # REQ-1524
     ref = ObjectRef("metric", name)
     async with conn.transaction():
-        if await get(conn, name) is None:
+        held = await get(conn, name)
+        if held is None or held["retired"]:
             return False
         blocking = await guard(conn, ref)
         if blocking:
             raise MetricDeleteRefused(name, blocking)
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(metrics).where(metrics.c.name == name))
+        await conn.execute_core(
+            update(metrics).where(metrics.c.name == name).values(**retirement.values(reason))
+        )
     return True
+
+
+async def restore(conn: "Connection", name: str) -> bool:  # REQ-2248
+    """Restore a retired metric: the same metric, its retirement cleared, computed again. False
+    when there is no such metric, or it is not retired."""
+    model_change.name("restore", model_change.uri(model_uri.metric_uri, name))  # REQ-1524
+    done = await conn.execute_core(
+        update(metrics)
+        .where(metrics.c.name == name, metrics.c.retired.is_(True))
+        .values(**retirement.cleared())
+    )
+    return done.rowcount == 1
 
 
 async def remove_where(conn: "Connection", *where) -> None:

@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "Связи, предложенные ИИ",
+    "heading": "Предлагаемые связи",
     "colName": "Имя",
     "colSource": "Источник",
     "colTarget": "Цель",
@@ -10,6 +10,23 @@
     "accept": "Принять",
     "reject": "Отклонить",
     "acceptAria": "Принять предложенную связь {{name}}",
-    "rejectAria": "Отклонить предложенную связь {{name}}"
+    "rejectAria": "Отклонить предложенную связь {{name}}",
+    "acceptAll": "Принять все",
+    "rejectAll": "Отклонить все",
+    "acceptAllTitle": "Принять все предложения",
+    "rejectAllTitle": "Отклонить все предложения",
+    "acceptAllConsequence": "Принять {{count}} предложение из списка? Оно станет зарегистрированной связью.",
+    "acceptAllConsequence_other": "Принять все предложения из списка ({{count}})? Каждое станет зарегистрированной связью.",
+    "rejectAllConsequence": "Отклонить {{count}} предложение из списка? Оно не будет предлагаться снова, пока отклонения не очищены.",
+    "rejectAllConsequence_other": "Отклонить все предложения из списка ({{count}})? Они не будут предлагаться снова, пока отклонения не очищены.",
+    "acceptedAll": "Принято предложений: {{count}}.",
+    "acceptedAll_other": "Принято предложений: {{count}}.",
+    "rejectedAll": "Отклонено предложений: {{count}}.",
+    "rejectedAll_other": "Отклонено предложений: {{count}}.",
+    "acceptFailed": "Не удалось принять предложение ({{count}}):",
+    "acceptFailed_other": "Не удалось принять предложения ({{count}}):",
+    "rejectFailed": "Не удалось отклонить предложение ({{count}}):",
+    "rejectFailed_other": "Не удалось отклонить предложения ({{count}}):",
+    "failedOne": "{{name}}: {{error}}"
   }
 }

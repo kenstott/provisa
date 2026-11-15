@@ -29,6 +29,7 @@ statement writes as literals are answered here, on every dialect, by provisa.cor
 
 from __future__ import annotations
 
+import datetime
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass, replace
 
@@ -37,7 +38,8 @@ import sqlglot.expressions as exp
 from provisa.core import pg_range
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES, Multirange, Range, RangeType
-from provisa.transpiler.pg_literals import values_cast
+from provisa.transpiler.pg_literals import array_input, values_cast
+from provisa.transpiler.polyfill import ranges as range_rows
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
     SubtypeOperationRefused,
@@ -165,6 +167,9 @@ _REDUCE = {
     "spark": "aggregate",
     "snowflake": "REDUCE",
 }
+#: The dialects an aggregate of ranges binds its group's joined texts on, read once: its fold
+#: written out at each read of them is more than Trino compiles (QUERY_EXCEEDED_COMPILER_LIMIT).
+_BOUND_ONCE = frozenset({"trino", "athena"})
 #: A dialect's row of sort keys, its sort of a list of rows, and how a row's field ``{n}`` of
 #: ``{a}`` is read: the dialects whose sort compares rows. Snowflake's ARRAY_SORT does not.
 _SORT = {
@@ -554,6 +559,42 @@ def _sign(a: _R, b: _R) -> exp.Expr:
     )
 
 
+#: Date32's last day, the day after which ClickHouse holds as itself.
+_DATE32_LAST = "2299-12-31"
+_YEAR_HELD = "(19[0-9][0-9]|2[0-2][0-9][0-9])"
+_CLOCK = r"( [0-9]{2}:[0-9]{2}(:[0-9]{2}([.][0-9]+)?)?)?"
+_OFFSET = r"([+-][0-9]{2}(:?[0-9]{2}){0,2})?"
+#: A row's text of a bound inside what ClickHouse holds, by its element: an ISO date of a year
+#: Date32 and DateTime64 hold, a time, and a timestamptz's offset.
+_ROW_HELD_TEXT = {
+    "date": f"^{_YEAR_HELD}-[0-9]{{2}}-[0-9]{{2}}$",
+    "timestamp": f"^{_YEAR_HELD}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}$",
+    "timestamptz": f"^{_YEAR_HELD}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}{_OFFSET}$",
+}
+#: A row's text this reads at all: an ISO date of any year (BC too), an infinity.
+_ROW_ISO_TEXT = {
+    "date": r"^(-?infinity|[0-9]{4,}-[0-9]{2}-[0-9]{2}( BC)?)$",
+    "timestamp": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}( BC)?)$",
+    "timestamptz": rf"^(-?infinity|[0-9]{{4,}}-[0-9]{{2}}-[0-9]{{2}}{_CLOCK}{_OFFSET}( BC)?)$",
+}
+#: An instant on DateTime64's first or last day whose offset may take it past: a negative offset
+#: on the last, a positive one on the first.
+_ROW_EDGES = (r"^2299-12-31 .*-[0-9:]+$", r"^1900-01-01 .*[+][0-9:]*[1-9][0-9:]*$")
+
+
+def _held_by_clickhouse(value: object, element: str) -> bool:  # object-ok: an element
+    """Whether ClickHouse's bound type holds a literal's ``value`` as itself."""
+    held = range_rows.HELD_ON_CLICKHOUSE.get(element)
+    if held is None:
+        return True  # a number, held as its digits
+    if not isinstance(value, datetime.date):
+        return False  # an infinity
+    if isinstance(value, datetime.datetime) and value.tzinfo is not None:
+        value = value.astimezone(datetime.timezone.utc).replace(tzinfo=None)
+    first, last, _ = held
+    return first <= value <= last
+
+
 class _Writer:
     """Everything that depends on the target dialect."""
 
@@ -612,7 +653,43 @@ class _Writer:
         return self.typed(node, rtype.element)
 
     def _literal_bound(self, value: object, rtype: RangeType) -> exp.Expr:  # object-ok: an element
+        if self.dialect == "clickhouse" and not _held_by_clickhouse(value, rtype.element):
+            # ClickHouse would clamp it to its type's end (REQ-2167: a bound, stated and enforced).
+            raised = self.raised("0A000", range_rows.outside_held(rtype.name))
+            return exp.Cast(this=raised, to=self.bound_type(rtype.element))
         return self.bound_from_text(_string(pg_range.element_text(value)), rtype.element)
+
+    def held_text(self, text: exp.Expr, value: exp.Expr, rtype: RangeType) -> exp.Expr:
+        """``value``, a bound ClickHouse reads from a row's ``text``, or PostgreSQL's 0A000 where
+        the text is a value outside what its bound type holds, which ClickHouse would hold at its
+        type's end: an infinity, a year before 1900 or after 2299, a year BC, and an instant on
+        the bound's first or last day whose offset may take it past (REQ-2167: a bound, stated
+        and enforced). A text in no ISO form, which this does not read, is refused by name."""
+        if self.dialect != "clickhouse" or rtype.element not in range_rows.HELD_ON_CLICKHOUSE:
+            return value
+        held = _ROW_HELD_TEXT[rtype.element]
+        iso = _ROW_ISO_TEXT[rtype.element]
+        outside = _and(
+            _not(_is_null(text)),
+            _or(
+                _not(_call("match", text, _string(held))),
+                *(
+                    _call("match", text, _string(edge))
+                    for edge in (_ROW_EDGES if rtype.element == "timestamptz" else ())
+                ),
+            ),
+        )
+        unread = _and(_not(_is_null(text)), _not(_call("match", text, _string(iso))))
+        bound = self.bound_type(rtype.element)
+        return _case(
+            [
+                (unread, exp.Cast(this=self.raised("0A000", range_rows.unread_bound(rtype.name)), to=bound)),
+                (outside, exp.Cast(
+                    this=self.raised("0A000", range_rows.outside_held(rtype.name)), to=bound
+                )),
+            ],
+            value,
+        )  # fmt: skip
 
     def raised(self, sqlstate: str, message: str) -> exp.Expr:
         """An expression of integer type raising PostgreSQL's error ``message``."""
@@ -667,6 +744,18 @@ class _Writer:
         if rtype.element != "date":
             return _plus(value, steps) if not _is_zero(steps) else value
         added = exp.DateAdd(this=value.copy(), expression=steps.copy(), unit=exp.Var(this="DAY"))
+        if self.dialect == "clickhouse" and not _is_zero(steps):
+            # Date32's last day: the day after it is held there as itself (REQ-2167: a bound,
+            # stated and enforced, of a day a row computes).
+            past = _and(
+                exp.GTE(this=value.copy(), expression=self.typed(_string(_DATE32_LAST), "date")),
+                exp.GT(this=steps.copy(), expression=_int(0)),
+            )
+            raised = self.raised("0A000", range_rows.outside_held(rtype.name))
+            return _case(
+                [(past, exp.Cast(this=raised, to=self.bound_type("date")))],
+                self.typed(added, "date"),
+            )
         return self.typed(added, "date")
 
     def step(self, value: exp.Expr, rtype: RangeType) -> exp.Expr:
@@ -716,9 +805,8 @@ class _Writer:
         upper_inf = _eq(_substring(text, _minus(_length(text), _int(1)), _int(1)), _string(","))
 
         def bound(written: exp.Expr) -> exp.Expr:
-            return self.bound_from_text(
-                exp.Nullif(this=written, expression=_string("")), rtype.element
-            )
+            text = exp.Nullif(this=written, expression=_string(""))
+            return self.held_text(text, self.bound_from_text(text, rtype.element), rtype)
 
         low, high = bound(lower_text), bound(upper_text)
         if rtype.discrete:
@@ -872,6 +960,8 @@ class _Writer:
         )
 
     def intersect(self, a: _R, b: _R) -> _R:
+        if _is_true(a.null) or _is_true(b.null):
+            return self.null_range(a.rtype)  # strict: and Trino types no NULL a form concatenates
         return _R(
             a.rtype,
             _or(a.null, b.null),
@@ -883,6 +973,8 @@ class _Writer:
     def minus(self, a: _R, b: _R) -> _R:
         """range_minus_internal: b reaching a's lower bound leaves what follows b, b reaching its
         upper what precedes b, both nothing, and b inside a with a left on both sides is refused."""
+        if _is_true(a.null) or _is_true(b.null):
+            return self.null_range(a.rtype)  # strict: and Trino types no NULL a form concatenates
         both = _both(a, b)
         l1l2, u1u2 = _ll(a, b), _uu(a, b)
         reaches_lower = _and(both, _gte0(l1l2), _lte0(_lu(a, b)))
@@ -1194,8 +1286,10 @@ class _Writer:
         self._list_form(rtype, operation)
 
         def step(state: exp.Expr, item: exp.Expr) -> exp.Expr:
-            met = self.intersect(self.parsed(state, rtype), self.parsed(item, rtype))
-            return self.text(replace(met, null=exp.false()))
+            a, a_bound = self._read_once(self.parsed(state, rtype))
+            b, b_bound = self._read_once(self.parsed(item, rtype))
+            met = self.intersect(a, b)
+            return self.bound(self.text(replace(met, null=exp.false())), [*a_bound, *b_bound])
 
         fold = self.reduce(self._ranges_list(joined), _string("(,)"), step, rtype, operation)
         has_empty = exp.GT(this=_strpos(joined, "empty"), expression=_int(0))
@@ -1213,6 +1307,32 @@ class _Writer:
             rtype,
             operation,
         )
+
+    def _read_once(self, value: _R) -> tuple[_R, list[tuple[str, exp.Expr]]]:
+        """``value`` with each bound's value a lambda's variable, and the bindings, on the dialects
+        that bind (_BOUND_ONCE): an operation names a bound many times over, and Trino does not
+        compile a fold that reads each at every naming. Elsewhere, as it is."""
+        if self.dialect not in _BOUND_ONCE:
+            return value, []
+        bindings: list[tuple[str, exp.Expr]] = []
+
+        def side(bound: _Side) -> _Side:
+            name = self.fresh("b")
+            bindings.append((name, bound.value))
+            read = exp.column(name)
+            text = _text_cast(read) if value.rtype.discrete else bound.text
+            return _Side(bound.inf, read, bound.inc, text)
+
+        return replace(value, lower=side(value.lower), upper=side(value.upper)), bindings
+
+    def bound(self, body: exp.Expr, bindings: list[tuple[str, exp.Expr]]) -> exp.Expr:
+        """``body`` with each name of ``bindings`` bound to its value, read once: a lambda applied
+        to a one-item array (Trino's own let)."""
+        for name, value in reversed(bindings):
+            each = exp.Lambda(this=body, expressions=[exp.to_identifier(name)])
+            mapped = _call("transform", exp.Array(expressions=[value.copy()]), each)
+            body = _call("element_at", mapped, _int(1))
+        return body
 
     def _delimited(self, text: exp.Expr) -> exp.Expr:
         """A multirange's ranges, each apart from the next by a bar; no braces, no quotes."""
@@ -1559,6 +1679,8 @@ class _Rewrite:
             )
         if len(args) == 1 and _variadic_null(args[0]):
             return _M(rtype, exp.true(), _null())  # VARIADIC NULL: strict, of no array at all
+        if len(args) == 1 and self.dialect in range_rows.NO_RANGE_ARRAYS:
+            args = self._variadic_ranges(rtype, args)
         if len(args) == 1 and isinstance(_variadic_array(args[0]), exp.Array):
             args = _variadic_items(args[0])
         elif len(args) == 1 and (given := _variadic_array(args[0])) is not None:
@@ -1581,6 +1703,25 @@ class _Rewrite:
             exp.false(),
         )
         return _M(rtype, null, self.writer.canonical(_concat(*pieces), rtype, rtype.multirange))
+
+    def _variadic_ranges(self, rtype: RangeType, args: list[exp.Expr]) -> list[exp.Expr]:
+        """A VARIADIC array cast to an array of ranges, on a dialect with no such type, as the
+        ranges its text holds: PostgreSQL's VARIADIC array is the arguments it holds. A cast of
+        anything but the text of one dimension is refused by name, the polyfill grid's row's
+        refusal."""
+        given = _variadic_array(args[0])
+        if not isinstance(given, exp.Cast) or not given.to.is_type(_T.ARRAY):
+            return args  # an array of its elements, or one the engine holds: read as it is
+        written = array_input(given)
+        items = written.this if isinstance(written, exp.Cast) else None
+        if not isinstance(items, exp.Array) or any(
+            isinstance(item, exp.Array) for item in items.expressions
+        ):
+            from provisa.transpiler.function_macros import RowRefused
+
+            name = rtype.multirange
+            raise RowRefused(name, self.dialect, range_rows.variadic_refusal(name, self.dialect))
+        return list(items.expressions)
 
     def _of_array(self, rtype: RangeType, array: exp.Expr) -> _M:
         """A multirange of an array only the rows hold, its items each a range's text: strict, and
@@ -1962,18 +2103,38 @@ class _Rewrite:
             value = self._of_values(argument)
         if value is None:
             return exp.Anonymous(this=name, expressions=[self.rewritten(argument)])
+        if name == "range_intersect_agg" and _is_true(value.null):
+            # Strict, of no value but NULL: an aggregate of NULL. Its fold's form of a constant
+            # NULL is more than Trino compiles.
+            return exp.Max(this=_text_cast(_null()))
         w, rtype = self.writer, value.rtype
         text = w.text(value)
         joined = w.joined(text)
+        # Trino: an intersection's group of texts aggregated once and bound to a lambda's variable,
+        # which each read of them names; written out at each read, the form is more than Trino
+        # compiles. range_agg, and an intersection of multiranges, compile as they are.
+        bound = (
+            w.dialect in _BOUND_ONCE and name == "range_intersect_agg" and not isinstance(value, _M)
+        )
+        read = exp.column(w.fresh("j")) if bound else joined
         if name == "range_agg":
-            folded = w.canonical(joined, rtype, name)
+            folded = w.canonical(read, rtype, name)
         elif isinstance(value, _M):
-            folded = w.multirange_intersect_all(joined, rtype, name)
+            folded = w.multirange_intersect_all(read, rtype, name)
         else:
-            folded = w.intersect_all(joined, rtype, name)
-        # No value at all is NULL, as a strict aggregate's result is.
-        nothing = _eq(exp.Count(this=text.copy()), _int(0))
-        return _case([(nothing, _null())], folded)
+            folded = w.intersect_all(read, rtype, name)
+        if not bound:
+            # No value at all is NULL, as a strict aggregate's result is.
+            nothing = _eq(exp.Count(this=text.copy()), _int(0))
+            return _case([(nothing, _null())], folded)
+        # No row, or none but NULLs: array_join leaves a NULL out, so the joined text is NULL of
+        # no row and empty of NULLs alone; a range's text is never empty.
+        nothing = _eq(exp.Coalesce(this=read.copy(), expressions=[_string("")]), _string(""))
+        body = exp.Lambda(
+            this=_case([(nothing, _null())], folded), expressions=[exp.to_identifier(read.name)]
+        )
+        each = _call("transform", exp.Array(expressions=[joined]), body)
+        return _call("element_at", each, _int(1))
 
     def _of_values(self, column: exp.Column) -> _Value | None:
         """A column of a VALUES list the statement casts to a range or multirange type, read as

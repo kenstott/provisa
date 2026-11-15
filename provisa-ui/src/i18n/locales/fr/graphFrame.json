@@ -10,6 +10,7 @@
     "metaRowsElapsed_other": "{{count}} lignes · {{elapsed}}ms",
     "error": "Erreur",
     "expand": "Agrandir",
+    "enlarge": "Agrandir",
     "exitFullScreen": "Quitter le plein écran",
     "collapse": "Réduire",
     "unpinHint": "Désépingler (désépingler pour autoriser le tri)",

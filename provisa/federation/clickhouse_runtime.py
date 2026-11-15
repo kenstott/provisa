@@ -41,6 +41,8 @@ a live EngineRuntime dispatch calls; routing/HTTP wiring is separate — mirrors
 
 from __future__ import annotations
 
+import contextlib
+import functools
 import re
 import uuid
 from typing import TYPE_CHECKING, Any, Protocol, cast
@@ -53,6 +55,7 @@ from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
 
 if TYPE_CHECKING:
+    from clickhouse_driver.errors import ServerException
     from collections.abc import Iterable, Iterator
 
     import pyarrow as pa
@@ -148,13 +151,19 @@ class _CHBackend(Protocol):
     def close(self) -> None: ...
 
 
+#: The longest statement ClickHouse parses: a form may write a long answer into its text (REQ-2167:
+#: table_to_xml's document of pg_class passed the default 256 KiB, run 43410717058).
+MAX_QUERY_SIZE = 64 * 1024 * 1024
+
+
 def _settings(qid: str, sql: str) -> dict[str, str]:
     """A statement's settings. ``session_timezone`` is a setting of this request alone, so nothing
     keeps it (REQ-2171). It is what timezone() and an instant read without a zone go by, and no
     more: what a statement reads of a stored column has the zone written into it
-    (transpiler.zoned_instants)."""
+    (transpiler.zoned_instants). ``max_query_size`` is read before the statement is parsed."""
+    settings = {"query_id": qid, "max_query_size": str(MAX_QUERY_SIZE)}
     zone = told_as(sql, clickhouse_spelling, "ClickHouse")
-    return {"query_id": qid} if zone is None else {"query_id": qid, "session_timezone": zone}
+    return settings if zone is None else {**settings, "session_timezone": zone}
 
 
 _HAS_SETTINGS = re.compile(r"\bSETTINGS\b(?![^']*'(?:[^']*'[^']*')*[^']*$)", re.IGNORECASE)
@@ -267,6 +276,46 @@ class _ServerBackend:
         self._client.close()
 
 
+def _engine_exception(buf: Any) -> ServerException:  # noqa: ANN401 -- the driver's buffered reader
+    """An EXCEPTION packet as clickhouse-driver's readhelpers.read_exception reads it, its text
+    decoded with the bytes that are not UTF-8 as backslash escapes. The driver decodes it as
+    strict UTF-8, and ClickHouse's message echoes a statement's constants, so a constant whose
+    bytes are not UTF-8 raised UnicodeDecodeError in place of the engine's error (REQ-2167:
+    PostgreSQL's error a raise carries is read from that message). Only an EXCEPTION packet is
+    read here: a String column's value is read by the driver's own column reader, unchanged."""
+    from clickhouse_driver.errors import ServerException
+    from clickhouse_driver.reader import read_binary_bytes, read_binary_int32, read_binary_uint8
+
+    def text() -> str:
+        # A decode of the engine's diagnostic text, not a fallback for a missing value.
+        return read_binary_bytes(buf).decode("utf-8", errors="backslashreplace")
+
+    code = read_binary_int32(buf)
+    name, message, stack_trace = text(), text(), text()
+    nested = _engine_exception(buf) if read_binary_uint8(buf) else None
+    prefix = "" if name == "DB::Exception" else name + ". "
+    return ServerException(f"{prefix}{message}. Stack trace:\n\n{stack_trace}", code, nested=nested)
+
+
+@functools.cache
+def _engine_text_connection() -> type:
+    """clickhouse-driver's Connection, its EXCEPTION packet read by :func:`_engine_exception`."""
+    from clickhouse_driver.connection import Connection
+
+    class _EngineTextConnection(Connection):
+        def receive_exception(self) -> ServerException:
+            return _engine_exception(self.fin)
+
+    return _EngineTextConnection
+
+
+def _engine_text_connections(client: Any) -> None:  # noqa: ANN401 -- clickhouse_driver.Client
+    """Each of ``client``'s connections reading an EXCEPTION packet by :func:`_engine_exception`:
+    the one it holds, and those it rotates to (alt_hosts)."""
+    for connection in (client.connection, *client.connections):
+        connection.__class__ = _engine_text_connection()
+
+
 class _NativeBackend:
     """A running ClickHouse server reached over the native TCP protocol (clickhouse-driver).
 
@@ -280,6 +329,7 @@ class _NativeBackend:
         # server_side_params: the driver sends {pN:Type} values to the server as typed query
         # parameters instead of formatting them into the SQL text itself.
         self._client = Client(**self._conn_args, settings={"server_side_params": True})
+        _engine_text_connections(self._client)
 
     def _kill(self, query_id: str) -> None:
         # Request-deadline cancel (REQ-1882): the query's own TCP connection is busy, so the KILL
@@ -350,6 +400,21 @@ def _answer_of(raw: bytes) -> pa.Table:
     return table
 
 
+@contextlib.contextmanager
+def _engine_text() -> Iterator[None]:
+    """chdb's error with its message as text. chdb decodes the engine's message as strict UTF-8,
+    and ClickHouse's message echoes a statement's constants, so a constant whose bytes are not
+    UTF-8 makes chdb raise UnicodeDecodeError in place of the error (REQ-2167: PostgreSQL's error
+    a raise carries is read from that message)."""
+    try:
+        yield
+    except UnicodeDecodeError as undecoded:
+        # A decode of the engine's diagnostic text, not a fallback for a missing value: the bytes
+        # it echoes stay as backslash escapes.
+        message = undecoded.object.decode("utf-8", errors="backslashreplace")
+        raise RuntimeError(message) from undecoded
+
+
 class _EmbeddedBackend:
     """chdb — the ClickHouse engine in-process. ``path`` persists the store; None is in-memory."""
 
@@ -358,18 +423,22 @@ class _EmbeddedBackend:
 
         # chdb reads results in a named format; ArrowStream round-trips through pyarrow losslessly.
         self._session = session.Session(path) if path else session.Session()
+        # Read before a statement is parsed, so a setting of the session, not of the statement.
+        self._session.query(f"SET max_query_size = {MAX_QUERY_SIZE}")
 
     # chdb binds {pN:Type} values as the server's typed query parameters (Session.query params).
     # It passes each value's text to the server as given, and the server reads parameter text in
     # its escaped form, so each value is formatted the way clickhouse-connect formats one for the
     # server (a backslash or a tab in a string survives as itself).
     def command(self, sql: str, params: dict | None = None) -> None:
-        self._session.query(sql, params=_server_text(params))
+        with _engine_text():
+            self._session.query(sql, params=_server_text(params))
 
     # chdb runs the query in-process inside one blocking C call and exposes no cancel/interrupt API
     # (chdb/session/state.py: query/send_query only), so the request deadline cannot pre-empt it.
     def query(self, sql: str, params: dict | None = None) -> tuple[list[tuple], list[str]]:
-        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
+        with _engine_text():
+            raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return [], []
         table = _answer_of(raw)
@@ -381,7 +450,8 @@ class _EmbeddedBackend:
         import pyarrow as pa
 
         sql = _in_session_zone(sql)
-        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
+        with _engine_text():
+            raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             return pa.table({})
         return _answer_of(raw)
@@ -395,7 +465,8 @@ class _EmbeddedBackend:
         import pyarrow as pa
 
         sql = _in_session_zone(sql)
-        raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
+        with _engine_text():
+            raw = self._session.query(sql, "ArrowStream", params=_server_text(params)).bytes()
         if not raw:
             empty = pa.table({})
             return empty.schema, iter(())
@@ -411,10 +482,11 @@ class _EmbeddedBackend:
 
         _replica_batch = pa.Table.from_batches([batch])
         names = ", ".join(f'"{name}"' for name, _ in columns)
-        self._session.query(
-            f'INSERT INTO "{database}"."{table}" ({names}) '
-            f"SELECT {names} FROM Python(_replica_batch)"
-        )
+        with _engine_text():
+            self._session.query(
+                f'INSERT INTO "{database}"."{table}" ({names}) '
+                f"SELECT {names} FROM Python(_replica_batch)"
+            )
         del _replica_batch
 
     def close(self) -> None:
@@ -701,7 +773,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         Built on the lazy ``query_arrow_stream`` terminal (``run_arrow_stream``) so the pgwire ENGINE
         route stays memory-bounded — no full ``QueryResult`` materialization (REQ-1217, Defect 3)."""
         schema, batches = self.run_arrow_stream(sql, params)
-        return stream_rows_from_arrow(schema, batches)
+        return stream_rows_from_arrow(schema, (bytes_where_not_text(b) for b in batches))
 
     async def run(self, sql: str, params: list | None = None) -> QueryResult:
         return await run_async_materialized(self.run_sync, sql, params)
@@ -736,6 +808,38 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
 
     def close(self) -> None:
         self._backend.close()
+
+
+def _utf8(column: pa.Array) -> bool:
+    """Whether a utf8 column's bytes are UTF-8: Arrow's own full validation of it."""
+    import pyarrow as pa
+
+    try:
+        column.validate(full=True)
+    except pa.ArrowInvalid:
+        return False
+    return True
+
+
+def bytes_where_not_text(batch: pa.RecordBatch) -> pa.RecordBatch:
+    """``batch`` with each String column whose bytes are not UTF-8 read as the bytes it is
+    (REQ-2167). A ClickHouse String is bytes, which chdb and the server write to Arrow as utf8
+    (output_format_arrow_string_as_string), whatever they are: a send function's answer
+    (int4send(255) is 00 00 00 ff) holds no text. The setting stays on, as a String written as
+    binary is a bare NULL's type (Nothing) too. Every other column is as it came."""
+    import pyarrow as pa
+
+    columns = list(batch.columns)
+    held = [
+        i
+        for i, column in enumerate(columns)
+        if pa.types.is_string(column.type) and not _utf8(column)
+    ]
+    if not held:
+        return batch
+    for i in held:
+        columns[i] = columns[i].view(pa.binary())
+    return pa.RecordBatch.from_arrays(columns, names=batch.schema.names)
 
 
 def driver_errors() -> tuple[tuple[type[BaseException], ...], tuple[type[BaseException], ...]]:

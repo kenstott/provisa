@@ -218,6 +218,52 @@ def normalized_reach(domains: Iterable[str]) -> list[str]:
 # platform_admin.
 PLATFORM_ADMIN_ROLE = "platform_admin"
 ORG_ADMIN_ROLE = "org_admin"
+#: A meta-role's id: this prefix, then its members joined by ``+`` (security/meta_role.py).
+META_PREFIX = "meta:"
+
+
+def is_meta_role_id(role_id: str | None) -> bool:
+    """Whether ``role_id`` names a meta-role (REQ-2188)."""
+    return bool(role_id) and str(role_id).startswith(META_PREFIX)
+
+
+def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
+    """The roles ``role_id`` names: a meta-role's, from its id (meta_role.meta_role_id), else
+    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
+    if not role_id.startswith(META_PREFIX):
+        return (role_id,)
+    return tuple(role_id[len(META_PREFIX) :].split("+"))
+
+
+def _draft_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
+    """The domains ``role`` holds the right a draft is read by: table registration, the right a
+    draft's preview needs (A DRAFT IS SERVED TO ORG_ADMIN, decided 2026-11-12). Held as every
+    right is: by the role, a role it inherits from, or a member of a meta role (``acting_chain``,
+    REQ-2188), each paired with the domains of the role carrying it (REQ-1944,
+    :func:`domain_access_for_capability`). The one place the right is named."""
+    return domain_access_for_capability(
+        role["acting_chain"], roles, Capability.TABLE_REGISTRATION.value
+    )
+
+
+def registers_tables_in(role: dict, roles: dict[str, dict], domain_id: str) -> bool:  # REQ-1921
+    """Whether ``role`` (a built role, state.roles) holds table registration reaching
+    ``domain_id``: a draft of that domain is served to it."""
+    reach = _draft_right_reach(role, roles)
+    return bool(reach) and reaches_domain(sorted(reach), domain_id)
+
+
+def draft_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
+    """The domains whose drafts are served to ``role``: those it holds table registration in
+    (:func:`registers_tables_in`); None for every data domain, empty for none."""
+    reach = _draft_right_reach(role, roles)
+    if not reach:
+        return frozenset()
+    if reaches_all_domains(sorted(reach)):
+        return None
+    return frozenset(reach)
+
+
 DEVELOPER_ROLE = "developer"
 ANALYST_ROLE = "analyst"
 #: The standard role every role builds on (provisa/core/standard_roles.yaml).
@@ -739,6 +785,11 @@ def has_capability(
 # The meta views whose ROWS describe registered tables/columns and are therefore subject to the
 # REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
 # DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
+#: REQ-1921: the meta view holding a draft's row (``draft`` true), which a role holding table
+#: registration in the draft's domain reads and no other role does (compiler/stage2;
+#: :func:`draft_reach`).
+DRAFT_ROWS_VIEW = "registered_tables_meta"
+
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "registered_tables_meta": ("id",),
     "table_columns_meta": ("table_id",),
@@ -751,6 +802,24 @@ META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "table_keys": ("table_id", "referenced_table_id"),
     # REQ-194: a name is read where the table it names (or the table holding it) is.
     "model_names_meta": ("table_id",),
+}
+#: REQ-2208 (THE TAGS REPORT): the relations of tags on objects, each (domain, relation). A row is
+#: read exactly when the tag admin reads that assignment (api.admin.schema_query.
+#: _readable_assignments): by the domains of its object and the right to read a row rule, a role's
+#: definition or a metric (compiler.stage2.tag_row_predicate), never by the table scope above.
+TAG_ROW_VIEWS: frozenset[tuple[str, str]] = frozenset(
+    {(META_DOMAIN_ID, "tag_instances"), (OPS_DOMAIN_ID, "tags_report")}
+)
+#: REQ-2208 (decision 2026-11-13): the relations connecting tags, library documents and sections,
+#: and objects, each (domain, relation) to whether its rows may name an object. A row is read where
+#: its document is, as a library document is (its ``read_document_domains``); a row naming an object
+#: (its ``object_key`` set) is read only where the tag on that object is too, by the tags report's
+#: rule (compiler.stage2.library_row_predicate).
+LIBRARY_ROW_VIEWS: dict[tuple[str, str], bool] = {
+    (META_DOMAIN_ID, "library_documents"): False,
+    (META_DOMAIN_ID, "tag_citations"): True,
+    (META_DOMAIN_ID, "section_tags"): False,
+    (META_DOMAIN_ID, "policy_coverage"): True,
 }
 #: REQ-2190: the pg_catalog and information_schema views, each a row's expressions naming the
 #: tables it is about; a row about none is every role's (provisa.transpiler.metadata_views).

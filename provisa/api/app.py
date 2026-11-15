@@ -21,6 +21,7 @@ import asyncio
 import logging
 import hashlib
 import os
+import sys
 import threading
 import time
 import uuid
@@ -3721,7 +3722,9 @@ async def _rebuild_schemas_impl(
         roles = flatten_role_dicts(
             _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
         )
-        expand_column_grants(tables, role_chains_by_id)
+        # REQ-1921: a draft's grants too, so a role inheriting from one granted it is named
+        # it -- to be refused as draft, or read by a role holding org_admin.
+        expand_column_grants([*tables, *draft_tables], role_chains_by_id)
         narrow_own_domain_grants([*tables, *draft_tables], roles)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
@@ -4049,6 +4052,15 @@ async def _rebuild_schemas_impl(
     from provisa.api.metadata_export.publishing import notify_model_changed
 
     if announce:
+        # REQ-2180: a product's contracts are derived from its offers applied to the model just
+        # built -- its members, their columns, the masks and row rules its offers' roles read
+        # under -- so the process that made the change derives them again, before the catalogs
+        # hear of it. An env build's model is the prod's, whose build derived them.
+        if _env == PROD:
+            from provisa.api.offer_derivation import rederive_all
+
+            async with state.model_db.acquire() as _offers_conn:
+                await rederive_all(cast("Connection", _offers_conn), state)
         await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
     # REQ-1882 (amended 2026-09-29): the re-wiring below starts process-lifetime listeners, ingest
@@ -4172,6 +4184,13 @@ async def install_server_extensions() -> None:
 async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, reportUnusedVariable]
     """App lifespan: load config and build schemas at startup."""
     _log = logging.getLogger("uvicorn.error")
+    # #338: the embedded engine opens a file per Parquet file it reads; the soft open-file limit
+    # a process starts with (256 on macOS) is raised to the hard limit, once, before anything
+    # opens. POSIX only: elsewhere there is no such limit to raise.
+    if sys.platform != "win32":
+        from provisa.core.open_files import raise_open_file_limit
+
+        raise_open_file_limit(_log)
     # Set up in-memory log buffer for debugging (max 1000 lines)
     buffer_handler = _DebugLogBufferHandler(capacity=5000)
     buffer_handler.setFormatter(
@@ -5024,7 +5043,15 @@ def create_app() -> FastAPI:
 
     @app.exception_handler(asyncio.TimeoutError)
     async def _timeout_handler(_req: _Request, _exc: asyncio.TimeoutError):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        log.error("Request timeout on %s %s", _req.method, _req.url.path)
+        from provisa.core import request_deadline as _deadline_of
+
+        deadline = _deadline_of.current()
+        if deadline is not None and deadline.client_left:
+            # The client disconnected and its statement was cancelled: nobody is waiting for
+            # this answer, and nothing failed on the server.
+            log.info("%s %s ended: the client disconnected", _req.method, _req.url.path)
+        else:
+            log.error("Request timeout on %s %s", _req.method, _req.url.path)
         return _JSONResponse(status_code=504, content={"detail": "Request timed out"})
 
     # ABAC approval hook (REQ-247): build from auth.approval_hook config and scope flags.
@@ -5429,14 +5456,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.judgments_router import router as judgments_router  # REQ-2094
 
     app.include_router(judgments_router)
-    from provisa.api.admin.metadata_export_router import (  # REQ-1074
-        router as metadata_export_router,
-    )
+    from provisa.api.admin.syncing_router import router as syncing_router  # REQ-2247
 
-    app.include_router(metadata_export_router)
-    from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
-
-    app.include_router(catalogs_router)
+    app.include_router(syncing_router)
     from provisa.api.admin.request_delivery_router import (  # REQ-2216
         router as request_delivery_router,
     )
@@ -5447,6 +5469,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(data_product_documents_router)
+    from provisa.api.admin.data_product_offers_router import (  # REQ-2180
+        router as data_product_offers_router,
+    )
+
+    app.include_router(data_product_offers_router)
     from provisa.api.admin.glossary_router import router as glossary_router  # REQ-1387
 
     app.include_router(glossary_router)
@@ -5482,6 +5509,11 @@ def create_app() -> FastAPI:
     )
 
     app.include_router(profiler_checks_router)
+    from provisa.api.admin.regulation_checks_router import (  # REQ-2245
+        router as regulation_checks_router,
+    )
+
+    app.include_router(regulation_checks_router)
     from provisa.api.admin.profiler_classifications_router import (  # REQ-2147
         router as profiler_classifications_router,
     )
@@ -5724,6 +5756,7 @@ def create_app() -> FastAPI:
     from provisa.api.request_timeout import serve_within_deadline
     from provisa.core import request_deadline as _request_deadline
     from provisa.core.limits import bound_request_transport, http_transport_for_path
+    from provisa.core.request_thread import client_watch
 
     class _RequestTransportMiddleware:
         def __init__(self, inner: Any) -> None:
@@ -5742,6 +5775,11 @@ def create_app() -> FastAPI:
                 bound_request_transport(transport),
                 _request_deadline.request(transport) as deadline,
             ):
+                # The client leaving ends this deadline: its statement is cancelled on the engine
+                # instead of running on for nobody (provisa.core.request_thread).
+                watch = client_watch(scope)
+                if watch is not None:
+                    watch.watch(deadline)
                 await serve_within_deadline(self._inner, scope, receive, send, deadline)
 
     # REQ-1524: one HTTP request is one model change. Registered before the transport middleware,

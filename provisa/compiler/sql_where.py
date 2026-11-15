@@ -445,6 +445,21 @@ def _compile_where(
             parts.append(f"({' OR '.join(sub_parts)})" if sub_parts else "FALSE")
             continue
 
+        if key == "_not":
+            # Plain SQL NOT, as Hasura's: a comparison with a null stays null and keeps no row.
+            inner = _compile_where(
+                value,
+                collector,
+                alias,
+                virtual_vals,
+                table_id,
+                exposed_to_physical,
+                relationships,
+                column_types,
+            )
+            parts.append(f"NOT ({inner})")
+            continue
+
         join_meta = relationships.join(key) if relationships is not None else None
         if relationships is not None and join_meta is not None:
             if alias is None or table_id is None:
@@ -541,7 +556,7 @@ def where_names_relationship(  # REQ-2136
     if not isinstance(where, dict):
         return False
     return any(
-        (k in ("_and", "_or") and where_names_relationship(v, ctx, type_name))
+        (k in ("_and", "_or", "_not") and where_names_relationship(v, ctx, type_name))
         or (type_name, k) in ctx.joins
         for k, v in where.items()
     )

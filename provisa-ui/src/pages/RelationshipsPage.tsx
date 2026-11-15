@@ -10,7 +10,7 @@
 
 import { PageTitle } from "../components/PageTitle";
 import { relationshipInCheckedDomains } from "./relationshipDomainFilter";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Sparkles, Code2, X, Link2 } from "lucide-react";
@@ -27,7 +27,10 @@ import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
+import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
+import { discoveryResultLines } from "../components/relationships/discoveryResult";
 import {
+  type DiscoveryKind,
   discoverRelationships,
   fetchCandidates,
   fetchRejectedCount,
@@ -42,12 +45,14 @@ import {
   useTables,
   useUpsertRelationship,
   useDeleteRelationship,
+  useDeleteRelationships,
 } from "../hooks/useAdminQueries";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
 import {
   EMPTY_FORM,
+  REJECT_REASON,
   tableRef,
   type Candidate,
   type RelForm,
@@ -56,6 +61,7 @@ import { AddRelationshipForm } from "../components/relationships/AddRelationship
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
 import { SplitPane } from "../components/list/SplitPane";
+import { useDetailParam } from "../components/list/useDetailParam";
 import { ListTable, ListHead, ListEmpty, ListItems } from "../components/list/ListTable";
 import { useListSortGroup, pageItems, type ListColumn } from "../components/list/useListSortGroup";
 import {
@@ -63,6 +69,8 @@ import {
   ReverseRelationshipForm,
 } from "../components/relationships/RelationshipModals";
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
+import { CandidatesBulkFailures } from "../components/relationships/CandidatesBulkFailures";
+import { useCandidatesAtOnce } from "../components/relationships/useCandidatesAtOnce";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { applyConvention, domainToSqlName } from "../naming";
@@ -70,6 +78,8 @@ import { Tip } from "../components/Tip";
 import { serverMessage } from "../i18n/serverMessage";
 import { matchesQuery } from "../lib/searchItems";
 
+import { useListSelection } from "../components/list/listSelection";
+import { ListBulkBar } from "../components/list/ListBulkBar";
 /** A refusal over the tags a re-homed key ref would lose (REQ-2145): each column's change. */
 function tagLossOf(result: MutationResult): ColumnTagChange[] | null {
   return result.code === "tag.move_loses"
@@ -105,17 +115,17 @@ export function RelationshipsPage() {
   const [discovering, setDiscovering] = useState(false);
   const [discoverError, setDiscoverError] = useState("");
   const [discoverMsg, setDiscoverMsg] = useState("");
+  // REQ-413: what the last discovery run found, one line per kind it ran.
+  const [discoverResult, setDiscoverResult] = useState<string[]>([]);
+  const [discoverAsk, setDiscoverAsk] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
-  // `?relationship=<id>` (a graph's link, lib/entityHref) opens that relationship's panel.
-  const [expanded, setExpanded] = useState<string | null>(() => searchParams.get("relationship"));
-  const linkedRelationship = searchParams.get("relationship");
-  const [seededRelationship, setSeededRelationship] = useState(linkedRelationship);
-  if (linkedRelationship !== seededRelationship) {
-    setSeededRelationship(linkedRelationship);
-    if (linkedRelationship !== null) setExpanded(linkedRelationship);
-  }
+  // REQ-2241: `?relationship=<id>` (a graph's link, lib/entityHref) is the open relationship's panel.
+  const detail = useDetailParam("relationships");
+  const expanded = detail.id;
+  const setExpanded = (id: string | null) => (id === null ? detail.close() : detail.open(id));
+  const { open: openDetail, close: closeDetail } = detail;
   const [editingRel, setEditingRel] = useState<RelForm | null>(null);
   // REQ-2145: a save or a delete that re-homes key refs off a tagged term, refused over the tags
   // those columns would lose: what each loses and gains, and what to do again once resolved.
@@ -222,10 +232,10 @@ export function RelationshipsPage() {
       if (!result.success) throw new Error(serverMessage(result, result.message));
       // The list read again without it before the panel closes.
       await refetchRels();
-      setExpanded((prev) => (prev === id ? null : prev));
+      closeDetail({ only: id });
       setEditingRel(null);
     },
-    [deleteRelationship, refusal, refetchRels],
+    [deleteRelationship, refusal, refetchRels, closeDetail],
   );
 
   const handleAdd = useCallback(
@@ -284,12 +294,12 @@ export function RelationshipsPage() {
       }
       // The relationship exists now, with everything else at its defaults: it is selected in the
       // list and its detail opens in edit, where the rest is filled in.
-      setExpanded(form.id);
+      openDetail(form.id);
       setEditingRel({ ...form, originalId: form.id });
       setForm(EMPTY_FORM);
       setShowForm(false);
     },
-    [form, upsertRelationship],
+    [form, upsertRelationship, openDetail],
   );
 
   const handleEditSave = useCallback(
@@ -361,9 +371,34 @@ export function RelationshipsPage() {
     else void handleAdd(resolve);
   };
 
+  // Accept all and Reject all, gated like the rows' own actions by the page's capability.
+  const atOnce = useCandidatesAtOnce({
+    candidates,
+    tableNameById,
+    onStart: () => {
+      setDiscoverError("");
+      setDiscoverMsg("");
+      setDiscoverResult([]);
+    },
+    onMessage: setDiscoverMsg,
+    onError: setDiscoverError,
+    onAccepted: async () => {
+      await refetchRels();
+      await load();
+    },
+    onRejected: (ids) => {
+      setCandidates((prev) => prev.filter((c) => !ids.has(c.id)));
+      setRejectedCount((prev) => prev + ids.size);
+    },
+  });
+
+  const clearAtOnce = atOnce.clear;
+
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
+    setDiscoverResult([]);
+    clearAtOnce();
     try {
       const result = await clearRejectedCandidates();
       setDiscoverMsg(t("relationshipsPage.clearedRejections", { count: result.deleted }));
@@ -371,25 +406,30 @@ export function RelationshipsPage() {
     } catch (e) {
       setDiscoverError(e instanceof Error ? e.message : String(e));
     }
-  }, [t]);
+  }, [t, clearAtOnce]);
 
-  const handleDiscover = useCallback(async () => {
-    setDiscovering(true);
-    setDiscoverError("");
-    setDiscoverMsg("");
-    try {
-      const result = await discoverRelationships("cross-domain");
-      const c = await fetchCandidates();
-      setCandidates(c as Candidate[]);
-      if (result.candidates_found === 0) {
-        setDiscoverError(t("relationshipsPage.discoverZeroCandidates"));
+  // REQ-413: runs only the kinds the dialog asked for, and says what each found.
+  const handleDiscover = useCallback(
+    async (kinds: DiscoveryKind[]) => {
+      setDiscoverAsk(false);
+      setDiscovering(true);
+      setDiscoverError("");
+      setDiscoverMsg("");
+      setDiscoverResult([]);
+      clearAtOnce();
+      try {
+        const result = await discoverRelationships("cross-domain", kinds);
+        const c = await fetchCandidates();
+        setCandidates(c as Candidate[]);
+        setDiscoverResult(discoveryResultLines(result, t));
+      } catch (e) {
+        setDiscoverError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setDiscovering(false);
       }
-    } catch (e) {
-      setDiscoverError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDiscovering(false);
-    }
-  }, [t]);
+    },
+    [t, clearAtOnce],
+  );
 
   const handleAccept = useCallback(
     async (id: number, name: string) => {
@@ -401,15 +441,16 @@ export function RelationshipsPage() {
   );
 
   const handleReject = useCallback(async (id: number) => {
-    await rejectCandidate(id, "Rejected by user");
+    await rejectCandidate(id, REJECT_REASON);
     setCandidates((prev) => prev.filter((c) => c.id !== id));
     setRejectedCount((prev) => prev + 1);
   }, []);
 
-  const startEditing = useCallback(
-    (rel: Relationship) => {
+  // The form's values for a relationship, as its edit form holds them.
+  const formOf = useCallback(
+    (rel: Relationship): RelForm => {
       const isComputed = !!rel.targetFunctionName;
-      setEditingRel({
+      return {
         id: String(rel.id),
         originalId: String(rel.id),
         sourceDomain: rel.sourceDomainId ? domainToSqlName(rel.sourceDomainId) : "",
@@ -441,9 +482,35 @@ export function RelationshipsPage() {
         // The panel opens for a row that already declares a junction; the checkbox only has to
         // hold it open for a row that does not yet name a table.
         junctionDeclared: Boolean(rel.viaTableName),
-      });
+      };
     },
     [tableDomainById, tableRefById],
+  );
+
+  const startEditing = useCallback((rel: Relationship) => setEditingRel(formOf(rel)), [formOf]);
+
+  // The create form's values for a duplicate: the relationship's endpoints and columns under a
+  // new id. Nothing else of it is copied (not its aliases, junction or parameters). An id that
+  // exists is refused by the create on save.
+  const duplicateOf = useCallback(
+    (rel: Relationship): RelForm => {
+      const f = formOf(rel);
+      return {
+        ...EMPTY_FORM,
+        id: `${rel.id}-copy`,
+        sourceDomain: f.sourceDomain,
+        sourceTableId: f.sourceTableId,
+        sourceColumn: f.sourceColumn,
+        targetType: f.targetType,
+        targetDomain: f.targetDomain,
+        targetTableId: f.targetTableId,
+        targetColumn: f.targetColumn,
+        targetFunctionName: f.targetFunctionName,
+        functionArg: f.functionArg,
+        cardinality: f.cardinality,
+      };
+    },
+    [formOf],
   );
 
   const buildReverse = useCallback(
@@ -572,6 +639,10 @@ export function RelationshipsPage() {
     },
   ];
   const sortGroup = useListSortGroup(filteredRels, relColumns, "relationships", "source");
+  // REQ-2240: relationships selected and deleted together; a relationship is named by its tables.
+  const shownRelIds = useMemo(() => filteredRels.map((r) => String(r.id)), [filteredRels]);
+  const selection = useListSelection(shownRelIds);
+  const deleteRelationships = useDeleteRelationships();
   const groupBy = sortGroup.groupBy;
 
   // REQ-2115: Polly's read_screen reads the page's view from here. A relationship is named only
@@ -594,7 +665,6 @@ export function RelationshipsPage() {
     setReverseForm(null);
     setEditingRel(null);
     setExpanded(null);
-    if (erd.on) erd.setPanel("relationship", null);
   };
   // REQ-2187: a line clicked in the ERD: its panel, in place of whatever the panel held.
   const openFromErd = (id: string) => {
@@ -603,7 +673,6 @@ export function RelationshipsPage() {
     setReverseForm(null);
     setEditingRel(null);
     setExpanded(id);
-    erd.setPanel("relationship", id);
   };
   const selectedRel =
     expanded === null
@@ -619,7 +688,10 @@ export function RelationshipsPage() {
         saving={saving}
         problem={saveProblem}
         onSave={() => handleAdd()}
-        onCancel={() => setShowForm(false)}
+        onCancel={() => {
+          setForm(EMPTY_FORM);
+          setShowForm(false);
+        }}
       />
     </div>
   ) : selectedRel && reverseForm ? (
@@ -653,6 +725,15 @@ export function RelationshipsPage() {
       onStartEdit={() => {
         setSaveProblem("");
         startEditing(selectedRel);
+      }}
+      onDuplicate={() => {
+        // The same as "+": the create form replaces whatever the panel held, here filled.
+        setSaveProblem("");
+        setExpanded(null);
+        setEditingRel(null);
+        setReverseForm(null);
+        setForm(duplicateOf(selectedRel));
+        setShowForm(true);
       }}
       onReverse={
         gqlConvention === null
@@ -705,6 +786,8 @@ export function RelationshipsPage() {
                 setExpanded(null);
                 setEditingRel(null);
                 setReverseForm(null);
+                // The form opens empty, and what was typed in it does not outlive it.
+                setForm(EMPTY_FORM);
                 setShowForm(!showForm);
               }}
             >
@@ -754,8 +837,10 @@ export function RelationshipsPage() {
                       ? t("relationshipsPage.discovering")
                       : t("relationshipsPage.suggestWithAi")
                   }
-                  onClick={handleDiscover}
+                  onClick={() => setDiscoverAsk(true)}
+                  loading={discovering}
                   disabled={discovering}
+                  data-testid="rels-discover"
                 >
                   <Sparkles size={14} />
                 </ActionIcon>
@@ -781,6 +866,21 @@ export function RelationshipsPage() {
           {settingsError}
         </Alert>
       )}
+      <CandidatesBulkFailures failures={atOnce.failures} />
+      {discoverResult.length > 0 && (
+        <Alert color="blue" mb="md" data-testid="rels-discover-result">
+          {discoverResult.map((line) => (
+            <Text key={line} fz="0.875rem">
+              {line}
+            </Text>
+          ))}
+        </Alert>
+      )}
+      <DiscoverDialog
+        opened={discoverAsk}
+        onCancel={() => setDiscoverAsk(false)}
+        onRun={(kinds) => void handleDiscover(kinds)}
+      />
       {discoverMsg && (
         <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="rels-discover-msg">
           {discoverMsg}
@@ -814,7 +914,17 @@ export function RelationshipsPage() {
             <>
               {/* As on Tables: every column keeps its width and a name stays on one line; what the
                 panel leaves too little room for scrolls sideways. */}
-              <ListTable testId="relationships-list">
+              <ListBulkBar
+                selection={selection}
+                nameOf={(key) => {
+                  const found = rels.find((r) => String(r.id) === key);
+                  if (!found) throw new Error(`relationship ${key} is not listed`);
+                  return `${found.sourceTableName} -> ${found.targetTableName}`;
+                }}
+                onDelete={deleteRelationships}
+                testId="relationships-bulk"
+              />
+              <ListTable testId="relationships-list" selection={selection}>
                 <ListHead
                   sortGroup={sortGroup}
                   columns={[
@@ -970,6 +1080,8 @@ export function RelationshipsPage() {
             tableNameById={tableNameById}
             onAccept={handleAccept}
             onReject={handleReject}
+            onAcceptAll={atOnce.acceptAll}
+            onRejectAll={atOnce.rejectAll}
           />
         </div>
       )}

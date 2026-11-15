@@ -14,7 +14,7 @@
 
 from __future__ import annotations
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 
 from typing import TYPE_CHECKING
 
@@ -42,7 +42,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
     await refuse_unreachable_masks(  # REQ-2059
         conn, {c.name: c.model_dump()["masks"] for c in func.output_columns or []}
     )
-    model_change.name("upsert", "command", func.name)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.command_uri, func.name))  # REQ-1524
     domain_id = domain_policy.command_domain_id(func.domain_id, func.name)  # REQ-1531
     # REQ-1634: a command keeps to the domain of every product it is a member of.
     await data_product_repo.require_domain_of_products(
@@ -167,7 +167,7 @@ async def _delete_one(conn: "Connection", kind: str, table, name: str) -> bool: 
 
 async def delete_function(conn: "Connection", name: str) -> bool:  # REQ-205, REQ-1918
     """Delete a tracked function by name: THE delete, for every surface."""
-    model_change.name("delete", "command", name)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.command_uri, name))  # REQ-1524
     return await _delete_one(conn, "command", tracked_functions, name)
 
 
@@ -178,7 +178,7 @@ async def upsert_webhook(
     await refuse_unreachable_masks(  # REQ-2059
         conn, {c.name: c.model_dump()["masks"] for c in wh.inline_return_type}
     )
-    model_change.name("upsert", "webhook", wh.name)  # REQ-1524
+    model_change.name("upsert", model_change.uri(model_uri.command_uri, wh.name))  # REQ-1524
     vals = {
         "name": wh.name,
         "url": wh.url,
@@ -244,7 +244,7 @@ async def list_webhooks(conn: "Connection") -> list[dict]:  # REQ-209, REQ-360
 
 async def delete_webhook(conn: "Connection", name: str) -> bool:  # REQ-209, REQ-1918
     """Delete a tracked webhook by name: THE delete, for every surface."""
-    model_change.name("delete", "webhook", name)  # REQ-1524
+    model_change.name("delete", model_change.uri(model_uri.command_uri, name))  # REQ-1524
     return await _delete_one(conn, "webhook", tracked_webhooks, name)
 
 

@@ -7,7 +7,7 @@
     "relationships": "關係",
     "team": "團隊",
     "docs": "文件",
-    "groupModel": "模型",
+    "groupModel": "衍生",
     "groupSecurity": "安全",
     "groupExplore": "探索",
     "groupAdmin": "管理",
@@ -48,7 +48,6 @@
     "itemAuthentication": "驗證",
     "itemAiModels": "AI 模型",
     "itemPackageRegistries": "套件登錄庫",
-    "itemMetadataExport": "匯出",
     "itemImport": "匯入",
     "itemTags": "標籤",
     "itemClassificationKinds": "分類",
@@ -79,8 +78,8 @@
     "itemNotebook": "筆記本",
     "itemContainerRegistries": "容器登錄庫",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "目錄",
     "itemLibrary": "資料庫",
-    "itemPlatformObservability": "平台可觀測性"
+    "itemPlatformObservability": "平台可觀測性",
+    "itemSyncing": "同步"
   }
 }

@@ -35,6 +35,7 @@
     "scope_own-domain": "自ドメイン",
     "write_insert": "挿入",
     "write_update": "更新",
-    "write_delete": "削除"
+    "write_delete": "削除",
+    "draft": "下書き"
   }
 }

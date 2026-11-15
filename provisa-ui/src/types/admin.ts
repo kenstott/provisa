@@ -39,6 +39,7 @@ export interface Source {
   database: string | null;
   username: string | null;
   dialect: string | null;
+  isSystem: boolean; // a source Provisa runs for itself: not offered by Register table
   cacheEnabled: boolean;
   cacheTtl: number | null;
   replicate: number | null; // REQ-826: null = Default; -1 never, N hot, 0 always
@@ -122,21 +123,6 @@ export interface DataProduct {
   createdAt: string;
 }
 
-// REQ-2158: a declared ODCS service-level property; freshness is the member's own.
-export interface ContractSlaProperty {
-  property: string;
-  value?: unknown;
-  unit?: string | null;
-  description?: string | null;
-}
-
-export interface ContractTerms {
-  usage?: string | null;
-  limitations?: string | null;
-  noticePeriod?: string | null;
-}
-
-// REQ-2158: a product member's contract, its output port, versioned on its own.
 /** One difference of a contract version from the one before it (REQ-2158). */
 export interface ContractChange {
   kind: string;
@@ -146,30 +132,14 @@ export interface ContractChange {
   breaking: boolean;
 }
 
-/** A saved version of a contract, as the store keeps it (REQ-2158). */
+/** REQ-2180 CONTRACTS ARE DERIVED FROM THE OFFERS: a saved version of an offer's contract on a
+ *  dataset, how it differs from the one before it, and when and by whom it was saved. */
 export interface ContractVersion {
-  contract: { version: string; status: string };
-  /** The member's columns when this version was saved; a contract holds none of its own. */
-  columns: { name: string; type: string; required: boolean; description: string | null }[];
+  version: string;
   changes: ContractChange[];
   saved_at: string;
   /** Who saved it; null when the system did (a configuration load). */
   saved_by: string | null;
-}
-
-export interface DataContract {
-  tableId: number;
-  sourceId: string;
-  schemaName: string;
-  tableName: string;
-  contractId: string;
-  version: string;
-  status: string;
-  description?: string | null;
-  terms: ContractTerms;
-  sla: ContractSlaProperty[];
-  // Its saved versions, oldest first; the contract as a mutation or an export reads it has none.
-  versions?: ContractVersion[];
 }
 
 // REQ-609/REQ-1634: an owner_role/steward/visible_to ref resolved to one individual.
@@ -225,6 +195,31 @@ export interface Tag {
   // REQ-1467: a parameterized tag is assigned as "{id}:{value}", e.g. "entity:customer".
   paramPolicy: TagParamPolicy;
   paramValues: TagParamValue[];
+  // Each assignment of the tag must cite a library document or section (a gap when it does not).
+  requiresCitation: boolean;
+  // Every object of the kinds in appliesTo must carry the tag; one without it is a missing row in
+  // the tags report.
+  required: boolean;
+  // The domains whose objects the tag is offered on, and required on; none means every domain.
+  allowedDomains: string[];
+  // The library sections that define the tag, and whether one of them changed or is gone.
+  citations: LibraryCitation[];
+  needsReview: boolean;
+}
+
+/** A library document, or a section of it (by heading, or by page when it has none), cited. */
+export interface LibraryCitation {
+  documentId: number | null;
+  documentTitle: string;
+  documentSource: string;
+  sectionHeading: string | null;
+  sectionPage: number | null;
+  textSha256: string;
+  citedBy: string | null;
+  citedAt: string;
+  /** "current", "drifted" (the section's text changed) or "broken" (it or the document is gone). */
+  state: "current" | "drifted" | "broken";
+  needsReview: boolean;
 }
 
 // REQ-1467: the registry id an assigned tag id refers to. Mirrors provisa.core.models.
@@ -242,6 +237,17 @@ export function tagParam(tagId: string): string | null {
 }
 
 // REQ-1377: one tag on one object; exactly the fields implied by objectType are set.
+/** An object a tag may be put on, named as an assignment names it, without the tag. */
+export type TagTarget = Omit<TagAssignment, "tagId" | "reason" | "expiresOn">;
+
+/** An assignment a save of the tag's allowed domains left outside them; it stays. */
+export interface TagOutsideAssignment {
+  tagId: string;
+  objectType: TagObjectType;
+  objectKey: string;
+  domains: string[];
+}
+
 export interface TagAssignment {
   tagId: string;
   objectType: TagObjectType;
@@ -271,6 +277,12 @@ export interface TagAssignment {
   reason?: string | null;
   // ISO date; for 'deprecated' the planned removal date (typed for reporting).
   expiresOn?: string | null;
+  // The assignment's own citations of the library, whether one needs review, and whether it
+  // lacks the citation its tag requires. Read only: never sent with an assignment.
+  objectKey?: string | null;
+  citations?: LibraryCitation[];
+  needsReview?: boolean;
+  citationGap?: boolean;
 }
 
 export function domainGqlAlias(domain: Pick<Domain, "id" | "graphqlAlias">): string {
@@ -516,6 +528,10 @@ export interface RegisteredTable {
   landingFilter?: string | null; // REQ-2062: the predicate its replica's rows pass
   readWait?: number | null; // REQ-2224: seconds a read waits with nothing landed; 0 answers no rows
   sourceFileColumn?: string | null; // REQ-788: optional column carrying each row's file path
+  importSet?: string | null; // REQ-1954: a ServiceNow table's import set; null: inserts go direct
+  /** REQ-252: staged in its form, not stored: its next save reads the columns the live source
+   * has and adds those the table lacks, as registration with discovery does. */
+  discover?: boolean;
   materialize: boolean;
   mvRefreshInterval: number;
   mvDebounceQuiet: number; // REQ-963: seconds of quiet before firing; 0 = real-time
@@ -763,6 +779,18 @@ export interface Metric {
   // Null for a caller without view_governance (REQ-1958): who a metric is granted to is a grant list.
   visibleTo: string[] | null;
   fromFact: string | null;
+  // REQ-2243: the glossary term the metric names, by its name.
+  term: string | null;
+}
+
+// REQ-2243: a governed metric a dataset uses, as its reader may see it (no expression).
+export interface DatasetMetric {
+  name: string;
+  description: string | null;
+  aiContext: string | null;
+  term: string | null;
+  termDefinition: string | null;
+  termCalculationMethod: string | null;
 }
 
 export interface Relationship {

@@ -109,4 +109,31 @@ describe("ConfirmDialog", () => {
     fireEvent.keyDown(dialog, { key: "Escape", code: "Escape" });
     await waitFor(() => expect(screen.queryByText("Delete this item?")).not.toBeInTheDocument());
   });
+
+  describe("the confirm is the shared destructive button (maintainer 2026-11-12)", () => {
+    it("is filled red, white-lettered, the size of the Cancel beside it", async () => {
+      renderDialog();
+      openDialog();
+      const confirm = await screen.findByRole("button", { name: t("common.confirm") });
+      const cancel = screen.getByRole("button", { name: t("common.cancel") });
+      expect(confirm).toHaveAttribute("data-variant", "filled");
+      expect(confirm).toHaveAttribute("data-size", "sm");
+      expect(confirm.getAttribute("style") ?? "").toContain("red");
+      expect(cancel).toHaveAttribute("data-variant", "default");
+      expect(cancel).toHaveAttribute("data-size", confirm.getAttribute("data-size"));
+    });
+
+    it("says what it does where the caller gives the word", async () => {
+      render(
+        <ConfirmDialog {...defaultProps} confirmLabel={t("common.delete")}>
+          {(open) => <button onClick={open}>Open Dialog</button>}
+        </ConfirmDialog>,
+      );
+      openDialog();
+      expect(await screen.findByRole("button", { name: t("common.delete") })).toHaveAttribute(
+        "data-variant",
+        "filled",
+      );
+    });
+  });
 });

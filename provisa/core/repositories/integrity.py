@@ -123,6 +123,9 @@ class Dependent:
     # column grant is revoked per table) and an assignment's ``user_id`` (it is removed from its
     # holder). Empty for every other kind.
     owner: tuple[tuple[str, Any], ...] = ()
+    # REQ-2240: what its own page shows it as, so it is found where its link leads: a
+    # relationship as its two tables, a table or view by its table name.
+    label: str = ""
 
     def as_dict(self) -> dict[str, Any]:
         """The dependent as a refusal reports it, with its ``owner`` keys when it has any."""
@@ -130,6 +133,7 @@ class Dependent:
             "kind": self.ref.kind,
             "id": self.ref.id,
             "name": self.name,
+            "label": self.label,
             "via": list(self.via),
             **dict(self.owner),
         }
@@ -165,6 +169,8 @@ KINDS: dict[str, Kind] = {
     "ontology_import": Kind("glossary_ontology_imports", "id"),  # REQ-2237
     "ontology_item": Kind("glossary_ontology_items", "id"),  # REQ-2237
     "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
+    "data_product_offer": Kind("data_product_offers", "id"),  # REQ-2180
+    "data_product_bid": Kind("data_product_bids", "id"),  # REQ-2180
 }
 
 _P, _D, _L = Standing.PART, Standing.DEPENDENT, Standing.LINK
@@ -332,6 +338,15 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "product_id", "data_product"),
     # REQ-1634 STATUS: a retired product names the product its members moved to.
     _dep("data_products", "successor_id", "data_product", "data_product", "id"),
+    # REQ-2180: a product's offers and the requests made of them go with it; an offer's contracts
+    # go with the offer, and a contract on a dataset with that dataset (contracts are derived).
+    # A request outlives its offer (it records what was asked), and a cancel goes with its bid.
+    _part("data_product_offers", "product_id", "data_product", of="data_product_offer", owner="id"),
+    _part("data_product_bids", "product_id", "data_product", of="data_product_bid", owner="id"),
+    _part("data_product_offer_contracts", "offer_id", "data_product_offer"),
+    _part("data_product_offer_contracts", "table_id", "table"),
+    _link("data_product_bids", "offer_id", "data_product_offer"),
+    _part("data_product_bids", "cancels", "data_product_bid"),
     # --- to a glossary term --------------------------------------------------------------------
     # A term's physical refs point it at real data, so they block it: the operator retires the
     # term or moves its refs to another first. Its edges, domain links and experts go with it.
@@ -339,6 +354,9 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2130: a table a class term grounds is real data the term names, so it blocks the term as
     # a column ref does.
     _dep("registered_tables", "class_term_id", "glossary_term", "table", "id"),
+    # REQ-2243: a metric names a term only for its meaning, so it outlives the term: deleting the
+    # term leaves the metric unnamed (ON DELETE SET NULL) and nothing blocks.
+    _link("metrics", "term_id", "glossary_term"),
     # REQ-2145: a term's tags go with it; a term holding columns is blocked above, so no column
     # loses a tag it carried through the term.
     _part("tag_assignments", "term_id", "glossary_term"),
@@ -350,6 +368,7 @@ REFERENCES: tuple[Reference, ...] = (
     _part("glossary_term_vectors", "term_id", "glossary_term"),
     _part("glossary_term_domains", "term_id", "glossary_term"),
     _part("glossary_term_experts", "term_id", "glossary_term"),
+    _part("glossary_term_statements", "term_id", "glossary_term"),  # REQ-2237
     _part("glossary_term_edges", "from_term_id", "glossary_term"),
     _part("glossary_term_edges", "to_term_id", "glossary_term"),
     # --- to a tag ------------------------------------------------------------------------------
@@ -358,6 +377,8 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "base_tag_id", "tag"),
     # REQ-2208: and its assignments on library documents and their sections.
     _part("reference_document_tags", "base_tag_id", "tag"),
+    # REQ-2208: and the citations of its definition and of its assignments.
+    _part("reference_citations", "tag_id", "tag"),
     # REQ-1384: a row filter on the tag blocks it. Removing the filter with the tag would widen
     # what the filter's role reads; the operator removes the filter first, and says so.
     _dep("rls_rules", "tag_id", "tag", "row_filter", "id"),
@@ -373,6 +394,9 @@ REFERENCES: tuple[Reference, ...] = (
     _part("reference_document_tags", "document_id", "reference_document"),
     # REQ-2179: a scan keeps the document's title and source, so it outlives the document.
     _link("glossary_term_scans", "document_id", "reference_document"),
+    # REQ-2208: a citation keeps the document's title and source, so it outlives the document,
+    # shown as broken.
+    _link("reference_citations", "document_id", "reference_document"),
     # --- to a term scan, and the terms its drafts touch ----------------------------------------
     # REQ-2179: a scan's drafts go with it. A draft outlives a term it matched or became: an
     # accepted draft is the history of how the term came about, and a review record never blocks.
@@ -467,6 +491,9 @@ async def _referring_rows(
     statement = select(*(table.c[name] for name in sorted(names)))
     if reference.match is Match.EQUALS:
         statement = statement.where(table.c[reference.column] == wanted)
+    if "retired" in table.c:
+        # REQ-2248: a retired object is out of service and blocks nothing.
+        statement = statement.where(table.c.retired.is_(False))
     rows = (await conn.execute_core(statement)).fetchall()
     return [r._mapping for r in rows if _matches(reference, r._mapping[reference.column], wanted)]
 
@@ -514,14 +541,49 @@ async def _name_of(conn: "Connection", ref: ObjectRef) -> str:
     return str(ref.id)
 
 
+async def _label_of(conn: "Connection", ref: ObjectRef, name: str) -> str:
+    """What ``ref``'s own page shows it as (REQ-2240), given its ``name`` (:func:`_name_of`): a
+    relationship as its two tables (``users -> inquiries``), a remote registration by the table
+    it registers; every other kind as it is named."""
+    if ref.kind == "relationship":
+        rel = metadata.tables["relationships"]
+        found = (
+            await conn.execute_core(
+                select(
+                    rel.c.source_table_id, rel.c.target_table_id, rel.c.target_function_name
+                ).where(rel.c.id == ref.id)
+            )
+        ).fetchone()
+        if found is None:
+            return name
+        source_id, target_id, function = found
+        source = await _name_of(conn, ObjectRef("table", source_id))
+        target = (
+            await _name_of(conn, ObjectRef("table", target_id))
+            if target_id is not None
+            else function
+        )
+        return f"{source} -> {target}"
+    if ref.kind == "remote_registration":
+        reg = metadata.tables["provisa_sources"]
+        found = (
+            await conn.execute_core(select(reg.c.table_name).where(reg.c.id == ref.id))
+        ).fetchone()
+        return found[0] if found else name
+    return name
+
+
 _OWNER_OF: dict[str, tuple[str, str]] = {
     "column": ("table_columns", "table_id"),
     "role_assignment": ("user_role_assignments", "user_id"),
+    # REQ-2240: a remote registration is opened on its source's panel.
+    "remote_registration": ("provisa_sources", "source_id"),
 }
 
 
 async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any], ...]:
-    """What a column or a role assignment is changed through (see :class:`Dependent`)."""
+    """What a column or a role assignment is changed through, and the source a remote
+    registration is opened on (see :class:`Dependent`)."""
     if ref.kind not in _OWNER_OF:
         return ()
     table, column = _OWNER_OF[ref.kind]
@@ -532,15 +594,18 @@ async def _owner_of(conn: "Connection", ref: ObjectRef) -> tuple[tuple[str, Any]
 
 async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -> list[Dependent]:
     """``blocking`` (object → the columns it refers through) as the sorted, named list."""
-    named = [
-        Dependent(
-            referrer,
-            tuple(sorted(via)),
-            await _name_of(conn, referrer),
-            await _owner_of(conn, referrer),
+    named = []
+    for referrer, via in blocking.items():
+        name = await _name_of(conn, referrer)
+        named.append(
+            Dependent(
+                referrer,
+                tuple(sorted(via)),
+                name,
+                await _owner_of(conn, referrer),
+                await _label_of(conn, referrer, name),
+            )
         )
-        for referrer, via in blocking.items()
-    ]
     return sorted(named, key=lambda d: (d.ref.kind, str(d.ref.id)))
 
 
@@ -591,14 +656,22 @@ async def _views_published_over(conn: "Connection", rel_id: str) -> list[int]:
     )
 
     relationships = metadata.tables["relationships"]
-    rows = [dict(r._mapping) for r in (await conn.execute_core(select(relationships))).fetchall()]
+    # REQ-2248: a retired relationship approves no join, and a retired view relies on none.
+    rows = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(select(relationships).where(relationships.c.retired.is_(False)))
+        ).fetchall()
+    ]
     this = [r for r in rows if r["id"] == rel_id]
     others = [r for r in rows if r["id"] != rel_id]
 
     tables = metadata.tables["registered_tables"]
     listed = (
         await conn.execute_core(
-            select(tables.c.id, tables.c.table_name, tables.c.view_sql, tables.c.materialize)
+            select(tables.c.id, tables.c.table_name, tables.c.view_sql, tables.c.materialize).where(
+                tables.c.retired.is_(False)
+            )
         )
     ).fetchall()
     id_of = {name: table_id for table_id, name, _, _ in listed}

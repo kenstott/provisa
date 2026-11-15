@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "Individua relazioni",
+    "intro": "Scegli cosa cercare in tutti i domini. Non viene eseguito nulla finché non premi Esegui.",
+    "foreignKeys": "Chiavi esterne",
+    "semantics": "Semantica",
+    "semanticsNoKey": "Semantica: non disponibile. {{model}}, il modello assegnato all'inferenza delle relazioni, non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
+    "run": "Esegui"
+  }
+}

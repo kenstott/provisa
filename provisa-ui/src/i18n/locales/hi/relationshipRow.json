@@ -1,7 +1,7 @@
 {
   "relationshipRow": {
-    "autoTrackedTitle": "FK बाध्यता से स्वतः ट्रैक किया गया",
-    "fkBadge": "FK",
+    "fkBadge": "FK से",
+    "fkBadgeTitle": "स्रोत की एक फ़ॉरेन की से बनाया गया",
     "yes": "हाँ",
     "no": "नहीं",
     "none": "—",
@@ -32,7 +32,6 @@
     "materializeCheckbox": "मटीरियलाइज़ करें",
     "excludeFromCypher": "Cypher से बाहर रखें",
     "sqlName": "SQL नाम",
-    "autoTracked": "स्वतः ट्रैक किया गया",
     "cardinalityWarning": "चेतावनी: यदि यह जॉइन प्रति पैरेंट एक से अधिक पंक्ति लौटाता है, तो केवल पहला मान उपयोग होगा।",
     "toggleDetails": "संबंध विवरण टॉगल करें",
     "junctionBadge": "गुण",

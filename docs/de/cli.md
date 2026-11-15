@@ -157,7 +157,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Stößt die bedarfsgesteuerte Metadaten-Veröffentlichung des laufenden Servers an. Der Befehl sendet an `POST /admin/metadata-export/publish`, den Endpunkt, den die Schaltfläche **Publish now** im Admin-Tab aufruft, also senden beide Wege denselben vollständigen Snapshot.
+Stößt die bedarfsgesteuerte Metadaten-Veröffentlichung des laufenden Servers an. Der Befehl sendet an `POST /admin/syncing/publish`, den Endpunkt, den die Schaltfläche **Publish now** im Admin-Tab aufruft, also senden beide Wege denselben vollständigen Snapshot.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

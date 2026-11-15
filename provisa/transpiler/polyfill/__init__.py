@@ -18,31 +18,83 @@ the per-engine tables of provisa.transpiler (scripts/conformance/polyfill_audit.
 
 from __future__ import annotations
 
-from provisa.transpiler.polyfill import arrays
+from provisa.transpiler.polyfill import (
+    aggregates,
+    arrays,
+    bytea,
+    calls,
+    casts,
+    clickhouse,
+    collations,
+    dates,
+    geometric,
+    instants,
+    intervals,
+    json_values,
+    money,
+    network,
+    numbers,
+    ranges,
+    records,
+    regex,
+    server,
+    snapshots,
+    textsearch,
+    type_io,
+    unheld,
+    zones,
+)
 from provisa.transpiler.polyfill.grid import (
-    ENGINE_TITLES,
-    ENGINES,
+    DIALECTS,
     Applied,
+    Connector,
     Feature,
     Grid,
     Limitation,
     Rule,
     Side,
     Status,
-    engine_of,
+    column_of,
+    written_in,
 )
 from provisa.transpiler.polyfill.matching import Bindings, graft, match
 from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, hole_name, holes
 
 #: The one grid: every family's features.
-GRID = Grid(arrays.FEATURES)
+GRID = Grid(
+    arrays.FEATURES
+    + zones.FEATURES
+    + records.FEATURES
+    + money.FEATURES
+    + type_io.FEATURES
+    + regex.FEATURES
+    + collations.FEATURES
+    + textsearch.FEATURES
+    + network.FEATURES
+    + unheld.FEATURES
+    + numbers.FEATURES
+    + dates.FEATURES
+    + calls.FEATURES
+    + casts.FEATURES
+    + server.FEATURES
+    + ranges.FEATURES
+    + json_values.FEATURES
+    + clickhouse.FEATURES
+    + aggregates.FEATURES
+    + snapshots.FEATURES
+    # intervals' isfinite row is read before instants' (its call of no interval is that row's).
+    + intervals.FEATURES
+    + instants.FEATURES
+    + geometric.FEATURES
+    + bytea.FEATURES
+)
 
 __all__ = [
-    "ENGINES",
-    "ENGINE_TITLES",
+    "DIALECTS",
     "GRID",
     "Applied",
     "Bindings",
+    "Connector",
     "Feature",
     "Grid",
     "Limitation",
@@ -52,9 +104,10 @@ __all__ = [
     "RuleError",
     "Side",
     "Status",
-    "engine_of",
+    "column_of",
     "graft",
     "hole_name",
     "holes",
     "match",
+    "written_in",
 ]

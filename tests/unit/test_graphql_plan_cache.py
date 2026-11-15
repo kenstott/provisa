@@ -47,7 +47,7 @@ def _cq(
 
 _ROLE = {"id": "analyst"}
 _SCHEMA = object()
-_CTX = object()
+_CTX = SimpleNamespace(draft_ids={})  # a context naming no draft (REQ-1921)
 _RLS = object()
 _DIRECTIVES = QueryDirectives()
 

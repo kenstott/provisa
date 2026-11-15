@@ -15,6 +15,7 @@
     "dangerTitle": "Zona pericolosa",
     "dangerIntro": "Arresta il backend e il server di sviluppo dell'interfaccia su questa macchina. Funziona solo con un avvio desktop --demo/--native: rifiutato in ogni altro caso.",
     "stopAll": "Arresta tutti i servizi",
-    "stopConfirm": "Arrestare il backend e il server di sviluppo dell'interfaccia su questa macchina? La sessione termina subito."
+    "stopTitle": "Arrestare tutti i servizi?",
+    "stopConsequence": "Questa azione arresta il backend e il server di sviluppo dell'interfaccia su questa macchina. Finché sono arrestati, questa pagina, ogni query e le sessioni di tutti gli altri utenti smettono di funzionare e la tua sessione termina. Nulla torna disponibile finché i servizi non vengono riavviati su questa macchina."
   }
 }

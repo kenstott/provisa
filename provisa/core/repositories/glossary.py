@@ -26,15 +26,16 @@ both (``core.glossary.agent_view``).
 
 # Requirements: REQ-1387, REQ-1591, REQ-2130
 
-from provisa.core import model_change
+from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING, Any
 
+import json
 import logging
 import re
 from dataclasses import dataclass
 from datetime import date
 
-from sqlalchemy import delete as _delete, func, or_, select, update
+from sqlalchemy import and_, delete as _delete, func, insert, or_, select, update
 
 from provisa.core.glossary import (
     GROUNDED,
@@ -59,6 +60,7 @@ from provisa.core.schema_org import (
     glossary_term_edges,
     glossary_term_experts,
     glossary_term_refs,
+    glossary_term_statements,
     glossary_terms,
     registered_tables,
     relationships,
@@ -177,7 +179,9 @@ async def _references(conn: "Connection", table_id: int) -> dict[str, int]:
             select(relationships).where(
                 (relationships.c.source_table_id == table_id)
                 | (relationships.c.target_table_id == table_id)
-                | (relationships.c.via_table_id == table_id)
+                | (relationships.c.via_table_id == table_id),
+                # REQ-2248: a retired relationship declares no key.
+                relationships.c.retired.is_(False),
             )
         )
     ).fetchall()
@@ -750,19 +754,60 @@ def _dangling_grows(graph: _TermGraph, term_id: int) -> bool:
 # ---------------------------------------------------------------------------
 
 
-_SEARCH_ITEM = re.compile(r'"([^"]*)"|(\S+)')
+_SEARCH_TOKEN = re.compile(r'(-?)"([^"]*)"|(\S+)')
 
 
-def search_items(q: str) -> list[str]:
-    """The items a glossary search is made of: a phrase in double quotes is one item, spaces and
-    all; every other word is one item; stray quote marks are dropped. A term matches the search
-    when any item is in it -- the same rule the Ontology View's graph applies (searchItems.ts)."""
-    out: list[str] = []
-    for phrase, word in _SEARCH_ITEM.findall(q):
-        item = (phrase if phrase else word.replace('"', "")).strip().lower()
-        if item:
-            out.append(item)
-    return out
+@dataclass(frozen=True)
+class SearchItem:
+    """One item of a page search: its text, lower-cased, and whether it must not be found."""
+
+    text: str
+    excluded: bool = False
+
+
+def search_items(q: str) -> list[list[SearchItem]]:
+    """REQ-2143 (PAGE SEARCH USES THE WEB-SEARCH SYNTAX): a page search as it is read, the same
+    rule as the page filters and the Ontology View's graph (searchItems.ts). Every group must hold,
+    and a group holds when any of its items does. Items separated by spaces are each a group; the
+    word or (unquoted, any case) joins the items either side of it into one; an item with a leading
+    - must not be found; a phrase in double quotes is one item, spaces and all. A leading, trailing
+    or doubled or, a lone -, and stray quote marks are dropped."""
+    groups: list[list[SearchItem]] = []
+    either = False
+    for sign, phrase, word in _SEARCH_TOKEN.findall(q):
+        if word:
+            word = word.replace('"', "")
+            if word.lower() == "or":
+                either = bool(groups)
+                continue
+            excluded = word.startswith("-")
+            text = word[1:] if excluded else word
+        else:
+            excluded, text = sign == "-", phrase
+        text = text.strip().lower()
+        if not text:
+            continue
+        item = SearchItem(text, excluded)
+        if either:
+            groups[-1].append(item)
+        else:
+            groups.append([item])
+        either = False
+    return groups
+
+
+def _search_where(groups: list[list[SearchItem]]) -> Any:
+    """The terms holding ``groups``: an item is found in the name or the definition, whatever its
+    case, its own % _ and \\ taken literally."""
+
+    def found(i: SearchItem) -> Any:
+        pattern = "%" + re.sub(r"([\\%_])", r"\\\1", i.text) + "%"
+        held = glossary_terms.c.name.ilike(pattern, escape="\\") | func.coalesce(
+            glossary_terms.c.definition, ""
+        ).ilike(pattern, escape="\\")
+        return ~held if i.excluded else held
+
+    return and_(*(or_(*(found(i) for i in g)) for g in groups))
 
 
 async def list_terms(
@@ -784,18 +829,9 @@ async def list_terms(
     org's shared vocabulary and is listed for everyone, whatever the caller's domains.
     """
     stmt = select(glossary_terms)
-    items = search_items(q or "")
-    if items:
-        # Any item matching the name or the definition admits the term (the search is an OR).
-        stmt = stmt.where(
-            or_(
-                *(
-                    glossary_terms.c.name.ilike(f"%{i}%")
-                    | glossary_terms.c.definition.ilike(f"%{i}%")
-                    for i in items
-                )
-            )
-        )
+    groups = search_items(q or "")
+    if groups:
+        stmt = stmt.where(_search_where(groups))
     if not include_deprecated:
         stmt = stmt.where(~glossary_terms.c.deprecated)
     rows = (await conn.execute_core(stmt.order_by(glossary_terms.c.name))).fetchall()
@@ -948,7 +984,53 @@ async def get_term(conn: "Connection", term_id: int) -> dict | None:
     # those are empty for an abstract term and for a deprecated one whose columns have gone,
     # which are exactly the two cases the declared rows exist to answer.
     term["domains"] = sorted((await term_domains(conn)).get(term_id, set()))
+    # REQ-2237: what an imported ontology stated about it that a term does not model.
+    term["statements"] = (await term_statements(conn, [term_id])).get(term_id, [])
     return term
+
+
+async def term_statements(
+    conn: "Connection", term_ids: "list[int] | None" = None
+) -> dict[int, list[dict]]:  # REQ-2237
+    """Each term's kept statements (provisa/ontology_import/kept.py), in the order kept: of
+    ``term_ids``, or of every term."""
+    query = select(glossary_term_statements.c.term_id, glossary_term_statements.c.statement)
+    if term_ids is not None:
+        query = query.where(glossary_term_statements.c.term_id.in_(term_ids))
+    rows = (
+        await conn.execute_core(
+            query.order_by(glossary_term_statements.c.term_id, glossary_term_statements.c.ordinal)
+        )
+    ).fetchall()
+    out: dict[int, list[dict]] = {}
+    for term_id, statement in rows:
+        out.setdefault(term_id, []).append(json.loads(statement))
+    return out
+
+
+async def keep_statements(
+    conn: "Connection", term_id: int, statements: "list[dict]"
+) -> None:  # REQ-2237
+    """Keep ``statements`` on the term, after those it holds; one it holds already is not kept
+    twice."""
+    held = (await term_statements(conn, [term_id])).get(term_id, [])
+    seen = {json.dumps(s, sort_keys=True) for s in held}
+    rows = []
+    for statement in statements:
+        text = json.dumps(statement, sort_keys=True)
+        if text in seen:
+            continue
+        seen.add(text)
+        rows.append(
+            {
+                "term_id": term_id,
+                "ordinal": len(held) + len(rows),
+                "kind": statement["kind"],
+                "statement": text,
+            }
+        )
+    if rows:
+        await conn.execute_core_many(insert(glossary_term_statements), rows)
 
 
 async def create_abstract_term(
@@ -966,8 +1048,8 @@ async def create_abstract_term(
     # (normalize_term case-folds), so a manually-created one that isn't would be the one
     # inconsistent entry, and silently invite a same-word duplicate differing only in case
     # ("Sepal Length" alongside "sepal length"). Never left to the caller to remember.
-    model_change.name("create", "glossary term", name)  # REQ-1524
     name = name.strip().lower()
+    model_change.name("create", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
     existing = (
@@ -995,6 +1077,7 @@ async def upsert_declared_term(
     name: str,
     *,
     definition: str | None = None,
+    calculation_method: str | None = None,
     domains: "set[str]",
 ) -> int:
     """Upsert a config-declared glossary term by name (REQ-1641).
@@ -1005,8 +1088,8 @@ async def upsert_declared_term(
     This is also how a config entry grounds an already-physical term: naming an existing
     rooted term adds a definition without touching its column refs.
     """
-    model_change.name("upsert", "glossary term", name)  # REQ-1524
     name = name.strip().lower()  # REQ-1844: every term name in this catalog is lowercase
+    model_change.name("upsert", model_change.uri(model_uri.term_uri, name))  # REQ-1524
     if not name:
         raise ValueError("term name is required")
     held = (
@@ -1019,11 +1102,12 @@ async def upsert_declared_term(
         {
             "name": name,
             "definition": definition,
+            "calculation_method": calculation_method,  # REQ-2243
             "deprecated": False,
         },
         index_elements=["name"],
         returning="id",
-        update_columns=["definition"],
+        update_columns=["definition", "calculation_method"],
     )
     await set_declared_domains(conn, term_id, domains)
     return term_id
@@ -1076,10 +1160,19 @@ async def set_definition(conn: "Connection", term_id: int, definition: str | Non
     return (result.rowcount or 0) > 0
 
 
+async def set_calculation_method(conn: "Connection", term_id: int, method: str | None) -> bool:
+    """Set the term's calculation method (REQ-2243), written and versioned as its definition is."""
+    result = await conn.execute_core(
+        update(glossary_terms)
+        .where(glossary_terms.c.id == term_id)
+        .values(calculation_method=method)
+    )
+    return (result.rowcount or 0) > 0
+
+
 async def set_iri(conn: "Connection", term_id: int, iri: str) -> None:
     """Give the term the IRI of the imported concept it is (REQ-2237). One concept is one term:
     an IRI another term carries is refused, naming that term, and so is replacing the term's own."""
-    model_change.name("align", "glossary term", f"{term_id} with {iri}")  # REQ-1524
     held = (
         await conn.execute_core(
             select(glossary_terms.c.id, glossary_terms.c.name, glossary_terms.c.iri).where(
@@ -1094,6 +1187,9 @@ async def set_iri(conn: "Connection", term_id: int, iri: str) -> None:
             raise ValueError(f"term {row.name!r} already carries the IRI {row.iri}")
     if not any(row.id == term_id for row in held):
         raise ValueError(f"term {term_id} does not exist")
+    model_change.name(  # REQ-1524
+        "align", model_change.uri(model_uri.term_uri, await term_name(conn, term_id)), "with", iri
+    )
     await conn.execute_core(
         update(glossary_terms).where(glossary_terms.c.id == term_id).values(iri=iri)
     )
@@ -1158,7 +1254,9 @@ async def approve_term(conn: "Connection", term_id: int, *, by: "str | None") ->
         .where(glossary_terms.c.id == term_id)
         .values(approved=True, status_by=by, status_at=func.now())
     )
-    model_change.name("approve", "glossary term", str(term_id))
+    model_change.name(  # REQ-1524
+        "approve", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+    )
 
 
 async def bulk_approvable(conn: "Connection") -> list[int]:
@@ -1236,7 +1334,9 @@ async def deprecate_term(
             status_at=func.now(),
         )
     )
-    model_change.name("deprecate", "glossary term", str(term_id))
+    model_change.name(  # REQ-1524
+        "deprecate", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+    )
 
 
 #: A retired term's successor takes its role (REQ-2144): a Class's is a Class or a Concept, a
@@ -1326,7 +1426,9 @@ async def retire_term(
     )
     if successor is not None:
         await add_edge(conn, successor, term_id, "REPLACES")
-    model_change.name("retire", "glossary term", str(term_id))
+    model_change.name(  # REQ-1524
+        "retire", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+    )
 
 
 async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") -> bool:
@@ -1355,8 +1457,12 @@ async def restore_term(conn: "Connection", term_id: int, *, by: "str | None") ->
             & (glossary_term_edges.c.rel_type == "REPLACES")
         )
     )
-    model_change.name("restore", "glossary term", str(term_id))
-    return (result.rowcount or 0) > 0
+    restored = (result.rowcount or 0) > 0
+    if restored:  # no such term: nothing changed, and nothing to name
+        model_change.name(  # REQ-1524
+            "restore", model_change.uri(model_uri.term_uri, await term_name(conn, term_id))
+        )
+    return restored
 
 
 async def retire_due(conn: "Connection", today: "date") -> list[int]:
@@ -1702,6 +1808,11 @@ async def export_graph(conn: "Connection") -> dict:
         "edges": edges,
         "experts": experts,
         "domains": domains,
+        # REQ-2237: each term's kept statements, written back out by the ontology exports.
+        "statements": [
+            {"term_id": term_id, "statements": held}
+            for term_id, held in sorted((await term_statements(conn)).items())
+        ],
     }
 
 
@@ -2032,6 +2143,21 @@ async def _home_key_refs(
     await rehome_keys(conn, {table_id}, keep=keep)
 
 
+async def _name_grounding(conn: "Connection", term_id: int, table_id: int) -> None:
+    """Name a table's grounding in a term by both model URIs (REQ-1524)."""
+    from provisa.core.repositories.table import model_name
+
+    named = await model_name(conn, table_id)
+    assert named is not None  # grounded just now
+    term = await term_name(conn, term_id)
+    model_change.name(
+        "ground",
+        model_change.uri(model_uri.term_uri, term),
+        "to",
+        model_change.uri(model_uri.named_table_uri, named.domain_id, named.name),
+    )
+
+
 async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
     """Make ``term_id`` the class term of ``table_id``.
 
@@ -2062,7 +2188,7 @@ async def ground_table(conn: "Connection", term_id: int, table_id: int) -> None:
         .values(class_term_id=term_id, class_term_derived=False)
     )
     await _home_key_refs(conn, table_id)
-    model_change.name("ground", "glossary term", f"{term_id} to table {address}")
+    await _name_grounding(conn, term_id, table_id)  # REQ-1524
 
 
 async def declare_class_term(conn: "Connection", table_id: int, term_id: int) -> None:
@@ -2070,7 +2196,7 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     is the source of truth, so it replaces whatever term grounded the table before, and loading
     the same configuration again changes nothing. Another term in its place is refused while a
     same-entity relationship stands on the one it has (identity.TableInIdentity)."""
-    address = await _keyed_table(conn, table_id)
+    await _keyed_table(conn, table_id)  # refuses a table whose rows are not identifiable
     await refuse_class_on_property(conn, term_id, table_id)
     held = await _class_term_of(conn, table_id)
     if held is not None and held != term_id:
@@ -2084,7 +2210,7 @@ async def declare_class_term(conn: "Connection", table_id: int, term_id: int) ->
     if held is not None and held != term_id:
         # A draft the configuration replaced keeps what else it holds, or goes (REQ-2141).
         await _settle_terms(conn, {held}, domains_before=await term_domains(conn))
-    model_change.name("ground", "glossary term", f"{term_id} to table {address}")
+    await _name_grounding(conn, term_id, table_id)  # REQ-1524
 
 
 async def unground_table(conn: "Connection", term_id: int, table_id: int) -> bool:

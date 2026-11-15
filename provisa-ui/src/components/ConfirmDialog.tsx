@@ -10,8 +10,9 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Button, Modal, Text } from "@mantine/core";
+import { Modal, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { DestructiveConfirmButton } from "./form/DestructiveConfirmButton";
 import { FormFooter } from "./form/FormLayout";
 
 interface Props {
@@ -79,14 +80,13 @@ export function ConfirmDialog({
           onCancel={() => setOpen(false)}
           cancelProps={{ disabled: loading }}
           action={
-            <Button
-              color="red"
+            <DestructiveConfirmButton
               onClick={handleConfirm}
               loading={loading}
-              data-testid={testId ? `${testId}-confirm` : undefined}
+              testId={testId ? `${testId}-confirm` : undefined}
             >
               {loading ? t("common.processing") : (confirmLabel ?? t("common.confirm"))}
-            </Button>
+            </DestructiveConfirmButton>
           }
         />
       </Modal>

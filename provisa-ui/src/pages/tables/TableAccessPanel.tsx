@@ -58,6 +58,12 @@ export function TableAccessPanel({ tableId }: { tableId: number | null }) {
   const chosen = columns.find((c) => c.name === (column ?? columns[0]?.name));
   return (
     <div data-testid="table-access">
+      {/* REQ-1921: a draft's access is read by a caller holding the right its preview needs. */}
+      {read.access.draft && (
+        <Badge size="xs" variant="light" color="gray" mb="xs" data-testid="table-access-draft">
+          {t("roleRights.draft")}
+        </Badge>
+      )}
       <FormLayout>
         <FormField size="medium" hint={t("roleRights.accessHint")}>
           <Select

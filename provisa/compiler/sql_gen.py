@@ -213,6 +213,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=f"{tgt_expr} = {src_expr}",
                     )
                     has_lateral_ops_joins |= _child_lateral
             elif _use_agg and sel.selection_set:
@@ -283,6 +284,7 @@ def _compile_root_field(  # REQ-009, REQ-011, REQ-032, REQ-033, REQ-034, REQ-035
                         variables,
                         cardinality=join_meta.cardinality,
                         flat=flat,
+                        joined=f"{tgt_expr} = {src_expr}",
                     )
                     has_lateral_ops_joins |= _child_lateral
         else:

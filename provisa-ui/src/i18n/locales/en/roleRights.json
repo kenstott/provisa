@@ -35,6 +35,7 @@
     "scope_own-domain": "own-domain",
     "write_insert": "insert",
     "write_update": "update",
-    "write_delete": "delete"
+    "write_delete": "delete",
+    "draft": "Draft"
   }
 }

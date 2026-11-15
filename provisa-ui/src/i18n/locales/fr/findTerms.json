@@ -67,7 +67,7 @@
     "progressMerging": "Fusion des éléments trouvés en termes candidats...",
     "progressModel": "Modèle : {{model}}",
     "budgetLimited": "Le budget d'IA du rôle a limité un appel à {{tokens}} jetons de sortie : une réponse peut être tronquée.",
-    "cancel": "Annuler l'analyse",
+    "stopTip": "Arrêter l'analyse",
     "failed": "L'analyse s'est arrêtée : {{error}}",
     "summary": "{{passages}} passages lus, {{mentions}} mentions, {{candidates}} termes candidats.",
     "leftOut": "Écartés : {{count}} qui ne sont pas des concepts de l'ontologie (comme des personnes ou des entreprises nommées), {{misquoted}} non cités depuis leur passage, {{unresolved}} non rattachés à un terme.",

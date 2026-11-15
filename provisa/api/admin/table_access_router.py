@@ -64,15 +64,30 @@ async def table_access_endpoint(table_id: int, request: Request):  # REQ-2162
                 )
             ).fetchall()
         }
+    # REQ-1921: a draft is in no role's catalog; it is answered to a caller holding the right its
+    # preview needs (table registration in its domain), every column of it, marked as a draft.
+    draft = None
+    if not any(t["id"] == table_id for t in state.tables):
+        from provisa.api.admin.table_read import draft_table, table_for_steward
+
+        if draft_table(state, table_id) is not None:
+            draft = table_for_steward(request, state, table_id)
+
+    def readable(tid: int, column: str) -> bool:
+        if draft is not None and tid == table_id:
+            return True
+        return scope.whole or column in scope.served.get(tid, set())
+
     access = table_access(
         state,
         table_id,
         roles=[rid for rid in state.roles if not is_meta_role_id(rid) and full(rid)],
         parents=parent_map(dict(r._mapping) for r in rows),
         stored=stored,
-        readable=lambda tid, column: scope.whole or column in scope.served.get(tid, set()),
+        readable=readable,
         governance=scope.governance,
         standard=STANDARD_ROLES,
+        served_draft=draft,
     )
     if access is None or not access["columns"]:
         raise ApiError(404, "schema.table_not_found", f"Table {table_id} not found", table=table_id)

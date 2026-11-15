@@ -79,6 +79,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "data_product_commands": "data_product_commands_meta",  # REQ-1634
     "sources": "sources_meta",  # REQ-1443: identity and type only
     "model_names": "model_names_meta",  # REQ-194
+    "relationships": "relationships_meta",  # REQ-2248: a retired relationship is not listed
 }
 
 
@@ -355,9 +356,17 @@ def _populate_source_catalog_names(
     ``config.sources`` does not already cover.
     """
     from provisa.api.app import state
+    from provisa.core.source_registry import SOURCE_TO_DIALECT
 
     # Seed system source catalogs (never org-prefixed — one physical catalog shared across orgs).
     state.source_catalogs["provisa-admin"] = source_to_catalog("provisa-admin")
+    # provisa-admin is the control plane, read by its own terminal (REQ-1919): its type is the
+    # store's backend, as startup_seed registers its row, and its dialect is that backend's. The
+    # router judges a read of it by that dialect (REQ-863); without it a meta read was landed as
+    # if its source ran no construct at all.
+    assert state.model_db is not None, "the model store is open before any source state is built"
+    state.source_types["provisa-admin"] = state.model_db.dialect
+    state.source_dialects["provisa-admin"] = SOURCE_TO_DIALECT[state.model_db.dialect]
     # The ops signals are read at otel.signals.<table>: Trino's Iceberg catalog, or the catalog a
     # native engine defines over the traces it lands (EngineBackend.landed_signals). An engine
     # that reads neither has no provisa-otel table registered (startup_seed._seed_ops_pg).
@@ -530,6 +539,12 @@ async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-1
     await _build_source_pools_and_enums(config)
     await _resolve_pk_from_sources()
     await _rebuild_schemas()
+    # REQ-2185 (TERMS ARE EMBEDDED AS THEY CHANGE): the glossary terms the configuration declared,
+    # approved, retired or redefined are embedded in the background.
+    from provisa.api.admin.glossary_router import embed_terms
+    from provisa.core.request_context import require_current_org
+
+    await embed_terms(require_current_org())
 
 
 async def _load_openapi_specs() -> None:
@@ -1449,6 +1464,7 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
             if entry["mask"] is not None:
                 validate_masking_rule(rule_of(entry["mask"]), col_name, data_type, is_nullable)
         masked.append((table_id, col_name, masks, data_type))
+    masked = await _with_synthetic_masks(conn, masked, col_types_converted, rules)
     for role in roles:
         for key, cols in reader_masks(masked, role["id"], chains[role["id"]]).items():
             rules.setdefault(key, {}).update(cols)
@@ -1456,6 +1472,65 @@ async def _load_masking_rules(  # REQ-040, REQ-263, REQ-1677
     # published here, in the same assignment as their members'.
     state.masked_columns = masked
     state.masking_rules = with_meta_masks(state, rules, masked, chains)
+
+
+async def _with_synthetic_masks(  # REQ-2180, REQ-1494
+    conn: Any,
+    masked: list[tuple[int, str, list[dict], str]],
+    col_types_converted: dict[int, list[ColumnMetadata]],
+    faked: dict[Any, dict[str, Any]],
+) -> list[tuple[int, str, list[dict], str]]:
+    """``masked`` with a role-wide fake mask on every column of every dataset of a product with
+    a synthetic offer, for that offer's role (REQ-2180, AN OFFER'S DATA IS FULL, A SAMPLE VIEW, OR
+    SYNTHETIC): the role reads each column through its declared fake (REQ-1494), computed by the
+    serving engine at the read, or completely masked where the column declares none -- never a
+    real value. A column a Test (fake) environment fakes for every role (``faked``) is left as it
+    is: every role reads its fake already."""
+    from provisa.core.repositories.data_product_offer import synthetic_readers
+    from provisa.security.masking import synthetic_masks
+
+    readers = await synthetic_readers(conn)
+    if not readers:
+        return masked
+    rows = (
+        await conn.execute_core(
+            select(
+                _table_columns_t.c.table_id,
+                _table_columns_t.c.column_name,
+                _table_columns_t.c.fake,
+                _table_columns_t.c.fake_stable,
+                _table_columns_t.c.fake_stable_version,
+            ).where(_table_columns_t.c.table_id.in_(list(readers)))
+        )
+    ).fetchall()
+    fakes = {
+        (r.table_id, r.column_name): {
+            "fake": r.fake,
+            "fake_stable": bool(r.fake_stable),
+            "fake_stable_version": r.fake_stable_version,
+        }
+        for r in rows
+        if r.fake is not None
+    }
+    everyone = {(table_id, column) for (table_id, _role), cols in faked.items() for column in cols}
+    own = {(t, c): (masks, dtype) for t, c, masks, dtype in masked}
+    columns = {(t, c.column_name) for t in readers for c in col_types_converted.get(t, [])}
+    out = [m for m in masked if (m[0], m[1]) not in columns]
+    for table_id, roles in readers.items():
+        for col in col_types_converted.get(table_id, []):
+            key = (table_id, col.column_name)
+            if key in everyone:
+                continue
+            masks, data_type = own.get(key, ([], col.data_type))
+            out.append(
+                (
+                    table_id,
+                    col.column_name,
+                    synthetic_masks(masks, roles, data_type, fakes.get(key)),
+                    data_type,
+                )
+            )
+    return out
 
 
 async def _load_kept(conn: Any) -> None:  # REQ-1942
@@ -1799,6 +1874,52 @@ def schema_input_for(
     )
 
 
+#: REQ-1921: how a draft is marked where a role it is served to is offered it (its type's
+#: description in the schema and the paths built from it).
+DRAFT_MARK = "Draft: not released."
+
+
+def schema_input_with_drafts(
+    state: Any, role: dict, drafts: list[dict], *, marked: bool
+) -> SchemaInput:
+    """``role``'s schema input with ``drafts`` among its tables, as the role build builds it from
+    this generation's inputs, the tables moved from the drafts to the tables and their columns'
+    types the registered ones (REQ-1921). ``marked``: the drafts as a schema offers them, on a
+    copy: each one's description says it is a draft (:data:`DRAFT_MARK`), and it takes no write
+    (a draft is served to be read; a mutation naming one is refused naming it as a draft)."""
+    from dataclasses import replace
+
+    inputs = state.role_build_inputs
+    added = {d["id"] for d in drafts}
+    tables = [
+        {
+            **d,
+            "description": f"{DRAFT_MARK} {d.get('description') or ''}".strip(),
+            "write_ops": [],
+        }
+        if marked
+        else d
+        for d in drafts
+    ]
+    si = schema_input_for(state, role, [*inputs["tables"], *tables], inputs["metrics"])
+    return replace(
+        si,
+        draft_tables=[t for t in inputs["draft_tables"] if t["id"] not in added],
+        column_types={
+            **inputs["column_types"],
+            **{
+                draft["id"]: [
+                    ColumnMetadata(
+                        column_name=c["column_name"], data_type=c["data_type"], is_nullable=True
+                    )
+                    for c in draft["columns"]
+                ]
+                for draft in drafts
+            },
+        },
+    )
+
+
 def register_role_surface(state: Any, role: dict, rls: Any) -> None:
     """Register one role's data surface -- its GraphQL schema, REST path map, compiled context,
     RLS context and proto -- from this generation's build inputs, built LAZILY: the role is known
@@ -1862,18 +1983,39 @@ class _RoleParts:
         from provisa.compiler.schema_gen import build_table_path_map
         from provisa.grpc.proto_gen import generate_proto
 
+        from provisa.security.rights import registers_tables_in
+
         si, ctx = self._schema_input_and_context()
         with serving(self._runtime):
+            # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a role is offered, in its GraphQL schema
+            # and REST paths and marked as a draft, every draft of a domain it holds table
+            # registration in. Its context keeps them as drafts: a request naming one is read
+            # through the drafts' own view (admin/table_read.reading_drafts), as a statement
+            # naming one is.
+            served = (
+                [
+                    d
+                    for d in self._inputs["draft_tables"]
+                    if registers_tables_in(self._role, self._state.roles, d["domain_id"])
+                ]
+                if reads_data(self._role.get("capabilities"))
+                else []
+            )
+            offered = (
+                schema_input_with_drafts(self._state, self._role, served, marked=True)
+                if served
+                else si
+            )
             # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
             # surface holds that failure -- logged as an ERROR naming the role, and raised to
             # every read of it -- rather than serving a permanently cached "no schema available".
             # An unmapped column type is a real gap in the proto type map, not a reason to
             # silently disable gRPC for the role.
             return RoleSurface(
-                schema=generate_schema(si),
+                schema=generate_schema(offered),
                 context=ctx,
                 rls=self._rls,
-                table_path_map=build_table_path_map(si),
+                table_path_map=build_table_path_map(offered),
                 proto=generate_proto(si, field_numbers=self._inputs["field_numbers"]),
             )
 
@@ -2254,6 +2396,13 @@ _META_TABLES = [
     "data_product_edges",  # REQ-2126: a product's relationship links; view-only
     "metric_definitions",  # REQ-2188: governed metrics; view-only ("metrics" is ops' OTel table)
     "model_names",  # REQ-194: the names table of the last model version built
+    "tag_instances",  # REQ-2208: one row per tag on an object, and per required tag missing; view
+    # REQ-2208 (decision 2026-11-13): each citation of the library, each tag on a document or
+    # section, each path from a section to an object; views
+    "library_documents",
+    "tag_citations",
+    "section_tags",
+    "policy_coverage",
     # REQ-2190: what a SQL catalog reads: view-only, served to SQL alone.
     *NEUTRAL_VIEW_NAMES,
     *CATALOG_VIEW_NAMES,

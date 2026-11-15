@@ -711,6 +711,7 @@ async def accept_draft(draft_id: int, request: Request) -> dict:
     except (review.ReviewRefused, ValueError) as exc:
         raise _refused(_review_error(exc)) from None
     await glossary._notify(org_id, "ontology term accepted from a document")
+    await glossary.embed_terms(org_id)
     return decided
 
 
@@ -734,6 +735,7 @@ async def merge_draft(draft_id: int, request: Request) -> dict:
     except (review.ReviewRefused, ValueError) as exc:
         raise _refused(_review_error(exc)) from None
     await glossary._notify(org_id, "ontology term merged from a document")
+    await glossary.embed_terms(org_id)
     return decided
 
 
@@ -787,4 +789,5 @@ async def bulk_accept(scan_id: int, request: Request) -> dict:
                 refused.append({"id": draft_id, "message": message})
     if decided:
         await glossary._notify(org_id, "ontology terms accepted from a document")
+        await glossary.embed_terms(org_id)
     return {"decided": decided, "refused": refused}

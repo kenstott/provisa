@@ -233,6 +233,8 @@ def _build_where_input(  # REQ-008, REQ-221, REQ-2136
         fields = dict(input_fields)
         fields["_and"] = GraphQLInputField(GraphQLList(GraphQLNonNull(wi)))
         fields["_or"] = GraphQLInputField(GraphQLList(GraphQLNonNull(wi)))
+        # The rows the condition does not hold for: plain SQL NOT, as Hasura's _not.
+        fields["_not"] = GraphQLInputField(wi)
         if relationships is not None:
             fields.update(relationships())
         return fields

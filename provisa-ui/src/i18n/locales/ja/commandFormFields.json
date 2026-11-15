@@ -68,6 +68,8 @@
     "bindingTemplate": "SQL 式",
     "bindingTemplateHint": "1 つの SQL 式。各引数を {{placeholder}} と書きます。呼び出し元のクエリ内で実行されます。",
     "argDefault": "引数 {{name}} の既定値",
-    "argDefaultPlaceholder": "既定値（必須の場合は空欄）"
+    "argDefaultPlaceholder": "既定値（必須の場合は空欄）",
+    "nativeSql": "ネイティブ SQL",
+    "nativeSqlHint": "ソース自身の方言で書く SQL。ステートメントは 1 つでも複数でもよく、ソース上の 1 つのトランザクションで実行されます。すべてコミットされるか、どれもされないかのどちらかです。引数は {{placeholder}} と書き、それぞれ値としてバインドされます。最後のステートメントの行が応答になります。"
   }
 }

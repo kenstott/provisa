@@ -25,8 +25,8 @@ import { ColumnNameCell } from "./ColumnNameCell";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import type { ColumnDefinitionLine } from "./ColumnGlossaryHover";
-import { VectorModelCell } from "./VectorModelCell";
-import { useVectorModels } from "./useVectorModels";
+import { QdrantVectorColumns } from "./QdrantVectorColumns";
+import { FormLayout } from "../../components/form/FormLayout";
 import {
   governanceWithheld,
   masksSummary,
@@ -46,6 +46,7 @@ export function TableColumnsSection({
   roles,
   hidingOnly,
   writeGrants,
+  discover,
   describeColumn,
   scanTableId,
 }: {
@@ -56,6 +57,8 @@ export function TableColumnsSection({
   hidingOnly: boolean;
   /** The Write grants tab's editor. */
   writeGrants: ReactNode;
+  /** REQ-252: reading the columns from the live source, where the table's columns can be. */
+  discover?: ReactNode;
   /** Writes a column's description from the saved table; absent while it is being created. */
   describeColumn?: (column: string) => Promise<string>;
   /** REQ-2147: the saved table a scan for sensitive values reads; absent while it is being
@@ -84,12 +87,6 @@ export function TableColumnsSection({
       })
       .catch(() => setIrTypes(IR_TYPES_FALLBACK));
   }, []);
-  // REQ-2000: a Qdrant collection's vectors, with the registered models each may name.
-  const vectorModels = useVectorModels(
-    editingTable.sourceId,
-    editingTable.tableName,
-    editSource?.type === "qdrant" && !editingTable.queryTemplate,
-  );
   const governanceHidden = governanceWithheld(editingTable);
   // The column editor shows a topic at a time. A caller not shown grants is not offered Access;
   // one who may change only how columns are hidden is not offered Testing (their Save writes
@@ -120,6 +117,23 @@ export function TableColumnsSection({
   ];
   return (
     <div data-testid="table-section-columns-panel">
+      {discover}
+      {/* REQ-2000: a Qdrant collection's vectors each name their model here, one editor for the
+          table opened unsaved through Register and for a saved one. */}
+      {editSource?.type === "qdrant" && !editingTable.queryTemplate && (
+        <FormLayout style={{ marginBottom: "0.75rem" }}>
+          <QdrantVectorColumns
+            sourceId={editingTable.sourceId}
+            collection={editingTable.tableName}
+            columns={editingTable.columns.map((c) => ({
+              name: c.columnName,
+              path: c.path,
+              embeddingModel: c.embeddingModel,
+            }))}
+            onModel={(i, m) => updateEditCol(i, "embeddingModel", m)}
+          />
+        </FormLayout>
+      )}
       {/* One tab bar for everything of a column: its own attributes, and its test data. */}
       <ColumnTabs value={tab} onChange={setTab} shown={shownTabs} nested />
       {tab === "access" && <SensitiveScanBar scan={scan} />}
@@ -147,9 +161,6 @@ export function TableColumnsSection({
                     <Table.Th>{t("tableEditForm.dataTypeHeader")}</Table.Th>
                     <Table.Th>{t("tableEditForm.pkHeader")}</Table.Th>
                     <Table.Th>{t("tableEditForm.scopeHeader")}</Table.Th>
-                    {editSource?.type === "qdrant" && (
-                      <Table.Th>{t("vectorModelCell.header")}</Table.Th>
-                    )}
                   </>
                 )}
                 {/* REQ-1958: a caller who is not shown a column's grant lists and mask edits
@@ -289,17 +300,6 @@ export function TableColumnsSection({
                             allowDeselect={false}
                           />
                         </Table.Td>
-                        {editSource?.type === "qdrant" && (
-                          <Table.Td>
-                            <VectorModelCell
-                              column={c.columnName}
-                              path={c.path}
-                              value={c.embeddingModel}
-                              models={vectorModels}
-                              onChange={(m) => updateEditCol(i, "embeddingModel", m ?? "")}
-                            />
-                          </Table.Td>
-                        )}
                       </>
                     )}
                     {tab === "access" && (

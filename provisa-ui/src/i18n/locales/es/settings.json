@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL sobre HTTP",
           "cypher_http": "Cypher sobre HTTP",
+          "sparql_http": "SPARQL sobre HTTP",
           "pgwire": "PostgreSQL wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -246,14 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "Aviso antes de que termine una asignación de rol",
-        "help": "Cuántos días antes de que una asignación de rol caduque, o se elimine por falta de uso, se avisa por correo a su titular y a los administradores de la organización."
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "Aviso de vencimiento próximo de los derechos de acceso",
-        "help": "Cuántos días antes de la fecha de una regla de vencimiento de derechos de acceso se emite el evento de vencimiento próximo y se envía un correo a la persona y a los administradores de la organización. Las pantallas de derechos de acceso resaltan las reglas tan cercanas a su fecha."
+        "label": "Aviso antes de que termine una asignación de rol o sus entradas",
+        "help": "Cuántos días antes de que termine una asignación de rol, o una de sus entradas de derechos, o de que la asignación se elimine por falta de uso, se envía un correo a su titular y a los administradores de la organización."
       }
     },
     "server": {
@@ -604,6 +599,10 @@
       "principal": {
         "label": "Principal local de MCP",
         "help": "El principal (id de usuario) en cuyo nombre actúan las llamadas MCP locales (stdio), junto al rol local; los derechos de esa persona acotan el rol. Mientras no esté definido, esas llamadas se rechazan. Protegido porque quien pueda iniciar el cliente local actúa con el acceso de esa persona."
+      },
+      "tools": {
+        "label": "Herramientas MCP listadas",
+        "help": "Las herramientas que se listan a un cliente MCP cuya dirección no indica ningún modo (tools=full o tools=sip en la dirección). full lista todas las herramientas; sip lista las herramientas para buscar, describir, consultar y leer métricas, más una herramienta que añade los demás grupos cuando el cliente lo pide. Cualquier herramienta puede llamarse en ambos modos, según lo permitan los derechos de quien llama."
       },
       "external_url": {
         "label": "Dirección externa de MCP",

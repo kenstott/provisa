@@ -562,14 +562,11 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
             async with db.acquire() as conn:
                 yield conn
 
-    async def _export_config(org_id):
+    async def _export_config(org_id, *, only=None):
         # REQ-2118: the bindings are kept per target, under the target's id. REQ-2122: each
         # target's catalog serves the snapshot's domains, so its tables are published to it.
         domains = sorted({t.domain_id for t in snapshot.tables})
-        return MetadataExportConfig(
-            enabled=True,
-            targets=[{"catalog": target_id, "role": "steward"} for target_id in exporters],
-        ), [
+        return MetadataExportConfig(), [
             MetadataExportTarget(
                 id=target_id,
                 provider="atlas",
@@ -596,7 +593,7 @@ def _route_publish(monkeypatch, snapshot, db, exporters: dict) -> None:
     monkeypatch.setattr(
         publishing,
         "build_snapshot",
-        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None, product_created=None, endpoints=None: (
+        lambda model, *, org_id, dialect, contexts, glossary=None, dq_outcomes=None, uri_org_id=None, documentation_base_url=None, owner_emails=None, product_created=None, endpoints=None, offers=None: (
             snapshot
         ),
     )
@@ -878,10 +875,8 @@ async def test_a_retired_product_is_sent_only_where_it_was_published(
 
     current: dict = {}
 
-    async def _export_config(org_id):
-        return MetadataExportConfig(
-            enabled=True, targets=[{"catalog": "horizon", "role": "steward"}]
-        ), [
+    async def _export_config(org_id, *, only=None):
+        return MetadataExportConfig(), [
             MetadataExportTarget(
                 id="horizon",
                 provider="snowflake_horizon",

@@ -17,6 +17,7 @@ silent.
 
 from __future__ import annotations
 
+from unittest.mock import AsyncMock
 import types
 from contextlib import asynccontextmanager
 from typing import TYPE_CHECKING, Any, cast
@@ -86,6 +87,8 @@ async def _surface(control_plane, monkeypatch):
 
     monkeypatch.setattr(glossary_router, "_pool", _pool)
     monkeypatch.setattr(glossary_router, "_notify", _notify)
+    # REQ-2185: a term's save embeds it in the background, which these cases do not run.
+    monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
     # The gates resolve capabilities through app state; which right each endpoint names is asserted
     # in test_glossary_rights.py (REQ-1590) — here they must simply not block the handler.
     monkeypatch.setattr(glossary_router, "_require_glossary_read", lambda request: None)

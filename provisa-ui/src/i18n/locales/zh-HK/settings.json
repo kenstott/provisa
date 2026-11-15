@@ -27,6 +27,7 @@
           "odata": "OData",
           "sql_http": "SQL over HTTP",
           "cypher_http": "Cypher over HTTP",
+          "sparql_http": "SPARQL over HTTP",
           "pgwire": "PostgreSQL wire",
           "flight": "Arrow Flight",
           "bolt": "Bolt",
@@ -246,14 +247,8 @@
         }
       },
       "role_grant_notice_days": {
-        "label": "角色授予結束前的通知",
-        "help": "在角色授予到期或因未使用而被移除前多少天，以電郵通知其持有人和組織管理員。"
-      }
-    },
-    "entitlements": {
-      "expiring_soon_days": {
-        "label": "權限即將到期通知",
-        "help": "在權限到期規則的日期之前多少天發出「即將到期」事件，並以電郵通知本人及機構管理員。權限畫面會突出顯示距日期在此範圍內的規則。"
+        "label": "角色授予或其條目結束前的通知",
+        "help": "在角色授予或其某個權限條目結束、或授予因未使用而被移除之前多少天，向其持有人和組織管理員發送電郵。"
       }
     },
     "server": {
@@ -604,6 +599,10 @@
       "principal": {
         "label": "MCP 本機主體",
         "help": "本機 (stdio) MCP 呼叫在本機角色之外代表其行事的主體（使用者 ID）；該人的權利會收窄角色。未設定前，這些呼叫一律被拒絕。受保護，因為任何能啟動本機用戶端的人都會以該人的存取權限行事。"
+      },
+      "tools": {
+        "label": "列出的 MCP 工具",
+        "help": "向地址未指定模式的 MCP 用戶端列出的工具（地址上的 tools=full 或 tools=sip）。full 列出所有工具；sip 列出用於尋找、描述、查詢和讀取指標的工具，以及一個在用戶端要求時加入其他組別的工具。在任一模式下，都可以在呼叫者權限容許的範圍內呼叫任何工具。"
       },
       "external_url": {
         "label": "MCP 外部位址",

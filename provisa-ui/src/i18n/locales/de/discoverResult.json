@@ -1,0 +1,20 @@
+{
+  "discoverResult": {
+    "foreignKeys": "Fremdschlüssel: {{count}} gefunden.",
+    "foreignKeys_other": "Fremdschlüssel: {{count}} gefunden.",
+    "semanticsFound": "Semantik: {{count}} Vorschlag.",
+    "semanticsFound_other": "Semantik: {{count}} Vorschläge.",
+    "semanticsUnreadable": "Semantik: keine. Die Antwort des Modells war nicht lesbar.",
+    "semanticsNoneProposed": "Semantik: keine. Das Modell hat keine Beziehungen vorgeschlagen.",
+    "semanticsFiltered": "Semantik: von der {{count}} vom Modell vorgeschlagenen Beziehung wurde keine übernommen: {{why}}.",
+    "semanticsFiltered_other": "Semantik: von den {{count}} vom Modell vorgeschlagenen Beziehungen wurde keine übernommen: {{why}}.",
+    "belowThreshold": "{{count}} lag unter der Konfidenzschwelle von {{threshold}} %",
+    "belowThreshold_other": "{{count}} lagen unter der Konfidenzschwelle von {{threshold}} %",
+    "alreadyKnown": "{{count}} war bereits abgelehnt oder bereits vorhanden",
+    "alreadyKnown_other": "{{count}} waren bereits abgelehnt oder bereits vorhanden",
+    "invalid": "{{count}} nannte eine Tabelle oder Spalte, die es nicht gibt",
+    "invalid_other": "{{count}} nannten Tabellen oder Spalten, die es nicht gibt",
+    "semanticsCutShort": "Semantik: keine. Die Antwort des Modells endete an ihrer Längengrenze, bevor ein Vorschlag fertig war.",
+    "cutShortNote": "Die Antwort des Modells endete an ihrer Längengrenze; nur die fertigen Vorschläge wurden gelesen."
+  }
+}

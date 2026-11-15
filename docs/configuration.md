@@ -1378,7 +1378,7 @@ The `distinct_on` argument selects the first row for each distinct value of the 
 }
 ```
 
-Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. For non-PG dialects, a window-function fallback is used.
+Compiles to `SELECT DISTINCT ON (region) ...` in PostgreSQL. On a dialect with no `DISTINCT ON`, Provisa writes the same result with a window function, a polyfill of PostgreSQL's behaviour. The [polyfill pages](conformance/polyfill/index.md) list each engine's polyfills.
 
 ## Write Grant Presets
 

@@ -286,6 +286,7 @@
     "holdOnFailingChecksHelp": "Abort a refresh, keeping the previous copy, when the latest run of a checker table scanning one of this view's inputs failed. Runs before the preflight check above; both must continue.",
     "holdOnFailingChecksShowCode": "Show its code",
     "holdOnFailingChecksHideCode": "Hide its code",
-    "holdOnFailingChecksCodeHelp": "The check this option applies. Copy it into the preflight check above to change it."
+    "holdOnFailingChecksCodeHelp": "The check this option applies. Copy it into the preflight check above to change it.",
+    "discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted."
   }
 }

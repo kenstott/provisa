@@ -15,6 +15,6 @@
     "cycleFeedback": "(toegestaan — kruist een gematerialiseerde grens)",
     "cycleError": "(geen materialisatiegrens — waarschijnlijk een ontwerpfout)",
     "emptyTitle": "Niets om te tonen",
-    "emptyBody": "Er is geen herkomst gevonden. Volledige herkomst omvat uw geregistreerde views — er zijn er nog geen gedefinieerd, dus er valt niets na te gaan. Registreer een view (Model → Views) of analyseer hierboven een query om de herkomst direct te zien."
+    "emptyBody": "Er is geen herkomst gevonden. Volledige herkomst omvat uw geregistreerde views, en er zijn er nog geen gedefinieerd. Registreer een view (Afgeleid → Views) of analyseer hierboven een query om de herkomst te zien."
   }
 }

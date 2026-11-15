@@ -57,6 +57,7 @@ import { useScanProgress } from "./useScanProgress";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { CollapsibleItem, Collapsibles } from "../collapsible/Collapsible";
 import { documentMark } from "../../lib/documentMark";
+import { StopButton } from "../StopButton";
 
 /** How often a running scan is read again, in milliseconds. */
 const POLL_MS = 2000;
@@ -667,17 +668,12 @@ export function TermReviewQueue({
               )}
             </Stack>
           </Group>
-          <Button
-            size="xs"
-            variant="light"
-            color="red"
-            leftSection={<X size={12} />}
-            loading={busy}
+          <StopButton
             onClick={() => void cancel()}
-            data-testid="find-terms-cancel"
-          >
-            {t("findTerms.cancel")}
-          </Button>
+            tip={t("findTerms.stopTip")}
+            disabled={busy}
+            testId="find-terms-cancel"
+          />
         </Group>
       )}
       {scan.budget_limit !== null && (

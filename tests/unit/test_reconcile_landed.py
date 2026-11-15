@@ -129,6 +129,12 @@ def _state(cfg, registered, monkeypatch):
         ]
 
     monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+
+    async def _export_graph(_conn):
+        # REQ-2238: the term graph the reconcile grounds columns against; this model holds no terms.
+        return {"terms": [], "refs": [], "table_refs": [], "edges": []}
+
+    monkeypatch.setattr("provisa.core.repositories.glossary.export_graph", _export_graph)
     return SimpleNamespace(
         config=cfg, model_db=(_one_db := _fake_tenant_db()), tenant_db=_one_db, org_id="acme"
     )

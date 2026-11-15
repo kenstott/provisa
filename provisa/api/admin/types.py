@@ -131,6 +131,7 @@ class SourceType:  # REQ-012
     # replay) can carry the same field forward.
     password_ref: str | None = ""
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
+    is_system: bool = False  # a source Provisa runs for itself: not offered by Register table
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
 
@@ -180,38 +181,6 @@ class ListedNamesType:  # REQ-2153: a listed table's names, and nothing more
 
 
 @strawberry.type
-class ContractSlaPropertyType:  # REQ-2158
-    property: str
-    value: JsonScalar | None = None
-    unit: str | None = None
-    description: str | None = None
-
-
-@strawberry.type
-class ContractTermsType:  # REQ-2158
-    usage: str | None = None
-    limitations: str | None = None
-    notice_period: str | None = None
-
-
-@strawberry.type
-class DataContractType:  # REQ-2158
-    """A product member's contract, its output port, at its own version. Its schema is its
-    member's columns (the product's ODCS contracts), never a selection of its own."""
-
-    table_id: int
-    source_id: str
-    schema_name: str
-    table_name: str
-    contract_id: str
-    version: str
-    status: str
-    description: str | None
-    terms: ContractTermsType
-    sla: list[ContractSlaPropertyType]
-
-
-@strawberry.type
 class DataProductType:  # REQ-1634, REQ-1660
     id: str
     domain_id: str
@@ -228,7 +197,9 @@ class DataProductType:  # REQ-1634, REQ-1660
     custom_properties: JsonScalar
     # REQ-2118: when the product was created (ISO 8601), its ODPS productCreatedTs; read-only.
     created_at: str
-    contracts: list[DataContractType] = strawberry.field(default_factory=list)  # REQ-2158
+    # REQ-2180: how fresh every contract of the product promises its data (seconds a read may
+    # trail its source); None: each dataset's own.
+    freshness: int | None = None
     # REQ-1634 STATUS: draft, live, deprecated or retired; changed only by its actions.
     status: str = "draft"
     status_reason: str | None = None
@@ -264,6 +235,26 @@ class TagParamValueType:  # REQ-1467
 
 
 @strawberry.type
+class LibraryCitationType:  # REQ-2208
+    """A citation of a reference library document, or a section of it named by its heading or,
+    when it has none, its page. ``text_sha256`` is of the section's text when it was cited; the
+    document's title and source are kept, so the citation outlives the document. ``state`` is
+    "current", "drifted" (the section's text changed) or "broken" (the section or the document is
+    gone); ``needs_review`` is any but current."""
+
+    document_id: int | None
+    document_title: str
+    document_source: str
+    section_heading: str | None
+    section_page: int | None
+    text_sha256: str
+    cited_by: str | None
+    cited_at: str
+    state: str
+    needs_review: bool
+
+
+@strawberry.type
 class TagType:  # REQ-1373, REQ-1375
     id: str
     description: str
@@ -280,6 +271,16 @@ class TagType:  # REQ-1373, REQ-1375
     param_policy: str = "none"
     sensitive: bool = False  # REQ-1943: the Sensitive data option
     param_values: list[TagParamValueType] = strawberry.field(default_factory=list)
+    # REQ-2208: each assignment must cite a library document or section (a gap when it does not).
+    requires_citation: bool = False
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists.
+    required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects it is offered on; none
+    # names every domain, as a source's allowed_domains does.
+    allowed_domains: list[str] = strawberry.field(default_factory=list)
+    # REQ-2208: the sections that define the tag, and whether one of them changed or is gone.
+    citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
+    needs_review: bool = False
 
 
 @strawberry.type
@@ -307,6 +308,12 @@ class TagAssignmentType:  # REQ-1377
     rls_rule_id: int | None = None
     role_id: str | None = None
     metric_name: str | None = None
+    # REQ-2208 (CITATIONS PER ASSIGNMENT): the assignment's canonical key, its own citations, whether
+    # one of them changed or is gone, and whether it lacks the citation its tag requires.
+    object_key: str | None = None
+    citations: list[LibraryCitationType] = strawberry.field(default_factory=list)
+    needs_review: bool = False
+    citation_gap: bool = False
 
 
 @strawberry.type
@@ -845,6 +852,40 @@ class CrawlResultType:  # REQ-1785
 
 
 @strawberry.type
+class CombinedFileType:  # REQ-788
+    """One file a combined table reads, relative to its source's directory, and the listed table
+    it is."""
+
+    file: str
+    table: str
+
+
+@strawberry.type
+class FileColumnsDifferType:  # REQ-788
+    """A file whose columns differ from the others': what it lacks, what it adds, or why it could
+    not be read."""
+
+    file: str
+    missing: list[str]
+    extra: list[str]
+    error: str | None = None
+
+
+@strawberry.type
+class FileGlobPreviewType:  # REQ-788
+    """One table over many files, before it is registered: its glob, the files it reads, the
+    columns they share, the files that differ, and the files a derived glob adds to those picked."""
+
+    glob: str
+    files: list[CombinedFileType]
+    shared_columns: list[str]
+    differing: list[FileColumnsDifferType]
+    extra_files: list[str]
+    unmatched_tables: list[str]
+    reference_table: str | None = None
+
+
+@strawberry.type
 class KaggleDatasetType:  # REQ-1783
     """One Kaggle datasets/list search result — the token-gated picker's row shape (ref/id,
     title, subtitle). Deliberately separate from AvailableTableType/AvailableSchema: those back
@@ -1147,30 +1188,9 @@ class DataProductInput:  # REQ-1634
     # default value, and the standard introspection query (which asks every input's defaultValue)
     # then answered with an error. Absent or null means no custom properties.
     custom_properties: JsonScalar | None = None
-
-
-@strawberry.input
-class ContractSlaPropertyInput:  # REQ-2158
-    property: str
-    value: JsonScalar | None = None
-    unit: str | None = None
-    description: str | None = None
-
-
-@strawberry.input
-class ContractTermsInput:  # REQ-2158
-    usage: str | None = None
-    limitations: str | None = None
-    notice_period: str | None = None
-
-
-@strawberry.input
-class DataContractInput:  # REQ-2158
-    version: str
-    status: str
-    description: str | None = None
-    terms: ContractTermsInput
-    sla: list[ContractSlaPropertyInput]
+    # REQ-2180: how fresh every contract of the product promises its data, written once on the
+    # product: seconds a read may trail its source; null: each dataset's own.
+    freshness: int | None = None
 
 
 @strawberry.input
@@ -1182,6 +1202,24 @@ class TagInput:  # REQ-1373
     expires_policy: str = "optional"
     param_policy: str = "none"  # REQ-1467: none | required
     sensitive: bool = False  # REQ-1943: the Sensitive data option
+    # REQ-2208: each assignment must cite a library document or section (a gap, never refused).
+    requires_citation: bool = False
+    # REQ-2208 (THE TAGS REPORT): required on every object of the kinds applies_to lists; the tags
+    # report lists each object without it, nothing is refused.
+    required: bool = False
+    # REQ-2208 (A TAG IS OFFERED BY DOMAIN): the domains whose objects the tag is offered on, none
+    # meaning every domain. Left out (None), a saved tag keeps the list it has; a new one names none.
+    allowed_domains: list[str] | None = None
+
+
+@strawberry.input
+class LibraryCitationInput:  # REQ-2208
+    """A reference library document to cite, or a section of it: by its heading, or by its page
+    when it has none; neither cites the whole document."""
+
+    document_id: int
+    section_heading: str | None = None
+    section_page: int | None = None
 
 
 @strawberry.input
@@ -1227,6 +1265,27 @@ class TagAssignmentInput:  # REQ-1377
     # REQ-2145: on a column, put the tag on the column's term instead, so it covers every column
     # with the same meaning, those to come included.
     also_term: bool = False
+
+
+@strawberry.input
+class TagTargetInput:  # REQ-2208
+    """An object a tag may be put on, named as a ``TagAssignmentInput`` names it, without a tag:
+    the tags offered on it are asked of the server, which knows the object's domains."""
+
+    object_type: str  # one of models.TAG_OBJECT_TYPES
+    source_id: str | None = None
+    table_id: int | None = None
+    column_name: str | None = None
+    relationship_id: str | None = None
+    command_name: str | None = None
+    term_id: int | None = None
+    product_id: str | None = None
+    document_id: int | None = None
+    section_heading: str | None = None
+    section_page: int | None = None
+    rls_rule_id: int | None = None
+    role_id: str | None = None
+    metric_name: str | None = None
 
 
 @strawberry.input
@@ -1702,6 +1761,18 @@ class MetricType:  # REQ-1317: a governed, named aggregate definition (grain bou
     # Null for a caller without view_governance (REQ-1134, REQ-1958).
     visible_to: list[str] | None = None
     from_fact: str | None = None  # REQ-1320: set when auto-registered from a fact measure
+    term: str | None = None  # REQ-2243: the glossary term the metric names
+
+
+@strawberry.type
+class DatasetMetricType:  # REQ-2243: a governed metric a dataset uses, as its readers see it
+    name: str
+    description: str | None = None
+    ai_context: str | None = None  # REQ-1319
+    # The glossary term the metric names, with its definition and calculation method.
+    term: str | None = None
+    term_definition: str | None = None
+    term_calculation_method: str | None = None
 
 
 @strawberry.input
@@ -1713,6 +1784,7 @@ class MetricInput:  # REQ-1317
     ai_context: str | None = None  # REQ-1319
     # REQ-1317: None at create is the acting role and Viewer; the roles named otherwise.
     visible_to: list[str] | None = None
+    term: str | None = None  # REQ-2243: the glossary term the metric names, by its name
 
 
 @strawberry.input
@@ -2062,13 +2134,15 @@ class MutationResult:  # REQ-533
 @strawberry.type
 class TableAccessType:  # REQ-2234
     """The ways to reach a registered table, each ready to copy. ``pgwire`` and ``rest`` are None
-    where that listener or surface is not serving."""
+    where that listener or surface is not serving. ``draft``: the table is a draft, reached this
+    way by a role holding org_admin alone (REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN)."""
 
     graphql: str
     sql: str
     pgwire: str | None
     rest: str | None
     mcp: str
+    draft: bool
 
 
 @strawberry.type
@@ -2077,6 +2151,24 @@ class TableRegistrationOutcome:  # REQ-2234
 
     table_name: str
     result: MutationResult
+
+
+@strawberry.type
+class BulkDeleteRefusal:  # REQ-2240
+    """One row of a bulk delete its single delete refused: its name, why, and what still refers
+    to it (none where the refusal was not over dependents)."""
+
+    name: str
+    reason: str
+    dependents: list[JsonScalar]
+
+
+@strawberry.type
+class BulkDeleteResult:  # REQ-2240
+    """A bulk delete's answer: the names of the rows deleted, and each row refused."""
+
+    deleted: list[str]
+    refused: list[BulkDeleteRefusal]
 
 
 # --- Compile / Submit types ---

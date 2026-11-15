@@ -515,7 +515,7 @@ class TestExecutorRouting:
             patch.object(
                 executor,
                 "_compile_and_execute_graphql",
-                new=AsyncMock(return_value=[(SimpleNamespace(), result, None)]),
+                new=AsyncMock(return_value=[(SimpleNamespace(), result)]),
             ) as fake_exec,
         ):
             preview = await executor._execute_grpc("QueryPets", "admin", app_state, None)
@@ -700,6 +700,42 @@ class TestExecutorRouting:
                 }
             ]
         }
+
+    async def test_execute_jsonapi_plain_row_read_runs_the_table_select(self):
+        """The JSON:API preview's row read: no aggregation params reach the compiled pipeline,
+        the table's columns are selected through the raw-SQL path and previewed as columns/rows."""
+        from provisa.nl import executor
+
+        ctx = _ctx()
+        ctx.aggregate_columns = {1: [("id", "integer"), ("name", "text")]}
+        app_state = RoleState(contexts={"admin": ctx})
+        answer = {"columns": ["id", "name"], "rows": [{"id": 1, "name": "rex"}]}
+        with patch.object(executor, "_execute_sql", new=AsyncMock(return_value=answer)) as fake_sql:
+            preview = await executor._execute_jsonapi(
+                "/data/jsonapi/pet_store/pets?page[size]=20", "admin", app_state, None
+            )
+        fake_sql.assert_awaited_once()
+        sql = fake_sql.await_args.args[0]
+        assert sql.startswith("SELECT ") and "name" in sql and sql.endswith("LIMIT 20")
+        assert fake_sql.await_args.args[1:] == ("admin", app_state, None)
+        assert preview == answer
+
+    async def test_execute_openapi_plain_row_read_runs_the_table_select(self):
+        from provisa.nl import executor
+
+        ctx = _ctx()
+        ctx.aggregate_columns = {1: [("id", "integer"), ("name", "text")]}
+        app_state = RoleState(contexts={"admin": ctx})
+        answer = {"columns": ["id", "name"], "rows": [{"id": 1, "name": "rex"}]}
+        with patch.object(executor, "_execute_sql", new=AsyncMock(return_value=answer)) as fake_sql:
+            preview = await executor._execute_openapi(
+                "GET /data/rest/pet_store/pets", "admin", app_state, None
+            )
+        fake_sql.assert_awaited_once()
+        sql = fake_sql.await_args.args[0]
+        assert sql.startswith("SELECT ") and "name" in sql and sql.endswith("LIMIT 20")
+        assert fake_sql.await_args.args[1:] == ("admin", app_state, None)
+        assert preview == answer
 
     async def test_execute_jsonapi_plain_falls_back_to_domain_table(self):
         from provisa.nl import executor

@@ -142,7 +142,7 @@ def _refuse_draft_fields(document: DocumentNode, ctx: "CompilationContext") -> N
             name = getattr(getattr(selection, "name", None), "value", None)
             if name is None:
                 continue
-            for candidate in _table_field_candidates(name):
+            for candidate in table_field_candidates(name):
                 if candidate in ctx.draft_names:
                     raise TableIsDraft(ctx.draft_names[candidate])
 
@@ -161,7 +161,7 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
 
     class _Names(Visitor):
         def enter_field(self, node: FieldNode, *_args: object) -> None:
-            for candidate in _table_field_candidates(node.name.value):
+            for candidate in table_field_candidates(node.name.value):
                 domain = ctx.missing_capability.get(candidate)
                 if domain is not None:
                     raise MissingDomainCapability(ctx.role_id or "", domain)
@@ -174,7 +174,7 @@ def _refuse_missing_capability(document: DocumentNode, ctx: "CompilationContext"
             visit(definition, _Names())
 
 
-def _table_field_candidates(name: str) -> list[str]:
+def table_field_candidates(name: str) -> list[str]:
     """The table field names a root field ``name`` could stand for."""
     out = [name]
     for prefix in _FIELD_PREFIXES:

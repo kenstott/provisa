@@ -210,7 +210,16 @@
         "check_removed": "Controllo di qualità {{subject}} rimosso",
         "check_changed": "Controllo di qualità {{subject}} modificato",
         "description_changed": "Descrizione modificata",
-        "terms_changed": "Termini modificati: {{subject}}"
+        "terms_changed": "Termini modificati: {{subject}}",
+        "field_masked": "Campo {{subject}} mascherato ({{after}})",
+        "field_unmasked": "Campo {{subject}} non più mascherato",
+        "row_rule_added": "Regola di riga aggiunta: {{subject}}",
+        "row_rule_removed": "Regola di riga rimossa: {{subject}}",
+        "data_level_changed": "Livello dei dati cambiato da {{before}} a {{after}}",
+        "dq_results_changed": "Risultati di qualità cambiati da {{before}} a {{after}}",
+        "profiles_changed": "Profili cambiati da {{before}} a {{after}}",
+        "duration_changed": "Durata cambiata da {{before}} a {{after}}",
+        "terms_of_use_changed": "Condizioni d'uso modificate: {{subject}}"
       },
       "howToUse": {
         "column": {
@@ -299,6 +308,9 @@
         "roles": "Ruoli",
         "history": "Cronologia delle versioni"
       }
-    }
+    },
+    "detailPanel": "Dettaglio del prodotto dati",
+    "tagFacetLabel": "Tag",
+    "tagFacetPlaceholder": "Filtra per tag"
   }
 }

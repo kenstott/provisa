@@ -25,6 +25,7 @@ import { JunctionPanel } from "./JunctionPanel";
 import { ParametersPanel } from "./ParametersPanel";
 import { PanelActions } from "../list/SplitPane";
 import { PanelDelete } from "../list/PanelDelete";
+import { PanelDuplicate } from "../list/PanelDuplicate";
 import { Tip } from "../Tip";
 
 interface RelationshipDetailProps {
@@ -33,6 +34,8 @@ interface RelationshipDetailProps {
   setEditingRel: (f: RelForm | null) => void;
   canManage: boolean;
   onStartEdit: () => void;
+  /** Opens the create form filled from this relationship, under a new id. */
+  onDuplicate: () => void;
   /** Opens the form that creates this relationship's reverse; absent while it cannot be offered. */
   onReverse?: () => void;
   /** REQ-2198: resolves once the relationship is deleted and the list read again (PanelDelete). */
@@ -53,6 +56,7 @@ export function RelationshipDetail({
   setEditingRel,
   canManage,
   onStartEdit,
+  onDuplicate,
   onReverse,
   onDelete,
   onEditSave,
@@ -95,6 +99,11 @@ export function RelationshipDetail({
                   <ArrowLeftRight size={14} />
                 </ActionIcon>
               </Tip>
+              <PanelDuplicate
+                name={String(r.id)}
+                onDuplicate={onDuplicate}
+                testId="relationship-detail-duplicate"
+              />
               <PanelDelete
                 itemKey={r.id}
                 title={t("relationshipRow.deleteTitle", { id: r.id })}

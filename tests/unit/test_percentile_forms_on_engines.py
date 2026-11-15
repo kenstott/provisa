@@ -98,6 +98,24 @@ def test_a_null_fraction_alone_is_still_served_on_clickhouse(function: str):
     assert "CASE WHEN FALSE" in transpile(_NULL_FRACTION.format(f=function), "clickhouse")
 
 
+@pytest.mark.parametrize("function", ["percentile_cont", "percentile_disc"])
+@pytest.mark.parametrize(
+    ("rows", "where"),
+    [("(1.0::float8), (2.0::float8), (3.0::float8)", ""), ("(1.0::float8)", " WHERE c > 5")],
+)
+def test_a_null_fraction_on_clickhouse_is_one_row_of_the_group(function: str, rows, where):
+    """The dead branch keeps the aggregate: folded away, the statement is no aggregate and
+    answers a row for each row (none of no row), where PostgreSQL answers one NULL."""
+    from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+
+    sql = (
+        f"SELECT {function}(NULL::double precision) WITHIN GROUP (ORDER BY c) AS v "
+        f"FROM (VALUES {rows}) AS t(c){where}"
+    )
+    runtime = ClickHouseFederationRuntime.embedded()
+    assert list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()) == [(None,)]
+
+
 def test_trino_still_answers_a_null_fraction_array():
     assert "CASE WHEN FALSE" in transpile(_NULL_ARRAY.format(f="percentile_cont"), "trino")
 

@@ -8,10 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The polyfill pages, generated from the grid (REQ-2236, A PAGE PER ENGINE, EVERY POLYFILL LISTED):
-one page per engine, listing every feature with a polyfill or a limitation there and counting those
-left out as native, and a summary of each feature across the engines. Each rule is printed as the
-grid holds it; a rule that is a function name is printed with the function's one-line purpose.
+"""The polyfill pages, generated from the grid (REQ-2236, A PAGE PER ENGINE, EVERY POLYFILL LISTED;
+EVERY CONNECTOR PROVISA SENDS SQL TO): one page per connector dialect, listing every feature with a
+polyfill or a limitation there and counting those left out as native, and an index of the same
+tables, one per dialect. The grid stays keyed by dialect; only the pages pivot it. Each rule is
+printed as the grid holds it; a rule that is a function name is printed with the function's
+one-line purpose.
 scripts/gen_polyfill_docs.py writes them; nothing here is edited by hand."""
 
 # Requirements: REQ-2236
@@ -20,15 +22,7 @@ from __future__ import annotations
 
 import html
 
-from provisa.transpiler.polyfill.grid import (
-    ENGINE_TITLES,
-    ENGINES,
-    SOURCES,
-    Feature,
-    Grid,
-    Rule,
-    Side,
-)
+from provisa.transpiler.polyfill.grid import DIALECTS, Feature, Grid, Rule, Side
 from provisa.transpiler.polyfill.notation import Form, Refusal, Rewrite
 
 #: Where the pages are written, from the repository's root.
@@ -51,16 +45,16 @@ def _form(form: Form) -> str:
     return form
 
 
-def _rule(rule: Rule, engine: str) -> str:
-    form = rule.forms.get(engine)
+def _rule(rule: Rule, dialect: str) -> str:
+    form = rule.forms.get(dialect)
     if form is None:
         return ""
     lines = [] if rule.pattern is None else [rule.pattern, "=>"]
     return _code("\n".join((*lines, _form(form))))
 
 
-def _polyfill(side: Side, engine: str) -> str:
-    return "".join(_rule(rule, engine) for rule in side.rules)
+def _polyfill(side: Side, dialect: str) -> str:
+    return "".join(_rule(rule, dialect) for rule in side.rules)
 
 
 def _refused(text: str, refusal: Refusal) -> str:
@@ -70,15 +64,15 @@ def _refused(text: str, refusal: Refusal) -> str:
     )
 
 
-def _limitations(side: Side, engine: str) -> str:
+def _limitations(side: Side, dialect: str) -> str:
     """Each limitation, and each refusal of a rule, with the SQLSTATE and message a client gets
     (REQ-2236, THE REFUSAL LIVES IN THE GRID)."""
     items = [
         _refused(f"Refused: {rule.pattern or 'the call'}.", form)
         for rule in side.rules
-        if isinstance(form := rule.forms.get(engine), Refusal)
+        if isinstance(form := rule.forms.get(dialect), Refusal)
     ]
-    for limitation in side.limitations.get(engine, ()):
+    for limitation in side.limitations.get(dialect, ()):
         if limitation.refusal is None:
             items.append(f"<li>{html.escape(limitation.text)}</li>")
         else:
@@ -86,43 +80,65 @@ def _limitations(side: Side, engine: str) -> str:
     return f"<ul>{''.join(items)}</ul>" if items else ""
 
 
-def _row(feature: Feature, engine: str) -> str:
+def _row(feature: Feature, dialect: str) -> str:
     cells = (
         f"<strong>{html.escape(feature.name)}</strong><br>{html.escape(feature.summary)}",
-        _polyfill(feature.read, engine),
-        _limitations(feature.read, engine),
-        _polyfill(feature.write, engine),
-        _limitations(feature.write, engine),
+        _polyfill(feature.read, dialect),
+        _limitations(feature.read, dialect),
+        _polyfill(feature.write, dialect),
+        _limitations(feature.write, dialect),
     )
     return "<tr>" + "".join(f"<td>{cell}</td>" for cell in cells) + "</tr>"
 
 
-def _counts(grid: Grid, engine: str) -> tuple[int, int]:
-    """The rules with a form on ``engine``, and those of them that are only a function name."""
+def _counts(grid: Grid, dialect: str) -> tuple[int, int]:
+    """The rules with a form on ``dialect``, and those of them that are only a function name."""
     forms = [
-        rule.forms[engine]
+        rule.forms[dialect]
         for feature in grid.features
         for side in (feature.read, feature.write)
         for rule in side.rules
-        if engine in rule.forms
+        if dialect in rule.forms
     ]
     return len(forms), sum(isinstance(form, Rewrite) for form in forms)
 
 
-def engine_page(grid: Grid, engine: str) -> str:
-    """The page of ``engine``."""
-    title = ENGINE_TITLES[engine]
-    listed = grid.on(engine)
+def _written_in(dialect: str) -> str:
+    """Where the page's forms are written in another dialect's SQL, it says so."""
+    written = DIALECTS[dialect].written_in
+    if written == dialect:
+        return ""
+    return f" Its forms are written in {DIALECTS[written].title}'s SQL, which it runs."
+
+
+_HEADER = (
+    "<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th>"
+    "<th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>"
+)
+
+
+def dialect_table(grid: Grid, dialect: str) -> str:
+    """``dialect``'s table: a row of each feature not native there, and the count of those that
+    are, left out. The dialect's page and the index print it alike."""
+    title = DIALECTS[dialect].title
+    listed = grid.on(dialect)
     native = len(grid.features) - len(listed)
-    rules, functions = _counts(grid, engine)
-    dialects = ", ".join(sorted(ENGINES[engine]))
-    if engine == SOURCES:
-        title = "other sources"
-    header = (
-        "<table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th>"
-        "<th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>"
+    rows = "".join(f"{_row(feature, dialect)}\n" for feature in listed)
+    return "\n".join(
+        (
+            f"{native} of the grid's {len(grid.features)} features are native on {title} and"
+            " left out.",
+            "",
+            _HEADER,
+            f"{rows}</tbody></table>",
+        )
     )
-    rows = "\n".join(_row(feature, engine) for feature in listed)
+
+
+def dialect_page(grid: Grid, dialect: str) -> str:
+    """The page of ``dialect``."""
+    title = DIALECTS[dialect].title
+    rules, functions = _counts(grid, dialect)
     return "\n".join(
         (
             f"# Polyfills on {title}",
@@ -130,59 +146,53 @@ def engine_page(grid: Grid, engine: str) -> str:
             _GENERATED,
             "",
             f"A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on {title}"
-            f" (dialects: {dialects}). Each feature has a read polyfill, how its values and"
-            " operations are computed on the engine, and a write polyfill, how its values reach"
-            " the engine; each states its limitations.",
+            f" (dialect `{dialect}`), as a serving engine or as a source a statement is sent to"
+            " directly. Each feature has a read polyfill, how its values and operations are"
+            " computed there, and a write polyfill, how its values reach it; each states its"
+            f" limitations.{_written_in(dialect)}",
             "",
             f"This page lists every feature that has a polyfill or a limitation on {title}. A"
-            f" feature {title} does natively with no difference from PostgreSQL is left out:"
-            f" {native} of the grid's {len(grid.features)} features are left out as native."
-            " The conformance runs check the omission: a feature left out that answers"
+            f" feature {title} does natively with no difference from PostgreSQL is left out and"
+            " counted. The conformance runs check the omission: a feature left out that answers"
             " otherwise than PostgreSQL fails the run.",
+            "",
+            f"When {title} is a serving engine reading a source it attaches directly, it may push"
+            " work into that source, with the source's semantics, so a result can depend on the"
+            " pair; the cases known are fixed by hints, listed under each source.",
             "",
             f"Rules on this page: {rules}, of which {functions} are only the name of a rewrite"
             " function. A rule is printed as the translator runs it: the PostgreSQL pattern, its"
-            " holes written `$name` (typed with `::type`), then the engine's replacement.",
+            " holes written `$name` (typed with `::type`), then the dialect's replacement.",
             "",
-            header,
-            rows,
-            "</tbody></table>",
+            dialect_table(grid, dialect),
             "",
         )
     )
 
 
 def summary_page(grid: Grid) -> str:
-    """Each feature across the engines, for choosing an engine."""
-    engines = tuple(ENGINES)
-    head = " | ".join(("Feature", "Family", *(ENGINE_TITLES[e] for e in engines)))
-    rule = " | ".join("---" for _ in range(2 + len(engines)))
-    rows = [
-        " | ".join(
-            (
-                f"`{feature.name}`",
-                feature.family,
-                *(grid.status(feature, engine).value for engine in engines),
-            )
+    """The index: each dialect's table, as its page prints it."""
+    sections = [
+        "\n".join(
+            (f"## [{DIALECTS[dialect].title}]({dialect}.md)", "", dialect_table(grid, dialect))
         )
-        for feature in grid.features
+        for dialect in DIALECTS
     ]
-    pages = ", ".join(f"[{ENGINE_TITLES[e]}]({e}.md)" for e in engines)
     return "\n".join(
         (
-            "# Polyfills across the engines",
+            "# Polyfills by dialect",
             "",
             _GENERATED,
             "",
-            "Each PostgreSQL feature of the polyfill grid on each engine: **native** (the engine"
-            " answers as PostgreSQL does, with no polyfill), **polyfilled** (Provisa supplies"
-            " PostgreSQL's behaviour, with no difference), **differs** (polyfilled, with a"
-            " limitation), **refused** (a client receives the refusal its row states). The"
-            f" polyfills and limitations of each engine are on its page: {pages}.",
+            "A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a"
+            " connector dialect Provisa sends SQL to: a serving engine's, or a source's a"
+            " statement is sent to directly. Each dialect below has a table of every feature that"
+            " has a polyfill or a limitation there: its read polyfill, read limitations, write"
+            " polyfill and write limitations. A feature the dialect does natively with no"
+            " difference from PostgreSQL is left out and counted. Each dialect's page prints the"
+            " same table with the rules it runs.",
             "",
-            f"| {head} |",
-            f"| {rule} |",
-            *(f"| {row} |" for row in rows),
+            "\n\n".join(sections),
             "",
         )
     )
@@ -192,5 +202,5 @@ def pages(grid: Grid) -> dict[str, str]:
     """Each page's path, from the repository's root, and its text."""
     return {
         f"{DIRECTORY}/index.md": summary_page(grid),
-        **{f"{DIRECTORY}/{engine}.md": engine_page(grid, engine) for engine in ENGINES},
+        **{f"{DIRECTORY}/{dialect}.md": dialect_page(grid, dialect) for dialect in DIALECTS},
     }

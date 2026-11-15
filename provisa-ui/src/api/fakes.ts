@@ -21,7 +21,16 @@ export interface KindArg {
   required: boolean;
 }
 
-export interface FakeKind {
+// What the server's checks answer for a kind or method: the column families (provisa.fakes.checks
+// .family) whose columns it can fill, and whether a stable one is accepted -- with `stableNeeds`
+// the arguments a stable one must declare. A stable method takes no arguments.
+export interface FakeFit {
+  families: string[];
+  stable: boolean;
+  stableNeeds: string[];
+}
+
+export interface FakeKind extends FakeFit {
   category: string;
   name: string;
   positional: boolean;
@@ -35,16 +44,17 @@ export interface FakeMethodParam {
   default: string | null;
 }
 
-export interface FakeMethod {
+export interface FakeMethod extends FakeFit {
   name: string;
   category: string;
   params: FakeMethodParam[];
-  stable: boolean;
 }
 
 export interface FakeCatalog {
   kinds: FakeKind[];
   methods: FakeMethod[];
+  // The family of each column type the catalog was asked for, as the server's checks name it.
+  typeFamilies: Record<string, string>;
 }
 
 export interface ColumnFakeCheck {
@@ -68,7 +78,12 @@ async function call<T>(op: string, path: string, init: RequestInit = {}): Promis
   return resp.json() as Promise<T>;
 }
 
-export const fetchFakeCatalog = () => call<FakeCatalog>("fetchFakeCatalog", "/admin/fakes/catalog");
+// The catalog, with the family of each of the column types given.
+export const fetchFakeCatalog = (dataTypes: string[]) =>
+  call<FakeCatalog>(
+    "fetchFakeCatalog",
+    `/admin/fakes/catalog?${new URLSearchParams(dataTypes.map((t) => ["dataType", t]))}`,
+  );
 
 // Resolves when the column's fake, rule and stable flag would be saved; rejects with the save's own
 // refusal otherwise.

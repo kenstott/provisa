@@ -1,0 +1,20 @@
+{
+  "discoverResult": {
+    "foreignKeys": "外部索引鍵：找到 {{count}} 個。",
+    "foreignKeys_other": "外部索引鍵：找到 {{count}} 個。",
+    "semanticsFound": "語意：{{count}} 項建議。",
+    "semanticsFound_other": "語意：{{count}} 項建議。",
+    "semanticsUnreadable": "語意：無。無法讀取模型的回答。",
+    "semanticsNoneProposed": "語意：無。模型未提出任何關係。",
+    "semanticsFiltered": "語意：模型提出的 {{count}} 個關係均未保留：{{why}}。",
+    "semanticsFiltered_other": "語意：模型提出的 {{count}} 個關係均未保留：{{why}}。",
+    "belowThreshold": "{{count}} 個低於 {{threshold}}% 的信賴度門檻",
+    "belowThreshold_other": "{{count}} 個低於 {{threshold}}% 的信賴度門檻",
+    "alreadyKnown": "{{count}} 個已被拒絕或已存在",
+    "alreadyKnown_other": "{{count}} 個已被拒絕或已存在",
+    "invalid": "{{count}} 個引用了不存在的表格或欄",
+    "invalid_other": "{{count}} 個引用了不存在的表格或欄",
+    "semanticsCutShort": "語意：無。模型的回答在寫完一項建議之前就達到長度上限而停止。",
+    "cutShortNote": "模型的回答達到長度上限而停止，因此只讀取了已寫完的建議。"
+  }
+}

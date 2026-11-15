@@ -1,0 +1,20 @@
+{
+  "discoverResult": {
+    "foreignKeys": "Claves foráneas: {{count}} encontrada.",
+    "foreignKeys_other": "Claves foráneas: {{count}} encontradas.",
+    "semanticsFound": "Semántica: {{count}} sugerencia.",
+    "semanticsFound_other": "Semántica: {{count}} sugerencias.",
+    "semanticsUnreadable": "Semántica: ninguna. No se pudo leer la respuesta del modelo.",
+    "semanticsNoneProposed": "Semántica: ninguna. El modelo no propuso ninguna relación.",
+    "semanticsFiltered": "Semántica: no se conservó la {{count}} relación que propuso el modelo: {{why}}.",
+    "semanticsFiltered_other": "Semántica: no se conservó ninguna de las {{count}} relaciones que propuso el modelo: {{why}}.",
+    "belowThreshold": "{{count}} quedó por debajo del umbral de confianza del {{threshold}} %",
+    "belowThreshold_other": "{{count}} quedaron por debajo del umbral de confianza del {{threshold}} %",
+    "alreadyKnown": "{{count}} ya estaba rechazada o ya existía",
+    "alreadyKnown_other": "{{count}} ya estaban rechazadas o ya existían",
+    "invalid": "{{count}} nombraba una tabla o columna que no existe",
+    "invalid_other": "{{count}} nombraban tablas o columnas que no existen",
+    "semanticsCutShort": "Semántica: ninguna. La respuesta del modelo se detuvo en su límite de longitud antes de terminar una sugerencia.",
+    "cutShortNote": "La respuesta del modelo se detuvo en su límite de longitud, así que solo se leyeron las sugerencias que terminó."
+  }
+}

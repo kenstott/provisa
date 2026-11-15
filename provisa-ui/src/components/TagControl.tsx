@@ -10,25 +10,23 @@
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import {
-  ActionIcon,
-  Badge,
-  Button,
-  Checkbox,
-  Group,
-  Popover,
-  Select,
-  Stack,
-  Text,
-  TextInput,
-} from "@mantine/core";
+import { ActionIcon, Badge, Checkbox, Group, Loader, Popover, Stack, Text } from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { Pencil, Tag as TagIcon } from "lucide-react";
-import type { Tag, TagAssignment, TagObjectType } from "../types/admin";
-import { TAG_PARAM_SEPARATOR, baseTagId, tagParam } from "../types/admin";
-import { useAssignTag, useTagAssignments, useTags, useUnassignTag } from "../hooks/useTagQueries";
+import type { MutationResult, Tag, TagAssignment, TagObjectType, TagTarget } from "../types/admin";
+import { TAG_PARAM_SEPARATOR, baseTagId } from "../types/admin";
+import {
+  useAssignTag,
+  useOfferedTags,
+  useTagAssignments,
+  useTagCitations,
+  useTags,
+  useUnassignTag,
+} from "../hooks/useTagQueries";
 import { Tip, TipSurface } from "./Tip";
 import { ColumnPiiForm } from "./ColumnPiiForm";
+import { CitationSection } from "./TagCitations";
+import { TagAssignmentForm, type TagAssignmentDraft } from "./TagAssignmentForm";
 
 // REQ-1377: one reusable tag-pill + tag-picker control shared by every taggable object surface
 // (source, table, column, relationship, command; a data product, REQ-1634; a glossary term,
@@ -37,6 +35,8 @@ import { ColumnPiiForm } from "./ColumnPiiForm";
 // REQ-1375: each assignment may carry a reason and a planned-removal date;
 // the tag's reasonPolicy/expiresPolicy drive whether each field is shown
 // (not "hidden") and demanded ("required").
+// REQ-2208: and the library places it cites -- all in one form (TagAssignmentForm), opened when a
+// tag is picked and when its chip is, and saved by one assignTag call.
 interface TagControlProps {
   objectType: TagObjectType;
   sourceId?: string;
@@ -98,13 +98,13 @@ export function TagControl({
   const { tagAssignments } = useTagAssignments();
   const { assignTag } = useAssignTag();
   const { unassignTag } = useUnassignTag();
+  const { citeAssignment } = useTagCitations();
 
-  // Which tag's inline reason/expiry form is open in the picker, plus its draft values.
+  // Which tag's assignment form is open in the picker, and which chip's form is open.
   const [editingTagId, setEditingTagId] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-  const [expiresOn, setExpiresOn] = useState("");
-  // REQ-1467: the chosen parameter value for a parameterized tag, e.g. "customer" for `entity`.
-  const [paramValue, setParamValue] = useState<string | null>(null);
+  const [openChip, setOpenChip] = useState<string | null>(null);
+  // The picker asks the server which tags it offers on this object once it is first opened.
+  const [pickerOpened, setPickerOpened] = useState(false);
 
   const matches = (a: TagAssignment): boolean => {
     if (a.objectType !== objectType) return false;
@@ -166,13 +166,7 @@ export function TagControl({
   const assignedTags = tags.filter(
     (tag) => assignmentByTagId.has(tag.id) || (tag.id === PII_TAG_ID && !!piiTerm),
   );
-  // REQ-1443: a derived tag reports what the object's own registration already says, so there is
-  // nothing to check or clear — the server refuses the assignment and offering it would put a
-  // control on screen whose only outcome is an error.
-  const applicableTags = tags.filter((tag) => tag.appliesTo.includes(objectType) && !tag.derived);
-
-  const buildInput = (tagId: string): TagAssignment => ({
-    tagId,
+  const buildTarget = (): TagTarget => ({
     objectType,
     sourceId: objectType === "source" ? sourceId : undefined,
     tableId: objectType === "table" || objectType === "column" ? tableId : undefined,
@@ -188,20 +182,21 @@ export function TagControl({
     roleId: objectType === "role" ? roleId : undefined,
     metricName: objectType === "metric" ? metricName : undefined,
   });
+  const buildInput = (tagId: string): TagAssignment => ({ tagId, ...buildTarget() });
 
-  const closeForm = () => {
-    setEditingTagId(null);
-    setReason("");
-    setExpiresOn("");
-    setParamValue(null);
-  };
+  // REQ-2208: the tags the server offers on this object -- those that apply to its kind, are not
+  // derived (REQ-1443: the server refuses a derived tag), and are offered in its domains, or for an
+  // object in no domain in one its assigner acts in. assignTag refuses any other by the same rule;
+  // the object's domains are the server's to know, so nothing of that is decided here.
+  const { offered, loading: offeredLoading } = useOfferedTags(buildTarget(), pickerOpened);
+  // A tag already on the object stays listed, checked, so it can be taken off: narrowing a tag's
+  // domains removes no assignment.
+  const applicableTags = offered
+    ? tags.filter((tag) => offered.has(tag.id) || assignmentByTagId.has(tag.id))
+    : [];
 
-  const openForm = (tagId: string, existing?: TagAssignment) => {
-    setEditingTagId(tagId);
-    setReason(existing?.reason ?? "");
-    setExpiresOn(existing?.expiresOn ?? "");
-    setParamValue(existing ? tagParam(existing.tagId) : null);
-  };
+  const closeForm = () => setEditingTagId(null);
+  const openForm = (tagId: string) => setEditingTagId(tagId);
 
   const handleUnassign = async (tagId: string) => {
     const result = await unassignTag(buildInput(tagId));
@@ -214,7 +209,7 @@ export function TagControl({
 
   const handleCheck = (tag: Tag, checked: boolean) => {
     if (checked) {
-      openForm(tag.id, assignmentByTagId.get(tag.id));
+      openForm(tag.id);
       return;
     }
     // pii through the column's term is taken off the term, or the column moved: the picker asks.
@@ -226,23 +221,43 @@ export function TagControl({
     if (assignmentByTagId.has(tag.id)) void handleUnassign(tag.id);
   };
 
-  const handleApply = async (tag: Tag) => {
+  // One call saves the whole form: the assignment's fields and the set of places it cites.
+  const handleApply = async (tag: Tag, draft: TagAssignmentDraft): Promise<MutationResult> => {
     // REQ-1467: a `required` policy means the assignment names the parameter, never the bare tag —
-    // the Apply button stays disabled until a value is picked, so paramValue is set by here.
+    // the form's Save stays disabled until a value is picked, so it is set by here.
     const tagId =
-      tag.paramPolicy === "required" ? `${tag.id}${TAG_PARAM_SEPARATOR}${paramValue}` : tag.id;
-    const result = await assignTag({
-      ...buildInput(tagId),
-      reason: reason || null,
-      expiresOn: expiresOn || null,
-    });
+      tag.paramPolicy === "required"
+        ? `${tag.id}${TAG_PARAM_SEPARATOR}${draft.paramValue}`
+        : tag.id;
+    const result = await assignTag(
+      { ...buildInput(tagId), reason: draft.reason || null, expiresOn: draft.expiresOn || null },
+      draft.citations,
+    );
     if (!result.success) {
       notifications.show({ color: "red", message: result.message });
-      return;
+      return result;
     }
     closeForm();
+    setOpenChip(null);
     onChanged?.();
+    return result;
   };
+
+  const formFor = (
+    tag: Tag,
+    assignment: TagAssignment | undefined,
+    read: boolean,
+    close: () => void,
+  ) => (
+    <TagAssignmentForm
+      tag={tag}
+      assignment={assignment}
+      readOnly={read}
+      onApply={(draft) => handleApply(tag, draft)}
+      onConfirm={(c) => citeAssignment(buildInput(assignment?.tagId ?? tag.id), c)}
+      onCancel={close}
+    />
+  );
 
   return (
     <Group
@@ -259,45 +274,106 @@ export function TagControl({
           !!assignment?.expiresOn &&
           isPastDate(assignment.expiresOn);
         return (
-          <TipSurface
-            key={tag.id}
-            content={
-              <Stack gap={0}>
-                <Text size="xs">{tag.description}</Text>
-                {assignment?.reason &&
-                  (tag.id === PII_TAG_ID && objectType === "column" ? (
-                    <Text size="xs">
-                      {t("tagControl.piiSetHere", { reason: assignment.reason })}
-                    </Text>
-                  ) : (
-                    <Text size="xs">{assignment.reason}</Text>
-                  ))}
-                {tag.id === PII_TAG_ID && piiTerm && (
-                  <Text size="xs">{t("tagControl.piiViaTerm", { term: piiTerm })}</Text>
-                )}
-                {assignment?.expiresOn && (
-                  <Text size="xs">
-                    {t("tagControl.plannedRemoval", { date: assignment.expiresOn })}
-                  </Text>
-                )}
-              </Stack>
-            }
-          >
-            <Badge
-              size="xs"
-              variant={overdue ? "filled" : "light"}
-              color={pillColor(tag)}
-              data-testid={`tag-pill-${tag.id}`}
+          <Group key={tag.id} gap="0.15rem" wrap="nowrap" display="inline-flex">
+            {/* The chip opens the assignment's form, filled: where the tag is defined, linked into
+                the Library, then the assignment's reason, expiry and citations. A tag the
+                object's registration derives, or pii a column has through its term, is no
+                assignment of the object's own: its form is read. */}
+            <Popover
+              withinPortal
+              position="bottom-start"
+              shadow="md"
+              width={480}
+              opened={openChip === tag.id}
+              onChange={(opened) => setOpenChip(opened ? tag.id : null)}
             >
-              {/* REQ-1467: the assignment's id carries the parameter ("entity:customer"); the
-                  registry id alone would show every parameterized pill as the same word. */}
-              {assignment ? assignment.tagId : tag.id}
-            </Badge>
-          </TipSurface>
+              <Popover.Target>
+                <TipSurface
+                  content={
+                    <Stack gap={0}>
+                      <Text size="xs">{tag.description}</Text>
+                      {assignment?.reason &&
+                        (tag.id === PII_TAG_ID && objectType === "column" ? (
+                          <Text size="xs">
+                            {t("tagControl.piiSetHere", { reason: assignment.reason })}
+                          </Text>
+                        ) : (
+                          <Text size="xs">{assignment.reason}</Text>
+                        ))}
+                      {tag.id === PII_TAG_ID && piiTerm && (
+                        <Text size="xs">{t("tagControl.piiViaTerm", { term: piiTerm })}</Text>
+                      )}
+                      {assignment?.expiresOn && (
+                        <Text size="xs">
+                          {t("tagControl.plannedRemoval", { date: assignment.expiresOn })}
+                        </Text>
+                      )}
+                      {tag.citations.map((c) => (
+                        <Text
+                          size="xs"
+                          key={`${c.documentId}-${c.sectionHeading}-${c.sectionPage}`}
+                        >
+                          {t("tagCitations.definedBy", { title: c.documentTitle })} ·{" "}
+                          <CitationSection c={c} />
+                        </Text>
+                      ))}
+                    </Stack>
+                  }
+                >
+                  <Badge
+                    size="xs"
+                    variant={overdue ? "filled" : "light"}
+                    color={pillColor(tag)}
+                    component="button"
+                    type="button"
+                    style={{ cursor: "pointer" }}
+                    onClick={() => setOpenChip(openChip === tag.id ? null : tag.id)}
+                    data-testid={`tag-pill-${tag.id}`}
+                  >
+                    {/* REQ-1467: the assignment's id carries the parameter ("entity:customer"); the
+                      registry id alone would show every parameterized pill as the same word. */}
+                    {assignment ? assignment.tagId : tag.id}
+                  </Badge>
+                </TipSurface>
+              </Popover.Target>
+              <Popover.Dropdown onClick={(e) => e.stopPropagation()}>
+                <div data-testid={`tag-detail-${tag.id}`}>
+                  {formFor(tag, assignment, !!readOnly || tag.derived || !assignment, () =>
+                    setOpenChip(null),
+                  )}
+                </div>
+              </Popover.Dropdown>
+            </Popover>
+            {assignment?.citationGap && (
+              <Tip text={t("tagCitations.gapHelp")}>
+                <Badge size="xs" variant="light" color="yellow" data-testid={`tag-gap-${tag.id}`}>
+                  {t("tagCitations.gap")}
+                </Badge>
+              </Tip>
+            )}
+            {assignment?.needsReview && (
+              <Tip text={t("tagCitations.reviewHelp")}>
+                <Badge
+                  size="xs"
+                  variant="light"
+                  color="orange"
+                  data-testid={`tag-review-${tag.id}`}
+                >
+                  {t("tagCitations.needsReview")}
+                </Badge>
+              </Tip>
+            )}
+          </Group>
         );
       })}
       {!readOnly && (
-        <Popover withinPortal position="bottom-start" shadow="md">
+        <Popover
+          withinPortal
+          position="bottom-start"
+          shadow="md"
+          width={500}
+          onOpen={() => setPickerOpened(true)}
+        >
           <Popover.Target>
             <Tip text={t("tagControl.editTags")} named>
               <ActionIcon
@@ -312,7 +388,10 @@ export function TagControl({
           </Popover.Target>
           <Popover.Dropdown onClick={(e) => e.stopPropagation()}>
             <Stack gap="0.35rem">
-              {applicableTags.length === 0 && (
+              {offered === null && offeredLoading && (
+                <Loader size="xs" data-testid="tag-picker-loading" />
+              )}
+              {offered !== null && applicableTags.length === 0 && (
                 <span style={{ fontSize: "0.8rem", color: "var(--text-muted)" }}>
                   {t("tagControl.noTags")}
                 </span>
@@ -320,70 +399,9 @@ export function TagControl({
               {applicableTags.map((tag) => {
                 const assignment = assignmentByTagId.get(tag.id);
                 const isEditing = editingTagId === tag.id;
-                const reasonRequired = tag.reasonPolicy === "required";
-                const expiresRequired = tag.expiresPolicy === "required";
                 const ownForm = (
                   <Stack gap="0.25rem" pl="1.5rem">
-                    {tag.paramPolicy === "required" && (
-                      <Select
-                        size="xs"
-                        required
-                        label={t("tagControl.paramLabel")}
-                        placeholder={t("tagControl.paramPlaceholder")}
-                        comboboxProps={{ withinPortal: true, transitionProps: { duration: 0 } }}
-                        data={tag.paramValues.map((v) => ({
-                          value: v.value,
-                          label: v.description ? `${v.value} — ${v.description}` : v.value,
-                        }))}
-                        value={paramValue}
-                        onChange={setParamValue}
-                        data-testid={`tag-param-${tag.id}`}
-                      />
-                    )}
-                    {tag.reasonPolicy !== "hidden" && (
-                      <TextInput
-                        size="xs"
-                        label={t("tagControl.reasonLabel")}
-                        required={reasonRequired}
-                        placeholder={reasonRequired ? t("tagControl.reasonRequired") : undefined}
-                        value={reason}
-                        onChange={(e) => setReason(e.currentTarget.value)}
-                        data-testid={`tag-reason-${tag.id}`}
-                      />
-                    )}
-                    {tag.expiresPolicy !== "hidden" && (
-                      <TextInput
-                        size="xs"
-                        type="date"
-                        label={t("tagControl.expiresLabel")}
-                        required={expiresRequired}
-                        value={expiresOn}
-                        onChange={(e) => setExpiresOn(e.currentTarget.value)}
-                        data-testid={`tag-expires-${tag.id}`}
-                      />
-                    )}
-                    <Group gap="0.25rem">
-                      <Button
-                        size="compact-xs"
-                        disabled={
-                          (reasonRequired && reason.trim() === "") ||
-                          (expiresRequired && expiresOn.trim() === "") ||
-                          (tag.paramPolicy === "required" && !paramValue)
-                        }
-                        onClick={() => void handleApply(tag)}
-                        data-testid={`tag-apply-${tag.id}`}
-                      >
-                        {t("tagControl.apply")}
-                      </Button>
-                      <Button
-                        size="compact-xs"
-                        variant="default"
-                        onClick={closeForm}
-                        data-testid={`tag-cancel-${tag.id}`}
-                      >
-                        {t("tagControl.cancel")}
-                      </Button>
-                    </Group>
+                    {formFor(tag, assignment, false, closeForm)}
                   </Stack>
                 );
                 return (
@@ -403,7 +421,7 @@ export function TagControl({
                             variant="subtle"
                             size="xs"
                             aria-label={t("tagControl.editAssignment")}
-                            onClick={() => openForm(tag.id, assignment)}
+                            onClick={() => openForm(tag.id)}
                             data-testid={`tag-edit-${tag.id}`}
                           >
                             <Pencil size={12} />

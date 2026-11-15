@@ -68,6 +68,8 @@
     "bindingTemplate": "SQL expression",
     "bindingTemplateHint": "One SQL expression. Write each argument as {{placeholder}}; it runs inside the calling query.",
     "argDefault": "Default of argument {{name}}",
-    "argDefaultPlaceholder": "Default (leave empty if required)"
+    "argDefaultPlaceholder": "Default (leave empty if required)",
+    "nativeSql": "Native SQL",
+    "nativeSqlHint": "SQL in the source's own dialect, one statement or several, run on the source in one transaction: all of them commit or none does. Write an argument as {{placeholder}}; each is bound as a value. The last statement's rows are the answer."
   }
 }

@@ -510,3 +510,53 @@ def test_a_client_group_that_names_only_skips_leaves_a_failure_failed(tmp_path):
     )
     doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
     assert (doc["by_design"], doc["failed"]) == (0, 1)
+
+
+_PARAMETER_EXECUTE = (
+    '<testcase classname="tests.test_statement.TestStatement" '
+    'name="test_parameter_execute[provisa:flightsql]"><failure message="{}">t</failure></testcase>'
+)
+
+
+@pytest.mark.parametrize(
+    "engine_says",
+    [
+        # DuckDB 2.0's wording of a statement run with its placeholder given no value.
+        "Values were not provided for the following parameters: 1",
+        # DuckDB 1.x's.
+        "Values were not provided for the following prepared statement parameters: 1",
+    ],
+)
+def test_a_bind_before_prepare_is_skipped_by_design_whichever_way_the_engine_words_it(
+    tmp_path, engine_says
+):
+    """REQ-2167: the Go driver drops values bound before Prepare and sends no DoPut, so the
+    statement reaches the engine with no values (by_design/flight-sql.yaml, Bind before Prepare).
+    The engine's answer is the failure's reason, and its wording changed with DuckDB 2.0."""
+    message = (
+        "adbc_driver_manager.OperationalError: UNKNOWN: [FlightSQL] Invalid Input Error: "
+        f"{engine_says}. Detail: Python exception: Traceback (most recent call last):"
+    )
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        + _PARAMETER_EXECUTE.format(message)
+        + "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
+    assert (doc["by_design"], doc["failed"]) == (1, 0)
+    (group,) = doc["by_design_groups"]
+    assert (group["group"], group["requirement"]) == ("Bind before Prepare", "REQ-2167")
+
+
+def test_a_parameter_execute_failing_otherwise_stays_failed(tmp_path):
+    """Only the answer to a statement run without its values is the client's doing: any other
+    failure of the case is Provisa's, and stays failed."""
+    xml = tmp_path / "junit.xml"
+    xml.write_text(
+        '<testsuites><testsuite name="pytest">'
+        + _PARAMETER_EXECUTE.format("assert [1, 2, 3, 4] == [2, 3, 4, 5]")
+        + "</testsuite></testsuites>"
+    )
+    doc = junit.summarise(str(xml), "flight-sql", "ADBC driver validation suite", "9f9f441", "t")
+    assert (doc["by_design"], doc["failed"]) == (0, 1)

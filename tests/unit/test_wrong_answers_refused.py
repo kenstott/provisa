@@ -170,7 +170,9 @@ def test_a_row_replay_found_another_answer_of_is_refused_there():
     function = "pg_lsn_pli('0/1'::pg_lsn, 2.5::numeric)"
     with pytest.raises(FunctionRefused):
         transpile(f"SELECT {function} AS v", "clickhouse")
-    assert transpile(f"SELECT {function} AS v", "trino")
+    # Trino reads the form's 2^64 as no literal (run 43307392116): the grid refuses it by name.
+    with pytest.raises(FunctionRefused, match=r"pg_lsn_pli\(\) has no form on trino"):
+        transpile(f"SELECT {function} AS v", "trino")
 
 
 def test_a_clickhouse_timestamp_keeps_its_fraction():

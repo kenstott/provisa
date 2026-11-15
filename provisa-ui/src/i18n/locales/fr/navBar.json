@@ -7,7 +7,7 @@
     "relationships": "Relations",
     "team": "Équipe",
     "docs": "Docs",
-    "groupModel": "Modèle",
+    "groupModel": "Dérivés",
     "groupSecurity": "Sécurité",
     "groupExplore": "Explorer",
     "groupAdmin": "Admin",
@@ -48,7 +48,6 @@
     "itemAuthentication": "Authentification",
     "itemAiModels": "Modèles IA",
     "itemPackageRegistries": "Registres de paquets",
-    "itemMetadataExport": "Exporter",
     "itemImport": "Importer",
     "itemTags": "Tags",
     "itemClassificationKinds": "Classification",
@@ -79,8 +78,8 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Registres de conteneurs",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Catalogues",
     "itemLibrary": "Bibliothèque",
-    "itemPlatformObservability": "Observabilité de la plateforme"
+    "itemPlatformObservability": "Observabilité de la plateforme",
+    "itemSyncing": "Synchronisation"
   }
 }

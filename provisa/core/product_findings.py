@@ -237,15 +237,12 @@ async def context(today: datetime.date) -> Context:
     """The finders' context for the current org: a support contact is required when its metadata
     export is on and lists products in Horizon."""
     from provisa.api.app import state
-    from provisa.core.models import CatalogsConfig, MetadataExportConfig
+    from provisa.core.models import CatalogsConfig
     from provisa.core.org_settings import resolve_org_config
 
     assert state.model_db is not None, "the org's model store is bound with its runtime"
     resolved = await resolve_org_config(state.model_db)
-    config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
-    # Each export names a catalog; its provider is the catalog's (REQ-2122).
+    # What is published is each Syncing entry whose direction includes Export (REQ-2247).
     catalogs = CatalogsConfig(catalogs=list(resolved.get("catalogs") or []))
-    required = config.enabled and any(
-        t.provider == "snowflake_horizon" for t in config.export_targets(catalogs)
-    )
+    required = any(t.provider == "snowflake_horizon" for t in catalogs.export_targets())
     return Context(today=today, support_contact_required=required)

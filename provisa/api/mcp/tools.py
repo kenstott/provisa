@@ -236,8 +236,22 @@ def _unique_constraints(state: Any, role: str, schema: str, table: str) -> list[
     ]
 
 
+def _role_governance(state: Any, role: str) -> Any:
+    """``role``'s governance context: the one the query pipeline checks its statements against."""
+    from provisa.api.role_surface import built_surface
+    from provisa.pgwire.governed_plan import role_governance
+
+    return role_governance(state, built_surface(state.surfaces[role]), role)
+
+
 async def describe_table(state: Any, role: str, schema: str, table: str) -> dict:
-    """columns (name, type, description) + foreign keys + unique constraints for one table."""
+    """columns (name, type, description, state) + foreign keys + unique constraints for one table.
+
+    A column's ``state`` is how the caller's role reads it (:mod:`provisa.api.mcp.column_state`):
+    plain, masked, faked or hidden. Only the columns the role is served are listed, so a listed
+    column is hidden only where its governance refuses it."""
+    from provisa.api.mcp.column_state import column_state
+
     require_role(role, state)
     tables = await _catalog(state, role)
     match = next(
@@ -246,12 +260,21 @@ async def describe_table(state: Any, role: str, schema: str, table: str) -> dict
     )
     if match is None:
         raise ValueError(f"Table not found: {schema}.{table}")
+    meta = _find_role_table(state.contexts[role], schema, table)
+    if meta is None:
+        raise ValueError(f"Table not found: {schema}.{table}")
+    gov = _role_governance(state, role)
     return {
         "schema": schema,
         "table": table,
         "description": match.description,
         "columns": [
-            {"name": c.name, "type": c.data_type, "description": c.description}
+            {
+                "name": c.name,
+                "type": c.data_type,
+                "description": c.description,
+                "state": column_state(gov, meta.table_id, c.name),
+            }
             for c in match.columns
         ],
         "foreign_keys": _foreign_keys(state, role, schema, table),
@@ -554,7 +577,12 @@ async def create_glossary_term(
     (add_glossary_term_edge) and bindings. If the deployment is multi-domain, at least one domain
     is required."""
     require_role(role, state)
-    from provisa.api.admin.glossary_router import _declared_domains, _notify, _require_glossary_rw
+    from provisa.api.admin.glossary_router import (
+        _declared_domains,
+        _notify,
+        _require_glossary_rw,
+        embed_terms,
+    )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
 
@@ -571,6 +599,7 @@ async def create_glossary_term(
         except ValueError as exc:
             raise ValueError(str(exc)) from exc
     await _notify(org_id, "ontology term created")
+    await embed_terms(org_id)
     return {"id": term_id}
 
 
@@ -590,6 +619,7 @@ async def update_glossary_term(
         _notify,
         _require_glossary_rw,
         _require_term_curatable,
+        embed_terms,
     )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
@@ -613,6 +643,8 @@ async def update_glossary_term(
     if not found:
         raise ValueError(f"ontology term {term_id} not found")
     await _notify(org_id, "ontology term updated")
+    if name is not None or definition is not None:
+        await embed_terms(org_id)
     return {"ok": True}
 
 
@@ -623,7 +655,12 @@ async def change_glossary_term_status(
     too."""
     require_role(role, state)
     from provisa.api.admin._guards import require_active_org_id
-    from provisa.api.admin.glossary_router import _notify, _require_glossary_rw, change_status
+    from provisa.api.admin.glossary_router import (
+        _notify,
+        _require_glossary_rw,
+        change_status,
+        embed_terms,
+    )
     from provisa.api.errors import ApiError
     from provisa.core.repositories import glossary as glossary_repo
 
@@ -642,6 +679,7 @@ async def change_glossary_term_status(
     from provisa.api.admin.glossary_router import _DONE
 
     await _notify(org_id, f"ontology term {_DONE[action]}")
+    await embed_terms(org_id)
     return {"ok": True, "term_id": term_id, "status": status, "tag_changes": changes}
 
 
@@ -674,6 +712,7 @@ async def delete_glossary_term(
         _notify,
         _require_glossary_rw,
         _require_term_curatable,
+        embed_terms,
     )
     from provisa.core.repositories import glossary as glossary_repo
     from provisa.api.admin._guards import require_active_org_id
@@ -691,6 +730,7 @@ async def delete_glossary_term(
     if not deleted:
         raise ValueError(f"ontology term {term_id} not found")
     await _notify(org_id, "ontology term deleted")
+    await embed_terms(org_id)
     return {"ok": True}
 
 

@@ -102,6 +102,15 @@ async def remove_list(
     )
 
 
+def _entry_ends(ends: Mapping[str, Iterable[str]]) -> dict[str, list[str]]:
+    """``ends`` as stored. An entry's expiry names what it ends; one naming nothing would end the
+    whole grant, which is the grant's own expiry (``provisa.auth.role_grants.end_grant``)."""
+    out = {capability: list(ids) for capability, ids in ends.items()}
+    if not any(out.values()):
+        raise ValueError("an entry's expiry names what it ends; the whole grant's is its own")
+    return out
+
+
 async def add_expiry(
     conn: "Connection",
     principal: str,
@@ -115,6 +124,7 @@ async def add_expiry(
 ) -> str:
     """Add an expiry rule to ``principal``'s grant of ``role_id``; returns its key. ``list_kind``
     names the list it was set with, which :func:`withdraw_list_expiries` withdraws it with."""
+    stored = _entry_ends(ends)
     rule_key = uuid.uuid4().hex
     await conn.execute_core(
         insert(entitlement_expiries).values(
@@ -122,7 +132,7 @@ async def add_expiry(
             principal=principal,
             role_id=role_id,
             ends_at=ends_at,
-            ends={capability: list(ids) for capability, ids in ends.items()},
+            ends=stored,
             list_kind=list_kind,
             set_by=set_by,
             reason=reason,
@@ -143,21 +153,7 @@ async def withdraw_list_expiries(
     """Withdraw the rules in force that ``principal``'s list for ``role_id`` and ``kind`` was set
     with: a rule outliving its list would end what a later list selects. Appends, as every change
     to the store does."""
-    rows = await conn.execute_core(
-        select(entitlement_expiries)
-        .where(
-            entitlement_expiries.c.principal == principal,
-            entitlement_expiries.c.role_id == role_id,
-        )
-        .order_by(entitlement_expiries.c.valid_from, entitlement_expiries.c.id)
-    )
-    live: dict[str, Any] = {}
-    for row in rows.fetchall():
-        if row.removed:
-            live.pop(row.rule_key, None)
-        else:
-            live[row.rule_key] = row
-    for rule in live.values():
+    for rule in (await _live_rules(conn, principal, role_id)).values():
         if rule.list_kind != kind:
             continue
         await conn.execute_core(
@@ -173,6 +169,26 @@ async def withdraw_list_expiries(
                 reason=reason,
             )
         )
+
+
+async def _live_rules(conn: "Connection", principal: str, role_id: str) -> dict[str, Any]:
+    """The rules in force on ``principal``'s grant of ``role_id``, by key: each key's last row,
+    unless it withdrew the rule."""
+    rows = await conn.execute_core(
+        select(entitlement_expiries)
+        .where(
+            entitlement_expiries.c.principal == principal,
+            entitlement_expiries.c.role_id == role_id,
+        )
+        .order_by(entitlement_expiries.c.valid_from, entitlement_expiries.c.id)
+    )
+    live: dict[str, Any] = {}
+    for row in rows.fetchall():
+        if row.removed:
+            live.pop(row.rule_key, None)
+        else:
+            live[row.rule_key] = row
+    return live
 
 
 async def write_list(
@@ -242,25 +258,93 @@ async def add_to_list(
     without restating the rest, and with ``until`` an expiry rule ending what was added, for
     ``capabilities`` (None: every one) at that date. ``base`` is the list the person has when
     Provisa holds none (the role's default). Returns what was added: an identifier already listed
-    is not added again, and no rule ends it. The caller holds the transaction."""
+    is not added again. A person holds an entry once: one already listed keeps the latest of its
+    expiries, and no expiry is later than any date, so a rule ending it sooner for these
+    capabilities lets it go (:func:`_extend`). The caller holds the transaction."""
     held = await _held_list(conn, principal, role_id, kind)
     current = list(base if held is None else held)
-    added = tuple(dict.fromkeys(i for i in identifiers if i not in current))
-    if not added:
-        return ()
-    await set_list(conn, principal, role_id, kind, [*current, *added], set_by=set_by, reason=reason)
-    if until is not None:
+    wanted = tuple(dict.fromkeys(identifiers))
+    added = tuple(i for i in wanted if i not in current)
+    again = tuple(i for i in wanted if i in current)
+    extended = await _extend(
+        conn, principal, role_id, kind, again, capabilities, until, set_by=set_by, reason=reason
+    )
+    if added:
+        await set_list(
+            conn, principal, role_id, kind, [*current, *added], set_by=set_by, reason=reason
+        )
+    ending = (*added, *extended)
+    if until is not None and ending:
         await add_expiry(
             conn,
             principal,
             role_id,
             until,
-            {capability: added for capability in (capabilities or ("*",))},
+            {capability: ending for capability in (capabilities or ("*",))},
             set_by=set_by,
             reason=reason,
             list_kind=kind,
         )
     return added
+
+
+def _later(until: "datetime | None", ends_at: "datetime") -> bool:
+    return until is None or until > ends_at
+
+
+async def _extend(
+    conn: "Connection",
+    principal: str,
+    role_id: str,
+    kind: str,
+    again: tuple[str, ...],
+    capabilities: Iterable[str] | None,
+    until: "datetime | None",
+    *,
+    set_by: str,
+    reason: str,
+) -> tuple[str, ...]:
+    """Grant ``again`` (identifiers already listed) once more, until ``until``: each rule set with
+    the ``kind`` list that ends one of them sooner, for a capability this grant covers
+    (``capabilities``, None: every one), lets it go. Returns those let go: they end at ``until``
+    now. A rule under ``*`` is let go only by a grant for every capability; a grant for some names
+    them, and ``*`` covers others it does not."""
+    if not again:
+        return ()
+    covered = None if capabilities is None else set(capabilities)
+    extended: list[str] = []
+    for rule in (await _live_rules(conn, principal, role_id)).values():
+        if rule.list_kind != kind or not _later(until, rule.ends_at):
+            continue
+        let_go = [
+            (capability, i)
+            for capability, ids in rule.ends.items()
+            if covered is None or capability in covered
+            for i in again
+            if i in ids
+        ]
+        if not let_go:
+            continue
+        extended.extend(i for _capability, i in let_go)
+        kept = {
+            capability: [i for i in ids if (capability, i) not in let_go]
+            for capability, ids in rule.ends.items()
+        }
+        kept = {capability: ids for capability, ids in kept.items() if ids}
+        held = ExpiryRule(
+            rule.role_id,
+            rule.ends_at,
+            {capability: tuple(ids) for capability, ids in rule.ends.items()},
+            rule_key=rule.rule_key,
+            list_kind=rule.list_kind,
+        )
+        if kept:
+            await change_expiry(
+                conn, held, principal, rule.ends_at, kept, set_by=set_by, reason=reason
+            )
+        else:
+            await withdraw_expiry(conn, held, principal, set_by=set_by, reason=reason)
+    return tuple(dict.fromkeys(extended))
 
 
 async def change_expiry(
@@ -276,13 +360,14 @@ async def change_expiry(
     """Change ``rule`` on ``principal``'s grant: a row with its key, which is the rule from now on.
     It keeps the list it was set with."""
     assert rule.rule_key is not None
+    stored = _entry_ends(ends)
     await conn.execute_core(
         insert(entitlement_expiries).values(
             rule_key=rule.rule_key,
             principal=principal,
             role_id=rule.role_id,
             ends_at=ends_at,
-            ends={capability: list(ids) for capability, ids in ends.items()},
+            ends=stored,
             list_kind=rule.list_kind,
             set_by=set_by,
             reason=reason,

@@ -34,6 +34,8 @@
     "fieldAiContext": "הקשר AI",
     "fieldTags": "תגיות",
     "fieldAiContextPlaceholder": "רמזים ליצירת שאילתות בסיוע AI",
+    "fieldTerm": "מונח במילון המונחים",
+    "fieldTermHint": "ההגדרה ושיטת החישוב שלו מוצגות עם המדד",
     "saveFailed": "השמירה נכשלה.",
     "editMetric": "עריכת המדד {{name}}",
     "deleteMetric": "מחיקת המדד {{name}}",

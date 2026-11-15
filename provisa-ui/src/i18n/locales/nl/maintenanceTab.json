@@ -15,6 +15,7 @@
     "dangerTitle": "Gevarenzone",
     "dangerIntro": "Stopt de backend en de UI-ontwikkelserver op deze machine. Werkt alleen bij een desktopstart met --demo/--native — overal elders geweigerd.",
     "stopAll": "Alle services stoppen",
-    "stopConfirm": "De backend en de UI-ontwikkelserver op deze machine stoppen? Uw sessie eindigt direct."
+    "stopTitle": "Alle services stoppen?",
+    "stopConsequence": "Hiermee worden de backend en de UI-ontwikkelserver op deze machine gestopt. Zolang ze gestopt zijn, werken deze pagina, elke query en de sessies van alle andere gebruikers niet meer, en eindigt uw sessie. Er komt niets terug totdat de services op deze machine opnieuw zijn gestart."
   }
 }

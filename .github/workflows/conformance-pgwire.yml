@@ -20,9 +20,10 @@ name: Conformance (pgwire)
 # requirement and decision) or failed (REQ-2167, amended 2026-10-28); the artifact gives each
 # part's three counts and their sums at the top. Catalog functions are by engine (REQ-2171): the
 # artifact's outside_functions leaves them out, and functions_by_engine gives this engine's counts.
-# A catalog or type difference is data. pgspec's
-# baseline is every test passing: the job fails when a pgspec test fails, when the Provisa
-# instance did not start, or when the suite did not run.
+# pgspec's baseline is every test passing: the job fails when a pgspec test fails, when the
+# Provisa instance did not start, or when the suite did not run; and, at its last step
+# (scripts/conformance/baseline_gate.py), when any part's case fails that
+# scripts/conformance/expected/pgwire.json does not list or a listed one passes.
 #
 # The instance is the one the core UI lane boots (provisa-ui/playwright.config.ts): the embedded
 # PostgreSQL control plane (provisa.core.control_plane_pg) and `uvicorn main:app` on the DuckDB
@@ -201,3 +202,11 @@ jobs:
         run: |
           if [ -f "$RUNNER_TEMP/provisa/server.pid" ]; then kill "$(cat "$RUNNER_TEMP/provisa/server.pid")" || true; fi
           if [ -d "$RUNNER_TEMP/provisa/control-pg" ]; then .venv/bin/python -m provisa.core.control_plane_pg stop "$RUNNER_TEMP/provisa/control-pg" || true; fi
+
+      # REQ-2167: the run judged against its committed expected-failures list
+      # (scripts/conformance/expected/pgwire.json): a case that fails and is not listed fails the
+      # job, and so does a listed case that now passes (take it off in the change that fixes it),
+      # a filtered or partial run, or a missing report. The last step, after the instance stops.
+      - name: Judge against the expected-failures list
+        if: ${{ !cancelled() }}
+        run: .venv/bin/python scripts/conformance/baseline_gate.py cases pgwire "$RUNNER_TEMP/report/conformance-pgwire.json"

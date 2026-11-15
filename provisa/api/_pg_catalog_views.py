@@ -177,7 +177,8 @@ _CATALOG_NAMES = ", ".join(
 )
 _IS_ITSELF = f"rt.domain_id = 'meta' AND rt.table_name IN ({_CATALOG_NAMES})"
 #: Over ``rt``, a row of registered_tables: whether a catalog lists it.
-LISTED_TABLE = f"NOT rt.draft AND NOT ({_IS_ITSELF})"
+#: REQ-1921, REQ-2248: a draft or retired table is in no catalog.
+LISTED_TABLE = f"NOT rt.draft AND NOT rt.retired AND NOT ({_IS_ITSELF})"
 
 
 def _catalog_tables() -> str:
@@ -238,6 +239,7 @@ def _catalog_tables() -> str:
         SELECT NULL, {metric_oid_sql("name")}, NULL, '{_METRICS_SCHEMA}',
                {schema_oid_sql(f"'{_METRICS_SCHEMA}'")}, name
         FROM metrics
+        WHERE NOT retired
     """
 
 
@@ -258,9 +260,11 @@ _VIRTUAL_TYPE = "'varchar'"
 # registered_tables) names it as this: PostgreSQL locks a view's relations in the order of its
 # stored range table, and schema.sql locks registered_tables before table_columns, so a reader that
 # held table_columns while it waited for registered_tables would deadlock with it. Every
-# table_columns row has its registered table, so the join drops none.
+# table_columns row has its registered table, so the join drops none. REQ-2248: a retired column
+# is absent from its table.
 COLUMNS_OF_TABLES = (
-    "(SELECT tc0.* FROM registered_tables rt0 JOIN table_columns tc0 ON tc0.table_id = rt0.id)"
+    "(SELECT tc0.* FROM registered_tables rt0 JOIN table_columns tc0 ON tc0.table_id = rt0.id "
+    "WHERE NOT tc0.retired)"
 )
 
 
@@ -417,7 +421,7 @@ def _pg_namespace() -> str:
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT DISTINCT "
             f"{domain_sql_name_sql('rt.domain_id')} AS name FROM registered_tables rt "
             f"WHERE {LISTED_TABLE} UNION SELECT '{_METRICS_SCHEMA}' "
-            "FROM metrics) s "
+            "FROM metrics WHERE NOT retired) s "
             # The schema of each source enum the statement is told, which is a type's there.
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT "
             f"e.enum ->> 'schema' AS name FROM {_SOURCE_ENUMS}) s) a) "
@@ -719,7 +723,7 @@ def _pg_description() -> str:
             "objsubid": "0",
             "description": "COALESCE(m.description, m.ai_context)",
         },
-        "FROM metrics m WHERE COALESCE(m.description, m.ai_context) IS NOT NULL",
+        "FROM metrics m WHERE NOT m.retired AND COALESCE(m.description, m.ai_context) IS NOT NULL",
     )
     shipped = _select(
         relation,

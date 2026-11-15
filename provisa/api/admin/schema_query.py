@@ -61,8 +61,12 @@ from provisa.api.admin.capabilities import (
     require_capability,
     role_definitions_visible,
 )
+from provisa.api.admin._retired_objects import RetiredObjectType
 from provisa.api.admin.types import (
     JsonScalar,
+    CombinedFileType,
+    FileColumnsDifferType,
+    FileGlobPreviewType,
     AvailableColumnType,
     AvailableTableType,
     CompanionImportSetType,
@@ -77,9 +81,6 @@ from provisa.api.admin.types import (
     CrawledFileType,
     CrawledTableType,
     CrawlResultType,
-    ContractSlaPropertyType,
-    ContractTermsType,
-    DataContractType,
     DataProductFindingType,
     DataProductFindingsType,
     DataProductType,
@@ -108,6 +109,7 @@ from provisa.api.admin.types import (
     ReplicaBuildType,
     ReplicaIndexType,
     MetricType,
+    DatasetMetricType,
     MVType,
     RefreshPolicySummaryType,
     RegisteredTableType,
@@ -118,8 +120,10 @@ from provisa.api.admin.types import (
     SourceType,
     SystemHealthType,
     TableAccessType,
+    LibraryCitationType,
     TagAssignmentType,
     TagParamValueType,
+    TagTargetInput,
     TagType,
     UserSummaryType,
 )
@@ -561,6 +565,34 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     return [r for r in rows if visible(r)]
 
 
+def citation_type(citation: Any) -> LibraryCitationType:  # REQ-2208
+    """A library citation (reference_library.citations.Citation) as the admin API answers it."""
+    return LibraryCitationType(
+        document_id=citation.document_id,
+        document_title=citation.document_title,
+        document_source=citation.document_source,
+        section_heading=citation.section_heading,
+        section_page=citation.section_page,
+        text_sha256=citation.text_sha256,
+        cited_by=citation.cited_by,
+        cited_at=citation.cited_at.isoformat(),
+        state=citation.state,
+        needs_review=citation.needs_review,
+    )
+
+
+async def readable_tag_assignments(
+    request: Any, conn: "Connection", rows: list[dict]
+) -> list[dict]:  # REQ-2208
+    """:func:`_readable_assignments` for a REST handler's ``request``: the one read gate on tag
+    assignments, wherever they are listed."""
+    import types as _types
+
+    return await _readable_assignments(
+        cast(StrawberryInfo, _types.SimpleNamespace(context={"request": request})), conn, rows
+    )
+
+
 async def _readable_assignments(
     info: StrawberryInfo, conn: "Connection", rows: list[dict]
 ) -> list[dict]:  # REQ-2152, REQ-2208
@@ -611,26 +643,6 @@ async def _assignments_on_readable(
     return [r for r in rows if readable(r)]
 
 
-def data_contract_type(member: dict) -> DataContractType:  # REQ-2158
-    """A member's stored contract (data_product.member_contracts) as the admin API answers it."""
-    from provisa.core.data_contracts import contract_id
-    from provisa.core.models import DataContract
-
-    c = DataContract.model_validate(member["contract"])
-    return DataContractType(
-        table_id=member["id"],
-        source_id=member["source_id"],
-        schema_name=member["schema_name"],
-        table_name=member["table_name"],
-        contract_id=contract_id(member["product_id"], member["schema_name"], member["table_name"]),
-        version=c.version,
-        status=c.status,
-        description=c.description,
-        terms=ContractTermsType(**c.terms.model_dump()),
-        sla=[ContractSlaPropertyType(**s.model_dump()) for s in c.sla],
-    )
-
-
 @strawberry.type
 class Query:  # REQ-021, REQ-042
     @strawberry.field
@@ -663,6 +675,46 @@ class Query:  # REQ-021, REQ-042
         ]
 
     @strawberry.field
+    async def table_metrics(
+        self, info: StrawberryInfo, table_id: int
+    ) -> list["DatasetMetricType"]:  # REQ-2243
+        """The governed metrics a dataset uses -- the metrics a view declared from metrics closes,
+        or those whose expression references the table -- each with its name, description, AI
+        definition and the glossary term it names. Listed as the caller's acting role may see them
+        (visible_to, as ``metrics``); no expression is shown."""
+        from provisa.api.admin._metric_views import dataset_metrics
+
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            rows = await dataset_metrics(cast("Connection", conn), table_id)
+        return [
+            DatasetMetricType(
+                name=r["name"],
+                description=r["description"],
+                ai_context=r["ai_context"],
+                term=r["term"],
+                term_definition=r["term_definition"],
+                term_calculation_method=r["term_calculation_method"],
+            )
+            for r in rows
+            if _sees_metric(info, r)
+        ]
+
+    @strawberry.field
+    async def retired_model_objects(
+        self, info: StrawberryInfo
+    ) -> list[RetiredObjectType]:  # REQ-2248
+        """The retired tables, columns, relationships, tags and metrics the caller may act on,
+        with who retired each, when and why: what the ordinary lists leave out, to restore."""
+        from provisa.api.admin._retired_objects import retired_objects
+        from provisa.api.admin.capabilities import require_capability
+
+        require_capability(info, "table_registration")
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            return await retired_objects(info, cast("Connection", conn))
+
+    @strawberry.field
     async def metrics(self, info: StrawberryInfo) -> list["MetricType"]:  # REQ-1317, REQ-1958
         """The governed metric definitions the caller may see — feeds the metric admin panel
         (REQ-1317); fact-derived metrics carry ``from_fact`` (REQ-1320). Every caller sees the
@@ -683,6 +735,7 @@ class Query:  # REQ-021, REQ-042
                 ai_context=r["ai_context"],
                 visible_to=list(r["visible_to"]) if catalog_scope(info).governance else None,
                 from_fact=r["from_fact"],
+                term=r["term"],  # REQ-2243
             )
             for r in rows
         ]
@@ -889,6 +942,8 @@ class Query:  # REQ-021, REQ-042
                     .where(
                         table_columns.c.scope == "listed",
                         registered_tables.c.draft.is_(False),
+                        registered_tables.c.retired.is_(False),  # REQ-2248
+                        table_columns.c.retired.is_(False),
                         registered_tables.c.domain_id.not_in(sorted(scope.reach)),
                     )
                     .order_by(
@@ -919,7 +974,6 @@ class Query:  # REQ-021, REQ-042
         async with pool.acquire() as conn:
             conn = cast("Connection", conn)
             rows = await data_product_repo.list_all(conn)
-            members = await data_product_repo.member_contracts(conn)
             # REQ-1634: each product's members, from the membership relation.
             member_tables: dict[str, list[int]] = {}
             for table_id, pids in (await data_product_repo.table_memberships(conn)).items():
@@ -933,9 +987,6 @@ class Query:  # REQ-021, REQ-042
                 conn, await product_findings.context(datetime.date.today())
             )
         names = {r["id"]: r["name"] for r in rows}
-        contracts: dict[str, list[DataContractType]] = {}
-        for m in members:  # REQ-2158
-            contracts.setdefault(m["product_id"], []).append(data_contract_type(m))
         return [
             DataProductType(
                 id=r["id"],
@@ -951,7 +1002,7 @@ class Query:  # REQ-021, REQ-042
                 support_contact=r["support_contact"],
                 custom_properties=r["custom_properties"],
                 created_at=r["created_at"].isoformat(),
-                contracts=contracts.get(r["id"], []),
+                freshness=r["freshness"],  # REQ-2180
                 status=r["status"],
                 status_reason=r["status_reason"],
                 retire_on=r["retire_on"].isoformat() if r["retire_on"] is not None else None,
@@ -1067,6 +1118,7 @@ class Query:  # REQ-021, REQ-042
             # REQ-1467: one read for every tag's values, grouped here — a per-tag read would be a
             # query per row to serve a table that holds a handful of values in total.
             param_rows = await tag_repo.list_all_param_values(cast("Connection", conn))
+            cited = await tag_repo.definition_citations(cast("Connection", conn))  # REQ-2208
         by_tag: dict[str, list[TagParamValueType]] = {}
         for p in param_rows:
             by_tag.setdefault(p["tag_id"], []).append(
@@ -1084,8 +1136,38 @@ class Query:  # REQ-021, REQ-042
                 param_policy=r["param_policy"],
                 param_values=by_tag.get(r["id"], []),
                 sensitive=bool(r["sensitive"]),
+                requires_citation=bool(r["requires_citation"]),  # REQ-2208
+                required=bool(r["required"]),  # REQ-2208 (THE TAGS REPORT)
+                allowed_domains=list(r["allowed_domains"] or []),  # REQ-2208
+                citations=[citation_type(c) for c in cited.get(r["id"], [])],
+                needs_review=any(c.needs_review for c in cited.get(r["id"], [])),
             )
             for r in rows
+        ]
+
+    @strawberry.field
+    async def offered_tags(
+        self, info: StrawberryInfo, target: TagTargetInput
+    ) -> list[str]:  # REQ-2208 (A TAG IS OFFERED BY DOMAIN)
+        """The ids of the tags the picker offers on ``target``: those that apply to its kind, are
+        not derived, and are offered in its domains -- or, for an object in no domain, in one the
+        caller acts in. assignTag refuses the same tags by the same rule."""
+        from provisa.api.admin.capabilities import allowed_domains_request
+        from provisa.api.admin.domain_guard import tag_offered, tag_target_domains
+        from provisa.core.repositories import tag as tag_repo
+
+        _resolve_admin_context(info)
+        acting = allowed_domains_request(info.context["request"])
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            domains = await tag_target_domains(cast("Connection", conn), target)
+            rows = await tag_repo.list_all(cast("Connection", conn))
+        return [
+            r["id"]
+            for r in rows
+            if target.object_type in (r["applies_to"] or [])
+            and not r["derived"]
+            and tag_offered(r["allowed_domains"] or [], domains, acting)
         ]
 
     @strawberry.field
@@ -1101,6 +1183,13 @@ class Query:  # REQ-021, REQ-042
                 *await tag_repo.list_library_assignments(cast("Connection", conn)),
             ]
             rows = await _readable_assignments(info, cast("Connection", conn), rows)
+            # REQ-2208: each assignment's citations, and the tags that require one.
+            cited = await tag_repo.assignment_citations(cast("Connection", conn))
+            tag_rows = {t["id"]: t for t in await tag_repo.list_all(cast("Connection", conn))}
+
+        def _cited(r: dict) -> list:
+            return cited.get((r["base_tag_id"], r["object_key"]), [])
+
         return [
             TagAssignmentType(
                 tag_id=r["tag_id"],
@@ -1122,6 +1211,10 @@ class Query:  # REQ-021, REQ-042
                 rls_rule_id=r.get("rls_rule_id"),  # REQ-2208
                 role_id=r.get("role_id"),
                 metric_name=r.get("metric_name"),
+                object_key=r["object_key"],  # REQ-2208
+                citations=[citation_type(c) for c in _cited(r)],
+                needs_review=any(c.needs_review for c in _cited(r)),
+                citation_gap=tag_repo.citation_gap(tag_rows.get(r["base_tag_id"]), _cited(r)),
             )
             for r in rows
         ]
@@ -1145,7 +1238,9 @@ class Query:  # REQ-021, REQ-042
             pool = await _get_pool()
             async with pool.acquire() as conn:
                 _res = await conn.execute_core(
-                    select(registered_tables).order_by(registered_tables.c.id)
+                    select(registered_tables)
+                    .where(registered_tables.c.retired.is_(False))  # REQ-2248
+                    .order_by(registered_tables.c.id)
                 )
                 rows = [dict(r._mapping) for r in _res.fetchall()]
                 _ares = await conn.execute_core(
@@ -1207,6 +1302,7 @@ class Query:  # REQ-021, REQ-042
                 .where(
                     relationships.c.id.not_like("gql_auto__%"),
                     relationships.c.id.not_like("meta:%"),
+                    relationships.c.retired.is_(False),  # REQ-2248
                 )
                 .order_by(relationships.c.id)
             )
@@ -1237,7 +1333,10 @@ class Query:  # REQ-021, REQ-042
                     .join(_tt, relationships.c.target_table_id == _tt.c.id, isouter=True)
                     .join(_vt, relationships.c.via_table_id == _vt.c.id, isouter=True)
                 )
-                .where(relationships.c.id.not_like("gql_auto__%"))
+                .where(
+                    relationships.c.id.not_like("gql_auto__%"),
+                    relationships.c.retired.is_(False),  # REQ-2248
+                )
                 .order_by(relationships.c.id)
             )
             rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
@@ -1403,6 +1502,36 @@ class Query:  # REQ-021, REQ-042
                 if row[0].lower() not in skip
             ]
         return tables
+
+    @strawberry.field
+    async def file_glob_preview(
+        self,
+        info: StrawberryInfo,
+        source_id: str,
+        glob: Optional[str] = None,
+        tables: Optional[list[str]] = None,
+    ) -> FileGlobPreviewType:  # REQ-788
+        """One table over many files of a files source, before it is registered: a typed
+        ``glob`` (``tables`` names the listed tables the files are), or the glob derived from the
+        listed ``tables`` picked; the files it reads, the columns they share and the files that
+        differ. Reads only; registration checks the same again when the table is saved."""
+        require_capability(info, "table_registration")
+        from provisa.api.admin._file_glob import file_glob_preview, source_files_path
+
+        pool = await _get_pool()
+        async with pool.acquire() as config_conn, _bound_to_request_org():
+            path = await source_files_path(config_conn, source_id)
+        # A glob that cannot be read, or picked tables no glob covers, is the query's error.
+        out = await asyncio.to_thread(file_glob_preview, path, glob or None, tables)
+        return FileGlobPreviewType(
+            glob=out["glob"],
+            files=[CombinedFileType(**f) for f in out["files"]],
+            shared_columns=out["shared_columns"],
+            differing=[FileColumnsDifferType(**d) for d in out["differing"]],
+            extra_files=out["extra_files"],
+            unmatched_tables=out["unmatched_tables"],
+            reference_table=out["reference_table"],
+        )
 
     @strawberry.field
     async def crawl_source(
@@ -2951,6 +3080,24 @@ async def _derived_view_columns(schema_name: str, table_name: str) -> list[Avail
     ]
 
 
+# REQ-2234: Register Table reads the columns of every table it lists, one after another, and an
+# OpenAPI table's columns come from its source's parsed spec. Parsing Stripe's spec (273 read
+# operations) took seconds, once per table read. A loaded spec is parsed once; a spec loaded again
+# (a new dict in state.openapi_specs) is parsed again. The held spec keeps its identity unique.
+_parsed_specs: dict[str, tuple[dict, list]] = {}
+
+
+def _spec_queries(source_id: str, spec: dict) -> list:
+    """The read operations of `source_id`'s loaded `spec`, parsed once per loaded spec."""
+    from provisa.openapi.mapper import parse_spec
+
+    held = _parsed_specs.get(source_id)
+    if held is None or held[0] is not spec:
+        held = (spec, parse_spec(spec)[0])
+        _parsed_specs[source_id] = held
+    return held[1]
+
+
 async def _introspect_available_columns(
     source_id: str, schema_name: str, table_name: str
 ) -> list[AvailableColumnType]:
@@ -3111,12 +3258,10 @@ async def _introspect_available_columns(
     # _source_for_introspection + introspect_columns path below that sharepoint/splunk already
     # use correctly, instead of maintaining a second, divergent construction of the same call.
     if schema_name == "openapi" and await _ensure_openapi_spec(source_id):
-        from provisa.openapi.mapper import parse_spec
         from provisa.api.admin.introspect import openapi_parameter_columns
         from provisa.openapi.register import _schema_to_columns
 
-        spec = state.openapi_specs[source_id]["spec"]
-        queries, _ = parse_spec(spec)
+        queries = _spec_queries(source_id, state.openapi_specs[source_id]["spec"])
         q = next((q for q in queries if q.operation_id == table_name), None)
         if q is None:
             return []

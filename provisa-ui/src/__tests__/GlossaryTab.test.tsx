@@ -179,6 +179,7 @@ const REVENUE: GlossaryTermSummary = {
   id: 1,
   name: "Revenue",
   definition: "Money in.",
+  calculation_method: null,
   is_abstract: false,
   deprecated: false,
   ref_count: 1,
@@ -200,6 +201,7 @@ const CHURN: GlossaryTermSummary = {
   id: 2,
   name: "Churn",
   definition: null,
+  calculation_method: null,
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
@@ -221,6 +223,7 @@ const MARGIN: GlossaryTermSummary = {
   id: 3,
   name: "Margin",
   definition: null,
+  calculation_method: null,
   is_abstract: false,
   deprecated: true,
   ref_count: 0,
@@ -244,6 +247,7 @@ const DANGLING: GlossaryTermSummary = {
   id: 4,
   name: "Orphan Concept",
   definition: "Declared but wired to nothing physical.",
+  calculation_method: null,
   is_abstract: true,
   deprecated: false,
   ref_count: 0,
@@ -280,6 +284,7 @@ const REVENUE_DETAIL: GlossaryTermDetail = {
   experts: [{ user_id: "u1", kind: "expert" }],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 const CHURN_DETAIL: GlossaryTermDetail = {
@@ -290,6 +295,7 @@ const CHURN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // No refs, no relationships: the one fixture where delete is actually enabled.
@@ -301,6 +307,7 @@ const MARGIN_DETAIL: GlossaryTermDetail = {
   experts: [],
   tags: [],
   pending_on: [],
+  iri: null,
 };
 
 // Mantine Select in jsdom: floating-ui hides the detached dropdown (all rects are 0),
@@ -541,9 +548,11 @@ describe("GlossaryTab", () => {
     const fields = within(read)
       .getAllByRole("term")
       .map((dt) => [dt.textContent, dt.nextElementSibling?.textContent]);
+    // The edit form's fields in its order, then what the term has that the form does not set.
     expect(fields).toEqual([
       ["Name", "Margin"],
       ["Definition", t("glossaryTab.hoverNoDefinition")],
+      [t("glossaryTab.excludeFromExportLabel"), "No"],
       ["Domains", "finance, sales"],
       // Grounded in neither a table nor a column.
       ["Role", "Concept"],
@@ -557,7 +566,6 @@ describe("GlossaryTab", () => {
       ["Reason", "—"],
       ["By", "—"],
       ["Planned retirement", "—"],
-      [t("glossaryTab.excludeFromExportLabel"), "No"],
     ]);
     const tags = within(read).getByText("Tags").nextElementSibling as HTMLElement;
     expect(within(tags).getByTestId("tag-control-term-3")).toBeInTheDocument();
@@ -567,7 +575,7 @@ describe("GlossaryTab", () => {
     fireEvent.click(screen.getByTestId("glossary-item-1"));
     await waitFor(() =>
       expect(
-        within(screen.getByTestId("glossary-read-fields")).getAllByRole("definition")[2],
+        within(screen.getByTestId("glossary-read-fields")).getByText("Domains").nextElementSibling,
       ).toHaveTextContent("All domains (enterprise)"),
     );
   });

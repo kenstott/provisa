@@ -264,6 +264,7 @@ async def test_a_plan_that_embeds_rows_does_not_stream_from_its_terminal():
 
     plan = SimpleNamespace(
         embedded=None,
+        reads_in=None,  # as _Plan: no draft read (REQ-1921)
         two_step=None,
         code_write=None,
         keyed_write=None,

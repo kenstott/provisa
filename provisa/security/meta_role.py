@@ -51,6 +51,11 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+# A role id read without a runtime is pure and below the compiler (security/rights.py).
+from provisa.security.rights import META_PREFIX as META_PREFIX
+from provisa.security.rights import is_meta_role_id as is_meta_role_id
+from provisa.security.rights import members_of as members_of
+
 
 def _member_surface(held: Any) -> Any:
     """A member role's context and row filters, built on first read: the parts a meta-role is
@@ -71,7 +76,6 @@ def _member_parts(state: Any, members: list[dict]) -> dict[str, tuple[Any, froze
     return parts
 
 
-META_PREFIX = "meta:"
 _LOCK = threading.Lock()
 
 
@@ -93,24 +97,12 @@ def meta_role_id(members: list[str] | tuple[str, ...]) -> str:
     return META_PREFIX + "+".join(sorted(set(members)))
 
 
-def is_meta_role_id(role_id: str | None) -> bool:
-    return bool(role_id) and str(role_id).startswith(META_PREFIX)
-
-
 def refuse_named_meta_role(requested: list[str]) -> None:
     for role_id in requested:
         if is_meta_role_id(role_id):
             raise MetaRoleNamed(
                 f"{role_id!r} is not a role: name the roles you hold, and the server acts as them"
             )
-
-
-def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
-    """The roles ``role_id`` names: a meta-role's, from its id (:func:`meta_role_id`), else
-    itself. For a caller that holds no runtime: a session variable bound at a transport's edge."""
-    if not is_meta_role_id(role_id):
-        return (role_id,)
-    return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
 def acting_roles(state: Any, role_id: str) -> tuple[str, ...]:
@@ -291,11 +283,12 @@ def _member_reads(
 
     chains = state.role_build_inputs["role_chains"]
     masked = {(tid, col): (masks, dtype) for tid, col, masks, dtype in state.masked_columns}
-    # REQ-1494: a fake is the column's own declaration, read by every role in a Test environment
-    # in place of any mask (app_loaders._load_masking_rules); each member holds it alike.
+    # REQ-1494: a fake is read in place of any mask by every role in a Test environment, and by
+    # a synthetic offer's role on its product's datasets (REQ-2180; app_loaders._load_masking_rules);
+    # each member reads it as its own published rules hold it.
     faked = {
-        (tid, col): entry
-        for (tid, _rid), cols in state.masking_rules.items()
+        (tid, rid, col): entry
+        for (tid, rid), cols in state.masking_rules.items()
         for col, entry in cols.items()
         if entry[0].mask_type == MaskType.fake
     }
@@ -326,8 +319,8 @@ def _member_reads(
                 if not served:
                     treatments.append((HIDDEN, None, dtype))
                     continue
-                if (t["id"], name) in faked:
-                    rule, fake_type = faked[(t["id"], name)]
+                if (t["id"], m["id"], name) in faked:
+                    rule, fake_type = faked[(t["id"], m["id"], name)]
                     treatments.append((1, rule, fake_type))
                     continue
                 chain = [*chains[m["id"]], *qualifiers]
@@ -466,7 +459,9 @@ def _build(
     inputs = state.role_build_inputs
     chains = {meta_id: meta_chain(meta_id, member_ids, inputs["role_chains"], qualifiers)}
     # Inheritance with several parents: every grant to a member reaches the child.
-    for t in inputs["tables"]:
+    # REQ-1921: and on a draft, so the child is named it as its members are -- refused as draft,
+    # or read where the child holds table registration in its domain.
+    for t in [*inputs["tables"], *inputs["draft_tables"]]:
         expand_grants(t.get("columns") or [], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)

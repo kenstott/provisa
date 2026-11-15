@@ -232,7 +232,7 @@ describe("TablesPage — profiling acts as the roles the user acts as (REQ-1620)
     render(<TablesPage />);
     const list = await screen.findByTestId("tables-list");
     const row = (await within(list).findByText("orders")).closest("tr") as HTMLElement;
-    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
     await userEvent.click(await screen.findByTestId("table-read-view-profile"));
     await waitFor(() => expect(profileTable).toHaveBeenCalledWith(7, "analyst,trader"));
   });
@@ -245,7 +245,7 @@ describe("TablesPage — a draft's preview acts as the roles the user acts as (R
     render(<TablesPage />);
     const list = await screen.findByTestId("tables-list");
     const row = (await within(list).findByText("staging")).closest("tr") as HTMLElement;
-    await userEvent.click(row.querySelector("td") as HTMLElement);
+    await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
     await userEvent.click(await screen.findByTestId("table-read-view-preview"));
     await waitFor(() =>
       expect(previewTable).toHaveBeenCalledWith(8, "analyst,trader", expect.anything()),

@@ -21,6 +21,7 @@ import type { ProductDq, ProductDqEntry, ProductInput, ProductLineage } from "..
 import type { CoreEdge, CoreTable, ProductCore } from "../productCore";
 import type { DataProduct } from "../../../types/admin";
 import { lifecycleProps } from "./lifecycleProps";
+import { openSection } from "./panelSections";
 
 vi.mock("../../../components/graph3d/OntologyGraph", () => ({
   OntologySnippet: () => null,
@@ -65,6 +66,7 @@ const check = (
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: "pass",
   latest_run_at: "2026-10-20T10:00:00Z",
+  failing_checks: [],
   ...over,
 });
 
@@ -150,7 +152,6 @@ function panel() {
       coreError={null}
       reader={null}
       lineageLoading={false}
-      contractsVersion={0}
       lineageError=""
       lineageGraph={LINEAGE}
       canEdit={false}
@@ -162,6 +163,7 @@ function panel() {
       {...lifecycleProps()}
     />,
   );
+  openSection("quality", "c360");
 }
 
 describe("a data product's quality claims (REQ-2132)", () => {
@@ -226,7 +228,6 @@ describe("a data product's quality claims (REQ-2132)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        contractsVersion={0}
         lineageError=""
         lineageGraph={lineage({ ...DQ, related: [...DQ.related, partner] })}
         canEdit={false}
@@ -238,6 +239,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
         {...lifecycleProps()}
       />,
     );
+    openSection("quality", "c360");
     expect(screen.getByTestId("data-product-detail-dq-related-c360")).toHaveTextContent("Claim 16");
     expect(screen.getByTestId("data-product-detail-dq-promises-c360")).not.toHaveTextContent(
       "check_16",
@@ -273,7 +275,7 @@ describe("a data product's quality claims (REQ-2132)", () => {
 });
 
 describe("the owner's view and any other reader's (REQ-2160)", () => {
-  const view = (owner: boolean, canEdit = true) =>
+  const view = (owner: boolean, canEdit = true) => {
     render(
       <DataProductDetailPanel
         p={P}
@@ -281,7 +283,6 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        contractsVersion={0}
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
@@ -293,6 +294,8 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
         {...lifecycleProps()}
       />,
     );
+    openSection("quality", "c360");
+  };
 
   it("shows the owner its expectations, related and unattached checks and its inputs", () => {
     view(true);
@@ -301,6 +304,7 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     expect(screen.getByTestId("data-product-detail-dq-c360-orphan-15")).toBeInTheDocument();
     expect(screen.getByTestId("data-product-card-inputPorts-c360")).toBeInTheDocument();
     // Its consumers one hop downstream, each by its model name, what it is and its product.
+    openSection("related", "c360");
     const consumers = screen.getByTestId("data-product-detail-consumers-c360");
     expect(consumers).toHaveTextContent("sales.revenue_daily (view)");
     expect(consumers).toHaveTextContent("finance.gl (materialized view · in billing, ledger)");
@@ -321,10 +325,11 @@ describe("the owner's view and any other reader's (REQ-2160)", () => {
     // (amended 2026-11-07): Consumers is the owner's alone, not shown at all.
     expect(screen.getByTestId("data-product-card-inputPorts-c360")).toBeInTheDocument();
     expect(screen.queryByTestId("data-product-detail-inputs-c360")).toBeNull();
-    expect(screen.queryByTestId("data-product-card-consumers-c360")).toBeNull();
-    expect(screen.queryByTestId("data-product-detail-consumers-c360")).toBeNull();
     // Its promises on its output ports, as the owner sees them.
     expect(screen.getByTestId("data-product-detail-promises-c360")).toHaveTextContent("2 promises");
+    openSection("related", "c360");
+    expect(screen.queryByTestId("data-product-card-consumers-c360")).toBeNull();
+    expect(screen.queryByTestId("data-product-detail-consumers-c360")).toBeNull();
   });
 });
 
@@ -337,7 +342,6 @@ describe("editing a data product follows the right to edit it, not the view (REQ
         coreError={null}
         reader={null}
         lineageLoading={false}
-        contractsVersion={0}
         lineageError=""
         lineageGraph={LINEAGE}
         canEdit={canEdit}
@@ -427,7 +431,6 @@ describe("Related Tables (REQ-2126)", () => {
         coreError={null}
         reader={null}
         lineageLoading={false}
-        contractsVersion={0}
         lineageError=""
         lineageGraph={null}
         canEdit={false}
@@ -439,6 +442,7 @@ describe("Related Tables (REQ-2126)", () => {
         {...lifecycleProps()}
       />,
     );
+    openSection("related", "c360");
     const related = screen.getByTestId("data-product-detail-related-tables-c360");
     expect(related).toHaveTextContent("finance.invoices");
     expect(related).toHaveTextContent("in Billing");

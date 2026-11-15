@@ -431,6 +431,7 @@ function SecretsVault({ vault, header }: VaultProps) {
                           : "secretsTab.deleteConfirm",
                         { name: s.name },
                       )}
+                      confirmLabel={t("common.delete")}
                       onConfirm={() => remove(s)}
                     >
                       {(openConfirm) => (

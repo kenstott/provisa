@@ -34,6 +34,8 @@
     "fieldAiContext": "Контекст ИИ",
     "fieldTags": "Теги",
     "fieldAiContextPlaceholder": "Подсказки для генерации запросов с помощью ИИ",
+    "fieldTerm": "Термин глоссария",
+    "fieldTermHint": "Его определение и метод расчёта показываются вместе с метрикой",
     "saveFailed": "Не удалось сохранить.",
     "editMetric": "Редактировать метрику {{name}}",
     "deleteMetric": "Удалить метрику {{name}}",

@@ -34,6 +34,8 @@
     "fieldAiContext": "KI-Kontext",
     "fieldTags": "Tags",
     "fieldAiContextPlaceholder": "Hinweise für KI-gestützte Abfragegenerierung",
+    "fieldTerm": "Glossarbegriff",
+    "fieldTermHint": "Seine Definition und Berechnungsmethode werden mit der Metrik angezeigt",
     "saveFailed": "Speichern fehlgeschlagen.",
     "editMetric": "Metrik {{name}} bearbeiten",
     "deleteMetric": "Metrik {{name}} löschen",

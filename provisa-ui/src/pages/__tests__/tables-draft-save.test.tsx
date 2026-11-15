@@ -217,7 +217,7 @@ import { TablesPage } from "../TablesPage";
 async function openEditor(name: string) {
   render(<TablesPage />);
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
   return screen.findByTestId("table-draft-checkbox");
 }

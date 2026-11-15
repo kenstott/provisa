@@ -77,6 +77,10 @@ function colPrefix(col: ListedColumn): string {
   return "  ";
 }
 
+/** A column as a table's node lists it: its key mark, then its name. */
+export const columnLine = (col: ListedColumn): string =>
+  `${colPrefix(col)}${col.computedSqlAlias || col.columnName}`;
+
 export function buildTableLabel(
   name: string,
   columns: ListedColumn[],
@@ -89,7 +93,7 @@ export function buildTableLabel(
 
   if (cols.length === 0) return { label: name, lineCount: 1 };
 
-  const colLines = cols.map((c) => `${colPrefix(c)}${c.computedSqlAlias || c.columnName}`);
+  const colLines = cols.map(columnLine);
   const lines = [name, SEPARATOR, ...colLines];
   return { label: lines.join("\n"), lineCount: lines.length };
 }

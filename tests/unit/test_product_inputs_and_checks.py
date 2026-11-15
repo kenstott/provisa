@@ -172,3 +172,51 @@ async def test_each_product_shows_each_check_by_what_it_checks_and_who_owns_it(c
         # R's check on S, which is neither R's member nor its input: a curation gap for R.
         "unattached": [K_ORPHAN],
     }
+
+
+@pytest.mark.asyncio
+async def test_a_checkers_latest_scan_names_the_checks_that_did_not_pass(control_plane):
+    """REQ-2180 (QUALITY IS STATUS AND COUNTS, NOT A SCORE): a product's quality names its failing
+    checks, so each checker carries the checks of its latest scan that did not pass -- an earlier
+    scan's failures are not its, and a checker never run names none."""
+    from datetime import UTC, datetime, timedelta
+
+    from provisa.api.admin.lineage_router import _fetch_checkers
+    from provisa.dq.results import RESULT_FIELDS, results_sa_table
+    from provisa.dq.scan import ensure_relation, record_latest_run
+
+    def row(scan_id: str, at: datetime, name: str, column: str, outcome: str) -> dict:
+        out = {field: None for field in RESULT_FIELDS}
+        out.update(
+            scan_id=scan_id, scan_time=at, check_name=name, column_name=column, outcome=outcome
+        )
+        return out
+
+    earlier = datetime(2026, 11, 11, 9, 0, tzinfo=UTC)
+    latest = earlier + timedelta(hours=1)
+    first = [row("s1", earlier, "row_count", "", "fail")]
+    second = [
+        row("s2", latest, "row_count", "", "pass"),
+        row("s2", latest, "unique", "customer_id", "fail"),
+        row("s2", latest, "missing", "email", "warn"),
+    ]
+    db = control_plane.org()
+    try:
+        async with db.acquire() as conn:
+            await _seed(conn)
+            await _build(conn)
+            await ensure_relation(conn, f"k{K_PROMISE}")
+            relation = results_sa_table(f"k{K_PROMISE}")
+            await conn.execute_core_many(relation.insert(), first + second)
+            await record_latest_run(conn, K_PROMISE, "s1", earlier, first)
+            await record_latest_run(conn, K_PROMISE, "s2", latest, second)
+        checkers = {c["id"]: c for c in await _fetch_checkers(SimpleNamespace(model_db=db))}
+    finally:
+        await db.close()
+
+    assert checkers[K_PROMISE]["latest_outcome"] == "fail"
+    assert checkers[K_PROMISE]["failing_checks"] == [
+        {"name": "missing", "column": "email", "outcome": "warn"},
+        {"name": "unique", "column": "customer_id", "outcome": "fail"},
+    ]
+    assert checkers[K_EXPECTATION]["failing_checks"] == []

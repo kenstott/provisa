@@ -14,17 +14,18 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging as _logging
-import os
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
-from provisa.discovery.analyzer import analyze
+from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -38,9 +39,20 @@ _tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
 
+#: The confidence a semantic suggestion needs to be kept.
+MIN_CONFIDENCE = 0.7
+
+#: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
+#: constraints, and semantics inferred by the model assigned to relationship inference.
+DiscoveryKind = Literal["foreign_keys", "semantics"]
+
+#: Where a model and its key are set, as the admin UI names it.
+WHERE_TO_SET = "Admin, AI Models"
+
 
 class DiscoverRequest(BaseModel):
     scope: str  # "table", "domain", "cross-domain"
+    kinds: list[DiscoveryKind] = Field(min_length=1)
     table_id: int | None = None
     domain_id: str | None = None
     domain_ids: list[str] | None = None
@@ -54,14 +66,171 @@ class AcceptRequest(BaseModel):
     name: str | None = None
 
 
+class AcceptEach(BaseModel):
+    """One suggestion of an Accept all, with the name its relationship takes, as on its row."""
+
+    id: int
+    name: str | None = None
+
+
+class AcceptAllRequest(BaseModel):
+    candidates: list[AcceptEach] = Field(min_length=1)
+
+
+class RejectAllRequest(BaseModel):
+    ids: list[int] = Field(min_length=1)
+    reason: str
+
+
 _log = _logging.getLogger(__name__)
+
+
+@dataclass
+class SemanticModel:  # REQ-413
+    """The model assigned to relationship inference in the acting org, and why it cannot run
+    (``problem``), judged by that model's own key; None when it can."""
+
+    vendor: str
+    model: str
+    problem: str | None
+    config: dict[str, Any]
+    api_keys: dict[str, str]
+
+    @property
+    def label(self) -> str:
+        return f"{self.vendor}:{self.model}"
+
+
+async def semantic_model(pool: Any) -> SemanticModel:  # REQ-413
+    """The acting org's model for relationship inference, with its config and keys resolved the
+    way every org-bound model call resolves them."""
+    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_settings import resolve_org_config
+    from provisa.llm.client import ProvisaLLMClient
+
+    config = await resolve_org_config(pool)
+    api_keys = await read_org_api_keys(pool)
+    client = ProvisaLLMClient("relationship_inference", config=config, api_keys=api_keys)
+    return SemanticModel(client.vendor, client.model, client.key_problem(), config, api_keys)
+
+
+def _semantics_availability(model: SemanticModel) -> dict[str, Any]:
+    return {
+        "available": model.problem is None,
+        "model": model.label,
+        "reason": None if model.problem is None else "no_key",
+    }
+
+
+@router.get("/kinds")
+async def discovery_kinds(request: Request):  # REQ-413
+    """Which kinds of discovery can run: foreign keys always; semantics when the model assigned to
+    relationship inference has its key."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    return {
+        "foreign_keys": {"available": True},
+        "semantics": _semantics_availability(await semantic_model(pool)),
+    }
+
+
+def _key(rel: dict | RelationshipCandidate) -> tuple[int, str, int, str]:
+    """The columns a relationship joins, the identity of a candidate."""
+    if isinstance(rel, RelationshipCandidate):
+        return (rel.source_table_id, rel.source_column, rel.target_table_id, rel.target_column)
+    return (
+        int(rel["source_table_id"]),
+        str(rel["source_column"]),
+        int(rel["target_table_id"]),
+        str(rel["target_column"]),
+    )
+
+
+async def _semantics(
+    conn: "Connection",
+    engine: Any,
+    scope: str,
+    scope_id: str | int | None,
+    model: SemanticModel,
+    found_by_fk: set[tuple[int, str, int, str]],
+) -> tuple[dict[str, Any], list[RelationshipCandidate]]:  # REQ-018, REQ-167, REQ-413
+    """Semantic suggestions from the assigned model, and what this kind found: how many, and when
+    none, why. A failure of the model is raised as an error, not reported as none found."""
+    discovery_input = await collect_metadata(engine, conn, scope, scope_id)
+    rejected = await conn.fetch(
+        "SELECT source_table_id, source_column, target_table_id, target_column "
+        "FROM relationship_candidates WHERE status = 'rejected'"
+    )
+    discovery_input.rejected_pairs = [dict(r) for r in rejected]
+    prompt = build_prompt(discovery_input)
+    try:
+        analysis = await asyncio.to_thread(
+            analyze_answer,
+            prompt,
+            model.api_keys,
+            discovery_input,
+            MIN_CONFIDENCE,
+            config=model.config,
+        )
+    except Exception as exc:
+        raise ApiError(
+            502,
+            "discovery.model_failed",
+            f"The model {model.label} failed: {exc}",
+            model=model.label,
+            error=str(exc),
+        ) from exc
+    kept = analysis.candidates
+    below_threshold = analysis.below_threshold
+
+    # Optional: when a Jev key is configured, replace each candidate's self-reported confidence
+    # with Jev's calibrated score (REQ-1789); those it drops fell below the threshold.
+    from provisa.core.org_secrets import resolve_jev_api_key
+
+    jev_key = await resolve_jev_api_key(state.model_db)
+    if jev_key and kept:
+        from provisa.jev.decisions import refine_relationship_confidence
+
+        refined = await refine_relationship_confidence(kept, jev_key, min_confidence=MIN_CONFIDENCE)
+        below_threshold += len(kept) - len(refined)
+        kept = refined
+
+    known = (
+        {_key(r) for r in discovery_input.existing_relationships}
+        | {_key(r) for r in discovery_input.rejected_pairs}
+        | found_by_fk
+    )
+    fresh = [c for c in kept if _key(c) not in known]
+    if fresh:
+        empty_reason = None
+    elif analysis.unreadable:
+        empty_reason = "unreadable"
+    elif analysis.cut_short and analysis.proposed == 0:
+        empty_reason = "cut_short"
+    elif analysis.proposed == 0:
+        empty_reason = "none_proposed"
+    else:
+        empty_reason = "filtered"
+    return {
+        "suggested": len(fresh),
+        "proposed": analysis.proposed,
+        "below_threshold": below_threshold,
+        "threshold": MIN_CONFIDENCE,
+        "already_known": len(kept) - len(fresh),
+        "invalid": analysis.invalid,
+        "empty_reason": empty_reason,
+        # The model's answer stopped at its token limit before its list closed: the suggestions
+        # counted are those of its elements that were complete.
+        "cut_short": analysis.cut_short,
+    }, fresh
 
 
 @router.post("/relationships")
 async def trigger_discovery(
     request: Request, body: DiscoverRequest
 ):  # REQ-018, REQ-167, REQ-413, REQ-612
-    """Trigger relationship discovery: FK constraints always, LLM inference if ANTHROPIC_API_KEY set."""
+    """Run the kinds of relationship discovery asked for, and say what each found."""
     require_capability_request(request, "create_relationship")
     with _stage(_tracer, "admin.discovery") as span:
         scope_id: str | int | None = None
@@ -78,75 +247,51 @@ async def trigger_discovery(
                 )
             scope_id = body.domain_id
 
-        all_candidates = []
+        kinds = set(body.kinds)
         pool = state.model_db
         assert pool is not None
-        engine = state.federation_engine
-        assert engine is not None
+        model: SemanticModel | None = None
+        if "semantics" in kinds:
+            model = await semantic_model(pool)
+            if model.problem is not None:
+                raise ApiError(
+                    409,
+                    "discovery.semantics_unavailable",
+                    f"Semantics cannot run: {model.label}, the model assigned to relationship "
+                    f"inference, has no key. Set one under {WHERE_TO_SET}.",
+                    model=model.label,
+                    where=WHERE_TO_SET,
+                )
+
+        report: dict[str, Any] = {}
+        all_candidates: list[RelationshipCandidate] = []
         async with pool.acquire() as _conn:
             conn = cast("Connection", _conn)
-            fk_candidates = await collect_fk_candidates(
-                state.source_pools,
-                state.source_types,
-                conn,
-                body.scope,
-                scope_id,
-            )
-            _log.warning("FK introspection returned %d candidates", len(fk_candidates))
-            all_candidates.extend(fk_candidates)
-
-            # REQ-1395, REQ-1398: the org's own per-vendor keys, with the Anthropic key falling
-            # back to the deployment's env var — same precedence as ProvisaLLMClient's
-            # org-vs-deployment config resolution.
-            from provisa.core.org_secrets import read_org_api_keys
-
-            api_keys = await read_org_api_keys(pool)
-            anthropic_key = api_keys.get("anthropic") or os.environ.get("ANTHROPIC_API_KEY")
-            from provisa.core.sandbox_ai import ENDPOINT_ID
-
-            # REQ-2006: a sandbox's relationship discovery runs on the tier's AI endpoint.
-            if anthropic_key or ENDPOINT_ID in api_keys:
-                if anthropic_key:
-                    api_keys = {**api_keys, "anthropic": anthropic_key}
-                discovery_input = await collect_metadata(
-                    engine,
+            found_by_fk: set[tuple[int, str, int, str]] = set()
+            if "foreign_keys" in kinds:
+                fk_candidates = await collect_fk_candidates(
+                    state.source_pools,
+                    state.source_types,
                     conn,
                     body.scope,
                     scope_id,
                 )
-                _log.warning(
-                    "LLM discovery metadata: %d tables, columns per table: %s",
-                    len(discovery_input.tables),
-                    {t.table_name: len(t.columns) for t in discovery_input.tables},
+                _log.warning("FK introspection returned %d candidates", len(fk_candidates))
+                found_by_fk = {_key(c) for c in fk_candidates}
+                all_candidates.extend(fk_candidates)
+                report["foreign_keys"] = {"found": len(fk_candidates)}
+            if model is not None:
+                engine = state.federation_engine
+                assert engine is not None
+                report["semantics"], suggested = await _semantics(
+                    conn, engine, body.scope, scope_id, model, found_by_fk
                 )
-                prompt = build_prompt(discovery_input)
-                llm_candidates = analyze(prompt, api_keys, discovery_input)
-                _log.warning("LLM returned %d candidates after validation", len(llm_candidates))
-
-                # Optional: when a Jev key is configured, replace each candidate's
-                # self-reported confidence with Jev's calibrated score (REQ-1789).
-                from provisa.core.org_secrets import resolve_jev_api_key
-
-                jev_key = await resolve_jev_api_key(pool)
-                if jev_key:
-                    from provisa.jev.decisions import refine_relationship_confidence
-
-                    llm_candidates = await refine_relationship_confidence(
-                        llm_candidates,
-                        jev_key,
-                        min_confidence=0.7,  # matches analyze()'s default
-                    )
-                    _log.warning(
-                        "Jev refined relationship confidence: %d candidates remain",
-                        len(llm_candidates),
-                    )
-
-                all_candidates.extend(llm_candidates)
+                all_candidates.extend(suggested)
 
             stored_ids = await candidates_repo.store_candidates(conn, all_candidates, body.scope)
 
         span.set_attribute("admin.source_count", len(all_candidates))
-        return {"candidates_found": len(all_candidates), "stored_ids": stored_ids}
+        return {"candidates_found": len(all_candidates), "stored_ids": stored_ids, **report}
 
 
 @router.get("/candidates")
@@ -182,6 +327,50 @@ async def reject_candidate(request: Request, candidate_id: int, body: RejectRequ
     async with pool.acquire() as _conn:
         await candidates_repo.reject(cast("Connection", _conn), candidate_id, body.reason)
     return {"status": "rejected"}
+
+
+@router.post("/candidates/accept")
+async def accept_candidates(request: Request, body: AcceptAllRequest):  # REQ-413, REQ-612
+    """Accept every suggestion listed, each as its row's Accept would and in a transaction of its
+    own: one that fails is reported with its reason and leaves the others accepted."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    results: list[dict[str, Any]] = []
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        for each in body.candidates:
+            try:
+                accepted = await candidates_repo.accept(conn, each.id, each.name)
+            except Exception as exc:  # reported per suggestion, the rest go on
+                _log.warning("Accept all: candidate %s failed: %s", each.id, exc)
+                results.append({"id": each.id, "ok": False, "error": str(exc)})
+                continue
+            results.append(
+                {"id": each.id, "ok": True, "relationship_id": accepted["relationship_id"]}
+            )
+    return {"results": results}
+
+
+@router.post("/candidates/reject")
+async def reject_candidates(request: Request, body: RejectAllRequest):  # REQ-413, REQ-167
+    """Reject every suggestion listed with the one reason given, each as its row's Reject would:
+    one that fails is reported with its reason and leaves the others rejected."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    results: list[dict[str, Any]] = []
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        for candidate_id in body.ids:
+            try:
+                await candidates_repo.reject(conn, candidate_id, body.reason)
+            except Exception as exc:  # reported per suggestion, the rest go on
+                _log.warning("Reject all: candidate %s failed: %s", candidate_id, exc)
+                results.append({"id": candidate_id, "ok": False, "error": str(exc)})
+                continue
+            results.append({"id": candidate_id, "ok": True})
+    return {"results": results}
 
 
 @router.get("/candidates/rejected/count")

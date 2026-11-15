@@ -229,7 +229,7 @@ async function select(name: string) {
   // The name is in the list and, once selected, in the panel's title: take the list's.
   const list = await screen.findByTestId("tables-list");
   const row = (await within(list).findByText(name)).closest("tr") as HTMLElement;
-  await userEvent.click(row.querySelector("td") as HTMLElement);
+  await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   return row;
 }
 
@@ -328,12 +328,14 @@ describe("TablesPage — the detail panel", () => {
     expect(within(head).queryByTestId("table-edit-save")).toBeNull();
   });
 
-  it("puts a create form's Continue and Cancel in the head too", async () => {
+  it("puts a create form's Register and Cancel in the head too", async () => {
     render(<TablesPage />);
     await userEvent.click(await screen.findByTestId("tables-add-toggle"));
     const head = (await screen.findByTestId("tables-split-title")).parentElement as HTMLElement;
-    // Choosing what is registered continues to its settings, where Save registers it (REQ-2109).
-    expect(await within(head).findByTestId("register-table-submit")).toHaveTextContent("Continue");
+    // The tables picked are registered from the head; with none picked there is nothing to register.
+    const register = await within(head).findByTestId("register-many-tables-submit");
+    expect(register).toHaveTextContent(/Register/);
+    expect(register).toBeDisabled();
     expect(within(head).getByTestId("register-table-cancel")).toHaveTextContent("Cancel");
     const body = screen.getByTestId("tables-split-panel").querySelector(".split-pane__body")!;
     expect(body.querySelector(".form-footer")).toBeNull();
@@ -366,5 +368,42 @@ describe("TablesPage — the detail panel", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     await userEvent.click(within(panel).getByTestId("table-preview-back"));
     expect(await within(panel).findByTestId("table-read-view-edit")).toBeInTheDocument();
+  });
+
+  describe("an action that shows something in the panel leaves the preview first", () => {
+    const openPreview = async () => {
+      render(<TablesPage />);
+      await select("orders");
+      await userEvent.click(await screen.findByTestId("table-read-view-preview"));
+      await screen.findByTestId("table-preview-modal");
+    };
+
+    it("Edit closes the preview and shows the edit form", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-edit"));
+      await screen.findByTestId("table-draft-checkbox");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+    });
+
+    it("Profile closes the preview, the profile being read on Quality", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-profile"));
+      await waitFor(() => expect(screen.queryByTestId("table-preview-modal")).toBeNull());
+    });
+
+    it("the eye closes the preview", async () => {
+      await openPreview();
+      await userEvent.click(screen.getByTestId("table-read-view-preview"));
+      await waitFor(() => expect(screen.queryByTestId("table-preview-modal")).toBeNull());
+      expect(screen.getByTestId("table-read-view-edit")).toBeInTheDocument();
+    });
+
+    it("selecting another row shows that table, and the first is not in preview when reselected", async () => {
+      await openPreview();
+      await select("staging");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+      await select("orders");
+      expect(screen.queryByTestId("table-preview-modal")).toBeNull();
+    });
   });
 });

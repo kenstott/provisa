@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.compiler.aggregate_gen import _classify_columns
 from provisa.compiler.naming import to_pascal_case
 from provisa.core import command_bindings
+from provisa.core.ir_arrays import ArrayType
 from provisa.compiler.schema_gen import (
     SchemaInput,
     _assign_names,
@@ -102,6 +103,38 @@ def _physical_to_proto(column_type: str) -> str:
     if canonical in _PROTO_TYPE_MAP:
         return _PROTO_TYPE_MAP[canonical]
     raise ValueError(f"Unmapped column type for proto: {column_type!r}")
+
+
+def _array_element_proto(typed: ArrayType) -> str:
+    """The proto type of a typed array's element: a decimal with a declared precision is a
+    string, exact on every engine, as GraphQL declares it."""
+    if typed.element.startswith("numeric("):
+        return "string"
+    return _physical_to_proto(typed.element)
+
+
+def _array_message_name(element_proto: str, depth: int) -> str:
+    """The message holding one level of a typed array ``depth`` levels deep: ``repeated`` of the
+    element at depth 1, of the message a level shallower above it. Prefixed so no table's
+    message can take its name."""
+    element = element_proto.rsplit(".", 1)[-1]
+    return f"Provisa{element[:1].upper()}{element[1:]}Array" + (str(depth) if depth > 1 else "")
+
+
+def typed_array_proto(typed: ArrayType) -> tuple[str, list[str]]:  # REQ-1965
+    """A typed array as gRPC carries it (REQ-1965, amended 2026-11-11): a ``repeated`` field of
+    its element at depth 1. proto3 has no repeated of repeated, so a deeper array is a repeated
+    field of a message holding the level below, whose one field ``items`` is that level.
+    Returns the field's type with its label (``repeated int32``) and the text of each message it
+    needs, the shallowest first."""
+    element = _array_element_proto(typed)
+    messages: list[str] = []
+    inner = element
+    for depth in range(1, typed.depth):
+        name = _array_message_name(element, depth)
+        messages.append(f"message {name} {{\n  repeated {inner} items = 1;\n}}")
+        inner = name
+    return f"repeated {inner}", messages
 
 
 def _needs_timestamp_import(columns: list[tuple[str, str]]) -> bool:

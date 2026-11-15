@@ -16,14 +16,15 @@ import { Button, Text } from "@mantine/core";
 import { ArrowLeft } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { GovernedTableViewer } from "../../components/GovernedTableViewer";
-import type { RegisteredTable } from "../../types/admin";
+import type { ListedTable } from "../../types/admin";
 
 export function TablePreviewPane({
   table,
   role = null,
   onBack,
 }: {
-  table: RegisteredTable;
+  /** A registered table, or a list row of one: the viewer reads what a list row holds. */
+  table: ListedTable;
   /** The role the rows are read as; null reads as the caller. */
   role?: string | null;
   onBack: () => void;

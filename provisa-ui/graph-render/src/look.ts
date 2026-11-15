@@ -12,7 +12,7 @@
 // background each theme draws on. No DOM here, so the UI's tests read it as it is.
 
 import { LAYOUT_OPTIONS } from "../../src/components/graph/canvas/canvas-types";
-import { ERD_ELK_LAYOUT } from "../../src/components/erd/erd-layout-options";
+import { ERD_ELK_LAYOUT } from "../../src/components/provisa-graph/presets";
 
 /** The layouts a caller may name: the graph page's force and hierarchy, and the ERD's ELK. */
 export const LAYOUTS = {

@@ -68,6 +68,8 @@
     "bindingTemplate": "SQL 運算式",
     "bindingTemplateHint": "一個 SQL 運算式。將每個引數寫成 {{placeholder}}；它在呼叫它的查詢中執行。",
     "argDefault": "引數 {{name}} 的預設值",
-    "argDefaultPlaceholder": "預設值（必填則留空）"
+    "argDefaultPlaceholder": "預設值（必填則留空）",
+    "nativeSql": "原生 SQL",
+    "nativeSqlHint": "使用資料來源自身方言的 SQL，可為一條或多條陳述式，在資料來源上以同一個交易執行：要麼全部提交，要麼全部不提交。參數寫作 {{placeholder}}，每個參數都作為值綁定。傳回最後一條陳述式的資料列。"
   }
 }

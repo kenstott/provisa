@@ -271,7 +271,9 @@ def test_held_version_tracks_content():
     one = HeldEntitlements(lists=(HeldList("viewer", "tables", ("a.b",)),))
     same = HeldEntitlements(lists=(HeldList("viewer", "tables", ("a.b",)),))
     other = HeldEntitlements(lists=(HeldList("viewer", "tables", ("a.c",)),))
-    rule = HeldEntitlements(lists=one.lists, expiries=(ExpiryRule("viewer", NOW, {}),))
+    rule = HeldEntitlements(
+        lists=one.lists, expiries=(ExpiryRule("viewer", NOW, {"read": ("a.b",)}),)
+    )
     assert held_version(one) == held_version(same)
     assert held_version(one) != held_version(other)
     assert held_version(one) != held_version(rule)
@@ -431,9 +433,14 @@ def _held_sales():
     return _effective(held=HeldEntitlements(lists=(HeldList("viewer", "tables", ("sales.*",)),)))
 
 
-def test_a_passed_expiry_with_no_scope_ends_the_grant():
+_SALES_ORDERS = {"read": ("sales.orders",)}
+
+
+def test_a_rule_naming_nothing_is_no_second_end_of_the_grant():
+    # REQ-2219, EXPIRY IS ON THE GRANT AND ON ITS ENTRIES: what ends a whole grant is its own
+    # expiry, after which the role is not held; the mask ends only what an entry names.
     mask = _mask(_held_sales(), expiries=[ExpiryRule("viewer", NOW - timedelta(hours=1), {})])
-    assert not mask.has_table(2)
+    assert mask.has_table(2) and mask.has_table(3)
 
 
 def test_expiry_of_a_scoped_capability_removes_only_its_bits():
@@ -444,14 +451,14 @@ def test_expiry_of_a_scoped_capability_removes_only_its_bits():
 
 def test_a_future_expiry_is_carried_as_the_next_expiry():
     later = NOW + timedelta(days=1)
-    mask = _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, {})])
+    mask = _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, _SALES_ORDERS)])
     assert mask.has_table(2)
     assert mask.next_expiry == later
 
 
 def test_expiry_never_touches_an_idp_list():
     lists = _effective({"viewer": {"tables": ("sales.*",)}})
-    mask = _mask(lists, expiries=[ExpiryRule("viewer", NOW - timedelta(hours=1), {})])
+    mask = _mask(lists, expiries=[ExpiryRule("viewer", NOW - timedelta(hours=1), _SALES_ORDERS)])
     assert mask.has_table(2)
 
 
@@ -485,7 +492,7 @@ def test_a_cached_mask_past_its_expiry_is_recomputed():
 
     def build():
         built.append(1)
-        return _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, {})])
+        return _mask(_held_sales(), expiries=[ExpiryRule("viewer", later, _SALES_ORDERS)])
 
     key = ("viewer", "i", "h", ("b", 1))
     cache.get_or_build(key, build, now=NOW)

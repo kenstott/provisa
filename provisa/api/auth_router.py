@@ -358,6 +358,13 @@ async def claim_bootstrap(request: Request):  # REQ-1290
     claimed = claimed_user_id == identity.user_id
     if claimed:
         await _seat_claimant_in_root(identity.user_id)
+        if not state.multitenancy:
+            # REQ-1105: a single-tenant claimant is the bootstrap admin, so on the desktop tier the
+            # always-on local connector acts for them. A multi-tenant claimant is a platform admin,
+            # which holds no data, so nobody is named there.
+            from provisa.api.setup_router import _name_local_mcp_principal
+
+            _name_local_mcp_principal(admin_db, identity.user_id)
     return {
         "claimed": claimed,
         "claimed_by": claimed_user_id,

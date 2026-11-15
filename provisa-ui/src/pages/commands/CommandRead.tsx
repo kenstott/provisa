@@ -25,7 +25,7 @@ import type {
   TrackedWebhook,
 } from "../../api/actions";
 import { DetailFields, type DetailField } from "../../components/detail/DetailFields";
-import { IMPL_KINDS } from "./types";
+import { IMPL_KINDS, isNativeSql } from "./types";
 
 function ReadHeading({ children }: { children: string }) {
   return (
@@ -158,26 +158,34 @@ export function FunctionRead({
           { label: t("commandFormFields.bindingSql"), value: bound("sql") },
           ...contractFields(fn.contract, t),
         ]
-      : bySource
+      : isNativeSql(impl, binding)
         ? [
             { label: t("commandFormFields.source"), value: fn.sourceId },
-            { label: t("commandFormFields.schema"), value: fn.schemaName },
-            { label: t("commandFormFields.functionName"), value: fn.functionName },
+            { label: t("commandFormFields.nativeSql"), value: bound("sql") },
           ]
-        : impl === "script"
-          ? [{ label: t("commandFormFields.bindingArgv"), value: bound("argv") }]
-          : impl === "http"
-            ? [
-                { label: t("commandFormFields.bindingUrl"), value: bound("url") },
-                { label: t("commandFormFields.method"), value: bound("method") },
-              ]
-            : impl === "grpc"
+        : bySource
+          ? [
+              { label: t("commandFormFields.source"), value: fn.sourceId },
+              { label: t("commandFormFields.schema"), value: fn.schemaName },
+              { label: t("commandFormFields.functionName"), value: fn.functionName },
+            ]
+          : impl === "script"
+            ? [{ label: t("commandFormFields.bindingArgv"), value: bound("argv") }]
+            : impl === "http"
               ? [
-                  { label: t("commandFormFields.bindingTarget"), value: bound("target") },
-                  { label: t("commandFormFields.bindingGrpcMethod"), value: bound("method") },
-                  { label: t("commandFormFields.bindingTls"), value: yesNo(Boolean(binding.tls)) },
+                  { label: t("commandFormFields.bindingUrl"), value: bound("url") },
+                  { label: t("commandFormFields.method"), value: bound("method") },
                 ]
-              : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
+              : impl === "grpc"
+                ? [
+                    { label: t("commandFormFields.bindingTarget"), value: bound("target") },
+                    { label: t("commandFormFields.bindingGrpcMethod"), value: bound("method") },
+                    {
+                      label: t("commandFormFields.bindingTls"),
+                      value: yesNo(Boolean(binding.tls)),
+                    },
+                  ]
+                : [{ label: t("commandFormFields.bindingCallable"), value: bound("callable") }];
   const toTable = Boolean(fn.returns);
   return (
     <div className="detail-groups" data-testid={`function-read-${fn.name}`}>

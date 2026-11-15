@@ -104,7 +104,10 @@ async def load_api_sources(  # REQ-119, REQ-314, REQ-316, REQ-322
         "SELECT id, source_id, path, method, table_name, columns, ttl, "
         "response_root, error_path, pk_column, pagination, max_concurrency, default_params, "
         "promotions, body_encoding, query_template, response_normalizer FROM api_endpoints "
-        "WHERE source_id NOT IN (SELECT id FROM sources WHERE binding = 'synthetic')"
+        "WHERE source_id NOT IN (SELECT id FROM sources WHERE binding = 'synthetic') "
+        # REQ-2248: a retired table's endpoint is kept with it and serves nothing.
+        "AND NOT EXISTS (SELECT 1 FROM registered_tables rt WHERE rt.retired "
+        "AND rt.source_id = api_endpoints.source_id AND rt.table_name = api_endpoints.table_name)"
     )
     api_endpoints: dict[tuple[str, str], ApiEndpoint] = {}
     for r in ep_rows:

@@ -35,6 +35,7 @@ const promise = (id: number, table: string, outcome: "pass" | "fail" | null): Pr
   rules: [{ check_type: "expect_column_values_to_not_be_null", column_name: "id", args: {} }],
   latest_outcome: outcome,
   latest_run_at: null,
+  failing_checks: [],
 });
 const PROMISES = [
   promise(3, "pets", "pass"),

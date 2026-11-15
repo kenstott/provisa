@@ -61,6 +61,13 @@ class Rewrite:
     tree, answering the rewritten node, or None where the node is not its to rewrite."""
 
     function: Callable[[exp.Expr, str], exp.Expr | None]
+    #: For a rule of no pattern, which names no function: a regular expression of what a statement
+    #: it may rewrite holds (a type's name), so the translator reads a statement that calls no
+    #: function of the grid's (provisa.transpiler.function_macros reads no other).
+    mentions: str | None = None
+    #: For a rule of no pattern: read before any rule's pattern, as a rule over every call, which
+    #: holds whatever row a call's own name has (Grid.read_first).
+    first: bool = False
 
     @property
     def name(self) -> str:
@@ -71,6 +78,19 @@ class Rewrite:
         """The first line of the function's docstring: what the docs print beside its name."""
         doc = (self.function.__doc__ or "").strip()
         return doc.splitlines()[0] if doc else ""
+
+
+class Refused(Exception):  # noqa: N818 -- a refusal, as Refusal names what it carries
+    """A rewrite function's refusal of a call its rule matched, where what refuses it is a value
+    and not the call's shape: the client receives ``refusal``, which the row lists as a
+    limitation."""
+
+    def __init__(self, refusal: Refusal, *, ruling: bool = False) -> None:
+        super().__init__(refusal.message)
+        self.refusal = refusal
+        #: Whether the row's refusal is the client's before any older refusal of the call by its
+        #: name (provisa.transpiler.engine_refusals): it names what of the call has no form.
+        self.ruling = ruling
 
 
 #: A replacement: an engine's SQL with the pattern's holes, a refusal, or a rewrite function.

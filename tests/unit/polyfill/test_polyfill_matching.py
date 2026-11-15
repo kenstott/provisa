@@ -101,6 +101,27 @@ def test_fits_reads_types_as_postgresql_resolves_them(argument: str, parameter: 
     assert fits(_node(argument), parameter) is expected
 
 
+@pytest.mark.parametrize(
+    ("argument", "matches"),
+    [
+        ("NULL::integer[]", True),
+        ("CAST(NULL AS text[])", True),
+        ("(NULL::bigint[])", True),
+        ("NULL", True),  # its type is not said: it fits any
+        ("NULL::integer", False),
+        ("x::integer[]", False),
+        ("ARRAY[1]", False),
+        ("x", False),
+    ],
+)
+def test_a_null_of_a_type_in_a_pattern_matches_a_null_that_fits_it(argument: str, matches: bool):
+    rule = "array_append(NULL::anycompatiblearray, $v)"
+    bound = _matched(rule, f"array_append({argument}, 1)")
+    assert (bound is not None) is matches
+    if matches:
+        assert bound == {"v": "1"}
+
+
 def test_a_hole_written_twice_matches_the_same_subtree_twice():
     rule = "f($a, $a)"
     assert _matched(rule, "f(x + 1, x + 1)") == {"a": "x + 1"}

@@ -35,6 +35,8 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     queryTemplate: t.queryTemplate || null, // REQ-1670
     fileGlob: t.fileGlob || null, // REQ-788
     sourceFileColumn: t.sourceFileColumn || null, // REQ-788
+    importSet: t.importSet || null, // REQ-1954: left out, a save unbound the table
+    discover: t.discover === true, // REQ-252
     arguments: t.arguments ?? null, // REQ-2061
     landingFilter: t.landingFilter || null, // REQ-2062
     readWait: t.readWait ?? null, // REQ-2224
