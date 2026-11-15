@@ -711,9 +711,15 @@ def numeric_lcm(a: str, b: str) -> str:
     return _scaled(math.lcm(x, y), scale)
 
 
+#: The largest n whose factorial numeric holds: past it numeric_fac raises 22003 at once.
+_LARGEST_FACTORIAL = 32177
+
+
 def numeric_factorial(n: int) -> str:
     if n < 0:
         raise _error("22003", "factorial of a negative number is undefined")
+    if n > _LARGEST_FACTORIAL:
+        raise _error("22003", "value overflows numeric format")
     return str(math.factorial(n))
 
 
