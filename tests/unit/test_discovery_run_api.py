@@ -30,7 +30,9 @@ from provisa.core.database import Database, create_engine_from_url
 from provisa.discovery import gather
 from provisa.llm.client import Completion
 
-_REQUEST = cast(Any, object())
+_REQUEST = cast(
+    Any, SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-1")))
+)
 _TABLES = (
     "sources",
     "domains",
@@ -45,6 +47,10 @@ _TABLES = (
     "rls_rules",
     "roles",
     "data_products",
+    "discovery_runs",
+    "glossary_term_domains",
+    "glossary_term_edges",
+    "glossary_term_experts",
 )
 _KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MISTRAL_API_KEY")
 
@@ -70,8 +76,8 @@ class _Engine:
         return SimpleNamespace(rows=rows)
 
 
-async def _store() -> Database:
-    db = Database(create_engine_from_url("sqlite+pysqlite:///:memory:"), name="discovery-run")
+async def _store(url: str = "sqlite+pysqlite:///:memory:") -> Database:
+    db = Database(create_engine_from_url(url), name="discovery-run")
     with db.engine.begin() as conn:
         so.metadata.create_all(conn, tables=[so.metadata.tables[n] for n in _TABLES])
     async with db.acquire() as conn:
@@ -109,6 +115,9 @@ class _World:
         self.classified: list[dict] = []
         self.model_calls: list[tuple[str, str, int]] = []
         self.answers: list[str] = []
+        self.on_call: Any = None
+        self.launched: list[tuple] = []
+        self.fk_found: list[Any] = []
         for env in _KEY_ENVS:
             monkeypatch.delenv(env, raising=False)
         monkeypatch.setattr(discovery, "require_capability_request", lambda request, cap: None)
@@ -138,10 +147,17 @@ class _World:
 
         def respond(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
             self.model_calls.append((vendor, model, max_tokens))
+            if self.on_call is not None:
+                self.on_call(len(self.model_calls))
             return Completion(
                 self.answers.pop(0) if self.answers else "[]", vendor, model, None, False
             )
 
+        async def fk(source_pools, source_types, conn, table_ids):
+            return [c for c in self.fk_found if c.source_table_id in table_ids]
+
+        monkeypatch.setattr(discovery, "_launch", lambda *args: self.launched.append(args))
+        monkeypatch.setattr("provisa.discovery.run.collect_fk_for_tables", fk)
         monkeypatch.setattr(gather, "_profiled_classes", profiled)
         monkeypatch.setattr("provisa.profiler.run.classify_table", classify_table)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
@@ -271,3 +287,270 @@ async def test_the_models_list_names_every_vendor_with_a_key_and_the_assigned_mo
     assert models["assigned"]["vendor"] == "openai" and models["assigned"]["has_key"] is True
     assert models["assigned"]["input_tokens"] == 32_000  # an unknown model: the default pair
     assert models["semantics_available"] is True
+
+
+# --- the background run ----------------------------------------------------------------------------
+
+
+def _suggestion(src: tuple[int, str], tgt: tuple[int, str], confidence: float = 0.9) -> dict:
+    return {
+        "source_table_id": src[0],
+        "source_column": src[1],
+        "target_table_id": tgt[0],
+        "target_column": tgt[1],
+        "cardinality": "many-to-one",
+        "confidence": confidence,
+        "reasoning": "orders name their customer",
+        "suggested_name": "purchase-history",
+    }
+
+
+async def _run(world: _World, scope: discovery.RunScope) -> dict:
+    """Start a run and do its background work here, then read it back."""
+    started = (await discovery.start_run(_REQUEST, scope))["run"]
+    assert started["status"] == "running"
+    (run_id, spec, model) = world.launched.pop()
+    await discovery.run_discovery(run_id, spec, model)
+    return (await discovery.get_run(_REQUEST, run_id))["run"]
+
+
+async def _candidates(db: Database) -> list[dict]:
+    async with db.acquire() as conn:
+        rows = (await conn.execute_core(select(so.relationship_candidates))).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+async def test_a_run_makes_exactly_the_requests_counted(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "stores", [("id", "integer", True), ("region_id", "integer", False)]
+    )
+    config = {
+        **_ASSIGNED,
+        "ai_models": {
+            **_ASSIGNED["ai_models"],
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+        },
+    }
+    world = _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
+    counted = await discovery.count_run(_REQUEST, _scope())
+    assert counted["requests"] > 1
+    run = await _run(world, _scope())
+    assert run["status"] == "done"
+    assert len(world.model_calls) == counted["requests"]
+    assert run["requests_done"] == run["requests_total"] == counted["requests"]
+
+
+async def test_a_run_stores_its_suggestions_and_reports_what_each_kind_found(monkeypatch, tmp_path):
+    from provisa.discovery.analyzer import RelationshipCandidate
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "stores", [("id", "integer", True), ("region_id", "integer", False)]
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.fk_found = [
+        RelationshipCandidate(3, "region_id", 2, "id", "many-to-one", 1.0, "Foreign key constraint")
+    ]
+    import json as _json
+
+    world.answers = [_json.dumps([_suggestion((1, "customer_id"), (2, "id"))])]
+    run = await _run(world, _scope(kinds=["foreign_keys", "semantics"]))
+    assert run["status"] == "done"
+    assert run["model"] == "openai:gpt-test"
+    report = run["report"]
+    assert report["foreign_keys"] == {"found": 1, "suggested": 1}
+    assert report["semantics"]["suggested"] == 1
+    assert run["suggestions"] == 2
+    stored = {
+        (c["source_table_id"], c["source_column"], c["target_table_id"], c["target_column"])
+        for c in await _candidates(db)
+    }
+    assert stored == {(1, "customer_id", 2, "id"), (3, "region_id", 2, "id")}
+    assert {c["scope"] for c in await _candidates(db)} == {f"run:{run['id']}"}
+
+
+async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_found(
+    monkeypatch, tmp_path
+):
+    import json as _json
+
+    import sqlalchemy as sa
+
+    url = f"sqlite+pysqlite:///{tmp_path / 'store.db'}"
+    db = await _store(url)
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "stores", [("id", "integer", True), ("region_id", "integer", False)]
+    )
+    config = {
+        **_ASSIGNED,
+        "ai_models": {
+            **_ASSIGNED["ai_models"],
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+        },
+    }
+    world = _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
+    counted = await discovery.count_run(_REQUEST, _scope())
+    assert counted["requests"] > 1
+    world.answers = [_json.dumps([_suggestion((1, "customer_id"), (2, "id"))])]
+    started = (await discovery.start_run(_REQUEST, _scope()))["run"]
+
+    def press_stop(calls: int) -> None:
+        # Stop pressed while the first request is in flight, as another worker would: on the row.
+        engine = sa.create_engine(url)
+        with engine.begin() as conn:
+            conn.execute(
+                sa.update(so.discovery_runs)
+                .where(so.discovery_runs.c.id == started["id"])
+                .values(stop_requested=True)
+            )
+        engine.dispose()
+
+    world.on_call = press_stop
+    (run_id, spec, model) = world.launched.pop()
+    await discovery.run_discovery(run_id, spec, model)
+    run = (await discovery.get_run(_REQUEST, run_id))["run"]
+    assert len(world.model_calls) == 1
+    assert run["status"] == "stopped"
+    assert run["report"]["semantics"]["stopped"] is True
+    assert run["requests_done"] == 1 and run["requests_total"] == counted["requests"]
+    assert [(c["source_column"], c["target_column"]) for c in await _candidates(db)] == [
+        ("customer_id", "id")
+    ]
+
+
+async def test_stop_through_the_api_marks_the_run_and_a_second_stop_after_it_ended_is_refused(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    started = (await discovery.start_run(_REQUEST, _scope()))["run"]
+    asked = (await discovery.stop_run(_REQUEST, started["id"]))["run"]
+    assert asked["stop_requested"] is True and asked["status"] == "running"
+    (run_id, spec, model) = world.launched.pop()
+    await discovery.run_discovery(run_id, spec, model)
+    assert world.model_calls == []
+    ended = (await discovery.get_run(_REQUEST, run_id))["run"]
+    assert ended["status"] == "stopped"
+    with pytest.raises(ApiError) as caught:
+        await discovery.stop_run(_REQUEST, run_id)
+    assert caught.value.code == "discovery.run_ended"
+
+
+async def test_a_run_whose_model_fails_every_request_reports_each_and_finishes(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+
+    def boom(calls: int) -> None:
+        raise RuntimeError("vendor unavailable")
+
+    world.on_call = boom
+    run = await _run(world, _scope())
+    assert run["status"] == "done"
+    assert run["report"]["semantics"]["failed"] == [
+        {"group": "whole_number", "error": "vendor unavailable"}
+    ]
+
+
+async def test_a_run_left_by_an_earlier_launch_is_reported_failed(monkeypatch, tmp_path):
+    from provisa.discovery import runs as runs_repo
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    async with db.acquire() as conn:
+        run_id = await runs_repo.start(conn, scope={}, model=None, started_by=None)
+        await conn.execute_core(
+            so.discovery_runs.update().where(so.discovery_runs.c.id == run_id).values(launch="gone")
+        )
+    run = (await discovery.get_run(_REQUEST, run_id))["run"]
+    assert run["status"] == "failed" and run["error"] == runs_repo.RESTARTED
+
+
+async def test_the_latest_runs_are_listed_newest_first(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    first = (await discovery.start_run(_REQUEST, _scope()))["run"]
+    second = (await discovery.start_run(_REQUEST, _scope(kinds=["foreign_keys"])))["run"]
+    listed = (await discovery.list_runs(_REQUEST))["runs"]
+    assert [r["id"] for r in listed] == [second["id"], first["id"]]
+    assert second["model"] is None
+
+
+# --- accept ---------------------------------------------------------------------------------------------
+
+
+async def _flags(db: Database, table_id: int, column: str) -> tuple[bool, bool, bool]:
+    async with db.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(
+                    so.table_columns.c.is_foreign_key,
+                    so.table_columns.c.is_primary_key,
+                    so.table_columns.c.is_alternate_key,
+                ).where(
+                    so.table_columns.c.table_id == table_id,
+                    so.table_columns.c.column_name == column,
+                )
+            )
+        ).one()
+    return bool(row[0]), bool(row[1]), bool(row[2])
+
+
+@pytest.mark.parametrize("target_has_a_key", [False, True])
+async def test_accept_marks_the_referring_column_a_foreign_key_and_nothing_else(
+    monkeypatch, tmp_path, target_has_a_key
+):
+    from provisa.discovery import candidates as candidates_repo
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    # The target column is no key; with target_has_a_key the table has another primary key, where
+    # the derivation would mark an alternate key.
+    await _table(db, 1, "sales", "orders", [("id", "integer", True), ("store_code", "text", False)])
+    await _table(
+        db,
+        2,
+        "sales",
+        "stores",
+        [("id", "integer", target_has_a_key), ("code", "text", False)],
+    )
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            insert(so.relationship_candidates).values(
+                source_table_id=1,
+                source_column="store_code",
+                target_table_id=2,
+                target_column="code",
+                cardinality="many-to-one",
+                confidence=0.9,
+                reasoning="codes match",
+                suggested_name="order-store",
+                scope="run:1",
+            )
+        )
+        accepted = await candidates_repo.accept(conn, 1)
+    assert accepted["relationship_id"] == "order-store"
+    assert await _flags(db, 1, "store_code") == (True, False, False)
+    assert await _flags(db, 2, "code") == (False, False, False)
+    assert await _flags(db, 2, "id") == (False, target_has_a_key, False)
+    async with db.acquire() as conn:
+        rel = (await conn.execute_core(select(so.relationships))).one()._mapping
+    assert (
+        rel["source_table_id"],
+        rel["source_column"],
+        rel["target_table_id"],
+        rel["target_column"],
+    ) == (
+        1,
+        "store_code",
+        2,
+        "code",
+    )
+    assert rel["cardinality"] == "many-to-one"

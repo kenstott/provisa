@@ -28,7 +28,16 @@ from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
-from provisa.discovery.run import ChosenModel, Prepared, RunSpec, choose_model, count, prepare
+from provisa.discovery import runs as runs_repo
+from provisa.discovery.run import (
+    ChosenModel,
+    Prepared,
+    RunSpec,
+    choose_model,
+    count,
+    perform,
+    prepare,
+)
 from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
@@ -480,6 +489,144 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
             ),
         }
     return count(prepared, model)
+
+
+def _caller(request: Request) -> str | None:
+    identity = getattr(request.state, "identity", None)
+    return None if identity is None else getattr(identity, "user_id", None)
+
+
+class _RunEnded(Exception):
+    """The run's row ended while it ran (it was given up on): the worker stops."""
+
+
+async def run_discovery(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:  # REQ-413
+    """Do a run in the background, its row kept as it goes: progress after each step, Stop read
+    before each request; a run that cannot finish is marked failed, naming why."""
+    pool = state.model_db
+    assert pool is not None
+
+    async def progress(report: dict[str, Any]) -> None:
+        async with pool.acquire() as _conn:
+            moved_on = await runs_repo.record_progress(cast("Connection", _conn), run_id, report)
+        if not moved_on:
+            raise _RunEnded
+
+    async def reading(read: int, total: int) -> None:
+        await progress({"phase": "reading", "tables_read": read, "tables_total": total})
+
+    async def stop_asked() -> bool:
+        async with pool.acquire() as _conn:
+            return await runs_repo.stop_asked(cast("Connection", _conn), run_id)
+
+    try:
+        prepared = await prepare(state, spec, model, reading)
+        report = await perform(
+            state,
+            spec,
+            model,
+            prepared,
+            scope=f"run:{run_id}",
+            progress=progress,
+            stop_asked=stop_asked,
+        )
+        async with pool.acquire() as _conn:
+            await runs_repo.finish(cast("Connection", _conn), run_id, report)
+    except _RunEnded:
+        _log.info("discovery run %s stopped: its row has ended", run_id)
+    except asyncio.CancelledError:  # the process is shutting down (shutdown_background)
+        async with pool.acquire() as _conn:
+            await runs_repo.fail(cast("Connection", _conn), run_id, runs_repo.SHUT_DOWN)
+        raise
+    except Exception as exc:  # the run is marked failed with what stopped it, never left running
+        _log.exception("discovery run %s failed", run_id)
+        async with pool.acquire() as _conn:
+            await runs_repo.fail(cast("Connection", _conn), run_id, str(exc) or type(exc).__name__)
+
+
+def _launch(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:
+    """Run in the background: a run outlives the request that started it."""
+    from provisa.core.connection_loop import spawn_background
+
+    spawn_background(run_discovery(run_id, spec, model), name="discovery-run")
+
+
+@router.post("/runs")
+async def start_run(request: Request, body: RunScope):  # REQ-413
+    """Start a run in the background; answered at once with the run, running."""
+    require_capability_request(request, "create_relationship")
+    spec = body.spec()
+    model = await _run_model(spec)
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        run_id = await runs_repo.start(
+            conn,
+            scope=body.model_dump(),
+            model=None if model is None else model.label,
+            started_by=_caller(request),
+        )
+        started = await runs_repo.run(conn, run_id)
+    assert started is not None
+    _launch(run_id, spec, model)
+    return {"run": started.view()}
+
+
+async def _held(conn: "Connection", run_id: int) -> runs_repo.RunRow:
+    await runs_repo.give_up_on_left_behind(conn, runs_repo.this_launch())
+    found = await runs_repo.run(conn, run_id)
+    if found is None:
+        raise ApiError(
+            404, "discovery.run_not_found", f"Discovery run {run_id} not found", run_id=run_id
+        )
+    return found
+
+
+@router.get("/runs")
+async def list_runs(request: Request, limit: int = 10):  # REQ-413
+    """The latest runs, newest first: the dialog finds a run still going when it opens."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        await runs_repo.give_up_on_left_behind(conn, runs_repo.this_launch())
+        found = await runs_repo.recent(conn, max(1, min(limit, 100)))
+    return {"runs": [r.view() for r in found]}
+
+
+@router.get("/runs/{run_id}")
+async def get_run(request: Request, run_id: int):  # REQ-413
+    """A run's progress: requests done of the total, suggestions so far, what each kind found."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        found = await _held(cast("Connection", _conn), run_id)
+    return {"run": found.view()}
+
+
+@router.post("/runs/{run_id}/stop")
+async def stop_run(request: Request, run_id: int):  # REQ-413
+    """Stop a run after the request in flight; what it found is kept."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        found = await _held(conn, run_id)
+        if not await runs_repo.ask_stop(conn, run_id, _caller(request)):
+            raise ApiError(
+                409,
+                "discovery.run_ended",
+                f"Discovery run {run_id} has already ended: {found.status}",
+                run_id=run_id,
+                status=found.status,
+            )
+        asked = await runs_repo.run(conn, run_id)
+    assert asked is not None
+    return {"run": asked.view()}
 
 
 @router.get("/candidates")

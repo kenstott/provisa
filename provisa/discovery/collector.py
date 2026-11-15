@@ -302,7 +302,7 @@ async def _fk_candidates(
                     source_column=fk["column_name"],
                     target_table_id=target["id"],
                     target_column=fk["referenced_column"],
-                    cardinality="many_to_one",
+                    cardinality="many-to-one",  # a Cardinality value (provisa.core.models)
                     confidence=1.0,
                     reasoning="Foreign key constraint",
                     suggested_name=f"{t['table_name']}-{fk['column_name']}-to-{fk['referenced_table']}",

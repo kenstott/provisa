@@ -149,13 +149,21 @@ async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list
     return source, target
 
 
-async def prepare(state: Any, spec: RunSpec, model: ChosenModel | None) -> Prepared:
-    """The run's tables with their facts, and, when semantics is asked, its requests."""
+async def prepare(
+    state: Any,
+    spec: RunSpec,
+    model: ChosenModel | None,
+    on_table: Callable[[int, int], Awaitable[None]] | None = None,
+) -> Prepared:
+    """The run's tables with their facts, and, when semantics is asked, its requests;
+    ``on_table(read, total)`` is told after each table is read."""
     async with state.model_db.acquire() as _conn:
         conn = cast("Connection", _conn)
         source_ids, target_ids = await table_sets(conn, spec)
         ids = set(source_ids) | set(target_ids or [])
-        facts = {t.table_id: t for t in await gather.table_facts(state, conn, sorted(ids))}
+        facts = {
+            t.table_id: t for t in await gather.table_facts(state, conn, sorted(ids), on_table)
+        }
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
     if model is None:

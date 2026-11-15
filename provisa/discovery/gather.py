@@ -22,7 +22,7 @@ for the run and not recorded. System domains are never included.
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Awaitable, Callable, Sequence
 from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
@@ -201,8 +201,14 @@ def _sensitive(classes: tuple[str, ...]) -> bool:
     return any(kind_of(c).sensitive for c in classes if c != "unknown")
 
 
-async def table_facts(state: Any, conn: "Connection", ids: Sequence[int]) -> list[TableFacts]:
-    """Every table of ``ids`` with its context and its columns' facts."""
+async def table_facts(
+    state: Any,
+    conn: "Connection",
+    ids: Sequence[int],
+    on_table: Callable[[int, int], Awaitable[None]] | None = None,
+) -> list[TableFacts]:
+    """Every table of ``ids`` with its context and its columns' facts; ``on_table(read, total)``
+    is told after each table is read."""
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import table_columns as tc
     from provisa.core.term_tags import effective_column_tags
@@ -289,6 +295,8 @@ async def table_facts(state: Any, conn: "Connection", ids: Sequence[int]) -> lis
                 columns=facts,
             )
         )
+        if on_table is not None:
+            await on_table(len(out), len(tables))
     return out
 
 
