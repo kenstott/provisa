@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on ClickHouse.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 311, of which 219 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 312, of which 220 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-36 of the grid's 313 features are native on ClickHouse and left out.
+36 of the grid's 314 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -748,4 +748,5 @@ function provisa.transpiler.polyfill.bytea.substr_of_bytes: substr of a bytea he
 <tr><td><strong>encode(bytea, text)</strong><br>A bytea&#x27;s text in hex, base64 or escape form.</td><td><pre><code>encode($a, $f)
 =&gt;
 function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name. Its format is read as the statement writes it, a literal or a NULL; one a row computes is refused by name. base64 breaks its text into lines of 76 characters, as PostgreSQL&#x27;s does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>carried_from_duckdb</strong><br>Overloads ClickHouse answers in the form DuckDB answers them with, each compared with PostgreSQL&#x27;s answer on its edge values: dexp(double precision), dlog1(double precision), text(xml), replace(text, text, text), tideq(tid, tid), tidge(tid, tid), tidgt(tid, tid), tidlarger(tid, tid), tidle(tid, tid), tidlt(tid, tid), tidne(tid, tid), tidsmaller(tid, tid).</td><td><pre><code>function provisa.transpiler.polyfill.ported.carried: A call of a listed overload on ClickHouse, in the form DuckDB answers it with.</code></pre></td><td></td><td></td><td></td></tr>
 </tbody></table>

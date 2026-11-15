@@ -34,6 +34,7 @@ from provisa.transpiler.polyfill import (
     money,
     network,
     numbers,
+    ported,
     ranges,
     records,
     regex,
@@ -87,6 +88,7 @@ GRID = Grid(
     + instants.FEATURES
     + geometric.FEATURES
     + bytea.FEATURES
+    + ported.FEATURES
 )
 
 __all__ = [

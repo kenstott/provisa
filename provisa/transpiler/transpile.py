@@ -38,6 +38,7 @@ from provisa.transpiler.metadata_server_forms import SERVER_FORM_RAISE
 from provisa.transpiler.native_json import resolve_native_json
 from provisa.transpiler.native_subtype import resolve_reads
 from provisa.transpiler.pg_forms_json import json_member
+from provisa.transpiler.polyfill import ported as polyfill_ported
 from provisa.transpiler.pg_literals import array_inputs, exact_inputs, postgres_literals
 from provisa.transpiler.to_char import to_char_for_duckdb
 from provisa.transpiler.transpile_correlated import (
@@ -1972,6 +1973,8 @@ def transpile(
     Returns:
         SQL string in target dialect.
     """
+    # REQ-2167: a call ClickHouse answers in DuckDB's form, held out of what follows.
+    pg_sql, ported = polyfill_ported.held_out(pg_sql, target_dialect)
     pg_sql = pg_forms_type_io.readable(pg_sql, target_dialect)  # REQ-2171
     pg_sql = _within_group_unqualified(pg_sql)
     if target_dialect != "duckdb":  # DuckDB's form is pg_functions.typed_calls'
@@ -2136,6 +2139,7 @@ def transpile(
         )
     from provisa.observability.stage_trace import trace_stage
 
+    result = ported.restored(result)
     trace_stage(f"transpile.{target_dialect}", result)
     return result
 
