@@ -18,9 +18,15 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { useEffect } from "react";
-import { useLocation, useSearchParams } from "react-router-dom";
-import { render, screen, fireEvent, waitFor } from "../test-utils/render";
+import { useEffect, type ReactNode } from "react";
+import { BrowserRouter, useLocation, useSearchParams } from "react-router-dom";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MantineProvider } from "@mantine/core";
+import { I18nextProvider } from "react-i18next";
+import { MockedProvider } from "@apollo/client/testing/react";
+import { theme } from "../theme/theme";
+import i18n from "../i18n";
+import { PollyProvider } from "../context/PollyContext";
 
 vi.mock("../hooks/useOrgHas", async () => {
   const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
@@ -54,6 +60,22 @@ function Compass() {
 }
 
 const visited: string[] = [];
+
+/** The app's providers over a BrowserRouter: the runner reads the page shown from
+ * window.location, which a MemoryRouter never moves. */
+function AppProviders({ children }: { children: ReactNode }) {
+  return (
+    <MockedProvider mocks={[]}>
+      <MantineProvider theme={theme} defaultColorScheme="dark">
+        <I18nextProvider i18n={i18n}>
+          <BrowserRouter>
+            <PollyProvider>{children}</PollyProvider>
+          </BrowserRouter>
+        </I18nextProvider>
+      </MantineProvider>
+    </MockedProvider>
+  );
+}
 
 /**
  * The Tables page as the quality topic reads it, drawn on /tables: a row opens its table's panel by writing `table`
@@ -108,6 +130,7 @@ describe("a tour card on its predecessor's page, with a panel open in the URL", 
     localStorage.clear();
     sessionStorage.clear();
     visited.length = 0;
+    window.history.replaceState(null, "", "/sources");
   });
 
   it("stays on the page with the panel open, and a card with its own route still goes there", async () => {
@@ -121,7 +144,7 @@ describe("a tour card on its predecessor's page, with a panel open in the URL", 
           <Compass />
           <TablesStandIn />
         </TourProvider>,
-        { initialEntries: ["/sources"] },
+        { wrapper: AppProviders },
       );
       fireEvent.click(screen.getByText("launch"));
       fireEvent.click(await screen.findByTestId("tour-topic-quality"));
