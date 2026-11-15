@@ -104,5 +104,69 @@ def test_a_first_run_writes_only_what_it_was_given(tmp_path):
 
 def test_install_systemd_writes_the_environment_file_through_the_merge():
     body = _function("install_systemd")
-    assert 'write_env_file "${PROVISA_HOME}/provisa.env"' in body
+    assert 'write_env_file "$env_file"' in body
     assert ': > "$env_file"' not in _FIRST_LAUNCH
+
+
+def _run_install_systemd(tmp_path: Path) -> tuple[subprocess.CompletedProcess, Path, Path]:
+    """Run install_systemd as the script runs it, with the system paths in tmp_path."""
+    unit = tmp_path / "system" / "provisa.service"
+    unit.parent.mkdir()
+    home = tmp_path / "home" / ".provisa"
+    home.mkdir(parents=True)
+    body = _function("write_env_file") + _function("install_systemd").replace(
+        "/etc/systemd/system/provisa.service", str(unit)
+    )
+    script = (
+        "ok() { :; }\n"
+        'systemctl() { printf \'%s\\n\' "$*" >> "$SYSTEMCTL_LOG"; }\n'
+        f"PROVISA_HOME={home}\nLOCAL_BIN={tmp_path}/bin\nDOCKER_MODE=system\n"
+        "DOCKER_SOCKET=/var/run/docker.sock\n" + body + "install_systemd\n"
+    )
+    log = tmp_path / "systemctl.log"
+    done = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", script],
+        env={"PATH": os.environ["PATH"], "SYSTEMCTL_LOG": str(log), "PROVISA_IDP": "firebase"},
+        capture_output=True,
+        text=True,
+    )
+    return done, unit, home
+
+
+def test_install_systemd_runs_and_points_the_unit_at_the_env_file(tmp_path):
+    done, unit, home = _run_install_systemd(tmp_path)
+
+    assert done.returncode == 0, done.stderr
+    assert f"\nEnvironmentFile=-{home}/provisa.env\n" in unit.read_text()
+    assert (home / "provisa.env").read_text() == "PROVISA_IDP=firebase\n"
+    assert (tmp_path / "systemctl.log").read_text().splitlines() == [
+        "daemon-reload",
+        "enable provisa",
+        "restart provisa",
+    ]
+    assert [p.name for p in unit.parent.iterdir()] == ["provisa.service"]
+
+
+def test_install_systemd_never_leaves_an_empty_unit_when_it_fails(tmp_path):
+    unit = tmp_path / "system" / "provisa.service"
+    unit.parent.mkdir()
+    unit.write_text("[Unit]\nDescription=previous\n")
+    home = tmp_path / ".provisa"
+    home.mkdir()
+    body = _function("write_env_file") + _function("install_systemd").replace(
+        "/etc/systemd/system/provisa.service", str(unit)
+    )
+    # LOCAL_BIN is deliberately unset: the unit body cannot be rendered.
+    script = (
+        f"ok() {{ :; }}\nsystemctl() {{ :; }}\nPROVISA_HOME={home}\nDOCKER_MODE=system\n"
+        "DOCKER_SOCKET=/s\n" + body + "install_systemd\n"
+    )
+    done = subprocess.run(
+        ["bash", "-euo", "pipefail", "-c", script],
+        env={"PATH": os.environ["PATH"]},
+        capture_output=True,
+        text=True,
+    )
+
+    assert done.returncode != 0
+    assert unit.read_text() == "[Unit]\nDescription=previous\n"
