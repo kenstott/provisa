@@ -11,7 +11,8 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
 import { Button, Group, Table, Text, Title } from "@mantine/core";
-import type { Candidate } from "./relationship-types";
+import { ConfirmDialog } from "../ConfirmDialog";
+import { candidateName, type Candidate } from "./relationship-types";
 
 interface CandidatesTableProps {
   candidates: Candidate[];
@@ -19,6 +20,10 @@ interface CandidatesTableProps {
   tableNameById: Record<string, string>;
   onAccept: (id: number, name: string) => void;
   onReject: (id: number) => void;
+  /** Every listed suggestion, each with the name its row's Accept would give it. */
+  onAcceptAll: (candidates: { id: number; name: string }[]) => Promise<void>;
+  /** Every listed suggestion, rejected as its row's Reject would. */
+  onRejectAll: (ids: number[]) => Promise<void>;
 }
 
 export function CandidatesTable({
@@ -27,14 +32,49 @@ export function CandidatesTable({
   tableNameById,
   onAccept,
   onReject,
+  onAcceptAll,
+  onRejectAll,
 }: CandidatesTableProps) {
   const { t } = useTranslation();
+  const count = candidates.length;
 
   return (
     <>
-      <Title order={3} mt="xl">
-        {t("candidatesTable.heading")}
-      </Title>
+      <Group justify="space-between" align="center" mt="xl" mb="xs">
+        <Title order={3}>{t("candidatesTable.heading")}</Title>
+        <Group gap="xs" wrap="nowrap">
+          <ConfirmDialog
+            title={t("candidatesTable.acceptAllTitle")}
+            consequence={t("candidatesTable.acceptAllConsequence", { count })}
+            confirmLabel={t("candidatesTable.acceptAll")}
+            onConfirm={() =>
+              onAcceptAll(
+                candidates.map((c) => ({ id: c.id, name: candidateName(c, tableNameById) })),
+              )
+            }
+            testId="candidates-accept-all-confirm"
+          >
+            {(open) => (
+              <Button size="xs" onClick={open} data-testid="candidates-accept-all">
+                {t("candidatesTable.acceptAll")}
+              </Button>
+            )}
+          </ConfirmDialog>
+          <ConfirmDialog
+            title={t("candidatesTable.rejectAllTitle")}
+            consequence={t("candidatesTable.rejectAllConsequence", { count })}
+            confirmLabel={t("candidatesTable.rejectAll")}
+            onConfirm={() => onRejectAll(candidates.map((c) => c.id))}
+            testId="candidates-reject-all-confirm"
+          >
+            {(open) => (
+              <Button size="xs" color="red" onClick={open} data-testid="candidates-reject-all">
+                {t("candidatesTable.rejectAll")}
+              </Button>
+            )}
+          </ConfirmDialog>
+        </Group>
+      </Group>
       <Table.ScrollContainer minWidth={640}>
         <Table withTableBorder verticalSpacing="xs">
           <Table.Thead>
@@ -59,8 +99,7 @@ export function CandidatesTable({
               const tgtLabel = tgtDomain
                 ? `${tgtDomain}.${tgtTable}.${c.target_column}`
                 : `${tgtTable}.${c.target_column}`;
-              const suggestedName =
-                c.suggested_name || `${srcTable}-${c.source_column}-to-${tgtTable}`;
+              const suggestedName = candidateName(c, tableNameById);
               return (
                 <React.Fragment key={c.id}>
                   <Table.Tr>

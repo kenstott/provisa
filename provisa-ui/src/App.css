@@ -980,6 +980,12 @@ main {
   flex: 0 0 auto;
   overflow: visible;
 }
+/* The same for a list with a detail panel (Relationships with its suggestions beneath): left to
+ * shrink, the split pane gave all of its height to the suggestions and a discovery result above it,
+ * and showed only its clipped header. It keeps its own height and the page scrolls. */
+.page-sticky-head:has(> .page-aux) > .split-pane {
+  flex: 0 0 auto;
+}
 .page-sticky-head .data-table {
   overflow: visible;
 }

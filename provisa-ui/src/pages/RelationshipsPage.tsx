@@ -52,6 +52,7 @@ import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
 import {
   EMPTY_FORM,
+  REJECT_REASON,
   tableRef,
   type Candidate,
   type RelForm,
@@ -68,6 +69,8 @@ import {
   ReverseRelationshipForm,
 } from "../components/relationships/RelationshipModals";
 import { CandidatesTable } from "../components/relationships/CandidatesTable";
+import { CandidatesBulkFailures } from "../components/relationships/CandidatesBulkFailures";
+import { useCandidatesAtOnce } from "../components/relationships/useCandidatesAtOnce";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { applyConvention, domainToSqlName } from "../naming";
@@ -368,10 +371,34 @@ export function RelationshipsPage() {
     else void handleAdd(resolve);
   };
 
+  // Accept all and Reject all, gated like the rows' own actions by the page's capability.
+  const atOnce = useCandidatesAtOnce({
+    candidates,
+    tableNameById,
+    onStart: () => {
+      setDiscoverError("");
+      setDiscoverMsg("");
+      setDiscoverResult([]);
+    },
+    onMessage: setDiscoverMsg,
+    onError: setDiscoverError,
+    onAccepted: async () => {
+      await refetchRels();
+      await load();
+    },
+    onRejected: (ids) => {
+      setCandidates((prev) => prev.filter((c) => !ids.has(c.id)));
+      setRejectedCount((prev) => prev + ids.size);
+    },
+  });
+
+  const clearAtOnce = atOnce.clear;
+
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
     setDiscoverResult([]);
+    clearAtOnce();
     try {
       const result = await clearRejectedCandidates();
       setDiscoverMsg(t("relationshipsPage.clearedRejections", { count: result.deleted }));
@@ -379,7 +406,7 @@ export function RelationshipsPage() {
     } catch (e) {
       setDiscoverError(e instanceof Error ? e.message : String(e));
     }
-  }, [t]);
+  }, [t, clearAtOnce]);
 
   // REQ-413: runs only the kinds the dialog asked for, and says what each found.
   const handleDiscover = useCallback(
@@ -389,6 +416,7 @@ export function RelationshipsPage() {
       setDiscoverError("");
       setDiscoverMsg("");
       setDiscoverResult([]);
+      clearAtOnce();
       try {
         const result = await discoverRelationships("cross-domain", kinds);
         const c = await fetchCandidates();
@@ -400,7 +428,7 @@ export function RelationshipsPage() {
         setDiscovering(false);
       }
     },
-    [t],
+    [t, clearAtOnce],
   );
 
   const handleAccept = useCallback(
@@ -413,7 +441,7 @@ export function RelationshipsPage() {
   );
 
   const handleReject = useCallback(async (id: number) => {
-    await rejectCandidate(id, "Rejected by user");
+    await rejectCandidate(id, REJECT_REASON);
     setCandidates((prev) => prev.filter((c) => c.id !== id));
     setRejectedCount((prev) => prev + 1);
   }, []);
@@ -838,6 +866,7 @@ export function RelationshipsPage() {
           {settingsError}
         </Alert>
       )}
+      <CandidatesBulkFailures failures={atOnce.failures} />
       {discoverResult.length > 0 && (
         <Alert color="blue" mb="md" data-testid="rels-discover-result">
           {discoverResult.map((line) => (
@@ -1051,6 +1080,8 @@ export function RelationshipsPage() {
             tableNameById={tableNameById}
             onAccept={handleAccept}
             onReject={handleReject}
+            onAcceptAll={atOnce.acceptAll}
+            onRejectAll={atOnce.rejectAll}
           />
         </div>
       )}

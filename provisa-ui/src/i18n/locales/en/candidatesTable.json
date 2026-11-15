@@ -10,6 +10,23 @@
     "accept": "Accept",
     "reject": "Reject",
     "acceptAria": "Accept suggested relationship {{name}}",
-    "rejectAria": "Reject suggested relationship {{name}}"
+    "rejectAria": "Reject suggested relationship {{name}}",
+    "acceptAll": "Accept all",
+    "rejectAll": "Reject all",
+    "acceptAllTitle": "Accept all suggestions",
+    "rejectAllTitle": "Reject all suggestions",
+    "acceptAllConsequence": "Accept the {{count}} listed suggestion? It becomes a registered relationship.",
+    "acceptAllConsequence_other": "Accept all {{count}} listed suggestions? Each becomes a registered relationship.",
+    "rejectAllConsequence": "Reject the {{count}} listed suggestion? It is not suggested again until rejections are cleared.",
+    "rejectAllConsequence_other": "Reject all {{count}} listed suggestions? They are not suggested again until rejections are cleared.",
+    "acceptedAll": "{{count}} suggestion accepted.",
+    "acceptedAll_other": "{{count}} suggestions accepted.",
+    "rejectedAll": "{{count}} suggestion rejected.",
+    "rejectedAll_other": "{{count}} suggestions rejected.",
+    "acceptFailed": "{{count}} suggestion could not be accepted:",
+    "acceptFailed_other": "{{count}} suggestions could not be accepted:",
+    "rejectFailed": "{{count}} suggestion could not be rejected:",
+    "rejectFailed_other": "{{count}} suggestions could not be rejected:",
+    "failedOne": "{{name}}: {{error}}"
   }
 }
