@@ -281,7 +281,8 @@ CLICKHOUSE = Engine(
     utc_text=lambda v: f"toString({v})",
     numbers=lambda v: (
         f"arrayStringConcat(arrayMap(_n -> leftPad(hex(reverse(reinterpretAsString("
-        f"toFloat64OrZero(_n)))), 16, '0'), extractAll({v}, '{_NUMBER_TEXT}')))"
+        # A NULL is answered before its numbers are read: ClickHouse holds no Nullable(Array).
+        f"toFloat64OrZero(_n)))), 16, '0'), extractAll(ifNull({v}, ''), '{_NUMBER_TEXT}')))"
     ),
     backslash="\\\\",
     backslash_re="\\\\\\\\",
@@ -967,15 +968,20 @@ def _character() -> list[Row]:
 _UUID = "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}"
 
 
+def _uuid(e: Engine) -> str:
+    """A uuid: ClickHouse's NULL of one is a Nullable(UUID), CAST(NULL AS UUID) its own error."""
+    return "Nullable(UUID)" if e is CLICKHOUSE else "UUID"
+
+
 def _uuids() -> list[Row]:
     def read(e: Engine) -> str:
         return (
-            f"CASE WHEN {e.full_match('v', _UUID)} THEN CAST(lower(v) AS UUID) "
-            f"ELSE {_by_name(e, 'uuid_in', 'UUID')} END"
+            f"CASE WHEN {e.full_match('v', _UUID)} THEN CAST(lower(v) AS {_uuid(e)}) "
+            f"ELSE {_by_name(e, 'uuid_in', _uuid(e))} END"
         )
 
     return [
-        _noted(_row("uuid_in", "v", lambda _: "UUID", read), "uuid"),
+        _noted(_row("uuid_in", "v", _uuid, read), "uuid"),
         _noted(_row("uuid_out", "v", _text, lambda e: e.as_text("v")), "text"),
         _noted(
             _row(

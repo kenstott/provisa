@@ -41,11 +41,32 @@ pytestmark = [pytest.mark.integration]
 _SAID: dict[str, str] = {}
 
 
-def _served(sql: str, rows: list[Any], oids: list[int]) -> list[tuple]:
+#: bytea's type OID: a ClickHouse String the wire sends as its bytes (cast_types.bytes_of_text).
+_BYTEA = 17
+
+
+def _held(value: Any, oid: int) -> Any:
+    """A ClickHouse String's bytes as pgwire takes them: a bytea's as they are, any other's as its
+    text. An array's items are its element type's."""
+    if isinstance(value, list | tuple):
+        return type(value)(_held(item, oid) for item in value)
+    if isinstance(value, bytes) and oid != _BYTEA:
+        return value.decode("utf-8")
+    return value
+
+
+def _as_is(value: Any, _: int) -> Any:
+    return value
+
+
+def _served(
+    sql: str, rows: list[Any], oids: list[int], held: Callable[[Any, int], Any] = _as_is
+) -> list[tuple]:
     casts = result_casts(sql) or ()
 
     def cell(index: int, value: Any) -> str | None:
         cast = casts[index] if index < len(casts) else None
+        value = held(value, oids[index])
         return text_of(
             cast.coerce(value) if cast is not None and cast.coerce else value, oids[index]
         )
@@ -60,7 +81,11 @@ def _refused_by_its_form(error: Exception) -> bool:
     return said is not None and said.sqlstate == "0A000" and str(said).endswith(NOT_READ)
 
 
-def replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) -> dict[str, str]:
+def replayed(
+    written: Callable[[str], str],
+    run: Callable[[str], list[Any]],
+    held: Callable[[Any, int], Any] = _as_is,
+) -> dict[str, str]:
     """Each statement's outcome, where it is not the answer PostgreSQL gave."""
     found: dict[str, str] = {}
     _SAID.clear()
@@ -76,7 +101,7 @@ def replayed(written: Callable[[str], str], run: Callable[[str], list[Any]]) -> 
             found[sql] = ERROR
             _SAID[sql] = str(error)[:200]
         else:
-            served = _served(sql, rows, oids)
+            served = _served(sql, rows, oids, held)
             if not compared(oids, want, served, values, sql):
                 found[sql] = DIFFERS
                 _SAID[sql] = f"{served[:2]}, PostgreSQL {want[:2]}"
@@ -96,7 +121,14 @@ def clickhouse_replay(client: Any) -> dict[str, str]:
     def written(sql: str) -> str:
         return transpile(sql, "clickhouse")
 
-    return replayed(written, lambda sql: list(client.query(sql).result_rows))
+    def run(sql: str) -> list[Any]:
+        # As pgwire reads ClickHouse's Arrow (provisa.federation.clickhouse_runtime): a String's
+        # bytes as they are, which the driver's own text would decode, and an instant with the zone
+        # its column's type defines (an instant's is UTC: provisa.transpiler.polyfill.instants).
+        result = client.query(sql, query_formats={"String": "bytes"}, tz_mode="schema")
+        return list(result.result_rows)
+
+    return replayed(written, run, _held)
 
 
 @pytest.mark.requires_trino

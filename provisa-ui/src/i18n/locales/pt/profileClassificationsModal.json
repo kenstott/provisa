@@ -19,6 +19,9 @@
     "linked": "A coluna agora significa {{term}}.",
     "keyColumn": "A coluna mantém o seu termo de classe: o significado de uma coluna-chave é o seu termo de classe.",
     "markedPii": "Está marcada como PII.",
-    "maskOffered": "Máscara sugerida: {{mask}}. Adicione-a nas máscaras da coluna."
+    "maskOffered": "Máscara sugerida: {{mask}}. Adicione-a nas máscaras da coluna.",
+    "tooFewTitle": "Valores insuficientes para classificar",
+    "tooFewNote": "Estas colunas tinham valores insuficientes na amostra da execução para dizer o que contêm. Não é o mesmo que não corresponder a nenhum tipo.",
+    "tooFew": "{{column}}: {{count}} valores na amostra, insuficientes para classificar."
   }
 }

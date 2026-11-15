@@ -309,10 +309,12 @@ def test_the_value_sample_is_drawn_at_random_from_the_runs_own_sample():
     cols = [ColumnSpec("tax_id", "varchar", "text", "tax_id")]
     sql = classification_sql("sales.customers", cols, Sample("block", 0.1), 500)
     assert "TABLESAMPLE SYSTEM (10.0)" in sql
-    assert sql.endswith("ORDER BY RANDOM() LIMIT 500")
-    # The rows the sample held, counted before the limit: what the statement read of the source.
+    # Up to 500 non-null values of the column, in a random order over the sample (REQ-2147,
+    # amended 2026-11-15: non-null values per column, not rows).
+    assert 'RANDOM() AS "__order"' in sql
+    assert 'CASE WHEN s."n0" <= 500 THEN CAST(s."c0" AS VARCHAR) END AS "tax_id"' in sql
+    # The rows the sample held, counted over the whole sample: what the statement read of it.
     assert 'COUNT(*) OVER () AS "__sample_rows"' in sql
-    assert 'CAST(s."tax_id" AS VARCHAR)' in sql
 
 
 def test_the_first_passing_kind_becomes_the_columns_plausible_type():
@@ -355,7 +357,7 @@ async def test_the_run_tests_only_the_columns_of_the_enabled_kinds_families(monk
 
     async def _further(sql, sample, where, table_name):
         seen.append(sql)
-        # Twelve rows of a sample that held forty: the statement's limit, and what the source read.
+        # Twelve values of a sample that held forty rows: what the source read.
         return ["city", "__sample_rows"], [("Paris", 40)] * 12
 
     monkeypatch.setattr(run, "_run_further", _further)
@@ -368,9 +370,10 @@ async def test_the_run_tests_only_the_columns_of_the_enabled_kinds_families(monk
         ],
     )
     read = types.SimpleNamespace(sample=Sample("whole"), where="whole table")
-    (suggestion,), attempts = await run.read_classifications(
+    judged, attempts = await run.read_classifications(
         cast(Any, target), cast(Any, read), (kind_of("city"),), 500
     )
+    (suggestion,) = run.suggestions_of(judged)
     assert suggestion.match.kind.id == "city" and suggestion.match.share == 1.0
     # Its read is recorded as the dependence statements' are: the rows the sample held.
     assert attempts == [{"statement": "classification", "percent": 100.0, "rows": 40}]

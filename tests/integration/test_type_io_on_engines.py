@@ -24,6 +24,7 @@ from typing import Any
 import pytest
 
 from provisa.core.pg_error import from_engine
+from provisa.transpiler.function_macros import RowRefused
 from provisa.transpiler.pg_forms_json import jsonb_out
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.pg17_type_io_answers import RECORDED
@@ -39,6 +40,12 @@ pytestmark = [pytest.mark.integration]
 
 _FUNCTIONS = by_function(RECORDED)
 _BYTEA = 17
+#: A call the grid row raises by name before the engine is reached: an edge value a served form does
+#: not read (a NULL of a type the engine does not hold, interval's infinity). REQ-2236, amended
+#: 2026-11-15, AN EDGE CASE RAISES; IT DOES NOT REFUSE THE FORM: where the function answers its
+#: ordinary values on the engine, such a call is served within its bound; where it answers none of
+#: them, the form is refused, and the call is one of its refusals.
+_EDGE = "raised by its grid row"
 
 
 def _difference(
@@ -48,6 +55,11 @@ def _difference(
     recorded = recorded or sql
     try:
         got = run(transpile(sql, dialect), RECORDED[recorded][0])
+    except RowRefused as refused:
+        # The grid row's own raise, before the engine is reached (REQ-2236, THE REFUSAL LIVES IN
+        # THE GRID): the SQLSTATE and message a client receives.
+        said = verdict(recorded, RECORDED[recorded], None, f"{refused.sqlstate}: {refused}")
+        return _EDGE if said == REFUSED else said
     except Exception as raised:  # noqa: BLE001 -- every statement is reported, not the first
         refusal = from_engine(raised)
         if refusal is None:
@@ -71,6 +83,8 @@ def _differences(
 ) -> dict[str, str]:
     """The statements of ``function`` that differ, and those it refuses past its allowance."""
     found = {sql: _difference(run, dialect, sql) for sql in _FUNCTIONS[function]}
+    edge = None if None in found.values() else REFUSED
+    found = {s: edge if why == _EDGE else why for s, why in found.items()}
     differ = {s: why for s, why in found.items() if why not in (None, REFUSED)}
     refused = {s: why for s, why in found.items() if why == REFUSED}
     return differ | refused if len(refused) > REFUSALS.get(function, 0) else differ

@@ -10603,5 +10603,8 @@
   "it/aiModelsTab.json::aiModelsTab.limitsDefaultNote": "Default: no published figure is known for this model.",
   "it/aiModelsTab.json::aiModelsTab.limitsResetKnown": "Use published limits",
   "it/aiModelsTab.json::aiModelsTab.limitsResetDefault": "Use default limits",
-  "it/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
+  "it/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero.",
+  "it/profileClassificationsModal.json::profileClassificationsModal.tooFewTitle": "Too few values to classify",
+  "it/profileClassificationsModal.json::profileClassificationsModal.tooFewNote": "These columns held too few values in the run's sample to say what they hold. That is not the same as matching no kind.",
+  "it/profileClassificationsModal.json::profileClassificationsModal.tooFew": "{{column}}: {{count}} values in the sample, too few to classify."
 }
