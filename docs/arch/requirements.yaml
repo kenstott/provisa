@@ -89589,7 +89589,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     word or in quotes, and text beginning with - in quotes, are searched as text. There is no + mark. The
     search field''s hint says so. (Amended 2026-11-12, AN EXCLUSION IS WRITTEN WITH _not:) Maintainer 2026-11-12:
     where the Ontology View''s query excludes items, it does so with _not (REQ-184), so a term that has
-    no definition is kept by a search that excludes a word.'
+    no definition is kept by a search that excludes a word. (Amended 2026-11-15, A SEARCHED VIEW READS A
+    HOP AT A TIME AND OPENS AS ONE QUERY:) Recorded 2026-11-15 from the landed behaviour. A searched or
+    focused Ontology View reads its root, then each hop''s terms by id, reading each term once; it does
+    not nest each hop under the last. Open as query opens one query: the root''s fields and each hop''s
+    terms by the ids that hop read. Run, it draws what the view drew. Open as query always hands over the
+    query of the search now shown; while that search is still being read the control waits. This supersedes
+    ''the query reads each hop as a nested level of the terms an edge reaches''.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -96403,7 +96409,9 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (Amended 2026-11-15, A DOMAIN HOLDING A RETIRED TABLE IS KEPT:) Maintainer 2026-11-15. A domain has
     no retired state. A domain that still holds a table, retired or not, is kept unchanged: an environment
     merge or a delete that would remove it leaves it in place, together with whatever the retired table
-    needs (its terms and the targets of its relationships).'
+    needs (its terms and the targets of its relationships). (Amended 2026-11-15, A SOURCE HOLDING A RETIRED
+    TABLE IS KEPT:) 2026-11-15. The same rule as a domain: a source that still holds a table, retired or
+    not, is not deleted; the delete is refused. Deleting it would hard-delete its retired tables.'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
