@@ -94,19 +94,87 @@ def _aggregated(node: exp.Expr) -> exp.Expr | None:
     return value
 
 
+#: An array's shape as ClickHouse writes it, its brackets and commas: its quoted texts dropped first,
+#: then everything else. Two arrays of one type have one shape exactly where PostgreSQL's would have
+#: the same dimensions.
+_SHAPE = (
+    "replaceRegexpAll(replaceRegexpAll(toString({}), '''(?:[^''\\\\\\\\]|\\\\\\\\.)*''', ''), "
+    "'[^\\\\[\\\\],]', '')"
+)
+_NO_ROWS = ch_fail("0A000", "array_agg of no rows does not read this value")
+_EMPTY = ch_fail("2202E", "cannot accumulate empty arrays")
+_DIMENSIONS = ch_fail("2202E", "cannot accumulate arrays of different dimensionality")
+#: array_agg of arrays, PostgreSQL 17's accumArrayResultArr: each array in order, the first empty
+#: one, or the first whose dimensions are not the first array's, raising as it raises. Its NULL of
+#: no rows is a NULL of an array, which ClickHouse 24.3 holds none of (no Nullable(Array), and NULL
+#: has no common type with an array): that edge raises by name.
+_OF_ARRAYS = (
+    "arrayMap(_g -> arrayMap(_f -> if("
+    + " + ".join(
+        (
+            _NO_ROWS.format(condition="length(_g) = 0"),
+            _EMPTY.format(condition="_f = 1"),
+            _DIMENSIONS.format(condition="_f = 2"),
+        )
+    )
+    + " = 0, _g, []), "
+    "[arrayFilter(_c -> _c > 0, arrayMap(_x -> if(length(_x) = 0, 1, "
+    f"if({_SHAPE.format('_x')} <> {_SHAPE.format('_g[1]')}, 2, 0)), _g))[1]])[1], "
+    "[groupArray($a)])[1]"
+)
+
+
+def _first_row(column: exp.Column) -> exp.Expr | None:
+    """The value of a VALUES list's first row that ``column`` names: the row PostgreSQL resolves
+    the column's type from."""
+    select = column.find_ancestor(exp.Select)
+    source = select.args.get("from_") if select is not None else None
+    values = source.this if source is not None else None
+    if not isinstance(values, exp.Values) or select is None or select.args.get("joins"):
+        return None
+    alias = values.args.get("alias")
+    names = [c.name for c in alias.columns] if alias is not None else []
+    if column.name not in names:
+        return None
+    return values.expressions[0].expressions[names.index(column.name)]
+
+
+def _an_array(value: exp.Expr) -> bool:
+    """Whether the statement says ``value`` is an array: an ARRAY, a cast to an array type, or a
+    column of a VALUES list whose first row is one."""
+    node = value.unnest()
+    if isinstance(node, exp.Column):
+        node = (_first_row(node) or node).unnest()
+    if isinstance(node, exp.Array):
+        return True
+    return isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.ARRAY)
+
+
 def kept_nulls(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """array_agg of every value, a NULL kept, and NULL of no rows."""
+    """array_agg of every value, a NULL kept, and NULL of no rows; of arrays, their array."""
     value = _aggregated(node)
     if value is None:
         return None
-    return graft(replacement(_KEEPS_NULLS, dialect, _ARRAY_AGG), {"a": value})
+    form = _OF_ARRAYS if _an_array(value) else _KEEPS_NULLS
+    return graft(replacement(form, dialect, _ARRAY_AGG), {"a": value})
 
 
 ARRAY_AGG = Feature(
     "array_agg",
     FAMILY,
     "The values of an aggregate as an array, a NULL kept; NULL of no rows.",
-    read=Side(rules=(Rule(_ARRAY_AGG, {"clickhouse": Rewrite(kept_nulls)}, unlisted_keep=True),)),
+    read=Side(
+        rules=(Rule(_ARRAY_AGG, {"clickhouse": Rewrite(kept_nulls)}, unlisted_keep=True),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "Of arrays, no rows have no answer: ClickHouse holds no NULL of an array, "
+                    "so the call raises.",
+                    Refusal("0A000", "array_agg of no rows does not read this value"),
+                ),
+            )
+        },
+    ),
 )
 
 #: The functions not STRICT in pg_proc that answer NULL of a NULL array all the same: each tests

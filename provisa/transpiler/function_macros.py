@@ -39,7 +39,7 @@ import functools
 import itertools
 import re
 import string
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass, field, replace
 
 import sqlglot
@@ -1865,16 +1865,30 @@ _NAMES = (
     | _SPELLED
     | set(_COUNTS_NAMES)
     | engine_refusals.NAMES
-    | polyfill.GRID.names
 )
+
+
+def _called_by_name(names: Iterable[str]) -> str:
+    """A call of one of ``names``, by its name, quoted or not."""
+    return r"\b(" + "|".join(sorted(names)) + r")\"?\s*\("
+
+
 _MENTIONED = re.compile(
-    r"\b("
-    + "|".join(sorted(_NAMES | pg_forms_textsearch.NAMES))
-    + r")\"?\s*\(|"
-    + f"{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}"
+    _called_by_name(_NAMES | pg_forms_textsearch.NAMES)
+    + f"|{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}"
     + "".join(f"|{mentioned}" for mentioned in polyfill.GRID.mentions),
     re.IGNORECASE,
 )
+
+
+@functools.cache
+def _grid_mentioned(dialect: str) -> re.Pattern[str] | None:
+    """A call of a function a grid row writes on ``dialect``: a row that leaves the engine's own
+    call there (array_agg on Trino, whose row is ClickHouse's) does not walk the statement."""
+    names = polyfill.GRID.names_on(dialect)
+    return re.compile(_called_by_name(names), re.IGNORECASE) if names else None
+
+
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.
 _QUALIFIED = re.compile(r"\bpg_catalog\s*\.\s*\"?\w+\"?\s*\(|::\s*interval\b", re.IGNORECASE)
 #: The names provisa.pgwire.catalog answers where a statement reads no table.
@@ -1975,7 +1989,12 @@ def mentioned(sql: str, dialect: str) -> bool:
     names one by pg_catalog; a statement that does neither is not parsed."""
     if dialect in NATIVE:
         return False
-    return _MENTIONED.search(sql) is not None or _QUALIFIED.search(sql) is not None
+    grid = _grid_mentioned(dialect)
+    return (
+        _MENTIONED.search(sql) is not None
+        or _QUALIFIED.search(sql) is not None
+        or (grid is not None and grid.search(sql) is not None)
+    )
 
 
 @functools.lru_cache(maxsize=2048)
