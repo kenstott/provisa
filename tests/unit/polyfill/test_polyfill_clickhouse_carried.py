@@ -23,6 +23,7 @@ stay refused by name: test_an_overload_not_carried_stays_refused_by_name."""
 from __future__ import annotations
 
 import datetime  # noqa: F401 -- the answers' reprs
+import decimal
 
 import pytest
 import sqlglot
@@ -143,6 +144,30 @@ ANSWERED = [
     ("SELECT pg_catalog.tidsmaller('(1,10)'::tid, '(1,9)'::tid) AS v", "(1,9)"),
     ("SELECT pg_catalog.tidsmaller(NULL::tid, '(1,1)'::tid) AS v", None),
     ("SELECT pg_catalog.tidsmaller('(100,1)'::tid, '(20,1)'::tid) AS v", "(20,1)"),
+    # J1366: money's base exact at its limits (the literal read as its text), and DuckDB's form
+    # of int8inc_any and int8dec_any adapted (error as throwIf, TRY_CAST as accurateCastOrNull)
+    (
+        "SELECT pg_catalog.max(c) AS v FROM (VALUES ('$92233720368547758.07'::money), "
+        "('-$92233720368547758.08'::money), (NULL::money)) AS t(c)",
+        decimal.Decimal("92233720368547758.07"),
+    ),
+    (
+        "SELECT pg_catalog.min(c) AS v FROM (VALUES ('$92233720368547758.07'::money), "
+        "('-$92233720368547758.08'::money), (NULL::money)) AS t(c)",
+        decimal.Decimal("-92233720368547758.08"),
+    ),
+    ("SELECT pg_catalog.max('$0.005'::money) AS v", decimal.Decimal("0.01")),
+    ("SELECT pg_catalog.min(NULL::money) AS v", None),
+    (
+        "SELECT pg_catalog.int8inc_any(9223372036854775806::bigint, 'x'::text) AS v",
+        9223372036854775807,
+    ),
+    ("SELECT pg_catalog.int8inc_any(NULL::bigint, 1::integer) AS v", None),
+    (
+        "SELECT pg_catalog.int8dec_any(-9223372036854775807::bigint, 1::integer) AS v",
+        -9223372036854775808,
+    ),
+    ("SELECT pg_catalog.int8dec_any(0::bigint, NULL::integer) AS v", None),
 ]
 RAISED = [
     ("SELECT pg_catalog.dexp(710.0::double precision) AS v", "22003"),
@@ -150,6 +175,9 @@ RAISED = [
     ("SELECT pg_catalog.dlog1(-1.0::double precision) AS v", "2201E"),
     ("SELECT pg_catalog.dlog1(0.0::double precision) AS v", "2201E"),
     ("SELECT pg_catalog.dexp(-1000.0::double precision) AS v", "22003"),
+    ("SELECT pg_catalog.int8inc_any(9223372036854775807::bigint, 1::integer) AS v", "22003"),
+    ("SELECT pg_catalog.int8dec_any((-9223372036854775808)::bigint, 1::integer) AS v", "22003"),
+    ("SELECT pg_catalog.int8inc_any(1::bigint, 2147483648::integer) AS v", "22003"),
 ]
 
 

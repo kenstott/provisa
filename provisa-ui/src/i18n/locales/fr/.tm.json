@@ -10595,5 +10595,12 @@
   "fr/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "fr/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "fr/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "fr/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "fr/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "fr/aiModelsTab.json::aiModelsTab.limitsIntro": "Each model has two limits, in tokens: the most it can read in one request (input) and the longest answer it can write (output). A model with published figures starts with those; change them if yours differ.",
+  "fr/aiModelsTab.json::aiModelsTab.inputLimitLabel": "Input limit (tokens)",
+  "fr/aiModelsTab.json::aiModelsTab.outputLimitLabel": "Output limit (tokens)",
+  "fr/aiModelsTab.json::aiModelsTab.limitsDefaultNote": "Default: no published figure is known for this model.",
+  "fr/aiModelsTab.json::aiModelsTab.limitsResetKnown": "Use published limits",
+  "fr/aiModelsTab.json::aiModelsTab.limitsResetDefault": "Use default limits",
+  "fr/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
 }

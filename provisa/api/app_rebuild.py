@@ -107,7 +107,7 @@ async def _register_user_views_in_state(
         # REQ-2131: the org's column transforms, by name: a view applying one is landed (built as
         # a materialized view, declared or not) and read only from its stored table.
         from provisa.codesource.columns import COLUMN_TRANSFORM
-        from provisa.codesource.columns_fold import called
+        from provisa.mv.view_read import lands_stored_read
         from provisa.core.schema_org import tracked_functions as _tracked_functions_t
 
         _transforms = {
@@ -119,6 +119,22 @@ async def _register_user_views_in_state(
                     )
                 )
             ).fetchall()
+        }
+        # REQ-2249: the org's code commands, by the name a statement calls them by: a view whose
+        # definition calls one is landed as well, and read only from its stored table.
+        from provisa.codesource.commands import CODE_COMMAND
+        from provisa.core.command_bindings import binding_name
+
+        _code_commands = {
+            _name
+            for _r in (
+                await conn.execute_core(
+                    select(
+                        _tracked_functions_t.c.name, _tracked_functions_t.c.language_bindings
+                    ).where(_tracked_functions_t.c.impl_kind == CODE_COMMAND)
+                )
+            ).fetchall()
+            if (_name := binding_name(dict(_r._mapping), "sql")) is not None
         }
         state.stored_view_reads = set()
         _view_rows = [
@@ -226,8 +242,9 @@ async def _register_user_views_in_state(
                     with_inherited_read_columns(
                         next(t for t in tables if t["id"] == _vr["id"]), _bt_spec
                     )
-            elif called(_semantic_sql, _transforms):
-                # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
+            elif lands_stored_read(_semantic_sql, _transforms, _code_commands):
+                # REQ-2131, REQ-2249: its outputs exist only in its stored table, so that is what
+                # it reads.
                 from provisa.mv.models import stored_table_ref
 
                 _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(

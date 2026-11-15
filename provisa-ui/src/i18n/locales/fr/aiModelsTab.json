@@ -47,6 +47,13 @@
     "saveButtonLabel": "Enregistrer les paramètres des modèles d'IA",
     "loading": "Chargement…",
     "saved": "Enregistré.",
-    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer."
+    "savedRestartRequired": "Enregistré. Redémarrez le service pour appliquer.",
+    "limitsIntro": "Chaque modèle a deux limites, en tokens : le maximum qu'il peut lire en une requête (entrée) et la réponse la plus longue qu'il peut écrire (sortie). Un modèle dont les valeurs sont publiées part de celles-ci ; modifiez-les si les vôtres diffèrent.",
+    "inputLimitLabel": "Limite d'entrée (tokens)",
+    "outputLimitLabel": "Limite de sortie (tokens)",
+    "limitsDefaultNote": "Par défaut : aucune valeur publiée n'est connue pour ce modèle.",
+    "limitsResetKnown": "Utiliser les limites publiées",
+    "limitsResetDefault": "Utiliser les limites par défaut",
+    "limitsIncomplete": "Saisissez les deux limites de {{model}} sous forme de nombres entiers supérieurs à zéro."
   }
 }

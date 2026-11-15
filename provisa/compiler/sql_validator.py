@@ -41,7 +41,7 @@ Security model / layer responsibilities:
 
 from __future__ import annotations
 
-from collections.abc import Collection
+from collections.abc import Collection, Mapping
 from dataclasses import dataclass
 
 import sqlglot
@@ -125,8 +125,12 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
     bypass_relationship_guard: bool = False,
     bypass_uncovered_relationships: bool = False,
     table_functions: frozenset[str] = frozenset(),
+    view_commands: Mapping[str, dict] | None = None,
 ) -> list[ValidationViolation]:
     """Validate SQL against role-scoped GraphQL-equivalent access rules.
+
+    ``view_commands``: the registered code commands, by the lower-cased name a statement calls
+    them by, that a view's definition may call (:func:`view_command`).
 
     REQ-039: the statement is judged twice, as written and with its identifiers folded as
     PostgreSQL folds them (unquoted in lower case, quoted exactly), and refused for what either
@@ -153,6 +157,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
             bypass_relationship_guard=bypass_relationship_guard,
             bypass_uncovered_relationships=bypass_uncovered_relationships,
             table_functions=table_functions,
+            view_commands=view_commands or {},
         ):
             key = (v.code, v.message, v.tables)
             if key not in seen:
@@ -192,11 +197,14 @@ def _violations(
     bypass_relationship_guard: bool,
     bypass_uncovered_relationships: bool,
     table_functions: frozenset[str],
+    view_commands: Mapping[str, dict],
 ) -> list[ValidationViolation]:
     """Every rule's violations in one reading of the statement (:func:`validate_sql`)."""
     violations: list[ValidationViolation] = []
     cte_names_set = cte_names(tree)
-    violations += _check_registered_relations(tree, gov_ctx, ctx, cte_names_set, table_functions)
+    violations += _check_registered_relations(
+        tree, gov_ctx, ctx, cte_names_set, table_functions, view_commands
+    )
     violations += _check_unreadable_shapes(tree, gov_ctx)
 
     # Build reverse maps
@@ -209,6 +217,12 @@ def _violations(
     violations += _check_domain_access(
         tree, gov_ctx, table_id_to_meta, domain_access, cte_names_set
     )
+    # REQ-2249: a code command a view's definition calls reads its table arguments; they are the
+    # view's inputs, judged as a relation its FROM names is.
+    for read in view_command_inputs(tree, view_commands):
+        named = exp.select("*").from_(read)
+        violations += _check_registered_relations(named, gov_ctx, ctx)
+        violations += _check_domain_access(named, gov_ctx, table_id_to_meta, domain_access)
     if not bypass_relationship_guard:
         valid_joins = approved_joins(ctx)
 
@@ -266,12 +280,68 @@ def client_table_function(tbl: exp.Table, table_functions: Collection[str]) -> b
     return type(target) is exp.Explode and "unnest" in table_functions
 
 
+def view_command(tbl: exp.Table, view_commands: Mapping[str, dict]) -> dict | None:
+    """REQ-2249: the registered code command FROM item ``tbl`` calls inside a view's definition,
+    or None.
+
+    A view whose definition calls a code command is landed and read only from its stored table
+    (``mv.view_read``): the command runs when the view is built, never when it is read. So where
+    the V-rules judge that definition for a reader -- marked where it is expanded
+    (``view_expand.VIEW_MARK``, which no statement a role writes can name) -- the call is a
+    governed relation, and its table arguments are the view's inputs
+    (:func:`view_command_inputs`). Anywhere else, a call is admitted only as a command the reader
+    may call (``table_functions``)."""
+    target = tbl.this
+    if tbl.catalog or tbl.db or not isinstance(target, exp.Anonymous):
+        return None
+    command = view_commands.get(target.name.lower())
+    if command is None:
+        return None
+    from provisa.compiler.view_expand import marked_view  # noqa: PLC0415
+
+    node = tbl.parent
+    while node is not None:
+        if isinstance(node, exp.Subquery) and marked_view(node.alias) is not None:
+            return command
+        node = node.parent
+    return None
+
+
+#: The argument kinds that name a table a call reads (models.FunctionArgument.arg_kind).
+_TABLE_ARGUMENTS = frozenset({"table_ref", "result_set"})
+
+
+def view_command_inputs(tree: exp.Expr, view_commands: Mapping[str, dict]) -> list[exp.Table]:
+    """The tables each call :func:`view_command` admits in ``tree`` reads: its table arguments
+    (REQ-2226), as relations, in first-reference order. An argument that is no table name is a
+    relation nothing governs, said as one (V006 names it)."""
+    read: list[exp.Table] = []
+    for tbl in tree.find_all(exp.Table):
+        command = view_command(tbl, view_commands)
+        if command is None:
+            continue
+        values = list(tbl.this.expressions)
+        for i, argument in enumerate(command.get("arguments") or []):
+            if argument.get("arg_kind") not in _TABLE_ARGUMENTS or i >= len(values):
+                continue
+            value = values[i]
+            named = (
+                sqlglot.parse_one(value.this, into=exp.Table, dialect="postgres")
+                if isinstance(value, exp.Literal) and value.is_string
+                else exp.table_(value.sql(dialect="postgres"))
+            )
+            if named.sql() not in {t.sql() for t in read}:
+                read.append(named)
+    return read
+
+
 def _check_registered_relations(  # REQ-001, REQ-266
     tree: exp.Expr,
     gov_ctx: GovernanceContext,
     ctx: CompilationContext,
     cte_names_set: frozenset[str] = frozenset(),
     table_functions: frozenset[str] = frozenset(),
+    view_commands: Mapping[str, dict] | None = None,
 ) -> list[ValidationViolation]:
     """Every relation the statement reads is a registered table, a CTE, or a row generator.
 
@@ -287,6 +357,8 @@ def _check_registered_relations(  # REQ-001, REQ-266
             continue
         if client_table_function(tbl, table_functions):
             continue  # REQ-2190: a statement of the catalog, on the role that runs client SQL
+        if view_commands and view_command(tbl, view_commands) is not None:
+            continue  # REQ-2249: its table arguments are judged as the view's inputs
         if not isinstance(target, exp.Identifier):
             fn = target.sql(dialect="postgres").split("(", 1)[0] if target is not None else "?"
             violations.append(

@@ -128,6 +128,18 @@ def call_table_refs(
     return out
 
 
+def calls_command(sql: str, commands: Iterable[str], dialect: str = "postgres") -> bool:
+    """Whether ``sql`` reads a call of one of ``commands`` (their names, as a statement calls
+    them, in any case) as a relation of its FROM (REQ-2249)."""
+    names = {name.lower() for name in commands}
+    if not names or not any(name in sql.lower() for name in names):
+        return False
+    return any(
+        isinstance(t.this, exp.Anonymous) and t.this.name.lower() in names
+        for t in sqlglot.parse_one(sql, read=dialect).find_all(exp.Table)
+    )
+
+
 #: The argument kinds that name a table the call reads (models.FunctionArgument.arg_kind).
 _TABLE_ARGUMENTS = frozenset({"table_ref", "result_set"})
 

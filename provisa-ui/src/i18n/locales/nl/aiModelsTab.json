@@ -47,6 +47,13 @@
     "saveButtonLabel": "AI-modelinstellingen opslaan",
     "loading": "Laden…",
     "saved": "Opgeslagen.",
-    "savedRestartRequired": "Opgeslagen. Start de service opnieuw om toe te passen."
+    "savedRestartRequired": "Opgeslagen. Start de service opnieuw om toe te passen.",
+    "limitsIntro": "Elk model heeft twee limieten, in tokens: het meeste dat het in één verzoek kan lezen (invoer) en het langste antwoord dat het kan schrijven (uitvoer). Een model met gepubliceerde waarden begint met die waarden; wijzig ze als die van u afwijken.",
+    "inputLimitLabel": "Invoerlimiet (tokens)",
+    "outputLimitLabel": "Uitvoerlimiet (tokens)",
+    "limitsDefaultNote": "Standaard: voor dit model is geen gepubliceerde waarde bekend.",
+    "limitsResetKnown": "Gepubliceerde limieten gebruiken",
+    "limitsResetDefault": "Standaardlimieten gebruiken",
+    "limitsIncomplete": "Voer beide limieten voor {{model}} in als gehele getallen groter dan nul."
   }
 }
