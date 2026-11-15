@@ -2633,6 +2633,8 @@ def _govern_merge(
 ) -> None:
     """A MERGE's source is a read, governed as any is; its WHEN conditions and values may read
     the source and constants, not the target row; its ON may read the target's served columns."""
+    from provisa.compiler.write_admission import ADMITTED
+
     alias = _alias_for(target)
     names = {_folded(target.this), alias.lower(), alias}
     on = write.args.get("on")
@@ -2646,6 +2648,8 @@ def _govern_merge(
                 _refuse_hidden(col, tid, gov_ctx)
     whens = write.args.get("whens")
     for col in whens.find_all(exp.Column) if whens is not None else []:
+        if col.meta.get(ADMITTED):
+            continue  # REQ-2001: the role's delete rule, which admission put there
         if not col.table or _folded(col.args.get("table")) in names:
             if isinstance(col.parent, exp.EQ) and col.parent.this is col:
                 continue  # the column a WHEN sets

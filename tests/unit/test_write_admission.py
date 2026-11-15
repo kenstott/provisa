@@ -327,24 +327,98 @@ def test_a_merge_that_deletes_needs_the_delete_grant(sql):
         apply_governance(sql, gov)
 
 
-@pytest.mark.parametrize("sql", _MERGE_DELETES)
-def test_a_merge_that_deletes_under_a_narrowed_delete_grant_is_refused(sql):
+# The rows a MERGE that deletes may remove are narrowed as a DELETE's are (REQ-2001, amended
+# 2026-11-14): the delete grant's rows and the role's D rule join each THEN DELETE's condition.
+# Orders 1 east, 2 west, 3 east; the incoming rows 1 and 2.
+_INCOMING = {
+    **_ORDERS,
+    "sales.incoming": [{"id": 1, "region": "east"}, {"id": 2, "region": "west"}],
+}
+_NARROWED_MERGES = [
+    # matched rows deleted: 1 and 2, of which only 1 is east
+    (
+        "MERGE INTO sales.orders USING sales.incoming AS s ON sales.orders.id = s.id "
+        "WHEN MATCHED THEN DELETE",
+        [(2, "west"), (3, "east")],
+    ),
+    # rows no incoming row matches deleted: 3 alone, which is east
+    (
+        "MERGE INTO sales.orders USING sales.incoming AS s ON sales.orders.id = s.id "
+        "WHEN MATCHED THEN UPDATE SET region = s.region WHEN NOT MATCHED BY SOURCE THEN DELETE",
+        [(1, "east"), (2, "west")],
+    ),
+]
+
+
+def _merged(pg, governed: str) -> list[tuple]:
+    """The orders left once the governed MERGE runs over :data:`_INCOMING` on PostgreSQL 16, its
+    WHEN NOT MATCHED BY SOURCE carried as it is sent to a PostgreSQL target."""
+    import sqlglot
+
+    from provisa.pgwire._pipeline import _carry_by_source
+
+    statement = sqlglot.parse_one(governed, read="postgres")
+    if any(w.args.get("source") for w in statement.args["whens"].expressions):
+        statement = _carry_by_source(statement)
+    return _after(pg, statement.sql(dialect="postgres"), _INCOMING)
+
+
+def _admitted_merge(sql: str, gov: GovernanceContext) -> str:
+    gov.table_map = {**gov.table_map, "sales.incoming": 2}
+    gov.all_columns = {**gov.all_columns, 2: [("id", "integer"), ("region", "varchar")]}
+    return apply_governance(sql, gov)
+
+
+@pytest.mark.parametrize(("sql", "left"), _NARROWED_MERGES)
+def test_a_merge_that_deletes_under_a_narrowed_delete_grant_deletes_only_its_rows(pg, sql, left):
     from tests.rules import rule_of
 
     gov = _gov()
     gov.write_grants[1]["delete"]["rows"] = rule_of("region = 'east'")
-    with pytest.raises(WriteNotAdmitted, match="delete grant or D rule"):
-        apply_governance(sql, gov)
+    governed = _admitted_merge(sql, gov)
+    assert "region\" = 'east'" in governed
+    assert _merged(pg, governed) == left
 
 
-@pytest.mark.parametrize("sql", _MERGE_DELETES)
-def test_a_merge_that_deletes_under_a_d_rule_is_refused(sql):
+@pytest.mark.parametrize(("sql", "left"), _NARROWED_MERGES)
+def test_a_merge_that_deletes_under_a_d_rule_deletes_only_its_rows(pg, sql, left):
     from tests.rules import rules_of
 
     gov = _gov()
     gov.write_rules = {"delete": rules_of({1: "region = 'east'"})}
-    with pytest.raises(WriteNotAdmitted, match="delete grant or D rule"):
-        apply_governance(sql, gov)
+    assert _merged(pg, _admitted_merge(sql, gov)) == left
+
+
+def test_a_merge_deletes_under_its_own_condition_and_the_d_rule_together(pg):
+    from tests.rules import rules_of
+
+    gov = _gov()
+    gov.write_rules = {"delete": rules_of({1: "region = 'east'"})}
+    sql = (
+        "MERGE INTO sales.orders USING sales.incoming AS s ON sales.orders.id = s.id "
+        "WHEN MATCHED THEN UPDATE SET region = s.region "
+        "WHEN NOT MATCHED BY SOURCE AND 1 = 0 THEN DELETE"
+    )
+    assert _merged(pg, _admitted_merge(sql, gov)) == [(1, "east"), (2, "west"), (3, "east")]
+
+
+def test_a_merge_whose_delete_deletes_every_row_is_not_narrowed(pg):
+    sql, _left = _NARROWED_MERGES[1]
+    assert _merged(pg, _admitted_merge(sql, _gov())) == [(1, "east"), (2, "west")]
+    governed = _admitted_merge(_NARROWED_MERGES[0][0], _gov())
+    assert "WHEN MATCHED THEN DELETE" in governed
+
+
+@pytest.mark.parametrize(("sql", "_left"), _NARROWED_MERGES)
+def test_a_d_rule_reading_another_table_is_refused_by_name_for_a_merge(sql, _left):
+    from tests.rules import rules_of
+
+    gov = _gov()
+    gov.write_rules = {
+        "delete": rules_of({1: "id IN (SELECT id FROM sales.closed)"}),
+    }
+    with pytest.raises(WriteNotAdmitted, match="D rule .* reads another table.* Use DELETE"):
+        _admitted_merge(sql, gov)
 
 
 @pytest.mark.parametrize("sql", _MERGE_DELETES)

@@ -2624,42 +2624,118 @@ _MERGE_READ = "provisa_read"
 
 
 def _by_source(merge: Any) -> Any:
-    """The MERGE's WHEN NOT MATCHED BY SOURCE clause, or None. Only one, and only a DELETE: one
-    written in two steps carries it as a WHEN MATCHED over the target rows no row read matches
-    (:func:`_merged_rows`), which an UPDATE of such a row, or several such clauses in order, are
-    refused by name."""
+    """The MERGE's WHEN NOT MATCHED BY SOURCE clause, or None. Only one, and only a DELETE: it is
+    carried as a WHEN MATCHED over the target rows no row of the USING matches
+    (:func:`_carry_by_source`), which an UPDATE of such a row, or several such clauses in order,
+    cannot be; those are refused by name."""
     whens = merge.args.get("whens")
     clauses = [w for w in (whens.expressions if whens is not None else []) if w.args.get("source")]
     if not clauses:
         return None
     if len(clauses) > 1:
         raise ValueError(
-            "a MERGE whose USING query reads another source may hold one WHEN NOT MATCHED BY "
-            f"SOURCE clause, a DELETE; it holds {len(clauses)}"
+            "a MERGE may hold one WHEN NOT MATCHED BY SOURCE clause, a DELETE; it holds "
+            f"{len(clauses)}"
         )
     (clause,) = clauses
     if clause.args["then"].sql(dialect="postgres").upper() != "DELETE":
-        raise ValueError(
-            "a MERGE whose USING query reads another source may hold WHEN NOT MATCHED BY SOURCE "
-            "THEN DELETE, not THEN UPDATE"
-        )
+        raise ValueError("a MERGE may hold WHEN NOT MATCHED BY SOURCE THEN DELETE, not THEN UPDATE")
     return clause
+
+
+def _quoted(name: str) -> str:
+    import sqlglot.expressions as exp
+
+    return exp.to_identifier(name, quoted=True).sql()
+
+
+def _carry_by_source(statement: Any, marked: str | None = None) -> Any:
+    """``statement``, a MERGE holding WHEN NOT MATCHED BY SOURCE [AND c] THEN DELETE, as one
+    MERGE PostgreSQL runs whatever its version (before 17 it has no such clause), in place.
+
+    Its USING is read FULL JOINed to the target on the MERGE's ON, each joined row carrying its
+    target row's id (``ctid``) and whether a USING row is in it; the MERGE matches by that id, so
+    a target row no USING row matches is matched with no USING row, and the clause becomes WHEN
+    MATCHED AND no USING row [AND c] THEN DELETE. Its count is the MERGE's, the rows deleted
+    included. ``marked`` is the USING relation already carrying the marker column under the
+    USING's alias (the rows a MERGE written in two steps read); else the USING is wrapped to
+    carry it."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    using = statement.args["using"]
+    alias = _quoted(using.alias_or_name)
+    if marked is None:
+        marked = (
+            f"(SELECT *, TRUE AS {_quoted(_MERGE_READ)} FROM {using.sql(dialect='postgres')}) "
+            f"AS {alias}"
+        )
+    target = statement.this
+    own = {target.alias_or_name, target.name}
+    bare = target.copy()
+    bare.set("alias", None)
+    on = statement.args["on"].copy()
+    for column in on.find_all(exp.Column):
+        if column.table in own:
+            column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
+    source = (
+        f"(SELECT {alias}.*, {_quoted(_MERGE_TARGET)}.ctid AS {_quoted(_MERGE_ROW)} "
+        f"FROM {marked} FULL JOIN {bare.sql(dialect='postgres')} "
+        f"AS {_quoted(_MERGE_TARGET)} ON {on.sql(dialect='postgres')}) AS {alias}"
+    )
+    statement.set(
+        "on",
+        sqlglot.parse_one(
+            f"{_quoted(target.alias_or_name)}.ctid = {alias}.{_quoted(_MERGE_ROW)}",
+            read="postgres",
+        ),
+    )
+    read = sqlglot.parse_one(f"{alias}.{_quoted(_MERGE_READ)} IS NOT NULL", read="postgres")
+    for when in statement.args["whens"].expressions:
+        if when.args.get("source"):
+            when.set("source", False)
+            when.set("matched", True)
+            gone = sqlglot.parse_one(f"{alias}.{_quoted(_MERGE_READ)} IS NULL", read="postgres")
+            condition = when.args.get("condition")
+            when.set("condition", exp.and_(gone, condition) if condition else gone)
+        elif when.args.get("matched"):
+            condition = when.args.get("condition")
+            when.set("condition", exp.and_(read.copy(), condition) if condition else read.copy())
+    statement.set(
+        "using", sqlglot.parse_one(f"SELECT * FROM {source}", read="postgres").args["from_"].this
+    )
+    return statement
+
+
+def _carried_merge(governed: "_Governed", written_table_id: int | None, state: Any) -> "_Governed":
+    """``governed`` with its MERGE's WHEN NOT MATCHED BY SOURCE THEN DELETE carried inside the
+    one statement (:func:`_carry_by_source`) when its target is a PostgreSQL table; any other
+    statement as it is. The clause is refused by name where it cannot be carried."""
+    import dataclasses
+
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    statement = sqlglot.parse_one(governed.governed_semantic, read="postgres")
+    if not isinstance(statement, exp.Merge) or _by_source(statement) is None:
+        return governed
+    sources = {m.table_id: m.source_id for m in governed.ctx.tables.values()}
+    if state.source_dialects.get(sources.get(written_table_id)) != "postgres":
+        return governed
+    return dataclasses.replace(
+        governed,
+        governed_semantic=_carry_by_source(statement).sql(dialect="postgres"),
+    )
 
 
 def _merged_rows(
     two: _TwoStepWrite, names: list[str], types: list[Any], rows: list[tuple]
 ) -> tuple[Any, list]:
     """The MERGE of ``two`` over ``rows``, the rows its USING read answered, and the values it
-    binds: its USING those rows, bound, under the USING's alias and the read's column names.
-
-    A WHEN NOT MATCHED BY SOURCE THEN DELETE is carried in the same statement, whatever the
-    target's version (PostgreSQL before 17 has no such clause): the USING is the rows read FULL
-    JOINed to the target on the MERGE's ON, each joined row carrying its target row's id
-    (``ctid``) and whether a row read is in it; the MERGE matches by that id, so a target row no
-    row read matches is matched with no row read, and the clause becomes WHEN MATCHED AND no row
-    read THEN DELETE. Its count is the MERGE's, the rows deleted included."""
+    binds: its USING those rows, bound, under the USING's alias and the read's column names. A
+    WHEN NOT MATCHED BY SOURCE THEN DELETE is carried in the same statement
+    (:func:`_carry_by_source`), the rows read marked as read."""
     import sqlglot
-    import sqlglot.expressions as exp
 
     width = len(names)
     if len(rows) * width > _MERGE_VALUES_CAP:
@@ -2670,14 +2746,10 @@ def _merged_rows(
         )
     statement = two.template.copy()
     by_source = _by_source(statement)
-
-    def quoted(name: str) -> str:
-        return exp.to_identifier(name, quoted=True).sql()
-
     cast = [t.sql(dialect="postgres") for t in types]
-    alias = quoted(statement.args["using"].alias_or_name)
+    alias = _quoted(statement.args["using"].alias_or_name)
     marked = [*names, _MERGE_READ] if by_source is not None else names
-    columns = ", ".join(quoted(n) for n in marked)
+    columns = ", ".join(_quoted(n) for n in marked)
     if rows:
         mark = ", TRUE" if by_source is not None else ""
         values = ", ".join(
@@ -2689,44 +2761,12 @@ def _merged_rows(
         )
         source = f"(VALUES {values}) AS {alias}({columns})"
     else:
-        nulls = [f"CAST(NULL AS {cast[j]}) AS {quoted(n)}" for j, n in enumerate(names)]
+        nulls = [f"CAST(NULL AS {cast[j]}) AS {_quoted(n)}" for j, n in enumerate(names)]
         if by_source is not None:
-            nulls.append(f"TRUE AS {quoted(_MERGE_READ)}")
+            nulls.append(f"TRUE AS {_quoted(_MERGE_READ)}")
         source = f"(SELECT {', '.join(nulls)} WHERE FALSE) AS {alias}"
     if by_source is not None:
-        target = statement.this
-        own = {target.alias_or_name, target.name}
-        bare = target.copy()
-        bare.set("alias", None)
-        on = statement.args["on"].copy()
-        for column in on.find_all(exp.Column):
-            if column.table in own:
-                column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
-        source = (
-            f"(SELECT {alias}.*, {quoted(_MERGE_TARGET)}.ctid AS {quoted(_MERGE_ROW)} "
-            f"FROM {source} FULL JOIN {bare.sql(dialect='postgres')} "
-            f"AS {quoted(_MERGE_TARGET)} ON {on.sql(dialect='postgres')}) AS {alias}"
-        )
-        statement.set(
-            "on",
-            sqlglot.parse_one(
-                f"{quoted(target.alias_or_name)}.ctid = {alias}.{quoted(_MERGE_ROW)}",
-                read="postgres",
-            ),
-        )
-        read = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NOT NULL", read="postgres")
-        for when in statement.args["whens"].expressions:
-            if when.args.get("source"):
-                when.set("source", False)
-                when.set("matched", True)
-                gone = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NULL", read="postgres")
-                condition = when.args.get("condition")
-                when.set("condition", exp.and_(gone, condition) if condition else gone)
-            elif when.args.get("matched"):
-                condition = when.args.get("condition")
-                when.set(
-                    "condition", exp.and_(read.copy(), condition) if condition else read.copy()
-                )
+        return _carry_by_source(statement, source), [v for r in rows for v in r]
     using = sqlglot.parse_one(f"SELECT * FROM {source}", read="postgres").args["from_"].this
     statement.set("using", using)
     return statement, [v for r in rows for v in r]
@@ -2909,6 +2949,11 @@ async def route_governed(
             return await _two_step_plan(
                 governed, _two, params=params, as_of=as_of, audit=_audit, state=state
             )
+    if _is_mutation and isinstance(_parsed_input, exp.Merge):
+        # REQ-2001: a MERGE sent whole carries its WHEN NOT MATCHED BY SOURCE THEN DELETE inside
+        # its one statement, as the second step of one written in two steps does.
+        governed = _carried_merge(governed, _written_table_id, state)
+        governed_semantic = governed.governed_semantic
     from provisa.codesource.writes import is_code_table
 
     async def _read_keys(read_tree: Any) -> _Plan:

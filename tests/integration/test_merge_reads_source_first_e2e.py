@@ -17,7 +17,9 @@ matching. A MERGE INTO er.bridge USING the code table, WHEN NOT MATCHED BY SOURC
 included, reads the code table first under the caller's governance and then runs on PostgreSQL
 as one MERGE: matched rows updated, unmatched rows inserted, rows not in the source deleted, its
 command tag counting all three. A registered statement command holding that MERGE runs it. A
-MERGE reading only PostgreSQL is routed as before. The code table's row rule and column
+MERGE reading only PostgreSQL is routed as before, and one that deletes the rows not in
+its source carries that delete in its one statement on PostgreSQL 16 too, as does a statement
+command whose MERGE reads a code query's rows. The code table's row rule and column
 visibility hold on the read; a role without the delete grant may not merge with a delete.
 """
 
@@ -64,10 +66,30 @@ def matches() -> list[Match]:
         Match(3, "initech", "s3"),
         Match(4, "hidden", "s4"),
     ]
+
+
+def fresh_matches() -> list[Match]:
+    """@query"""
+    return [Match(1, "acme", "s1"), Match(3, "initech", "s3")]
 ''',
 }
 _MERGE = (
     "MERGE INTO er.bridge AS t USING (SELECT m.id, m.org FROM er.matches AS m) AS s "
+    "ON t.id = s.id "
+    "WHEN MATCHED THEN UPDATE SET org = s.org "
+    "WHEN NOT MATCHED THEN INSERT (id, org) VALUES (s.id, s.org) "
+    "WHEN NOT MATCHED BY SOURCE THEN DELETE"
+)
+
+_SAME_SOURCE_DELETE = (
+    "MERGE INTO er.bridge AS t USING er.staged AS s ON t.id = s.id "
+    "WHEN MATCHED THEN UPDATE SET org = s.org "
+    "WHEN NOT MATCHED THEN INSERT (id, org) VALUES (s.id, s.org) "
+    "WHEN NOT MATCHED BY SOURCE THEN DELETE"
+)
+# The USING a code query: the command is run first and stands in the USING as its rows.
+_FROM_QUERY = (
+    "MERGE INTO er.bridge AS t USING (SELECT q.id, q.org FROM fresh_matches() AS q) AS s "
     "ON t.id = s.id "
     "WHEN MATCHED THEN UPDATE SET org = s.org "
     "WHEN NOT MATCHED THEN INSERT (id, org) VALUES (s.id, s.org) "
@@ -229,19 +251,19 @@ def code(server):
         f'upsertRlsRule(input: {{tableId: "matches", roleId: "{_CLERK}", '
         'filterExpr: "org <> \'hidden\'", description: "The clerk does not see it."})',
     )
-    command = httpx.post(
-        f"{server.base_url}/admin/actions/functions",
-        json={
-            "name": "rerun_bridge",
-            "implKind": "statement",
-            "domainId": "er",
-            "visibleTo": [_ADMIN],
-            "binding": {"sql": _MERGE},
-        },
-        headers={"X-Provisa-Role": _ADMIN},
-        timeout=server.request_timeout + 120,
-    )
-    assert command.status_code == 200, command.text
+    commands = [
+        {"name": "fresh_matches", "sourceId": "er-code", "functionName": "fresh_matches"},
+        {"name": "rerun_bridge", "implKind": "statement", "binding": {"sql": _MERGE}},
+        {"name": "rerun_from_query", "implKind": "statement", "binding": {"sql": _FROM_QUERY}},
+    ]
+    for body in commands:
+        command = httpx.post(
+            f"{server.base_url}/admin/actions/functions",
+            json={**body, "domainId": "er", "visibleTo": [_ADMIN]},
+            headers={"X-Provisa-Role": _ADMIN},
+            timeout=server.request_timeout + 120,
+        )
+        assert command.status_code == 200, command.text
 
 
 @pytest.fixture
@@ -330,3 +352,25 @@ def test_a_merge_reading_only_its_targets_source_is_routed_as_before(server, bri
         ).rowcount
     assert tag == 2
     assert bridge() == [(1, "staged-acme"), (2, "globex"), (5, "staged-new"), (9, "stale")]
+
+
+@pytest.mark.usefixtures("code")
+def test_a_same_source_merge_deletes_the_rows_not_in_the_source_in_one_statement(server, bridge):
+    try:
+        with _pgwire(server, _ADMIN) as conn:
+            tag = conn.execute(_SAME_SOURCE_DELETE).rowcount
+    except psycopg.Error as exc:
+        pytest.fail(f"{exc}\n{_debug(server)}")
+    assert bridge() == [(1, "staged-acme"), (5, "staged-new")]
+    # One MERGE on PostgreSQL 16: one updated, one inserted and two deleted, in one command tag.
+    assert tag == 4
+
+
+@pytest.mark.usefixtures("code")
+def test_a_statement_command_merging_a_code_querys_rows_deletes_in_one_statement(server, bridge):
+    try:
+        with _pgwire(server, _ADMIN) as conn:
+            conn.execute("SELECT * FROM rerun_from_query()").fetchall()
+    except psycopg.Error as exc:
+        pytest.fail(f"{exc}\n{_debug(server)}")
+    assert bridge() == [(1, "acme"), (3, "initech")]
