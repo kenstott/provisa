@@ -95898,7 +95898,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     page. (Amended 2026-11-15, TIMETZ ON CLICKHOUSE IS A PAIR OF NUMBERS:) Maintainer 2026-11-15. On ClickHouse,
     which holds no time-with-zone type, a timetz value is a pair: microseconds of the day and the zone offset
     in seconds. It is exact, as the interval representation is, and the timetz overloads are served over
-    it rather than refused.'
+    it rather than refused. (Amended 2026-11-15, AN EDGE CASE RAISES; IT DOES NOT REFUSE THE FORM:) Maintainer
+    2026-11-15. A function form that an engine cannot answer only for edge values (an extreme, an empty
+    value, a value where PostgreSQL itself differs) is not refused. It is served, and a call raises an error
+    when the edge value occurs. A form is refused by name only when it cannot be answered for ordinary values.
+    The conformance measure counts such a form as served within its bound, and tests that the edge raises.'
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
