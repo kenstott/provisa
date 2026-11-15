@@ -18,11 +18,13 @@ the grid as the translator looks up a call of it (``GRID.read`` of the call with
 its type), on the dialect of each engine, and its outcome is held to what the row says there:
 
   holds       the row's native or polyfilled form answered as PostgreSQL does; a refusal the row
-              (or one of its limitations) states, raised with the row's message and SQLSTATE; or
-              a difference a limitation of the row states
+              (or one of its limitations) states, raised with the row's message and SQLSTATE; a
+              difference a limitation of the row states; or a form served within its bound, raising
+              at an edge value as a limitation of the row states (REQ-2236, amended 2026-11-15)
   fails       a feature the grid marks native or polyfilled that answers otherwise than PostgreSQL
-              (a wrong answer, an error, or a refusal the grid does not state), or a refusal row
-              the run did not raise as the row says
+              (a wrong answer, an error, or a refusal the grid does not state), a refusal row
+              the run did not raise as the row says, or a bounded row (a limitation says what its
+              form raises) whose overload raised that SQLSTATE on no edge call
   unverified  the run compared nothing of it: not checked, skipped by design, not callable, or
               not reached
 
@@ -143,6 +145,11 @@ def judged(applied: Applied, dialect: str, outcome: dict[str, Any]) -> tuple[str
     feature = applied.feature
     if kind in _NOTHING_COMPARED:
         return UNVERIFIED, f"the run compared nothing ({kind})"
+    if outcome.get("bound_raised") is False:
+        return FAILS, (
+            f"its row states it raises {', '.join(outcome['bound_sqlstates'])} outside its bound; "
+            "no edge call raised it"
+        )
     if isinstance(form, Refusal):
         if kind == "refused" and _raised(form, outcome):
             return HOLDS, "refused as its row says"
@@ -155,6 +162,8 @@ def judged(applied: Applied, dialect: str, outcome: dict[str, Any]) -> tuple[str
         )
     if kind == "pass":
         return HOLDS, "answered as PostgreSQL does"
+    if kind == "within_bound":
+        return HOLDS, "raises at an edge value, as a limitation of its row states"
     if kind == "refused":
         if any(_raised(refusal, outcome) for refusal in _stated_refusals(feature, dialect)):
             return HOLDS, "a refusal a limitation of its row states"
