@@ -19,7 +19,7 @@ it. A table the remote no longer has is deleted through the model store; when so
 on it, it is kept and reported.
 """
 
-# Requirements: REQ-1918, REQ-1919, REQ-308, REQ-311
+# Requirements: REQ-1918, REQ-1919, REQ-308, REQ-311, REQ-2248
 
 from __future__ import annotations
 
@@ -62,8 +62,9 @@ async def _register(db: Database, *tables: str) -> list[dict]:
 async def _ids(db: Database) -> dict[str, int]:
     async with db.acquire() as conn:
         rows = await conn.execute_core(
+            # The tables in service: one the remote no longer has is retired (REQ-2248).
             select(registered_tables.c.table_name, registered_tables.c.id).where(
-                registered_tables.c.source_id == "crm"
+                registered_tables.c.source_id == "crm", registered_tables.c.retired.is_(False)
             )
         )
         return {r[0]: r[1] for r in rows.fetchall()}
@@ -157,8 +158,8 @@ async def test_a_table_the_remote_no_longer_has_goes_once_nothing_refers_to_it(p
 
     assert await _ids(plane) == {pets: first[pets]}
     async with plane.acquire() as conn:
-        # Its tag assignment was its part and went with it.
-        assert (await conn.execute_core(select(tag_assignments.c.id))).fetchall() == []
+        # REQ-2248: retired, not removed: its tag assignment is kept with it.
+        assert len((await conn.execute_core(select(tag_assignments.c.id))).fetchall()) == 1
 
 
 async def test_retiring_touches_only_that_sources_generated_schema(plane):
@@ -182,7 +183,11 @@ async def test_retiring_touches_only_that_sources_generated_schema(plane):
             )
         )
         assert await table_repo.retire_generated(conn, "crm", "graphql", set()) == []
-        left = (await conn.execute_core(select(registered_tables.c.table_name))).fetchall()
+        left = (
+            await conn.execute_core(
+                select(registered_tables.c.table_name).where(registered_tables.c.retired.is_(False))
+            )
+        ).fetchall()
     assert sorted(r[0] for r in left) == ["invoices", "notes"]
 
 
