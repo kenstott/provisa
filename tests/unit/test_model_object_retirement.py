@@ -29,10 +29,12 @@ from provisa.core.database import Database
 from provisa.core.env_merge import merged_tree
 from provisa.core.env_project import project
 from provisa.core.models import Cardinality, Column, Metric, Relationship, Table, Tag
+from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import metric as metric_repo
 from provisa.core.repositories import relationship as rel_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import tag as tag_repo
+from provisa.core.repositories.domain import DomainDeleteRefused
 from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.core.schema_org import (
     domains,
@@ -159,6 +161,35 @@ async def test_a_retired_tables_name_is_refused_to_a_second_registration(plane):
         assert (await _row(conn, registered_tables, registered_tables.c.table_name == "orders"))[
             "retired"
         ]
+
+
+async def _retired_in_own_domain(conn, *columns: str) -> int:
+    """A table in a domain of its own, nothing else in it, then deleted: retired."""
+    await conn.execute_core(insert(domains).values(id="archive"))
+    table = _table("ledger", *columns).model_copy(update={"domain_id": "archive"})
+    table_id = await table_repo.upsert(conn, table)
+    assert table_id is not None
+    assert await table_repo.delete(conn, table_id, reason=WHY) is True
+    return table_id
+
+
+@pytest.mark.parametrize("columns", [("id", "amount"), ()], ids=["with columns", "no columns"])
+async def test_a_domain_holding_only_a_retired_table_is_kept(plane, columns):
+    """Maintainer 2026-11-15 (REQ-2248): a domain has no retired state; a domain that still holds
+    a table, retired or not, is kept -- a delete that would remove it leaves it in place. The
+    refusal names the retired table, and the table and its columns are untouched."""
+    async with model_change.scope("delete", actor=lambda: "ada"), plane.acquire() as conn:
+        ledger = await _retired_in_own_domain(conn, *columns)
+        with pytest.raises(DomainDeleteRefused) as refused:
+            await domain_repo.delete(conn, "archive")
+        assert refused.value.reason == "dependents"
+        assert [(d.ref.kind, d.ref.id) for d in refused.value.dependents] == [("table", ledger)]
+        assert await domain_repo.get(conn, "archive") is not None
+        _assert_retired(await _row(conn, registered_tables, registered_tables.c.id == ledger))
+        kept = await conn.execute_core(
+            select(table_columns.c.column_name).where(table_columns.c.table_id == ledger)
+        )
+        assert sorted(r[0] for r in kept) == sorted(columns)
 
 
 async def test_a_retired_tables_file_carries_the_retirement(plane):

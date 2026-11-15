@@ -112,6 +112,10 @@ class Reference:
     owner: str | None = None
     path: str | None = None
     ends: tuple[str, ...] = ()
+    # REQ-2248 (maintainer 2026-11-15): a retired referring row still holds the object. A
+    # retired object otherwise blocks nothing, but a domain that still holds a table, retired or
+    # not, is kept.
+    retired_holds: bool = False
 
 
 @dataclass(frozen=True)
@@ -191,8 +195,9 @@ def _link(table: str, column: str, to: str) -> Reference:
 
 REFERENCES: tuple[Reference, ...] = (
     # --- to a domain: it removes only itself (REQ-1917), so everything in it blocks -------------
-    _dep("registered_tables", "domain_id", "domain", "table", "id"),
-    _dep("table_columns", "domain_id", "domain", "table", "table_id"),
+    # REQ-2248: a domain that still holds a table, retired or not, is kept.
+    _dep("registered_tables", "domain_id", "domain", "table", "id", retired_holds=True),
+    _dep("table_columns", "domain_id", "domain", "table", "table_id", retired_holds=True),
     _dep("data_products", "domain_id", "domain", "data_product", "id"),
     _dep("rls_rules", "domain_id", "domain", "row_filter", "id"),
     _dep("roles", "domain_access", "domain", "role", "id", match=Match.MEMBER),
@@ -491,7 +496,7 @@ async def _referring_rows(
     statement = select(*(table.c[name] for name in sorted(names)))
     if reference.match is Match.EQUALS:
         statement = statement.where(table.c[reference.column] == wanted)
-    if "retired" in table.c:
+    if "retired" in table.c and not reference.retired_holds:
         # REQ-2248: a retired object is out of service and blocks nothing.
         statement = statement.where(table.c.retired.is_(False))
     rows = (await conn.execute_core(statement)).fetchall()
