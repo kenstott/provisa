@@ -672,3 +672,60 @@ def test_the_interval_rows_read_a_deep_form_once_a_row(sql, monkeypatch):
     written = transpile(sql, "clickhouse")
     nodes = sum(1 for _ in sqlglot.parse_one(written, read="clickhouse").walk())
     assert walks <= nodes, (walks, nodes)
+
+
+# --- how pgwire describes a literal of interval served as interval_out's text ---------------------
+
+_INTERVAL_OID, _TEXT_OID = 1186, 25
+
+
+def _described_oid(sql: str, served: Any) -> tuple[int, list[str]]:
+    """The OID pgwire describes ``sql``'s one result column with, and its coercers' names, where
+    the engine serves it as ``served``."""
+    from provisa.pgwire.server import _describe_casts, coercer_names
+
+    types: list[Any] = [served]
+    oids: list[int | None] = [_TEXT_OID]
+    coerce: list[Any] = []
+    _describe_casts(sql, types, oids, [-1], coerce)
+    (names,) = coercer_names(coerce, 1)
+    return oids[0] or 0, names
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT '1 day 02:03'::interval AS v",
+        "SELECT CAST('1 day' AS interval) AS v",
+        "SELECT interval '1 day 02:03' AS v",
+        "SELECT NULL::interval AS v",
+    ],
+)
+def test_a_literal_served_as_interval_out_text_is_described_as_interval(sql):
+    """ClickHouse serves the literal as interval_out's text (the rewrite above): pgwire describes
+    it as interval and reads the text back as the interval it is."""
+    from buenavista.core import BVType
+
+    assert _described_oid(sql, BVType.TEXT) == (_INTERVAL_OID, ["interval_text"])
+
+
+@pytest.mark.parametrize("sql", ["SELECT '1 day'::interval AS v", "SELECT interval '1 day' AS v"])
+def test_a_literal_an_engine_serves_as_its_interval_takes_no_coercer(sql):
+    from buenavista.core import BVType
+
+    assert _described_oid(sql, BVType.INTERVAL) == (_INTERVAL_OID, [])
+
+
+def test_a_cast_of_a_column_to_interval_served_as_text_stays_text():
+    """Only a literal is written as interval_out's text: a column's cast is the engine's own form."""
+    from buenavista.core import BVType
+
+    assert _described_oid("SELECT CAST(x AS interval) AS v FROM t", BVType.TEXT)[0] == _TEXT_OID
+
+
+def test_clickhouse_serves_the_literal_as_the_text_pgwire_reads():
+    """The text the ClickHouse rewrite writes for the literal is the one pgwire reads back."""
+    written = transpile("SELECT '1 day 02:03'::interval AS v", "clickhouse")
+    literal = sqlglot.parse_one(written, read="clickhouse").find(exp.Literal)
+    assert literal is not None
+    assert interval_parts(interval_of_text(literal.this)) == (0, 1, 7_380_000_000)
