@@ -280,21 +280,27 @@ async def read_as_caller(
     return await _execute_plan(plan, seen)
 
 
-def _served_draft_names(state: Any, role_id: str) -> dict[str, int]:
-    """Each name ``role_id``'s context gives a draft that is served to it, with the draft's id: a
+def _served_draft_names(state: Any, role_id: str) -> dict[str, dict]:
+    """Each name ``role_id``'s context gives a draft that is served to it, with the draft's row: a
     draft of a domain the role holds table registration in (A DRAFT IS SERVED TO ORG_ADMIN,
-    security.rights.registers_tables_in)."""
+    security.rights.registers_tables_in).
+
+    The rows are one reading of the model's drafts. The surface is built from an earlier one and
+    is rebuilt after it changes (a worker serving another worker's change, REQ-1914); until then
+    its context still names a draft the model has since published or removed, and that one is no
+    draft to serve: the surface goes on refusing its name as a draft's until its rebuild."""
     from provisa.security.rights import registers_tables_in
 
     surface = role_surface(state, role_id)
     if surface is None or not surface.context.draft_ids:
         return {}
     role = state.roles[role_id]
-    domains = {t["id"]: t["domain_id"] for t in state.role_build_inputs["draft_tables"]}
+    drafts = {t["id"]: t for t in state.role_build_inputs["draft_tables"]}
     return {
-        name: table_id
+        name: drafts[table_id]
         for name, table_id in surface.context.draft_ids.items()
-        if registers_tables_in(role, state.roles, domains[table_id])
+        if table_id in drafts
+        and registers_tables_in(role, state.roles, drafts[table_id]["domain_id"])
     }
 
 
@@ -312,13 +318,12 @@ def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
         return []
     from provisa.compiler.names_read import sql_relations
 
-    ids: list[int] = []
+    read: dict[int, dict] = {}
     for said in sql_relations(sql):
-        table_id = named.get(said)
-        if table_id is not None and table_id not in ids:
-            ids.append(table_id)
-    by_id = {t["id"]: t for t in state.role_build_inputs["draft_tables"]}
-    return [by_id[i] for i in ids]
+        draft = named.get(said)
+        if draft is not None:
+            read.setdefault(draft["id"], draft)
+    return list(read.values())
 
 
 def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
@@ -337,14 +342,13 @@ def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
     text = query.lower()
     if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
         return []
-    ids: list[int] = []
+    read: dict[int, dict] = {}
     for name in query_root_fields(query):
         for candidate in table_field_candidates(name):
-            table_id = named.get(candidate)
-            if table_id is not None and table_id not in ids:
-                ids.append(table_id)
-    by_id = {t["id"]: t for t in state.role_build_inputs["draft_tables"]}
-    return [by_id[i] for i in ids]
+            draft = named.get(candidate)
+            if draft is not None:
+                read.setdefault(draft["id"], draft)
+    return list(read.values())
 
 
 async def plan_reading_drafts(
@@ -395,7 +399,7 @@ def draft_served_to(state: Any, role_id: str, table_id: int) -> dict | None:
     """The draft ``table_id`` when it is served to ``role_id`` (:func:`_served_draft_names`: its
     context names it and the role holds table registration in its domain). None otherwise: to
     that role the table is not served, draft or not."""
-    if table_id not in _served_draft_names(state, role_id).values():
+    if table_id not in {draft["id"] for draft in _served_draft_names(state, role_id).values()}:
         return None
     return draft_table(state, table_id)
 
