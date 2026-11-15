@@ -103,3 +103,12 @@ def call_sql(command: dict, source_table: str, target_table: str) -> str:
     call = exp.Anonymous(this=offered_name(command, "sql"), expressions=values)
     table = exp.Table(this=call, alias=exp.TableAlias(this=exp.to_identifier("m")))
     return exp.select("*").from_(table).sql(dialect="postgres", normalize_functions=False)
+
+
+def called(sql: str) -> str:
+    """The resolver a statement made by :func:`call_sql` calls."""
+    import sqlglot
+
+    table = sqlglot.parse_one(sql, read="postgres").find(exp.Table)
+    assert table is not None and isinstance(table.this, exp.Anonymous), sql
+    return table.this.name
