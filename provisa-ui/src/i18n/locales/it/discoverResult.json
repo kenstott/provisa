@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} era già rifiutata o già presente",
     "alreadyKnown_other": "{{count}} erano già rifiutate o già presenti",
     "invalid": "{{count}} indicava una tabella o colonna inesistente",
-    "invalid_other": "{{count}} indicavano tabelle o colonne inesistenti"
+    "invalid_other": "{{count}} indicavano tabelle o colonne inesistenti",
+    "semanticsCutShort": "Semantica: nessuna. La risposta del modello si è fermata al suo limite di lunghezza prima di completare un suggerimento.",
+    "cutShortNote": "La risposta del modello si è fermata al suo limite di lunghezza, quindi sono stati letti solo i suggerimenti completati."
   }
 }

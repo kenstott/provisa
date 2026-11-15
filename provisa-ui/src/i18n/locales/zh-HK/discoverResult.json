@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} 個已被拒絕或已存在",
     "alreadyKnown_other": "{{count}} 個已被拒絕或已存在",
     "invalid": "{{count}} 個引用了不存在的表格或欄",
-    "invalid_other": "{{count}} 個引用了不存在的表格或欄"
+    "invalid_other": "{{count}} 個引用了不存在的表格或欄",
+    "semanticsCutShort": "語意：無。模型的回答在寫完一項建議之前就達到長度上限而停止。",
+    "cutShortNote": "模型的回答達到長度上限而停止，因此只讀取了已寫完的建議。"
   }
 }

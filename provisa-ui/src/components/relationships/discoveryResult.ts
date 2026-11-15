@@ -14,6 +14,13 @@ import type { TFunction } from "i18next";
 import type { DiscoveryResult, SemanticsReport } from "../../api/admin";
 
 function semanticsLine(s: SemanticsReport, t: TFunction): string {
+  if (s.empty_reason === "cut_short") return t("discoverResult.semanticsCutShort");
+  const line = semanticsFound(s, t);
+  // An answer cut off at the model's length limit says so, whatever was kept from it.
+  return s.cut_short ? `${line} ${t("discoverResult.cutShortNote")}` : line;
+}
+
+function semanticsFound(s: SemanticsReport, t: TFunction): string {
   if (s.suggested > 0) return t("discoverResult.semanticsFound", { count: s.suggested });
   if (s.empty_reason === "unreadable") return t("discoverResult.semanticsUnreadable");
   if (s.empty_reason === "none_proposed") return t("discoverResult.semanticsNoneProposed");

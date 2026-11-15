@@ -10,6 +10,23 @@
     "accept": "Aceptar",
     "reject": "Rechazar",
     "acceptAria": "Aceptar la relación sugerida {{name}}",
-    "rejectAria": "Rechazar la relación sugerida {{name}}"
+    "rejectAria": "Rechazar la relación sugerida {{name}}",
+    "acceptAll": "Aceptar todas",
+    "rejectAll": "Rechazar todas",
+    "acceptAllTitle": "Aceptar todas las sugerencias",
+    "rejectAllTitle": "Rechazar todas las sugerencias",
+    "acceptAllConsequence": "¿Aceptar la {{count}} sugerencia de la lista? Se convierte en una relación registrada.",
+    "acceptAllConsequence_other": "¿Aceptar las {{count}} sugerencias de la lista? Cada una se convierte en una relación registrada.",
+    "rejectAllConsequence": "¿Rechazar la {{count}} sugerencia de la lista? No se volverá a sugerir hasta que se borren los rechazos.",
+    "rejectAllConsequence_other": "¿Rechazar las {{count}} sugerencias de la lista? No se volverán a sugerir hasta que se borren los rechazos.",
+    "acceptedAll": "{{count}} sugerencia aceptada.",
+    "acceptedAll_other": "{{count}} sugerencias aceptadas.",
+    "rejectedAll": "{{count}} sugerencia rechazada.",
+    "rejectedAll_other": "{{count}} sugerencias rechazadas.",
+    "acceptFailed": "{{count}} sugerencia no se pudo aceptar:",
+    "acceptFailed_other": "{{count}} sugerencias no se pudieron aceptar:",
+    "rejectFailed": "{{count}} sugerencia no se pudo rechazar:",
+    "rejectFailed_other": "{{count}} sugerencias no se pudieron rechazar:",
+    "failedOne": "{{name}}: {{error}}"
   }
 }

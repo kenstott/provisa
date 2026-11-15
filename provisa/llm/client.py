@@ -385,6 +385,16 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             lambda vendor, model: self._complete_sync(vendor, model, prompt, system, max_tokens)
         )
 
+    def complete_sync_detailed(
+        self, prompt: str, system: str = "You are a helpful assistant.", max_tokens: int = 1024
+    ) -> Completion:
+        """:meth:`complete_sync` with the vendor, model, usage and ``cut_off`` of the answer
+        (:class:`Completion`): a caller that reads a structured answer learns whether it stopped
+        at ``max_tokens``."""
+        return self._with_fallback(
+            lambda vendor, model: self._respond(vendor, model, prompt, system, max_tokens)
+        )
+
     async def complete_detailed(
         self,
         prompt: str,

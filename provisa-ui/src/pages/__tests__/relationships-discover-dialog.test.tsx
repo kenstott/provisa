@@ -196,6 +196,7 @@ describe("RelationshipsPage: discovery says what it found", () => {
     already_known: 0,
     invalid: 0,
     empty_reason: null,
+    cut_short: false,
   } as const;
 
   it("counts foreign keys and semantic suggestions", async () => {
@@ -234,6 +235,30 @@ describe("RelationshipsPage: discovery says what it found", () => {
       "Semantics: none kept of the 4 relationships the model proposed: 3 were below the 70% " +
         "confidence threshold; 1 was already rejected or already present.",
     );
+  });
+
+  it("says the model's answer was cut short when it stopped at its length limit", async () => {
+    const shown = await runWith({
+      candidates_found: 34,
+      stored_ids: [],
+      semantics: { ...semantics, suggested: 34, proposed: 34, cut_short: true },
+    });
+    expect(shown).toHaveTextContent(
+      "Semantics: 34 suggestions. The model's answer stopped at its length limit, so only the " +
+        "suggestions it finished were read.",
+    );
+  });
+
+  it("says why there are none when the answer stopped before it finished a suggestion", async () => {
+    const shown = await runWith({
+      ...NOTHING_FOUND,
+      semantics: { ...semantics, empty_reason: "cut_short", cut_short: true },
+    });
+    expect(shown).toHaveTextContent(
+      "Semantics: none. The model's answer stopped at its length limit before it finished a " +
+        "suggestion.",
+    );
+    expect(shown).not.toHaveTextContent("could not be read");
   });
 
   it("says when the model proposed none", async () => {

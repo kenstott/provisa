@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} était déjà rejetée ou déjà présente",
     "alreadyKnown_other": "{{count}} étaient déjà rejetées ou déjà présentes",
     "invalid": "{{count}} nommait une table ou une colonne qui n'existe pas",
-    "invalid_other": "{{count}} nommaient des tables ou des colonnes qui n'existent pas"
+    "invalid_other": "{{count}} nommaient des tables ou des colonnes qui n'existent pas",
+    "semanticsCutShort": "Sémantique : aucune. La réponse du modèle s'est arrêtée à sa limite de longueur avant de terminer une suggestion.",
+    "cutShortNote": "La réponse du modèle s'est arrêtée à sa limite de longueur ; seules les suggestions terminées ont été lues."
   }
 }

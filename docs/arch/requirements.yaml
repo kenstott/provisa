@@ -3580,7 +3580,65 @@
     failed by name. (2) A model answer cut off at its length limit is never silently dropped: the request
     is shaped so the answer fits, or the complete suggestions in a cut-off answer are kept and the result
     says the answer was cut short. (3) The run''s result does not cover or displace the list of registered
-    relationships.'
+    relationships. (Amended 2026-11-15, DISCOVERY HAS A SOURCE SET, A TARGET SET AND WINDOWS:) Maintainer
+    2026-11-15; this replaces running one request over every registered table. (1) Scope: the dialog, on
+    the Relationships page, has source domains and source tables, and target domains and target tables (multiselects;
+    tables default to all in the chosen domains; domains default to those ticked in the Domains picker),
+    with ''same as source'' for the target, ticked by default. System domains (meta, ontology, ops) are
+    never included. (2) A relationship starts at its source and ends at its target: a run proposes only
+    relationships that start in the source set and end in the target set, for foreign keys and semantics
+    alike; with ''same as source'' both directions between any two tables are considered. (3) Windows: a
+    table''s weight is the length in characters of the text sent for it (its name and description, each
+    column''s name, type and description, its sample values); whole tables are packed into windows sized
+    from the assigned model''s input limit (REQ-464); each request compares one source window with one target
+    window. (4) Each request asks for at most as many suggestions as the model''s output limit holds at
+    150 tokens each; an answer that is cut off or full, or a request the vendor refuses as too long, is
+    split in half and asked again, and the result says how many were split. (5) Before Run the dialog shows
+    about how many requests the run will make, recalculated as the scope changes, so a very large run can
+    be cancelled before it starts. (6) The run is in the background with its progress shown; the button
+    animates until it ends; suggestions appear as each request returns; one failed request is reported and
+    the rest continue; a Stop control ends the run and keeps what has been returned. (7) Removed before
+    anything is shown: a suggestion from a column to that same column; one matching an existing relationship
+    in either direction; one already pending; one rejected, until rejections are cleared; a semantic suggestion
+    matching a foreign key found in the same run, the foreign key being kept. A relationship between two
+    different columns of one table is kept. (8) The shared confirmation dialog has a non-destructive form,
+    which Accept all uses. (Amended 2026-11-15, THE RUN''S MODEL CAN BE CHOSEN:) Maintainer 2026-11-15.
+    The discovery dialog has a Model select. It opens on the model assigned to relationship inference on
+    the AI models page and lists the models of every vendor with a key configured for the organization.
+    The choice applies to that run only and never changes the assignment. The chosen model''s two limits
+    are shown beside it (REQ-464), the request count recalculates when the model changes, and the result
+    names the model that ran. Anyone who may run discovery may choose the model. Semantics is greyed out
+    only when no vendor has a key. (Amended 2026-11-15, DISCOVERY COMPARES COLUMNS BY TYPE GROUP AND CLASS:)
+    Maintainer 2026-11-15; where this differs from the two amendments of the same day (source set, target
+    set and windows; the run''s model), this stands. (1) Columns are compared, not tables, and only within
+    a type group: whole numbers (integer types and decimals with no decimal places); decimals (exact decimals,
+    those with no decimal places included, so such a column is in both groups); text (all character types,
+    any length); uuid; date; each timestamp type alone. Boolean, floating point, JSON, binary, array, geometry
+    and vector columns are not compared. (2) Within a group two columns are compared only if their classes
+    intersect (REQ-2147): a column''s classes are every kind the classifier matched, or only the steward''s
+    decided class where one is decided; a column with none has the class unknown. A table not yet profiled
+    is classified during the run with the profiler''s classification sample; those classes are used for
+    the run and not recorded. (3) For each group, source columns and target columns are packed into windows
+    by the length in characters of what is sent, sized from the chosen model''s input limit (REQ-464); a
+    request holds one source window and one target window of one group. (4) A request carries, per table,
+    the table context (name, description, tags, role of fact or dimension, and the names of all its columns,
+    those not compared included) and, per compared column, the column context (name, description, classes,
+    tags and sample values; no type). A column with a sensitive class sends its class and no sample values.
+    The prompt states that a shared pii tag alone is weak evidence. (5) Direction: a relationship starts
+    at the referring column and ends at the one side, many-to-one. When both directions are suggested one
+    is kept, by the first that decides: a foreign key constraint; a primary key is the one side; roles (it
+    starts at the fact-like table and ends at the dimension-like table, a recorded role used where there
+    is one, else inferred per pair: fact-like holds two or more columns matching other tables'' keys, dimension-like
+    has a single-column key whose name recurs elsewhere or relationships already ending there); the model''s
+    statement of many-to-one; the higher confidence; only then a bounded sample of each column read for
+    repeated values, the side with none being the one side, reported as unique in a sample of N rows; last,
+    the table whose domain and name sort first. (6) Removed before anything is shown, each kind counted
+    in the result: a column to that same column (two different columns of one table are kept); primary key
+    to primary key; both sides repeating in that sample; a match for an existing relationship in either
+    direction; one pending or rejected; a semantic suggestion matching a foreign key of the same run. (7)
+    Accepting a suggestion marks the referring column as a foreign key through the existing derivation;
+    no column is marked as an alternate key from a sample or an accepted suggestion. (8) The request line
+    before Run gives the count by group.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -76530,17 +76588,22 @@
   feature: source-registration-explicit-tables
   priority: SHOULD
   type: behavioral
-  description: 'NL-assisted table candidate discovery for registration. When a registered source has a
-    large schema (hundreds or thousands of tables), stewards search across registered source schemas —
-    table names, column names, descriptions — using natural language ("customer invoicing and payment
-    tables"). A two-pass approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides
-    semantic ranking with confidence scores. Steward judgment is required: the feature surfaces candidates and
-    does not claim them. Implementation in admin API and unclaimed tables UI. The search reads an index
-    of each source. Table names are indexed when the source is installed. Column names are filled in
-    afterwards, a schema at a time, by one rule for every kind of source, so a search made soon after
-    install may not find a table by a column name; the answer says whether table names are complete
-    and whether column names are complete, still loading or unavailable. Selecting a table reads its
-    columns from the source at once, whatever the index holds, and records them in the index.'
+  description: 'NL-assisted table candidate discovery for registration. When a registered source has a large
+    schema (hundreds or thousands of tables), stewards search across registered source schemas — table names,
+    column names, descriptions — using natural language ("customer invoicing and payment tables"). A two-pass
+    approach: fast fuzzy text filter narrows candidates, then LLM (haiku) provides semantic ranking with
+    confidence scores. Steward judgment is required: the feature surfaces candidates and does not claim
+    them. Implementation in admin API and unclaimed tables UI. The search reads an index of each source.
+    Table names are indexed when the source is installed. Column names are filled in afterwards, a schema
+    at a time, by one rule for every kind of source, so a search made soon after install may not find a
+    table by a column name; the answer says whether table names are complete and whether column names are
+    complete, still loading or unavailable. Selecting a table reads its columns from the source at once,
+    whatever the index holds, and records them in the index. (Amended 2026-11-15, A MODEL HAS AN INPUT LIMIT
+    AND AN OUTPUT LIMIT:) Maintainer 2026-11-15. Each assigned model on the AI models page shows two limits,
+    in tokens: the most it can read in one request and the longest answer it can write. A model Provisa
+    knows is prefilled from the vendor''s published figures and can be changed; a model it does not know
+    uses a default pair (32,000 in, 4,096 out), shown in the same fields and marked as the default. Text
+    is converted to tokens at one fixed ratio, 3 characters per token. There is no spending cap per request.'
   notes: 'Restored 2026-10-03 from docs/arch/requirements.md as of b0d941bb^ (2026-06-26), where it was written on 2026-05-15 under the heading ''Security''; it was dropped when requirements.md became generated from requirements.yaml. Text verbatim. Audited 2026-10-03 against the code: Backend fuzzy+haiku search at table_search_router.py:122; no reference to the endpoint in provisa-ui/src, so the unclaimed-tables UI is missing. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - provisa/discovery/table_search.py
@@ -89771,7 +89834,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     registering a table or from a column''s access settings, as a background profile run, since it may take
     time; it keeps only the share of sampled values that matched each kind, never the matched text. Its
     hints are shown on the column''s access settings and at registration, and a column with a hint and no
-    restriction appears in the sensitive coverage report.'
+    restriction appears in the sensitive coverage report. (Amended 2026-11-15, THE CLASSIFICATION SAMPLE
+    IS NON-NULL VALUES PER COLUMN:) Maintainer 2026-11-15. The classification sample is up to N non-null
+    values per column, collected for every column in one read of the table, N being what a full column yields
+    today. The read has a ceiling on rows, the one the profiler already allows itself. A column with fewer
+    than the minimum tested values at the ceiling is reported as too few values to classify, which the profiling
+    results show; it is not reported as matching no kind.'
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -96334,5 +96402,59 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When the steward restores the table
 
     Then the same object is served again and the findings clear
+
+    '
+- id: REQ-2249
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-15: ''add a requirement to code resolvers to use a @change decorator,
+    that is only called when the code resolver is landed''. A code resolver is a function of a code source
+    that decides which rows of one table relate to which rows of another by its own algorithm (a spatial,
+    vector or fuzzy match), where equal column values do not. When its result is landed (kept as a table),
+    the resolver provides a function marked @change, and Provisa calls that function, and only then: a resolver
+    whose result is not landed is never asked for changes. The decorator states what only the author knows:
+    the key columns of a match, the column that marks a match as removed, and the cursor column. Provisa
+    passes the cursor it stored after the last successful run and the resolver''s inputs as tables (REQ-2226);
+    the function returns the matches that changed since then, each with its key, its values, its removal
+    flag and its cursor value. Provisa lands them with the existing incremental apply (REQ-874): upsert
+    by key, and a returned row flagged as removed removes its key. The function never learns where its result
+    is stored and holds no connection to it. Called with no cursor, on the first run and on every whole
+    rebuild, it returns every match, so one function serves both and a periodic whole rebuild is required.
+    The result is refreshed when one of its input tables changes. A function whose returned rows lack a
+    key column, repeat a key within one result, or whose cursor goes backwards is refused with the reason.
+    (Amended 2026-11-15, @CHANGE IS A FRESHNESS MECHANISM AND NEEDS THE INCREMENTAL SETTING:) Maintainer
+    2026-11-15. @change is how a landed resolver''s result is kept fresh. Two things are needed before Provisa
+    calls it: the resolver''s result is landed, and that landed result is set to be kept incrementally (the
+    existing incremental apply setting, REQ-874). With the result landed and the incremental setting off,
+    a refresh recomputes the whole result with the resolver''s ordinary function and @change is not called.
+    The @change function is found by its name: it carries the name of the table it keeps fresh. A code resolver
+    with no @change function has the incremental option disabled: it cannot be chosen for that table, in
+    the UI or in configuration, and the reason is shown.'
+  scenario: 'Given a code resolver matching stores to regions by distance, with a function marked @change
+    naming its key, removal and cursor columns
+
+    And the resolver''s result is landed
+
+    When it is first built
+
+    Then the @change function is called with no cursor and every match it returns is landed
+
+    When a store moves and the result is refreshed
+
+    Then the function is called with the stored cursor
+
+    And the returned match is upserted by its key and the returned row flagged as removed removes its
+    key
+
+    Given the same resolver with its result not landed
+
+    When a query follows the relationship
+
+    Then the @change function is not called
 
     '

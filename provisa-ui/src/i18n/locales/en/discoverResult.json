@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} was already rejected or already present",
     "alreadyKnown_other": "{{count}} were already rejected or already present",
     "invalid": "{{count}} named a table or column that does not exist",
-    "invalid_other": "{{count}} named tables or columns that do not exist"
+    "invalid_other": "{{count}} named tables or columns that do not exist",
+    "semanticsCutShort": "Semantics: none. The model's answer stopped at its length limit before it finished a suggestion.",
+    "cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read."
   }
 }

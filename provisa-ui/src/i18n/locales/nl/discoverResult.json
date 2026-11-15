@@ -13,6 +13,8 @@
     "alreadyKnown": "{{count}} was al afgewezen of al aanwezig",
     "alreadyKnown_other": "{{count}} waren al afgewezen of al aanwezig",
     "invalid": "{{count}} noemde een tabel of kolom die niet bestaat",
-    "invalid_other": "{{count}} noemden tabellen of kolommen die niet bestaan"
+    "invalid_other": "{{count}} noemden tabellen of kolommen die niet bestaan",
+    "semanticsCutShort": "Semantiek: geen. Het antwoord van het model stopte bij zijn lengtelimiet voordat het een voorstel had afgemaakt.",
+    "cutShortNote": "Het antwoord van het model stopte bij zijn lengtelimiet, dus alleen de voorstellen die het afmaakte zijn gelezen."
   }
 }
