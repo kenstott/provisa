@@ -96399,7 +96399,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     unless they choose it. (Amended 2026-11-15, THE REMAINING DELETES: A PERSON''S OBJECTS RETIRE, A SEED
     DELETES ITS OWN:) Maintainer 2026-11-15. The config loader, metric removal and deploy/undo retire a
     model object; they no longer delete it. A startup seed may delete Provisa''s own built-in rows that
-    it no longer declares, and de-duplication may remove a true duplicate: neither is a person''s object.'
+    it no longer declares, and de-duplication may remove a true duplicate: neither is a person''s object.
+    (Amended 2026-11-15, A DOMAIN HOLDING A RETIRED TABLE IS KEPT:) Maintainer 2026-11-15. A domain has
+    no retired state. A domain that still holds a table, retired or not, is kept unchanged: an environment
+    merge or a delete that would remove it leaves it in place, together with whatever the retired table
+    needs (its terms and the targets of its relationships).'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
