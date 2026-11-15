@@ -3608,7 +3608,37 @@
     The choice applies to that run only and never changes the assignment. The chosen model''s two limits
     are shown beside it (REQ-464), the request count recalculates when the model changes, and the result
     names the model that ran. Anyone who may run discovery may choose the model. Semantics is greyed out
-    only when no vendor has a key.'
+    only when no vendor has a key. (Amended 2026-11-15, DISCOVERY COMPARES COLUMNS BY TYPE GROUP AND CLASS:)
+    Maintainer 2026-11-15; where this differs from the two amendments of the same day (source set, target
+    set and windows; the run''s model), this stands. (1) Columns are compared, not tables, and only within
+    a type group: whole numbers (integer types and decimals with no decimal places); decimals (exact decimals,
+    those with no decimal places included, so such a column is in both groups); text (all character types,
+    any length); uuid; date; each timestamp type alone. Boolean, floating point, JSON, binary, array, geometry
+    and vector columns are not compared. (2) Within a group two columns are compared only if their classes
+    intersect (REQ-2147): a column''s classes are every kind the classifier matched, or only the steward''s
+    decided class where one is decided; a column with none has the class unknown. A table not yet profiled
+    is classified during the run with the profiler''s classification sample; those classes are used for
+    the run and not recorded. (3) For each group, source columns and target columns are packed into windows
+    by the length in characters of what is sent, sized from the chosen model''s input limit (REQ-464); a
+    request holds one source window and one target window of one group. (4) A request carries, per table,
+    the table context (name, description, tags, role of fact or dimension, and the names of all its columns,
+    those not compared included) and, per compared column, the column context (name, description, classes,
+    tags and sample values; no type). A column with a sensitive class sends its class and no sample values.
+    The prompt states that a shared pii tag alone is weak evidence. (5) Direction: a relationship starts
+    at the referring column and ends at the one side, many-to-one. When both directions are suggested one
+    is kept, by the first that decides: a foreign key constraint; a primary key is the one side; roles (it
+    starts at the fact-like table and ends at the dimension-like table, a recorded role used where there
+    is one, else inferred per pair: fact-like holds two or more columns matching other tables'' keys, dimension-like
+    has a single-column key whose name recurs elsewhere or relationships already ending there); the model''s
+    statement of many-to-one; the higher confidence; only then a bounded sample of each column read for
+    repeated values, the side with none being the one side, reported as unique in a sample of N rows; last,
+    the table whose domain and name sort first. (6) Removed before anything is shown, each kind counted
+    in the result: a column to that same column (two different columns of one table are kept); primary key
+    to primary key; both sides repeating in that sample; a match for an existing relationship in either
+    direction; one pending or rejected; a semantic suggestion matching a foreign key of the same run. (7)
+    Accepting a suggestion marks the referring column as a foreign key through the existing derivation;
+    no column is marked as an alternate key from a sample or an accepted suggestion. (8) The request line
+    before Run gives the count by group.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -89804,7 +89834,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     registering a table or from a column''s access settings, as a background profile run, since it may take
     time; it keeps only the share of sampled values that matched each kind, never the matched text. Its
     hints are shown on the column''s access settings and at registration, and a column with a hint and no
-    restriction appears in the sensitive coverage report.'
+    restriction appears in the sensitive coverage report. (Amended 2026-11-15, THE CLASSIFICATION SAMPLE
+    IS NON-NULL VALUES PER COLUMN:) Maintainer 2026-11-15. The classification sample is up to N non-null
+    values per column, collected for every column in one read of the table, N being what a full column yields
+    today. The read has a ceiling on rows, the one the profiler already allows itself. A column with fewer
+    than the minimum tested values at the ceiling is reported as too few values to classify, which the profiling
+    results show; it is not reported as matching no kind.'
   scenario: |
     Given a profiled column whose sampled values are valid US social security numbers
     When the profile run completes
@@ -96367,5 +96402,59 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     When the steward restores the table
 
     Then the same object is served again and the findings clear
+
+    '
+- id: REQ-2249
+  status: proposed
+  target: 2026-Q4
+  group: 4. Source Connectors
+  category: Source Connectors
+  feature: connector-catalog-streams-logs-and-public-data
+  priority: SHOULD
+  type: behavioral
+  description: 'Maintainer 2026-11-15: ''add a requirement to code resolvers to use a @change decorator,
+    that is only called when the code resolver is landed''. A code resolver is a function of a code source
+    that decides which rows of one table relate to which rows of another by its own algorithm (a spatial,
+    vector or fuzzy match), where equal column values do not. When its result is landed (kept as a table),
+    the resolver provides a function marked @change, and Provisa calls that function, and only then: a resolver
+    whose result is not landed is never asked for changes. The decorator states what only the author knows:
+    the key columns of a match, the column that marks a match as removed, and the cursor column. Provisa
+    passes the cursor it stored after the last successful run and the resolver''s inputs as tables (REQ-2226);
+    the function returns the matches that changed since then, each with its key, its values, its removal
+    flag and its cursor value. Provisa lands them with the existing incremental apply (REQ-874): upsert
+    by key, and a returned row flagged as removed removes its key. The function never learns where its result
+    is stored and holds no connection to it. Called with no cursor, on the first run and on every whole
+    rebuild, it returns every match, so one function serves both and a periodic whole rebuild is required.
+    The result is refreshed when one of its input tables changes. A function whose returned rows lack a
+    key column, repeat a key within one result, or whose cursor goes backwards is refused with the reason.
+    (Amended 2026-11-15, @CHANGE IS A FRESHNESS MECHANISM AND NEEDS THE INCREMENTAL SETTING:) Maintainer
+    2026-11-15. @change is how a landed resolver''s result is kept fresh. Two things are needed before Provisa
+    calls it: the resolver''s result is landed, and that landed result is set to be kept incrementally (the
+    existing incremental apply setting, REQ-874). With the result landed and the incremental setting off,
+    a refresh recomputes the whole result with the resolver''s ordinary function and @change is not called.
+    The @change function is found by its name: it carries the name of the table it keeps fresh. A code resolver
+    with no @change function has the incremental option disabled: it cannot be chosen for that table, in
+    the UI or in configuration, and the reason is shown.'
+  scenario: 'Given a code resolver matching stores to regions by distance, with a function marked @change
+    naming its key, removal and cursor columns
+
+    And the resolver''s result is landed
+
+    When it is first built
+
+    Then the @change function is called with no cursor and every match it returns is landed
+
+    When a store moves and the result is refreshed
+
+    Then the function is called with the stored cursor
+
+    And the returned match is upserted by its key and the returned row flagged as removed removes its
+    key
+
+    Given the same resolver with its result not landed
+
+    When a query follows the relationship
+
+    Then the @change function is not called
 
     '
