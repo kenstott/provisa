@@ -1,0 +1,18 @@
+{
+  "discoverResult": {
+    "foreignKeys": "外键：找到 {{count}} 个。",
+    "foreignKeys_other": "外键：找到 {{count}} 个。",
+    "semanticsFound": "语义：{{count}} 条建议。",
+    "semanticsFound_other": "语义：{{count}} 条建议。",
+    "semanticsUnreadable": "语义：无。无法读取模型的回答。",
+    "semanticsNoneProposed": "语义：无。模型未提出任何关系。",
+    "semanticsFiltered": "语义：模型提出的 {{count}} 个关系均未保留：{{why}}。",
+    "semanticsFiltered_other": "语义：模型提出的 {{count}} 个关系均未保留：{{why}}。",
+    "belowThreshold": "{{count}} 个低于 {{threshold}}% 的置信度阈值",
+    "belowThreshold_other": "{{count}} 个低于 {{threshold}}% 的置信度阈值",
+    "alreadyKnown": "{{count}} 个已被拒绝或已存在",
+    "alreadyKnown_other": "{{count}} 个已被拒绝或已存在",
+    "invalid": "{{count}} 个引用了不存在的表或列",
+    "invalid_other": "{{count}} 个引用了不存在的表或列"
+  }
+}

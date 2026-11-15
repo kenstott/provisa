@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "Обнаружение Elasticsearch требует подсказки 'index'.",
       "elasticsearch_mapping_failed": "Не удалось прочитать маппинг Elasticsearch для индекса '{{index}}': {{error}}",
       "endpoint_already_registered": "Конечная точка уже зарегистрирована: {{error}}",
+      "model_failed": "Сбой модели {{model}}: {{error}}",
       "no_adapter_for_source_type": "Для типа источника '{{source_type}}' не зарегистрирован адаптер",
       "no_live_connection": "Нет активного подключения для источника '{{source_id}}'. Обнаружение схемы MongoDB требует активного подключения в пуле источника. Убедитесь, что источник подключен и сервер доступен.",
       "schema_discovery_unsupported": "Тип источника '{{source_type}}' не поддерживает обнаружение схемы. Определите столбцы вручную.",
+      "semantics_unavailable": "Семантику нельзя запустить: у {{model}}, модели, назначенной для вывода связей, нет ключа. Задайте его в разделе Администрирование, Модели ИИ.",
       "source_not_found": "Источник '{{source_id}}' не найден",
       "table_id_required": "для области действия таблицы требуется table_id",
       "unknown_source_type": "Неизвестный тип источника: {{type}}"

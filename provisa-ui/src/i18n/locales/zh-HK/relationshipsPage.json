@@ -12,7 +12,6 @@
     "clearRejections": "清除拒絕記錄",
     "clearedRejections": "已清除 {{count}} 項拒絕記錄。",
     "clearedRejections_other": "已清除 {{count}} 項拒絕記錄。",
-    "discoverZeroCandidates": "AI 找到 0 個候選項（詳情請查看伺服器記錄）",
     "domain": "領域",
     "source": "來源",
     "target": "目標",

@@ -12,7 +12,6 @@
     "clearRejections": "Cancella rifiuti",
     "clearedRejections": "Cancellato {{count}} rifiuto.",
     "clearedRejections_other": "Cancellati {{count}} rifiuti.",
-    "discoverZeroCandidates": "L'AI ha trovato 0 candidati (controllare i log del server per i dettagli)",
     "domain": "Dominio",
     "source": "Origine",
     "target": "Destinazione",

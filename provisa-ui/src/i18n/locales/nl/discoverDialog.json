@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "Relaties ontdekken",
+    "intro": "Kies waarnaar in alle domeinen wordt gezocht. Er wordt niets uitgevoerd tot u op Uitvoeren drukt.",
+    "foreignKeys": "Refererende sleutels",
+    "semantics": "Semantiek",
+    "semanticsNoKey": "Semantiek: niet beschikbaar. {{model}}, het model dat aan relatie-inferentie is toegewezen, heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+    "run": "Uitvoeren"
+  }
+}

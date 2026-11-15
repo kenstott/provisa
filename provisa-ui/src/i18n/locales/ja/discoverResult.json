@@ -1,0 +1,18 @@
+{
+  "discoverResult": {
+    "foreignKeys": "外部キー: {{count}} 件見つかりました。",
+    "foreignKeys_other": "外部キー: {{count}} 件見つかりました。",
+    "semanticsFound": "セマンティクス: {{count}} 件の提案。",
+    "semanticsFound_other": "セマンティクス: {{count}} 件の提案。",
+    "semanticsUnreadable": "セマンティクス: なし。モデルの回答を読み取れませんでした。",
+    "semanticsNoneProposed": "セマンティクス: なし。モデルはリレーションシップを提案しませんでした。",
+    "semanticsFiltered": "セマンティクス: モデルが提案した {{count}} 件のリレーションシップは採用されませんでした: {{why}}。",
+    "semanticsFiltered_other": "セマンティクス: モデルが提案した {{count}} 件のリレーションシップはいずれも採用されませんでした: {{why}}。",
+    "belowThreshold": "{{count}} 件が信頼度しきい値 {{threshold}}% を下回りました",
+    "belowThreshold_other": "{{count}} 件が信頼度しきい値 {{threshold}}% を下回りました",
+    "alreadyKnown": "{{count}} 件はすでに却下済みか既存でした",
+    "alreadyKnown_other": "{{count}} 件はすでに却下済みか既存でした",
+    "invalid": "{{count}} 件が存在しないテーブルまたは列を指定していました",
+    "invalid_other": "{{count}} 件が存在しないテーブルまたは列を指定していました"
+  }
+}

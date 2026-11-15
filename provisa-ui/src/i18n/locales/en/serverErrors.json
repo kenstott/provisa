@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "Elasticsearch discovery requires an 'index' hint.",
       "elasticsearch_mapping_failed": "Failed to read Elasticsearch mapping for index '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint already registered: {{error}}",
+      "model_failed": "The model {{model}} failed: {{error}}",
       "no_adapter_for_source_type": "No adapter registered for source type '{{source_type}}'",
       "no_live_connection": "No live connection for source '{{source_id}}'. MongoDB schema discovery requires an active connection in the source pool. Verify the source is connected and the server is reachable.",
       "schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
+      "semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
       "unknown_source_type": "Unknown source type: {{type}}"

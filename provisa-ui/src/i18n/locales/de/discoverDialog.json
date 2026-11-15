@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "Beziehungen ermitteln",
+    "intro": "Wählen Sie, wonach in allen Domänen gesucht werden soll. Erst mit Ausführen beginnt die Suche.",
+    "foreignKeys": "Fremdschlüssel",
+    "semantics": "Semantik",
+    "semanticsNoKey": "Semantik: nicht verfügbar. {{model}}, das der Beziehungsableitung zugewiesene Modell, hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+    "run": "Ausführen"
+  }
+}

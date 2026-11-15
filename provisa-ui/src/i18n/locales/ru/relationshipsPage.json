@@ -12,7 +12,6 @@
     "clearRejections": "Очистить отклонения",
     "clearedRejections": "Очищено {{count}} отклонение.",
     "clearedRejections_other": "Очищено {{count}} отклонений.",
-    "discoverZeroCandidates": "ИИ не нашёл кандидатов (подробности в журналах сервера)",
     "domain": "Домен",
     "source": "Источник",
     "target": "Цель",

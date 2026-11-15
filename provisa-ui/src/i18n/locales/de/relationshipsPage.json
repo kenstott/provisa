@@ -12,7 +12,6 @@
     "clearRejections": "Ablehnungen zurücksetzen",
     "clearedRejections": "{{count}} Ablehnung zurückgesetzt.",
     "clearedRejections_other": "{{count}} Ablehnungen zurückgesetzt.",
-    "discoverZeroCandidates": "KI hat 0 Kandidaten gefunden (Details in den Serverprotokollen)",
     "domain": "Domäne",
     "source": "Quelle",
     "target": "Ziel",

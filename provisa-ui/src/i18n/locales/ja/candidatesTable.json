@@ -1,6 +1,6 @@
 {
   "candidatesTable": {
-    "heading": "AIが提案したリレーションシップ",
+    "heading": "提案されたリレーションシップ",
     "colName": "名前",
     "colSource": "ソース",
     "colTarget": "ターゲット",

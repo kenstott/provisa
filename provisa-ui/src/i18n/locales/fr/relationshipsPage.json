@@ -12,7 +12,6 @@
     "clearRejections": "Effacer les rejets",
     "clearedRejections": "{{count}} rejet effacé.",
     "clearedRejections_other": "{{count}} rejets effacés.",
-    "discoverZeroCandidates": "L'IA a trouvé 0 candidat (consultez les journaux du serveur pour les détails)",
     "domain": "Domaine",
     "source": "Source",
     "target": "Cible",

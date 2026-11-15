@@ -12,7 +12,6 @@
     "clearRejections": "Afwijzingen wissen",
     "clearedRejections": "{{count}} afwijzing gewist.",
     "clearedRejections_other": "{{count}} afwijzingen gewist.",
-    "discoverZeroCandidates": "AI vond 0 kandidaten (raadpleeg de serverlogboeken voor details)",
     "domain": "Domein",
     "source": "Bron",
     "target": "Doel",

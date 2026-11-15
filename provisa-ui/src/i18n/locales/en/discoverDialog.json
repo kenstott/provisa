@@ -1,0 +1,10 @@
+{
+  "discoverDialog": {
+    "title": "Discover relationships",
+    "intro": "Choose what to look for across every domain. Nothing runs until you press Run.",
+    "foreignKeys": "Foreign keys",
+    "semantics": "Semantics",
+    "semanticsNoKey": "Semantics: not available. {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
+    "run": "Run"
+  }
+}
