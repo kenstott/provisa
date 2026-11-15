@@ -16,6 +16,7 @@ import type { AiModelsState } from "../api/aiModels";
 vi.mock("../api/aiModels", () => ({
   fetchAiModels: vi.fn(),
   fetchVendorModels: vi.fn(),
+  fetchModelLimits: vi.fn(),
   setAiModels: vi.fn(),
   LLM_VENDORS: [
     "anthropic",
@@ -34,10 +35,41 @@ vi.mock("../api/aiModels", () => ({
   JEV_KEY: "jev",
 }));
 
-import { fetchAiModels, fetchVendorModels, setAiModels } from "../api/aiModels";
+import { fetchAiModels, fetchModelLimits, fetchVendorModels, setAiModels } from "../api/aiModels";
+import type { ModelLimits } from "../api/aiModels";
 const mockFetch = vi.mocked(fetchAiModels);
+const mockLimits = vi.mocked(fetchModelLimits);
 const mockVendorModels = vi.mocked(fetchVendorModels);
 const mockSet = vi.mocked(setAiModels);
+
+// REQ-464: a model's limits as the server describes them.
+function limits(
+  vendor: string,
+  model: string,
+  input: number,
+  output: number,
+  source: ModelLimits["source"],
+  base: [number, number, "known" | "default"] = [input, output, source === "default" ? "default" : "known"],
+): ModelLimits {
+  return {
+    vendor,
+    model,
+    input_tokens: input,
+    output_tokens: output,
+    source,
+    base_input_tokens: base[0],
+    base_output_tokens: base[1],
+    base_source: base[2],
+  };
+}
+
+const KNOWN_LIMITS: AiModelsState["model_limits"] = {
+  anthropic: {
+    "claude-haiku-4-5-20251001": limits("anthropic", "claude-haiku-4-5-20251001", 200000, 64000, "known"),
+    "claude-opus-4-6": limits("anthropic", "claude-opus-4-6", 1000000, 128000, "known"),
+    "claude-opus-4-8": limits("anthropic", "claude-opus-4-8", 1000000, 128000, "known"),
+  },
+};
 
 function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
   return {
@@ -62,6 +94,7 @@ function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
       },
     ],
     ai_endpoints: [],
+    model_limits: KNOWN_LIMITS,
     nl: { rate_limit: 60 },
     api_keys_set: { anthropic: false },
     restart_required_note: "AI model settings take effect after a service restart.",
@@ -75,6 +108,10 @@ describe("AiModelsTab", () => {
     mockSet.mockReset();
     mockVendorModels.mockReset();
     mockVendorModels.mockResolvedValue([]);
+    mockLimits.mockReset();
+    mockLimits.mockImplementation(async (vendor, model) =>
+      limits(vendor, model, 32000, 4096, "default"),
+    );
   });
 
   it("renders the model-role fields with loaded values", async () => {
@@ -304,5 +341,154 @@ describe("AiModelsTab", () => {
       target: { value: "some-custom-model" },
     });
     expect(screen.getByTestId("ai-model-sql_generation")).toHaveValue("some-custom-model");
+  });
+
+  describe("model limits", () => {
+    it("prefills each assigned model's published limits", async () => {
+      mockFetch.mockResolvedValue(state());
+      render(<AiModelsTab />);
+
+      const input = await screen.findByTestId("ai-model-sql_generation-input-limit");
+      expect(input).toHaveValue("1,000,000");
+      expect(screen.getByTestId("ai-model-sql_generation-output-limit")).toHaveValue("128,000");
+      expect(screen.getByTestId("ai-model-table_selection-input-limit")).toHaveValue("200,000");
+      expect(screen.getByTestId("ai-model-table_selection-output-limit")).toHaveValue("64,000");
+      expect(screen.queryByText(/no published figure is known/)).not.toBeInTheDocument();
+      // A task with no model shows no limits.
+      expect(screen.queryByTestId("ai-model-glossary_term_finding-input-limit")).toBeNull();
+    });
+
+    it("marks the default pair of a model with no published figure", async () => {
+      mockFetch.mockResolvedValue(
+        state({
+          ai_models: {
+            ...state().ai_models,
+            sql_generation: { vendor: "ollama", model: "llama3:8b" },
+          },
+          model_limits: {
+            ...KNOWN_LIMITS,
+            ollama: { "llama3:8b": limits("ollama", "llama3:8b", 32000, 4096, "default") },
+          },
+        }),
+      );
+      render(<AiModelsTab />);
+
+      const input = await screen.findByTestId("ai-model-sql_generation-input-limit");
+      expect(input).toHaveValue("32,000");
+      expect(screen.getByTestId("ai-model-sql_generation-output-limit")).toHaveValue("4,096");
+      expect(screen.getAllByText("Default: no published figure is known for this model.")).toHaveLength(1);
+    });
+
+    it("saves an edited limit as the org's own figures for that model", async () => {
+      mockFetch.mockResolvedValue(state());
+      mockSet.mockResolvedValue({ success: true, updated: [], restart_required: false });
+      render(<AiModelsTab />);
+
+      const input = await screen.findByTestId("ai-model-sql_generation-input-limit");
+      fireEvent.change(input, { target: { value: "500000" } });
+      expect(screen.getByTestId("ai-model-sql_generation-limits-reset")).toHaveTextContent(
+        "Use published limits",
+      );
+      fireEvent.click(screen.getByTestId("ai-models-save"));
+
+      await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+      expect(mockSet.mock.calls[0][0].model_limits).toEqual({
+        anthropic: { "claude-opus-4-6": { input_tokens: 500000, output_tokens: 128000 } },
+      });
+    });
+
+    it("refuses to save an emptied limit and says which model", async () => {
+      mockFetch.mockResolvedValue(state());
+      render(<AiModelsTab />);
+
+      const output = await screen.findByTestId("ai-model-sql_generation-output-limit");
+      fireEvent.change(output, { target: { value: "" } });
+      fireEvent.click(screen.getByTestId("ai-models-save"));
+
+      expect(
+        await screen.findByText("Enter both limits for claude-opus-4-6 as whole numbers above zero."),
+      ).toBeInTheDocument();
+      expect(mockSet).not.toHaveBeenCalled();
+    });
+
+    it("returns an overridden model to its published limits", async () => {
+      mockFetch.mockResolvedValue(
+        state({
+          model_limits: {
+            anthropic: {
+              ...KNOWN_LIMITS.anthropic,
+              "claude-opus-4-6": limits("anthropic", "claude-opus-4-6", 50000, 2000, "override", [
+                1000000,
+                128000,
+                "known",
+              ]),
+            },
+          },
+        }),
+      );
+      mockSet.mockResolvedValue({ success: true, updated: [], restart_required: false });
+      render(<AiModelsTab />);
+
+      const input = await screen.findByTestId("ai-model-sql_generation-input-limit");
+      expect(input).toHaveValue("50,000");
+      fireEvent.click(screen.getByTestId("ai-model-sql_generation-limits-reset"));
+      expect(input).toHaveValue("1,000,000");
+      expect(screen.getByTestId("ai-model-sql_generation-output-limit")).toHaveValue("128,000");
+      expect(screen.queryByTestId("ai-model-sql_generation-limits-reset")).toBeNull();
+      fireEvent.click(screen.getByTestId("ai-models-save"));
+
+      await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+      expect(mockSet.mock.calls[0][0].model_limits).toEqual({
+        anthropic: { "claude-opus-4-6": null },
+      });
+    });
+
+    it("an overridden unknown model returns to the default pair", async () => {
+      mockFetch.mockResolvedValue(
+        state({
+          ai_models: {
+            ...state().ai_models,
+            sql_generation: { vendor: "ollama", model: "llama3:8b" },
+          },
+          model_limits: {
+            ...KNOWN_LIMITS,
+            ollama: {
+              "llama3:8b": limits("ollama", "llama3:8b", 8192, 2048, "override", [
+                32000,
+                4096,
+                "default",
+              ]),
+            },
+          },
+        }),
+      );
+      render(<AiModelsTab />);
+
+      const reset = await screen.findByTestId("ai-model-sql_generation-limits-reset");
+      expect(reset).toHaveTextContent("Use default limits");
+      fireEvent.click(reset);
+      expect(screen.getByTestId("ai-model-sql_generation-input-limit")).toHaveValue("32,000");
+      expect(screen.getByText("Default: no published figure is known for this model.")).toBeInTheDocument();
+    });
+
+    it("looks up the limits of a model newly given to a task", async () => {
+      mockFetch.mockResolvedValue(state());
+      mockLimits.mockResolvedValue(limits("openai", "gpt-4.1", 1047576, 32768, "known"));
+      render(<AiModelsTab />);
+
+      await screen.findByTestId("ai-model-sql_generation-input-limit");
+      fireEvent.change(screen.getByTestId("ai-model-sql_generation-vendor"), {
+        target: { value: "openai" },
+      });
+      fireEvent.change(screen.getByTestId("ai-model-sql_generation"), {
+        target: { value: "gpt-4.1" },
+      });
+
+      await waitFor(() =>
+        expect(screen.getByTestId("ai-model-sql_generation-input-limit")).toHaveValue("1,047,576"),
+      );
+      expect(mockLimits).toHaveBeenCalledWith("openai", "gpt-4.1");
+      expect(mockLimits).not.toHaveBeenCalledWith("anthropic", "claude-opus-4-6");
+    });
   });
 });

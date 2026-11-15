@@ -47,6 +47,13 @@
     "saveButtonLabel": "Save AI model settings",
     "loading": "Loading…",
     "saved": "Saved.",
-    "savedRestartRequired": "Saved. Restart the service to apply."
+    "savedRestartRequired": "Saved. Restart the service to apply.",
+    "limitsIntro": "Each model has two limits, in tokens: the most it can read in one request (input) and the longest answer it can write (output). A model with published figures starts with those; change them if yours differ.",
+    "inputLimitLabel": "Input limit (tokens)",
+    "outputLimitLabel": "Output limit (tokens)",
+    "limitsDefaultNote": "Default: no published figure is known for this model.",
+    "limitsResetKnown": "Use published limits",
+    "limitsResetDefault": "Use default limits",
+    "limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
   }
 }
