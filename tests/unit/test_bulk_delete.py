@@ -13,7 +13,7 @@ delete's own guard. What can be deleted is deleted; each row refused is named wi
 the dependents its single delete named; a caller without the right to delete is refused before any
 row is attempted."""
 
-# Requirements: REQ-2240
+# Requirements: REQ-2240, REQ-2248
 
 from __future__ import annotations
 
@@ -80,9 +80,12 @@ async def _table(db: Database, name: str, view_sql: str | None = None) -> int:
 
 
 async def _names(db: Database) -> list[str]:
+    """The tables in service: a deleted table is retired, its row kept (REQ-2248)."""
     async with db.acquire() as conn:
         rows = await conn.execute_core(
-            select(registered_tables.c.table_name).order_by(registered_tables.c.table_name)
+            select(registered_tables.c.table_name)
+            .where(registered_tables.c.retired.is_(False))
+            .order_by(registered_tables.c.table_name)
         )
         return [r[0] for r in rows.fetchall()]
 

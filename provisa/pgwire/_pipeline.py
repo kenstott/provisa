@@ -251,8 +251,9 @@ class _Plan:
     sources: frozenset[str] = field(default_factory=frozenset)
     route_reason: str | None = field(default=None)
     optimizations: tuple[str, ...] = field(default=())
-    # REQ-2001 (GitHub issue 253): an INSERT ... SELECT written in two steps (_TwoStepInsert): its
-    # governed SELECT read as any read, then its rows written through the target's write route.
+    # REQ-2001 (GitHub issue 253): a write that reads another source, in two steps (_TwoStepWrite):
+    # its governed read (an INSERT's SELECT, a MERGE's USING) read as any read, then its rows
+    # written on the target's source.
     two_step: Any = field(default=None)
     # REQ-2100: a write to a code table (codesource.writes.CodeWrite), with the plan of the read it
     # needs (an UPDATE's or a DELETE's keys, an INSERT ... SELECT's rows), carried out by the
@@ -2215,27 +2216,66 @@ async def _route_bounded(governed: "_Governed", **how: Any) -> _Plan:
 
 
 @dataclass
-class _TwoStepInsert:  # REQ-2001
-    """An INSERT ... SELECT written in two steps: ``read`` is its governed SELECT's plan, and the
-    rows it answers are written through the target's write route as INSERT ... VALUES under
-    ``template`` (the governed INSERT, its ON CONFLICT clause kept), ``batch`` rows a statement."""
+class _TwoStepWrite:  # REQ-2001
+    """A write that reads another source, in two steps: ``read`` is the plan of its governed read
+    -- an INSERT ... SELECT's SELECT, a MERGE's USING query -- and the rows it answers are then
+    written on the target's source under ``template``, the governed write:
 
-    governed: Any  # the governed INSERT ... SELECT
-    template: Any  # its parsed governed form, the SELECT to be replaced by VALUES
+    - an INSERT as INSERT ... VALUES, its ON CONFLICT clause kept, ``batch`` rows a statement;
+    - a MERGE as one MERGE, its USING the rows read (a VALUES list under the USING's alias and
+      the read's column names), so its WHENs, a WHEN NOT MATCHED BY SOURCE included, act on the
+      target in one statement there."""
+
+    governed: Any  # the governed write
+    template: Any  # its parsed governed form, its read to be replaced by the rows read
     target_source: str
-    read: Any = None  # the SELECT's plan
+    read: Any = None  # the plan of its read
     batch: int = 500
 
+    @property
+    def merge(self) -> bool:
+        import sqlglot.expressions as exp
 
-def _two_step_insert(governed: "_Governed", written_table_id: int | None, state: Any):
-    """The two-step form of an INSERT ... SELECT that needs one, else None (REQ-2001, issue 253):
-    its SELECT reads a source other than its target's, or embeds the text of its rows (REQ-2002).
-    Such a statement sent whole to one source would be sent to a source that cannot answer it."""
+        return isinstance(self.template, exp.Merge)
+
+    def read_query(self, tree: Any) -> Any:
+        """The read of ``tree`` -- the governed write, or the statement as written: an INSERT's
+        SELECT, a MERGE's USING query (its subquery, or every column of the table it names)."""
+        import sqlglot.expressions as exp
+
+        if not isinstance(tree, exp.Merge):
+            return tree.expression
+        using = tree.args["using"]
+        if isinstance(using, exp.Subquery):
+            return using.this
+        return exp.select("*").from_(using.copy())
+
+
+#: The most values a MERGE written in two steps binds: its rows are one statement on the target,
+#: and a PostgreSQL driver binds at most this many values a statement.
+_MERGE_VALUES_CAP = 32767
+
+
+def _two_step_write(governed: "_Governed", written_table_id: int | None, state: Any):
+    """The two-step form of a write that needs one, else None (REQ-2001, issue 253): an INSERT
+    ... SELECT whose SELECT, or a MERGE whose USING query, reads a source other than its
+    target's, or embeds the text of its rows (REQ-2002). Such a statement sent whole to one
+    source would be sent to a source that cannot answer it."""
     import sqlglot
     import sqlglot.expressions as exp
 
     template = sqlglot.parse_one(governed.governed_semantic, read="postgres")
-    if not isinstance(template, exp.Insert) or not isinstance(template.expression, exp.Query):
+    if isinstance(template, exp.Insert):
+        if not isinstance(template.expression, exp.Query):
+            return None
+    elif isinstance(template, exp.Merge):
+        target = template.this
+        if not any(
+            (t.db, t.name) != (target.db, target.name)
+            for t in template.args["using"].find_all(exp.Table)
+        ):
+            return None  # its USING is rows already (the second step's own statement)
+    else:
         return None
     sources = {m.table_id: m.source_id for m in governed.ctx.tables.values()}
     target_source = sources[written_table_id]
@@ -2244,30 +2284,31 @@ def _two_step_insert(governed: "_Governed", written_table_id: int | None, state:
     transformed = governed.memo.get("columns")  # REQ-2131: its rows' outputs, computed once read
     if reads <= {target_source} and (folded is None or not folded.rows) and transformed is None:
         return None
-    return _TwoStepInsert(governed=governed, template=template, target_source=target_source)
+    if isinstance(template, exp.Merge):
+        _by_source(template)  # refused by name before anything is read
+    return _TwoStepWrite(governed=governed, template=template, target_source=target_source)
 
 
 async def _two_step_plan(
     governed: "_Governed",
-    two: _TwoStepInsert,
+    two: _TwoStepWrite,
     *,
     params: list | None,
     as_of: str | None,
     audit: Any,
     state: Any,
 ) -> "_Plan":
-    """The plan of a two-step INSERT ... SELECT: its governed SELECT routed as any read, and the
+    """The plan of a write in two steps: its governed read routed as any read, and the
     statement's own record (one audit row, one after-write for its target)."""
     import dataclasses
 
-    import sqlglot.expressions as exp
     from provisa.transpiler.router import Route
 
-    select = two.template.expression
+    select = two.read_query(two.template)
     read_governed = dataclasses.replace(
         governed,
         governed_semantic=select.sql(dialect="postgres"),
-        parsed=governed.parsed.expression,
+        parsed=two.read_query(governed.parsed),
         memo={},
     )
     read = await route_governed(read_governed, params=params, as_of=as_of)
@@ -2275,7 +2316,6 @@ async def _two_step_plan(
     read.embedded = governed.memo.get("embed")  # REQ-2002: its rows' texts, embedded once read
     read.columns = governed.memo.get("columns")  # REQ-2131: its rows' outputs, computed once read
     two.read = read
-    assert isinstance(two.template, exp.Insert)
     from provisa.compiler.write_admission import written_table_id
 
     return _Plan(
@@ -2287,7 +2327,9 @@ async def _two_step_plan(
         audit=audit,
         stamp=_mint_stamp(),  # governed-provenance: minted at the top of the pipeline
         route_reason=(
-            "INSERT ... SELECT whose rows are read first, then written to its target's source"
+            "MERGE whose USING rows are read first, then merged on its target's source"
+            if two.merge
+            else "INSERT ... SELECT whose rows are read first, then written to its target's source"
         ),
         role_id=governed.role_id,
         table_ids=governed.table_ids,
@@ -2548,15 +2590,170 @@ async def _run_keyed_write(plan: "_Plan", state: Any) -> QueryResult:  # REQ-039
     return QueryResult(rows=returned, column_names=two.returned, rowcount=written)
 
 
+async def _merge_types(read: "_Plan", names: list[str]) -> list[Any]:  # REQ-2001
+    """The type of each column a MERGE's USING read answers, as the model types it (the read's
+    result shape): the type the rows read are bound as on the target. A column whose type cannot
+    be derived is refused by name."""
+    from provisa.compiler.result_shape import Underived, _registered_type
+
+    shape = None if read.result_shape is None else await read.result_shape()
+    if shape is None or len(shape) != len(names):
+        raise ValueError(
+            "a MERGE whose USING query reads another source binds the rows it reads as typed "
+            "values, and the types of the USING query's columns cannot be derived; CAST each of "
+            "its columns to a type"
+        )
+    types = []
+    for name, declared in zip(names, shape, strict=True):
+        typed = None if isinstance(declared[1], Underived) else _registered_type(declared[1])
+        if typed is None:
+            raise ValueError(
+                f"a MERGE whose USING query reads another source binds the rows it reads as "
+                f"typed values, and the type of its column {name!r} cannot be derived; CAST it "
+                "to a type in the USING query"
+            )
+        types.append(typed)
+    return types
+
+
+#: The names the MERGE written in two steps gives what it adds: the target read again beside the
+#: rows read, each target row's own row id there, and the marker of a row that was read.
+_MERGE_TARGET = "provisa_target"
+_MERGE_ROW = "provisa_row"
+_MERGE_READ = "provisa_read"
+
+
+def _by_source(merge: Any) -> Any:
+    """The MERGE's WHEN NOT MATCHED BY SOURCE clause, or None. Only one, and only a DELETE: one
+    written in two steps carries it as a WHEN MATCHED over the target rows no row read matches
+    (:func:`_merged_rows`), which an UPDATE of such a row, or several such clauses in order, are
+    refused by name."""
+    whens = merge.args.get("whens")
+    clauses = [w for w in (whens.expressions if whens is not None else []) if w.args.get("source")]
+    if not clauses:
+        return None
+    if len(clauses) > 1:
+        raise ValueError(
+            "a MERGE whose USING query reads another source may hold one WHEN NOT MATCHED BY "
+            f"SOURCE clause, a DELETE; it holds {len(clauses)}"
+        )
+    (clause,) = clauses
+    if clause.args["then"].sql(dialect="postgres").upper() != "DELETE":
+        raise ValueError(
+            "a MERGE whose USING query reads another source may hold WHEN NOT MATCHED BY SOURCE "
+            "THEN DELETE, not THEN UPDATE"
+        )
+    return clause
+
+
+def _merged_rows(
+    two: _TwoStepWrite, names: list[str], types: list[Any], rows: list[tuple]
+) -> tuple[Any, list]:
+    """The MERGE of ``two`` over ``rows``, the rows its USING read answered, and the values it
+    binds: its USING those rows, bound, under the USING's alias and the read's column names.
+
+    A WHEN NOT MATCHED BY SOURCE THEN DELETE is carried in the same statement, whatever the
+    target's version (PostgreSQL before 17 has no such clause): the USING is the rows read FULL
+    JOINed to the target on the MERGE's ON, each joined row carrying its target row's id
+    (``ctid``) and whether a row read is in it; the MERGE matches by that id, so a target row no
+    row read matches is matched with no row read, and the clause becomes WHEN MATCHED AND no row
+    read THEN DELETE. Its count is the MERGE's, the rows deleted included."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    width = len(names)
+    if len(rows) * width > _MERGE_VALUES_CAP:
+        raise ValueError(
+            f"a MERGE whose USING query reads another source writes the rows it reads in one "
+            f"statement, which binds at most {_MERGE_VALUES_CAP} values; its USING query read "
+            f"{len(rows)} rows of {width} columns"
+        )
+    statement = two.template.copy()
+    by_source = _by_source(statement)
+
+    def quoted(name: str) -> str:
+        return exp.to_identifier(name, quoted=True).sql()
+
+    cast = [t.sql(dialect="postgres") for t in types]
+    alias = quoted(statement.args["using"].alias_or_name)
+    marked = [*names, _MERGE_READ] if by_source is not None else names
+    columns = ", ".join(quoted(n) for n in marked)
+    if rows:
+        mark = ", TRUE" if by_source is not None else ""
+        values = ", ".join(
+            "("
+            + ", ".join(f"CAST(${i * width + j + 1} AS {cast[j]})" for j in range(width))
+            + mark
+            + ")"
+            for i in range(len(rows))
+        )
+        source = f"(VALUES {values}) AS {alias}({columns})"
+    else:
+        nulls = [f"CAST(NULL AS {cast[j]}) AS {quoted(n)}" for j, n in enumerate(names)]
+        if by_source is not None:
+            nulls.append(f"TRUE AS {quoted(_MERGE_READ)}")
+        source = f"(SELECT {', '.join(nulls)} WHERE FALSE) AS {alias}"
+    if by_source is not None:
+        target = statement.this
+        own = {target.alias_or_name, target.name}
+        bare = target.copy()
+        bare.set("alias", None)
+        on = statement.args["on"].copy()
+        for column in on.find_all(exp.Column):
+            if column.table in own:
+                column.set("table", exp.to_identifier(_MERGE_TARGET, quoted=True))
+        source = (
+            f"(SELECT {alias}.*, {quoted(_MERGE_TARGET)}.ctid AS {quoted(_MERGE_ROW)} "
+            f"FROM {source} FULL JOIN {bare.sql(dialect='postgres')} "
+            f"AS {quoted(_MERGE_TARGET)} ON {on.sql(dialect='postgres')}) AS {alias}"
+        )
+        statement.set(
+            "on",
+            sqlglot.parse_one(
+                f"{quoted(target.alias_or_name)}.ctid = {alias}.{quoted(_MERGE_ROW)}",
+                read="postgres",
+            ),
+        )
+        read = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NOT NULL", read="postgres")
+        for when in statement.args["whens"].expressions:
+            if when.args.get("source"):
+                when.set("source", False)
+                when.set("matched", True)
+                gone = sqlglot.parse_one(f"{alias}.{quoted(_MERGE_READ)} IS NULL", read="postgres")
+                condition = when.args.get("condition")
+                when.set("condition", exp.and_(gone, condition) if condition else gone)
+            elif when.args.get("matched"):
+                condition = when.args.get("condition")
+                when.set(
+                    "condition", exp.and_(read.copy(), condition) if condition else read.copy()
+                )
+    using = sqlglot.parse_one(f"SELECT * FROM {source}", read="postgres").args["from_"].this
+    statement.set("using", using)
+    return statement, [v for r in rows for v in r]
+
+
 async def _run_two_step(plan: "_Plan", state: Any) -> QueryResult:  # REQ-2001
-    """Read the statement's rows, then write them through the target's write route, a batch of
-    rows an INSERT ... VALUES under the statement's own target, columns and ON CONFLICT."""
+    """Read the statement's rows, then write them on the target's source: a MERGE as one MERGE
+    over the rows read, an INSERT a batch of rows an INSERT ... VALUES under the statement's own
+    target, columns and ON CONFLICT."""
     import dataclasses
 
     import sqlglot
 
     two = plan.two_step
-    rows = (await _execute_plan_bound(two.read, state)).materialize().rows
+    answered = (await _execute_plan_bound(two.read, state)).materialize()
+    rows = answered.rows
+    if two.merge:
+        names = list(answered.column_names)
+        statement, values = _merged_rows(two, names, await _merge_types(two.read, names), rows)
+        write_governed = dataclasses.replace(
+            two.governed,
+            governed_semantic=statement.sql(dialect="postgres"),
+            comment_params=None,
+            memo={},
+        )
+        write = await route_governed(write_governed, params=values)
+        return await _run_plan_terminal(write, state)
     written = 0
     for start in range(0, len(rows), two.batch):
         chunk = rows[start : start + two.batch]
@@ -2706,8 +2903,8 @@ async def route_governed(
         raise ValueError("EXPLAIN is only supported for read statements")
     if _staged_read is not None:
         return _staged_plan(governed, _staged_read, params=params, as_of=as_of, audit=_audit)
-    if _is_mutation and isinstance(_parsed_input, exp.Insert):
-        _two = _two_step_insert(governed, _written_table_id, state)
+    if _is_mutation and isinstance(_parsed_input, (exp.Insert, exp.Merge)):
+        _two = _two_step_write(governed, _written_table_id, state)
         if _two is not None:
             return await _two_step_plan(
                 governed, _two, params=params, as_of=as_of, audit=_audit, state=state

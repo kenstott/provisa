@@ -316,7 +316,8 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     for r in (
         await conn.execute_core(
             select(table_columns)
-            .where(table_columns.c.table_id.in_(ids))
+            # REQ-2248: a retired column is not in its table's listing.
+            .where(table_columns.c.table_id.in_(ids), table_columns.c.retired.is_(False))
             .order_by(table_columns.c.table_id, table_columns.c.id)
         )
     ).fetchall():

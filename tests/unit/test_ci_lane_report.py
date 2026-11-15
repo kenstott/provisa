@@ -92,3 +92,15 @@ def test_a_missing_artifacts_directory_is_reported_not_a_crash(tmp_path):
 def test_main_exits_non_zero_for_a_missing_artifacts_directory(tmp_path, capsys):
     assert _report().main([str(tmp_path / "artifacts")]) == 1
     assert "No results" in capsys.readouterr().out
+
+
+def test_no_integration_test_writes_a_folder_beside_the_lane_results():
+    # The report reads every folder under results/ as a lane, so a test's own output there is a
+    # file: a folder with no junit.xml fails the run though every lane passed (run 43634925767).
+    import re
+
+    offenders = []
+    for path in sorted((REPO / "tests" / "integration").rglob("*.py")):
+        for found in re.finditer(r'"results"\s*/\s*"([^"]+)"\s*/', path.read_text()):
+            offenders.append(f"{path.relative_to(REPO)}: results/{found.group(1)}/")
+    assert offenders == []

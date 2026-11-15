@@ -53,6 +53,9 @@ from provisa.security.sensitive import SENSITIVE_DATA
 from provisa.core.repositories import glossary as glossary_repo, rls as rls_repo
 from provisa.api.admin.capabilities import require_capability, require_right_in_domains
 from provisa.security.rights import ALL_DOMAINS
+from provisa.api.admin._retired_objects import restore as restore_retired
+from provisa.api.admin._retired_objects import retired_name_result
+from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin.types import (
     CalendarInput,
     ColumnAliasType,
@@ -383,8 +386,15 @@ async def _relationship_id_refusal(
     """A create makes a new relationship and an update changes one: an id another relationship
     holds, or one no relationship holds, is refused by name."""
     held = (
-        await conn.execute_core(select(relationships.c.id).where(relationships.c.id == input.id))
+        await conn.execute_core(
+            select(relationships.c.id, relationships.c.retired).where(
+                relationships.c.id == input.id
+            )
+        )
     ).fetchone()
+    if held is not None and held.retired:
+        # REQ-2248: a retired relationship keeps its id; it is restored, not saved over.
+        return retired_name_result(RetiredNameTaken("relationship", input.id))
     if creating and held is not None:
         return MutationResult(
             success=False,
@@ -462,7 +472,7 @@ async def _relationship_alias_refusal(
         return None
     held = (
         await conn.execute_core(
-            select(relationships.c.id).where(
+            select(relationships.c.id, relationships.c.retired).where(
                 relationships.c.source_table_id == source_table_id,
                 relationships.c.alias == input.alias,
                 relationships.c.id != input.id,
@@ -471,6 +481,8 @@ async def _relationship_alias_refusal(
     ).fetchone()
     if held is None:
         return None
+    if held.retired:  # REQ-2248: a retired relationship's alias stays taken
+        return retired_name_result(RetiredNameTaken("relationship", input.alias))
     return MutationResult(
         success=False,
         message=(
@@ -1024,6 +1036,8 @@ async def _save_tag(
             return MutationResult(
                 success=False, message=str(exc), code=exc.code, params={"tag": input.id}
             )
+        except RetiredNameTaken as exc:  # REQ-2248
+            return retired_name_result(exc)
         outside = [] if creating else await _assignments_outside(info, c, model)
     await _refresh_config_tags()
     message = f"Tag {input.id!r} saved"
@@ -1183,6 +1197,8 @@ async def _save_metric(
             from provisa.api.admin._metric_views import regenerate_metric_views
 
             regenerated = await regenerate_metric_views(cast("Connection", conn), input.name)
+    except RetiredNameTaken as taken:  # REQ-2248
+        return retired_name_result(taken)
     except ValueError as e:  # REQ-1317/1318: invalid expression / spec no longer compiles
         return MutationResult(success=False, message=str(e))
     # Always rebuild: state.metrics (raw-SQL `metrics.<name>` expansion) and the
@@ -1318,6 +1334,8 @@ async def save_relationship(
                 )
         except _FakeRefusedSave as refused:
             return refused.result
+        except RetiredNameTaken as taken:  # REQ-2248
+            return retired_name_result(taken)
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
         if needs_review:
@@ -3895,6 +3913,24 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
+    async def restore_model_object(
+        self, info: StrawberryInfo, kind: str, key: str
+    ) -> MutationResult:  # REQ-2248
+        """Restore a retired table, column, relationship, tag or metric (``kind``) named by
+        ``key`` as the retired listing names it: the same object, served again."""
+        pool = await _get_pool()
+        async with pool.acquire() as conn:
+            _conn = cast("Connection", conn)
+            async with _conn.transaction():
+                # The gate is the kind's delete right, in its domains (restore_retired).
+                result = await restore_retired(info, _conn, kind, key)
+        if result.success:
+            if kind == "tag":
+                await _refresh_config_tags()
+            await _rebuild_schemas()
+        return result
+
+    @strawberry.mutation
     async def create_tag(
         self,
         info: StrawberryInfo,
@@ -4841,6 +4877,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     except LabelClash as _clash:
                         # REQ-572: a label never names both a domain and a table; both are named.
                         raise TableSaveRefused(label_clash_result(_clash))
+                    except RetiredNameTaken as _retired:
+                        # REQ-2248: a retired name stays taken; the retired object is named.
+                        raise TableSaveRefused(retired_name_result(_retired))
                     except SqlAddressTaken as _taken:
                         # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                         raise TableSaveRefused(

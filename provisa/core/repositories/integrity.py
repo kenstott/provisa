@@ -491,6 +491,9 @@ async def _referring_rows(
     statement = select(*(table.c[name] for name in sorted(names)))
     if reference.match is Match.EQUALS:
         statement = statement.where(table.c[reference.column] == wanted)
+    if "retired" in table.c:
+        # REQ-2248: a retired object is out of service and blocks nothing.
+        statement = statement.where(table.c.retired.is_(False))
     rows = (await conn.execute_core(statement)).fetchall()
     return [r._mapping for r in rows if _matches(reference, r._mapping[reference.column], wanted)]
 
@@ -653,14 +656,22 @@ async def _views_published_over(conn: "Connection", rel_id: str) -> list[int]:
     )
 
     relationships = metadata.tables["relationships"]
-    rows = [dict(r._mapping) for r in (await conn.execute_core(select(relationships))).fetchall()]
+    # REQ-2248: a retired relationship approves no join, and a retired view relies on none.
+    rows = [
+        dict(r._mapping)
+        for r in (
+            await conn.execute_core(select(relationships).where(relationships.c.retired.is_(False)))
+        ).fetchall()
+    ]
     this = [r for r in rows if r["id"] == rel_id]
     others = [r for r in rows if r["id"] != rel_id]
 
     tables = metadata.tables["registered_tables"]
     listed = (
         await conn.execute_core(
-            select(tables.c.id, tables.c.table_name, tables.c.view_sql, tables.c.materialize)
+            select(tables.c.id, tables.c.table_name, tables.c.view_sql, tables.c.materialize).where(
+                tables.c.retired.is_(False)
+            )
         )
     ).fetchall()
     id_of = {name: table_id for table_id, name, _, _ in listed}
