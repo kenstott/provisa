@@ -19,6 +19,7 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { useEffect, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 import { BrowserRouter, useLocation, useSearchParams } from "react-router-dom";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { MantineProvider } from "@mantine/core";
@@ -96,7 +97,9 @@ function TablesStandIn() {
     } else {
       next.set("table", id);
     }
-    setParams(next);
+    // Shown at once, as the page's own write is (useDetailParam's pending store): the runner reads
+    // the page right after its click.
+    flushSync(() => setParams(next));
   };
   // Its rows are on the Tables page only, as the real page's are.
   if (location.pathname !== "/tables") return null;
