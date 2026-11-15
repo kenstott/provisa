@@ -14,9 +14,10 @@ import { test, expect } from "./coverage";
 /**
  * REQ-1266: a member-less authenticated user is routed to self-service org creation, fills the
  * form (with demo data), sees "provisioning…" while the create+poll runs, and on ready the app
- * binds the new org and navigates into the shell. Backend routes are stubbed so this isolates the
- * UI onboarding contract (create body carries include_demo, poll drives ready, org is bound); the
- * full two-org data plane is covered by backend integration tests.
+ * binds the new org and navigates into the shell, on the new org's welcome (REQ-1276). Backend
+ * routes are stubbed so this isolates the UI onboarding contract (create body carries
+ * include_demo, poll drives ready, org is bound); the full two-org data plane is covered by backend
+ * integration tests.
  */
 
 const ORG_ID = "carolco";
@@ -111,8 +112,12 @@ test("member-less user onboards a new org with demo data and is routed into the 
 
   await expect(page.getByTestId("onboard-org-provisioning")).toBeVisible();
 
-  // Once provisioning is ready the app binds the org, refetches identity, and routes into the shell.
-  await page.waitForURL("**/query");
+  // Once provisioning is ready the app binds the org, refetches identity, and routes into the shell
+  // on the org's welcome. REQ-1276: "Given an org create finishes on the control plane When the
+  // last checkout returns Then the browser is navigated to {org}.<base>/welcome"; on a host that
+  // names no org (localhost) that is the in-app route /welcome.
+  await page.waitForURL("**/welcome");
+  await expect(page.getByTestId("org-welcome")).toBeVisible();
   await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
 
   expect(createBody).toEqual(
