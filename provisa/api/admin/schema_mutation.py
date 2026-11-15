@@ -4538,17 +4538,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
         _governance_sets = governance_sets(info, input)  # REQ-1958: of the input as sent
-        from provisa.api.admin.code_resolver import held_by_set
-        from provisa.core.repositories import table as _table_repo
-
-        _pool_h = await _get_pool()
-        async with _pool_h.acquire() as _hconn:
-            _stored = await _table_repo.get_by_name(
-                cast("Connection", _hconn), input.source_id, input.schema_name, input.table_name
-            )
-        _held = held_by_set(_stored, "table", input.table_name)  # REQ-2249
-        if _held is not None:
-            return _held
         _editor, input = await require_table_save(info, input)  # REQ-1944
         from provisa.api.admin._table_ops import land_transform_view
 
@@ -4562,6 +4551,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _field_refusal = await column_field_refusal(pool, input, columns)
         if _field_refusal is not None:
             return _field_refusal
+        from provisa.api.admin.code_resolver import held_by_set
+
+        async with pool.acquire() as _hconn:
+            _stored = await table_repo.get_by_name(
+                cast("Connection", _hconn), input.source_id, input.schema_name, input.table_name
+            )
+        _held = held_by_set(_stored, "table", input.table_name)  # REQ-2249
+        if _held is not None:
+            return _held
         # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
         from provisa.mv.preprocess import validate_preprocess
 
@@ -5798,7 +5796,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def create_code_resolver(  # REQ-2249
         self, info: StrawberryInfo, input: CodeResolverInput
     ) -> MutationResult:
-        """A code resolver set: its bridge view and two relationships, saved as one."""
+        """A code resolver set: its bridge view and its relationships, saved as one. Each object
+        is saved by its own kind's mutation, which asks its own rights too."""
+        require_capability(info, "create_relationship")
         from provisa.api.admin import code_resolver
 
         return await code_resolver.save(info, input, creating=True)
@@ -5807,7 +5807,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def update_code_resolver(  # REQ-2249
         self, info: StrawberryInfo, input: CodeResolverInput
     ) -> MutationResult:
-        """A change to a code resolver set, made to its three objects together."""
+        """A change to a code resolver set, made to its objects together."""
+        require_capability(info, "create_relationship")
         from provisa.api.admin import code_resolver
 
         return await code_resolver.save(info, input, creating=False)
@@ -5816,7 +5817,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def retire_code_resolver(  # REQ-2249, REQ-2248
         self, info: StrawberryInfo, id: str, reason: str | None = None
     ) -> MutationResult:
-        """Retire a code resolver set: its bridge view and two relationships, together."""
+        """Retire a code resolver set: its bridge view and its relationships, together."""
+        require_capability(info, "create_relationship")
+        require_capability(info, "table_registration")
         from provisa.api.admin import code_resolver
 
         return await code_resolver.retire(info, id, reason)

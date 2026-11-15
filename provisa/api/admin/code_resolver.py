@@ -179,12 +179,16 @@ async def _ends(
                 [],
             )
         found[end] = full
-    source_key = _column(found["source"], input.source_column)
-    target_key = _column(found["target"], input.target_column)
-    assert source_key is not None and target_key is not None
-    seen = [
-        r for r in source_key.get("visible_to") or [] if r in (target_key.get("visible_to") or [])
-    ]
+    from provisa.api.app import state
+    from provisa.security.rights import served_roles
+
+    def readers(end: str, key: str) -> frozenset[str]:
+        column = _column(found[end], key)
+        assert column is not None  # checked above
+        return served_roles(state.roles, state.role_chains, found[end]["domain_id"], column)
+
+    # The rule: the roles each key is served to (security.rights.column_served), both of them.
+    seen = sorted(readers("source", input.source_column) & readers("target", input.target_column))
     if not seen:
         return (
             _result(

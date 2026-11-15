@@ -153,6 +153,16 @@ def model(monkeypatch) -> _Model:
     monkeypatch.setattr(ops, "register_table", _register)
     monkeypatch.setattr(schema_mutation, "_save_relationship_as_caller", _save_edge)
     monkeypatch.setattr(schema_mutation, "_single", _Single)
+    from provisa.security import rights
+
+    # The roles a key is served to: here, its grant as written.
+    monkeypatch.setattr(
+        rights,
+        "served_roles",
+        lambda roles, chains, domain, column: frozenset(column["visible_to"]),
+    )
+    monkeypatch.setattr(app.state, "roles", {}, raising=False)
+    monkeypatch.setattr(app.state, "role_chains", {}, raising=False)
     monkeypatch.setattr(capabilities, "require_domain", lambda info, domain: None)
     monkeypatch.setattr(domain_guard, "require_domains", lambda info, domains: None)
     return m
