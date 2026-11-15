@@ -84087,7 +84087,11 @@
     (3) One organization mention is planted with a misspelling that scores in the fuzzy band. (Amended 2026-11-14,
     THE RERUN IS ONE MERGE PER BRIDGE:) Maintainer 2026-11-14. One statement command cannot delete and insert,
     so the rerun is two registered statement commands, one MERGE per bridge table from the code query, each
-    replacing its table''s rows in one step, removed mentions included (REQ-2001).'
+    replacing its table''s rows in one step, removed mentions included (REQ-2001). (Amended 2026-11-14,
+    THE RERUN BELONGS TO A DEMO ROLE:) Maintainer 2026-11-14. The two rerun commands are run by entity_steward,
+    a role the demo defines as a child of data_steward with the write right and the delete grant on the
+    two bridge tables. data_steward and org_admin can correct bridge rows and cannot replace the tables;
+    no standard role is changed.'
   use_case: 'A visitor opens the customer-360 demo, walks its tour, and sees the business question answered: Which
     accounts renewing this quarter have open P1 incidents, blocked fixes or overdue invoices?'
   scenario: 'Given the customer-360 demo started from its template
