@@ -37,7 +37,7 @@ _TABLE_REF = "table_ref"
 class ResolverRefused(ValueError):
     """A command that cannot resolve a relationship, said naming it and why."""
 
-    code = "relationship.code_resolver_refused"
+    code = "schema.code_resolver_refused"
 
     def __init__(self, function: str, reason: str) -> None:
         super().__init__(f"code resolver {function!r}: {reason}")

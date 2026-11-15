@@ -37,6 +37,14 @@
     "viaLabelSourceColumn": "Valor do tipo de relacionamento",
     "viaLabelSourceTable": "Nome da tabela",
     "viaLabelSourceFixed": "Alias de Cypher",
-    "cardinalityOneToOne": "um-para-um"
+    "cardinalityOneToOne": "um-para-um",
+    "targetTypeResolver": "Resolver de código",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "Uma consulta de uma fonte de código que recebe a tabela de origem e a de destino e devolve uma linha por correspondência.",
+    "resolverNone": "Nenhuma consulta de fonte de código recebe duas tabelas",
+    "sourceMatchLabel": "Coluna de correspondência com a chave de origem",
+    "targetMatchLabel": "Coluna de correspondência com a chave de destino",
+    "resolverLandLabel": "Manter as correspondências como tabela",
+    "resolverLandHelp": "As correspondências são armazenadas e recalculadas quando qualquer uma das tabelas muda. Caso contrário, o resolver é executado sempre que a relação é lida."
   }
 }

@@ -43,6 +43,11 @@
     "parameterNotFed": "渡さない",
     "sameEntity": "同一エンティティ",
     "sameEntityHint": "結合する行は同じものです: 1 つの用語が両テーブルに紐づき、キーで 1:1 に結合",
-    "cardinalityOneToOne": "一対一"
+    "cardinalityOneToOne": "一対一",
+    "resolverNote": "コードリゾルバー {{resolver}} の一部です。一致ビューと 2 つのリレーションシップはまとめて変更・廃止されます。",
+    "changeResolver": "コードリゾルバーを変更",
+    "retireResolver": "コードリゾルバーを廃止",
+    "retireResolverTitle": "コードリゾルバー {{resolver}} を廃止しますか？",
+    "retireResolverConsequence": "一致ビューと両方のリレーションシップがまとめて廃止されます。名前は使用済みのまま残ります。"
   }
 }

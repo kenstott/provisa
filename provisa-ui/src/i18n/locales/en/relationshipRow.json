@@ -43,6 +43,11 @@
     "parameterNotFed": "Not fed",
     "sameEntity": "Same entity",
     "sameEntityHint": "The rows it joins are one real-world thing: one term grounds both tables, joined 1:1 on keys",
-    "cardinalityOneToOne": "one-to-one"
+    "cardinalityOneToOne": "one-to-one",
+    "resolverNote": "Part of code resolver {{resolver}}. Its matches view and its two relationships are changed and retired together.",
+    "changeResolver": "Change code resolver",
+    "retireResolver": "Retire code resolver",
+    "retireResolverTitle": "Retire code resolver {{resolver}}?",
+    "retireResolverConsequence": "Its matches view and both its relationships are retired together. Their names stay taken."
   }
 }

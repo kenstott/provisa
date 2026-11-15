@@ -43,6 +43,11 @@
     "parameterNotFed": "Sin alimentar",
     "sameEntity": "Misma entidad",
     "sameEntityHint": "Las filas que une son una misma cosa: un término fundamenta ambas tablas, unidas 1:1 por claves",
-    "cardinalityOneToOne": "uno a uno"
+    "cardinalityOneToOne": "uno a uno",
+    "resolverNote": "Parte del resolver de código {{resolver}}. Su vista de coincidencias y sus dos relaciones se cambian y se retiran juntas.",
+    "changeResolver": "Cambiar resolver de código",
+    "retireResolver": "Retirar resolver de código",
+    "retireResolverTitle": "¿Retirar el resolver de código {{resolver}}?",
+    "retireResolverConsequence": "Su vista de coincidencias y sus dos relaciones se retiran juntas. Sus nombres siguen ocupados."
   }
 }

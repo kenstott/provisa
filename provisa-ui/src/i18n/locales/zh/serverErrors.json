@@ -484,7 +484,18 @@
       "jdbc_invalid": "数据源 {{source}}：{{error}}",
       "jdbc_file_refused": "数据源 {{source}}：URL 指向 {{path}}，此服务器不能为该组织打开它。",
       "jdbc_options_refused": "数据源 {{source}}：此组织的 URL 不能指定驱动程序选项 {{options}}。",
-      "jdbc_driver_refused": "数据源 {{source}}：客户自带的 JDBC 驱动程序会作为代码在 Provisa 自身的 JVM 中运行，只有自托管安装才允许这样做。"
+      "jdbc_driver_refused": "数据源 {{source}}：客户自带的 JDBC 驱动程序会作为代码在 Provisa 自身的 JVM 中运行，只有自托管安装才允许这样做。",
+      "code_resolver_part": "{{kind}} '{{name}}' 属于代码解析器 '{{resolver}}'：请在那里更改或停用",
+      "code_resolver_no_key": "{{end}} 表 '{{table}}' 没有列 '{{column}}'",
+      "code_resolver_no_reader": "没有角色能同时看到两个键，因此没有角色能看到匹配",
+      "code_resolver_unknown": "未注册命令 '{{function}}'",
+      "code_resolver_refused": "代码解析器 '{{function}}'：{{reason}}",
+      "code_resolver_bad_id": "代码解析器 ID '{{resolver}}' 不是名称：小写字母、数字和下划线，以字母开头",
+      "code_resolver_taken": "代码解析器 '{{resolver}}' 已存在",
+      "code_resolver_not_found": "未找到代码解析器 '{{resolver}}'",
+      "code_resolver_saved": "已保存代码解析器 '{{resolver}}'",
+      "code_resolver_retired": "已停用代码解析器 '{{resolver}}'",
+      "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用"
     },
     "secrets": {
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",

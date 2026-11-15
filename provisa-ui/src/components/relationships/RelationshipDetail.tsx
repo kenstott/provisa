@@ -48,6 +48,10 @@ interface RelationshipDetailProps {
   functions: TrackedFunction[];
   tableDomainById: Record<string, string>;
   domainsEnabled: boolean;
+  /** REQ-2249: opens the form of the code resolver set ``set`` this relationship is part of. */
+  onChangeResolver?: (set: string) => void;
+  /** REQ-2249: retires the code resolver set ``set``, all of it. */
+  onRetireResolver?: (set: string) => Promise<boolean | void>;
 }
 
 export function RelationshipDetail({
@@ -66,13 +70,51 @@ export function RelationshipDetail({
   functions,
   tableDomainById,
   domainsEnabled,
+  onChangeResolver,
+  onRetireResolver,
 }: RelationshipDetailProps) {
   const { t } = useTranslation();
+  // REQ-2249: one of a code resolver set's objects is changed and retired with the set.
+  const set = r.codeResolver ?? null;
 
   return (
     <>
+      {set !== null && (
+        <Text fz="sm" c="dimmed" data-testid="relationship-detail-resolver-note">
+          {t("relationshipRow.resolverNote", { resolver: set })}
+        </Text>
+      )}
+      {canManage && editingRel === null && set !== null && (
+        <PanelActions>
+          <fieldset className="panel-action-set">
+            <Group gap="sm">
+              <Tip text={t("relationshipRow.changeResolver")} named>
+                <ActionIcon
+                  aria-label={t("relationshipRow.changeResolver")}
+                  disabled={!onChangeResolver}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onChangeResolver?.(set);
+                  }}
+                  data-testid="relationship-detail-change-resolver"
+                >
+                  <Pencil size={14} />
+                </ActionIcon>
+              </Tip>
+              <PanelDelete
+                itemKey={set}
+                title={t("relationshipRow.retireResolverTitle", { resolver: set })}
+                consequence={t("relationshipRow.retireResolverConsequence")}
+                ariaLabel={t("relationshipRow.retireResolver")}
+                testId="relationship-detail-retire-resolver"
+                onDelete={() => (onRetireResolver ? onRetireResolver(set) : Promise.resolve(false))}
+              />
+            </Group>
+          </fieldset>
+        </PanelActions>
+      )}
       {/* While the form is open the panel's head is the form's: its Save and Cancel. */}
-      {canManage && editingRel === null && (
+      {canManage && editingRel === null && set === null && (
         <PanelActions>
           <fieldset className="panel-action-set">
             <Group gap="sm">

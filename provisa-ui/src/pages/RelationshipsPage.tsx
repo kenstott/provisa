@@ -47,6 +47,8 @@ import {
   useDeleteRelationship,
   useDeleteRelationships,
 } from "../hooks/useAdminQueries";
+import { useCodeResolverForm } from "../components/relationships/useCodeResolverForm";
+import { tagLossInput, tagLossOf } from "../components/relationships/tagLoss";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
@@ -80,20 +82,6 @@ import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
-/** A refusal over the tags a re-homed key ref would lose (REQ-2145): each column's change. */
-function tagLossOf(result: MutationResult): ColumnTagChange[] | null {
-  return result.code === "tag.move_loses"
-    ? (result.params as { columns: ColumnTagChange[] }).columns
-    : null;
-}
-
-/** How the save goes ahead over those tags, as RelationshipInput takes it. */
-function tagLossInput(resolve?: TagLossResolution) {
-  return resolve
-    ? { confirmTagLoss: resolve.confirm_tag_loss ?? [], carryTags: resolve.carry_tags === true }
-    : {};
-}
-
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -237,6 +225,8 @@ export function RelationshipsPage() {
     },
     [deleteRelationship, refusal, refetchRels, closeDetail],
   );
+
+  const rs = useCodeResolverForm({ form, setForm, setShowForm, setSaveProblem, detail, refusal });
 
   const handleAdd = useCallback(
     async (resolve?: TagLossResolution) => {
@@ -451,6 +441,7 @@ export function RelationshipsPage() {
     (rel: Relationship): RelForm => {
       const isComputed = !!rel.targetFunctionName;
       return {
+        ...EMPTY_FORM,
         id: String(rel.id),
         originalId: String(rel.id),
         sourceDomain: rel.sourceDomainId ? domainToSqlName(rel.sourceDomainId) : "",
@@ -685,9 +676,10 @@ export function RelationshipsPage() {
         setForm={setForm}
         tables={tables}
         functions={functions}
-        saving={saving}
+        saving={rs.saving ? "new" : saving}
         problem={saveProblem}
-        onSave={() => handleAdd()}
+        changingResolver={rs.changing}
+        onSave={() => (form.targetType === "resolver" ? rs.save() : handleAdd())}
         onCancel={() => {
           setForm(EMPTY_FORM);
           setShowForm(false);
@@ -744,6 +736,8 @@ export function RelationshipsPage() {
             }
       }
       onDelete={() => handleDelete(String(selectedRel.id))}
+      onChangeResolver={rs.change}
+      onRetireResolver={rs.retire}
       onEditSave={() => handleEditSave()}
       saving={saving}
       problem={saveProblem}

@@ -37,6 +37,14 @@
     "viaLabelSourceColumn": "关系类型值",
     "viaLabelSourceTable": "表名",
     "viaLabelSourceFixed": "Cypher 别名",
-    "cardinalityOneToOne": "一对一"
+    "cardinalityOneToOne": "一对一",
+    "targetTypeResolver": "代码解析器",
+    "resolverLabel": "解析器",
+    "resolverHelp": "代码源的一个查询，接收源表和目标表，并为每个匹配返回一行。",
+    "resolverNone": "没有接收两张表的代码源查询",
+    "sourceMatchLabel": "包含源键的匹配列",
+    "targetMatchLabel": "包含目标键的匹配列",
+    "resolverLandLabel": "将匹配保存为表",
+    "resolverLandHelp": "匹配会被存储，并在任一表变化时重新计算。不勾选时，每次读取该关系都会运行解析器。"
   }
 }

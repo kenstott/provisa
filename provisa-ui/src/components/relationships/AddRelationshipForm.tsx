@@ -9,11 +9,11 @@
 // permission from the copyright holder.
 
 import { useTranslation } from "react-i18next";
-import { Select, Text, TextInput } from "@mantine/core";
+import { Checkbox, Select, Text, TextInput } from "@mantine/core";
 import type { ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
-import { tableRef, type RelForm } from "./relationship-types";
-import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { isCodeResolver, tableRef, type RelForm } from "./relationship-types";
+import { FormChecks, FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
 
 interface AddRelationshipFormProps {
   form: RelForm;
@@ -23,6 +23,8 @@ interface AddRelationshipFormProps {
   saving: string | null;
   /** What the form says of a save that did not go through. */
   problem: string;
+  /** REQ-2249: a code resolver set being changed: its id and resolver kind stay as they are. */
+  changingResolver?: boolean;
   onSave: () => void;
   onCancel: () => void;
 }
@@ -41,6 +43,7 @@ export function AddRelationshipForm({
   problem,
   onSave,
   onCancel,
+  changingResolver = false,
 }: AddRelationshipFormProps) {
   const { t } = useTranslation();
 
@@ -52,6 +55,12 @@ export function AddRelationshipForm({
     tables.find((tbl) => tableRef(tbl) === form.targetTableId)?.columns ?? []
   ).map((c) => ({ value: c.columnName, label: c.columnName }));
   const functionOptions = functions.map((f) => ({ value: f.name, label: f.name }));
+  const resolverOptions = functions
+    .filter(isCodeResolver)
+    .map((f) => ({ value: f.name, label: f.name }));
+  const matchOptions = (functions.find((f) => f.name === form.resolver)?.outputColumns ?? []).map(
+    (c) => ({ value: c.name, label: c.name }),
+  );
 
   return (
     <div data-testid="add-relationship-form">
@@ -62,6 +71,7 @@ export function AddRelationshipForm({
               label={t("addRelationshipForm.idLabel")}
               placeholder={t("addRelationshipForm.idPlaceholder")}
               value={form.id}
+              disabled={changingResolver}
               onChange={(e) => setForm({ ...form, id: e.currentTarget.value })}
               data-testid="rel-form-id"
             />
@@ -93,23 +103,94 @@ export function AddRelationshipForm({
             data={[
               { value: "table", label: t("addRelationshipForm.targetTypeTable") },
               { value: "function", label: t("addRelationshipForm.targetTypeFunction") },
+              { value: "resolver", label: t("addRelationshipForm.targetTypeResolver") },
             ]}
             value={form.targetType}
             allowDeselect={false}
+            disabled={changingResolver}
             onChange={(v) =>
               setForm({
                 ...form,
-                targetType: (v ?? "table") as "table" | "function",
+                targetType: (v ?? "table") as RelForm["targetType"],
                 targetTableId: "",
                 targetColumn: "",
                 targetFunctionName: "",
                 functionArg: "",
+                resolver: "",
+                sourceMatch: "",
+                targetMatch: "",
               })
             }
             data-testid="rel-form-target-type"
           />
         </FormField>
-        {form.targetType === "table" ? (
+        {form.targetType === "resolver" ? (
+          <>
+            <FormField size="medium">
+              <Select
+                label={t("addRelationshipForm.targetTableLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={tableOptions}
+                value={form.targetTableId || null}
+                onChange={(v) => setForm({ ...form, targetTableId: v ?? "", targetColumn: "" })}
+                data-testid="rel-form-target-table"
+              />
+            </FormField>
+            <FormField size="medium">
+              <Select
+                label={t("addRelationshipForm.targetColumnLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={targetColumnOptions}
+                value={form.targetColumn || null}
+                onChange={(v) => setForm({ ...form, targetColumn: v ?? "" })}
+                data-testid="rel-form-target-column"
+              />
+            </FormField>
+            <FormField size="medium" help={t("addRelationshipForm.resolverHelp")}>
+              <Select
+                label={t("addRelationshipForm.resolverLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={resolverOptions}
+                nothingFoundMessage={t("addRelationshipForm.resolverNone")}
+                value={form.resolver || null}
+                onChange={(v) =>
+                  setForm({ ...form, resolver: v ?? "", sourceMatch: "", targetMatch: "" })
+                }
+                data-testid="rel-form-resolver"
+              />
+            </FormField>
+            <FormField size="medium">
+              <Select
+                label={t("addRelationshipForm.sourceMatchLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={matchOptions}
+                value={form.sourceMatch || null}
+                onChange={(v) => setForm({ ...form, sourceMatch: v ?? "" })}
+                data-testid="rel-form-source-match"
+              />
+            </FormField>
+            <FormField size="medium">
+              <Select
+                label={t("addRelationshipForm.targetMatchLabel")}
+                placeholder={t("addRelationshipForm.selectPlaceholder")}
+                data={matchOptions}
+                value={form.targetMatch || null}
+                onChange={(v) => setForm({ ...form, targetMatch: v ?? "" })}
+                data-testid="rel-form-target-match"
+              />
+            </FormField>
+            <FormChecks>
+              <FormField size="short" help={t("addRelationshipForm.resolverLandHelp")}>
+                <Checkbox
+                  label={t("addRelationshipForm.resolverLandLabel")}
+                  checked={form.materialize}
+                  onChange={(e) => setForm({ ...form, materialize: e.currentTarget.checked })}
+                  data-testid="rel-form-resolver-land"
+                />
+              </FormField>
+            </FormChecks>
+          </>
+        ) : form.targetType === "table" ? (
           <>
             <FormField size="medium">
               <Select

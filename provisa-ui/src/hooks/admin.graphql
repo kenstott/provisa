@@ -762,6 +762,22 @@ query RelationshipsQuery {
       parameter
       sourceColumn
     }
+    codeResolver
+  }
+}
+
+query CodeResolversQuery {
+  codeResolvers {
+    id
+    resolver
+    sourceTable
+    sourceColumn
+    sourceMatch
+    targetTable
+    targetColumn
+    targetMatch
+    materialize
+    refreshInterval
   }
 }
 
@@ -1424,6 +1440,24 @@ mutation DeleteRelationship(
   $carryTags: Boolean! = false
 ) {
   deleteRelationship(id: $id, confirmTagLoss: $confirmTagLoss, carryTags: $carryTags) {
+    ...MutationResult
+  }
+}
+
+mutation CreateCodeResolver($input: CodeResolverInput!) {
+  createCodeResolver(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation UpdateCodeResolver($input: CodeResolverInput!) {
+  updateCodeResolver(input: $input) {
+    ...MutationResult
+  }
+}
+
+mutation RetireCodeResolver($id: String!) {
+  retireCodeResolver(id: $id) {
     ...MutationResult
   }
 }

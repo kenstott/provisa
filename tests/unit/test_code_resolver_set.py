@@ -206,7 +206,7 @@ async def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason_and_n
 ):
     result = await code_resolver.save(_INFO, _input(target_match="region_id"), creating=True)
     assert not result.success
-    assert result.code == "relationship.code_resolver_refused"
+    assert result.code == "schema.code_resolver_refused"
     assert "its rows carry no 'region_id'" in result.message
     assert model.calls == []
 
