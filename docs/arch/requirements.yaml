@@ -96458,7 +96458,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     three relationships over it, managed and retired as one set: one junction relationship from source to
     target through the bridge, which Cypher serves as a single edge carrying the score; and source to bridge
     and bridge to target, which GraphQL serves as two nested levels. When GraphQL serves junction relationships,
-    the two plain relationships are no longer saved.'
+    the two plain relationships are no longer saved. (Amended 2026-11-15, A BRIDGE IS ALWAYS LANDED AND
+    READ FROM ITS STORED RESULT:) Maintainer 2026-11-15. A view whose definition calls a code command is
+    always landed; the form offers no choice. It is read only from its stored table and secured as that
+    table, as a stored view with column transforms is (REQ-2131). The security check admits a registered
+    code command in such a view''s definition, with the command''s table arguments as the view''s inputs.
+    Each reader''s own row and column rules apply at each hop. The resolver runs when the bridge is refreshed,
+    never per read.'
   scenario: 'Given a code resolver matching stores to regions by distance, with a function marked @change
     naming its key, removal and cursor columns
 
