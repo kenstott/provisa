@@ -1741,6 +1741,7 @@ def edge_calls(fn: Function, family: str) -> list[Call]:
             if fn.variadic:
                 row = [*row[:-1], f"VARIADIC {row[-1]}"]
             sql = function_probe.statement(fn, row)
+        sql = function_edges.bounded(sql)
         if all(c.sql != sql for c in out):
             out.append(Call(sql, answers=True, edge=named))
     return out
@@ -3382,6 +3383,7 @@ class EdgeResults:
     connection lost, or no answer in time), which is no raise."""
 
     calls: int = 0
+    uncompared: int = 0  # PostgreSQL answered more rows than an edge call compares
     agreed: int = 0
     postgres_raised: int = 0
     wrong: list[dict[str, str]] = dataclasses.field(default_factory=list)
@@ -3391,6 +3393,7 @@ class EdgeResults:
     def summary(self) -> dict[str, int]:
         return {
             "calls": self.calls,
+            "uncompared": self.uncompared,
             "agreed": self.agreed,
             "postgres_raised": self.postgres_raised,
             "wrong": len(self.wrong),
@@ -3415,7 +3418,8 @@ def _measure_edges(
     found = EdgeResults()
     for call_ in edge_calls(fn, family):
         want = _answer(pg, call_)
-        if want["ok"] and not want["fields"]:
+        if want["ok"] and (not want["fields"] or len(want["rows"]) > function_edges.EDGE_ROWS_MAX):
+            found.uncompared += want["ok"] and bool(want["fields"])
             continue
         found.calls += 1
         got = _answer(provisa, call_)

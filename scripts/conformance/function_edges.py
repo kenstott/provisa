@@ -21,7 +21,8 @@ one-argument overload's NULL is its NULL call). At most ``EDGE_CALLS_MAX`` such 
 taken round-robin over the arguments in the table's order, so a two-argument overload has edges in
 both. An aggregate or a window function reads the edge value in two of its rows.
 
-An edge call is compared as a sample is, and where PostgreSQL raises, the engine must raise an
+An edge call reads at most ``EDGE_ROWS_MAX`` + 1 rows (``bounded``); one PostgreSQL answers with
+more compares nothing. An edge call is compared as a sample is, and where PostgreSQL raises, the engine must raise an
 error of the same SQLSTATE class: answering is a wrong answer. An engine that raises where
 PostgreSQL answers has not answered wrongly; such an overload is served within its bound when its
 samples are right, no edge call answers otherwise than PostgreSQL, and the polyfill grid's row of it
@@ -41,6 +42,18 @@ from dataclasses import dataclass
 #: The most edge calls one overload gets: with its NULL call, three samples and up to three column
 #: calls, at most 15 statements per overload on each server.
 EDGE_CALLS_MAX = 8
+
+#: The most rows an edge call's answer is compared in: each call reads at most one more, and one
+#: with more (generate_series between an integer's least and greatest) compares nothing.
+EDGE_ROWS_MAX = 1000
+
+
+def bounded(statement: str) -> str:
+    """``statement`` reading at most ``EDGE_ROWS_MAX`` + 1 rows, so an edge that makes a set of
+    billions of rows (or none that ends) costs no more than that on either server. A LIMIT of its
+    own, not a derived table, which would describe its column by another route than the call's."""
+    return f"{statement} LIMIT {EDGE_ROWS_MAX + 1}"
+
 
 NULL = "null"
 EMPTY = "empty"

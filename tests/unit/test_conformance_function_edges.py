@@ -100,6 +100,10 @@ def _measured(
     )
 
 
+def _bounded(statement: str) -> str:
+    return f"{statement} LIMIT {edges.EDGE_ROWS_MAX + 1}"
+
+
 def _edge(fn: Function, kind: str) -> str:
     return next(c.sql for c in support.edge_calls(fn, "Numeric") if c.edge.endswith(kind))
 
@@ -144,10 +148,13 @@ def test_the_table_holds_each_kind_of_edge_the_measure_promises():
 
 def test_a_one_argument_function_gets_its_types_edges_and_no_second_null():
     assert [(c.sql, c.edge) for c in support.edge_calls(ABS, "Numeric")] == [
-        ("SELECT pg_catalog.\"abs\"('-2147483648'::integer) AS v", "integer least"),
-        ("SELECT pg_catalog.\"abs\"('2147483647'::integer) AS v", "integer greatest"),
-        ("SELECT pg_catalog.\"abs\"('0'::integer) AS v", "integer zero"),
-        ("SELECT pg_catalog.\"abs\"('2147483648'::integer) AS v", "integer past the type"),
+        (_bounded("SELECT pg_catalog.\"abs\"('-2147483648'::integer) AS v"), "integer least"),
+        (_bounded("SELECT pg_catalog.\"abs\"('2147483647'::integer) AS v"), "integer greatest"),
+        (_bounded("SELECT pg_catalog.\"abs\"('0'::integer) AS v"), "integer zero"),
+        (
+            _bounded("SELECT pg_catalog.\"abs\"('2147483648'::integer) AS v"),
+            "integer past the type",
+        ),
     ]
     assert all(c.answers and c.values for c in support.edge_calls(ABS, "Numeric"))
 
@@ -156,8 +163,8 @@ def test_edges_are_shared_round_robin_among_the_arguments_up_to_the_bound():
     planned = support.edge_calls(CONCAT, "String")
     assert len(planned) == edges.EDGE_CALLS_MAX
     assert [c.edge for c in planned[:4]] == ["text null", "text null", "text empty", "text empty"]
-    assert planned[0].sql == "SELECT pg_catalog.\"textcat\"(NULL::text, 'abc'::text) AS v"
-    assert planned[1].sql == "SELECT pg_catalog.\"textcat\"('abc'::text, NULL::text) AS v"
+    assert planned[0].sql == _bounded("SELECT pg_catalog.\"textcat\"(NULL::text, 'abc'::text) AS v")
+    assert planned[1].sql == _bounded("SELECT pg_catalog.\"textcat\"('abc'::text, NULL::text) AS v")
 
 
 @pytest.mark.parametrize(
@@ -191,7 +198,7 @@ def test_an_aggregate_reads_its_edge_value_in_two_rows():
     planned = support.edge_calls(SUM, "Aggregate")
     assert planned[0].edge == "integer null"
     greatest = next(c.sql for c in planned if c.edge == "integer greatest")
-    assert greatest == (
+    assert greatest == _bounded(
         "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('2147483647'::integer), "
         "('2147483647'::integer)) AS t(c1)"
     )
@@ -212,6 +219,7 @@ def test_edges_answered_as_postgresql_does_keep_a_pass_right():
     assert entry["outcome"] == "pass"
     assert entry["edges"] == {
         "calls": 4,
+        "uncompared": 0,
         "agreed": 4,
         "postgres_raised": 0,
         "wrong": 0,
@@ -280,6 +288,15 @@ def test_a_bounded_row_that_raised_nothing_at_its_edges_is_said():
     entry = _measured({}, {}, bounds=_bound)
     assert entry["outcome"] == "pass"
     assert entry["bound_sqlstates"] == ["0A000"] and entry["bound_raised"] is False
+
+
+def test_an_edge_postgresql_answers_with_more_rows_than_the_bound_compares_nothing():
+    least = _edge(ABS, "least")
+    many = _ok(*range(edges.EDGE_ROWS_MAX + 1))
+    entry = _measured({least: many}, {least: _ok("1")})
+    assert entry["outcome"] == "pass"
+    assert entry["edges"]["calls"] == 3 and entry["edges"]["uncompared"] == 1
+    assert least.endswith(f"LIMIT {edges.EDGE_ROWS_MAX + 1}")
 
 
 def test_an_overload_failing_its_samples_gets_no_edge_calls():

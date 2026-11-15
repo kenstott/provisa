@@ -1609,6 +1609,7 @@ class Served(Fake):
         self.literal, self.column = answer, column
 
     def answer(self, sql: str) -> dict[str, Any]:
+        # An edge call (function_edges.bounded) of a scalar reads no column either.
         reads_a_column = " FROM " in sql
         return self.column if reads_a_column else self.literal
 
