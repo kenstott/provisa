@@ -680,8 +680,10 @@ def test_an_interval_operator_read_by_no_row_here_is_refused_by_name():
 
 def test_every_row_states_its_bound_on_clickhouse():
     rows = [f for f in GRID.features if f.family == intervals.FAMILY]
-    # the 27 calls, interval_mul, mul_d_interval and interval_div, and the literal (J1337)
-    assert len(rows) == 31
+    # the 27 calls, interval_mul, mul_d_interval and interval_div, and the literal (J1337); a time
+    # of day plus or less an interval, interval(time), time(interval) and overlaps with an end
+    # given as an interval (J1366)
+    assert len(rows) == 37
     for feature in rows:
         (limitation,) = feature.read.limitations["clickhouse"]
         assert "Tuple(months Int32, days Int32, microseconds Int64)" in limitation.text

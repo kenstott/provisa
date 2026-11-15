@@ -10574,5 +10574,12 @@
   "candidatesTable.json::candidatesTable.rejectFailed_other": "{{count}} suggestions could not be rejected:",
   "candidatesTable.json::candidatesTable.failedOne": "{{name}}: {{error}}",
   "discoverResult.json::discoverResult.semanticsCutShort": "Semantics: none. The model's answer stopped at its length limit before it finished a suggestion.",
-  "discoverResult.json::discoverResult.cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read."
+  "discoverResult.json::discoverResult.cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read.",
+  "it/aiModelsTab.json::aiModelsTab.limitsIntro": "Each model has two limits, in tokens: the most it can read in one request (input) and the longest answer it can write (output). A model with published figures starts with those; change them if yours differ.",
+  "it/aiModelsTab.json::aiModelsTab.inputLimitLabel": "Input limit (tokens)",
+  "it/aiModelsTab.json::aiModelsTab.outputLimitLabel": "Output limit (tokens)",
+  "it/aiModelsTab.json::aiModelsTab.limitsDefaultNote": "Default: no published figure is known for this model.",
+  "it/aiModelsTab.json::aiModelsTab.limitsResetKnown": "Use published limits",
+  "it/aiModelsTab.json::aiModelsTab.limitsResetDefault": "Use default limits",
+  "it/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
 }
