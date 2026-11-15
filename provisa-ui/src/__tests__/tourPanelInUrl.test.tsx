@@ -79,9 +79,10 @@ function AppProviders({ children }: { children: ReactNode }) {
 }
 
 /**
- * The Tables page as the quality topic reads it, drawn on /tables: a row opens its table's panel by writing `table`
- * into the URL, as useDetailParam does, and clicking the open row closes it, removing `table` and
- * `section`. While a table is open its read view, editor and Quality section's panels are shown.
+ * The Tables page as the quality topic reads it, drawn on /tables with the rows of the ?source=
+ * filtered on: a row opens its table's panel by writing `table` into the URL, as useDetailParam
+ * does, and clicking the open row closes it, removing `table` and `section`. While a table is open
+ * its read view, editor and Quality section's panels are shown.
  */
 function TablesStandIn() {
   const [params, setParams] = useSearchParams();
@@ -104,14 +105,24 @@ function TablesStandIn() {
   // Its rows are on the Tables page only, as the real page's are.
   if (location.pathname !== "/tables") return null;
   const open = params.get("table") !== null;
+  // The filter box follows ?source=: only that source's rows are listed.
+  const source = params.get("source");
   return (
     <div>
-      <button
-        type="button"
-        data-table-row="dq-checker.pets_quality_dq_checker_dq"
-        onClick={() => toggle("302")}
-      />
-      <button type="button" data-table-row="pet-store-sqlite.pets" onClick={() => toggle("296")} />
+      {source === "dq-checker" && (
+        <button
+          type="button"
+          data-table-row="dq-checker.pets_quality_dq_checker_dq"
+          onClick={() => toggle("302")}
+        />
+      )}
+      {source === "pet-store-sqlite" && (
+        <button
+          type="button"
+          data-table-row="pet-store-sqlite.pets"
+          onClick={() => toggle("296")}
+        />
+      )}
       {open && (
         <>
           <button type="button" data-testid="table-read-view-edit" />
