@@ -21,6 +21,8 @@ its own address.
 from __future__ import annotations
 
 import os
+import uuid
+from dataclasses import dataclass
 
 import pytest
 import pytest_asyncio
@@ -28,8 +30,6 @@ from httpx import ASGITransport, AsyncClient
 
 pytestmark = [pytest.mark.integration, pytest.mark.asyncio(loop_scope="session")]
 
-_DOMAIN = "req1933-addresses"
-_OTHER_DOMAIN = "req1933-other"
 _ALIAS = "shared_address"
 
 
@@ -78,50 +78,64 @@ async def _register_view(client: AsyncClient, domain: str, table_name: str) -> d
     return data["registerTable"]
 
 
+@dataclass(frozen=True)
+class _Place:
+    """The two domains a test registers in, and the suffix its table names carry."""
+
+    domain: str
+    other: str
+    run: str
+
+    def view(self, name: str) -> str:
+        return f"{name}_{self.run}"
+
+
 @pytest_asyncio.fixture(loop_scope="session")
 async def domains(client):
-    for domain in (_DOMAIN, _OTHER_DOMAIN):
+    """Two domains of the test's own. REQ-2248: deleting a table retires it, keeping its row and
+    its name, and a domain that still holds a table, retired or not, is kept (maintainer
+    2026-11-15). So the teardown retires what the test registered and leaves the domains, and
+    every name is the test's own: a later test never meets a name a retired table still holds."""
+    run = uuid.uuid4().hex[:8]
+    place = _Place(f"req1933-addresses-{run}", f"req1933-other-{run}", run)
+    for domain in (place.domain, place.other):
         created = await _gql(
             client,
             f'mutation {{ createDomain(input: {{ id: "{domain}", description: "REQ-1933" }}) '
             "{ success message } }",
         )
         assert created["createDomain"]["success"], created
-    yield
+    yield place
     tables = await _gql(client, "{ tables { id domainId } }")
     for table in tables["tables"]:
-        if table["domainId"] in (_DOMAIN, _OTHER_DOMAIN):
+        if table["domainId"] in (place.domain, place.other):
             deleted = await _gql(
                 client, f"mutation {{ deleteTable(id: {table['id']}) {{ success message }} }}"
             )
             assert deleted["deleteTable"]["success"], deleted
-    for domain in (_DOMAIN, _OTHER_DOMAIN):
-        deleted = await _gql(
-            client, f'mutation {{ deleteDomain(id: "{domain}") {{ success message }} }}'
-        )
-        assert deleted["deleteDomain"]["success"], deleted
 
 
 async def test_a_second_table_at_a_taken_address_is_refused_naming_the_holder(client, domains):
-    holder = await _register_view(client, _DOMAIN, "first_view")
+    first, second = domains.view("first_view"), domains.view("second_view")
+    holder = await _register_view(client, domains.domain, first)
     assert holder["success"], holder["message"]
 
-    newcomer = await _register_view(client, _DOMAIN, "second_view")
+    newcomer = await _register_view(client, domains.domain, second)
 
     assert newcomer["success"] is False
     assert newcomer["code"] == "schema.sql_address_taken"
-    assert newcomer["params"]["domain"] == _DOMAIN
+    assert newcomer["params"]["domain"] == domains.domain
     assert newcomer["params"]["address"] == _ALIAS
-    assert newcomer["params"]["holder"] == "__derived__.views.first_view"
-    assert "__derived__.views.first_view" in newcomer["message"]
+    assert newcomer["params"]["holder"] == f"__derived__.views.{first}"
+    assert f"__derived__.views.{first}" in newcomer["message"]
     tables = await _gql(client, "{ tables { tableName domainId } }")
-    assert [t["tableName"] for t in tables["tables"] if t["domainId"] == _DOMAIN] == ["first_view"]
+    assert [t["tableName"] for t in tables["tables"] if t["domainId"] == domains.domain] == [first]
 
 
 async def test_the_same_alias_in_another_domain_is_its_own_address(client, domains):
-    first = await _register_view(client, _DOMAIN, "first_view")
+    first = await _register_view(client, domains.domain, domains.view("first_view"))
     assert first["success"], first["message"]
 
-    elsewhere = await _register_view(client, _OTHER_DOMAIN, "second_view")
+    elsewhere = await _register_view(client, domains.other, domains.view("second_view"))
 
     assert elsewhere["success"], elsewhere["message"]
