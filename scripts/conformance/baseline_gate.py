@@ -31,7 +31,8 @@ summary script already fails on the part it gates, and the list holds the rest.
 
 ``functions`` judges function_support.json per engine against ``expected/functions.json``: every
 engine of the list has a full result; a wrong answer is listed (as ``<engine>::<fn>(<overload>)``)
-or fails; ``passed`` does not fall below the committed count; engine errors and refusals by name
+or fails (a wrong answer at an edge value too); ``passed``, what is served (exact, equivalent and
+within a stated bound), does not fall below the committed count; engine errors and refusals by name
 do not rise above theirs. A count that moves the good way is said, so the file can be lowered.
 
 Usage: baseline_gate.py cases <surface> <report.json>

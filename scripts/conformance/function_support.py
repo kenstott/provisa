@@ -21,6 +21,9 @@ Each overload gets one outcome per engine:
   pass          every call PostgreSQL answered, Provisa answered the same, or the same under a
                 written rule, which the overload's ``rules`` name (function_report.RULES), and
                 something was compared: an answer, a type and form, or a side effect
+  within_bound  a pass on its samples whose edge calls (below) answer nothing otherwise than
+                PostgreSQL, and raise where an edge differs, as its polyfill grid row on the engine
+                states (REQ-2236, amended 2026-11-15): served, as a pass is
   not_checked   every call PostgreSQL answered, Provisa answered with the same result type, and
                 nothing was compared: a call that ran proves nothing, so this is no pass, and it
                 counts as failed. ``unchecked`` says why
@@ -31,9 +34,11 @@ Each overload gets one outcome per engine:
                 (``decided_function``: PostgreSQL's own server state, the types no SQL value can
                 have, and the others amended 2026-11-03 and 2026-11-04 name)
   wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
-                or the side effect it had
+                or the side effect it had; or an edge call answers otherwise than PostgreSQL
+                (``wrong_at_edge``)
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
-                message is kept)
+                message is kept); or an edge call got no answer at all, or raised where the grid
+                row states no bound (``error_at_edge``)
   refused       PostgreSQL answered a call and Provisa refused it by name
   not_callable  PostgreSQL itself answers no call of it: every call was refused, or none answered
                 anything but NULL from NULL arguments and every call with a real value was refused
@@ -96,8 +101,18 @@ What a pass compared, exactly:
 The rest are not checked, and each says why (``unchecked``, which an overload whose type and form
 were compared keeps: its value is still not compared). One given real values for its form that
 still has none checked says too whether PostgreSQL refused them or answered NULL or no row. A NULL call where PostgreSQL answers NULL
-holds Provisa to NULL too, which can make a wrong answer and never a pass. Three literals, not a
-domain: a function that differs only on values no sample reaches passes here.
+holds Provisa to NULL too, which can make a wrong answer and never a pass.
+
+Three literals are not a domain, so an overload that passes them is called again with edge values
+(``edge_calls``, from the one table function_edges.EDGES): NULL in each argument, an empty value,
+the type's least and greatest, zero and negatives, multi-byte and combining text, and a value
+PostgreSQL itself raises on, at most function_edges.EDGE_CALLS_MAX calls per overload. Where
+PostgreSQL raises, the engine must raise an error of the same SQLSTATE class. An edge answered
+otherwise is a wrong answer; one raised where PostgreSQL answers (or of another class) leaves the
+overload within its bound if its grid row on the engine states a limitation, and an error if not;
+one with no answer at all (the connection lost, or the deadline) is an error. A row whose
+limitation says what its form raises is bounded, and an edge call must raise that SQLSTATE
+(``bound_raised``; polyfill_check.py fails a row whose stated raise no edge call made).
 
 Literals alone do not say a function works on a column: a form that folds a literal at transpile
 time passes while a column of the same type is refused. So an overload given values gets one more

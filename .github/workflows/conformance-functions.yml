@@ -2,8 +2,10 @@ name: Conformance (functions)
 
 # REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED, EXACT OR
 # EQUIVALENT, RESULTS ARE BY ENGINE): which pg_catalog functions work today, per federation engine.
-# Each overload has a result on each engine: exact, equivalent under a written rule, refused by name
-# or differs. Nothing adds the engines up. Measurement only: it writes no function form. Its last
+# Each overload has a result on each engine: exact, equivalent under a written rule, within a stated
+# bound (REQ-2236: called with its types' edge values too, scripts/conformance/function_edges.py, it
+# raises where it cannot answer, as its polyfill grid row states), refused by name or differs.
+# Nothing adds the engines up. Measurement only: it writes no function form. Its last
 # step judges the merged result per engine against scripts/conformance/expected/functions.json
 # (scripts/conformance/baseline_gate.py): an unlisted wrong answer, passed below the committed
 # count, or engine errors or refusals above theirs fail the run. Separate from Conformance (pgwire), whose land gate reads its own report.
