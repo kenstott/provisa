@@ -35,6 +35,7 @@ import pytest
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
 from provisa.compiler.rls import RLSContext, read_rule
 from provisa.compiler.sql_gen import CompilationContext, TableMeta
+from provisa.compiler.sql_types import JoinMeta, JunctionMeta
 from provisa.federation.replica_address import ReplicaRoutes
 from provisa.mv.models import MVDefinition, MVStatus
 from provisa.mv.registry import MVRegistry
@@ -102,6 +103,7 @@ def _state(
     domain_access: list[str] | None = None,
     rules: dict[int, str] | None = None,
     hidden: dict[int, set[str]] | None = None,
+    guarded: bool = False,
 ) -> SimpleNamespace:
     """A reader, ``analyst``, over orders (1), clips (2) and the bridge order_clips (3): a view
     over the resolver's call, landed (its stored table) and read from it."""
@@ -111,6 +113,21 @@ def _state(
         name: _meta(i, name, domains[name])
         for i, name in enumerate(("orders", "clips", "order_clips"), start=1)
     }
+    if guarded:
+        # The set's relationships: orders to clips through the bridge, and its two hops.
+        orders, clips, bridge = (ctx.tables[n] for n in ("orders", "clips", "order_clips"))
+        via = JunctionMeta(table=bridge, source_columns=("order_id",), target_columns=("clip_id",))
+        ctx.joins = {
+            ("Orders", "ORDER_CLIPS"): JoinMeta(
+                "id", "id", "integer", "integer", clips, "many-to-many", via=via
+            ),
+            ("Orders", "order_clips"): JoinMeta(
+                "id", "order_id", "integer", "integer", bridge, "one-to-many"
+            ),
+            ("Order_Clips", "clips"): JoinMeta(
+                "clip_id", "id", "integer", "integer", clips, "many-to-one"
+            ),
+        }
     tables = [
         _table(i, name, domains[name], _COLUMNS[name])
         for i, name in enumerate(("orders", "clips", "order_clips"), start=1)
@@ -142,8 +159,8 @@ def _state(
         roles={
             "analyst": {
                 "id": "analyst",
-                # The hops' relationships are not what is judged here.
-                "capabilities": ["ignore_relationships"],
+                # The hops' relationships are judged only where a test registers them.
+                "capabilities": [] if guarded else ["ignore_relationships"],
                 "domain_access": domain_access or ["*"],
             }
         },
@@ -259,6 +276,21 @@ async def test_a_table_argument_naming_no_registered_table_is_refused(monkeypatc
         _state(definition="SELECT * FROM match_region('orders', 'nowhere') AS m"),
     )
     assert "V006" in refused and "nowhere" in refused, refused
+
+
+@pytest.mark.asyncio
+async def test_the_edge_through_the_bridge_is_held_to_the_sets_relationships(monkeypatch):
+    """The relationship guard traces the bridge's columns through its definition: the call's rows
+    carry the columns the command declares, so the joins on them are the set's relationships."""
+    governed = await _govern(monkeypatch, _FOLLOW, _state(guarded=True))
+    assert "order_clips" in governed
+
+
+@pytest.mark.asyncio
+async def test_a_join_through_the_bridge_on_no_relationship_is_still_refused(monkeypatch):
+    sql = _FOLLOW.replace("c.id = m.clip_id", "c.id = m.order_id")
+    refused = await _refused(monkeypatch, sql, _state(guarded=True))
+    assert "V002" in refused, refused
 
 
 # --- read from its stored table -------------------------------------------------------------

@@ -143,6 +143,7 @@ def validate_sql(  # REQ-001, REQ-002, REQ-038, REQ-266
         return [ValidationViolation("V000", f"SQL parse error: {exc}")]
     flatten_leftmost_join_groups(written)  # as stage 2 does: a leftmost group is the flat join
     _qualified_calls_as_calls(written)
+    _view_command_columns(written, view_commands or {})
     folded = normalize_identifiers(written.copy(), dialect="postgres")
 
     seen: set[tuple[str, str, tuple[int, int] | None]] = set()
@@ -305,6 +306,33 @@ def view_command(tbl: exp.Table, view_commands: Mapping[str, dict]) -> dict | No
             return command
         node = node.parent
     return None
+
+
+def _view_command_columns(tree: exp.Expr, view_commands: Mapping[str, dict]) -> None:
+    """REQ-2249: in place, a star read from a call :func:`view_command` admits as the columns the
+    command declares it returns, qualified by the call's alias. A call's rows have no columns any
+    rule can trace through a star, so a join on the view's columns would be taken for one relating
+    nothing (V002); its declared columns are what its rows carry, and what the view is built
+    with."""
+    for tbl in list(tree.find_all(exp.Table)):
+        command = view_command(tbl, view_commands)
+        select = tbl.parent.parent if isinstance(tbl.parent, exp.From) else None
+        if command is None or not isinstance(select, exp.Select) or select.args.get("joins"):
+            continue
+        alias = tbl.alias or None
+        names = [c["name"] for c in command.get("output_columns") or []]
+        expressions: list[exp.Expr] = []
+        for item in select.expressions:
+            star = isinstance(item, exp.Star) or (
+                isinstance(item, exp.Column)
+                and isinstance(item.this, exp.Star)
+                and item.table in ("", alias)
+            )
+            if star:
+                expressions += [exp.column(name, table=alias, quoted=True) for name in names]
+            else:
+                expressions.append(item)
+        select.set("expressions", expressions)
 
 
 #: The argument kinds that name a table a call reads (models.FunctionArgument.arg_kind).
