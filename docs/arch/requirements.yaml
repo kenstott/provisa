@@ -3602,7 +3602,13 @@
     in either direction; one already pending; one rejected, until rejections are cleared; a semantic suggestion
     matching a foreign key found in the same run, the foreign key being kept. A relationship between two
     different columns of one table is kept. (8) The shared confirmation dialog has a non-destructive form,
-    which Accept all uses.'
+    which Accept all uses. (Amended 2026-11-15, THE RUN''S MODEL CAN BE CHOSEN:) Maintainer 2026-11-15.
+    The discovery dialog has a Model select. It opens on the model assigned to relationship inference on
+    the AI models page and lists the models of every vendor with a key configured for the organization.
+    The choice applies to that run only and never changes the assignment. The chosen model''s two limits
+    are shown beside it (REQ-464), the request count recalculates when the model changes, and the result
+    names the model that ran. Anyone who may run discovery may choose the model. Semantics is greyed out
+    only when no vendor has a key.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
