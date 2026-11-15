@@ -20,9 +20,12 @@ import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
 import {
   acceptCandidates,
-  discoverRelationships,
+  startDiscoveryRun,
+  fetchDiscoveryRun,
+  fetchDiscoveryRuns,
+  fetchDiscoveryModels,
+  countDiscoveryRun,
   fetchCandidates,
-  fetchDiscoveryKinds,
   rejectCandidate,
   rejectCandidates,
 } from "../../api/admin";
@@ -88,8 +91,11 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   fetchSettings: vi.fn().mockResolvedValue({
     naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
   }),
-  fetchDiscoveryKinds: vi.fn(),
-  discoverRelationships: vi.fn(),
+  fetchDiscoveryModels: vi.fn(),
+  countDiscoveryRun: vi.fn(),
+  startDiscoveryRun: vi.fn(),
+  fetchDiscoveryRun: vi.fn(),
+  fetchDiscoveryRuns: vi.fn(),
   acceptCandidates: vi.fn(),
   rejectCandidates: vi.fn(),
   rejectCandidate: vi.fn(),
@@ -127,8 +133,11 @@ beforeEach(() => {
   acceptAllMock.mockReset();
   rejectAllMock.mockReset();
   rejectOneMock.mockReset().mockResolvedValue(undefined);
-  vi.mocked(fetchDiscoveryKinds).mockReset();
-  vi.mocked(discoverRelationships).mockReset();
+  vi.mocked(fetchDiscoveryModels).mockReset();
+  vi.mocked(countDiscoveryRun).mockReset();
+  vi.mocked(startDiscoveryRun).mockReset();
+  vi.mocked(fetchDiscoveryRun).mockReset();
+  vi.mocked(fetchDiscoveryRuns).mockReset().mockResolvedValue([]);
 });
 
 async function showSuggestions() {
@@ -151,6 +160,11 @@ describe("RelationshipsPage: Accept all and Reject all", () => {
     const ask = await screen.findByRole("dialog");
     expect(ask).toHaveTextContent(
       "Accept all 3 listed suggestions? Each becomes a registered relationship.",
+    );
+    // Accepting destroys nothing: the confirmation's non-destructive form.
+    expect(within(ask).getByTestId("candidates-accept-all-confirm-confirm")).toHaveAttribute(
+      "data-tone",
+      "confirm",
     );
     fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
@@ -272,20 +286,70 @@ describe("RelationshipsPage: the result banner does not cover the registered rel
   });
 
   it("renders the banner, the registered relationships and the suggestions as the page's items", async () => {
-    vi.mocked(fetchDiscoveryKinds).mockResolvedValue({
-      foreign_keys: { available: true },
-      semantics: { available: true, model: "anthropic:test", reason: null },
+    vi.mocked(fetchDiscoveryModels).mockResolvedValue({
+      assigned: {
+        vendor: "anthropic",
+        model: "test",
+        input_tokens: 32000,
+        output_tokens: 4096,
+        limits_source: "default",
+        has_key: true,
+      },
+      vendors: ["anthropic"],
+      semantics_available: true,
     });
-    vi.mocked(discoverRelationships).mockResolvedValue({
-      candidates_found: 3,
-      stored_ids: [7, 8, 9],
-      foreign_keys: { found: 3 },
+    vi.mocked(countDiscoveryRun).mockResolvedValue({
+      requests: 0,
+      by_group: {},
+      model: null,
+      source_tables: 2,
+      target_tables: 2,
+    });
+    const run = {
+      id: 3,
+      status: "running" as const,
+      scope: {
+        kinds: ["foreign_keys" as const],
+        source_domains: ["shop"],
+        source_tables: null,
+        target_same_as_source: true,
+        target_domains: [],
+        target_tables: null,
+        vendor: null,
+        model: null,
+      },
+      model: null,
+      requests_total: 0,
+      requests_done: 0,
+      suggestions: 0,
+      report: null,
+      error: null,
+      stop_requested: false,
+      stopped_by: null,
+      started_by: "user-1",
+      started_at: "2026-11-15T10:00:00+00:00",
+      finished_at: null,
+    };
+    vi.mocked(startDiscoveryRun).mockResolvedValue(run);
+    vi.mocked(fetchDiscoveryRun).mockResolvedValue({
+      ...run,
+      status: "done",
+      suggestions: 3,
+      report: {
+        suggestions: 3,
+        stored_ids: [7, 8, 9],
+        removed: {},
+        foreign_keys: { found: 3, suggested: 3 },
+      },
     });
     await showSuggestions();
     fireEvent.click(screen.getByTestId("rels-discover"));
     await waitFor(() => expect(screen.getByTestId("discover-run")).toBeEnabled());
     fireEvent.click(screen.getByTestId("discover-run"));
-    const banner = await screen.findByTestId("rels-discover-result");
+    // The dialog is closed; the result stays on the page.
+    await screen.findByTestId("discover-progress");
+    fireEvent.keyDown(screen.getByTestId("discover-dialog"), { key: "Escape" });
+    const banner = await screen.findByTestId("rels-discover-result", {}, { timeout: 4000 });
 
     const page = banner.parentElement as HTMLElement;
     expect(page).toHaveClass("page-sticky-head");
