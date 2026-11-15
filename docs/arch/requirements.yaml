@@ -3573,7 +3573,14 @@
     found none, why (the model''s answer could not be read, every suggestion was below the confidence threshold,
     or all were already rejected). A failure of the model is shown, not swallowed. (3) The discovery button
     animates while a run is in progress. (4) The suggestions list names where each suggestion came from,
-    and is not headed as AI-suggested when its rows are foreign keys.'
+    and is not headed as AI-suggested when its rows are foreign keys. (Amended 2026-11-14, ACCEPT ALL, REJECT
+    ALL, AND A CUT-OFF ANSWER:) Maintainer 2026-11-14: ''there should be a way to accept or reject ALL proposals''.
+    (1) The suggestions list has Accept all and Reject all at its head. Each confirms with the count, applies
+    the same behaviour as the action on one suggestion to every listed suggestion, and reports any that
+    failed by name. (2) A model answer cut off at its length limit is never silently dropped: the request
+    is shaped so the answer fits, or the complete suggestions in a cut-off answer are kept and the result
+    says the answer was cut short. (3) The run''s result does not cover or displace the list of registered
+    relationships.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
