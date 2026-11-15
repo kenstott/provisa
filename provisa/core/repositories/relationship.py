@@ -19,6 +19,7 @@ from sqlalchemy import delete as _delete, func, or_, select, update
 
 from provisa.compiler.sql_types import key_list
 from provisa.core.models import Relationship
+from provisa.core.repositories import retirement
 from provisa.core.repositories import table as table_repo
 from provisa.core.relationship_names import store_effective_names
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
@@ -72,6 +73,11 @@ async def upsert(
         if via_tbl is None:
             raise TableNotRegistered("Junction", rel.via_table)
         via_tbl_id = via_tbl["id"]
+
+    # REQ-2248: a retired relationship keeps its id; a save under it would bring it back.
+    held = await get(conn, rel.id)
+    if held is not None and held["retired"]:
+        raise retirement.RetiredNameTaken("relationship", rel.id)
 
     if await _provided_elsewhere(conn, rel, source_tbl["id"], target_tbl_id):
         return
@@ -275,8 +281,14 @@ async def get(conn: "Connection", rel_id: str) -> dict | None:  # REQ-018, REQ-0
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-018, REQ-019
-    result = await conn.execute_core(select(relationships).order_by(relationships.c.id))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-018, REQ-019
+    """Every relationship in service; ``retired`` lists the retired ones instead (REQ-2248),
+    with who, when and why."""
+    result = await conn.execute_core(
+        select(relationships)
+        .where(relationships.c.retired.is_(retired))
+        .order_by(relationships.c.id)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -321,34 +333,64 @@ async def _name_change(conn: "Connection", action: str, rel_id: str) -> None:  #
     )
 
 
-async def delete(conn: "Connection", rel_id: str) -> bool:  # REQ-019, REQ-1918
-    """Delete one relationship: THE delete, for every surface. False when there is none.
+async def delete(  # REQ-019, REQ-1918, REQ-2248
+    conn: "Connection", rel_id: str, *, reason: str | None = None
+) -> bool:
+    """Delete one relationship: THE delete, for every surface. It RETIRES the relationship
+    (REQ-2248): the row, its id, its alias and its tag assignments are kept, the relationship
+    marked retired with ``reason``, the acting person and the time. False when there is none, or
+    it is retired already.
 
     A relationship stands on its own — it goes before the tables it joins. It is refused
     (:class:`RelationshipDeleteRefused`) only while a materialized view is published over it:
     a view joins on the relationship's columns and no other relationship approves that join
-    (REQ-1140). Its tag assignments go with it. One transaction; no cascade is relied on.
+    (REQ-1140). One transaction.
     """
     ref = ObjectRef("relationship", rel_id)
     async with conn.transaction():
-        if await get(conn, rel_id) is None:
+        held = await get(conn, rel_id)
+        if held is None or held["retired"]:
             return False
-        await _name_change(conn, "delete", rel_id)
+        await _name_change(conn, "retire", rel_id)
         blocking = await guard(conn, ref)
         if blocking:
             raise RelationshipDeleteRefused(rel_id, blocking)
-        held = await get(conn, rel_id)
-        assert held is not None  # read above, in this transaction
+        await conn.execute_core(
+            update(relationships)
+            .where(relationships.c.id == rel_id)
+            .values(**retirement.values(reason))
+        )
+        # REQ-2141: retired, it declares no key; the refs its key derived are settled again.
+        from provisa.core.repositories import glossary as glossary_repo
+
         joined = {
             t
             for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
             if t is not None
         }
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(relationships).where(relationships.c.id == rel_id))
-        # REQ-2141: its foreign key is no longer a key; the ref goes back to a Property.
+        await glossary_repo.rehome_keys(conn, joined)
+    return True
+
+
+async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
+    """Restore a retired relationship: the same relationship, its retirement cleared, traversable
+    again. Its key declares again, so the refs it derives are settled again (REQ-2141). False
+    when there is none, or it is not retired."""
+    async with conn.transaction():
+        held = await get(conn, rel_id)
+        if held is None or not held["retired"]:
+            return False
+        await _name_change(conn, "restore", rel_id)
+        await conn.execute_core(
+            update(relationships).where(relationships.c.id == rel_id).values(**retirement.cleared())
+        )
         from provisa.core.repositories import glossary as glossary_repo
 
+        joined = {
+            t
+            for t in (held["source_table_id"], held["target_table_id"], held["via_table_id"])
+            if t is not None
+        }
         await glossary_repo.rehome_keys(conn, joined)
     return True
 

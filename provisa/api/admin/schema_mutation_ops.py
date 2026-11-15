@@ -40,6 +40,8 @@ from provisa.api.admin.schema_helpers import (
 from provisa.api.admin._table_ops import _build_columns_for_input, column_field_refusal
 from provisa.security.masking import MaskUnreachable
 from provisa.api.admin._live_mappers import table_model_from_input as _table_model_from_input
+from provisa.api.admin._retired_objects import retired_name_result
+from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.api.admin._table_settings import (
     TableSaveRefused,
     carried,
@@ -723,6 +725,9 @@ async def register_table(
                 except LabelClash as _clash:
                     # REQ-572: a label never names both a domain and a table; both are named.
                     raise TableSaveRefused(label_clash_result(_clash))
+                except RetiredNameTaken as _retired:
+                    # REQ-2248: a retired name stays taken; the retired object is named.
+                    raise TableSaveRefused(retired_name_result(_retired))
                 except SqlAddressTaken as _taken:
                     # REQ-1933: one SQL address per table in a domain; the table that holds it is named.
                     raise TableSaveRefused(

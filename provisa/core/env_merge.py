@@ -38,13 +38,14 @@ THE GOVERNANCE SETTINGS travel with a whole merge and are not part of the tree (
 ``org_settings`` per key), so they are copied beside the apply, in its transaction.
 """
 
-# Requirements: REQ-1489, REQ-1490, REQ-1491, REQ-1506, REQ-1539, REQ-1548, REQ-1555
+# Requirements: REQ-1489, REQ-1490, REQ-1491, REQ-1506, REQ-1539, REQ-1548, REQ-1555, REQ-2248
 
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
+from provisa.core import model_change
 from provisa.core.env_classes import IDENTITY_ONLY, SEEDED_AT_CREATION
 from provisa.core.env_conflicts import Conflict
 from provisa.core.env_copy import TableDelta, _copy_settings
@@ -52,6 +53,7 @@ from provisa.core.env_deploy import PROJECTED, DeployDelta, in_scope, land, tabl
 from provisa.core.env_files import domain_path, kind_path
 from provisa.core.env_project import COMMANDS_DIR, KIND_DIRS, project
 from provisa.core.environments import PROD, org_schema
+from provisa.core.repositories import retirement
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection, Database
@@ -170,7 +172,14 @@ async def _merge(
     target = {p: b for p, b in (await project(conn, dst_schema)).items() if in_scope(p, scope)}
 
     chosen, pulled_in = _chosen(selection, source, target, removals)
-    merged = merged_tree(source, target, chosen, removals)
+    merged = merged_tree(
+        source,
+        target,
+        chosen,
+        removals,
+        by=model_change.actor(),
+        why=f"removed by a merge from {source_env or PROD}",
+    )
 
     report = await land(
         conn,
@@ -238,20 +247,69 @@ def _rebased(path: str, body: dict[str, Any], src_schema: str, dst_schema: str) 
     return body
 
 
-def merged_tree(source: Tree, target: Tree, chosen: set[str], removals: bool) -> Tree:
+#: REQ-2248: the kinds whose objects are retired, never removed: a merge that removes one of them
+#: retires it in the target instead. Columns and relationships are parts of a table's file and are
+#: retired inside it (:func:`_keeping_retired`).
+RETIRED_NOT_REMOVED: frozenset[str] = frozenset({"registered_tables", "tags", "metrics"})
+
+#: A table file's parts that are model objects in their own right, by the key that addresses each.
+_RETIRED_PARTS: dict[str, str] = {"columns": "column_name", "relationships": "id"}
+
+
+def merged_tree(
+    source: Tree,
+    target: Tree,
+    chosen: set[str],
+    removals: bool,
+    *,
+    by: str | None = None,
+    why: str = "removed by a merge",
+) -> Tree:
     """The model the target holds after the merge: its own, with every ``chosen`` object the source
     has laid over it, and -- when ``removals`` -- less every chosen object the source lacks.
 
     An identity-only object is never removed (REQ-1491): its binding is a fact the target
     established, and the source not naming it is no evidence that it should go.
+
+    Nothing in the model is removed (REQ-2248): a table, tag or metric the merge would remove is
+    kept in the target RETIRED, ``by`` the person merging, for ``why``; a column or relationship
+    the target holds in a table the source carries without it is kept in that table, retired. A
+    retirement the source holds travels as any other change to its file.
     """
+    stamp = retirement.stamped(why, by)
     merged = dict(target)
     for path in chosen:
         if path in source:
-            merged[path] = source[path]
+            merged[path] = _keeping_retired(path, source[path], target.get(path), stamp)
         elif removals and path in merged and table_of(path) not in IDENTITY_ONLY:
-            del merged[path]
+            if table_of(path) in RETIRED_NOT_REMOVED:
+                merged[path] = _retired(merged[path], stamp)
+            else:
+                del merged[path]
     return merged
+
+
+def _retired(body: dict[str, Any], stamp: dict[str, Any]) -> dict[str, Any]:
+    """``body`` retired with ``stamp``; one retired already keeps its own who, when and why."""
+    return body if body.get("retired") else {**body, **stamp}
+
+
+def _keeping_retired(
+    path: str, carried: dict[str, Any], held: dict[str, Any] | None, stamp: dict[str, Any]
+) -> dict[str, Any]:
+    """The source's table file, with each column and relationship the target's ``held`` file has
+    and the source's lacks kept in it, retired (REQ-2248)."""
+    if held is None or table_of(path) != "registered_tables":
+        return carried
+    body = dict(carried)
+    for part, key in _RETIRED_PARTS.items():
+        ours: list[dict[str, Any]] = list(carried.get(part) or [])
+        present = {item[key] for item in ours}
+        kept = [_retired(item, stamp) for item in held.get(part) or [] if item[key] not in present]
+        if kept:
+            items: list[dict[str, Any]] = [*ours, *kept]
+            body[part] = sorted(items, key=lambda i, k=key: str(i[k]))
+    return body
 
 
 def _chosen(

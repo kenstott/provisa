@@ -32,7 +32,12 @@ from sqlalchemy import and_, delete, func, insert, select
 
 from provisa.core import model_change, model_uri
 from provisa.core.repositories.integrity import ObjectRef, discard
-from provisa.core.schema_org import erd_layout_domains, erd_layout_tables, erd_layouts
+from provisa.core.schema_org import (
+    erd_layout_domains,
+    erd_layout_tables,
+    erd_layouts,
+    registered_tables,
+)
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -81,9 +86,14 @@ async def read(conn: "Connection", name: str, readable: Readable) -> dict[str, A
         .where(erd_layout_domains.c.layout_name == name)
         .order_by(erd_layout_domains.c.domain_id)
     )
+    # REQ-2248: a retired table keeps its place in the layout but is not shown.
     tables = await conn.execute_core(
         select(erd_layout_tables)
-        .where(erd_layout_tables.c.layout_name == name)
+        .join(registered_tables, registered_tables.c.id == erd_layout_tables.c.table_id)
+        .where(
+            erd_layout_tables.c.layout_name == name,
+            registered_tables.c.retired.is_(False),
+        )
         .order_by(erd_layout_tables.c.table_id)
     )
     return {
