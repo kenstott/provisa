@@ -152,6 +152,28 @@ export const blankEntry = (type: SyncEntry["type"]): SyncEntry => ({
   last_run: null,
 });
 
+/** The name a duplicate is offered under: editable, and refused on save if it exists. */
+export const duplicateName = (id: string) => `${id}-copy`;
+
+/**
+ * The create form's entry for a duplicate of `entry`: its settings under a new name. No
+ * credential goes with it (the server never returns one), and no result of a publish to it.
+ */
+export function duplicateEntry(entry: SyncEntry): SyncEntry {
+  const copy: SyncEntry = {
+    ...entry,
+    id: duplicateName(entry.id),
+    domains: [...entry.domains],
+    last_run: null,
+  };
+  for (const field of SYNC_SECRET_FIELDS) copy[`${field}_set`] = false;
+  return copy;
+}
+
+/** Whether `entry` holds a credential, which its duplicate has to be given again. */
+export const holdsCredential = (entry: SyncEntry) =>
+  SYNC_SECRET_FIELDS.some((field) => entry[`${field}_set`]);
+
 export interface EntryHealth {
   id: string;
   provider: string;

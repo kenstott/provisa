@@ -10528,5 +10528,6 @@
   "zh/syncingTab.json::syncingTab.type_custom": "Custom",
   "zh/syncingTab.json::syncingTab.type_data_catalog": "Data Catalog",
   "zh/syncingTab.json::syncingTab.type_ontology": "Ontology",
-  "zh/syncingTab.json::syncingTab.username": "Username"
+  "zh/syncingTab.json::syncingTab.username": "Username",
+  "zh/syncingTab.json::syncingTab.duplicateCredentialsNote": "The credentials of {{id}} are not copied: enter them here."
 }

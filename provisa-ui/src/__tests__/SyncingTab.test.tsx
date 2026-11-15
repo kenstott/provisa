@@ -538,6 +538,74 @@ describe("SyncingTab", () => {
     expect(screen.queryByTestId("syncing-publish")).toBeNull();
   });
 
+  it("duplicates an entry into the create form under a new name, with no credential", async () => {
+    mockFetch.mockResolvedValue(
+      state([
+        {
+          ...MARQUEZ,
+          last_run: {
+            id: "marquez",
+            provider: "openlineage",
+            ok: true,
+            published: { tables: 3 },
+            total_published: 3,
+            errors: [],
+          },
+        },
+      ]),
+    );
+    render(<SyncingTab />);
+
+    await open("marquez");
+    fireEvent.click(await screen.findByTestId("syncing-duplicate"));
+    // The create form: name and type are the new entry's to set.
+    expect(screen.getByTestId("syncing-name")).toHaveValue("marquez-copy");
+    expect(screen.getByTestId("syncing-name")).not.toBeDisabled();
+    expect(screen.getByTestId("syncing-endpoint")).toHaveValue("http://marquez:5000");
+    expect(screen.getByTestId("syncing-api-key")).toHaveValue("");
+    expect(screen.getByTestId("syncing-duplicate-note")).toHaveTextContent("marquez");
+    fireEvent.click(screen.getByTestId("syncing-save"));
+
+    await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
+    const [kept, made] = mockSet.mock.calls[0][0].entries;
+    expect(kept.id).toBe("marquez");
+    expect([made.id, made.type, made.direction, made.provider, made.endpoint]).toEqual([
+      "marquez-copy",
+      "data_catalog",
+      "export",
+      "openlineage",
+      "http://marquez:5000",
+    ]);
+    expect([made.domains, made.role]).toEqual([["sales"], "steward"]);
+    expect("api_key" in made).toBe(false);
+    expect("last_run" in made).toBe(false);
+  });
+
+  it("says nothing of credentials when the duplicated entry holds none", async () => {
+    mockFetch.mockResolvedValue(state([MARQUEZ, TERMS]));
+    render(<SyncingTab />);
+
+    await open("terms");
+    fireEvent.click(await screen.findByTestId("syncing-duplicate"));
+    expect(screen.getByTestId("syncing-name")).toHaveValue("terms-copy");
+    expect(screen.queryByTestId("syncing-duplicate-note")).toBeNull();
+  });
+
+  it("opens Add empty after a duplicate was opened", async () => {
+    mockFetch.mockResolvedValue(state());
+    render(<SyncingTab />);
+
+    await open("marquez");
+    fireEvent.click(await screen.findByTestId("syncing-duplicate"));
+    expect(screen.getByTestId("syncing-name")).toHaveValue("marquez-copy");
+    fireEvent.click(screen.getByTestId("syncing-add"));
+    expect(screen.getByTestId("syncing-name")).toHaveValue("");
+    // No provider picked yet, so none of the duplicated catalog's connection is shown.
+    expect(screen.getByTestId("syncing-provider")).toHaveValue("");
+    expect(screen.queryByTestId("syncing-endpoint")).toBeNull();
+    expect(screen.queryByTestId("syncing-duplicate-note")).toBeNull();
+  });
+
   it("says why a save was refused", async () => {
     mockFetch.mockResolvedValue(state());
     mockSet.mockRejectedValue(new Error("catalog 'marquez' has no endpoint"));

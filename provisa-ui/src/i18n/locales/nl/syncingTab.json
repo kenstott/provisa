@@ -10,6 +10,7 @@
     "none_custom": "Nog geen aangepaste systemen.",
     "addEntry": "Toevoegen",
     "newEntry": "Nieuw",
+    "duplicateCredentialsNote": "De credentials van {{id}} worden niet gekopieerd: voer ze hier in.",
     "name": "Naam",
     "nameHelp": "Een korte naam, uniek in de organisatie (bijvoorbeeld openmetadata-prod). Twee datacatalogi kunnen van hetzelfde soort zijn.",
     "type": "Type",

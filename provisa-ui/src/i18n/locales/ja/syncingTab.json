@@ -10,6 +10,7 @@
     "none_custom": "カスタムシステムはまだありません。",
     "addEntry": "追加",
     "newEntry": "新規",
+    "duplicateCredentialsNote": "{{id}} の認証情報はコピーされません。ここで入力してください。",
     "name": "名前",
     "nameHelp": "組織内で一意の短い名前 (例: openmetadata-prod)。2 つのデータカタログが同じ種類でもかまいません。",
     "type": "種類",

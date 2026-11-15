@@ -10532,5 +10532,6 @@
   "de/syncingTab.json::syncingTab.type_custom": "Custom",
   "de/syncingTab.json::syncingTab.type_data_catalog": "Data Catalog",
   "de/syncingTab.json::syncingTab.type_ontology": "Ontology",
-  "de/syncingTab.json::syncingTab.username": "Username"
+  "de/syncingTab.json::syncingTab.username": "Username",
+  "de/syncingTab.json::syncingTab.duplicateCredentialsNote": "The credentials of {{id}} are not copied: enter them here."
 }

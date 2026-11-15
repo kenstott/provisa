@@ -10,6 +10,7 @@
     "none_custom": "No custom systems yet.",
     "addEntry": "Add",
     "newEntry": "New",
+    "duplicateCredentialsNote": "The credentials of {{id}} are not copied: enter them here.",
     "name": "Name",
     "nameHelp": "A short name, unique in the organization (for example openmetadata-prod). Two data catalogs may be of the same kind.",
     "type": "Type",

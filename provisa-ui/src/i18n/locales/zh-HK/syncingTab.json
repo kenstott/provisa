@@ -10,6 +10,7 @@
     "none_custom": "尚未有自訂系統。",
     "addEntry": "加入",
     "newEntry": "新增",
+    "duplicateCredentialsNote": "{{id}} 的認證不會被複製：請在此輸入。",
     "name": "名稱",
     "nameHelp": "一個簡短的名稱，在組織內唯一（例如 openmetadata-prod）。兩個資料目錄可以屬於同一類型。",
     "type": "類型",

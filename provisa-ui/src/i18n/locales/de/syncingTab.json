@@ -10,6 +10,7 @@
     "none_custom": "Noch keine benutzerdefinierten Systeme.",
     "addEntry": "Hinzufügen",
     "newEntry": "Neu",
+    "duplicateCredentialsNote": "Die Zugangsdaten von {{id}} werden nicht kopiert: Geben Sie sie hier ein.",
     "name": "Name",
     "nameHelp": "Ein kurzer, in der Organisation eindeutiger Name (zum Beispiel openmetadata-prod). Zwei Datenkataloge können von derselben Art sein.",
     "type": "Typ",

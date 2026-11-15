@@ -32,8 +32,10 @@ import { Plus, TriangleAlert } from "lucide-react";
 import {
   blankEntry,
   checkEntry,
+  duplicateEntry,
   entryUpdate,
   fetchSyncing,
+  holdsCredential,
   publishEntry,
   setSyncing,
   SYNC_ENTRY_TYPES,
@@ -51,8 +53,9 @@ import { SplitPane } from "../../list/SplitPane";
 import { EntryPanel } from "./EntryPanel";
 import type { Secrets } from "./EntryFields";
 
-/** What the panel shows: a kept entry by its name, or a new one being made. */
-type Picked = { kind: "kept"; id: string } | { kind: "new" } | null;
+/** What the panel shows: a kept entry by its name, or a new one being made (empty from Add, or
+ *  filled from the kept entry it duplicates). */
+type Picked = { kind: "kept"; id: string } | { kind: "new"; from?: SyncEntry } | null;
 
 export function SyncingTab() {
   const { t } = useTranslation();
@@ -199,6 +202,7 @@ export function SyncingTab() {
   };
 
   const panelTitle = picked?.kind === "new" ? t("syncingTab.newEntry") : (selected?.id ?? "");
+  const duplicated = picked?.kind === "new" ? picked.from : undefined;
 
   return (
     <Stack gap="md" style={{ flex: 1, minHeight: 0 }} data-tour="syncing" data-testid="syncing">
@@ -260,8 +264,14 @@ export function SyncingTab() {
       >
         {picked?.kind === "new" ? (
           <EntryPanel
-            key="new"
-            entry={blankEntry("data_catalog")}
+            // A duplicate opens a fresh form, never the state of an Add left open.
+            key={duplicated ? `new:${duplicated.id}` : "new"}
+            entry={duplicated ? duplicateEntry(duplicated) : blankEntry("data_catalog")}
+            note={
+              duplicated && holdsCredential(duplicated)
+                ? t("syncingTab.duplicateCredentialsNote", { id: duplicated.id })
+                : undefined
+            }
             isNew
             entitled={s.entitled}
             fields={fields}
@@ -270,6 +280,7 @@ export function SyncingTab() {
             onDelete={async () => undefined}
             onTest={() => checkEntry("")}
             onPublish={async () => undefined}
+            onDuplicate={() => undefined}
           />
         ) : selected ? (
           <EntryPanel
@@ -291,6 +302,7 @@ export function SyncingTab() {
               await load();
               return result.entries[0];
             }}
+            onDuplicate={() => setPicked({ kind: "new", from: selected })}
           />
         ) : null}
       </SplitPane>

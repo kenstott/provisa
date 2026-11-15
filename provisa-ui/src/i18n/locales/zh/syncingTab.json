@@ -10,6 +10,7 @@
     "none_custom": "尚无自定义系统。",
     "addEntry": "添加",
     "newEntry": "新增",
+    "duplicateCredentialsNote": "{{id}} 的凭据不会被复制：请在此输入。",
     "name": "名称",
     "nameHelp": "一个简短的名称，在组织内唯一（例如 openmetadata-prod）。两个数据目录可以属于同一类型。",
     "type": "类型",

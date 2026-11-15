@@ -11,7 +11,9 @@
 // REQ-2247: one Syncing entry in the page's detail panel. Read, it is its fields drawn read-only,
 // and for a data catalog its connection test, Publish now (only while its direction includes
 // Export) and the result of its last publish. Edited, it is the same fields with Save and Cancel
-// in the panel's head. A type with no run of its own yet is offered none.
+// in the panel's head. A type with no run of its own yet is offered none. Duplicate, beside Edit and
+// Delete, opens the create form filled from the entry (SyncingTab); that form says when the
+// entry's credentials have to be entered again (`note`).
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -24,9 +26,10 @@ import {
   type SyncEntry,
   type SyncSecretField,
 } from "../../../api/syncing";
-import { FormFooter, FormLayout, FormRead } from "../../form/FormLayout";
+import { FormField, FormFooter, FormLayout, FormRead } from "../../form/FormLayout";
 import { PanelActions } from "../../list/SplitPane";
 import { PanelDelete } from "../../list/PanelDelete";
+import { PanelDuplicate } from "../../list/PanelDuplicate";
 import { Tip } from "../../Tip";
 import { EntryFields, type EntryFieldsProps, type Secrets } from "./EntryFields";
 
@@ -83,6 +86,8 @@ export function EntryPanel({
   onDelete,
   onTest,
   onPublish,
+  onDuplicate,
+  note,
 }: {
   entry: SyncEntry;
   isNew: boolean;
@@ -94,6 +99,10 @@ export function EntryPanel({
   onDelete: () => Promise<void>;
   onTest: () => Promise<EntryHealth>;
   onPublish: () => Promise<PublishOutcome | undefined>;
+  /** Opens the create form filled from this entry. */
+  onDuplicate: () => void;
+  /** What the create form says above its fields: what a duplicate did not copy. */
+  note?: string;
 }) {
   const { t } = useTranslation();
   const [editing, setEditing] = useState(isNew);
@@ -119,6 +128,19 @@ export function EntryPanel({
     };
     return (
       <FormLayout data-testid="syncing-entry-form">
+        {note && (
+          <FormField size="full">
+            <Alert
+              color="yellow"
+              variant="light"
+              py={4}
+              px="sm"
+              data-testid="syncing-duplicate-note"
+            >
+              {note}
+            </Alert>
+          </FormField>
+        )}
         <EntryFields
           {...fields}
           entry={draft}
@@ -173,8 +195,6 @@ export function EntryPanel({
           <Group gap="xs">
             {isCatalog && (
               <Button
-                variant="subtle"
-                size="compact-sm"
                 loading={busy === "test"}
                 data-testid="syncing-test"
                 onClick={() =>
@@ -189,8 +209,6 @@ export function EntryPanel({
             {/* A direction that is off never runs: Publish now is offered only while it exports. */}
             {exporting && entitled && (
               <Button
-                variant="subtle"
-                size="compact-sm"
                 loading={busy === "publish"}
                 data-testid="syncing-publish"
                 onClick={() =>
@@ -204,7 +222,6 @@ export function EntryPanel({
             )}
             <Tip text={t("syncingTab.edit")} named>
               <ActionIcon
-                variant="subtle"
                 aria-label={t("syncingTab.edit")}
                 data-testid="syncing-edit"
                 onClick={() => {
@@ -215,6 +232,7 @@ export function EntryPanel({
                 <Pencil size={14} />
               </ActionIcon>
             </Tip>
+            <PanelDuplicate name={entry.id} onDuplicate={onDuplicate} testId="syncing-duplicate" />
             <PanelDelete
               itemKey={entry.id}
               title={t("syncingTab.deleteTitle", { id: entry.id })}

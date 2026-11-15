@@ -10,6 +10,7 @@
     "none_custom": "Aún no hay sistemas personalizados.",
     "addEntry": "Añadir",
     "newEntry": "Nuevo",
+    "duplicateCredentialsNote": "Las credenciales de {{id}} no se copian: introdúzcalas aquí.",
     "name": "Nombre",
     "nameHelp": "Un nombre corto, único en la organización (por ejemplo openmetadata-prod). Dos catálogos de datos pueden ser del mismo tipo.",
     "type": "Tipo",
