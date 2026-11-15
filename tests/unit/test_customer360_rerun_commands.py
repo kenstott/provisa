@@ -350,9 +350,16 @@ def test_the_bridges_are_read_and_written_as_er_writer_which_may_merge_into_them
     assert "GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA er TO er_writer;" in reader
 
 
+# What the entity steward holds: running the two commands, reading every registry table whole (a
+# rerun that read a capped table would delete the mentions past the cap), and writing.
+_STEWARD_CAPABILITIES = {"command_execution", "full_results", "write"}
+
+
 def test_only_the_entity_steward_may_delete_bridge_rows_and_it_writes_as_a_data_steward():
     [steward] = [r for r in _CONFIG["roles"] if r["id"] == "entity_steward"]
-    assert steward["parents"] == ["data_steward"] and steward["capabilities"] == ["write"]
+    # data_steward holds no write right; developer is the parent that holds it.
+    assert steward["parents"] == ["data_steward", "developer"]
+    assert set(steward["capabilities"]) == _STEWARD_CAPABILITIES
     for table, _, columns in _COMMANDS.values():
         grants = {(g["role"], g["operation"]): g for g in _table("er", table)["write_grants"]}
         assert set(grants) == {
@@ -362,3 +369,33 @@ def test_only_the_entity_steward_may_delete_bridge_rows_and_it_writes_as_a_data_
         }, table
         assert grants[("data_steward", "insert")]["columns"] == columns
         assert grants[("data_steward", "update")]["columns"] == columns
+
+
+def _server_config(monkeypatch):
+    """The demo's config.yaml as the server parses it at start (api/app.py: read with its
+    includes, then parse_config_dict), with the store namespace the bundle runs under."""
+    from provisa.core.config_loader import parse_config_dict, read_config_with_includes
+    from provisa.core.demo_bundles import store_namespaces
+
+    for name, value in store_namespaces(_DEMO).items():
+        monkeypatch.setenv(name, value)
+    return parse_config_dict(read_config_with_includes(_DEMO / "config.yaml"))
+
+
+def test_the_server_accepts_the_demo_config(monkeypatch):
+    config = _server_config(monkeypatch)
+    assert {"entity_steward", "customer_success"} <= {r.id for r in config.roles}
+    assert {"rerun_org_bridge", "rerun_person_bridge"} <= {f.name for f in config.functions}
+
+
+def test_the_entity_steward_holds_only_what_the_rerun_needs_and_no_steward_above_it_writes(
+    monkeypatch,
+):
+    from provisa.core.db import standard_role_dicts
+    from provisa.security.inheritance import flatten_role_dicts
+
+    config = _server_config(monkeypatch)
+    roles = [*standard_role_dicts(), *(r.model_dump() for r in config.roles)]
+    held = {r["id"]: set(r["capabilities"]) for r in flatten_role_dicts(roles)}
+    assert held["entity_steward"] == _STEWARD_CAPABILITIES
+    assert "write" not in held["data_steward"]

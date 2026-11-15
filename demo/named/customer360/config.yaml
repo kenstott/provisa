@@ -281,13 +281,16 @@ roles:
   capabilities: [data_product_read, glossary_read, query_development, usage]
   domain_access:
   - customer360
-# Reruns entity resolution from Provisa: a data steward that may write, and the one role that may
-# delete bridge rows, which replacing a bridge does. Any other data steward that may write (the org
-# admin) may correct a bridge row but not replace the bridges.
+# Reruns entity resolution from Provisa, and the one role that may delete bridge rows, which
+# replacing a bridge does. A data steward (its grants and the commands' assignment) that may also
+# write: data_steward holds no write right, so developer is its second parent, the one that does.
+# A role holds only what a parent holds, and this one holds only what the rerun needs: running the
+# commands, reading every registry table whole, and writing. data_steward and the org admin may
+# correct a bridge row but not replace the bridges.
 - id: entity_steward
-  parents: [data_steward]
+  parents: [data_steward, developer]
   description: "Entity steward: reruns entity resolution, replacing the narrow entity bridges with a new run's matches."
-  capabilities: [write]
+  capabilities: [command_execution, full_results, write]
   domain_access:
   - customer360
 server:
