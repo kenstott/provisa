@@ -158,7 +158,7 @@ Licensed:     no (no license installed)
 
 ## provisa metadata export
 
-Dispara a publicação de metadados sob demanda do servidor em execução. O comando envia para `POST /admin/metadata-export/publish`, o endpoint que o botão **Publish now** da aba Admin chama, então os dois caminhos enviam o mesmo snapshot completo.
+Dispara a publicação de metadados sob demanda do servidor em execução. O comando envia para `POST /admin/syncing/publish`, o endpoint que o botão **Publish now** da aba Admin chama, então os dois caminhos enviam o mesmo snapshot completo.
 
 ```
 provisa metadata export [--api URL] [--token TOKEN] [--timeout SECONDS]

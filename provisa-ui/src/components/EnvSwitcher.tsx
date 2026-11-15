@@ -52,9 +52,10 @@ export function EnvSwitcher() {
   // neither it nor `environment_management`, and the server answers 403 `env.switch_forbidden` to a
   // request naming one — so the menu that names them is not shown to a caller who cannot be served.
   const maySwitch = useCapability("environment_switch");
-  // REQ-1608: sandbox holds neither `environment_switch` nor a real second environment to move to --
-  // the withdrawal-repair below (drop a selection the right can no longer serve) does not apply to a
-  // role that never had a selection to begin with, so it must not fire the reload for this caller.
+  // REQ-1608: a caller only SHOWN `environment_switch` (demonstrated, never held) never had a
+  // selection the right served, so the withdrawal-repair below (drop a selection the right can no
+  // longer serve) must not fire the reload for it. The standard sandbox role holds the right as its
+  // own (REQ-2053), so this applies only to a role that demonstrates it.
   const demonstrated = useDemonstrated("environment_switch");
   const [envs, setEnvs] = useState<Environment[] | null>(null);
   // REQ-1552: the state of the branch being worked in, WHERE the work happens. The admin page has

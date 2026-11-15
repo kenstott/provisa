@@ -31,7 +31,7 @@ config and the credential resolve from that org's settings, and the org id is bo
 publish — so a reconcile for one org cannot read another's target, let alone publish to it.
 """
 
-# Requirements: REQ-1072, REQ-1073
+# Requirements: REQ-1072, REQ-1073, REQ-2247
 
 from __future__ import annotations
 
@@ -134,14 +134,16 @@ async def notify_model_changed(org_id: str, *, reason: str) -> int | None:
 
 
 async def _export_config(
-    org_id: str,
+    org_id: str, *, only: str | None = None
 ) -> tuple[MetadataExportConfig, list[MetadataExportTarget]]:
-    """The org's export settings and its targets, each built from the catalog it names
-    (REQ-2122), refused unless the org may publish.
+    """The org's reconcile schedule and what a publish reaches: every data catalog entry whose
+    direction includes Export, or the one entry ``only`` (REQ-2247), refused unless the org may
+    publish.
 
     Entitlement is checked here rather than only at the admin endpoint (REQ-1073): a scheduled
-    reconcile has no request behind it, so a config staged while the org was entitled would
-    otherwise keep publishing after the plan lapsed.
+    reconcile has no request behind it, so an entry saved while the org was entitled would
+    otherwise keep publishing after the plan lapsed. A direction that is off never runs: ``only``
+    naming an entry that does not export raises :class:`SyncDirectionOff`.
     """
     from provisa.api.app import state
     from provisa.core.org_settings import resolve_org_config
@@ -158,10 +160,13 @@ async def _export_config(
         raise ExportNotAllowed(f"org {org_id!r} has no tenant database bound")
     resolved = await resolve_org_config(model_db)
     config = MetadataExportConfig(**dict(resolved.get("metadata_export") or {}))
-    if not config.enabled:
-        raise ExportNotAllowed(f"org {org_id!r} has metadata export disabled")
     catalogs = CatalogsConfig(catalogs=list(resolved.get("catalogs") or []))
-    return config, config.export_targets(catalogs)
+    if only is not None and only not in catalogs.by_id():
+        raise ExportNotAllowed(f"org {org_id!r} has no entry {only!r}")
+    targets = catalogs.export_targets(only)
+    if not targets:
+        raise ExportNotAllowed(f"org {org_id!r} has no entry whose direction includes Export")
+    return config, targets
 
 
 async def _model_for_export() -> "ProvisaConfig":
@@ -418,9 +423,9 @@ async def snapshot_reader(
     return _columns
 
 
-async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
-    """Publish the org's full metadata snapshot to every catalog it is configured to, by target id
-    (REQ-2118: one snapshot, each target in turn).
+async def publish_snapshot(org_id: str, *, only: str | None = None) -> dict[str, PublishResult]:
+    """Publish the org's full metadata snapshot to every data catalog entry that exports, by entry
+    id (REQ-2118: one snapshot, each entry in turn), or to the one entry ``only`` (REQ-2247).
 
     The single publish path: the admin's **Publish now**, the event drain and the scheduled
     reconcile all arrive here, so what a reconcile sends is what the admin saw it send —
@@ -433,7 +438,7 @@ async def publish_snapshot(org_id: str) -> dict[str, PublishResult]:
 
     token = set_current_org(org_id)
     try:
-        _, targets = await _export_config(org_id)
+        _, targets = await _export_config(org_id, only=only)
         snapshot = await org_snapshot(org_id)
         model_db = state.model_db
         assert model_db is not None  # _export_config refuses without one

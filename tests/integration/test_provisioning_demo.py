@@ -363,12 +363,15 @@ def _close_build(server) -> dict:
     "path", sorted((_DEMO / "queries").glob("*.graphql")), ids=lambda p: p.stem
 )
 def test_each_example_query_answers(landed, pulled, path):
+    closed = "viewOrderMargins" in path.read_text() and not _dataset_open(_utc())
     resp = _post(landed, "/data/graphql", {"query": path.read_text()})
+    if closed:
+        # Outside the dataset's window a read is refused whatever the client (run 43655220491, at
+        # 00:23 UTC, was the first to reach this branch).
+        _refused_outside_window(resp, "view_order_margins")
+        return
     assert resp.status_code == 200, resp.text
     body = resp.json()
-    if "viewOrderMargins" in path.read_text() and not _dataset_open(_utc()):
-        assert body.get("errors"), body
-        return
     assert not body.get("errors"), body
     [rows] = body["data"].values()
     if "__pulls" in path.read_text() and pulled is None:

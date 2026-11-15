@@ -60,8 +60,7 @@ import { OrgsTab } from "../components/admin/OrgsTab";
 import { AiModelsTab } from "../components/admin/AiModelsTab";
 import { PackageRegistriesTab } from "../components/admin/PackageRegistriesTab";
 import { ContainerRegistriesTab } from "../components/admin/ContainerRegistriesTab";
-import { CatalogsTab } from "../components/admin/CatalogsTab";
-import { MetadataExportTab } from "../components/admin/MetadataExportTab";
+import { SyncingTab } from "../components/admin/syncing/SyncingTab";
 import { ImportTab } from "../components/admin/ImportTab";
 import { TagsTab } from "../components/admin/TagsTab";
 import { ClassificationKindsTab } from "../components/admin/ClassificationKindsTab";
@@ -115,8 +114,7 @@ const ROUTE_TO_SECTION: Record<string, string> = {
   "/admin/ai-models": "AI Models",
   "/admin/package-registries": "Package Registries", // REQ-1984: what Node installs go through
   "/admin/container-registries": "Container Registries", // REQ-2098: where built images go
-  "/admin/catalogs": "Catalogs", // REQ-2122: each catalog connected once
-  "/admin/metadata-export": "Metadata Export",
+  "/admin/syncing": "Syncing", // REQ-2247: every outside system kept in step with Provisa
   "/admin/import": "Import", // REQ-1483: Hasura v2 / DDN import
   "/admin/tags": "Tags",
   "/admin/classification-kinds": "Classification", // REQ-2147: the profiler's classification kinds
@@ -588,8 +586,7 @@ export function AdminPage() {
         {activeTab === "AI Models" && <AiModelsTab />}
         {activeTab === "Package Registries" && <PackageRegistriesTab />}
         {activeTab === "Container Registries" && <ContainerRegistriesTab />}
-        {activeTab === "Catalogs" && <CatalogsTab />}
-        {activeTab === "Metadata Export" && <MetadataExportTab />}
+        {activeTab === "Syncing" && <SyncingTab />}
         {activeTab === "Import" && <ImportTab />}
         {activeTab === "Tags" && <TagsTab />}
         {activeTab === "Classification" && <ClassificationKindsTab />}

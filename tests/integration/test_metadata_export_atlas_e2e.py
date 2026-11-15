@@ -197,7 +197,7 @@ async def test_republishing_lands_the_same_catalog_state(published):
     """REQ-1072's reconcile republishes the whole snapshot on a schedule, so a second publish
     has to be an upsert rather than a duplicate."""
     client, first = published
-    (again,) = (await client.post("/admin/metadata-export/publish")).json()["targets"]
+    (again,) = (await client.post("/admin/syncing/publish")).json()["entries"]
     assert again["ok"], refused(again)
     # Entities are upserted and counted on every publish; a term assignment is counted when it
     # is added, so the second publish, finding all four in place, adds none.

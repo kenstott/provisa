@@ -782,8 +782,8 @@ catalog_bindings = Table(
     "catalog_bindings",
     metadata,
     Column("id", Integer, primary_key=True, autoincrement=True),
-    # REQ-2118: the export target (its id in the org's metadata_export.targets), not the provider:
-    # two targets of one provider keep their bindings apart.
+    # REQ-2118, REQ-2247: the Syncing entry the export publishes to (its id), not the provider:
+    # two entries of one provider keep their bindings apart.
     Column("target", Text, nullable=False),
     Column("semantic_uri", Text, nullable=False),
     Column("vendor_ref", Text, nullable=False),
