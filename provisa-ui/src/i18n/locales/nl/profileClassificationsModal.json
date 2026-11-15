@@ -19,6 +19,9 @@
     "linked": "De kolom betekent nu {{term}}.",
     "keyColumn": "De kolom houdt haar klasseterm: de betekenis van een sleutelkolom is haar klasseterm.",
     "markedPii": "Ze is gemarkeerd als PII.",
-    "maskOffered": "Voorgesteld masker: {{mask}}. Voeg het toe bij de maskers van de kolom."
+    "maskOffered": "Voorgesteld masker: {{mask}}. Voeg het toe bij de maskers van de kolom.",
+    "tooFewTitle": "Te weinig waarden om te classificeren",
+    "tooFewNote": "Deze kolommen hadden in de steekproef van de run te weinig waarden om te zeggen wat ze bevatten. Dat is niet hetzelfde als met geen enkele soort overeenkomen.",
+    "tooFew": "{{column}}: {{count}} waarden in de steekproef, te weinig om te classificeren."
   }
 }

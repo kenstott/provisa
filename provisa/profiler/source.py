@@ -56,8 +56,8 @@ class ProfilerSettings:
     joint_max_distinct: int
     # The most category columns entered, the most frequently held kept.
     category_max_columns: int
-    # REQ-2147: the most rows whose values the classification kinds are tested against, drawn
-    # at random from the run's sample.
+    # REQ-2147: the most non-null values of each column the classification kinds are tested
+    # against, drawn at random from the run's sample in one read of it.
     classification_sample: int
 
 

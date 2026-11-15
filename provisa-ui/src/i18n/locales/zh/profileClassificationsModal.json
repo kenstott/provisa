@@ -19,6 +19,9 @@
     "linked": "该列现在表示 {{term}}。",
     "keyColumn": "该列保留其类术语：键列的含义就是它的类术语。",
     "markedPii": "已标记为 PII。",
-    "maskOffered": "建议的掩码：{{mask}}。请在该列的掩码中添加。"
+    "maskOffered": "建议的掩码：{{mask}}。请在该列的掩码中添加。",
+    "tooFewTitle": "值太少，无法分类",
+    "tooFewNote": "这些列在运行样本中的值太少，无法判断其内容。这与不匹配任何类型不同。",
+    "tooFew": "{{column}}：样本中有 {{count}} 个值，太少，无法分类。"
   }
 }
