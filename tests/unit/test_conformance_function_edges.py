@@ -399,3 +399,46 @@ def test_the_polyfill_check_holds_within_bound_and_fails_a_bound_never_raised():
     assert verdict({"outcome": support.WITHIN_BOUND, "bound_raised": True}) == check.HOLDS
     never = {"outcome": "pass", "bound_raised": False, "bound_sqlstates": ["0A000"]}
     assert verdict(never) == check.FAILS
+
+
+def _refusing(node: Any, dialect: str) -> Any:
+    """Refuses every call it is given, as a rewrite function refusing a value does."""
+    from provisa.transpiler.polyfill.notation import Refusal, Refused
+
+    raise Refused(Refusal("0A000", f"growl() has no form on {dialect}"))
+
+
+def test_a_rewrite_function_refusing_the_call_is_judged_by_its_refusal_not_a_crash():
+    """A rewrite function raising its refusal while the check reads the grid (age(xid) on
+    ClickHouse does) is the row's statement of that call: it holds where the run raised it."""
+    from provisa.transpiler.polyfill.notation import Rewrite
+
+    feature = Feature(
+        "growl",
+        "family",
+        "summary",
+        read=Side(rules=(Rule(None, {"clickhouse": Rewrite(_refusing, mentions="growl")}),)),
+    )
+    grid = Grid((feature,))
+
+    def verdict(outcome: dict[str, Any]) -> tuple[str, str]:
+        run = {
+            "engines": ["clickhouse"],
+            "functions": [
+                {"function": "growl", "overload": "text", "outcomes": {"clickhouse": outcome}}
+            ],
+        }
+        [finding] = check.checked(run, grid)
+        return finding.verdict, finding.feature
+
+    refused = {
+        "outcome": "refused",
+        "detail": {
+            "statement": "SELECT growl('a')",
+            "error": "ERROR:  growl() has no form on clickhouse",
+            "sqlstate": "0A000",
+        },
+    }
+    assert verdict(refused) == (check.HOLDS, check.REWRITE_REFUSAL)
+    assert verdict({"outcome": "pass"})[0] == check.FAILS
+    assert verdict({"outcome": "not_checked"})[0] == check.UNVERIFIED

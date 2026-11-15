@@ -56,7 +56,7 @@ sys.path.insert(0, str(ROOT))
 
 from provisa.transpiler.polyfill import GRID, Applied, Feature, Grid, Refusal  # noqa: E402
 from provisa.transpiler.polyfill.grid import DIALECTS  # noqa: E402
-from provisa.transpiler.polyfill.notation import Form  # noqa: E402
+from provisa.transpiler.polyfill.notation import Form, Refused  # noqa: E402
 
 #: The dialect of each engine a Conformance (functions) run measures, by the name its leg has.
 ENGINE_DIALECTS = {
@@ -196,7 +196,13 @@ def checked(run: dict[str, Any], grid: Grid = GRID) -> list[Finding]:
         for engine, outcome in sorted(entry["outcomes"].items()):
             dialect = ENGINE_DIALECTS[engine]
             assert dialect in DIALECTS, dialect
-            applied = grid.read(node, dialect)
+            try:
+                applied = grid.read(node, dialect)
+            except Refused as refused:
+                # A rewrite function refusing the call for its values (notation.Refused): the row
+                # is not named, its refusal is what it states of the call.
+                findings.append(_refused_by_rewrite(entry, engine, dialect, outcome, refused))
+                continue
             if applied is None:
                 continue
             verdict, why = judged(applied, dialect, outcome)
@@ -215,6 +221,44 @@ def checked(run: dict[str, Any], grid: Grid = GRID) -> list[Finding]:
                 )
             )
     return findings
+
+
+#: The feature a finding names when a rewrite function refused the call before naming its row.
+REWRITE_REFUSAL = "(a rewrite function's refusal)"
+
+
+def _refused_by_rewrite(
+    entry: dict[str, Any], engine: str, dialect: str, outcome: dict[str, Any], refused: Refused
+) -> Finding:
+    """The verdict on an overload a rewrite function refuses as the run calls it: it holds where
+    the run raised that refusal, and fails where the run did anything else it compared."""
+    kind = outcome["outcome"]
+    if kind in _NOTHING_COMPARED:
+        verdict, why = UNVERIFIED, f"the run compared nothing ({kind})"
+    elif kind == "refused" and _raised(refused.refusal, outcome):
+        verdict, why = HOLDS, "refused as its rewrite function says"
+    else:
+        message, sqlstate = _error(outcome)
+        verdict, why = (
+            FAILS,
+            (
+                f"a rewrite function refuses it with {refused.refusal.sqlstate} "
+                f"{refused.refusal.message!r}; the run: {kind}"
+                + (f" {sqlstate} {message!r}" if message else "")
+            ),
+        )
+    return Finding(
+        feature=REWRITE_REFUSAL,
+        function=entry["function"],
+        overload=entry["overload"],
+        engine=engine,
+        dialect=dialect,
+        grid="refused",
+        outcome=kind,
+        verdict=verdict,
+        why=why,
+        statement=_statement(outcome),
+    )
 
 
 def _features_unmeasured(findings: Iterable[Finding], grid: Grid) -> list[str]:
