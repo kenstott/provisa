@@ -424,7 +424,7 @@ Every invocation emits a trace, whatever the outcome. The trace holds the comman
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` is a shell-tier job and runs outside the governed RPC path. It triggers the running server's on-demand metadata publish by posting to `/admin/metadata-export/publish`, the endpoint the Admin tab's **Publish now** button calls.
+`provisa metadata export` is a shell-tier job and runs outside the governed RPC path. It triggers the running server's on-demand metadata publish by posting to `/admin/syncing/publish`, the publish the Syncing page's **Publish now** runs, to every entry whose direction includes Export.
 
 Use it to drive timed exports from cron or CI when the configured `reconcile_cron` schedule is
 not granular enough:

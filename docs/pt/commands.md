@@ -316,7 +316,7 @@ Toda invocação emite um trace, seja qual for o resultado. O trace contém o no
 
 ## CLI: provisa metadata export
 
-`provisa metadata export` é um job do nível de shell e roda fora do caminho de RPC governado. Ele dispara a publicação de metadados sob demanda do servidor em execução enviando para `/admin/metadata-export/publish`, o endpoint que o botão **Publish now** da aba Admin chama.
+`provisa metadata export` é um job do nível de shell e roda fora do caminho de RPC governado. Ele dispara a publicação de metadados sob demanda do servidor em execução enviando para `/admin/syncing/publish`, o endpoint que o botão **Publish now** da aba Admin chama.
 
 Use-o para conduzir exportações agendadas a partir de cron ou CI quando o agendamento `reconcile_cron` configurado não
 for granular o bastante:

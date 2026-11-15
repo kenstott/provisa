@@ -62,8 +62,7 @@ const ORG_SCOPED: Record<string, string> = {
   "/admin/system-health": "observability",
   "/admin/observability": "observability",
   "/admin/ai-models": "org_settings",
-  "/admin/catalogs": "org_settings", // REQ-2122: the org's own catalog connections
-  "/admin/metadata-export": "org_settings",
+  "/admin/syncing": "org_settings", // REQ-2247: the org's own outside systems kept in step
   // REQ-1327: an import writes objects of several layers; any of their rights opens the page
   // (asserted below with the rest of its requirement).
   "/admin/import": "table_registration", // REQ-1483: Hasura v2 / DDN import

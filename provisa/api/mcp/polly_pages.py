@@ -153,9 +153,11 @@ PAGES: dict[str, PollyPage] = {
     "/admin/ai-models": PollyPage("AI model settings"),
     "/admin/package-registries": PollyPage("package registries"),
     "/admin/container-registries": PollyPage("container registries"),
-    "/admin/catalogs": PollyPage("catalogs"),
+    "/admin/syncing": PollyPage(
+        "syncing: the outside systems kept in step with Provisa (data catalogs, ontologies, "
+        "custom), each with its direction and, for a data catalog, its export settings"
+    ),
     "/library": PollyPage("the reference library"),
-    "/admin/metadata-export": PollyPage("metadata export"),
     "/admin/import": PollyPage("import"),
     "/admin/tags": PollyPage(
         "tags. The tag form's Required switch (tags-required) makes every object of the kinds "

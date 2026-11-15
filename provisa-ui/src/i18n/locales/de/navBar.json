@@ -48,7 +48,6 @@
     "itemAuthentication": "Authentifizierung",
     "itemAiModels": "KI-Modelle",
     "itemPackageRegistries": "Paket-Registries",
-    "itemMetadataExport": "Exportieren",
     "itemImport": "Importieren",
     "itemTags": "Tags",
     "itemClassificationKinds": "Klassifizierung",
@@ -79,8 +78,8 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Container-Registries",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Kataloge",
     "itemLibrary": "Bibliothek",
-    "itemPlatformObservability": "Plattform-Observability"
+    "itemPlatformObservability": "Plattform-Observability",
+    "itemSyncing": "Synchronisierung"
   }
 }

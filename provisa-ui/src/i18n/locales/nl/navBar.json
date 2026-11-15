@@ -48,7 +48,6 @@
     "itemAuthentication": "Authenticatie",
     "itemAiModels": "AI-modellen",
     "itemPackageRegistries": "Pakketregisters",
-    "itemMetadataExport": "Exporteren",
     "itemImport": "Importeren",
     "itemTags": "Tags",
     "itemClassificationKinds": "Classificatie",
@@ -79,8 +78,8 @@
     "itemNotebook": "Notebook",
     "itemContainerRegistries": "Containerregisters",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "Catalogi",
     "itemLibrary": "Bibliotheek",
-    "itemPlatformObservability": "Platform-observability"
+    "itemPlatformObservability": "Platform-observability",
+    "itemSyncing": "Synchronisatie"
   }
 }

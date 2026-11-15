@@ -436,6 +436,8 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
         typed = money_type(expression, columns)
     if typed is not None:
         return _RETURNED[typed]
+    if isinstance(expression, exp.Interval):
+        return _CALLED_INTERVAL  # interval '1 day': its literal, as a cast to interval is
     if isinstance(expression, exp.Cast):
         if _null_alone(expression):
             # ClickHouse holds no NULL of an array (an Array is never Nullable): it is sent a bare
@@ -443,6 +445,8 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
             null_array = _NULL_ARRAYS.get(argument_type(expression) or "")
             if null_array is not None:
                 return null_array
+        if expression.to.is_type(exp.DataType.Type.INTERVAL):
+            return _interval_literal(expression)
         return _cast_type(expression.to)
     if isinstance(expression, XmlSerialize):
         return _cast_type(expression.args["to"])
@@ -470,6 +474,21 @@ def _result_type(expression: Any, columns: Any) -> CastType | None:
     if returned == "interval":
         return _CALLED_INTERVAL
     return None if returned is None else _RETURNED.get(returned) or _row_type(returned)
+
+
+def _interval_literal(cast: Any) -> CastType | None:
+    """A literal of interval (a string or a NULL cast to one) as interval: ClickHouse holds no
+    interval, and Provisa writes the literal there as interval_out's text (polyfill.intervals),
+    read back as the interval it is; the engines with an interval serve their own. A cast of any
+    other value is the engine's: its text, where it serves one, is the engine's own form, which
+    interval_of_text does not read."""
+    import sqlglot.expressions as exp
+
+    operand = cast.this.unnest()
+    literal = isinstance(operand, exp.Null) or (
+        isinstance(operand, exp.Literal) and operand.is_string
+    )
+    return _CALLED_INTERVAL if literal else None
 
 
 #: A call's interval, which an engine with no interval of PostgreSQL's may hold as its text: the

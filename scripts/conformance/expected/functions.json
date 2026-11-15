@@ -2,9 +2,9 @@
   "engines": {
     "clickhouse": {
       "total": 3319,
-      "passed": 1819,
+      "passed": 1849,
       "differs_engine_error": 0,
-      "refused_by_name": 584
+      "refused_by_name": 554
     },
     "duckdb": {
       "total": 3319,

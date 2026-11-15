@@ -267,14 +267,8 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "navBar.itemContainerRegistries",
         capability: "org_settings",
       },
-      // REQ-2122: the catalogs this org connects to once, for export and import.
-      { to: "/admin/catalogs", labelKey: "navBar.itemCatalogs", capability: "org_settings" },
-      // REQ-1074: the catalog this org publishes to is the org's setting, not the deployment's.
-      {
-        to: "/admin/metadata-export",
-        labelKey: "navBar.itemMetadataExport",
-        capability: "org_settings",
-      },
+      // REQ-2247: every outside system kept in step with Provisa, and which way each syncs.
+      { to: "/admin/syncing", labelKey: "navBar.itemSyncing", capability: "org_settings" },
       // REQ-1483, REQ-1327: an import writes objects of several layers; any one of their rights
       // opens the page, and applying checks each declared object's own right.
       {

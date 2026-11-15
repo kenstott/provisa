@@ -23,7 +23,7 @@ from types import SimpleNamespace
 
 from sqlalchemy import MetaData
 
-from provisa.api.admin import metadata_export_router, orgs_router
+from provisa.api.admin import orgs_router, syncing_router
 from provisa.api_source import engine_cache, fill_cache
 from provisa.auth import middleware
 from provisa.codesource import remote_sources
@@ -73,7 +73,7 @@ def test_destroying_an_org_forgets_its_entries_and_keeps_another_orgs(monkeypatc
         middleware, "_recorded_idp", {(gone, "prod", "u1"): {}, (kept, "prod", "u2"): {}}
     )
     monkeypatch.setattr(remote_sources, "_identities", {gone: object(), kept: object()})
-    monkeypatch.setattr(metadata_export_router, "_LAST_PUBLISH", {gone: {}, kept: {}})
+    monkeypatch.setattr(syncing_router, "_LAST_RUN", {gone: {}, kept: {}})
     monkeypatch.setattr(
         env_copy,
         "_scoped_metadata",
@@ -119,7 +119,7 @@ def test_destroying_an_org_forgets_its_entries_and_keeps_another_orgs(monkeypatc
 
     assert list(middleware._recorded_idp) == [(kept, "prod", "u2")]
     assert list(remote_sources._identities) == [kept]
-    assert list(metadata_export_router._LAST_PUBLISH) == [kept]
+    assert list(syncing_router._LAST_RUN) == [kept]
     assert list(env_copy._scoped_metadata) == [f"org_{kept}"]
     assert list(fill_cache._shapes) == [("cat", f"org_{kept}_cache", "t")]
     assert list(fill_cache._mem_fresh) == [(f"org_{kept}_cache", "t", "h")]

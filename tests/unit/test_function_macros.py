@@ -115,7 +115,8 @@ def test_every_form_is_sql_its_dialect_reads_back(dialect):
         except FunctionRefused:
             # A row of the polyfill grid refuses it on this dialect (REQ-2236), or this dialect is
             # no column of the grid, which refuses a call a row matches by name: no form is written.
-            assert name in {f.name for f in GRID.features}
+            # (a row is named by its call, or by its signature: interval_eq(interval, interval))
+            assert name in {f.name.split("(")[0] for f in GRID.features}
             continue
         tree = sqlglot.parse_one(out, read=dialect)
         # A ClickHouse statement's SETTINGS name a setting, not a column (REQ-2171: its old analyzer).

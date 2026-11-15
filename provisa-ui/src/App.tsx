@@ -698,8 +698,7 @@ function App() {
                                               ["/admin/ai-models", "org_settings"],
                                               ["/admin/package-registries", "org_settings"], // REQ-1984
                                               ["/admin/container-registries", "org_settings"], // REQ-2098
-                                              ["/admin/catalogs", "org_settings"], // REQ-2122
-                                              ["/admin/metadata-export", "org_settings"],
+                                              ["/admin/syncing", "org_settings"], // REQ-2247
                                               ["/admin/classification-kinds", "sensitive_data"], // REQ-2147, REQ-1327
                                               ["/admin/reports", "observability"], // REQ-1386
                                               // REQ-1590: the glossary has its own read right. Reading a term

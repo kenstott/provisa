@@ -29,6 +29,7 @@ from provisa.transpiler.polyfill import (
     dates,
     geometric,
     instants,
+    intervals,
     json_values,
     money,
     network,
@@ -81,6 +82,8 @@ GRID = Grid(
     + clickhouse.FEATURES
     + aggregates.FEATURES
     + snapshots.FEATURES
+    # intervals' isfinite row is read before instants' (its call of no interval is that row's).
+    + intervals.FEATURES
     + instants.FEATURES
     + geometric.FEATURES
     + bytea.FEATURES

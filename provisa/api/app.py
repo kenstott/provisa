@@ -5456,14 +5456,9 @@ def create_app() -> FastAPI:
     from provisa.api.admin.judgments_router import router as judgments_router  # REQ-2094
 
     app.include_router(judgments_router)
-    from provisa.api.admin.metadata_export_router import (  # REQ-1074
-        router as metadata_export_router,
-    )
+    from provisa.api.admin.syncing_router import router as syncing_router  # REQ-2247
 
-    app.include_router(metadata_export_router)
-    from provisa.api.admin.catalogs_router import router as catalogs_router  # REQ-2122
-
-    app.include_router(catalogs_router)
+    app.include_router(syncing_router)
     from provisa.api.admin.request_delivery_router import (  # REQ-2216
         router as request_delivery_router,
     )

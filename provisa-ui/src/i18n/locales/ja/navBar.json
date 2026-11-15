@@ -48,7 +48,6 @@
     "itemAuthentication": "認証",
     "itemAiModels": "AIモデル",
     "itemPackageRegistries": "パッケージレジストリ",
-    "itemMetadataExport": "エクスポート",
     "itemImport": "インポート",
     "itemTags": "タグ",
     "itemClassificationKinds": "分類",
@@ -79,8 +78,8 @@
     "itemNotebook": "ノートブック",
     "itemContainerRegistries": "コンテナレジストリ",
     "itemSparql": "SPARQL",
-    "itemCatalogs": "カタログ",
     "itemLibrary": "ライブラリ",
-    "itemPlatformObservability": "プラットフォームのオブザーバビリティ"
+    "itemPlatformObservability": "プラットフォームのオブザーバビリティ",
+    "itemSyncing": "同期"
   }
 }
