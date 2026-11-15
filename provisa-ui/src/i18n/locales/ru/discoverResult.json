@@ -1,0 +1,18 @@
+{
+  "discoverResult": {
+    "foreignKeys": "Внешние ключи: найдено {{count}}.",
+    "foreignKeys_other": "Внешние ключи: найдено {{count}}.",
+    "semanticsFound": "Семантика: {{count}} предложение.",
+    "semanticsFound_other": "Семантика: предложений — {{count}}.",
+    "semanticsUnreadable": "Семантика: нет. Ответ модели не удалось прочитать.",
+    "semanticsNoneProposed": "Семантика: нет. Модель не предложила ни одной связи.",
+    "semanticsFiltered": "Семантика: {{count}} связь, предложенная моделью, не сохранена: {{why}}.",
+    "semanticsFiltered_other": "Семантика: ни одна из предложенных моделью связей ({{count}}) не сохранена: {{why}}.",
+    "belowThreshold": "{{count}} — ниже порога уверенности {{threshold}}%",
+    "belowThreshold_other": "{{count}} — ниже порога уверенности {{threshold}}%",
+    "alreadyKnown": "{{count}} — уже отклонена или уже существует",
+    "alreadyKnown_other": "{{count}} — уже отклонены или уже существуют",
+    "invalid": "{{count}} — указана несуществующая таблица или столбец",
+    "invalid_other": "{{count}} — указаны несуществующие таблицы или столбцы"
+  }
+}

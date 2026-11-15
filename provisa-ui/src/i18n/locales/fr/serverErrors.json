@@ -147,9 +147,11 @@
       "elasticsearch_index_hint_required": "La découverte Elasticsearch requiert un indice « index ».",
       "elasticsearch_mapping_failed": "Échec de lecture du mapping Elasticsearch pour l'index « {{index}} » : {{error}}",
       "endpoint_already_registered": "Endpoint déjà enregistré : {{error}}",
+      "model_failed": "Le modèle {{model}} a échoué : {{error}}",
       "no_adapter_for_source_type": "Aucun adaptateur enregistré pour le type de source « {{source_type}} »",
       "no_live_connection": "Aucune connexion active pour la source « {{source_id}} ». La découverte de schéma MongoDB requiert une connexion active dans le pool de la source. Vérifiez que la source est connectée et que le serveur est joignable.",
       "schema_discovery_unsupported": "Le type de source « {{source_type}} » ne prend pas en charge la découverte de schéma. Définissez les colonnes manuellement.",
+      "semantics_unavailable": "La sémantique ne peut pas s'exécuter : {{model}}, le modèle affecté à l'inférence des relations, n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "source_not_found": "Source « {{source_id}} » introuvable",
       "table_id_required": "table_id requis pour la portée table",
       "unknown_source_type": "Type de source inconnu : {{type}}"

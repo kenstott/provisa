@@ -1,0 +1,18 @@
+{
+  "discoverResult": {
+    "foreignKeys": "Refererende sleutels: {{count}} gevonden.",
+    "foreignKeys_other": "Refererende sleutels: {{count}} gevonden.",
+    "semanticsFound": "Semantiek: {{count}} voorstel.",
+    "semanticsFound_other": "Semantiek: {{count}} voorstellen.",
+    "semanticsUnreadable": "Semantiek: geen. Het antwoord van het model kon niet worden gelezen.",
+    "semanticsNoneProposed": "Semantiek: geen. Het model stelde geen relaties voor.",
+    "semanticsFiltered": "Semantiek: de {{count}} relatie die het model voorstelde is niet behouden: {{why}}.",
+    "semanticsFiltered_other": "Semantiek: geen van de {{count}} relaties die het model voorstelde is behouden: {{why}}.",
+    "belowThreshold": "{{count}} lag onder de betrouwbaarheidsdrempel van {{threshold}}%",
+    "belowThreshold_other": "{{count}} lagen onder de betrouwbaarheidsdrempel van {{threshold}}%",
+    "alreadyKnown": "{{count}} was al afgewezen of al aanwezig",
+    "alreadyKnown_other": "{{count}} waren al afgewezen of al aanwezig",
+    "invalid": "{{count}} noemde een tabel of kolom die niet bestaat",
+    "invalid_other": "{{count}} noemden tabellen of kolommen die niet bestaan"
+  }
+}

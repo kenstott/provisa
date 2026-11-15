@@ -27,7 +27,10 @@ import { HelpBubble } from "../components/HelpBubble";
 import { useDomainFilter } from "../context/DomainFilterContext";
 import { useAuth } from "../context/AuthContext";
 import { SqlModelingModal } from "../components/SqlModelingModal";
+import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
+import { discoveryResultLines } from "../components/relationships/discoveryResult";
 import {
+  type DiscoveryKind,
   discoverRelationships,
   fetchCandidates,
   fetchRejectedCount,
@@ -109,6 +112,9 @@ export function RelationshipsPage() {
   const [discovering, setDiscovering] = useState(false);
   const [discoverError, setDiscoverError] = useState("");
   const [discoverMsg, setDiscoverMsg] = useState("");
+  // REQ-413: what the last discovery run found, one line per kind it ran.
+  const [discoverResult, setDiscoverResult] = useState<string[]>([]);
+  const [discoverAsk, setDiscoverAsk] = useState(false);
   const [rejectedCount, setRejectedCount] = useState(0);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<RelForm>(EMPTY_FORM);
@@ -365,6 +371,7 @@ export function RelationshipsPage() {
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
+    setDiscoverResult([]);
     try {
       const result = await clearRejectedCandidates();
       setDiscoverMsg(t("relationshipsPage.clearedRejections", { count: result.deleted }));
@@ -374,23 +381,27 @@ export function RelationshipsPage() {
     }
   }, [t]);
 
-  const handleDiscover = useCallback(async () => {
-    setDiscovering(true);
-    setDiscoverError("");
-    setDiscoverMsg("");
-    try {
-      const result = await discoverRelationships("cross-domain");
-      const c = await fetchCandidates();
-      setCandidates(c as Candidate[]);
-      if (result.candidates_found === 0) {
-        setDiscoverError(t("relationshipsPage.discoverZeroCandidates"));
+  // REQ-413: runs only the kinds the dialog asked for, and says what each found.
+  const handleDiscover = useCallback(
+    async (kinds: DiscoveryKind[]) => {
+      setDiscoverAsk(false);
+      setDiscovering(true);
+      setDiscoverError("");
+      setDiscoverMsg("");
+      setDiscoverResult([]);
+      try {
+        const result = await discoverRelationships("cross-domain", kinds);
+        const c = await fetchCandidates();
+        setCandidates(c as Candidate[]);
+        setDiscoverResult(discoveryResultLines(result, t));
+      } catch (e) {
+        setDiscoverError(e instanceof Error ? e.message : String(e));
+      } finally {
+        setDiscovering(false);
       }
-    } catch (e) {
-      setDiscoverError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDiscovering(false);
-    }
-  }, [t]);
+    },
+    [t],
+  );
 
   const handleAccept = useCallback(
     async (id: number, name: string) => {
@@ -798,8 +809,10 @@ export function RelationshipsPage() {
                       ? t("relationshipsPage.discovering")
                       : t("relationshipsPage.suggestWithAi")
                   }
-                  onClick={handleDiscover}
+                  onClick={() => setDiscoverAsk(true)}
+                  loading={discovering}
                   disabled={discovering}
+                  data-testid="rels-discover"
                 >
                   <Sparkles size={14} />
                 </ActionIcon>
@@ -825,6 +838,20 @@ export function RelationshipsPage() {
           {settingsError}
         </Alert>
       )}
+      {discoverResult.length > 0 && (
+        <Alert color="blue" mb="md" data-testid="rels-discover-result">
+          {discoverResult.map((line) => (
+            <Text key={line} fz="0.875rem">
+              {line}
+            </Text>
+          ))}
+        </Alert>
+      )}
+      <DiscoverDialog
+        opened={discoverAsk}
+        onCancel={() => setDiscoverAsk(false)}
+        onRun={(kinds) => void handleDiscover(kinds)}
+      />
       {discoverMsg && (
         <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="rels-discover-msg">
           {discoverMsg}

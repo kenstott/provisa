@@ -1,0 +1,18 @@
+{
+  "discoverResult": {
+    "foreignKeys": "Chaves estrangeiras: {{count}} encontrada.",
+    "foreignKeys_other": "Chaves estrangeiras: {{count}} encontradas.",
+    "semanticsFound": "Semântica: {{count}} sugestão.",
+    "semanticsFound_other": "Semântica: {{count}} sugestões.",
+    "semanticsUnreadable": "Semântica: nenhuma. Não foi possível ler a resposta do modelo.",
+    "semanticsNoneProposed": "Semântica: nenhuma. O modelo não propôs relacionamentos.",
+    "semanticsFiltered": "Semântica: o {{count}} relacionamento proposto pelo modelo não foi mantido: {{why}}.",
+    "semanticsFiltered_other": "Semântica: nenhum dos {{count}} relacionamentos propostos pelo modelo foi mantido: {{why}}.",
+    "belowThreshold": "{{count}} ficou abaixo do limite de confiança de {{threshold}}%",
+    "belowThreshold_other": "{{count}} ficaram abaixo do limite de confiança de {{threshold}}%",
+    "alreadyKnown": "{{count}} já estava rejeitado ou já existia",
+    "alreadyKnown_other": "{{count}} já estavam rejeitados ou já existiam",
+    "invalid": "{{count}} indicava uma tabela ou coluna que não existe",
+    "invalid_other": "{{count}} indicavam tabelas ou colunas que não existem"
+  }
+}
