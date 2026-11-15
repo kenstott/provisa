@@ -33,7 +33,7 @@ edges (``provisa.events.nodes``).
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -90,6 +90,46 @@ def table_refs(sql: str, dialect: str = "postgres") -> list[tuple[str, ...]]:
         if parts and t.this.name not in ctes and parts not in out:
             out.append(parts)
     return out
+
+
+def call_table_refs(
+    sql: str, commands: Mapping[str, dict], dialect: str = "postgres"
+) -> list[tuple[str, ...]]:
+    """The tables ``sql``'s calls of registered commands read: each table argument (REQ-2226) of
+    each call, as its name parts, in first-reference order. A call reads them as its caller, and
+    what it returns is computed from them, so a view over the call reads them as it reads the
+    tables its FROM names. ``commands`` are the registered commands by the name a statement calls
+    them by (``state.tracked_functions``). A table argument that is not a table name written in
+    the statement is refused, naming the command."""
+    from provisa.pgwire.minted import table_key
+
+    tree = sqlglot.parse_one(sql, read=dialect)
+    out: list[tuple[str, ...]] = []
+    for t in tree.find_all(exp.Table):
+        call = t.this
+        if not isinstance(call, exp.Anonymous):
+            continue
+        command = commands.get(call.name)
+        if command is None:
+            continue
+        values = list(call.expressions)
+        for i, argument in enumerate(command.get("arguments") or []):
+            if argument.get("arg_kind") not in _TABLE_ARGUMENTS or i >= len(values):
+                continue
+            value = values[i]
+            if not (isinstance(value, exp.Literal) and value.is_string):
+                raise ValueError(
+                    f"{call.name}: its table argument {argument['name']!r} is "
+                    f"{value.sql(dialect=dialect)}, not a table name"
+                )
+            parts = table_key(value.this)
+            if parts not in out:
+                out.append(parts)
+    return out
+
+
+#: The argument kinds that name a table the call reads (models.FunctionArgument.arg_kind).
+_TABLE_ARGUMENTS = frozenset({"table_ref", "result_set"})
 
 
 def _keys(parts: Iterable[str]) -> str:
@@ -183,11 +223,14 @@ class ModelIndex:
         return Resolved(ref, table_id=value) if kind == "table" else Resolved(ref, view=value)
 
 
-def view_refs(mv: Any) -> list[Ref]:
-    """The references a view makes: its SQL's, or — for a join-pattern view, which has no SQL of
-    its own — the tables it joins, as they were bound when it was declared."""
+def view_refs(mv: Any, commands: Mapping[str, dict]) -> list[Ref]:
+    """The references a view makes: its SQL's, the tables its calls of ``commands`` are given
+    (:func:`call_table_refs`), or — for a join-pattern view, which has no SQL of its own — the
+    tables it joins, as they were bound when it was declared."""
     if mv.sql:
-        return list(table_refs(mv.sql))
+        refs: list[Ref] = list(table_refs(mv.sql))
+        refs += [p for p in call_table_refs(mv.sql, commands) if p not in refs]
+        return refs
     if len(mv.inputs) != len(mv.source_tables):
         raise RuntimeError(
             f"materialized view {mv.id!r} joins {mv.source_tables} but has "
@@ -200,7 +243,7 @@ def resolve_view_inputs(mv: Any, state: Any, index: ModelIndex | None = None) ->
     """Every input of ``mv`` resolved against the model (:func:`view_refs`). Raises
     :class:`InputUnresolved` for the first reference that names nothing or several things."""
     index = index if index is not None else ModelIndex(state)
-    return [index.resolve(mv.id, ref) for ref in view_refs(mv)]
+    return [index.resolve(mv.id, ref) for ref in view_refs(mv, state.tracked_functions)]
 
 
 def read_tables(mv: Any, state: Any) -> list[TableIdentity]:
@@ -211,7 +254,7 @@ def read_tables(mv: Any, state: Any) -> list[TableIdentity]:
     from provisa.core.models import DERIVED_SOURCE_ID
 
     if not mv.sql:
-        return [i for i in view_refs(mv) if isinstance(i, TableIdentity)]
+        return [i for i in view_refs(mv, state.tracked_functions) if isinstance(i, TableIdentity)]
     index = ModelIndex(state)
     out: list[TableIdentity] = []
     for resolved in resolve_view_inputs(mv, state, index):

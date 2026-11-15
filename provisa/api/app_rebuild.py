@@ -285,7 +285,7 @@ async def _register_user_views_in_state(
                             semantic_sql=_semantic_sql,  # REQ-1921/1922
                             region=_vr.get("region"),  # REQ-1921
                             view_table=_vr["table_name"],  # REQ-1918: the view it builds
-                            read_tables=read_table_names(_semantic_sql),
+                            read_tables=read_table_names(_semantic_sql, state.tracked_functions),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
@@ -321,7 +321,7 @@ async def _register_user_views_in_state(
                     _existing.enabled = not _vr["draft"]  # REQ-1921
                     _existing.semantic_sql = _semantic_sql  # REQ-1921/1922
                     _existing.region = _vr.get("region")  # REQ-1921
-                    _existing.read_tables = read_table_names(_semantic_sql)
+                    _existing.read_tables = read_table_names(_semantic_sql, state.tracked_functions)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.table_id = _vr["id"]  # REQ-2133
                     _existing.product_ids = _view_products.get(_vr["id"], [])  # REQ-2133
@@ -438,3 +438,10 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
                 for name, sql in state.view_sql_map.items()
             }
         compile_registry_mvs_to_physical(state.mv_registry, ctx)
+        # A view over a command call reads the tables the call is given (REQ-2249). The commands
+        # are loaded after the views are registered, so what each view reads is taken again here.
+        from provisa.mv.readable_inputs import read_table_names
+
+        for _mv in state.mv_registry._mvs.values():
+            if _mv.view_table and _mv.semantic_sql:
+                _mv.read_tables = read_table_names(_mv.semantic_sql, state.tracked_functions)
