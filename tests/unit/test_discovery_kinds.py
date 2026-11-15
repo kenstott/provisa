@@ -27,6 +27,7 @@ from provisa.api.admin import discovery
 from provisa.api.errors import ApiError
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.collector import DiscoveryInput, TableMeta
+from provisa.llm.client import Completion
 
 #: The request the router reads only for its capability check, which these tests stand in for.
 _REQUEST = cast(Any, object())
@@ -89,6 +90,8 @@ class _World:
         self.rejected: list[dict] = []
         self.existing: list[dict] = []
         self.fk_found: list[RelationshipCandidate] = []
+        #: The answer stopped at its token limit, as the vendor reports it.
+        self.cut_off = False
 
         for env in _KEY_ENVS:
             monkeypatch.delenv(env, raising=False)
@@ -132,11 +135,11 @@ class _World:
         async def no_jev(pool):
             return None
 
-        def complete(client, vendor, model, prompt, system, max_tokens):
+        def complete(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
             self.model_calls.append((vendor, model))
             if isinstance(self.answer, Exception):
                 raise self.answer
-            return self.answer
+            return Completion(self.answer, vendor, model, None, self.cut_off)
 
         monkeypatch.setattr(discovery, "collect_fk_candidates", fk)
         monkeypatch.setattr(discovery, "collect_metadata", metadata)
@@ -144,7 +147,7 @@ class _World:
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
         monkeypatch.setattr("provisa.core.org_secrets.resolve_jev_api_key", no_jev)
-        monkeypatch.setattr("provisa.llm.client.ProvisaLLMClient._complete_sync", complete)
+        monkeypatch.setattr("provisa.llm.client.ProvisaLLMClient._respond", complete)
 
     async def run(self, *kinds: str) -> dict:
         body = discovery.DiscoverRequest.model_validate(
@@ -363,3 +366,87 @@ async def test_a_model_failure_is_returned_as_an_error(monkeypatch, answer, said
     assert said in failed.value.params["error"]
     assert said in str(failed.value.detail)
     assert world.stored == []
+
+
+# --- an answer cut off at the model's token limit -----------------------------------------------
+#
+# The shape of the answer the default demo's cross-domain run got from claude-haiku-4-5 (captured
+# 2026-11-14 on an isolated instance): a ```json fence, a pretty-printed list, and the answer stopped
+# at max_tokens (4096 of 4096 completion tokens) in the middle of an element, so neither the list
+# nor the fence ever closed. Read as a whole it was "could not be read", and every complete
+# suggestion before the cut was lost.
+
+
+def _pretty(element: dict) -> str:
+    return "  " + json.dumps(element, indent=2).replace("\n", "\n  ")
+
+
+_CUT_OFF_ANSWER = (
+    "```json\n[\n"
+    + _pretty(_suggestion())
+    + ",\n"
+    + _pretty({**_suggestion(0.8, "id"), "cardinality": "one-to-many", "suggested_name": "orders"})
+    + ',\n  {\n    "source_table_id": 2,\n    "source_column": "name",\n'
+    '    "target_table_id": 1,\n    "target_column": "id",\n    "cardin'
+)
+
+
+async def test_a_cut_off_answer_keeps_its_complete_suggestions_and_says_it_was_cut_short(
+    monkeypatch,
+):
+    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    world.answer = _CUT_OFF_ANSWER
+    world.cut_off = True
+    found = await world.run("semantics")
+    semantics = found["semantics"]
+    assert semantics["cut_short"] is True
+    assert semantics["proposed"] == 2
+    assert semantics["suggested"] == 2
+    assert semantics["empty_reason"] is None
+    assert [(c.source_column, c.cardinality) for c in world.stored] == [
+        ("customer_id", "many-to-one"),
+        ("id", "one-to-many"),
+    ]
+
+
+async def test_a_cut_off_answer_with_no_complete_suggestion_says_so(monkeypatch):
+    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    world.answer = '```json\n[\n  {\n    "source_table_id": 1,\n    "source_col'
+    world.cut_off = True
+    found = await world.run("semantics")
+    semantics = found["semantics"]
+    assert semantics["suggested"] == 0
+    assert semantics["cut_short"] is True
+    assert semantics["empty_reason"] == "cut_short"
+    assert world.stored == []
+
+
+async def test_an_unclosed_list_the_model_did_not_cut_off_is_unreadable(monkeypatch):
+    # Only an answer the vendor says stopped at its limit is read element by element; any other
+    # broken list is reported as unreadable, never partly kept.
+    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    world.answer = _CUT_OFF_ANSWER
+    found = await world.run("semantics")
+    assert found["semantics"]["empty_reason"] == "unreadable"
+    assert found["semantics"]["cut_short"] is False
+    assert world.stored == []
+
+
+async def test_a_complete_answer_is_not_cut_short(monkeypatch):
+    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    world.answer = "```json\n" + json.dumps([_suggestion()], indent=2) + "\n```"
+    found = await world.run("semantics")
+    assert found["semantics"]["suggested"] == 1
+    assert found["semantics"]["cut_short"] is False
+
+
+async def test_a_bracket_in_the_text_after_the_list_is_not_taken_for_its_end(monkeypatch):
+    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    world.answer = (
+        "Here are the relationships:\n"
+        + json.dumps([_suggestion()])
+        + "\n\nThe ids follow the schema [see the table list] above."
+    )
+    found = await world.run("semantics")
+    assert found["semantics"]["suggested"] == 1
+    assert found["semantics"]["empty_reason"] is None

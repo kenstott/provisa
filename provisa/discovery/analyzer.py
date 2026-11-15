@@ -39,17 +39,57 @@ class RelationshipCandidate:  # REQ-018, REQ-612
     suggested_name: str = ""
 
 
-def _extract_json(text: str) -> str:
-    """Extract JSON array from response text, handling markdown code blocks."""
-    # Try to find JSON in code blocks first
-    match = re.search(r"```(?:json)?\s*(\[.*?])\s*```", text, re.DOTALL)
-    if match:
-        return match.group(1)
-    # Try bare JSON array
-    match = re.search(r"\[.*]", text, re.DOTALL)
-    if match:
-        return match.group(0)
-    return text
+#: Where a list of relationships can open: a ``[`` before an object or before its own end. A
+#: bracket in prose (``[Note]``) or one inside an element is not taken for the list.
+_LIST_OPENING = re.compile(r"\[(?=\s*[{\]])")
+
+#: The most the model may write in its answer. An answer that reaches it stops where it is.
+MAX_ANSWER_TOKENS = 4096
+
+
+@dataclass
+class AnswerList:  # REQ-413
+    """The list read from a model's answer. ``items`` is None when no list could be read;
+    ``cut_short`` says the answer stopped before its list closed, and ``items`` then holds the
+    elements that were complete."""
+
+    items: list | None
+    cut_short: bool = False
+
+
+def _complete_elements(text: str, start: int) -> list:
+    """The elements of the list opening at ``text[start]`` that are complete, read one at a time
+    until one is not: the list of an answer cut off before it closed."""
+    decoder = json.JSONDecoder()
+    items: list = []
+    pos = start + 1
+    while True:
+        while pos < len(text) and text[pos] in " \t\r\n,":
+            pos += 1
+        try:
+            item, pos = decoder.raw_decode(text, pos)
+        except json.JSONDecodeError:
+            return items
+        items.append(item)
+
+
+def read_answer_list(text: str, cut_off: bool) -> AnswerList:  # REQ-413
+    """The JSON list in a model's answer, whatever text or code fence is around it: read by a JSON
+    decoder from the first ``[`` that opens a list of objects (:data:`_LIST_OPENING`), so a
+    bracket in the text after the list is never taken for its end. An answer that stopped at its token limit (``cut_off``) and whose
+    list never closed gives the elements that were complete, marked ``cut_short``."""
+    decoder = json.JSONDecoder()
+    opens = [m.start() for m in _LIST_OPENING.finditer(text)]
+    for i in opens:
+        try:
+            value, _ = decoder.raw_decode(text, i)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(value, list):
+            return AnswerList(value)
+    if cut_off and opens:
+        return AnswerList(_complete_elements(text, opens[0]), cut_short=True)
+    return AnswerList(None)
 
 
 def _validate_candidate(raw: dict, discovery_input: DiscoveryInput) -> bool:  # REQ-612
@@ -105,6 +145,9 @@ class Analysis:  # REQ-413
     below_threshold: int = 0
     #: How many named a table or column that does not exist, or lacked a required field.
     invalid: int = 0
+    #: The answer stopped at the model's token limit before its list closed: the candidates are
+    #: those of its elements that were complete.
+    cut_short: bool = False
 
 
 def analyze_answer(
@@ -122,8 +165,14 @@ def analyze_answer(
         from provisa.llm.client import ProvisaLLMClient
 
         llm = ProvisaLLMClient("relationship_inference", config=config, api_keys=api_keys)
-        response_text = llm.complete_sync(prompt, "You are a data analyst.", 4096)
-        log.warning("LLM raw response (%d chars): %s", len(response_text), response_text[:3000])
+        answer = llm.complete_sync_detailed(prompt, "You are a data analyst.", MAX_ANSWER_TOKENS)
+        response_text = answer.text
+        log.warning(
+            "LLM raw response (%d chars, cut off at the token limit: %s): %s",
+            len(response_text),
+            answer.cut_off,
+            response_text[:3000],
+        )
         if not response_text.strip():
             raise ModelAnswerError(f"{llm.vendor}:{llm.model} gave an empty answer")
         if "[" not in response_text:
@@ -132,17 +181,19 @@ def analyze_answer(
                 f"{response_text.strip()[:300]}"
             )
 
-        try:
-            candidates_raw = json.loads(_extract_json(response_text))
-        except (json.JSONDecodeError, TypeError) as e:
-            log.warning("Malformed LLM response (%s). Raw text: %s", e, response_text[:500])
+        read = read_answer_list(response_text, answer.cut_off)
+        candidates_raw = read.items
+        if candidates_raw is None:
+            log.warning("LLM response holds no readable JSON list. Raw: %s", response_text[:500])
             return Analysis(candidates=[], unreadable=True)
+        if read.cut_short:
+            log.warning(
+                "LLM answer cut off at %d tokens; %d complete candidates kept",
+                MAX_ANSWER_TOKENS,
+                len(candidates_raw),
+            )
 
-        if not isinstance(candidates_raw, list):
-            log.warning("LLM response is not a JSON array. Raw: %s", response_text[:500])
-            return Analysis(candidates=[], unreadable=True)
-
-        analysis = Analysis(candidates=[], proposed=len(candidates_raw))
+        analysis = Analysis(candidates=[], proposed=len(candidates_raw), cut_short=read.cut_short)
         for raw in candidates_raw:
             if not isinstance(raw, dict) or not _validate_candidate(raw, discovery_input):
                 log.warning("Invalid candidate filtered: %s", raw)

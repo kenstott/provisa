@@ -29,7 +29,7 @@ This file adds:
   - FK suggestion request/response — full API call shape (model, max_tokens, messages)
   - Confidence threshold boundary — exactly at min_confidence is included
   - Confidence threshold boundary — just below min_confidence is excluded
-  - Error when LLM unavailable — exception from _complete_sync propagates
+  - Error when LLM unavailable — exception from _respond propagates
   - Multiple candidates with mixed confidence — only passing ones returned
   - Invalid cardinality value in LLM response is filtered
   - Non-array JSON response returns empty list
@@ -101,10 +101,13 @@ def _candidate_json(
 
 
 def _patch_complete_sync(return_text: str):
-    """Patch ProvisaLLMClient._complete_sync to return return_text."""
+    """Patch ProvisaLLMClient._respond, the one call every completion makes, to answer
+    return_text in full (not cut off at its token limit)."""
+    from provisa.llm.client import Completion
+
     return patch(
-        "provisa.llm.client.ProvisaLLMClient._complete_sync",
-        return_value=return_text,
+        "provisa.llm.client.ProvisaLLMClient._respond",
+        return_value=Completion(return_text, "anthropic", "test-model", None, False),
     )
 
 
@@ -228,27 +231,27 @@ class TestLLMUnavailableError:
     """LLM errors must propagate — the analyzer must not swallow them."""
 
     def test_api_connection_error_propagates(self):
-        """ConnectionError from _complete_sync must not be silently swallowed."""
+        """ConnectionError from _respond must not be silently swallowed."""
         with patch(
-            "provisa.llm.client.ProvisaLLMClient._complete_sync",
+            "provisa.llm.client.ProvisaLLMClient._respond",
             side_effect=ConnectionError("LLM unreachable"),
         ):
             with pytest.raises(ConnectionError):
                 analyze("prompt", "fake-key", _make_di())
 
     def test_api_status_error_401_propagates(self):
-        """PermissionError from _complete_sync must propagate."""
+        """PermissionError from _respond must propagate."""
         with patch(
-            "provisa.llm.client.ProvisaLLMClient._complete_sync",
+            "provisa.llm.client.ProvisaLLMClient._respond",
             side_effect=PermissionError("Invalid API key"),
         ):
             with pytest.raises(PermissionError):
                 analyze("prompt", "bad-key", _make_di())
 
     def test_api_rate_limit_error_propagates(self):
-        """RuntimeError (rate limit) from _complete_sync must propagate."""
+        """RuntimeError (rate limit) from _respond must propagate."""
         with patch(
-            "provisa.llm.client.ProvisaLLMClient._complete_sync",
+            "provisa.llm.client.ProvisaLLMClient._respond",
             side_effect=RuntimeError("Rate limit exceeded"),
         ):
             with pytest.raises(RuntimeError):
