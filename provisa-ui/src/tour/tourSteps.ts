@@ -929,6 +929,26 @@ export function stepRoute(
 }
 
 /**
+ * The page a step's `route` names is the one shown at `pathname` and `search`: the same path, with
+ * each parameter the route names holding the route's value. A parameter the route does not name is
+ * the page's own -- REQ-2241 puts an open panel and its tab in the URL -- so a page with a panel
+ * open is still the route's page, and a step on it does not navigate to the bare route, which
+ * would close the panel the step explains.
+ */
+export function showsRoute(route: string, pathname: string, search: string): boolean {
+  const at = route.indexOf("?");
+  const path = at < 0 ? route : route.slice(0, at);
+  if (path !== pathname) return false;
+  const named = new URLSearchParams(at < 0 ? "" : route.slice(at + 1));
+  const shown = new URLSearchParams(search);
+  return [...named.keys()].every((key) => {
+    const want = named.getAll(key);
+    const have = shown.getAll(key);
+    return want.length === have.length && want.every((v, i) => v === have[i]);
+  });
+}
+
+/**
  * The steps of `itinerary` (indices into `steps`) this org can show. A step that opens Polly
  * (`pollyOpen`) to ask it live needs a model: without one Polly's launcher shows its
  * "not configured" notice instead of the panel, and the step's anchor never mounts. A step showing
