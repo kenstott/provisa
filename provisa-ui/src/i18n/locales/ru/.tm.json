@@ -10572,5 +10572,12 @@
   "discoverResult.json::discoverResult.cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read.",
   "ru/profileClassificationsModal.json::profileClassificationsModal.tooFewTitle": "Too few values to classify",
   "ru/profileClassificationsModal.json::profileClassificationsModal.tooFewNote": "These columns held too few values in the run's sample to say what they hold. That is not the same as matching no kind.",
-  "ru/profileClassificationsModal.json::profileClassificationsModal.tooFew": "{{column}}: {{count}} values in the sample, too few to classify."
+  "ru/profileClassificationsModal.json::profileClassificationsModal.tooFew": "{{column}}: {{count}} values in the sample, too few to classify.",
+  "ru/aiModelsTab.json::aiModelsTab.limitsIntro": "Each model has two limits, in tokens: the most it can read in one request (input) and the longest answer it can write (output). A model with published figures starts with those; change them if yours differ.",
+  "ru/aiModelsTab.json::aiModelsTab.inputLimitLabel": "Input limit (tokens)",
+  "ru/aiModelsTab.json::aiModelsTab.outputLimitLabel": "Output limit (tokens)",
+  "ru/aiModelsTab.json::aiModelsTab.limitsDefaultNote": "Default: no published figure is known for this model.",
+  "ru/aiModelsTab.json::aiModelsTab.limitsResetKnown": "Use published limits",
+  "ru/aiModelsTab.json::aiModelsTab.limitsResetDefault": "Use default limits",
+  "ru/aiModelsTab.json::aiModelsTab.limitsIncomplete": "Enter both limits for {{model}} as whole numbers above zero."
 }

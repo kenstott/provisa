@@ -47,6 +47,13 @@
     "saveButtonLabel": "Salva le impostazioni dei modelli AI",
     "loading": "Caricamento…",
     "saved": "Salvato.",
-    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare le modifiche."
+    "savedRestartRequired": "Salvato. Riavviare il servizio per applicare le modifiche.",
+    "limitsIntro": "Ogni modello ha due limiti, in token: il massimo che può leggere in una richiesta (input) e la risposta più lunga che può scrivere (output). Un modello con valori pubblicati parte da quelli; modificali se i tuoi sono diversi.",
+    "inputLimitLabel": "Limite di input (token)",
+    "outputLimitLabel": "Limite di output (token)",
+    "limitsDefaultNote": "Predefinito: non è noto alcun valore pubblicato per questo modello.",
+    "limitsResetKnown": "Usa i limiti pubblicati",
+    "limitsResetDefault": "Usa i limiti predefiniti",
+    "limitsIncomplete": "Inserisci entrambi i limiti di {{model}} come numeri interi maggiori di zero."
   }
 }

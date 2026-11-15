@@ -47,6 +47,13 @@
     "saveButtonLabel": "保存 AI 模型设置",
     "loading": "正在加载…",
     "saved": "已保存。",
-    "savedRestartRequired": "已保存。重启服务以生效。"
+    "savedRestartRequired": "已保存。重启服务以生效。",
+    "limitsIntro": "每个模型有两个以令牌计的上限：一次请求中最多能读取的量（输入）和能写出的最长回答（输出）。有公开数值的模型以这些数值为起点；如果您的数值不同，请修改。",
+    "inputLimitLabel": "输入上限（令牌）",
+    "outputLimitLabel": "输出上限（令牌）",
+    "limitsDefaultNote": "默认值：此模型没有已知的公开数值。",
+    "limitsResetKnown": "使用公开上限",
+    "limitsResetDefault": "使用默认上限",
+    "limitsIncomplete": "请将 {{model}} 的两个上限都输入为大于零的整数。"
   }
 }

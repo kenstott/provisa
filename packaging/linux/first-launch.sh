@@ -1302,10 +1302,11 @@ write_env_file() {
 # ── Install systemd service (non-interactive / cloud deployments) ─────────────
 install_systemd() {
   local unit="/etc/systemd/system/provisa.service"
+  local env_file="${PROVISA_HOME}/provisa.env"
   # Persist auth env (PROVISA_IDP + provider secrets) so the server, running
   # under systemd rather than this first-launch process, auto-configures the IdP
   # and can resolve ${env:...} secret placeholders at runtime.
-  write_env_file "${PROVISA_HOME}/provisa.env"
+  write_env_file "$env_file"
   # $USER is not exported under the GCE metadata runner / systemd-run; resolve it.
   local run_user; run_user="$(id -un)"
   # System Docker runs as its own systemd service — order after it and skip the
@@ -1317,7 +1318,9 @@ install_systemd() {
   else
     xdg_line="Environment=XDG_RUNTIME_DIR=${PROVISA_HOME}/run"
   fi
-  cat > "$unit" <<UNIT
+  # Rendered beside the unit and moved into place, so a failure never leaves it empty.
+  local unit_tmp; unit_tmp="$(mktemp "${unit}.XXXXXX")"
+  cat > "$unit_tmp" <<UNIT
 [Unit]
 Description=Provisa Data Platform
 After=${after}
@@ -1342,6 +1345,8 @@ TimeoutStartSec=300
 [Install]
 WantedBy=multi-user.target
 UNIT
+  chmod 644 "$unit_tmp"
+  mv -f "$unit_tmp" "$unit"
   systemctl daemon-reload
   systemctl enable provisa
   # restart, not `enable --now`: on a version-change re-provision the stack is already

@@ -1,344 +1,505 @@
 {
-  "version": "v0.1.0-alpha.508",
-  "previous": "v0.1.0-alpha.507",
-  "date": "2026-11-10",
+  "version": "v0.1.0-alpha.509",
+  "previous": "v0.1.0-alpha.508",
+  "date": "2026-11-14",
   "features": [],
   "changes": [
     {
       "scope": "admin",
       "entries": [
-        "Each page's UI gate matches its API gate and owner"
+        "table_registration reads the materialized list and store info",
+        "Redact credentials in any DSN query parameter",
+        "Count only the materialized views the caller reads",
+        "Redact odbc_connect and semicolon-separated DSN credentials",
+        "Gate registerTables and tableAccess with require_capability"
       ]
     },
     {
-      "scope": "audit",
+      "scope": "admin-ui",
       "entries": [
-        "Let an account's erasure tombstone query_audit_log",
-        "Keep the requirement id out of the audit-rule DDL"
+        "Mail transport and MV actions asked a right the API does not (J684 follow-up, audit #7)"
       ]
     },
     {
-      "scope": "authz",
+      "scope": "apply-dry-run",
       "entries": [
-        "The assignment is the grant",
-        "Add command_execution to fixture roles for admission-every-surface test (R508d)"
+        "Stamp write_ops on tables before schema build"
       ]
     },
     {
-      "scope": "ci,sharepoint",
+      "scope": "audit tour",
       "entries": [
-        "Let the runner's pgwire server read the certificate"
+        "Name the Ontology step term as the catalog stores it"
+      ]
+    },
+    {
+      "scope": "bench",
+      "entries": [
+        "A table save keeps its read wait"
+      ]
+    },
+    {
+      "scope": "cli",
+      "entries": [
+        "Provisa api, a generic call to an instance API",
+        "Keep requirement id out of the --person refusal",
+        "Diff keeps a typed-field reference and compares it only with a reference",
+        "plan, drift exit, can-i, contexts, shared output and filter, wait, schema",
+        "Query --changed runs the statements a model change affects"
+      ]
+    },
+    {
+      "scope": "code-sources",
+      "entries": [
+        "A code source can be written in Rust"
       ]
     },
     {
       "scope": "codehost",
       "entries": [
-        "A built image's worker has its thread pool sized at spawn"
+        "DuckDB 2.0 -- an engine error met as a code statement's answer streams is raised as DuckDB raises it; a full spill volume still refused naming the cap"
       ]
     },
     {
       "scope": "codesource",
       "entries": [
-        "A code table is given the arguments its governed relation passes up",
-        "A host on inherited sockets has its thread pool sized at spawn",
-        "A built image holds the provisa modules its PostgreSQL protocol imports"
+        "A sort past the capped DuckDB is refused by name, memory per thread has a minimum",
+        "Refuse loose row types by name, drop preview typing",
+        "The code can write an audit event to the org trail",
+        "Size the Node host's record batch from its rows"
+      ]
+    },
+    {
+      "scope": "compiler",
+      "entries": [
+        "A mask the source cannot evaluate is computed by the engine, not refused",
+        "A role context built over types already read tokenizes no SQL"
+      ]
+    },
+    {
+      "scope": "config",
+      "entries": [
+        "A change the model build does not read does not rebuild the schema",
+        "The rebuild itself answers whether only the stamp moved"
       ]
     },
     {
       "scope": "conformance",
       "entries": [
-        "Take psycopg tests that pass now off the expected-failure list",
-        "Charge a pool worker's late thread exception to the test that started it"
+        "The Cypher TCK stops inside its bound, naming the scenario in progress"
       ]
     },
     {
-      "scope": "contracts",
+      "scope": "connectors",
       "entries": [
-        "A version snapshots a column's declared type as the store holds it, null when none",
-        "A version column's type is required; registration guarantees it",
-        "A table save snapshots each column's resolved type"
+        "@requires tag, connectors config block, provisa connector build/check/rebuild",
+        "operator-run connectors join by handshake; block in the model; private indexes",
+        "The pairing explanation is help, not a hint",
+        "Standard connector.yaml sets the store, defaults and fixed values",
+        "Lifecycle tags, health shown on the source"
+      ]
+    },
+    {
+      "scope": "core",
+      "entries": [
+        "Table constraints upgrade in place on an older schema"
       ]
     },
     {
       "scope": "cypher",
       "entries": [
-        "Schema procedures take YIELD/RETURN; model nodes keep stable ids beside a graph session",
-        "An unlabelled relationship read skips relationships lacking the property its WHERE filters"
+        "Write a session node's labels as JSON in its object",
+        "An OPTIONAL MATCH walk that found nothing gives a null path",
+        "A variable-length relationship variable with no path variable reads its walk's relationships",
+        "nodes(), relationships(), length(), startNode(), endNode() of a carried path or relationship",
+        "A value a WITH carries is grouped by its column, not a node's star",
+        "collect(nodes(p)) of a walk is a list of node lists, read as nodes",
+        "A variable-length pattern comprehension gives one column; its walk still fails past the depth limit",
+        "A walk's property map filters each hop; [rs*] walks a carried list of relationships"
       ]
     },
     {
-      "scope": "data-products",
+      "scope": "dbt",
       "entries": [
-        "Refuse moving a product with members; exports tests to the m2m shape"
+        "A dbt source type: manifest, offered models and commands, setup form",
+        "Classify dbt_manifests and count the dbt source in the docs, site and tour",
+        "A public, contracted model is offered as a candidate data product",
+        "Registering a source's models as data products asks table_registration in the domain"
       ]
     },
     {
       "scope": "demo",
       "entries": [
-        "Users id and name served to org_admin through data_steward, not by name",
-        "customer360 relationships get distinct GraphQL fields",
-        "customer360 views filter by one table's columns, as the join guard requires",
-        "Restore view_* names in account_health product; copy source_catalogs in cloned env (R508e)",
-        "test_fake cloned env reloads masking_rules with faking=True (R508e3)"
+        "The sandbox tier serves audit, now published"
       ]
     },
     {
-      "scope": "demo-sandbox",
+      "scope": "demo-templates",
       "entries": [
-        "test_fake cloned env reloads masking rules with fake generators"
+        "A template's readiness record counts its store in one operation"
       ]
     },
     {
       "scope": "demos",
       "entries": [
-        "Replace RELATED_TO term edges where a truer type fits",
-        "The data room reads SUM of a bigint as the numeric PostgreSQL answers"
+        "Write glossary term names in lower case, and test it",
+        "Publish the audit demo with a card from its real answer page"
       ]
     },
     {
-      "scope": "docs,demo",
+      "scope": "deps",
       "entries": [
-        "No requirement ids in the governance note; starthere users serve org_admin the id and name"
+        "Raise locked dnspython to 2.9.2 (CVE-2026-128089)"
       ]
     },
     {
-      "scope": "e2e,sharepoint",
+      "scope": "discovery",
       "entries": [
-        "The certificate path both Trino and the host's server can open"
+        "A catalog nothing has requested is not reported as being prepared"
       ]
     },
     {
-      "scope": "engine",
+      "scope": "duckdb",
       "entries": [
-        "A statement runs in the pgwire session's zone",
-        "The session's zone written into what Trino and ClickHouse read of an instant",
-        "A text function's result is no instant to ask about",
-        "ClickHouse zone answers typed for Arrow, Trino to_json of a timestamptz as PostgreSQL's",
-        "ClickHouse start of a second keeps its fraction, a replacement of nothing is served, the forms matrix is the replay's",
-        "A range reads an instant that names UTC; Trino's start of a microsecond is the value"
+        "DuckDB 2.0 lambdas in the keyword form; pg_timezone_names' table macro before its value macro",
+        "Postgres filter pushdown back on -- postgres_scanner 2.0.0 fixes duckdb-postgres#564",
+        "DuckDB 2.0 -- statements on cursors, JSON extraction as a function, forms safe where 2.0 evaluates an untaken branch",
+        "DuckDB 2.0 -- relations read with fetchall, the default connection read to its end, a JSON extraction a call takes read back as itself, lambdas sent as written in the keyword form",
+        "DuckDB 2.0 -- streams from the statement's relation, a NULL scale answers NULL, the excerpt's run of carets dropped, sources reachable in the source-save doubles",
+        "A PostgreSQL store's catalog cache cleared with postgres_scanner 2.0's postgres_clear_cache",
+        "A SQL Server source pinning trust_server_certificate attaches with TrustServerCertificate=yes",
+        "A live read's NULLs inlined typed as its table declares; a view over an empty search keeps its scores DOUBLE",
+        "Airport from Query.Farm's repository on DuckDB 2.0; provisa-duckdb-ext 0.2.2 carries it",
+        "The connector probe brings airport up from its repository, as the loader does",
+        "DuckDB 2.0 -- the control plane's catalog cache cleared on every registry walk, so an org schema made since the attach resolves",
+        "DuckDB 2.0 -- every database opened without 2.0's remote_pushdown optimizer; a statement over a large constant list planned in milliseconds, not minutes",
+        "DuckDB 2.0 -- a geometric form's run of names written as a pipeline; the deepest bound in 1.5GB, not 4.4GB",
+        "A JSON step keeps DuckDB's own arrow outside a call; JSON_EXTRACT only as a call's argument"
       ]
     },
     {
-      "scope": "exasol,saphana",
+      "scope": "duckdb-ext",
       "entries": [
-        "An unquoted reference reads the governed relation's quoted output; the register form waits out a model rebuild"
+        "Mirror every extension with its.info; staging refuses one without it; provisa-duckdb-ext 0.2.1",
+        "Ship and stage Query.Farm's repository trust anchor; crypto unknown-repository is not staged"
+      ]
+    },
+    {
+      "scope": "duckdb-runtime",
+      "entries": [
+        "Attach another region's store once when two reads reach it at once",
+        "Restore the attach lock after the red probe",
+        "Restore the attach lock after the second red probe"
+      ]
+    },
+    {
+      "scope": "entitlements",
+      "entries": [
+        "The core of per-person entitlements on a coarse role",
+        "The nested claim is named in each identity provider's settings",
+        "Product save reads the caller through the resolver info; entitlements tables never travel",
+        "One write API for a principal's lists",
+        "People search and grants by email that attach on sign-in",
+        "Person roles and kinds reads on the entitlements API",
+        "Names tree in the model's spelling; undefined IdP roles left out of /roles",
+        "Mirror identity provider role claims at sign-in",
+        "rule, add-access, history and per-capability reads for the UI",
+        "Expiry rules end every capability they name"
+      ]
+    },
+    {
+      "scope": "entitlements-ui",
+      "entries": [
+        "Read kinds, names and a person's roles from the API"
+      ]
+    },
+    {
+      "scope": "ephemeral",
+      "entries": [
+        "Name session tables quoted so a label in capitals passes V006",
+        "Name anchor tables in lower case, as Trino's store catalog finds them"
+      ]
+    },
+    {
+      "scope": "export",
+      "entries": [
+        "A config export keeps seeded data product members and relationships to seeded tables"
       ]
     },
     {
       "scope": "federation",
       "entries": [
-        "A governed relation is read as its table by predicate propagation and the ClickHouse scan",
-        "Connector server exit error names the Java root cause",
-        "Read the control plane's attach from DuckDB, refuse provisa_admin for a source",
-        "A pooled ADBC engine read holds no transaction between borrows"
+        "The DuckDB engine attaches only what is staged; MotherDuck refused by name",
+        "Not attachable means replica; unreachable only with no reader, shown at add naming what is missing",
+        "Read the DuckDB version for MotherDuck in the module that owns DuckDB"
       ]
     },
     {
-      "scope": "governance",
+      "scope": "golang",
       "entries": [
-        "An action reads only its served columns; tests read answers; no shared registry",
-        "A read's governed relations serve the outputs it reads; a path column is its path",
-        "A path column is read by its name, and at its path on Trino's MongoDB catalog; every chain level reads only what is read",
-        "Path columns are served by the governed relation",
-        "Sources declare how they serve a path column; a SQL path column is a String",
-        "What a statement names beyond a table's columns reaches its governed relation"
+        "Go code sources get provisa_services"
+      ]
+    },
+    {
+      "scope": "gql",
+      "entries": [
+        "A path over the session's graph starts from its more selective end"
       ]
     },
     {
       "scope": "graph3d",
       "entries": [
-        "Term graph in demos: 2D at one hop, emphasis, tooltip, crossings"
+        "A product graph opens on its product, the rest of the model on asking"
       ]
     },
     {
-      "scope": "grpc",
+      "scope": "grpc-remote",
       "entries": [
-        "One proto field per remote GraphQL parameter"
+        "A source's message classes in a descriptor pool of its own",
+        "The demo server builds its message classes as load_stubs now takes them"
       ]
     },
     {
-      "scope": "grpc_remote",
+      "scope": "i18n",
       "entries": [
-        "Register gRPC tables under lower snake case names",
-        "A gRPC table is addressed in SQL by its convention alias"
+        "Translate the org engine strings for the platform administrator"
       ]
     },
     {
-      "scope": "guard",
+      "scope": "image",
       "entries": [
-        "Whether a statement is connected is settled without listing its unions' branches"
+        "The product image carries a C linker for Rust sources"
       ]
     },
     {
-      "scope": "join-guard",
+      "scope": "library",
       "entries": [
-        "A filter on a window result over joined rows is not a match"
+        "A top-level Library page with a background index job",
+        "Upgrade an existing reference_documents in place"
       ]
     },
     {
       "scope": "lineage",
       "entries": [
-        "Fold a view between an input and a member into the column edge"
-      ]
-    },
-    {
-      "scope": "live-only",
-      "entries": [
-        "Cut a live-only table's part where its governed relation stands"
+        "Receive OpenLineage run events into the lineage graph"
       ]
     },
     {
       "scope": "mcp",
       "entries": [
-        "The tool request shim carries headers, so MCP decisions survive the idempotency key"
+        "Every MCP call runs as a principal with its entitlements"
       ]
     },
     {
-      "scope": "meta",
+      "scope": "metadata-export",
       "entries": [
-        "Read product membership through the junction tables"
+        "Exported data products carry their grounded terms"
       ]
     },
     {
-      "scope": "meta-views",
+      "scope": "metadata_export",
       "entries": [
-        "Read registered_tables before table_columns, as schema.sql locks them",
-        "Drop a requirement id from the table_columns SQL comment"
+        "Scope product_memberships; include graphql-demo tables in config",
+        "product_memberships refuses unknown members, tolerates seeded ones",
+        "An edge, rule or lineage leaf on a seeded table publishes nothing"
       ]
     },
     {
-      "scope": "model-build",
+      "scope": "mv",
       "entries": [
-        "Replace lineage edges and checker targets one build at a time"
+        "Serialize store schema creation with a per-schema advisory lock"
       ]
     },
     {
-      "scope": "model-names",
+      "scope": "oauth",
       "entries": [
-        "Replace the stored names one build at a time"
+        "A refresh lock is released by name before its session is closed",
+        "Closing a refresh lock whose session already ended releases nothing"
       ]
     },
     {
-      "scope": "names",
+      "scope": "org-engine",
       "entries": [
-        "Store the names table in one batched insert"
-      ]
-    },
-    {
-      "scope": "naming",
-      "entries": [
-        "Rules for every client-facing name kind",
-        "Names table built per model version",
-        "Names table published as meta table with a report"
-      ]
-    },
-    {
-      "scope": "orgs",
-      "entries": [
-        "Account deletion removes each org's copy of who the person was"
+        "The lane is read-only for the org, saved from the Platform page",
+        "An org admin changes its own lane on the org page"
       ]
     },
     {
       "scope": "pgwire",
       "entries": [
-        "A client's catalog statement runs unprepared and without JIT on the control plane",
-        "Read a TimeZone bound to set_config",
-        "Read a POSIX TimeZone with no abbreviation"
-      ]
-    },
-    {
-      "scope": "polly",
-      "entries": [
-        "A delivered file downloads, and no delivery is said as none"
+        "pg's last three function-check differences (J1185,)"
       ]
     },
     {
       "scope": "rebuild",
       "entries": [
-        "Write names-table after schema_version increments, skip for env builds"
+        "One rebuild lock per runtime; a reload builds only a stale runtime"
       ]
     },
     {
       "scope": "release",
       "entries": [
-        "A commit scope of requirement or work item ids is no scope in the notes"
+        "Platform connector block as a release leg",
+        "Build the Spark connector image into the run, push it only at publish"
+      ]
+    },
+    {
+      "scope": "reload",
+      "entries": [
+        "The config watcher waits for the save it follows"
+      ]
+    },
+    {
+      "scope": "replicas",
+      "entries": [
+        "A table says what a read does with nothing landed"
+      ]
+    },
+    {
+      "scope": "residency",
+      "entries": [
+        "Without the freshness guarantee a read answers from the replica it holds"
+      ]
+    },
+    {
+      "scope": "scheduler",
+      "entries": [
+        "A scheduled job is not audited as the request that last armed the wakeup"
+      ]
+    },
+    {
+      "scope": "schema",
+      "entries": [
+        "Every column added to an existing table has its ADD COLUMN IF NOT EXISTS",
+        "Drop constraints removed from CREATE that survive on older planes (J1158)",
+        "glossary_terms.iri is added to a table that predates it"
+      ]
+    },
+    {
+      "scope": "secrets",
+      "entries": [
+        "Account for reference_documents.pending_content in the reference search"
+      ]
+    },
+    {
+      "scope": "settings",
+      "entries": [
+        "Naming and processing settings are the org's",
+        "An org-only graphql_remote save leaves the deployment config file"
       ]
     },
     {
       "scope": "site",
       "entries": [
-        "Dremio is not an engine Provisa can register"
+        "Tighten the home page for product-led adoption",
+        "The rotating headline keeps one height",
+        "The AI access guide points at the queries report",
+        "Stylesheet changes reach returning visitors, button reads Live Demo"
+      ]
+    },
+    {
+      "scope": "snowflake",
+      "entries": [
+        "Dynamic Tables and Tasks as tables and commands",
+        "Read the connector error class through the driver that owns it"
+      ]
+    },
+    {
+      "scope": "spark-e2e",
+      "entries": [
+        "Set SPARK_HOME so pyspark-client probe succeeds in CI"
       ]
     },
     {
       "scope": "sql",
       "entries": [
-        "An aliased table's published columns are lowered like any other's"
+        "A command the role may not call reads as a name never registered (V006)"
       ]
     },
     {
-      "scope": "startup",
+      "scope": "sql-validator, ephemeral",
       "entries": [
-        "Type the registered table name in the admin key pass"
+        "A field of a derived value column is read; a session node keeps its alias's spelling"
+      ]
+    },
+    {
+      "scope": "start",
+      "entries": [
+        "End the launch when the backend fails to start",
+        "End start-ui.sh when the backend fails to start",
+        "Refuse a virtual environment out of step with uv.lock"
+      ]
+    },
+    {
+      "scope": "storage",
+      "entries": [
+        "An org store is assigned by the platform administrator"
+      ]
+    },
+    {
+      "scope": "store_config",
+      "entries": [
+        "Revert J1161 seeded-table inclusion; fix product_memberships skip"
+      ]
+    },
+    {
+      "scope": "tables",
+      "entries": [
+        "Register several tables at once, from the source just saved to its data"
       ]
     },
     {
       "scope": "transpiler",
       "entries": [
-        "A timestamptz literal names UTC on Trino, Presto and Athena; json_agg and json_build_object of a stated instant refused by name on Trino",
-        "ClickHouse start of a sub-minute unit writes no dateTrunc in either branch",
-        "Cypher range() on the pg engine is generate_series, not sequence",
-        "Cypher list functions on the pg engine are PostgreSQL's own",
-        "J731 english_stem keeps an empty stem and a word over 1000 bytes, ts_rank of no lexemes is 0",
-        "A NULL beside a range, multirange_cmp of columns, a multirange of an array",
-        "J731 ClickHouse flattens one level, Trino counts past 10000 in blocks",
-        "-> and ->> of a step the rows hold read a key or an index, never a path",
-        "Trino's array index is an array's alone and counts back from the end",
-        "J731 a token's parts by a searched CASE, which ClickHouse reads",
-        "J731 a search reads a column's vector once, within ClickHouse's max_query_size",
-        "A zoned instant's form keeps what the statement says of its value",
-        "A to_json is told apart once, never around what json_encoded already told apart",
-        "A to_json of an ARRAY_AGG or JSON_OBJECT is not wrapped, it is never an instant",
         "A to_json of a map or a list is encoded once on DuckDB",
-        "A to_json of a to_json is encoded once on DuckDB"
+        "A to_json of a to_json is encoded once on DuckDB",
+        "Cast an array literal to its own nesting depth, not the declared type's plus it",
+        "Give array_cat a Trino form",
+        "Give an array's @> a Trino form",
+        "A to_json object value reaches Trino as FORMAT JSON text"
       ]
     },
     {
       "scope": "ui",
       "entries": [
-        "Name clash policy control",
-        "Role form capabilities as one multi-select dropdown with a tick per option",
-        "A graph redrawn mid-layout keeps its canvas",
-        "A product's inputs are its Lineage panel's Inputs lane",
-        "Show a delivered file in the Explore MCP chat",
-        "List SQL explorer schemas and tables alphabetically",
-        "Product membership read and written through the many-to-many surface",
-        "Lineage inputs read product_ids, drawing a node per product; data products label and domain_has_members refusal in every locale; prettier",
-        "An enclosing Tip stays closed while the pointer or focus is on a nested Tip target",
-        "Admin and Docs move from the top navigation into the user menu",
-        "Remove the Settings entry from the user menu",
-        "A Kaggle search a newer one replaced answers nothing; a taken alias gets the source's catalog name"
+        "A landed result shows no row count; the redirect test finds the row-limit option in its portal",
+        "A Quality contract read cut short by its panel leaving answers null; e2e budgets from measured CI latency",
+        "Source sign-in page reads the runtime base domain",
+        "Each admin page one layer: the stores on Platform, Cache per right",
+        "Translate the DuckDB thread memory refusal into every locale",
+        "Give the Unregistered badge its own shell row",
+        "Point a regional org on a plan to Billing",
+        "Add assign_entitlements capability to DEFAULT_ADMIN_ROLE and locale catalogs",
+        "Entitlement strings in every locale",
+        "Grant and end entitlement lists from the Team page",
+        "Cascading searchable pickers for entitlement lists",
+        "Entitlement pickers claim their Escape and sit beside their level names",
+        "Entitlement ended and superseded hints use the shared Tip",
+        "A grant's end dates, soonest first, with extend on a list's end",
+        "End dates keep their dates on one line; the superseded hint sits on its text"
+      ]
+    },
+    {
+      "scope": "windows",
+      "entries": [
+        "Pin and cache the WSL rootfs, verify its sha256"
       ]
     },
     {
       "scope": "",
       "entries": [
-        "A governed read keeps its instant on Trino, a row timetz has no date; tests follow the amended requirements",
-        "Restore launch server and test ordering to unblock CI re-run failures",
-        "Fail closed when table absent from visible_columns",
-        "Populate visible_columns in _model() so V003 passes under fail-closed",
-        "Route cloned-env surface copy through install_surface (J1157d)",
-        "Populate state.tables in pg_backed_flight to avoid V003 on Flight DoGet",
-        "Complete state.tables shape in pg_backed_flight fixture (R508c2)",
-        "Clone path: source_catalogs, SYNTHETIC unbound, as_generated, __derived__ guard",
-        "Synthetic env — camelCase param column rename and mat_store catalog not found",
-        "Wire pgwire_pg_backend model_db + remove stale '^' MATRIX entries",
-        "pgwire_pg_backend registers the meta catalog views as the product does",
-        "A SYNTHETIC-bound env is built in full, not cloned from PROD",
-        "pgwire_pg_backend grants the catalog client role its views",
-        "A generated parameter column is published by its own name, no alias",
-        "A client's catalog statement is answered whole, past the role's row cap",
-        "A schema-qualified WITHIN GROUP or FILTER call is a call, not a column"
+        "to_json of a list of instants reads as PostgreSQL's does",
+        "Enforce column visibility in minted listener, skip function-call table refs",
+        "Governed pipeline enforces column visibility when context is empty",
+        "Enforce calling role governance on minted-token listener",
+        "Resolve a qualified column outward and refuse an unresolved one; drop listener bolt-on",
+        "A column registered with a grant named keeps exactly that list",
+        "Governance caller sees all columns; command ops survive hidden input",
+        "Revert governance gate widening; fix integration test caller",
+        "A code_command's table arguments are prepared, not passed through",
+        "Scalar SELECT fn(args) form and minted_call_tokens parity",
+        "Resolve diagnostics in test_background_work.py",
+        "Rewrite only qualified calls recognised by node type"
       ]
     }
   ]

@@ -3585,6 +3585,13 @@ class AiEndpointConfig(BaseModel):  # REQ-1790
     enabled: bool = True
 
 
+class ModelLimitsConfig(BaseModel):  # REQ-464
+    """One model's input and output limits in tokens, as an administrator set them."""
+
+    input_tokens: int = Field(gt=0)
+    output_tokens: int = Field(gt=0)
+
+
 class AIModelsConfig(BaseModel):  # REQ-464
     """AI model configuration for various operations.
 
@@ -3604,6 +3611,11 @@ class AIModelsConfig(BaseModel):  # REQ-464
     # REQ-2179: no default. A scan reads a whole document, so a model is chosen for it, and until
     # one is a scan is refused saying so (provisa/term_finding/model.py).
     glossary_term_finding: str | dict = ""
+    # REQ-464: the organization's own input and output limits, in tokens, by vendor and model id
+    # ({"anthropic": {"claude-haiku-4-5": {"input_tokens": 200000, "output_tokens": 8192}}}). A
+    # model with none set takes the vendor's published figure or the default pair
+    # (provisa.llm.limits.limits_for).
+    model_limits: dict[str, dict[str, ModelLimitsConfig]] = Field(default_factory=dict)
 
 
 class NlConfig(BaseModel):  # REQ-464
