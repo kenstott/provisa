@@ -413,6 +413,29 @@ def test_a_domain_a_merge_removes_still_goes():
     assert "finance/domain.yaml" not in merged
 
 
+def test_a_domain_a_merge_removes_stays_while_a_table_it_retires_sits_in_it():
+    """The retired table keeps its row, and its row its domain: removing the domain under it would
+    leave the merged tree naming a domain it does not hold, and the merge would be refused whole."""
+    domain = {"description": "revenue"}
+    merged = _merge({}, {"sales/domain.yaml": domain, ORDERS: _order()}, removals=True)
+    assert merged["sales/domain.yaml"] == domain
+    assert merged[ORDERS]["retired"] is True
+
+
+def test_a_term_a_merge_removes_stays_while_a_table_it_retires_names_it():
+    term = "terms/order.yaml"
+    merged = _merge(
+        {},
+        {
+            "sales/domain.yaml": {"description": "revenue"},
+            term: {"name": "order"},
+            ORDERS: _order(glossary=[{"column_name": "id", "term": term}]),
+        },
+        removals=True,
+    )
+    assert merged[term] == {"name": "order"}
+
+
 @pytest.mark.parametrize("removals", [False, True])
 def test_a_column_and_relationship_the_source_lacks_are_kept_retired_in_the_table(removals):
     source = {ORDERS: _order(columns=[{"column_name": "id", "retired": False}], relationships=[])}

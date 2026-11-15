@@ -71,6 +71,26 @@ def test_a_meta_role_with_org_admin_among_its_members_is_offered_it(state):  # n
     assert _offered(state, _meta(state, ["org_admin", "r"]))
 
 
+def test_a_draft_the_model_no_longer_holds_is_not_served_by_a_surface_built_before(state):  # noqa: F811
+    """A worker's surface is rebuilt after the model it was built from changes. Until it is, its
+    context still names a draft the model has since published or removed; a request in that
+    window is answered from one reading of the model's drafts, never fails looking the draft up
+    there (the 500 a request took on every worker while the others' change reached it)."""
+    from provisa.api.admin.table_read import (
+        draft_served_to,
+        drafts_a_document_reads,
+        drafts_a_statement_names,
+    )
+
+    surface = role_surface(state, "org_admin")
+    assert surface is not None and _REFUNDS in surface.context.draft_ids.values()
+    state.role_build_inputs = {**state.role_build_inputs, "draft_tables": []}
+
+    assert drafts_a_document_reads(state, _QUERY, "org_admin") == []
+    assert drafts_a_statement_names(state, "SELECT id FROM refunds", "org_admin") == []
+    assert draft_served_to(state, "org_admin", _REFUNDS) is None
+
+
 def test_no_other_role_is_offered_a_draft(state):  # noqa: F811
     for role_id in ("r", "s", _meta(state, ["r", "s"]), _meta(state, ["finance_registrar", "r"])):
         surface = role_surface(state, role_id)
