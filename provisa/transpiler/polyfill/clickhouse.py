@@ -36,6 +36,23 @@ is that day, written for toDate32; a day that does not exist is PostgreSQL's err
 NULL for a cast that answers NULL on failure (pg_input_is_valid's check, accurateCastOrNull by the
 time the grid reads it); any other text, and a year Date32 does not hold, is refused by name.
 
+Literals of a time, an integer and a numeric are read from their text here too, as PostgreSQL's
+input reads them (J1366's found-not-fixed 1 to 3). A time: ClickHouse's toTime64 reads '12:30' as
+00:12:30, so the text is written as time_out writes it (12:30:00), a field out of range raising
+22008, any text not of hours, minutes, seconds and a fraction refused by name. An integer:
+ClickHouse's cast wraps a number past the type (2147483648::integer as -2147483648), truncates a
+fraction (2.5 as 2) and answers NULL of a text past it; a number is rounded half away from zero, a
+text read by the integer input (0x, 0o and 0b prefixes, underscores), and past the type PostgreSQL's
+22003, a text the input does not read 22P02. A numeric: ClickHouse reads a number with a fraction as
+a Float64 (1.005 as 1.00499..., 0.1 at scale 30 as 0.1000000000000000090...) and truncates a text
+past the scale; the literal is cast from its text, rounded half away from zero to the scale,
+22003 past the precision, a value of no precision said held up to 38 digits (0A000 past them).
+
+A date and a number of days by their operator (date + integer, integer + date, date - integer):
+date_pli's, integer_pl_date's or date_mii's ClickHouse form (polyfill.dates.ch_moved), of operands
+whose types the statement says; the engine's own wrapped Date32 at int4's extremes, and the row
+then failed to decode.
+
 lag, lead, first_value, last_value and nth_value: ClickHouse answers the type's default (0, '')
 where PostgreSQL answers NULL, past the partition or of an empty frame, and its first_value and
 last_value skip a NULL. lag and lead are lagInFrame and leadInFrame over the whole partition (as

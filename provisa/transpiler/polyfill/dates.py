@@ -19,6 +19,11 @@ ClickHouse (run 43410717058): make_date is its makeDate32 of a year Date32 holds
 a day the month has, any other refused by name; transaction_timestamp is the statement's now64, as
 current_timestamp is there.
 
+date_pli, date_mii and integer_pl_date on ClickHouse: the old table's form moved the day in a Date
+(1970 to 2149), which wrapped any other day (date_pli('2299-12-31', 1) answered 2120-07-27), and
+integer_pl_date's was DuckDB's, refused by name there. Each moves the day in Date32: past a date's
+range PostgreSQL's 22008, within it but outside Date32's 1900-01-01 .. 2299-12-31 0A000.
+
 to_char of a timestamp on ClickHouse and Trino, and of an instant on ClickHouse on a session on
 UTC, is written from PostgreSQL's own tokens (provisa.transpiler.to_char,
 instants.to_char_written)."""
