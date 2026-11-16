@@ -307,10 +307,12 @@ describe("RelationshipsPage: the result banner does not cover the registered rel
     });
     vi.mocked(countDiscoveryRun).mockResolvedValue({
       requests: 0,
+      requests_are: "upper_bound",
       by_group: {},
       model: null,
       source_tables: 2,
       target_tables: 2,
+      tables_not_read: 0,
     });
     const run = {
       id: 3,

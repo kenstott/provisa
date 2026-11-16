@@ -24,18 +24,8 @@ from typing import Any
 #: The operator setting that caps the calls one statement makes to a parameterized table.
 CALLS_SETTING = "parameters.max_calls_per_statement"
 
-REAL_COLUMN_KINDS = frozenset({"partition_key", "column_value"})
-
-
-def is_opaque(column: Any) -> bool:
-    """Whether a parameter column is an input of the source's call, whose effect on the rows is
-    not known: every kind but a real column of the table (a partition key, a column value)."""
-    kind = (
-        column.get("native_filter_type")
-        if isinstance(column, dict)
-        else getattr(column, "native_filter_type", None)
-    )
-    return kind is not None and kind not in REAL_COLUMN_KINDS
+# One definition of an opaque parameter, for the binder and the metadata alike (REQ-1986).
+from provisa.core.parameters import REAL_COLUMN_KINDS, is_opaque  # noqa: E402,F401
 
 
 class ParameterBindingRefused(ValueError):

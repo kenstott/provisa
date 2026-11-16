@@ -599,6 +599,9 @@ export default defineConfig({
             PROVISA_MCP_PORT: String(b.port + 4),
             PROVISA_PGWIRE_PORT: String(b.port + 5),
             PROVISA_PGWIRE_PORTS: pgwirePorts(b.worker),
+            // REQ-2226: the minted-token listener a code command's tables are read over, the last
+            // port of the backend's own block (code-resolver-incremental.spec.ts builds a set).
+            PROVISA_MINTED_PGWIRE_PORT: String(b.port + 9),
             PROVISA_DATA_DIR: b.dataDir,
             // Its own trace folder, not ~/.provisa/telemetry (local-dev's): every backend compacts
             // its folder each minute, and four sharing one compacted each other's files.

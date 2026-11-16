@@ -37,6 +37,8 @@ from provisa.core.schema_admin import REGISTRY_TABLES
 from provisa.core.schema_admin import metadata as admin_metadata
 from provisa.core.schema_admin import orgs, user_org_memberships, user_profiles
 from provisa.core.schema_org import metadata as org_metadata
+from provisa.core.schema_org import roles as org_roles
+from provisa.core.schema_org import user_role_assignments
 from tests.integration.test_auth_integration import _FirebaseLikeProvider
 from tests.integration.signin_tables import SIGN_IN_TABLES
 
@@ -69,6 +71,13 @@ def _prepare_sync():
         conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         admin_metadata.create_all(conn, tables=REGISTRY_TABLES)
         conn.execute(insert(orgs).values(id=_ORG, name="Acme", created_by="super"))
+        conn.execute(text(f"SET search_path TO {_TENANT_SCHEMA}"))
+        # The role alice holds in acme: what she may issue a token for.
+        conn.execute(insert(org_roles).values(id="analyst", capabilities=[], domain_access=["*"]))
+        conn.execute(
+            insert(user_role_assignments).values(user_id=_ALICE, role_id="analyst", domain_id="*")
+        )
+        conn.execute(text(f"SET search_path TO {_ADMIN_SCHEMA}"))
         for user in (_ALICE, _BOB):
             conn.execute(insert(user_org_memberships).values(user_id=user, org_id=_ORG))
             conn.execute(
@@ -142,7 +151,9 @@ _AS_ALICE = {"Authorization": "Bearer tok-alice", "x-org-provisa": _ORG}
 
 @pytest.mark.asyncio
 async def test_an_issued_token_resolves_to_its_owners_identity(store):
-    secret, row = await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop")
+    secret, row = await store.issue(
+        user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop", scopes=["analyst"]
+    )
 
     assert is_personal_access_token(secret), "a PAT must be recognizable by its prefix alone"
     assert "token_hash" not in row, "the issuance record must not echo the stored hash"
@@ -156,7 +167,9 @@ async def test_an_issued_token_resolves_to_its_owners_identity(store):
 @pytest.mark.asyncio
 async def test_the_identity_names_the_account_not_the_token(store):
     """REQ-1263: an audit row written under a PAT must name the person, not the credential."""
-    secret, _ = await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="ci-runner")
+    secret, _ = await store.issue(
+        user_id=_ALICE, org_id=_ORG, env_name="prod", name="ci-runner", scopes=["analyst"]
+    )
 
     identity = await store.validate(secret)
 
@@ -168,25 +181,34 @@ async def test_the_identity_names_the_account_not_the_token(store):
 
 
 @pytest.mark.asyncio
-async def test_a_scoped_token_carries_its_own_role(store):
+async def test_a_token_carries_its_scopes_and_no_role_claim_of_its_own(store):
+    """The roles it acts as are read where every sign-in's are: its scopes its owner holds."""
     secret, _ = await store.issue(
         user_id=_ALICE,
         org_id=_ORG,
         env_name="prod",
         name="readonly",
-        role_id="analyst",
-        scopes=["read"],
+        scopes=["analyst", "steward"],
     )
 
     identity = await store.validate(secret)
 
-    assert identity.roles == ["analyst"], "a narrowed token must not resolve to the owner's role"
-    assert identity.raw_claims["scopes"] == ["read"]
+    assert identity.roles == []
+    assert identity.raw_claims["scopes"] == ["analyst", "steward"]
+    assert identity.credential == "pat"
+
+
+@pytest.mark.asyncio
+async def test_a_token_with_no_scopes_is_not_issued(store):
+    with pytest.raises(ValueError, match="at least one role"):
+        await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="none", scopes=[])
 
 
 @pytest.mark.asyncio
 async def test_the_secret_is_not_recoverable_from_the_store(store):
-    secret, _ = await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop")
+    secret, _ = await store.issue(
+        user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop", scopes=["analyst"]
+    )
 
     rows = await store.list_for_user(_ALICE, _ORG)
 
@@ -205,7 +227,9 @@ async def test_an_unknown_token_is_rejected(store):
 
 @pytest.mark.asyncio
 async def test_a_revoked_token_stops_working(store):
-    secret, _ = await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop")
+    secret, _ = await store.issue(
+        user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop", scopes=["analyst"]
+    )
     await store.validate(secret)
 
     assert await store.revoke(token_hash=hash_token(secret), user_id=_ALICE)
@@ -216,7 +240,9 @@ async def test_a_revoked_token_stops_working(store):
 
 @pytest.mark.asyncio
 async def test_revocation_is_scoped_to_the_owner(store):
-    secret, _ = await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop")
+    secret, _ = await store.issue(
+        user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop", scopes=["analyst"]
+    )
 
     assert not await store.revoke(token_hash=hash_token(secret), user_id=_BOB), (
         "holding a token's hash must not let another user revoke it"
@@ -233,6 +259,7 @@ async def test_an_expired_token_is_rejected(store, planes):
         org_id=_ORG,
         env_name="prod",
         name="short-lived",
+        scopes=["analyst"],
         expires_at=datetime.datetime.now(timezone.utc) + datetime.timedelta(days=1),
     )
     # Age the row rather than sleeping: the rule under test is the expiry comparison.
@@ -256,6 +283,7 @@ async def test_expiry_in_the_past_is_refused_at_issuance(store):
             org_id=_ORG,
             env_name="prod",
             name="already-dead",
+            scopes=["analyst"],
             expires_at=datetime.datetime.now(timezone.utc) - datetime.timedelta(days=1),
         )
 
@@ -265,8 +293,12 @@ async def test_leaving_an_org_revokes_that_orgs_tokens(store, planes):
     from provisa.core.org_membership import remove_from_org
 
     admin_db, tenant_db = planes
-    secret, _ = await store.issue(user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop")
-    bob_secret, _ = await store.issue(user_id=_BOB, org_id=_ORG, env_name="prod", name="bob-laptop")
+    secret, _ = await store.issue(
+        user_id=_ALICE, org_id=_ORG, env_name="prod", name="laptop", scopes=["analyst"]
+    )
+    bob_secret, _ = await store.issue(
+        user_id=_BOB, org_id=_ORG, env_name="prod", name="bob-laptop", scopes=["analyst"]
+    )
 
     await remove_from_org(admin_db, tenant_db, _ALICE, _ORG)
 
@@ -280,7 +312,9 @@ async def test_leaving_an_org_revokes_that_orgs_tokens(store, planes):
 
 def test_issue_returns_the_secret_exactly_once(planes):
     with _client(planes) as client:
-        created = client.post("/auth/tokens", json={"name": "laptop"}, headers=_AS_ALICE)
+        created = client.post(
+            "/auth/tokens", json={"name": "laptop", "scopes": ["analyst"]}, headers=_AS_ALICE
+        )
         assert created.status_code == 200, created.text
         secret = created.json()["token"]
         assert is_personal_access_token(secret)
@@ -294,14 +328,16 @@ def test_issue_returns_the_secret_exactly_once(planes):
 
 def test_an_unauthenticated_caller_cannot_issue_a_token(planes):
     with _client(planes) as client:
-        resp = client.post("/auth/tokens", json={"name": "laptop"})
+        resp = client.post("/auth/tokens", json={"name": "laptop", "scopes": ["analyst"]})
 
     assert resp.status_code == 401
 
 
 def test_revoking_through_the_route_takes_effect(planes):
     with _client(planes) as client:
-        created = client.post("/auth/tokens", json={"name": "laptop"}, headers=_AS_ALICE)
+        created = client.post(
+            "/auth/tokens", json={"name": "laptop", "scopes": ["analyst"]}, headers=_AS_ALICE
+        )
         token_hash = client.get("/auth/tokens", headers=_AS_ALICE).json()[0]["token_hash"]
 
         first = client.delete(f"/auth/tokens/{token_hash}", headers=_AS_ALICE)
@@ -315,10 +351,43 @@ def test_revoking_through_the_route_takes_effect(planes):
 def test_an_absurd_expiry_is_refused(planes):
     with _client(planes) as client:
         resp = client.post(
-            "/auth/tokens", json={"name": "forever", "expires_in_days": 4000}, headers=_AS_ALICE
+            "/auth/tokens",
+            json={"name": "forever", "scopes": ["analyst"], "expires_in_days": 4000},
+            headers=_AS_ALICE,
         )
 
     # This app mounts the router alone, without create_app's ApiError handler, so the response
     # carries the plain HTTPException body; the i18n code is asserted at the raise site instead.
     assert resp.status_code == 400
     assert "expires_in_days" in resp.json()["detail"]
+
+
+def test_a_scope_the_issuer_does_not_hold_is_refused(planes, monkeypatch):
+    """REQ-2076: alice holds analyst; a token for org_admin is a role named that is not held."""
+    from provisa.security import role_probe
+
+    events: list = []
+
+    async def _collect(probe):
+        events.append(probe)
+        return None
+
+    monkeypatch.setattr(role_probe, "record", _collect)
+    with _client(planes) as client:
+        resp = client.post(
+            "/auth/tokens", json={"name": "wide", "scopes": ["org_admin"]}, headers=_AS_ALICE
+        )
+        listed = client.get("/auth/tokens", headers=_AS_ALICE)
+
+    assert resp.status_code == 403, resp.text
+    assert listed.json() == []
+    assert [(e.requested, e.user_id, e.endpoint) for e in events] == [
+        ("org_admin", _ALICE, "POST /auth/tokens")
+    ]
+
+
+def test_a_token_with_no_scopes_is_refused_by_the_route(planes):
+    with _client(planes) as client:
+        resp = client.post("/auth/tokens", json={"name": "none"}, headers=_AS_ALICE)
+
+    assert resp.status_code == 400, resp.text

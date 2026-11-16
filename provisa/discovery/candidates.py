@@ -15,7 +15,7 @@
 from __future__ import annotations
 
 import uuid
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import delete as _delete, select, update
 
@@ -68,11 +68,12 @@ async def store_candidates(
     return ids
 
 
-async def list_pending(conn: "Connection") -> list[dict]:  # REQ-018, REQ-167
+async def list_pending(conn: "Connection", state: Any) -> list[dict]:  # REQ-018, REQ-167
     """List all candidates with status='suggested'. ``reduced_information`` (REQ-413, REQ-1986):
-    one of its tables requires a parameter, so it is never read and no values were compared; said
-    from the tables' registration as it is now, beside the note its reasoning carries."""
-    from provisa.discovery.gather import tables_requiring_a_parameter
+    one of its tables requires a parameter and is not kept for good, so it is never read and no
+    values were compared; said from the model as it is now (``state``: which tables are kept for
+    good), beside the note its reasoning carries."""
+    from provisa.discovery.gather import tables_never_read
 
     result = await conn.execute_core(
         select(relationship_candidates)
@@ -81,7 +82,7 @@ async def list_pending(conn: "Connection") -> list[dict]:  # REQ-018, REQ-167
     )
     found = [dict(r._mapping) for r in result.fetchall()]
     ends = {c["source_table_id"] for c in found} | {c["target_table_id"] for c in found}
-    never_read = await tables_requiring_a_parameter(conn, sorted(ends)) if ends else set()
+    never_read = await tables_never_read(state, conn, sorted(ends)) if ends else set()
     for c in found:
         c["reduced_information"] = bool({c["source_table_id"], c["target_table_id"]} & never_read)
     return found

@@ -41,6 +41,7 @@ from typing import Any
 
 from sqlalchemy import select
 
+from provisa.core.parameters import RequiresParameters, required_of, whole_read_refusal
 from provisa.profiler import classifications, classify, constraints, dependence, measures, plausible
 from provisa.profiler.dependence import ParentSpec
 from provisa.profiler.source import ProfilerSettings
@@ -164,8 +165,22 @@ def parents_of(state: Any, table_id: int) -> list[ParentSpec]:
     return parent_relationships(state, ctx, tm, exposed_by_phys, _published_name)
 
 
+def not_read_whole(state: Any, table_id: int, table_name: str) -> RequiresParameters | None:
+    """Why ``table_id`` is never read whole, asked of its metadata before any read (REQ-1986): the
+    refusal naming the parameters it requires, or None for a table read as any other. A reader
+    asked for this one table raises it; a reader that sweeps many tables reports the table as not
+    read, with its reason. With no compiled schema there is no metadata to ask and nothing is
+    read either: the read itself says so (:func:`resolve_target`)."""
+    ctx = state.contexts.get(PROFILE_ROLE)
+    if ctx is None:
+        return None
+    return whole_read_refusal(table_name, required_of(ctx.parameters.get(table_id, ())))
+
+
 def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, set[str]]) -> Target:
-    """The member table as the org admin's compiled context publishes it."""
+    """The member table as the org admin's compiled context publishes it: what a count, a profile
+    or a sample of the whole table reads. A table that requires parameters has no such read, and
+    is refused from its metadata (:class:`provisa.core.parameters.RequiresParameters`)."""
     ctx = state.contexts.get(PROFILE_ROLE)
     if ctx is None:
         raise ProfileError(f"no compiled schema for role {PROFILE_ROLE!r}; cannot profile")
@@ -177,6 +192,9 @@ def resolve_target(state: Any, table_id: int, table_name: str, tags: dict[str, s
             f"to profile"
         )
 
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
     _name = _published_name
 
     p2s: dict = ctx.physical_to_sql
@@ -692,6 +710,9 @@ async def classify_table(
     non-null values of each column are gathered in one read of that sample (a run's
     ``classification_sample``). Each column a kind can test comes back with the kinds it matched,
     or as having too few values to classify. The kinds are the org's enabled ones."""
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
     async with state.model_db.acquire() as conn:
         tags = await column_tags(conn, table_id)
     kinds = await classifications.enabled_kinds(state.model_db)
@@ -925,7 +946,12 @@ async def profile_table(
     state: Any, *, table_id: int, table_name: str, settings: ProfilerSettings
 ) -> RunOutcome:
     """Run the profile of one member table and append it to its history. A failure is recorded as
-    a failed run and re-raised as :class:`ProfileError`."""
+    a failed run and re-raised as :class:`ProfileError`. A table that requires parameters is
+    refused from its metadata before a run exists (REQ-1986,
+    :class:`provisa.core.parameters.RequiresParameters`): nothing is read and no run is recorded."""
+    refusal = not_read_whole(state, table_id, table_name)
+    if refusal is not None:
+        raise refusal
     run_id = str(uuid.uuid4())
     run_time = datetime.now(UTC)
     started = time.monotonic()

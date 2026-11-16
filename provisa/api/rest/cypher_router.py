@@ -1207,6 +1207,14 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                         ),
                         key=lambda x: x["name"],
                     ),
+                    # REQ-1986: the table's limits as its metadata states them -- each
+                    # parameter's name, type, kind, whether it is opaque (an input to the source's
+                    # call) or a real column, and whether it is required; with a required one the
+                    # label gives no count, profile or sample.
+                    "requires_parameters": bool(n.required_parameters),
+                    "parameters": [
+                        {**f.as_dict(), "name": _cql_prop(f.name)} for f in n.parameters
+                    ],
                     "property_types": _property_types(n),
                     "traversal_only": n.traversal_only,
                     **cluster_by_name.get(
@@ -1260,16 +1268,18 @@ def _countable_labels(
     domain, for a role not granted it — REQ-1132) is not counted: its count statement is refused
     (V001) on every surface, as a direct FROM of it is.
 
-    A PARAMETERIZED node (native-filter columns) is a function f(args) -> rows with no snapshot:
-    ``MATCH (n:Label) RETURN count(n)`` has no arg to satisfy, so it cannot be counted — exclude it
-    and any relationship that touches it. Including one would binder-error and, because ``_run_count``
-    re-raises, zero the WHOLE panel. Domain filtering (when a domain set is supplied) is also applied.
+    A node whose table's metadata states a REQUIRED parameter (REQ-1986) gives no count without
+    it: ``MATCH (n:Label) RETURN count(n)`` has no value to give, so it is left out with any
+    relationship that touches it -- asked of the metadata, never found out by counting (one refused
+    count would, because ``_run_count`` re-raises, zero the WHOLE panel). A node whose parameters
+    are all optional is counted as any other. Domain filtering (when a domain set is supplied) is
+    also applied.
     """
     node_labels = [
         nm.label
         for nm in label_map.nodes.values()
         if (not filtered_domains or nm.domain_id in filtered_domains)
-        and not nm.native_filter_columns
+        and not nm.required_parameters
         and reads_domain(nm.domain_id)
     ]
     seen: set[str] = set()
@@ -1281,8 +1291,8 @@ def _countable_labels(
             src_nm.domain_id not in filtered_domains or tgt_nm.domain_id not in filtered_domains
         ):
             continue
-        if src_nm.native_filter_columns or tgt_nm.native_filter_columns:
-            continue  # a rel to/from a parameterized node is uncountable without its arg
+        if src_nm.required_parameters or tgt_nm.required_parameters:
+            continue  # a rel to/from a node that requires a parameter is uncountable without it
         if not (reads_domain(src_nm.domain_id) and reads_domain(tgt_nm.domain_id)):
             continue  # its count reads both ends' tables directly
         if rel.rel_type not in seen:

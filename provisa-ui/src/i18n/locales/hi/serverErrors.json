@@ -41,7 +41,9 @@
       "role_not_assigned": "भूमिका '{{role_id}}' इस उपयोगकर्ता को असाइन नहीं है",
       "simple_provider_not_configured": "Simple ऑथ प्रोवाइडर कॉन्फ़िगर नहीं है",
       "username_exists": "यूज़रनेम पहले से मौजूद है",
-      "not_permitted": "अनुमति नहीं"
+      "not_permitted": "अनुमति नहीं",
+      "token_scopes_required": "टोकन के लिए कम से कम एक भूमिका चुनें।",
+      "token_scope_not_held": "टोकन केवल उन्हीं भूमिकाओं का उपयोग कर सकता है जो आपके पास हैं।"
     },
     "authz": {
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"
@@ -163,7 +165,6 @@
       "semantics_unavailable": "सिमेंटिक्स नहीं चल सकता: संबंध अनुमान के लिए निर्धारित मॉडल {{model}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
-      "table_unreadable": "डिस्कवरी तालिका {{table}} को नहीं पढ़ सकती: {{reason}}। इसे चुनी गई तालिकाओं से बाहर रखें, या इसे ठीक करके फिर से प्रयास करें।",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}",
       "vendor_has_no_key": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।"
@@ -508,7 +509,9 @@
       "code_resolver_not_found": "कोड रिज़ॉल्वर '{{resolver}}' नहीं मिला",
       "code_resolver_saved": "कोड रिज़ॉल्वर '{{resolver}}' सहेजा गया",
       "code_resolver_retired": "कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त किया गया",
-      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता"
+      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता",
+      "incremental_no_change": "कोड स्रोत में {{table}} के लिए कोई @change फ़ंक्शन नहीं है। @change table={{table}} के साथ एक घोषित करें।",
+      "incremental_needs_rebuild_every": "{{table}} इंक्रीमेंटल रूप से बनाए रखा जाता है, इसलिए इसे घड़ी के अनुसार पूरा फिर से बनाया जाता है। \"पूरा पुनर्निर्माण हर\" में बताएँ कि कितनी बार (सेकंड में)।"
     },
     "secrets": {
       "env_reference_object_locked": "यह ऑब्जेक्ट ऑपरेटर का है: यह सर्वर के अपने एनवायरनमेंट को पढ़ता है और इसे यहाँ बदला नहीं जा सकता। इसके बजाय अपना ऑब्जेक्ट जोड़ें।",
@@ -766,6 +769,9 @@
       "impact_action": "उस क्रिया के लिए कोई पूर्वावलोकन नहीं है।",
       "impact_table_required": "बाँधना एक तालिका, या उसके किसी कॉलम का नाम देता है।"
     },
+    "table": {
+      "requires_parameters": "तालिका {{table}} की गिनती या प्रोफ़ाइलिंग नहीं की जा सकती: इसे {{parameters}} चाहिए। इसकी पंक्तियाँ पढ़ने के लिए प्रत्येक को मान दें।"
+    },
     "tag": {
       "not_on_terms": "टैग '{{tag}}' किसी शब्द पर नहीं लगता; केवल pii लगता है।",
       "term_not_live": "'{{term}}' को चिह्नित करने के लिए उसे परिभाषित करें।",
@@ -829,6 +835,11 @@
       "expiry_in_past": "समाप्ति तिथि भविष्य में होनी चाहिए।",
       "expiry_removes_nothing": "इस {{kind}} सूची पर समाप्ति तिथि कुछ नहीं हटाएगी।",
       "pending_not_found": "भूमिका {{role_id}} और {{kind}} के लिए {{email}} पर कोई अनुदान प्रतीक्षा में नहीं है।"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} ने अपनी कुंजी कॉलम {{column}} के बिना एक पंक्ति लौटाई",
+      "change_key_repeated": "{{function}} ने एक ही परिणाम में कुंजी {{key}} दो बार लौटाई",
+      "change_cursor_backwards": "{{function}} का कर्सर पीछे चला गया: उसने {{returned}} लौटाया, जो संग्रहीत {{stored}} से पहले है"
     }
   }
 }

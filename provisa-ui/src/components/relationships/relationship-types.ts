@@ -79,6 +79,10 @@ export const EMPTY_FORM = {
   resolver: "",
   sourceMatch: "",
   targetMatch: "",
+  // REQ-2249: its landed matches kept by the resolver's @change function, rebuilt whole every
+  // rebuildEvery seconds ("" = not given).
+  incremental: false,
+  rebuildEvery: "",
 };
 
 export type RelForm = typeof EMPTY_FORM;

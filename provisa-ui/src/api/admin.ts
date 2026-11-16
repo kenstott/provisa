@@ -368,7 +368,7 @@ export interface PersonalAccessToken {
   token_hash: string;
   prefix: string;
   name: string;
-  role_id: string | null;
+  // The roles the token may act as, by name: at least one, each a role its issuer held.
   scopes: string[];
   created_at: string;
   expires_at: string | null;
@@ -389,8 +389,7 @@ export async function listPersonalAccessTokens(): Promise<PersonalAccessToken[]>
 
 export async function issuePersonalAccessToken(body: {
   name: string;
-  role_id?: string | null;
-  scopes?: string[];
+  scopes: string[];
   expires_in_days?: number | null;
 }): Promise<{ token: string; prefix: string; name: string; expires_at: string | null }> {
   const res = await fetch(`${API_BASE}/auth/tokens`, {
@@ -733,14 +732,18 @@ export type TypeGroup =
   | "timestamp"
   | "timestamptz";
 
-/** About how many model requests a run of this scope makes, by type group. */
+/** At most how many model requests a run of this scope makes, by type group. The count reads no
+ *  table: it is an upper bound from what is registered, and the run may make fewer. */
 export interface DiscoveryCount {
   requests: number;
+  requests_are: "upper_bound";
   by_group: Partial<Record<TypeGroup, number>>;
   suggestions_per_request?: number;
   model: DiscoveryModel | null;
   source_tables: number;
   target_tables: number;
+  /** REQ-1986: the tables of the scope that require a parameter, so the run never reads them. */
+  tables_not_read: number;
 }
 
 /** What semantic inference did in a run, and when it found none, why. */

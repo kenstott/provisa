@@ -158,6 +158,8 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     mvPersist: "replace",
     mvPrimaryKey: [],
     mvIncremental: false,
+    mvRebuildEvery: null,
+    incrementalOption: { available: true, code: null, reason: null },
     mvCalendar: null,
     mvGrain: null,
     mvAllowedLateness: 0,

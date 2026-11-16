@@ -49,6 +49,28 @@ describe("SourceDetailPanel run profiler", () => {
     expect(await screen.findByTestId("source-detail-profiler-outcomes")).toBeInTheDocument();
   });
 
+  it("lists a member that requires parameters as not read, with what it requires", async () => {
+    // REQ-1986: the run asks the table's metadata and does not read it.
+    runProfiler.mockResolvedValue([
+      { table: "orders", run_id: "r1", error: null, not_read: null },
+      {
+        table: "get_order_by_id",
+        run_id: null,
+        error: null,
+        not_read: "cannot be counted or profiled: it requires orderId",
+        requires: ["orderId"],
+      },
+    ]);
+    panel("data_profiler");
+    fireEvent.click(screen.getByTestId("source-detail-run-profiler"));
+    const outcomes = await screen.findByTestId("source-detail-profiler-outcomes");
+    expect(outcomes).toHaveTextContent("orders: profiled");
+    expect(outcomes).toHaveTextContent(
+      "get_order_by_id: not read. It requires orderId, so it cannot be counted or profiled.",
+    );
+    expect(outcomes).not.toHaveTextContent("get_order_by_id: profiled");
+  });
+
   it("has no run button on any other source", () => {
     panel("postgresql");
     expect(screen.queryByTestId("source-detail-run-profiler")).toBeNull();

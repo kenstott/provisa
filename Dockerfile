@@ -44,6 +44,13 @@ RUN case "$TARGETARCH" in \
 FROM scratch AS provisa-wheel
 COPY --from=provisa-wheel-build /wheels/ /
 
+# The files provisa_notebook.build downloads (Pyodide and its packages, each checked against a
+# recorded sha256). Empty here, so a plain `docker build` downloads them from Pyodide's CDN. A build
+# given `--build-context pyodide-downloads=DIR` has DIR in this stage's place, and the build takes
+# from it every file `python -m provisa_notebook.build --download-only` put there: CI fills DIR
+# once per pin (.github/actions/pyodide-downloads) and no image build asks the CDN again.
+FROM scratch AS pyodide-downloads
+
 # Stage 2: install Python deps from pre-built wheels (stays on builder layer only)
 FROM python:3.12-slim AS installer
 WORKDIR /app
@@ -73,13 +80,15 @@ COPY uv.lock .
 COPY provisa-notebook/ ./provisa-notebook/
 COPY provisa-client/ ./provisa-client/
 COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /usr/local/bin/uv
-RUN uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
+RUN --mount=type=bind,from=pyodide-downloads,target=/pyodide-downloads,rw \
+    uv export --frozen --no-dev --no-emit-project --no-hashes --no-annotate --no-header \
       $(echo "${PROVISA_EXTRAS}" | tr ',' '\n' | sed 's/^/--extra /') -o /tmp/locked.txt \
  && grep -vE '^(torch|triton|nvidia-|cuda-|-e )' /tmp/locked.txt > /tmp/requirements.txt \
  && pip install --no-cache-dir "$(grep '^torch==' /tmp/locked.txt | cut -d' ' -f1)" \
       --index-url https://download.pytorch.org/whl/cpu \
  && pip install --no-cache-dir --no-deps -r /tmp/requirements.txt \
- && PYTHONPATH=provisa-notebook python -m provisa_notebook.build > /dev/null \
+ && PROVISA_NOTEBOOK_DOWNLOADS=/pyodide-downloads PYTHONPATH=provisa-notebook \
+      python -m provisa_notebook.build > /dev/null \
  && pip install --no-cache-dir --no-deps ./provisa-notebook \
  && rm -rf /usr/local/bin/uv /tmp/locked.txt /tmp/requirements.txt provisa-notebook provisa-client
 # REQ-2194: provisa itself, from stage 1's wheel: buenavista, provisa's metadata and its compiled

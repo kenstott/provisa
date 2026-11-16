@@ -162,13 +162,18 @@ export async function openSourceDiscovery(page: Page, sourceId: string) {
   await expect(page.getByTestId("schema-discovery")).toBeVisible({ timeout: 10000 });
 }
 
-export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
+/** Opens the Tables page's Register Table form, nothing chosen in it. */
+export async function openTablesAddForm(page: Page) {
   await page.goto("/tables");
   // The header renders once the first TablesQuery answers (TablesPage's initial-load gate), measured
   // at 7-16s on a shared CI runner while schema rebuilds run: the same 60s openSourcesForm gives it.
   await page.waitForSelector(".page-header", { timeout: 60000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
+}
+
+export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
+  await openTablesAddForm(page);
   // Apollo may serve the sources list from cache first; the new source arrives with the refetch.
   await expect(
     page.getByTestId("register-table-source-select").locator(`option[value='${sourceId}']`),

@@ -41,7 +41,9 @@
       "role_not_assigned": "A função '{{role_id}}' não está atribuída a este usuário",
       "simple_provider_not_configured": "Provedor de autenticação simples não configurado",
       "username_exists": "Nome de usuário já existe",
-      "not_permitted": "Não permitido"
+      "not_permitted": "Não permitido",
+      "token_scopes_required": "Escolha pelo menos uma função para o token.",
+      "token_scope_not_held": "Um token só pode usar funções que você tem."
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"
@@ -163,7 +165,6 @@
       "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "table_id_required": "table_id obrigatório para escopo de tabela",
-      "table_unreadable": "A descoberta não consegue ler a tabela {{table}}: {{reason}}. Deixe-a fora das tabelas escolhidas, ou corrija-a e tente novamente.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_has_no_key": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
       "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
@@ -508,7 +509,9 @@
       "code_resolver_not_found": "Resolver de código '{{resolver}}' não encontrado",
       "code_resolver_saved": "Resolver de código '{{resolver}}' salvo",
       "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
-      "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele"
+      "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele",
+      "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\"."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -766,6 +769,9 @@
       "impact_action": "Não há pré-visualização para essa ação.",
       "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
     },
+    "table": {
+      "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."
+    },
     "tag": {
       "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
       "term_not_live": "Defina '{{term}}' para marcá-lo.",
@@ -829,6 +835,11 @@
       "expiry_in_past": "A data de término deve ser futura.",
       "expiry_removes_nothing": "Uma data de término nesta lista de {{kind}} não removeria nada.",
       "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} devolveu uma linha sem a sua coluna de chave {{column}}",
+      "change_key_repeated": "{{function}} devolveu a chave {{key}} duas vezes num mesmo resultado",
+      "change_cursor_backwards": "O cursor de {{function}} retrocedeu: devolveu {{returned}}, anterior ao armazenado {{stored}}"
     }
   }
 }

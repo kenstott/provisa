@@ -440,9 +440,13 @@ def _type_description(t: _TableInfo) -> str | None:
     when a modeling role is set, so GraphQL introspection carries the star-schema shape.
     REQ-1415: the table's tag ids follow the role in the same suffix.
     """
+    # REQ-1986: a table that requires parameters says so, and what it therefore cannot give.
+    from provisa.core.parameters import describe_limits
+
+    description = describe_limits(t.description, t.native_filter_columns)
     if not t.modeling_role and not t.tags:
-        return t.description
-    return append_modeling_tag(t.description, t.modeling_role, t.modeling_history, t.tags)
+        return description
+    return append_modeling_tag(description, t.modeling_role, t.modeling_history, t.tags)
 
 
 def _can_see_relationship(rel: dict, table_lookup: dict[int, _TableInfo]) -> bool:

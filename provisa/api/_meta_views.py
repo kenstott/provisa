@@ -925,27 +925,84 @@ def _table_inputs_sql() -> str:
     """.replace("{derived}", DERIVED_SOURCE_ID)
 
 
+def _is_required_parameter_sql(alias: str) -> str:
+    """REQ-1986: whether the table_columns row ``alias`` is a parameter a read must give
+    (provisa.core.parameters.is_parameter and is_required)."""
+    return (
+        f"({alias}.native_filter_type IS NOT NULL AND NOT {alias}.retired "
+        f"AND (COALESCE({alias}.native_filter_required, FALSE) OR {alias}.required_by_steward))"
+    )
+
+
+def _real_column_kinds_sql() -> str:
+    from provisa.core.parameters import REAL_COLUMN_KINDS
+
+    return ", ".join(f"'{kind}'" for kind in sorted(REAL_COLUMN_KINDS))
+
+
+def _table_limits_sql() -> str:
+    """REQ-1986: the sentence a table that requires parameters states its limits in, one row per
+    such table -- provisa.core.parameters.limits_statement, written in SQL from the same words.
+    A remote field that is also an argument is held both as its column and as its ``_nf_``
+    column and is one parameter, stated by the column a caller names."""
+    from provisa.core.parameters import (
+        LIMITS_CLOSING,
+        LIMITS_OPENING,
+        NF_PREFIX,
+        OPAQUE_WORD,
+        REAL_COLUMN_WORD,
+    )
+
+    n = len(NF_PREFIX)
+    return f"""
+            SELECT p.table_id,
+                   '{LIMITS_OPENING}' || STRING_AGG(
+                       CASE WHEN SUBSTR(p.column_name, 1, {n}) = '{NF_PREFIX}'
+                            THEN SUBSTR(p.column_name, {n + 1}) ELSE p.column_name END
+                       || ' (' || CONCAT_WS(', ', p.data_type,
+                              CASE WHEN p.native_filter_type IN ({_real_column_kinds_sql()})
+                                   THEN '{REAL_COLUMN_WORD}' ELSE '{OPAQUE_WORD}' END) || ')',
+                       ', ' ORDER BY p.id) || '{LIMITS_CLOSING}' AS statement
+            -- registered_tables first: schema.sql locks it before table_columns (lock order).
+            FROM registered_tables r
+            JOIN table_columns p ON p.table_id = r.id
+            WHERE {_is_required_parameter_sql("p")}
+              AND NOT (SUBSTR(p.column_name, 1, {n}) = '{NF_PREFIX}' AND EXISTS (
+                  SELECT 1 FROM table_columns b
+                  WHERE b.table_id = p.table_id AND NOT b.retired
+                    AND b.native_filter_type IS NOT NULL
+                    AND b.column_name = SUBSTR(p.column_name, {n + 1})))
+            GROUP BY p.table_id
+    """
+
+
 def _table_details_sql() -> str:
     """REQ-2190: what a registered table's catalog entry holds that registered_tables_meta does
     not list: its modeling role and history, and its comment -- its description with the suffix
     provisa.core.modeling_tags.append_modeling_tag writes, the role, the history and the tag ids
-    in code-point order."""
+    in code-point order. REQ-1986: a table that requires parameters states it in that comment,
+    after its description: which, of what type, opaque or a real column, and that it gives no
+    row count, profile or sample without them."""
     return """
         CREATE OR REPLACE VIEW table_details AS
-        WITH table_tags AS (
+        WITH limits AS ({limits}),
+        table_tags AS (
             SELECT table_id, STRING_AGG(tag_id, ', ' ORDER BY tag_id COLLATE "C") AS tags
             FROM tag_assignments
             WHERE object_type = 'table' AND table_id IS NOT NULL
             GROUP BY table_id
         ),
         suffixes AS (
-            SELECT rt.id, rt.description, rt.modeling_role, rt.modeling_history,
+            SELECT rt.id,
+                   CONCAT_WS(' ', NULLIF(rt.description, ''), l.statement) AS description,
+                   rt.modeling_role, rt.modeling_history,
                    NULLIF(CONCAT_WS(', ', NULLIF(rt.modeling_role, ''),
                                     CASE WHEN rt.modeling_role <> ''
                                          THEN NULLIF(rt.modeling_history, '') END,
                                     t.tags), '') AS suffix
             FROM registered_tables rt
             LEFT JOIN table_tags t ON t.table_id = rt.id
+            LEFT JOIN limits l ON l.table_id = rt.id
             WHERE NOT rt.draft AND NOT rt.retired
         )
         SELECT id, modeling_role, modeling_history,
@@ -953,7 +1010,7 @@ def _table_details_sql() -> str:
                     ELSE COALESCE(NULLIF(description, '') || ' ', '') || '[' || suffix || ']'
                END AS comment
         FROM suffixes
-    """
+    """.replace("{limits}", _table_limits_sql())
 
 
 def _column_details_sql() -> str:
@@ -1301,6 +1358,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
     # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
+    # REQ-1986: requires_parameters states that a read of the table must give a parameter.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -1329,11 +1387,16 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- A draft's row is here; who reads it is the statement's governance
                -- (compiler/stage2: a role holding table registration in its domain, and no
                -- other). Last, so an existing view is replaced in place.
-               rt.draft
+               rt.draft,
+               -- Whether a read of the table must give a parameter; with one, the
+               -- table gives no row count, profile or sample. Which parameters, of what type and
+               -- kind, is in table_columns_meta. Last, so the view is replaced in place.
+               EXISTS (SELECT 1 FROM table_columns p
+                       WHERE p.table_id = rt.id AND {required_parameter}) AS requires_parameters
         FROM registered_tables rt
         -- A retired table is not listed.
         WHERE NOT rt.retired
-    """,
+    """.replace("{required_parameter}", _is_required_parameter_sql("p")),
     # REQ-2248: the relationships of the model, as registered_tables_meta lists its tables: a
     # retired relationship is not listed, so no retirement column is either.
     # REQ-2248: a retired domain is not listed; its retirement columns are not exposed.
@@ -1387,6 +1450,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                created_at
         FROM data_products
     """,
+    # REQ-1986: the parameter_* columns state a parameter's limits.
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
         SELECT tc.id, tc.table_id, tc.domain_id, tc.column_name,
@@ -1400,13 +1464,26 @@ _META_TABLE_VIEWS: dict[str, str] = {
                tc.native_filter_type, tc.is_foreign_key, tc.is_alternate_key,
                tc.object_fields,
                tc.visible_to,
-               tc.tenant_id
+               tc.tenant_id,
+               -- A parameter's limits, NULL for a column that is not one: whether
+               -- the source requires it, whether a steward made it required, either of which
+               -- makes it required, and whether it is opaque (an input to the source's call) or
+               -- a real column of the table. Last, so the view is replaced in place.
+               tc.native_filter_required AS parameter_required_by_source,
+               CASE WHEN tc.native_filter_type IS NOT NULL THEN tc.required_by_steward END
+                   AS parameter_required_by_steward,
+               CASE WHEN tc.native_filter_type IS NOT NULL
+                    THEN COALESCE(tc.native_filter_required, FALSE) OR tc.required_by_steward END
+                   AS parameter_required,
+               CASE WHEN tc.native_filter_type IS NOT NULL
+                    THEN tc.native_filter_type NOT IN ({real_column_kinds}) END
+                   AS parameter_opaque
         -- registered_tables first: schema.sql locks it before table_columns (lock order).
         -- A draft or retired table's columns are not listed, nor a retired column.
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
         WHERE NOT rt.draft AND NOT rt.retired AND NOT tc.retired
-    """,
+    """.replace("{real_column_kinds}", _real_column_kinds_sql()),
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
         CREATE OR REPLACE VIEW roles_meta AS
