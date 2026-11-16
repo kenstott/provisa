@@ -246,6 +246,21 @@ class Grid:
             )
         )
 
+    def mentions_on(self, dialect: str) -> tuple[str, ...]:
+        """:attr:`mentions` of the rules of no pattern that rewrite on ``dialect``: a row whose
+        rewrite is another dialect's (a ClickHouse literal's) does not walk a statement here."""
+        column = column_of(dialect)
+        return tuple(
+            sorted(
+                {
+                    form.mentions
+                    for _, rule in self._rewrites
+                    for name, form in rule.forms.items()
+                    if name == column and isinstance(form, Rewrite) and form.mentions
+                }
+            )
+        )
+
     def read(self, node: exp.Expr, dialect: str) -> Applied | None:
         """The read rule ``node`` matches, with ``dialect``'s form (None: native there, or no
         column of the grid), or None where no rule matches. Rules of one function are tried in

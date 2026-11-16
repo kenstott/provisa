@@ -690,6 +690,10 @@ def _numeric_of_text(text: str) -> decimal.Decimal | None:
     return decimal.Decimal(text.strip().replace("_", ""))
 
 
+#: A numeric's text ClickHouse's cast reads exactly where its digits fit the scale.
+_EXACT_TEXT = re.compile(r"[+-]?\d+(?:\.\d+)?", re.ASCII)
+
+
 def _precision(to: exp.DataType) -> tuple[int, int] | None:
     """The precision and scale a cast to numeric says; None where it says none."""
     if not to.expressions:
@@ -737,10 +741,10 @@ def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
         )
         if value and value.adjusted() >= precision - scale:
             raise overflow
-    written = format(value, "f")
-    if written == text and said is not None:
-        return None
-    return exp.Cast(this=exp.Literal.string(written), to=to)
+    if said is not None and text is not None and _EXACT_TEXT.fullmatch(text):
+        if decimal.Decimal(text) == value:
+            return None  # a text of the scale's digits or fewer, which ClickHouse reads exactly
+    return exp.Cast(this=exp.Literal.string(format(value, "f")), to=to)
 
 
 NUMERIC = Feature(

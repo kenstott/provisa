@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Snowflake. 
 
 When Snowflake is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 229, of which 153 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 230, of which 154 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-134 of the grid's 320 features are native on Snowflake and left out.
+138 of the grid's 325 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -260,6 +260,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)

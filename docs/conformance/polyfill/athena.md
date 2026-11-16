@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on Athena. A f
 
 When Athena is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 307, of which 213 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 308, of which 214 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-53 of the grid's 320 features are native on Athena and left out.
+57 of the grid's 325 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -333,6 +333,9 @@ CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DA
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;

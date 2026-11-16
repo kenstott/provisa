@@ -1875,18 +1875,21 @@ def _called_by_name(names: Iterable[str]) -> str:
 
 _MENTIONED = re.compile(
     _called_by_name(_NAMES | pg_forms_textsearch.NAMES)
-    + f"|{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}"
-    + "".join(f"|{mentioned}" for mentioned in polyfill.GRID.mentions),
+    + f"|{pg_forms_json.OPERATORS}|{pg_forms_textsearch.OPERATORS}",
     re.IGNORECASE,
 )
 
 
 @functools.cache
 def _grid_mentioned(dialect: str) -> re.Pattern[str] | None:
-    """A call of a function a grid row writes on ``dialect``: a row that leaves the engine's own
-    call there (array_agg on Trino, whose row is ClickHouse's) does not walk the statement."""
+    """A call of a function a grid row writes on ``dialect``, or what a row of no pattern that
+    rewrites there reads: a row that leaves the engine's own call there (array_agg on Trino, whose
+    row is ClickHouse's), or rewrites only on another dialect (a ClickHouse literal), does not walk
+    the statement."""
     names = polyfill.GRID.names_on(dialect)
-    return re.compile(_called_by_name(names), re.IGNORECASE) if names else None
+    parts = [_called_by_name(names)] if names else []
+    parts.extend(polyfill.GRID.mentions_on(dialect))
+    return re.compile("|".join(parts), re.IGNORECASE) if parts else None
 
 
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.
