@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING
 from sqlalchemy import delete as _delete, insert, select, update
 
 from provisa.core.engine_shard import EngineShardRefused, bound_org_shard
+from provisa.core.host_code import refuse_producer_command
 from provisa.core.models import BUILT_IN_SOURCE_IDS, Source
 from provisa.core.repositories import retirement
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, rekey, remove_parts
@@ -148,6 +149,9 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
     conn: "Connection", source: Source
 ) -> None:
     """Create the source, or replace its definition."""
+    # REQ-2134: a producer command is host code; config load, a config import and the admin API
+    # all save through here and ``create``.
+    refuse_producer_command(source.id, source.producer_command)
     model_change.name("upsert", model_change.uri(model_uri.source_uri, source.id))  # REQ-1524
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
@@ -171,6 +175,7 @@ async def create(conn: "Connection", source: Source) -> None:  # REQ-012, REQ-20
     database, and the second is refused (:class:`SourceIdTaken`) instead of overwriting the first."""
     from sqlalchemy.exc import IntegrityError
 
+    refuse_producer_command(source.id, source.producer_command)  # REQ-2134, as upsert
     model_change.name("create", model_change.uri(model_uri.source_uri, source.id))  # REQ-1524
     from provisa.core.repositories.region import require_selected
     from provisa.security.sandbox_egress import pinned_source
