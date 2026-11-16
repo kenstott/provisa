@@ -139,7 +139,11 @@
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_parameter_type": "El parámetro {{parameter}} de la solicitud GraphQL debe ser {{expected}}.",
       "graphql_mutation_over_get": "Una mutación se envía con POST, nunca con GET.",
-      "listed_only": "El rol {{role}} solo puede listar {{table}}: se pueden leer sus metadatos, no sus datos"
+      "listed_only": "El rol {{role}} solo puede listar {{table}}: se pueden leer sus metadatos, no sus datos",
+      "parameter_by_equality_only": "El parámetro {{parameter}} recibe su valor por igualdad: {{parameter}} = un valor, {{parameter}} IN (valores) o un join sobre {{parameter}}. {{form}} no le da ningún valor.",
+      "parameter_unbound_on_branch": "El parámetro {{parameter}} recibe un valor en una rama de un OR y ninguno en otra. Dé un valor a {{parameter}} en cada rama.",
+      "parameter_conflict": "El parámetro {{parameter}} recibe dos valores distintos a la vez ({{first}} y {{second}}). Dele un solo valor o enumere los valores con IN u OR.",
+      "parameter_calls_over_cap": "La sentencia necesita {{calls}} llamadas a {{table}}, una por cada valor dado a sus parámetros, y se hacen como máximo {{cap}} por sentencia (ajuste {{setting}}). Indique menos valores."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",

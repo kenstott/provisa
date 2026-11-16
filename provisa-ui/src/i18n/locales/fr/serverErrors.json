@@ -139,7 +139,11 @@
       "graphql_request_not_object": "Une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_parameter_type": "Le paramètre {{parameter}} de la requête GraphQL doit être {{expected}}.",
       "graphql_mutation_over_get": "Une mutation s'envoie en POST, jamais en GET.",
-      "listed_only": "Le rôle {{role}} peut seulement lister {{table}} : ses métadonnées sont lisibles, pas ses données"
+      "listed_only": "Le rôle {{role}} peut seulement lister {{table}} : ses métadonnées sont lisibles, pas ses données",
+      "parameter_by_equality_only": "Le paramètre {{parameter}} reçoit sa valeur par égalité : {{parameter}} = une valeur, {{parameter}} IN (valeurs) ou une jointure sur {{parameter}}. {{form}} ne lui donne aucune valeur.",
+      "parameter_unbound_on_branch": "Le paramètre {{parameter}} reçoit une valeur dans une branche d'un OR et aucune dans une autre. Donnez une valeur à {{parameter}} dans chaque branche.",
+      "parameter_conflict": "Le paramètre {{parameter}} reçoit deux valeurs différentes à la fois ({{first}} et {{second}}). Donnez-lui une seule valeur, ou énumérez les valeurs avec IN ou OR.",
+      "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",

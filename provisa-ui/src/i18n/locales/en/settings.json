@@ -868,6 +868,12 @@
         "label": "Default materialized view lifetime",
         "help": "How long a materialized view is used before it is refreshed, when it sets no lifetime of its own. Restart required."
       }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Calls per statement to a parameterized table",
+        "help": "The most calls one statement makes to one parameterized table. Each value a statement gives a parameter is one call to the source: each value of an IN list, each branch of an OR, each distinct key of a join. A statement that needs more is refused."
+      }
     }
   }
 }

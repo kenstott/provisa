@@ -38,6 +38,7 @@ from provisa.core import model_change
 from provisa.core.config_location import config_path_str
 from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
 from provisa.api.role_surface import LazySurface, RoleSurface
+from provisa.api import rebuild_trace
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
@@ -1966,7 +1967,7 @@ async def _load_and_build(
         log.exception("landed-table schema reconcile failed")
     _mark("reconcile landed tables")
 
-    await _rebuild_schemas(raw_config)
+    await _rebuild_schemas(raw_config, cause=rebuild_trace.BOOT)
 
     # A config view that reads an input the engine cannot read whole fails the load, naming the
     # view and the input. Checked here, not where the view is read from the config: the registry
@@ -3008,7 +3009,7 @@ async def _build_org_runtime(
             await _install_cloned_env_schema(_prod_rt)
         else:
             # REQ-2006: the replica convergence is started below, after a template's seed is adopted.
-            await _rebuild_schemas(converge=False)
+            await _rebuild_schemas(converge=False, cause=rebuild_trace.ORG_BUILD)
         clock.mark("its schemas")
         await _converge_after_seed(org_id, env)
 
@@ -3182,7 +3183,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     if _synthetic_bound:
         # R508g3: a SYNTHETIC binding changes what the schema is compiled from; nothing of PROD's
         # compiled state is the env's. The runtime build starts the replica convergence.
-        await _rebuild_schemas(converge=False)
+        await _rebuild_schemas(converge=False, cause=rebuild_trace.ORG_BUILD)
         return
 
     env_runtime_sources = _source_rows
@@ -3335,12 +3336,14 @@ async def _converge_after_seed(org_id: str, env: str) -> None:
     start_replica_convergence()
 
 
+@rebuild_trace.caused
 async def _rebuild_schemas(
     raw_config: dict | None = None,
     *,
     announce: bool = True,
     converge: bool = True,
     if_stale: bool = False,
+    cause: str | None = None,
 ) -> bool:
     # Serialize rebuilds: the body below fetches DB state across many `await`s and then
     # publishes state.schema_build_cache/state.tables in one shot at the end. Two overlapping
@@ -3361,29 +3364,33 @@ async def _rebuild_schemas(
     # found only the ``model`` stamp behind, a change the build does not read (a data product's
     # status): the runtime took the stamp and there is nothing else to reload. Otherwise False.
     #
+    #
+    # ``cause`` (REQ-1914) is who asked for the build, for its record: the calling function unless
+    # the caller names itself (boot, an org's build, the watcher). ``rebuild_trace.caused`` fills it.
+    #
     # REQ-2188: a rebuild's writes are the system's, whoever's request ran it: no row rule holds them.
-    asked = time.monotonic()
-    async with _rebuild_lock():
-        if if_stale and state.model_db is not None:
-            loaded = state._active_runtime().model_stamp
-            if await _built_current():
-                return state._active_runtime().model_stamp != loaded
-        began = time.monotonic()
-        # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
-        # landed tables' reconcile and the routes it publishes alike.
-        from provisa.federation.replica_routing import one_model_read
+    assert cause is not None, "rebuild_trace.caused names every build's cause"
+    record = rebuild_trace.BuildRecord(org_id=require_current_org(), env=active_env(), cause=cause)
+    asked = time.perf_counter()
+    try:
+        async with _rebuild_lock():
+            record.waited_s = time.perf_counter() - asked
+            if if_stale and state.model_db is not None:
+                loaded = state._active_runtime().model_stamp
+                if await _built_current():
+                    record.outcome = rebuild_trace.CURRENT
+                    return state._active_runtime().model_stamp != loaded
+            # REQ-1882: the replica routing reads the model this rebuild builds from once, for the
+            # landed tables' reconcile and the routes it publishes alike.
+            from provisa.federation.replica_routing import one_model_read
 
-        with model_row_rules.unnarrowed(), one_model_read():
-            await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
-    # At WARNING: a hosted tier logs at WARNING. One line per slow rebuild is how its operator sees
-    # what a slow save or open spent, and whether it was waiting for another org's (REQ-2006).
-    if time.monotonic() - asked >= _SLOW_REBUILD_S:
-        logging.getLogger(__name__).warning(
-            "schema rebuild of %s: waited %.1fs for its turn, took %.1fs",
-            state._active_runtime().org_id,
-            began - asked,
-            time.monotonic() - began,
-        )
+            with model_row_rules.unnarrowed(), one_model_read(), rebuild_trace.building(record):
+                await _rebuild_schemas_impl(raw_config, announce=announce, converge=converge)
+    finally:
+        # One line per build, with its phases, cause, stamps and counts; a slow one at WARNING,
+        # which a hosted tier logs at: how its operator sees what a slow save or open spent, and
+        # whether it was waiting for another build of the same runtime (REQ-2006).
+        rebuild_trace.finished(record, slow_s=_SLOW_REBUILD_S)
     return False
 
 
@@ -3395,6 +3402,9 @@ async def _rebuild_schemas_impl(
     # engine; a missing the engine connection only skips the engine-catalog ops seeding below.
     _rebuild_log = logging.getLogger(__name__)
     _rebuild_log.info("_rebuild_schemas called")
+    # REQ-1914: this build's record. Each ``_build.phase`` below begins the phase it names and
+    # ends the one before; it measures and changes nothing (rebuild_trace.PHASES).
+    _build = rebuild_trace.this_build()
     if state.model_db is None:
         _rebuild_log.warning("_rebuild_schemas: model_db is None, returning")
         return
@@ -3410,12 +3420,22 @@ async def _rebuild_schemas_impl(
     # follows each save, configuration load and change of convention. Stored before the stamp is
     # read, as each row it changes advances the stamp: read first, the runtime would be loaded at
     # a stamp the model has already left, and no audit row could name its commit (REQ-1524).
+    _build.phase(rebuild_trace.EFFECTIVE_NAMES)
     async with state.model_db.acquire() as _names_conn:
         await store_effective_names(cast("Connection", _names_conn))
 
+    _build.phase(rebuild_trace.STAMP_READ)
     _stamped_runtime = state._active_runtime()
     _stamps = await _config_stamp.read(state.model_db)
+    _build.stamps(
+        loaded={
+            _config_stamp.MODEL: _stamped_runtime.model_stamp,
+            _config_stamp.BUILD: _stamped_runtime.build_stamp,
+        },
+        read={kind: _stamps[kind] for kind in (_config_stamp.MODEL, _config_stamp.BUILD)},
+    )
 
+    _build.phase(rebuild_trace.STORE_CONFIG)
     # REQ-1919: the process's configuration follows the default org's model store — the file's
     # settings with every model section as the store holds it now, so an admin's change governs.
     if (
@@ -3428,6 +3448,7 @@ async def _rebuild_schemas_impl(
         async with state.model_db.acquire() as _cfg_conn, bound_to_request_org():
             state.config = await store_config(state.raw_config, cast("Connection", _cfg_conn))
 
+    _build.phase(rebuild_trace.REMOTE_SOURCES)
     kafka_physical = getattr(state, "kafka_table_physical", {})
     domain_prefix, raw_config = _resolve_naming_config(raw_config)
 
@@ -3450,6 +3471,7 @@ async def _rebuild_schemas_impl(
     await _load_graphql_remote_sources_from_db()
     await _load_grpc_remote_sources_from_db()
 
+    _build.phase(rebuild_trace.TABLES)
     async with state.model_db.acquire() as conn:
         _pg = cast("Connection", conn)
         tables = await _fetch_tables(_pg)
@@ -3488,10 +3510,12 @@ async def _rebuild_schemas_impl(
             },
         )
 
+        _build.phase(rebuild_trace.NOTIFY_TRIGGERS)
         # Install LISTEN/NOTIFY triggers on registered PostgreSQL tables
         from provisa.subscriptions.pg_triggers import ensure_pg_notify_triggers
 
         state.pg_notify_tables = await ensure_pg_notify_triggers(conn, tables, state.source_types)
+        _build.phase(rebuild_trace.TAGS)
         state.table_watermarks = {
             tbl["table_name"]: tbl["watermark_column"]
             for tbl in tables
@@ -3602,6 +3626,7 @@ async def _rebuild_schemas_impl(
                 for r in _assignment_rows
             ),
         )
+        _build.phase(rebuild_trace.SOURCES)
         from provisa.api.model_reload import registered_source_rows
 
         sources = await registered_source_rows(conn)
@@ -3660,6 +3685,7 @@ async def _rebuild_schemas_impl(
         from provisa.api.model_reload import reconcile_sources
 
         await reconcile_sources(_connection_rows)
+        _build.phase(rebuild_trace.ROLES)
         roles = [
             dict(r._mapping)
             for r in (
@@ -3738,6 +3764,16 @@ async def _rebuild_schemas_impl(
                 "gql_naming_convention"
             )
 
+        _build.phase(rebuild_trace.VIEWS)
+        _build.count(
+            tables=len(tables),
+            draft_tables=len(draft_tables),
+            views=sum(1 for _t in tables if _t.get("view_sql")),
+            columns=sum(len(_t.get("columns") or []) for _t in tables),
+            relationships=len(relationships),
+            roles=len(roles),
+            sources=len(sources),
+        )
         # Ensure ops tables exist before introspection — idempotent, self-healing if boot seeding
         # raced the otel catalog. No-op for a native engine (telemetry lives in the ops store).
         from provisa.api.startup_seed import _OPS_VIEWS
@@ -3774,6 +3810,7 @@ async def _rebuild_schemas_impl(
             _stamped_runtime.model_db,
             _connection_rows,
         )
+        _build.phase(rebuild_trace.LANDED_RECONCILE)
         try:
             _landed = await state.federation_engine.reconcile_landed_tables()
             if _landed:
@@ -3783,6 +3820,7 @@ async def _rebuild_schemas_impl(
         except Exception:
             _rebuild_log.exception("landed-table schema reconcile failed")
 
+        _build.phase(rebuild_trace.INTROSPECT)
         # Introspect the engine metadata
         col_types_converted: dict[int, list[ColumnMetadata]] = introspect_tables(
             state.engine_conn,
@@ -3810,6 +3848,7 @@ async def _rebuild_schemas_impl(
         # REQ-1915: no boot fill of an API table's collection. Its replica is built by the
         # runner when the model declares one; a request's own calls are fills in the store.
 
+        _build.phase(rebuild_trace.GOVERNANCE)
         # Load RLS rules — domain_id is required so domain-scoped rules (REQ-402)
         # are not silently dropped by build_rls_context. Read through the repo so the
         # encrypted filter_expr (REQ-686) is decrypted back to SQL at this boundary.
@@ -3858,6 +3897,7 @@ async def _rebuild_schemas_impl(
             _domain_parents,
         )
 
+        _build.phase(rebuild_trace.WRITE_CAPABILITY)
         # REQ-1317/1319: the metric registry feeds schema generation and raw-SQL expansion.
         # Read from the DB — the settled registry: the config loader upserts config-declared
         # metrics into it, and admin mutations (upsertMetric, registerFact) write it directly.
@@ -3922,6 +3962,7 @@ async def _rebuild_schemas_impl(
                 )
             )
 
+    _build.phase(rebuild_trace.COMPILE)
     # REQ-1882, REQ-1900: the per-role compile needs no database, and is the rebuild's longest
     # phase: it runs with this rebuild's connection given back, so concurrent requests and the
     # health probe are not kept waiting at the connection gate for all of it.
@@ -3952,6 +3993,7 @@ async def _rebuild_schemas_impl(
             await _model_names.write_refused_clashes(conn, refused.clashes)
         raise
 
+    _build.phase(rebuild_trace.DERIVED_WRITES)
     async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
 
@@ -3965,6 +4007,7 @@ async def _rebuild_schemas_impl(
 
         await write_checker_targets(conn, _checked)
 
+    _build.phase(rebuild_trace.PUBLISH)
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
     # its roles) is ended.
     from datetime import UTC as _UTC, datetime as _datetime
@@ -4020,6 +4063,7 @@ async def _rebuild_schemas_impl(
         state.schema_version += 1
     _stamped_runtime.model_stamp = _stamps[_config_stamp.MODEL]  # REQ-1914
     _stamped_runtime.build_stamp = _stamps[_config_stamp.BUILD]
+    _build.phase(rebuild_trace.NAMES_TABLE)
     # REQ-194: the prod build's names table and frozen aliases, written after the schema version
     # advances so a concurrent read cannot see a stale home-region for a table while the
     # SHARE ROW EXCLUSIVE MODE lock write_names_table holds is in contention (REQ-1882,
@@ -4031,11 +4075,14 @@ async def _rebuild_schemas_impl(
         async with state.model_db.acquire() as conn:
             await _model_names.write_names_table(conn, state.names_table.rows)
             await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
+    _build.phase(rebuild_trace.FINALIZE)
     await _finalize_rebuild_state(_rebuild_log)
+    _build.phase(rebuild_trace.MEASURE)
     # REQ-1494: the measured values faked reads compute from, taken from the model just built.
     from provisa.fakes.measured import measure_model
 
     await measure_model(state)
+    _build.phase(rebuild_trace.ANNOUNCE)
     # REQ-1915: replicas converge to the model just built — a build is requested for every
     # declared replica that has none (or whose definition changed), and a replica the model no
     # longer declares is retired. This is the one place: the boot build, the build after this
@@ -4062,6 +4109,7 @@ async def _rebuild_schemas_impl(
                 await rederive_all(cast("Connection", _offers_conn), state)
         await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
+    _build.phase(rebuild_trace.LIFECYCLE)
     # REQ-1882 (amended 2026-09-29): the re-wiring below starts process-lifetime listeners, ingest
     # engines and scheduler jobs. Run inline on the process loop; from a connection-thread loop (an
     # org runtime built on first pgwire/Bolt/Flight access) it is started on the process loop,
@@ -4800,6 +4848,19 @@ def create_app() -> FastAPI:
         # and the answer exists but cannot be given now; the body names the table and the reason.
         return _JSONResponse(
             status_code=503,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
+    from provisa.core.parameter_binding import (
+        ParameterBindingRefused as _ParameterBindingRefused,
+    )
+
+    @app.exception_handler(_ParameterBindingRefused)
+    async def _parameter_binding_handler(_req: _Request, exc: _ParameterBindingRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1986: a condition on a table's parameter that binds it no value, two values at
+        # once, or more calls than the operator's cap: the statement is refused, naming it.
+        return _JSONResponse(
+            status_code=400,
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 

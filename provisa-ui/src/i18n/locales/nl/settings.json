@@ -868,6 +868,12 @@
         "label": "Standaardlevensduur van gematerialiseerde views",
         "help": "Hoe lang een gematerialiseerde view wordt gebruikt voordat ze wordt ververst, als ze geen eigen levensduur instelt. Opnieuw opstarten vereist."
       }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Aanroepen per statement naar een geparametriseerde tabel",
+        "help": "Het maximale aantal aanroepen dat één statement naar één geparametriseerde tabel doet. Elke waarde die een statement aan een parameter geeft, is één aanroep van de bron: elke waarde van een IN-lijst, elke tak van een OR, elke unieke sleutel van een join. Een statement dat er meer nodig heeft, wordt geweigerd."
+      }
     }
   }
 }

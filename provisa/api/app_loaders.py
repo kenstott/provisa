@@ -2053,6 +2053,8 @@ class _RoleParts:
 _WARM_DELAY_S = 2.0
 #: The pause between two roles' builds in the warm-up, so it yields to requests.
 _WARM_PAUSE_S = 0.05
+#: A warm-up that held the loop this long is logged at WARNING, as a slow build is.
+_WARM_SLOW_S = 2.0
 
 
 def warm_role_surfaces(state: Any) -> None:
@@ -2062,25 +2064,39 @@ def warm_role_surfaces(state: Any) -> None:
     supersedes it: it stops as soon as the runtime's build inputs are no longer the ones it was
     started for, so a burst of changes queues no warm-up per change."""
     import asyncio
+    import time
 
+    from provisa.api import rebuild_trace
     from provisa.core.connection_loop import spawn_after
 
     runtime = state._active_runtime()
     inputs = runtime.role_build_inputs
+    # REQ-1914: the build that started this warm-up, whose record takes what it spent: the
+    # build's own time ends before this begins.
+    build = rebuild_trace.build_if_any()
 
     async def _warm() -> None:
         from provisa.api.role_surface import LazySurface, RoleSurfaceUnbuilt
 
-        for held in list(runtime.surfaces.values()):
-            if runtime.role_build_inputs is not inputs:
-                return  # superseded by a newer rebuild
-            if not isinstance(held, LazySurface) or held.built:
-                continue
-            try:
-                held.resolve()
-            except RoleSurfaceUnbuilt:
-                pass  # held and logged by the surface itself; its requests raise it
-            await asyncio.sleep(_WARM_PAUSE_S)
+        warmed = rebuild_trace.Warmed(roles=0, busy_s=0.0, superseded=False)
+        try:
+            for held in list(runtime.surfaces.values()):
+                if runtime.role_build_inputs is not inputs:
+                    warmed.superseded = True
+                    return  # superseded by a newer rebuild
+                if not isinstance(held, LazySurface) or held.built:
+                    continue
+                began = time.perf_counter()
+                try:
+                    held.resolve()
+                except RoleSurfaceUnbuilt:
+                    pass  # held and logged by the surface itself; its requests raise it
+                finally:
+                    warmed.roles += 1
+                    warmed.busy_s += time.perf_counter() - began
+                await asyncio.sleep(_WARM_PAUSE_S)
+        finally:
+            rebuild_trace.warm_up_ended(build, runtime.org_id, warmed, slow_s=_WARM_SLOW_S)
 
     spawn_after(_WARM_DELAY_S, _warm(), name=f"warm role surfaces {runtime.org_id}")
 
