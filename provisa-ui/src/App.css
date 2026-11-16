@@ -2934,6 +2934,8 @@ main {
 }
 /* Grouped fields keep their class minimum (or their label) and move to the next line together. */
 .form-field-group {
+  /* the label's line, and the hairline the control's own border adds */
+  --form-label-offset: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
   display: flex;
   flex-wrap: wrap;
   align-items: flex-start;
@@ -2966,8 +2968,12 @@ main {
 .form-field-group > .mantine-Button-root,
 .form-field-group > .mantine-ActionIcon-root {
   flex: 0 0 auto;
-  /* the label's line, and the hairline the control's own border adds */
-  margin-top: calc(var(--mantine-font-size-sm) * var(--mantine-line-height) + 3px);
+  margin-top: var(--form-label-offset);
+}
+/* An unlabelled control (a switch, a segmented choice) beside a labelled input: it starts where
+ * the input's control starts, so the two share a centre line. */
+.form-field-group > .form-field--after-label {
+  margin-top: var(--form-label-offset);
 }
 /* A row whose boxes carry no label above them (one entry of a list): its action sits level with
    the boxes, and the boxes share the row. */
@@ -2981,7 +2987,8 @@ main {
   min-width: 0;
 }
 .form-field-group--bare > .mantine-Button-root,
-.form-field-group--bare > .mantine-ActionIcon-root {
+.form-field-group--bare > .mantine-ActionIcon-root,
+.form-field-group--bare > .form-field--after-label {
   margin-top: 0;
 }
 .form-identifiers {

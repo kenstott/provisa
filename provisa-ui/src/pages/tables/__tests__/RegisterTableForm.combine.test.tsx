@@ -268,6 +268,20 @@ describe("Combine into one table", () => {
     expect(registerTables.mock.calls[0][0][0].fileGlob).toBe("complaints_*.csv");
   });
 
+  it("aligns the choice with the glob input, not its label (shared after-label field)", async () => {
+    renderForm();
+    const user = userEvent.setup();
+    await user.type(await screen.findByTestId("register-tables-file-glob"), "complaints_*.csv");
+    const choice = await screen.findByTestId("register-tables-combine-mode");
+    const choiceField = choice.closest(".form-field");
+    const globField = screen.getByTestId("register-tables-file-glob").closest(".form-field");
+    expect(choiceField).toHaveClass("form-field--after-label");
+    expect(globField).not.toHaveClass("form-field--after-label");
+    // both fields are siblings in one FieldGroup, where the after-label rule applies
+    expect(choiceField?.parentElement).toHaveClass("form-field-group");
+    expect(choiceField?.parentElement).toBe(globField?.parentElement);
+  });
+
   it("is never offered on a source that is not a files source", async () => {
     renderForm("mysql");
     await pick("complaints_2026_01", "complaints_2026_02");
