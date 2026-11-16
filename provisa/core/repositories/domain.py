@@ -107,7 +107,8 @@ async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-19
     """Delete one domain: THE delete, for every surface. False when there is no such domain.
 
     A domain is deleted only when nothing refers to it (REQ-1917): refused
-    (:class:`DomainDeleteRefused`), naming each dependent, while a table or view sits in it, a
+    (:class:`DomainDeleteRefused`), naming each dependent, while a table or view sits in it
+    (a retired one too: a domain that still holds a table, retired or not, is kept, REQ-2248), a
     data product, row filter, command, webhook, glossary term or remote registration is placed
     in it, a role lists it, an assignment is scoped to it, or a source allows it. It has no
     parts, so the delete removes the one row. A domain the deployment keeps is refused.

@@ -81,10 +81,22 @@ export function OnboardOrgPage() {
   // before the first page renders. `orgOrigin` is null only where the host names no org (a desktop
   // install has no per-org address); there the header IS the binding and the in-app route is the
   // whole navigation.
-  const enterOrg = (orgId: string, path: string) => {
+  const goToOrg = (orgId: string, path: string) => {
     const address = orgOrigin(orgId);
     if (address) window.location.assign(`${address}${path}`);
     else navigate(path);
+  };
+  // Binds the new org and refreshes identity, so its grant resolves before the page entered offers
+  // links that need it (the welcome's /team and /security/roles), then enters the org at `path`.
+  // The refresh is what lifts the membership gate, and the shell opens on the URL shown then. An
+  // in-app route is therefore taken first: taken after, the shell had already opened at `/`, whose
+  // landing (the role's first page, REQ-1327) replaced it. A document load leaves after the refresh.
+  const enterOrg = async (orgId: string, path: string) => {
+    const address = orgOrigin(orgId);
+    if (!address) navigate(path);
+    selectOrg(orgId);
+    await refresh();
+    if (address) window.location.assign(`${address}${path}`);
   };
   // REQ-1616: someone arriving with an invitation still in hand came here to join, not to create an
   // org, and if the redemption is refused it is the join form they need to be looking at.
@@ -214,9 +226,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await redeemInvite(token);
-      selectOrg(org_id);
-      await refresh();
-      enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/query");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -250,9 +260,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await acceptAutoJoin(orgId);
-      selectOrg(org_id);
-      await refresh();
-      enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/query");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -283,10 +291,6 @@ export function OnboardOrgPage() {
       }
     }
     if (state !== "ready") throw new Error(t("onboardOrg.provisionTimeout"));
-    // Bind the new org + refresh identity so the org_admin grant resolves BEFORE the welcome
-    // screen offers links into /team (user_management) and /security/roles (access_config).
-    selectOrg(orgId);
-    await refresh();
   };
 
   // REQ-1476: the org leaves awaiting_checkout when the purchase binds to it — normally through the
@@ -322,6 +326,10 @@ export function OnboardOrgPage() {
           setPhase("provisioning");
           try {
             await waitForReady(orgId, await settleCheckout(orgId));
+            // Bound before the transfer checkout, so a failure of that one is reported over the
+            // welcome with the org_admin grant in hand.
+            selectOrg(orgId);
+            await refresh();
           } catch (err) {
             setError(err instanceof Error ? err.message : t("onboardOrg.createFailed"));
             setPhase("form");
@@ -338,7 +346,7 @@ export function OnboardOrgPage() {
             });
             // REQ-1276: the create is finished, so it lands on the org's own host — the welcome is
             // read at `{org}.provisa.dev`, which is the address the org answers at from here on.
-            enterOrg(orgId, "/welcome");
+            goToOrg(orgId, "/welcome");
           } catch (err) {
             // Stay on the control plane instead: the welcome is shown here, under what failed,
             // because a document load to the org host would take the report with it.
@@ -389,7 +397,7 @@ export function OnboardOrgPage() {
         return;
       }
       await waitForReady(id, created.provisioning_state);
-      enterOrg(id, "/welcome");
+      await enterOrg(id, "/welcome");
       return;
     } catch (err) {
       if (err instanceof OrgError && err.code === "orgs.auto_join_breadth_unacknowledged") {
@@ -422,9 +430,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await redeemInvite(invite.trim());
-      selectOrg(org_id);
-      await refresh();
-      enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/query");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");

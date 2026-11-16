@@ -139,6 +139,7 @@ def _reader(ids: dict[str, int]) -> DependentsReader:
         metric=lambda row: "*" in row["visible_to"],
         term=lambda term_domains: "sales" not in term_domains,
         command=lambda name: False,
+        retired=lambda domain_id: False,
     )
 
 
