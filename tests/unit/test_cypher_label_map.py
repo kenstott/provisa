@@ -152,6 +152,7 @@ def _make_ctx(owned_table_id: int = 1):
         aggregate_columns={owned_table_id: [("id", "integer"), ("amount", "float")]},
         pk_columns={},
         native_filter_columns={},
+        parameters={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),

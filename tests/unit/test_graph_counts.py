@@ -15,8 +15,16 @@ from types import SimpleNamespace
 from provisa.api.rest.cypher_router import _countable_labels
 
 
-def _node(label, domain_id="d", nf=None):
-    return SimpleNamespace(label=label, domain_id=domain_id, native_filter_columns=nf or {})
+def _node(label, domain_id="d", nf=None, required=True):
+    """A label; ``nf``: its parameter columns, each required unless ``required`` is False."""
+    nf = nf or {}
+    return SimpleNamespace(
+        label=label,
+        domain_id=domain_id,
+        native_filter_columns=nf,
+        # REQ-1986: what its table's metadata states a read must give.
+        required_parameters=[name.removeprefix("_nf_") for name in nf] if required else [],
+    )
 
 
 def _rel(source_label, target_label, rel_type):
@@ -38,12 +46,12 @@ def test_excludes_parameterized_nodes_and_their_relationships():
     lm = _label_map(
         nodes=[
             _node("Breeds"),
-            _node("Breed", nf={"_nf_name": "text"}),  # parameterized → excluded
+            _node("Breed", nf={"_nf_name": "text"}),  # requires a parameter → excluded
             _node("Employees"),
         ],
         rels=[
             _rel("Employees", "Breeds", "WORKS_WITH"),  # both countable → kept
-            _rel("Breed", "Employees", "BREED_OF"),  # touches parameterized → excluded
+            _rel("Breed", "Employees", "BREED_OF"),  # touches it → excluded
         ],
     )
     node_labels, rel_types = _countable_labels(lm, set(), _READS_ALL)
@@ -56,13 +64,27 @@ def test_domain_filter_applies_alongside_parameterized_exclusion():
         nodes=[
             _node("A", domain_id="keep"),
             _node("B", domain_id="drop"),
-            _node("P", domain_id="keep", nf={"_nf_k": "text"}),  # parameterized → excluded
+            _node("P", domain_id="keep", nf={"_nf_k": "text"}),  # requires one → excluded
         ],
         rels=[],
     )
     node_labels, rel_types = _countable_labels(lm, {"keep"}, _READS_ALL)
     assert node_labels == ["A"]
     assert rel_types == []
+
+
+def test_a_label_whose_parameters_are_all_optional_is_counted_with_its_relationships():
+    """REQ-1986: only a required parameter leaves a label uncounted."""
+    lm = _label_map(
+        nodes=[
+            _node("Pets"),
+            _node("PetsByStatus", nf={"_nf_status": "text"}, required=False),
+        ],
+        rels=[_rel("PetsByStatus", "Pets", "IS")],
+    )
+    node_labels, rel_types = _countable_labels(lm, set(), _READS_ALL)
+    assert node_labels == ["Pets", "PetsByStatus"]
+    assert rel_types == ["IS"]
 
 
 def test_a_domain_the_role_reaches_only_by_traversal_is_not_counted():
