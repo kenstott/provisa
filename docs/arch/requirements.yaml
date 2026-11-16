@@ -3638,7 +3638,15 @@
     direction; one pending or rejected; a semantic suggestion matching a foreign key of the same run. (7)
     Accepting a suggestion marks the referring column as a foreign key through the existing derivation;
     no column is marked as an alternate key from a sample or an accepted suggestion. (8) The request line
-    before Run gives the count by group.'
+    before Run gives the count by group. (Amended 2026-11-16, A TABLE THAT REQUIRES A PARAMETER IS DISCOVERED
+    ON REDUCED INFORMATION:) Maintainer 2026-11-16, after the Discover relationships dialog failed on a
+    table that cannot be read without its parameter. A table that requires a parameter cannot give a row
+    count and cannot be profiled, so discovery neither counts nor profiles it and never reads it. It is
+    still included, as a special case working from what is known without reading it: its declared columns
+    and types, its names and descriptions, the glossary terms bound to it, and its required parameters.
+    A relationship proposed for it is marked as found on reduced information, since no values were compared.
+    A test of relationship generation for such a table works from that reduced information only and fails
+    if the table is read.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
