@@ -1636,12 +1636,21 @@ def _circle_poly(e: Engine, f: str, n: str = "n") -> str:
         ),
         "','",
     )
+    # geo_ops.c sizes the polygon in an int before it allocates: 40 bytes and 16 a point. Past
+    # INT_MAX it is 54000; past MaxAllocSize (1 GB - 1) palloc's XX000, naming the size.
+    size = f"(40 + 16 * {e.bigint.format(n)})"
+    alloc = "XX000: invalid memory alloc request size"
+    if e is not CLICKHOUSE:  # ClickHouse's throwIf takes a constant message, so no size
+        alloc += f" ' || {e.text.format(size)} || '"
+    built = e.raises.format(
+        f"{size} > 2147483647",
+        "54000: too many points requested",
+        e.raises.format(f"{size} > 1073741823", alloc, f"'(' || {text} || ')'"),
+    )
     return e.raises.format(
         f"abs(_a[3]) <= {_FUZZ}",
         "0A000: cannot convert circle with radius zero to polygon",
-        e.raises.format(
-            f"{n} < 2", "22023: must request at least 2 points", f"'(' || {text} || ')'"
-        ),
+        e.raises.format(f"{n} < 2", "22023: must request at least 2 points", built),
     )
 
 

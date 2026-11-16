@@ -201,7 +201,7 @@ async def reprovision_source_after_registration(pool, state, source_id: str) -> 
         await asyncio.to_thread(use_catalog_of, model)
         state.federation_engine.register_source(
             model,
-            resolve_secrets(model.password) if model.password else "",
+            resolve_secrets(model.password, credential=True) if model.password else "",
             catalog_name=state.source_catalogs[source_id],
         )
 

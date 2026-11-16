@@ -578,6 +578,19 @@ def _resolve(repo: Repo, ref: str) -> ObjectID:
     raise RepositoryError(f"{ref!r} is neither a branch nor a commit in this repository")
 
 
+def written_here(org_id: str, ref: str) -> bool:  # REQ-1557
+    """Whether ``ref`` names a commit on one of this repository's own branches: a model this
+    control plane stored, since a branch is written by the write-through and by nothing else
+    (REQ-1541). A commit only a fetch brought, and anything that is no commit here, is not."""
+    repo = ensure_repo(org_id)
+    try:
+        sha = _resolve(repo, ref)
+    except RepositoryError:
+        return False
+    heads = [repo.refs[name] for name in repo.refs.keys() if name.startswith(b"refs/heads/")]
+    return any(_is_ancestor(repo, sha, ObjectID(head)) for head in heads)
+
+
 def resolve_sha(org_id: str, ref: str) -> str:
     """The commit ``ref`` names right now.
 

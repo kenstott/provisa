@@ -83,6 +83,7 @@ _META_TABLE_ALIAS: dict[str, str] = {
     "sources": "sources_meta",  # REQ-1443: identity and type only
     "model_names": "model_names_meta",  # REQ-194
     "relationships": "relationships_meta",  # REQ-2248: a retired relationship is not listed
+    "domains": "domains_meta",  # REQ-2248: a retired domain is not listed
 }
 
 
@@ -447,7 +448,7 @@ async def _build_source_pools_and_enums(
                 or _is_flat_file
                 or src.type.value in CODE_SOURCES  # REQ-2100
             ):
-                resolved_pw = resolve_secrets(src.password)
+                resolved_pw = resolve_secrets(src.password, credential=True)
                 resolved_host = (
                     ""
                     if _is_flat_file
