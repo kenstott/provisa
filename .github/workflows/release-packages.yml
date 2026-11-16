@@ -355,6 +355,10 @@ jobs:
         run: |
           PYTHONPATH=provisa-notebook uvx --with pytest pytest provisa-notebook/tests -q
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       # The client wheel inside it carries the release's version, as the published client does.
       - name: Stamp versions, fetch the assets and build the wheel
         run: |

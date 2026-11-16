@@ -79,6 +79,10 @@ jobs:
           name: trino-plugins
           path: trino/plugins/
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Build AppImage
         run: |
           chmod +x packaging/linux/build-appimage.sh
