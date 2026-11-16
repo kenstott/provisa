@@ -762,6 +762,9 @@
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
       "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
     },
+    "table": {
+      "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
+    },
     "tag": {
       "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",
       "term_not_live": "Definieren Sie '{{term}}', um ihn zu markieren.",

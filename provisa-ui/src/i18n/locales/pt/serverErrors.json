@@ -762,6 +762,9 @@
       "impact_action": "Não há pré-visualização para essa ação.",
       "impact_table_required": "Uma vinculação nomeia uma tabela ou uma das suas colunas."
     },
+    "table": {
+      "requires_parameters": "A tabela {{table}} não pode ser contada nem perfilada: exige {{parameters}}. Dê um valor a cada um para ler as suas linhas."
+    },
     "tag": {
       "not_on_terms": "A tag '{{tag}}' não vai num termo; só pii vai.",
       "term_not_live": "Defina '{{term}}' para marcá-lo.",

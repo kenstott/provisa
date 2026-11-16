@@ -762,6 +762,9 @@
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
       "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
     },
+    "table": {
+      "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."
+    },
     "tag": {
       "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",
       "term_not_live": "Definieer '{{term}}' om hem te markeren.",

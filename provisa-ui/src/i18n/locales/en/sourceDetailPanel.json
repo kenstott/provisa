@@ -14,6 +14,7 @@
     "runProfilerTitle": "Run now for every member table",
     "profilerNoMembers": "No table has joined this profiler.",
     "profilerRan": "{{table}}: profiled",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: not read. It requires {{parameters}}, so it cannot be counted or profiled."
   }
 }

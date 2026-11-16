@@ -762,6 +762,9 @@
       "impact_action": "此操作沒有預覽。",
       "impact_table_required": "綁定指定一張表或其中的一欄。"
     },
+    "table": {
+      "requires_parameters": "無法對資料表 {{table}} 計數或產生概要：它需要 {{parameters}}。請為每個參數提供值以讀取其資料列。"
+    },
     "tag": {
       "not_on_terms": "標籤「{{tag}}」不能加在詞彙上；只有 pii 可以。",
       "term_not_live": "請先為「{{term}}」編寫定義，再進行標記。",

@@ -266,7 +266,11 @@ async def test_classify_table_returns_kinds_and_too_few_and_records_nothing(monk
         async def __aexit__(self, *exc):
             return False
 
-    state = types.SimpleNamespace(model_db=types.SimpleNamespace(acquire=lambda: _Acquire()))
+    state = types.SimpleNamespace(
+        model_db=types.SimpleNamespace(acquire=lambda: _Acquire()),
+        # REQ-1986: the table's metadata is asked first; it states no required parameter.
+        contexts={run.PROFILE_ROLE: types.SimpleNamespace(parameters={})},
+    )
 
     async def _tags(conn, table_id):
         assert isinstance(conn, _NoWrites) and table_id == 9
@@ -340,7 +344,11 @@ async def test_classify_table_reads_a_table_within_its_budget_whole(monkeypatch)
         async def __aexit__(self, *exc):
             return False
 
-    state = types.SimpleNamespace(model_db=types.SimpleNamespace(acquire=lambda: _Acquire()))
+    state = types.SimpleNamespace(
+        model_db=types.SimpleNamespace(acquire=lambda: _Acquire()),
+        # REQ-1986: the table's metadata is asked first; it states no required parameter.
+        contexts={run.PROFILE_ROLE: types.SimpleNamespace(parameters={})},
+    )
     seen: list[Sample] = []
 
     async def _tags(conn, table_id):

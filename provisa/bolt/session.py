@@ -1432,15 +1432,17 @@ async def _graph_counts(
     """
 
     label_map = _bolt_label_map(ctx, role_id, include_ops, app_state)
-    # A parameterized node (native-filter columns) is a function with no snapshot — count-all is
-    # undefined without its arg, so exclude it and any relationship touching it from the count sweep.
-    node_labels = [nm.label for nm in label_map.nodes.values() if not nm.native_filter_columns]
+    # REQ-1986: a label whose table's metadata states a required parameter gives no count without
+    # it, so it and any relationship touching it are left out of the count sweep -- asked of the
+    # metadata, never found out by counting. A label whose parameters are all optional is counted
+    # as any other.
+    node_labels = [nm.label for nm in label_map.nodes.values() if not nm.required_parameters]
     seen: set[str] = set()
     rel_types: list[str] = []
     for rel in label_map.relationships.values():
         src_nm = label_map.nodes.get(rel.source_label)
         tgt_nm = label_map.nodes.get(rel.target_label)
-        if (src_nm and src_nm.native_filter_columns) or (tgt_nm and tgt_nm.native_filter_columns):
+        if (src_nm and src_nm.required_parameters) or (tgt_nm and tgt_nm.required_parameters):
             continue
         if rel.rel_type not in seen:
             seen.add(rel.rel_type)

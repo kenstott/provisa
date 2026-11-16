@@ -769,6 +769,13 @@
        }
       },
       {
+       "name": "requiresParameters",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "schemaName",
        "type": {
         "kind": "SCALAR",
@@ -1252,6 +1259,34 @@
        "type": {
         "kind": "SCALAR",
         "name": "String"
+       }
+      },
+      {
+       "name": "parameterOpaque",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "parameterRequired",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "parameterRequiredBySource",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
+       "name": "parameterRequiredBySteward",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
        }
       },
       {

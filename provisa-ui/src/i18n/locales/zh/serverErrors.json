@@ -762,6 +762,9 @@
       "impact_action": "该操作没有预览。",
       "impact_table_required": "绑定指定一张表或其中的一列。"
     },
+    "table": {
+      "requires_parameters": "无法对表 {{table}} 计数或生成概要：它需要 {{parameters}}。请为每个参数提供值以读取其行。"
+    },
     "tag": {
       "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",
       "term_not_live": "请先为“{{term}}”编写定义，再进行标记。",

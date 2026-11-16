@@ -762,6 +762,9 @@
       "impact_action": "この操作にはプレビューがありません。",
       "impact_table_required": "バインドはテーブル、またはその列の1つを指定します。"
     },
+    "table": {
+      "requires_parameters": "テーブル {{table}} は件数の取得もプロファイルもできません: {{parameters}} が必要です。行を読み取るには、それぞれに値を指定してください。"
+    },
     "tag": {
       "not_on_terms": "タグ「{{tag}}」は用語には付けられません。付けられるのは pii だけです。",
       "term_not_live": "マークするには「{{term}}」を定義してください。",

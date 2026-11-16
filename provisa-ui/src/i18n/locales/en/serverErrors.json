@@ -762,6 +762,9 @@
       "impact_action": "There is no preview for that action.",
       "impact_table_required": "Binding names a table, or one of its columns."
     },
+    "table": {
+      "requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows."
+    },
     "tag": {
       "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
       "term_not_live": "Define '{{term}}' to mark it.",

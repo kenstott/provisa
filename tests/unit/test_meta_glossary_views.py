@@ -51,7 +51,8 @@ CREATE TABLE table_columns (
     is_primary_key BOOLEAN, alias TEXT, description TEXT, path TEXT, scope TEXT,
     masks TEXT, native_filter_type TEXT, is_foreign_key BOOLEAN,
     is_alternate_key BOOLEAN, object_fields TEXT, visible_to TEXT,
-    writable_by TEXT, tenant_id TEXT, retired BOOLEAN NOT NULL DEFAULT 0);
+    writable_by TEXT, tenant_id TEXT, retired BOOLEAN NOT NULL DEFAULT 0,
+    native_filter_required BOOLEAN, required_by_steward BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE tag_assignments (
     id TEXT PRIMARY KEY, tag_id TEXT, base_tag_id TEXT, object_type TEXT, source_id TEXT,
     table_id INTEGER, column_name TEXT, relationship_id TEXT, command_name TEXT,

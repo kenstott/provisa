@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-1986: the table page lists a table's parameters, each with its type, how it reaches the
-// source and the required switch -- on and locked where the source requires the parameter.
+// source, whether it is opaque or a real column, and the required switch -- on and locked where
+// the source requires the parameter. A table that requires one says what it cannot give.
 
 import { describe, expect, it, vi } from "vitest";
 import { fireEvent, render, screen, within } from "@testing-library/react";
@@ -103,6 +104,44 @@ describe("ParametersPanel", () => {
     renderPanel(COLUMNS);
     expect(switchOf("region")).toBeDisabled();
     expect(switchOf("status")).toBeChecked();
+  });
+
+  it("says whether each parameter is opaque or a real column of the table", () => {
+    renderPanel([
+      ...COLUMNS,
+      column("_nf_tenant", { nativeFilterType: "partition_key", nativeFilterRequired: false }),
+      column("_nf_country", { nativeFilterType: "column_value", nativeFilterRequired: false }),
+    ]);
+    for (const name of ["id", "region", "status"]) {
+      expect(screen.getByTestId(`parameter-${name}-meaning`)).toHaveTextContent(
+        "Opaque input to the source",
+      );
+    }
+    for (const name of ["tenant", "country"]) {
+      expect(screen.getByTestId(`parameter-${name}-meaning`)).toHaveTextContent(
+        "Real column of the table",
+      );
+    }
+    expect(
+      within(screen.getByTestId("parameter-tenant")).getByText("Partition key"),
+    ).toBeInTheDocument();
+  });
+
+  it("says a table that requires parameters gives no row count, profile or sample", () => {
+    renderPanel(COLUMNS);
+    expect(screen.getByTestId("parameters-limits")).toHaveTextContent(
+      "This table requires id, status. It gives no row count, profile or sample without a " +
+        "value for each.",
+    );
+  });
+
+  it("says nothing of the kind for a table whose parameters are all optional", () => {
+    renderPanel([
+      column("id"),
+      column("_nf_region", { nativeFilterType: "query_param", nativeFilterRequired: false }),
+    ]);
+    expect(screen.getByTestId("parameters-panel")).toBeInTheDocument();
+    expect(screen.queryByTestId("parameters-limits")).toBeNull();
   });
 
   it("is absent for a table with no parameters", () => {

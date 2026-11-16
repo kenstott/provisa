@@ -64,6 +64,9 @@ class NodeMapping:
     native_filter_columns: dict[str, str] = field(
         default_factory=dict
     )  # SQL column name → data_type for native API params
+    # The table's parameters as its metadata states them (core.parameters.ParameterFact,
+    # REQ-1986): name, type, kind, opaque or a real column, required.
+    parameters: tuple[Any, ...] = ()
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -130,6 +133,14 @@ class NodeMapping:
         """Whether its table is read by arguments (REQ-1986): a function of them, with no rows of
         its own for a path to walk (REQ-2135)."""
         return bool(self.native_filter_columns)
+
+    @property
+    def required_parameters(self) -> list[str]:
+        """The parameters its table's metadata states as required (REQ-1986), by the name a caller
+        gives each. With any, the label gives no count without them."""
+        from provisa.core.parameters import required_of
+
+        return required_of(self.parameters)
 
     @property
     def role_label(self) -> str | None:  # REQ-1320
@@ -874,6 +885,7 @@ def _build_node_mappings(
             properties=props,
             physical_properties=phys_props,
             native_filter_columns=nf_cols,
+            parameters=ctx_typed.parameters.get(table_meta.table_id, ()),
             physical_table_name=physical_table_name,
             map_properties=map_props,
             property_types=tuple(

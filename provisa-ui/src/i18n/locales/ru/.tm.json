@@ -10673,5 +10673,12 @@
   "ru/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
   "ru/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
   "ru/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
-  "ru/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
+  "ru/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone.",
+  "ru/parametersPanel.json::parametersPanel.limits": "This table requires {{parameters}}. It gives no row count, profile or sample without a value for each.",
+  "ru/parametersPanel.json::parametersPanel.meaning": "Meaning",
+  "ru/parametersPanel.json::parametersPanel.opaque": "Opaque input to the source",
+  "ru/parametersPanel.json::parametersPanel.realColumn": "Real column of the table",
+  "ru/parametersPanel.json::parametersPanel.kind.partition_key": "Partition key",
+  "ru/serverErrors.json::serverErrors.table.requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows.",
+  "ru/sourceDetailPanel.json::sourceDetailPanel.profilerNotRead": "{{table}}: not read. It requires {{parameters}}, so it cannot be counted or profiled."
 }
