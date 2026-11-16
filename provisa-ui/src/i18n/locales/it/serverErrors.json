@@ -815,6 +815,10 @@
       "expiry_in_past": "La data di fine deve essere futura.",
       "expiry_removes_nothing": "Una data di fine su questa lista {{kind}} non rimuoverebbe nulla.",
       "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "Il controllo preliminare di {{subject}} non è stato eseguito: in questa organizzazione viene eseguito solo in un processo confinato, e non è stato possibile avviarne uno ({{reason}}).",
+      "confined_failed": "Il controllo preliminare di {{subject}} non ha restituito alcun verdetto: il suo processo confinato è terminato prima ({{reason}})."
     }
   }
 }

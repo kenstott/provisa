@@ -280,19 +280,33 @@ def validate_preprocess(source: str | None) -> None:
         raise PreprocessValidationError(f"invalid preprocess hook: {reason}")
 
 
-def _services_import(name: str, *args: Any, **kwargs: Any) -> Any:
-    """The hook's ``__import__``: :data:`SERVICES_MODULE` and nothing else (the registration check
-    has already refused every other import; this refuses one that slipped past it)."""
-    del args, kwargs
-    if name != SERVICES_MODULE:
-        raise ImportError(f"a preflight may import only {SERVICES_MODULE}, not {name!r}")
+def _server_services() -> Any:
     from provisa.mv.preflight_services import services_module
 
     return services_module()
 
 
-def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
+def _services_import(services: Callable[[], Any]) -> Callable[..., Any]:
+    """The hook's ``__import__``: :data:`SERVICES_MODULE` (as ``services`` loads it) and nothing
+    else (the registration check has already refused every other import; this refuses one that
+    slipped past it)."""
+
+    def import_(name: str, *args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        if name != SERVICES_MODULE:
+            raise ImportError(f"a preflight may import only {SERVICES_MODULE}, not {name!r}")
+        return services()
+
+    return import_
+
+
+def compile_preprocess(
+    source: str | None, *, services: Callable[[], Any] = _server_services
+) -> Callable[..., Any] | None:
     """Validate then compile a preflight script into a ``preflight(streams, ctx)`` callable.
+
+    ``services`` loads the module a check gets for ``import provisa_services``: the server's own
+    by default, the confined run's (:mod:`provisa.mv.preflight_runner`) in its process.
 
     Returns None for a blank/absent script (no hook — always continue). The compiled callable
     returns a verdict (normalized by :func:`provisa.mv.preflight.to_verdict`), never rows. It
@@ -304,7 +318,7 @@ def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
     validate_preprocess(source)
     builtins = dict(_SAFE_BUILTINS)
     if uses_services(source):
-        builtins["__import__"] = _services_import
+        builtins["__import__"] = _services_import(services)
     namespace: dict[str, Any] = {"__builtins__": builtins}
     code = compile(source, filename="<preprocess>", mode="exec")
     # S102/B102 flag any exec — the source passed the purity check above and runs against a

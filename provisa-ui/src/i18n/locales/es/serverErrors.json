@@ -815,6 +815,10 @@
       "expiry_in_past": "La fecha de fin debe ser futura.",
       "expiry_removes_nothing": "Una fecha de fin en esta lista de {{kind}} no quitaría nada.",
       "pending_not_found": "Ninguna concesión espera a {{email}} para el rol {{role_id}} y {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "La comprobación previa de {{subject}} no se ejecutó: en esta organización solo se ejecuta en un proceso confinado, y no se pudo iniciar ninguno ({{reason}}).",
+      "confined_failed": "La comprobación previa de {{subject}} no devolvió ningún veredicto: su proceso confinado terminó antes ({{reason}})."
     }
   }
 }

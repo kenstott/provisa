@@ -815,6 +815,10 @@
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
       "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
+      "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
     }
   }
 }

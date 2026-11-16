@@ -815,6 +815,10 @@
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
       "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
+      "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
     }
   }
 }

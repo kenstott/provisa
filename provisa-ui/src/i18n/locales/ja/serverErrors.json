@@ -815,6 +815,10 @@
       "expiry_in_past": "終了日は将来の日付にする必要があります。",
       "expiry_removes_nothing": "この {{kind}} リストに終了日を設定しても何も削除されません。",
       "pending_not_found": "ロール {{role_id}} と {{kind}} について {{email}} を待っている付与はありません。"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
+      "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
     }
   }
 }

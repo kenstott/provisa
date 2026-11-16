@@ -815,6 +815,10 @@
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
       "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
+      "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
     }
   }
 }

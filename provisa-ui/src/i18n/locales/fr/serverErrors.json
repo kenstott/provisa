@@ -815,6 +815,10 @@
       "expiry_in_past": "Une date de fin doit être dans le futur.",
       "expiry_removes_nothing": "Une date de fin sur cette liste {{kind}} ne retirerait rien.",
       "pending_not_found": "Aucun octroi n'attend {{email}} pour le rôle {{role_id}} et {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "Le contrôle préalable de {{subject}} n'a pas été exécuté : dans cette organisation, il ne s'exécute que dans un processus confiné, et aucun n'a pu être démarré ({{reason}}).",
+      "confined_failed": "Le contrôle préalable de {{subject}} n'a rendu aucun verdict : son processus confiné s'est terminé avant ({{reason}})."
     }
   }
 }

@@ -815,6 +815,10 @@
       "expiry_in_past": "結束日期必須是將來的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
       "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
+      "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
     }
   }
 }

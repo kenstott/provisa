@@ -815,6 +815,10 @@
       "expiry_in_past": "A data de término deve ser futura.",
       "expiry_removes_nothing": "Uma data de término nesta lista de {{kind}} não removeria nada.",
       "pending_not_found": "Nenhuma concessão aguarda {{email}} para a função {{role_id}} e {{kind}}."
+    },
+    "preflight": {
+      "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
+      "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
     }
   }
 }
