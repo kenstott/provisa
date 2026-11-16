@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} sugerencias no se pudieron aceptar:",
     "rejectFailed": "{{count}} sugerencia no se pudo rechazar:",
     "rejectFailed_other": "{{count}} sugerencias no se pudieron rechazar:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Información reducida: no se compararon valores",
+    "reducedInformationHelp": "Una de estas tablas requiere un parámetro, por lo que nunca se lee. Esta sugerencia procede solo de nombres, descripciones, tipos y parámetros obligatorios."
   }
 }

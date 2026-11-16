@@ -9,11 +9,13 @@
 # permission from the copyright holder.
 
 """REQ-413: the discovery run's API on a real model store (SQLite), the model faked at its client
-boundary and the source tables' reads faked at the engine: system domains never included, a
-never-profiled table classified for the run and nothing recorded, the request count before Run,
-and the run's model chosen for that run only."""
+boundary and the source tables' reads faked at the governed read the profiler makes as the org
+admin: system domains never included, a never-profiled table classified for the run and nothing
+recorded, the request count before Run for every table a domain can hold (one that requires a
+parameter and is never read, one with no column, one that cannot be read), and the run's model
+chosen for that run only."""
 
-# Requirements: REQ-413, REQ-464, REQ-2147
+# Requirements: REQ-413, REQ-464, REQ-1986, REQ-2147
 
 from __future__ import annotations
 
@@ -25,10 +27,16 @@ from sqlalchemy import func, insert, select
 
 from provisa.api.admin import discovery
 from provisa.api.errors import ApiError
+from provisa.compiler.naming import domain_to_sql_name
 from provisa.core import schema_org as so
 from provisa.core.database import Database, create_engine_from_url
+from provisa.core.parameters import ParameterRequired, missing_reason
+from provisa.core.read_refusal import SourceUnavailable
 from provisa.discovery import gather
+from provisa.discovery.columns import NOT_READ, ColumnFacts, classes_meet
+from provisa.discovery.direction import Sampled
 from provisa.llm.client import Completion
+from provisa.profiler.run import ProfileError
 
 _REQUEST = cast(
     Any, SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-1")))
@@ -55,25 +63,62 @@ _TABLES = (
 _KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MISTRAL_API_KEY")
 
 
-class _Engine:
-    """The federation engine's read seam: every column sampled holds the values given."""
+#: Each registered table as the org admin reads it, by id: its domain and its columns' names.
+_PUBLISHED: dict[int, tuple[str, list[str]]] = {}
 
-    dialect = "trino"
+
+@pytest.fixture(autouse=True)
+def _nothing_published():
+    _PUBLISHED.clear()
+
+
+class _Reads:
+    """The seam every read of a table's values goes through: the profiler's governed read as the
+    org admin. Every column read holds the values given. A table in ``never_read`` requires a
+    parameter: it has no row count, no profile and no values here, any read of it is recorded in
+    ``attempted`` and refused as the pipeline refuses a read that gives a required parameter no
+    value. A table in ``failing`` fails as given; a table in ``unpublished`` is not in the org
+    admin's schema; a column in ``outside`` is registered and not held by the relation read."""
 
     def __init__(self, values: dict[str, list[Any]]):
         self.values = values
         self.sql: list[str] = []
+        self.never_read: set[str] = set()
+        self.attempted: list[str] = []
+        self.failing: dict[str, Exception] = {}
+        self.unpublished: set[str] = set()
+        self.outside: set[str] = set()
 
-    def address_replicas(self, sql: str) -> str:
-        return sql
+    def refuse(self, table: str) -> None:
+        if table in self.never_read:
+            self.attempted.append(table)
+            raise ParameterRequired(table, missing_reason(["orderId"]))
+        if table in self.failing:
+            raise self.failing[table]
 
-    async def execute_engine(self, sql: str, *, authorization: Any) -> Any:
+    def resolve_target(self, state: Any, table_id: int, table_name: str, tags: Any) -> Any:
+        if table_name in self.never_read:
+            self.attempted.append(table_name)  # resolved only to be read
+        if table_name in self.unpublished:
+            raise ProfileError(f"table {table_name!r} (id {table_id}) is not readable by org_admin")
+        domain, columns = _PUBLISHED[table_id]
+        return SimpleNamespace(
+            pgwire_name=f"{domain_to_sql_name(domain)}.{table_name}",
+            columns=[
+                SimpleNamespace(physical=c, name=c.lower())
+                for c in columns
+                if c not in self.outside
+            ],
+        )
+
+    async def governed(self, sql: str) -> tuple[list[str], list[tuple]]:
         self.sql.append(sql)
+        self.refuse(sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0])
         cols = sql.split("SELECT ", 1)[1].split(" FROM", 1)[0]
         names = [c.strip().strip('"') for c in cols.split(",")]
         depth = max(len(self.values.get(n, [])) for n in names)
         rows = [tuple(self.values.get(n, [None] * depth)[i] for n in names) for i in range(depth)]
-        return SimpleNamespace(rows=rows)
+        return names, rows
 
 
 async def _store(url: str = "sqlite+pysqlite:///:memory:") -> Database:
@@ -82,19 +127,22 @@ async def _store(url: str = "sqlite+pysqlite:///:memory:") -> Database:
         so.metadata.create_all(conn, tables=[so.metadata.tables[n] for n in _TABLES])
     async with db.acquire() as conn:
         await conn.execute_core(insert(so.sources).values(id="pg", type="postgresql"))
-        for d in ("sales", "crm", "meta", "ops", "ontology"):
+        for d in ("sales", "crm", "pet-store", "meta", "ops", "ontology"):
             await conn.execute_core(insert(so.domains).values(id=d))
     return db
 
 
 async def _table(db: Database, tid: int, domain: str, name: str, columns: list[tuple]) -> None:
+    """``columns``: (name, type, primary key), or with a fourth, the kind of the required
+    parameter the column is."""
+    _PUBLISHED[tid] = (domain, [c[0] for c in columns])
     async with db.acquire() as conn:
         await conn.execute_core(
             insert(so.registered_tables).values(
                 id=tid, source_id="pg", domain_id=domain, schema_name="public", table_name=name
             )
         )
-        for col_name, data_type, pk in columns:
+        for col_name, data_type, pk, *parameter in columns:
             await conn.execute_core(
                 insert(so.table_columns).values(
                     table_id=tid,
@@ -102,6 +150,8 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
                     column_name=col_name,
                     data_type=data_type,
                     is_primary_key=pk,
+                    native_filter_type=parameter[0] if parameter else None,
+                    native_filter_required=True if parameter else None,
                 )
             )
 
@@ -109,7 +159,7 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
 class _World:
     def __init__(self, monkeypatch, db: Database, *, config: dict, api_keys: dict[str, str]):
         self.db = db
-        self.engine = _Engine(
+        self.reads = _Reads(
             {"id": [1, 2, 3], "customer_id": [1, 1, 2], "name": ["a", "b", "c"], "ref": ["x"]}
         )
         self.classified: list[dict] = []
@@ -124,16 +174,17 @@ class _World:
         monkeypatch.setattr(
             discovery,
             "state",
-            SimpleNamespace(
-                model_db=db, federation_engine=self.engine, source_pools={}, source_types={}
-            ),
+            SimpleNamespace(model_db=db, source_pools={}, source_types={}),
         )
 
         async def profiled(conn, table_id, table_name):
+            if table_name in self.reads.never_read:
+                self.reads.attempted.append(table_name)  # it has no profile to look up
             return None  # never profiled: classified during the run
 
         async def classify_table(state, **kwargs):
             self.classified.append(kwargs)
+            self.reads.refuse(kwargs["table_name"])
             return []
 
         async def org_config(pool):
@@ -160,6 +211,8 @@ class _World:
         monkeypatch.setattr("provisa.discovery.run.collect_fk_for_tables", fk)
         monkeypatch.setattr(gather, "_profiled_classes", profiled)
         monkeypatch.setattr("provisa.profiler.run.classify_table", classify_table)
+        monkeypatch.setattr("provisa.profiler.run.resolve_target", self.reads.resolve_target)
+        monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
         monkeypatch.setattr("provisa.core.org_secrets.resolve_jev_api_key", no_jev)
@@ -268,6 +321,244 @@ async def test_the_count_is_sized_from_the_chosen_models_limits(monkeypatch):
     assert chosen["model"]["input_tokens"] == 650 and chosen["model"]["output_tokens"] == 300
     assert chosen["suggestions_per_request"] == 2
     assert chosen["requests"] > assigned["requests"]
+
+
+# --- a table that requires a parameter: never read, reduced information (REQ-1986) ----------------
+
+_ORDER_BY_ID, _ORDERS, _PET_BY_ID, _PETS = 1, 2, 3, 4
+_PARAMETERIZED = {"get_order_by_id", "get_pet_by_id"}
+
+
+async def _pet_store(db: Database) -> None:
+    """A domain as the default demo's pet-store: its id hyphenated, two API tables that each
+    require a parameter beside two tables read whole."""
+    await _table(
+        db,
+        _ORDER_BY_ID,
+        "pet-store",
+        "get_order_by_id",
+        [
+            ("_nf_orderId", "integer", False, "path_param"),
+            ("id", "integer", True),
+            ("petId", "integer", False),
+        ],
+    )
+    await _table(
+        db, _ORDERS, "pet-store", "orders", [("id", "integer", True), ("pet_id", "integer", False)]
+    )
+    await _table(
+        db,
+        _PET_BY_ID,
+        "pet-store",
+        "get_pet_by_id",
+        [("_nf_petId", "integer", False, "path_param"), ("name", "text", False)],
+    )
+    await _table(db, _PETS, "pet-store", "pets", [("id", "integer", True), ("name", "text", False)])
+
+
+def _pet_world(monkeypatch, db: Database) -> _World:
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.reads.never_read = set(_PARAMETERIZED)
+    return world
+
+
+async def _facts(db: Database, ids: list[int]) -> dict[str, Any]:
+    async with db.acquire() as conn:
+        tables = await gather.table_facts(discovery.state, cast(Any, conn), ids)
+    return {t.table_name: t for t in tables}
+
+
+async def test_the_count_is_answered_for_a_scope_holding_a_table_that_requires_a_parameter(
+    monkeypatch,
+):
+    """The dialog's count on the default demo (pet-store, shelter): get_order_by_id requires
+    orderId, classifying it ran a count the pipeline refused (ParameterRequired), and the count
+    route answered an unhandled error."""
+    db = await _store()
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    counted = await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"]))
+    assert world.reads.attempted == []
+    assert counted["source_tables"] == counted["target_tables"] == 4
+    assert counted["tables_not_read"] == 2
+    assert counted["requests"] >= 1
+
+
+async def test_a_table_that_requires_a_parameter_is_known_from_its_registration_and_never_read(
+    monkeypatch,
+):
+    db = await _store()
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    facts = await _facts(db, [_ORDER_BY_ID, _ORDERS])
+    order = facts["get_order_by_id"]
+    assert world.reads.attempted == []
+    assert order.reduced and order.parameters == (("orderId", "integer"),)
+    assert [c.required_parameter for c in order.columns] == ["orderId", None, None]
+    assert {c.classes for c in order.columns} == {(NOT_READ,)}
+    assert {c.samples for c in order.columns} == {()}
+    assert not any(c.sensitive for c in order.columns)
+    # Only the table read whole is classified and sampled.
+    assert [c["table_id"] for c in world.classified] == [_ORDERS]
+    assert world.reads.sql == ['SELECT "id", "pet_id" FROM "pet_store"."orders" LIMIT 20']
+    assert not facts["orders"].reduced and facts["orders"].parameters == ()
+
+
+@pytest.mark.parametrize(
+    ("source", "target", "not_read"),
+    [
+        pytest.param([_ORDER_BY_ID], [_ORDERS], 1, id="parameterized-source"),
+        pytest.param([_ORDERS], [_ORDER_BY_ID], 1, id="parameterized-target"),
+        pytest.param([_ORDER_BY_ID], [_PET_BY_ID], 2, id="both-sides-parameterized"),
+        pytest.param(
+            [_ORDER_BY_ID, _ORDERS, _PET_BY_ID, _PETS], None, 2, id="mixed-with-ordinary-tables"
+        ),
+    ],
+)
+async def test_relationship_requests_are_planned_on_reduced_information(
+    monkeypatch, source, target, not_read
+):
+    db = await _store()
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    scope = _scope(
+        source_domains=["pet-store"],
+        source_tables=source,
+        target_same_as_source=target is None,
+        target_domains=[] if target is None else ["pet-store"],
+        target_tables=target,
+    )
+    counted = await discovery.count_run(_REQUEST, scope)
+    assert world.reads.attempted == []
+    assert counted["tables_not_read"] == not_read
+    assert counted["by_group"]["whole_number"] >= 1
+    if not_read == len(set(source) | set(target or [])):
+        assert world.classified == [] and world.reads.sql == []  # nothing in scope is read
+    _, prepared = await discovery._prepared(scope.spec())
+    sent = "\n".join(r.prompt(prepared.k) for r in prepared.requests)
+    assert (
+        '"required_parameters":[{"column":"_nf_orderId","parameter":"orderId","type":"integer"}],'
+        '"values":"not_read"'
+    ) in sent
+    # The parameter is a compared column, with the class of a column never read and no values.
+    assert '{"name":"_nf_orderId","description":null,"classes":["not_read"],"tags":[]}' in sent
+    assert "'not_read'" in sent  # the instructions say what it means
+
+
+def test_a_column_never_read_is_compared_with_every_class():
+    def column(classes: tuple[str, ...]) -> ColumnFacts:
+        return ColumnFacts("c", "integer", None, (), classes, False, (), False, frozenset())
+
+    assert classes_meet(column((NOT_READ,)), column(("email",)))
+    assert classes_meet(column(("unknown",)), column((NOT_READ,)))
+    assert classes_meet(column((NOT_READ,)), column((NOT_READ,)))
+    assert not classes_meet(column(("unknown",)), column(("email",)))
+
+
+async def test_the_sample_of_a_table_that_requires_a_parameter_is_refused_unread(monkeypatch):
+    db = await _store()
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    world.reads.values["id"] = [1, 1, 2]
+    facts = await _facts(db, [_ORDER_BY_ID, _ORDERS])
+    read = gather.uniqueness_reader(discovery.state)
+    with pytest.raises(gather.TableUnreadable, match="requires a parameter"):
+        await read(facts["get_order_by_id"], "id")
+    assert world.reads.attempted == []
+    assert await read(facts["orders"], "id") == Sampled(rows=3, repeats=True)
+    assert world.reads.sql[-1] == (
+        'SELECT "id" FROM "pet_store"."orders" WHERE "id" IS NOT NULL LIMIT 500'
+    )
+
+
+# --- the count for every other table a domain can hold -------------------------------------------
+
+
+async def test_a_table_with_no_column_is_counted_and_never_read(monkeypatch):
+    db = await _store()
+    await _pet_store(db)
+    await _table(db, 5, "pet-store", "empty_view", [])
+    world = _pet_world(monkeypatch, db)
+    world.reads.unpublished = {"empty_view"}
+    counted = await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"]))
+    assert counted["source_tables"] == 5
+    assert [c["table_id"] for c in world.classified] == [_ORDERS, _PETS]
+
+
+async def test_a_column_the_relation_read_does_not_hold_sends_no_values(monkeypatch):
+    db = await _store()
+    await _table(
+        db, 1, "pet-store", "employees", [("id", "integer", True), ("manager", "text", False)]
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.reads.values["manager"] = ["m"]
+    world.reads.outside = {"manager"}
+    facts = await _facts(db, [1])
+    assert world.reads.sql == ['SELECT "id" FROM "pet_store"."employees" LIMIT 20']
+    assert [c.samples for c in facts["employees"].columns] == [("1", "2", "3"), ()]
+
+
+async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
+    db = await _store()
+    await _table(db, 1, "pet-store", "orders", [("petId", "integer", False)])
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.reads.values["petid"] = [7, 8]
+    facts = await _facts(db, [1])
+    assert world.reads.sql == ['SELECT "petid" FROM "pet_store"."orders" LIMIT 20']
+    assert facts["orders"].columns[0].samples == ("7", "8")
+
+
+@pytest.mark.parametrize(
+    ("refusal", "at", "reason"),
+    [
+        pytest.param(None, "schema", "is not readable by org_admin", id="not-in-the-schema"),
+        pytest.param(
+            ConnectionError("no connection pool for source pet-store-sqlite"),
+            "classification",
+            "no connection pool",
+            id="source-with-no-pool",
+        ),
+        pytest.param(
+            SourceUnavailable("pet-store-sqlite"),
+            "classification",
+            "could not answer",
+            id="source-unavailable",
+        ),
+        pytest.param(
+            ParameterRequired("pets", missing_reason(["status"])),
+            "classification",
+            "requires the parameter(s) ['status']",
+            id="a-parameter-its-registration-does-not-record",
+        ),
+        pytest.param(
+            ValueError("the read stops at 10000 rows and the table has more"),
+            "sample",
+            "stops at 10000 rows",
+            id="row-cap-on-the-sample-read",
+        ),
+    ],
+)
+async def test_a_table_whose_read_is_refused_is_refused_by_name(monkeypatch, refusal, at, reason):
+    db = await _store()
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    if at == "schema":
+        world.reads.unpublished = {"pets"}
+    else:
+        world.reads.failing = {"pets": refusal}
+    if at == "sample":
+
+        async def profiled(conn, table_id, table_name):
+            return {}  # profiled: no classification read, so the sample read is the first
+
+        monkeypatch.setattr(gather, "_profiled_classes", profiled)
+    with pytest.raises(ApiError) as caught:
+        await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"]))
+    assert caught.value.status_code == 422
+    assert caught.value.code == "discovery.table_unreadable"
+    assert caught.value.params["table"] == "pets"
+    assert reason in caught.value.params["reason"]
+    assert "pets" in caught.value.detail and "Leave it out" in caught.value.detail
 
 
 async def test_a_chosen_model_whose_vendor_has_no_key_is_refused(monkeypatch):
@@ -554,3 +845,127 @@ async def test_accept_marks_the_referring_column_a_foreign_key_and_nothing_else(
         "code",
     )
     assert rel["cardinality"] == "many-to-one"
+
+
+# --- a run over a table that requires a parameter (REQ-1986) --------------------------------------
+
+
+async def test_a_parameter_referring_to_another_tables_key_is_suggested_and_marked(
+    monkeypatch, tmp_path
+):
+    """The expected good outcome: get_order_by_id's required parameter orderId refers to
+    orders.id, found with no value of get_order_by_id read, and the suggestion says so."""
+    import json as _json
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    answer = _suggestion((_ORDER_BY_ID, "_nf_orderId"), (_ORDERS, "id"))
+    answer["reasoning"] = "the parameter names an order"
+    world.answers = [_json.dumps([answer])]
+    run = await _run(world, _scope(source_domains=["pet-store"]))
+    assert run["status"] == "done", run
+    assert world.reads.attempted == []
+    assert run["report"]["on_reduced_information"] == 1
+    assert run["report"]["tables_not_read"] == 2
+    (stored,) = await _candidates(db)
+    assert (stored["source_table_id"], stored["source_column"]) == (_ORDER_BY_ID, "_nf_orderId")
+    assert (stored["target_table_id"], stored["target_column"]) == (_ORDERS, "id")
+    assert stored["reasoning"] == (
+        "the parameter names an order; no values were compared: get_order_by_id requires a "
+        "parameter and is never read"
+    )
+    # The list the suggestions table reads says so too, from the tables' registration.
+    (listed,) = await discovery.list_candidates(_REQUEST)
+    assert listed["id"] == stored["id"] and listed["reduced_information"] is True
+
+
+async def test_a_suggestion_between_tables_read_whole_is_not_marked(monkeypatch, tmp_path):
+    import json as _json
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.answers = [_json.dumps([_suggestion((1, "customer_id"), (2, "id"))])]
+    run = await _run(world, _scope())
+    assert run["report"]["on_reduced_information"] == 0 and run["report"]["tables_not_read"] == 0
+    (listed,) = await discovery.list_candidates(_REQUEST)
+    assert listed["reduced_information"] is False
+    assert listed["reasoning"] == "orders name their customer"
+
+
+async def test_the_glossary_term_bound_to_a_column_is_sent_whether_or_not_its_table_is_read(
+    monkeypatch,
+):
+    db = await _store()
+    await _pet_store(db)
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(so.glossary_terms).values(id=1, name="Order"))
+        for table_id, column in ((_ORDER_BY_ID, "_nf_orderId"), (_ORDERS, "id")):
+            await conn.execute_core(
+                insert(so.glossary_term_refs).values(
+                    term_id=1, table_id=table_id, column_name=column
+                )
+            )
+    world = _pet_world(monkeypatch, db)
+    facts = await _facts(db, [_ORDER_BY_ID, _ORDERS])
+    assert world.reads.attempted == []
+    assert facts["get_order_by_id"].column("_nf_orderId").term == "Order"
+    assert facts["orders"].column("id").term == "Order"
+    assert facts["orders"].column("pet_id").term is None
+    _, prepared = await discovery._prepared(
+        _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS]).spec()
+    )
+    sent = prepared.requests[0].prompt(prepared.k)
+    assert (
+        '{"name":"_nf_orderId","description":null,"classes":["not_read"],"tags":[],"term":"Order"}'
+    ) in sent
+    assert '"tags":[],"term":"Order","sample_values":["1","2","3"]' in sent
+
+
+async def test_a_model_whose_limits_hold_no_request_is_refused_saying_why(monkeypatch):
+    db = await _store()
+    await _orders_customers(db)
+    config = {
+        **_ASSIGNED,
+        "ai_models": {
+            **_ASSIGNED["ai_models"],
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 100}}},
+        },
+    }
+    _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
+    with pytest.raises(ApiError) as caught:
+        await discovery.count_run(_REQUEST, _scope())
+    assert caught.value.code == "discovery.model_has_no_room"
+    assert caught.value.params["model"] == "openai:gpt-test"
+    assert "100 tokens holds no suggestion" in caught.value.params["reason"]
+
+
+async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_parameter(
+    monkeypatch, tmp_path
+):
+    """Both directions proposed between two columns that are no key, with equal confidence: the
+    uniqueness sample would decide, and is not read when a side requires a parameter."""
+    import json as _json
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _pet_store(db)
+    world = _pet_world(monkeypatch, db)
+    world.answers = [
+        _json.dumps(
+            [
+                _suggestion((_ORDER_BY_ID, "petId"), (_ORDERS, "pet_id")),
+                _suggestion((_ORDERS, "pet_id"), (_ORDER_BY_ID, "petId")),
+            ]
+        )
+    ]
+    run = await _run(world, _scope(source_domains=["pet-store"]))
+    assert run["status"] == "done", run
+    assert world.reads.attempted == []
+    assert not any("IS NOT NULL" in sql for sql in world.reads.sql)
+    assert run["report"]["decided_by"] == {"fixed_order": 1}
+    assert run["report"]["on_reduced_information"] == 1
+    (stored,) = await _candidates(db)
+    assert stored["reasoning"].endswith(
+        "no values were compared: get_order_by_id requires a parameter and is never read"
+    )

@@ -6264,6 +6264,7 @@
   "zh/serverErrors.json::serverErrors.discovery.schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
   "zh/serverErrors.json::serverErrors.discovery.source_not_found": "Source '{{source_id}}' not found",
   "zh/serverErrors.json::serverErrors.discovery.table_id_required": "table_id required for table scope",
+  "zh/serverErrors.json::serverErrors.discovery.table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
   "zh/serverErrors.json::serverErrors.discovery.unknown_source_type": "Unknown source type: {{type}}",
   "zh/serverErrors.json::serverErrors.engine.write_conflict": "Another change to the same data was written at the same time. Try again.",
   "zh/serverErrors.json::serverErrors.entitlements.blank_identifier": "An entry cannot be blank.",
@@ -10663,5 +10664,14 @@
   "zh/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "zh/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "zh/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "zh/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "zh/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "zh/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
+  "zh/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
+  "zh/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
+  "zh/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+  "zh/serverErrors.json::serverErrors.discovery.run_not_found": "Discovery run {{run_id}} not found",
+  "zh/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
+  "zh/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+  "zh/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
+  "zh/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
 }

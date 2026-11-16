@@ -40,6 +40,7 @@ from provisa.discovery.direction import (
     Proposal,
     Sampled,
     from_answer,
+    reduced_tables,
     settle,
 )
 from provisa.discovery.runner import MIN_CONFIDENCE, Control, Tally, execute
@@ -139,6 +140,16 @@ class Prepared:
     def target_ids(self) -> set[int]:
         return self.source_ids if self.target is None else {t.table_id for t in self.target}
 
+    def sizes(self) -> dict[str, int]:
+        """The run's sets as the count and the result give them: the tables of each, and how
+        many of the run's tables are never read (REQ-1986: each requires a parameter, so it
+        takes part on its registration alone)."""
+        return {
+            "source_tables": len(self.source),
+            "target_tables": len(self.source if self.target is None else self.target),
+            "tables_not_read": sum(1 for t in self.tables.values() if t.reduced),
+        }
+
 
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
     """The ids of the source set and of the target set (None: the same as the source)."""
@@ -179,8 +190,7 @@ def count(prepared: Prepared, model: ChosenModel) -> dict[str, Any]:
         "by_group": count_by_group(prepared.requests),
         "suggestions_per_request": prepared.k,
         "model": model.describe(),
-        "source_tables": len(prepared.source),
-        "target_tables": len(prepared.target if prepared.target is not None else prepared.source),
+        **prepared.sizes(),
     }
 
 
@@ -311,7 +321,6 @@ async def perform(
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         known: Known = await gather.known(conn)
-        rows = await gather.registered_rows(conn, sorted(prepared.tables))
         fk_found: list[RelationshipCandidate] = []
         if "foreign_keys" in spec.kinds:
             fk_found = await collect_fk_for_tables(
@@ -319,7 +328,7 @@ async def perform(
             )
     fk = _fk_proposals(fk_found)
     publisher = Publisher(pool, scope)
-    read_sample = _caching(gather.uniqueness_reader(state, rows))
+    read_sample = _caching(gather.uniqueness_reader(state))
     tables = prepared.tables
 
     async def settled(semantic: list[Proposal]) -> Outcome:
@@ -335,6 +344,9 @@ async def perform(
             "removed": outcome.removed.as_dict(),
             "decided_by": dict(outcome.decided_by),
             "stored_ids": sorted(publisher.stored.values()),
+            # REQ-1986: suggestions with a table that is never read, so no values were compared.
+            "on_reduced_information": sum(1 for p in outcome.kept if reduced_tables(p, tables)),
+            "tables_not_read": prepared.sizes()["tables_not_read"],
         }
         if "foreign_keys" in spec.kinds:
             out["foreign_keys"] = {
