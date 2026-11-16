@@ -241,7 +241,7 @@ class Grid:
             sorted(
                 {
                     form.mentions
-                    for _, rule in self._rewrites
+                    for _, rule in (*self._first, *self._rewrites)
                     for of, form in rule.forms.items()
                     if isinstance(form, Rewrite)
                     and form.mentions
