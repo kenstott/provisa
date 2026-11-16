@@ -363,7 +363,10 @@ async def _require_residency_of_import(request: Request, conn, config: ProvisaCo
     from provisa.security.residency import CREATED, ResidencyRefused
 
     held_sources = {
-        r.id: r.region for r in (await conn.execute_core(select(sources.c.id, sources.c.region)))
+        r.id: r.region
+        for r in await conn.execute_core(
+            select(sources.c.id, sources.c.region).where(sources.c.retired.is_(False))  # REQ-2248
+        )
     }
     t = registered_tables
     held_tables = {

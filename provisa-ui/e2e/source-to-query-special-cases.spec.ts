@@ -65,7 +65,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect } from "./coverage";
-import { retireSourceTables } from "./retire-source-tables";
+import { retireSource } from "./retire-source-tables";
 import {
   ASKAMERICA_SERVING_BUDGET_MS,
   openRegisterForm,
@@ -162,15 +162,16 @@ test.describe("govdata: source to query through the UI (REQ-1742)", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
   // The instance serves ONE AskAmerica source (REQ-540), and this test registers a table on the one
-  // it adds. Its cleanup retires that table, whatever the outcome; the source is kept (REQ-2248: a
-  // source holding a table, retired or not, is not deleted), so a later AskAmerica source on the
-  // same backend is refused "already exists".
+  // it adds. Its cleanup retires that table and then the source, whatever the outcome (REQ-2248: a
+  // source holding only retired tables is retired with them, and a retired one is not counted), so
+  // a retry, or a later AskAmerica spec on the same backend, can add its own. A retry's table is
+  // offered a source-prefixed alias: the retired table keeps its name in the domain.
   let created: string | undefined;
   test.afterEach(async ({ page }) => {
     if (created === undefined) return;
     const id = created;
     created = undefined;
-    await retireSourceTables(async (query, variables) => {
+    await retireSource(async (query, variables) => {
       const res = await page.request.post("/admin/graphql", { data: { query, variables } });
       return res.json();
     }, id);
