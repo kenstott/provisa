@@ -13,18 +13,28 @@
 One real server process over a database the harness creates, with the ``basic`` sign-in provider
 (accounts with an email, kept in the platform control plane), bootstrap claiming on, and the
 deployment's break-glass account. Nothing is seeded behind the API: the break-glass account
-registers the people (``/auth/register`` is open to an authenticated caller), each signs in with
+registers the people (``/auth/register`` by a caller holding user_management), each signs in with
 ``/auth/login``, and everything after that is what a person or an administrator would send.
+
+A local account's email is whatever was typed when it was made, so it is matched to nothing
+(REQ-1261). The tests of joining by email address start the server on an OIDC issuer instead
+(:class:`Issuer`), whose tokens say whether the address is verified.
 
 Lands on the TEST instance only."""
 
 from __future__ import annotations
 
+import datetime
+import http.server
 import json
 import os
+import threading
 import urllib.error
 import urllib.request
 from typing import Any
+
+import jwt
+from cryptography.hazmat.primitives.asymmetric import rsa
 
 from tests.integration.worker_boot_harness import WorkerBoot
 
@@ -35,8 +45,81 @@ _BREAK_GLASS = ("breakglass", "open sesame, operator")
 MEMBER_ROLE = "analyst"
 
 
-def boot_server() -> WorkerBoot:
-    """A started multi-tenant server. The caller owns ``cleanup()``."""
+_CLIENT_ID = "provisa-tenancy-e2e"
+_KEY_ID = "tenancy-e2e"
+
+
+class Issuer:
+    """An OIDC issuer on this machine that a started server trusts: its discovery document, its
+    signing keys, and the ID tokens it issues. Each token says of its address what the test says
+    an identity provider found (``email_verified``). The caller owns ``close()``."""
+
+    def __init__(self) -> None:
+        self._key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(self._key.public_key()))
+        documents: dict[str, dict] = {}
+
+        class _Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802  # the name http.server calls
+                document = documents.get(self.path)
+                if document is None:
+                    self.send_error(404)
+                    return
+                body = json.dumps(document).encode()
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+
+            def log_message(self, format, *args):  # noqa: A002  # the name http.server calls
+                pass
+
+        self._server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
+        self.url = f"http://127.0.0.1:{self._server.server_address[1]}"
+        self.discovery_url = f"{self.url}/.well-known/openid-configuration"
+        documents["/.well-known/openid-configuration"] = {
+            "issuer": self.url,
+            "jwks_uri": f"{self.url}/jwks",
+        }
+        documents["/jwks"] = {"keys": [{**jwk, "kid": _KEY_ID, "use": "sig", "alg": "RS256"}]}
+        threading.Thread(target=self._server.serve_forever, daemon=True).start()
+
+    def token(self, subject: str, email: str, *, email_verified: bool) -> str:
+        """An ID token for ``subject`` (their user id here), carrying ``email``."""
+        now = datetime.datetime.now(datetime.timezone.utc)
+        return jwt.encode(
+            {
+                "iss": self.url,
+                "aud": _CLIENT_ID,
+                "sub": subject,
+                "name": subject,
+                "email": email,
+                "email_verified": email_verified,
+                "iat": now,
+                "exp": now + datetime.timedelta(hours=1),
+            },
+            self._key,
+            algorithm="RS256",
+            headers={"kid": _KEY_ID},
+        )
+
+    def close(self) -> None:
+        self._server.shutdown()
+        self._server.server_close()
+
+
+def boot_server(issuer: Issuer | None = None) -> WorkerBoot:
+    """A started multi-tenant server: on the ``basic`` provider, or, given ``issuer``, signing
+    people in with its tokens (the ``oidc`` provider). The caller owns ``cleanup()``."""
+    sign_in_with: dict[str, Any] = (
+        {"provider": "basic"}
+        if issuer is None
+        else {
+            "provider": "oidc",
+            "oidc": {"discovery_url": issuer.discovery_url, "client_id": _CLIENT_ID},
+        }
+    )
     boot = WorkerBoot(
         1,
         pg_host=os.environ.get("PG_HOST", "localhost"),
@@ -44,7 +127,7 @@ def boot_server() -> WorkerBoot:
         extra_config={
             "multitenancy": True,
             "auth": {
-                "provider": "basic",
+                **sign_in_with,
                 "jwt_secret": "tenancy-e2e-signing-key-not-a-secret",
                 "bootstrap_superadmin": True,
                 # Roles are the ones Provisa records (grants, invitations, auto-join), as on a
@@ -178,15 +261,20 @@ def let_matching_emails_join(boot: WorkerBoot, admin: str, org_id: str, domain: 
     assert (body["auto_join"], body["auto_join_role"]) == (True, MEMBER_ROLE), body
 
 
+def grant_org_admin(boot: WorkerBoot, platform_admin: str, org_id: str, user_id: str) -> None:
+    """The platform administrator grants ``user_id`` org_admin of ``org_id`` (REQ-1303)."""
+    status, body = call(
+        boot, "POST", f"/admin/orgs/{org_id}/admins/{user_id}", token=platform_admin, org=org_id
+    )
+    assert status == 200, said(boot, "grant org_admin", status, body)
+
+
 def org_admin(boot: WorkerBoot, operator: str, platform_admin: str, org_id: str) -> str:
     """A signed-in org_admin of ``org_id``. A platform administrator holds no right over an
     org's own data -- who is in it included (REQ-1605) -- so the tests read membership as the
     org's administrator does: a person the platform administrator grants org_admin (REQ-1303)."""
     user_id = register(boot, operator, f"admin-of-{org_id}", f"admin-of-{org_id}@hq.test")
-    status, body = call(
-        boot, "POST", f"/admin/orgs/{org_id}/admins/{user_id}", token=platform_admin, org=org_id
-    )
-    assert status == 200, said(boot, "grant org_admin", status, body)
+    grant_org_admin(boot, platform_admin, org_id, user_id)
     return sign_in(boot, f"admin-of-{org_id}")
 
 

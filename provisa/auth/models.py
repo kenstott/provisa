@@ -32,6 +32,12 @@ class AuthIdentity:  # REQ-120
     display_name: str | None
     roles: list[str]
     raw_claims: dict = field(default_factory=dict)
+    # REQ-1261: whether the identity's provider vouches that ``email`` is this person's: an OIDC
+    # or Firebase token's ``email_verified`` claim, or an address a SAML or LDAP directory
+    # asserts. False for an address a person typed for themselves (the basic provider's accounts).
+    # Read through :func:`verified_email`; an unverified address matches no invitation, no
+    # organization's email rule and no grant waiting on an address.
+    email_verified: bool = False
     # REQ-2219: the claim of ``raw_claims`` this identity's provider names, in its settings, for
     # the nested entitlement lists; None when it names none, and it then sends no nested lists.
     entitlements_claim: str | None = None
@@ -63,6 +69,14 @@ class AuthIdentity:  # REQ-120
     # credential is validated (AuthProvider.validate_credential).
     credential: str | None = None
     credential_id: str | None = None
+
+
+def verified_email(identity: AuthIdentity | None) -> str | None:  # REQ-1261
+    """The address ``identity`` may be matched by -- an invitation sent to it, an organization's
+    email rule, a grant waiting on it: its email when its provider verified it, else None."""
+    if identity is None or not identity.email_verified:
+        return None
+    return identity.email
 
 
 @dataclass

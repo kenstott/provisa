@@ -75,6 +75,8 @@ class KeycloakAuthProvider(AuthProvider):  # REQ-120, REQ-122
         return AuthIdentity(
             user_id=decoded["sub"],
             email=decoded.get("email"),
+            # REQ-1261: the issuer's own statement; absent or false, the address matches nothing.
+            email_verified=decoded.get("email_verified") is True,
             display_name=decoded.get("preferred_username"),
             roles=roles,
             raw_claims=decoded,
