@@ -109,7 +109,7 @@ _FRAME_WALK = (
     "    def gen():\n"
     "        yield g.gi_frame.f_back\n"
     "    g = gen()\n"
-    "    mine = next(g)\n"
+    "    mine = list(g)[0]\n"
     "    reached = mine.f_back.f_globals['__builtins__']\n"
     "    if 'open' in reached:\n"
     "        return ctx.abort('reached the real builtins')\n"

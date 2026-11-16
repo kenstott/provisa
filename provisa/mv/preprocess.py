@@ -122,6 +122,31 @@ _FORBIDDEN_NAMES = frozenset(
     }
 )
 
+#: Attributes that lead from a generator, coroutine, async generator or traceback to a frame, and
+#: from a frame to its caller's globals and builtins (REQ-2133 amended 2026-11-16). Refusing them
+#: is a first refusal, not the boundary: on a server of many organizations the boundary is the
+#: code source's sandbox.
+_FORBIDDEN_ATTRIBUTES = frozenset(
+    {
+        "gi_frame",
+        "gi_code",
+        "gi_yieldfrom",
+        "cr_frame",
+        "cr_code",
+        "cr_await",
+        "ag_frame",
+        "ag_code",
+        "ag_await",
+        "f_back",
+        "f_globals",
+        "f_locals",
+        "f_builtins",
+        "f_code",
+        "tb_frame",
+        "tb_next",
+    }
+)
+
 REQUIRED_FUNC = "preflight"
 
 #: The one module a preflight may import (REQ-957, REQ-1165 amended 2026-10-21): Provisa's services,
@@ -129,6 +154,10 @@ REQUIRED_FUNC = "preflight"
 #: an SQL probe, and is excluded from replay determinism (REQ-964): its verdict is the state its
 #: service calls find at refresh time.
 SERVICES_MODULE = "provisa_services"
+
+
+def _is_dunder(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__")
 
 
 class PreprocessValidationError(ValueError):
@@ -159,8 +188,19 @@ class _PurityVisitor(ast.NodeVisitor):
     def visit_Attribute(self, node: ast.Attribute) -> None:
         # Dunder attribute access (__globals__, __class__, __subclasses__, …) is the
         # classic sandbox-escape vector — reject it wholesale.
-        if node.attr.startswith("__") and node.attr.endswith("__"):
+        if _is_dunder(node.attr):
             self.errors.append(f"dunder attribute access is not allowed: {node.attr!r}")
+        if node.attr in _FORBIDDEN_ATTRIBUTES:
+            self.errors.append(
+                f"frame and traceback attribute access is not allowed: {node.attr!r}"
+            )
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        # ``x["__builtins__"]``: the same reach as a dunder attribute, through a mapping.
+        key = node.slice
+        if isinstance(key, ast.Constant) and isinstance(key.value, str) and _is_dunder(key.value):
+            self.errors.append(f"a subscript naming a dunder is not allowed: {key.value!r}")
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
@@ -173,7 +213,8 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
     """Return (pure, reason). ``reason`` is empty when the hook is safe + deterministic.
 
     Fail-closed: unparseable source, a missing ``preflight(streams, ctx)`` definition,
-    any import, any forbidden name, or any dunder attribute access is rejected.
+    any import, any forbidden name, any dunder attribute access, any frame, generator, coroutine
+    or traceback attribute, or a string subscript naming a dunder is rejected.
     """
     try:
         tree = ast.parse(source)
