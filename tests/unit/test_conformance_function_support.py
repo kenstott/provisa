@@ -3516,3 +3516,155 @@ def test_the_internal_types_are_named_in_one_place():
         assert support.internal_types_own(fn), fn.signature
     for fn, _text in GAPS:
         assert not support.internal_types_own(fn), fn.signature
+
+
+# --- the validator's refusal of a function that reads or acts on its server (REQ-001, V007) -----
+
+from provisa.compiler.sql_validator import GovernanceRefused  # noqa: E402
+from provisa.transpiler import server_functions  # noqa: E402
+
+
+def _refused_as_a_client_reads_it(sql: str) -> str:
+    """The validator's own refusal of ``sql``, as pgwire sends it: its wording is read from the
+    rule, so the measure's pattern fails here when the rule's wording moves."""
+    import sqlglot
+
+    from provisa.compiler.sql_validator import _check_server_functions  # noqa: PLC2701
+
+    violations = _check_server_functions(sqlglot.parse_one(sql, read="postgres"))
+    assert violations, sql
+    return f"ERROR:  {GovernanceRefused(violations)}"
+
+
+def _not_served(name: str) -> str:
+    return _refused_as_a_client_reads_it(f'SELECT pg_catalog."{name}"(NULL) AS v FROM s.t')
+
+
+TS_STAT = Function(
+    "ts_stat",
+    "query text, OUT word text, OUT ndoc integer, OUT nentry integer",
+    argtypes=("text",),
+    volatility="v",
+    rettype="record",
+)
+TS_STAT_WEIGHTS = Function(
+    "ts_stat",
+    "query text, weights text, OUT word text, OUT ndoc integer, OUT nentry integer",
+    argtypes=("text", "text"),
+    volatility="v",
+    rettype="record",
+)
+TS_REWRITE_TEXT = _named("ts_rewrite", ("tsquery", "text"), "tsquery")
+TS_REWRITE = _named("ts_rewrite", ("tsquery", "tsquery", "tsquery"), "tsquery", "i")
+#: The overloads SEC-H7 reports the validator now refuses where the measure calls them.
+NOW_REFUSED = [TS_STAT, TS_STAT_WEIGHTS, TS_REWRITE_TEXT, TS_REWRITE]
+ENGINES = ("pg", "duckdb", "clickhouse", "trino")
+
+
+def _refused_everywhere(fn: Function, family: str, error: str, engine: str) -> dict[str, Any]:
+    """``fn`` on ``engine`` where PostgreSQL answers every call and Provisa refuses each alike."""
+    pg = Fake({c.sql: _ok("x", oid=25) for c in support.calls(fn, family)})
+    refusing = Refusing({}, sqlstate="42501", error=error)
+    return support.measure_overload(fn, family, pg, refusing, _route, engine=engine)
+
+
+def test_the_validators_refusal_is_no_refusal_by_name_and_is_this_decision():
+    said = _not_served("ts_stat")
+    assert said == (
+        "ERROR:  [V007] Function 'ts_stat' is not served: it reads or acts on its server, "
+        "outside the tables a statement is governed by"
+    )
+    assert not refused_by_name(said)  # it is no work to do, so it is not counted as one
+    assert support.decided_error("ts_stat", said) == support.SERVER_FUNCTION_GROUP
+    assert support.GROUPS[support.SERVER_FUNCTION_GROUP]
+    assert support.GROUP_REQUIREMENTS[support.SERVER_FUNCTION_GROUP] == "REQ-001"
+
+
+def test_the_measure_reads_the_validators_own_list():
+    always = server_functions.RUNS_SQL_AS_TEXT | server_functions.ACTS_ON_THE_SERVER
+    from provisa.transpiler.xml_syntax import MAPPINGS
+
+    listed = [
+        *sorted(always - set(MAPPINGS)),  # an XML mapping is refused by its own rule
+        *sorted(server_functions.READS_THE_SERVER - always),  # refused where a table is named
+        *(f"{prefix}x" for prefix in server_functions.ACTING_PREFIXES),
+    ]
+    assert len(listed) > 100
+    for name in listed:
+        assert support.not_served(name, _not_served(name)), name
+
+
+def test_a_refusal_of_a_function_off_the_list_or_of_another_function_is_no_decision():
+    wording = "is not served: it reads or acts on its server, outside the tables"
+    # The wording alone decides nothing: the function must be on the validator's list.
+    assert support.decided_error("abs", f"ERROR:  [V007] Function 'abs' {wording}") is None
+    # A call of abs refused for a listed function in its arguments is about that function.
+    assert support.decided_error("abs", _not_served("pg_read_file")) is None
+    assert support.decided_error("ts_stat", _not_served("pg_read_file")) is None
+    # The product's own functions are refused in other words, and none is PostgreSQL's.
+    own = _refused_as_a_client_reads_it("SELECT provisa_digest('a') AS v")
+    assert "it is the product's own" in own
+    assert support.decided_error("provisa_digest", own) is None
+    # Another rule's refusal is not this decision.
+    assert (
+        support.decided_error("ts_stat", "ERROR:  [V006] Relation 'x' is not a registered table")
+        is None
+    )
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+@pytest.mark.parametrize("fn", NOW_REFUSED, ids=lambda fn: fn.signature)
+def test_an_overload_the_validator_refuses_is_by_design_on_every_engine(fn, engine):
+    entry = _refused_everywhere(fn, "Text search", _not_served(fn.name), engine)
+    assert entry["outcome"] == "by_design", entry
+    assert entry["group"] == support.SERVER_FUNCTION_GROUP
+    assert entry["requirement"] == "REQ-001"
+    assert entry["detail"] == support.GROUPS[support.SERVER_FUNCTION_GROUP]
+    assert report.verdict(entry) == "skipped_by_design"
+    kept = support._outcome(entry)  # noqa: SLF001 - the data file's own shape
+    assert report.result_counts([kept])["refused_by_name"] == 0
+    assert support.by_design_groups([entry])[support.SERVER_FUNCTION_GROUP]
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_a_side_effect_function_the_validator_refuses_is_in_the_same_group_on_every_engine(engine):
+    """Off the PostgreSQL engine a side-effect function is skipped as one; refused by the
+    validator, it is refused on every engine alike, and says so on each."""
+    entry = _refused_everywhere(LO_CREATE, "Large object", _not_served("lo_create"), engine)
+    assert entry["outcome"] == "by_design" and entry["group"] == support.SERVER_FUNCTION_GROUP
+
+
+@pytest.mark.parametrize("engine", ENGINES)
+def test_an_ordinary_refusal_by_name_is_counted_as_before(engine):
+    by_name = f"ERROR:  ts_stat() has no form on {engine}"
+    assert refused_by_name(by_name)
+    for fn in (TS_STAT, ABS):
+        entry = _refused_everywhere(fn, "Text search", by_name, engine)
+        assert entry["outcome"] == "refused", entry
+        assert "group" not in entry
+        assert report.verdict(entry) == "failed"
+        kept = support._outcome(entry)  # noqa: SLF001 - the data file's own shape
+        assert report.result_counts([kept])["refused_by_name"] == 1
+
+
+def test_an_engines_error_of_a_listed_function_is_still_an_error():
+    entry = _refused_everywhere(TS_STAT, "Text search", "ERROR:  syntax error at or near", "pg")
+    assert entry["outcome"] == "error"
+
+
+def test_a_call_refused_for_another_function_is_an_error_not_this_decision():
+    entry = _refused_everywhere(ABS, "Numeric", _not_served("pg_read_file"), "duckdb")
+    assert entry["outcome"] == "error"
+
+
+def test_a_column_call_the_validator_refuses_is_by_design_beside_the_overloads_outcome():
+    """pg_column_compression answers with no table, where the statement is the engine's, and is
+    refused over a governed table."""
+    fn = _named("pg_column_compression", ('"any"',), "text", "s")
+    first = support.column_calls(fn, "System")[0].sql
+    pg = Fake({first: _ok(None, oid=25)})
+    refusing = Refusing({}, sqlstate="42501", error=_not_served(fn.name))
+    assert support.measure_column(fn, "System", pg, refusing) == {
+        "outcome": "by_design",
+        "group": support.SERVER_FUNCTION_GROUP,
+    }
