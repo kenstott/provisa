@@ -215,16 +215,37 @@ class Grid:
             for name in _called(notation.pattern(rule.pattern))
         )
 
-    @property
-    def mentions(self) -> tuple[str, ...]:
-        """What a statement a rule of no pattern may rewrite holds, where it names no function."""
+    def names_on(self, dialect: str) -> frozenset[str]:
+        """The names of the functions the read rules' patterns call that a rule writes on
+        ``dialect``: a form of its column, or, on a dialect with no column, every rule but one that
+        keeps the dialect's own (Rule.unlisted_keep). A rule with no form of a dialect's column
+        leaves the engine's own call there."""
+        column = column_of(dialect)
+        return frozenset(
+            name
+            for feature in self.features
+            for rule in feature.read.rules
+            if rule.pattern is not None
+            and (
+                rule.forms.get(column) is not None if column is not None else not rule.unlisted_keep
+            )
+            for name in _called(notation.pattern(rule.pattern))
+        )
+
+    def mentions_on(self, dialect: str) -> tuple[str, ...]:
+        """What a statement a rule of no pattern may rewrite on ``dialect`` holds, where it names no
+        function: the mentions of the rewrites in the dialect's column, or of every rewrite on a
+        dialect with no column. A rewrite of another column leaves the statement as it is here."""
+        column = column_of(dialect)
         return tuple(
             sorted(
                 {
                     form.mentions
-                    for _, rule in self._rewrites
-                    for form in rule.forms.values()
-                    if isinstance(form, Rewrite) and form.mentions
+                    for _, rule in (*self._first, *self._rewrites)
+                    for of, form in rule.forms.items()
+                    if isinstance(form, Rewrite)
+                    and form.mentions
+                    and (column is None or of == column)
                 }
             )
         )

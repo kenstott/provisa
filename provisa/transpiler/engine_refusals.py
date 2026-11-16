@@ -196,8 +196,8 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "length": _BYTES,
         "translate": _ANY,
         "concat_ws": _NUMBERS,
-        # A time of day beside a date: toTime64 is no function of the server replayed, only of the
-        # embedded engine, so these would reach it to fail.
+        # A time of day where no grid row reads the call (polyfill.clocks holds a time as its
+        # microseconds; a row answers a date and a time, and overlaps of times it reads).
         "datetime_pl": _TIME,
         "timedate_pl": _TIME,
         "timestamp": _TIME,

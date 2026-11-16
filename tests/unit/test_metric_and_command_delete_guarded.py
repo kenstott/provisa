@@ -137,11 +137,16 @@ async def test_a_metric_nothing_uses_is_retired(plane):
     assert await _names(plane, metrics) == {"revenue", "margin", "unused"}
 
 
-async def test_a_declared_set_of_metrics_is_removed_without_the_guard(plane):
+async def test_a_declared_set_of_metrics_is_retired_without_the_guard(plane):
+    """REQ-2248 (amended 2026-11-15): metric removal retires; every row is kept."""
     await _view(plane, "margins", view_sql="SELECT m.total FROM metrics.margin m")
     async with plane.acquire() as conn:
-        await metric_repo.remove_where(conn, metrics.c.name.not_in(["revenue"]))
-    assert await _names(plane, metrics) == {"revenue"}
+        await metric_repo.retire_where(conn, metrics.c.name.not_in(["revenue"]))
+        retired = {
+            r.name: r.retired
+            for r in (await conn.execute_core(select(metrics.c.name, metrics.c.retired))).fetchall()
+        }
+    assert retired == {"revenue": False, "margin": True, "unused": True}
 
 
 async def test_the_mutation_refuses_with_the_list(plane, monkeypatch):

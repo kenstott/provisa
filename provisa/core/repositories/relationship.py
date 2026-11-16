@@ -13,6 +13,7 @@
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
 from provisa.core import model_change, model_uri
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
@@ -37,10 +38,42 @@ class TableNotRegistered(ValueError):
         self.table_name = table_name
 
 
+class ReservedRelationshipPrefix(ValueError):
+    """A relationship id carries a prefix reserved for Provisa's built-in relationships. The
+    startup seed removes built-in rows it no longer declares, recognising them by that prefix, so
+    a relationship a person saved under one would be removed at the next boot."""
+
+    def __init__(self, rel_id: str, prefix: str) -> None:
+        self.rel_id = rel_id
+        self.prefix = prefix
+        super().__init__(
+            f"relationship id {rel_id!r} starts with {prefix!r}, a prefix reserved for "
+            "built-in relationships"
+        )
+
+
+def reserved_prefix_of(rel_id: str) -> str | None:
+    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the one
+    definition in core that the seed's removal of undeclared rows uses too."""
+    return next((p for p in BUILTIN_RELATIONSHIP_ID_PREFIXES if rel_id.startswith(p)), None)
+
+
 async def upsert(
-    conn: "Connection", rel: Relationship
-) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
-    """Upsert a relationship. Resolves table names to registered_tables IDs."""
+    conn: "Connection", rel: Relationship, *, derive_target_key: bool = True
+) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-413, REQ-1919
+    """Upsert a relationship. Resolves table names to registered_tables IDs.
+
+    The source column is marked a foreign key. ``derive_target_key`` also marks a many-to-one or
+    one-to-one target column the target's primary key (or an alternate key where the table has
+    another): an accepted discovery suggestion passes False, marking the foreign key alone
+    (REQ-413: no column is marked a key from a sample or an accepted suggestion).
+
+    Refuses (:class:`ReservedRelationshipPrefix`) an id with a built-in prefix: the seed writes
+    its own relationships directly (``startup_seed._seed_meta_relationships``) and is the only
+    writer of those ids; every caller of this function is not the seed."""
+    prefix = reserved_prefix_of(rel.id)
+    if prefix is not None:
+        raise ReservedRelationshipPrefix(rel.id, prefix)
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise TableNotRegistered("Source", rel.source_table_id)
@@ -184,7 +217,8 @@ async def upsert(
     from provisa.core.models import Cardinality
 
     if (
-        target_tbl_id
+        derive_target_key
+        and target_tbl_id
         and rel.target_column
         and rel.cardinality
         in (
@@ -269,7 +303,9 @@ async def _provided_elsewhere(
 
 
 async def _remove(conn: "Connection", rel_ids: list[str]) -> None:
-    """Remove offered relationships a declared one is, with their parts (their tag assignments)."""
+    """Remove offered relationships a declared one is, with their parts (their tag assignments).
+    REQ-2248 (amended 2026-11-15): de-duplication may remove a true duplicate; it is not a
+    person's object."""
     for rel_id in rel_ids:
         await remove_parts(conn, ObjectRef("relationship", rel_id))
         await remove_where(conn, relationships.c.id == rel_id)
@@ -396,9 +432,11 @@ async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
 
 
 async def remove_where(conn: "Connection", *where) -> None:
-    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the
-    config loader, which declares relationships as a set and replaces that set. It is not a
-    deletion of one object and does not ask the dependency guard."""
+    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the two
+    callers REQ-2248 (amended 2026-11-15) allows a removal: de-duplication removing a true
+    duplicate (:func:`_remove`) and the startup seed removing a built-in relationship it no
+    longer declares. Any other relationship is retired (:func:`delete`). It does not ask the
+    dependency guard."""
     await conn.execute_core(_delete(relationships).where(*where))
 
 

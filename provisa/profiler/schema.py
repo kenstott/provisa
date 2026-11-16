@@ -134,6 +134,19 @@ _KINDS: dict[str, tuple[tuple[str, str, str], ...]] = {
         ("zero_share", "double", "Share of non-null values equal to zero."),
         ("length_min", "bigint", "Shortest text length."),
         ("length_max", "bigint", "Longest text length."),
+        (  # REQ-2147
+            "classification",
+            "varchar",
+            "matched | no_kind | too_few_values -- what the classification sample said of the "
+            "column: it matched a kind, it matched none, or it held too few non-null values to "
+            "classify. Empty where no kind tests the column's family.",
+        ),
+        (
+            "classification_values",
+            "bigint",
+            "Non-null values of the column the classification sample held. Empty where no kind "
+            "tests the column's family.",
+        ),
     ),
     "quantiles": (
         ("column_name", "varchar", "The profiled column."),

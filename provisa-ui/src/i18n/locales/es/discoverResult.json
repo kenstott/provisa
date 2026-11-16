@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "Claves foráneas: {{count}} encontrada.",
-    "foreignKeys_other": "Claves foráneas: {{count}} encontradas.",
+    "foreignKeys": "Claves foráneas: {{found}} encontradas, {{count}} sugerida.",
+    "foreignKeys_other": "Claves foráneas: {{found}} encontradas, {{count}} sugeridas.",
     "semanticsFound": "Semántica: {{count}} sugerencia.",
     "semanticsFound_other": "Semántica: {{count}} sugerencias.",
     "semanticsUnreadable": "Semántica: ninguna. No se pudo leer la respuesta del modelo.",
     "semanticsNoneProposed": "Semántica: ninguna. El modelo no propuso ninguna relación.",
-    "semanticsFiltered": "Semántica: no se conservó la {{count}} relación que propuso el modelo: {{why}}.",
-    "semanticsFiltered_other": "Semántica: no se conservó ninguna de las {{count}} relaciones que propuso el modelo: {{why}}.",
-    "belowThreshold": "{{count}} quedó por debajo del umbral de confianza del {{threshold}} %",
-    "belowThreshold_other": "{{count}} quedaron por debajo del umbral de confianza del {{threshold}} %",
-    "alreadyKnown": "{{count}} ya estaba rechazada o ya existía",
-    "alreadyKnown_other": "{{count}} ya estaban rechazadas o ya existían",
-    "invalid": "{{count}} nombraba una tabla o columna que no existe",
-    "invalid_other": "{{count}} nombraban tablas o columnas que no existen",
-    "semanticsCutShort": "Semántica: ninguna. La respuesta del modelo se detuvo en su límite de longitud antes de terminar una sugerencia.",
-    "cutShortNote": "La respuesta del modelo se detuvo en su límite de longitud, así que solo se leyeron las sugerencias que terminó."
+    "semanticsBelowThreshold": "Semántica: ninguna. Todas las sugerencias quedaron por debajo del umbral de confianza del {{threshold}} %.",
+    "semanticsFiltered": "Semántica: ninguna. Todas las sugerencias se omitieron, por los motivos indicados abajo.",
+    "split": "{{count}} solicitud se dividió por la mitad y se volvió a enviar.",
+    "split_other": "{{count}} solicitudes se dividieron por la mitad y se volvieron a enviar.",
+    "cutShort": "{{count}} respuesta se detuvo en su límite de longitud; se conservan las sugerencias que completó.",
+    "cutShort_other": "{{count}} respuestas se detuvieron en su límite de longitud; se conservan las sugerencias que completaron.",
+    "failedRequest": "Falló una solicitud para columnas de tipo {{group}}: {{error}}",
+    "leftOut": "Omitidas: {{list}}.",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "por debajo del umbral de confianza del {{threshold}} %",
+      "invalid": "nombran una tabla o columna que no existe",
+      "same_column": "de una columna a sí misma",
+      "primary_key_to_primary_key": "clave primaria a clave primaria",
+      "both_repeating": "valores repetidos en ambos lados",
+      "existing": "ya registradas",
+      "pending": "ya pendientes",
+      "rejected": "rechazadas antes",
+      "matches_foreign_key": "coinciden con una clave foránea encontrada en esta ejecución",
+      "out_of_scope": "fuera de las tablas elegidas"
+    }
   }
 }

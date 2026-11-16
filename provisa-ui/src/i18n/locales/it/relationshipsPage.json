@@ -7,7 +7,7 @@
     "addRelationship": "+ Relazione",
     "sqlModelingTool": "Strumento di modellazione SQL",
     "viewErd": "Visualizza ERD",
-    "discovering": "Individuazione in corso...",
+    "discovering": "L'individuazione è in corso. Aprila per vederne l'avanzamento.",
     "suggestWithAi": "Suggerisci con AI",
     "clearRejections": "Cancella rifiuti",
     "clearedRejections": "Cancellato {{count}} rifiuto.",

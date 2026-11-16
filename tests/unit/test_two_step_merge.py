@@ -336,3 +336,104 @@ def test_a_column_the_role_is_not_served_never_reaches_the_merge(pg):
     # column the rows read do not have, and the target refuses the statement.
     with pytest.raises(Refused, match="secret"):
         _replace(pg, _RAW.replace("SET org = m.org", "SET org = m.secret"))
+
+
+# --- a MERGE sent whole carries its BY SOURCE DELETE too (REQ-2001, amended 2026-11-14) ---------
+
+_STAGED = {
+    **_TABLES,
+    "er.staged": [
+        {"id": 1, "org": "acme"},
+        {"id": 2, "org": "globex"},
+        {"id": 3, "org": "initech"},
+    ],
+}
+_WHENS = (
+    "WHEN MATCHED THEN UPDATE SET org = s.org "
+    "WHEN NOT MATCHED THEN INSERT (id, org) VALUES (s.id, s.org) "
+    "WHEN NOT MATCHED BY SOURCE THEN DELETE"
+)
+_PG = SimpleNamespace(source_dialects={"er-pg": "postgres"})
+
+
+def _whole_gov():
+    gov = _gov()
+    gov.table_map = {**gov.table_map, "er.staged": 3}
+    gov.all_columns = {**gov.all_columns, 3: [("id", "bigint"), ("org", "text")]}
+    return gov
+
+
+def _sent(raw: str, state=_PG):
+    """``raw`` governed, then as route_governed sends it whole to its target's source."""
+    from provisa.compiler.stage2 import apply_governance
+
+    governed = _governed(apply_governance(raw, _whole_gov()), table_ids=(1, 3))
+    return governed, _pipeline._carried_merge(governed, 1, state)
+
+
+def test_on_postgresql_16_a_same_source_merge_updates_inserts_and_deletes_in_one_statement(pg):
+    _governed_merge, sent = _sent(
+        f"MERGE INTO er.bridge AS t USING er.staged AS s ON t.id = s.id {_WHENS}"
+    )
+    assert "NOT MATCHED BY SOURCE" not in sent.governed_semantic
+    written = pg.written(sent.governed_semantic, _STAGED)
+    assert written.after["er.bridge"] == [(1, "acme"), (2, "globex"), (3, "initech")]
+    assert written.count == 4  # two updated, one inserted, one deleted
+
+
+def test_on_postgresql_16_a_merge_over_rows_a_command_answered_deletes_in_one_statement(pg):
+    # A code command in the USING is run first and stands there as the VALUES list of its rows.
+    raw = (
+        "MERGE INTO er.bridge AS t USING (SELECT * FROM (VALUES (1, 'acme'), (3, 'initech')) "
+        f"AS v(id, org)) AS s ON t.id = s.id {_WHENS}"
+    )
+    governed, sent = _sent(raw)
+    assert _pipeline._two_step_write(governed, 1, None) is None  # its USING is rows already
+    written = pg.written(sent.governed_semantic, _STAGED)
+    assert written.after["er.bridge"] == [(1, "acme"), (3, "initech")]
+    assert written.count == 4  # one updated, one inserted, two deleted
+
+
+def test_a_by_source_condition_is_carried_when_the_merge_is_sent_whole(pg):
+    raw = f"MERGE INTO er.bridge AS t USING er.staged AS s ON t.id = s.id {_WHENS}".replace(
+        "BY SOURCE THEN", "BY SOURCE AND 1 = 0 THEN"
+    )
+    _governed_merge, sent = _sent(raw)
+    written = pg.written(sent.governed_semantic, _STAGED)
+    assert written.after["er.bridge"] == [(1, "acme"), (2, "globex"), (3, "initech"), (9, "stale")]
+
+
+def test_a_merge_without_a_by_source_clause_is_sent_as_before():
+    raw = f"MERGE INTO er.bridge AS t USING er.staged AS s ON t.id = s.id {_WHENS}".replace(
+        " WHEN NOT MATCHED BY SOURCE THEN DELETE", ""
+    )
+    governed, sent = _sent(raw)
+    assert sent is governed
+    assert sent.governed_semantic == governed.governed_semantic
+
+
+def test_a_merge_into_a_target_that_is_not_postgresql_keeps_its_by_source_clause():
+    governed, sent = _sent(
+        f"MERGE INTO er.bridge AS t USING er.staged AS s ON t.id = s.id {_WHENS}",
+        SimpleNamespace(source_dialects={"er-pg": "tsql"}),
+    )
+    assert sent is governed and "NOT MATCHED BY SOURCE" in sent.governed_semantic
+
+
+@pytest.mark.parametrize(
+    ("clauses", "refused"),
+    [
+        (" WHEN NOT MATCHED BY SOURCE THEN UPDATE SET org = NULL", "not THEN UPDATE"),
+        (
+            " WHEN NOT MATCHED BY SOURCE AND 1 = 0 THEN DELETE"
+            " WHEN NOT MATCHED BY SOURCE THEN DELETE",
+            "it holds 2",
+        ),
+    ],
+)
+def test_a_by_source_clause_it_cannot_carry_is_refused_by_name_when_sent_whole(clauses, refused):
+    raw = f"MERGE INTO er.bridge AS t USING er.staged AS s ON t.id = s.id {_WHENS}".replace(
+        " WHEN NOT MATCHED BY SOURCE THEN DELETE", clauses
+    )
+    with pytest.raises(ValueError, match=refused):
+        _sent(raw)

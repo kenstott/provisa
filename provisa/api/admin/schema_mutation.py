@@ -73,6 +73,7 @@ from provisa.api.admin.types import (
     MetricInput,
     MutationResult,
     RelationshipInput,
+    CodeResolverInput,
     RLSRuleInput,
     WriteGrantInput,
     RoleInput,
@@ -265,6 +266,16 @@ async def _save_relationship_as_caller(
     _invalid = _cardinality_problem(input)
     if _invalid is not None:
         return _invalid
+    if not creating:
+        from provisa.api.admin.code_resolver import held_by_set
+        from provisa.core.repositories import relationship as _rel_repo
+
+        _pool_h = await _get_pool()
+        async with _pool_h.acquire() as _hconn:
+            _stored = await _rel_repo.get(cast("Connection", _hconn), input.id)
+        _held = held_by_set(_stored, "relationship", input.id)  # REQ-2249
+        if _held is not None:
+            return _held
     # REQ-1531: A RELATIONSHIP IS OWNED BY ITS SOURCE. The row is source -> target and the unique
     # constraint is (source_table_id, alias), so the edge hangs off the source side and the source's
     # domain is the one being changed. The target is referenced, not altered — its own RLS and
@@ -1336,6 +1347,13 @@ async def save_relationship(
             return refused.result
         except RetiredNameTaken as taken:  # REQ-2248
             return retired_name_result(taken)
+        except rel_repo.ReservedRelationshipPrefix as reserved:
+            return MutationResult(
+                success=False,
+                message=str(reserved),
+                code="schema.relationship_id_reserved",
+                params={"id": reserved.rel_id, "prefix": reserved.prefix},
+            )
         except (TagLossRefused, TermTagRefused) as refused:
             return _tag_move_refusal(refused)
         if needs_review:
@@ -4540,6 +4558,15 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         _field_refusal = await column_field_refusal(pool, input, columns)
         if _field_refusal is not None:
             return _field_refusal
+        from provisa.api.admin.code_resolver import held_by_set
+
+        async with pool.acquire() as _hconn:
+            _stored = await table_repo.get_by_name(
+                cast("Connection", _hconn), input.source_id, input.schema_name, input.table_name
+            )
+        _held = held_by_set(_stored, "table", input.table_name)  # REQ-2249
+        if _held is not None:
+            return _held
         # REQ-957/964: reject a non-deterministic / unsafe preprocess hook at registration.
         from provisa.mv.preprocess import validate_preprocess
 
@@ -5039,6 +5066,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": id},
                 )
+            from provisa.api.admin.code_resolver import held_by_set
+
+            _stored = await table_repo.get(cast("Connection", conn), id)
+            _held = held_by_set(_stored, "table", (_stored or {}).get("table_name", str(id)))
+            if _held is not None:  # REQ-2249
+                return _held
             try:
                 deleted = await table_repo.delete(cast("Connection", conn), id)
             except table_repo.TableDeleteRefused as refused:
@@ -5767,6 +5800,38 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         return await _save_relationship_as_caller(info, input, creating=False)
 
     @strawberry.mutation
+    async def create_code_resolver(  # REQ-2249
+        self, info: StrawberryInfo, input: CodeResolverInput
+    ) -> MutationResult:
+        """A code resolver set: its bridge view and its relationships, saved as one. Each object
+        is saved by its own kind's mutation, which asks its own rights too."""
+        require_capability(info, "create_relationship")
+        from provisa.api.admin import code_resolver
+
+        return await code_resolver.save(info, input, creating=True)
+
+    @strawberry.mutation
+    async def update_code_resolver(  # REQ-2249
+        self, info: StrawberryInfo, input: CodeResolverInput
+    ) -> MutationResult:
+        """A change to a code resolver set, made to its objects together."""
+        require_capability(info, "create_relationship")
+        from provisa.api.admin import code_resolver
+
+        return await code_resolver.save(info, input, creating=False)
+
+    @strawberry.mutation
+    async def retire_code_resolver(  # REQ-2249, REQ-2248
+        self, info: StrawberryInfo, id: str, reason: str | None = None
+    ) -> MutationResult:
+        """Retire a code resolver set: its bridge view and its relationships, together."""
+        require_capability(info, "create_relationship")
+        require_capability(info, "table_registration")
+        from provisa.api.admin import code_resolver
+
+        return await code_resolver.retire(info, id, reason)
+
+    @strawberry.mutation
     async def delete_relationship(
         self,
         info: StrawberryInfo,
@@ -5805,6 +5870,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             if domains is not None:
                 require_domains(info, domains)
             _conn = cast("Connection", conn)
+            from provisa.api.admin.code_resolver import held_by_set
+
+            _held = held_by_set(await rel_repo.get(_conn, id), "relationship", id)  # REQ-2249
+            if _held is not None:
+                return _held
             try:
                 async with _conn.transaction():
                     tags_before = await inherited_snapshot(_conn)
@@ -6264,6 +6334,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         registered_tables.c.table_name,
                         registered_tables.c.alias,
                         registered_tables.c.materialize,
+                        registered_tables.c.code_resolver,
                     ).where(registered_tables.c.id == table_id)
                 )
             ).fetchone()
@@ -6274,6 +6345,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="schema.table_not_found",
                     params={"table": table_id},
                 )
+            from provisa.api.admin.code_resolver import held_by_set
+
+            _held = held_by_set(dict(row._mapping), "table", row.table_name)  # REQ-2249
+            if _held is not None:
+                return _held
             require_capability(info, "table_registration", domain_id=row.domain_id)
             _unread = await _table_unread(info, table_id)  # REQ-2152
             if _unread is not None:

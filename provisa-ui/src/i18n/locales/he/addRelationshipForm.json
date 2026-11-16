@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "ערך סוג הקשר",
     "viaLabelSourceTable": "שם הטבלה",
     "viaLabelSourceFixed": "כינוי Cypher",
-    "cardinalityOneToOne": "אחד-לאחד"
+    "cardinalityOneToOne": "אחד-לאחד",
+    "targetTypeResolver": "מפענח קוד",
+    "resolverLabel": "מפענח",
+    "resolverHelp": "שאילתה של מקור קוד שמקבלת את טבלת המקור ואת טבלת היעד ומחזירה שורה אחת לכל התאמה.",
+    "resolverNone": "אין שאילתה של מקור קוד שמקבלת שתי טבלאות",
+    "sourceMatchLabel": "עמודת התאמה שמחזיקה את מפתח המקור",
+    "targetMatchLabel": "עמודת התאמה שמחזיקה את מפתח היעד"
   }
 }

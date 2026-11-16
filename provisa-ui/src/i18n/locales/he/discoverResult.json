@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "מפתחות זרים: נמצא {{count}}.",
-    "foreignKeys_other": "מפתחות זרים: נמצאו {{count}}.",
+    "foreignKeys": "מפתחות זרים: {{found}} נמצאו, {{count}} הוצע.",
+    "foreignKeys_other": "מפתחות זרים: {{found}} נמצאו, {{count}} הוצעו.",
     "semanticsFound": "סמנטיקה: הצעה {{count}}.",
     "semanticsFound_other": "סמנטיקה: {{count}} הצעות.",
     "semanticsUnreadable": "סמנטיקה: אין. לא ניתן היה לקרוא את תשובת המודל.",
     "semanticsNoneProposed": "סמנטיקה: אין. המודל לא הציע קשרים.",
-    "semanticsFiltered": "סמנטיקה: הקשר {{count}} שהמודל הציע לא נשמר: {{why}}.",
-    "semanticsFiltered_other": "סמנטיקה: אף אחד מ-{{count}} הקשרים שהמודל הציע לא נשמר: {{why}}.",
-    "belowThreshold": "{{count}} היה מתחת לסף הביטחון של {{threshold}}%",
-    "belowThreshold_other": "{{count}} היו מתחת לסף הביטחון של {{threshold}}%",
-    "alreadyKnown": "{{count}} כבר נדחה או כבר קיים",
-    "alreadyKnown_other": "{{count}} כבר נדחו או כבר קיימים",
-    "invalid": "{{count}} ציין טבלה או עמודה שאינה קיימת",
-    "invalid_other": "{{count}} ציינו טבלאות או עמודות שאינן קיימות",
-    "semanticsCutShort": "סמנטיקה: אין. תשובת המודל נעצרה במגבלת האורך שלה לפני שהשלימה הצעה.",
-    "cutShortNote": "תשובת המודל נעצרה במגבלת האורך שלה, ולכן נקראו רק ההצעות שהושלמו."
+    "semanticsBelowThreshold": "סמנטיקה: אין. כל הצעה הייתה מתחת לסף הביטחון של {{threshold}}%.",
+    "semanticsFiltered": "סמנטיקה: אין. כל הצעה הושמטה, מהסיבות שלהלן.",
+    "split": "בקשה {{count}} פוצלה לשניים ונשלחה שוב.",
+    "split_other": "{{count}} בקשות פוצלו לשניים ונשלחו שוב.",
+    "cutShort": "תשובה {{count}} נעצרה במגבלת האורך שלה; ההצעות שהושלמו בה נשמרות.",
+    "cutShort_other": "{{count}} תשובות נעצרו במגבלת האורך שלהן; ההצעות שהושלמו בהן נשמרות.",
+    "failedRequest": "בקשה לעמודות מסוג {{group}} נכשלה: {{error}}",
+    "leftOut": "הושמטו: {{list}}.",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "מתחת לסף הביטחון של {{threshold}}%",
+      "invalid": "מציינות טבלה או עמודה שאינה קיימת",
+      "same_column": "מעמודה לעצמה",
+      "primary_key_to_primary_key": "ממפתח ראשי למפתח ראשי",
+      "both_repeating": "ערכים חוזרים בשני הצדדים",
+      "existing": "כבר רשומות",
+      "pending": "כבר ממתינות",
+      "rejected": "נדחו בעבר",
+      "matches_foreign_key": "תואמות מפתח זר שנמצא בהרצה זו",
+      "out_of_scope": "מחוץ לטבלאות שנבחרו"
+    }
   }
 }

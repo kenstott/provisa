@@ -114,6 +114,7 @@ from provisa.api.admin.types import (
     RefreshPolicySummaryType,
     RegisteredTableType,
     RelationshipType,
+    CodeResolverType,
     RLSRuleType,
     RoleType,
     ScheduledTaskType,
@@ -1308,6 +1309,29 @@ class Query:  # REQ-021, REQ-042
             )
             rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
             return await _listed_relationships(conn, catalog_scope(info), rows)
+
+    @strawberry.field
+    async def code_resolvers(self, info: StrawberryInfo) -> list[CodeResolverType]:  # REQ-2249
+        """Every code resolver set in service whose two tables the caller is served."""
+        from provisa.api.admin import code_resolver
+        from provisa.api.admin.read_rights import served_columns_of
+        from provisa.core.repositories import table as table_repo
+
+        scope = catalog_scope(info)
+        pool = await _get_pool()
+        async with pool.acquire() as raw:
+            conn = cast("Connection", raw)
+            out: list[CodeResolverType] = []
+            for found in await code_resolver.listed(conn):
+                served = True
+                for name in (found["source_table"], found["target_table"]):
+                    row = await table_repo.find_by_table_name(conn, name)
+                    assert row is not None  # read back from the set's own relationships
+                    columns = await served_columns_of(conn, scope, row["id"])
+                    served = served and (columns is None or bool(columns))
+                if served:
+                    out.append(CodeResolverType(**found))
+            return out
 
     @strawberry.field
     async def all_relationships(

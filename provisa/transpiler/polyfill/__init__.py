@@ -25,6 +25,7 @@ from provisa.transpiler.polyfill import (
     calls,
     casts,
     clickhouse,
+    clocks,
     collations,
     dates,
     geometric,
@@ -81,6 +82,7 @@ GRID = Grid(
     + ranges.FEATURES
     + json_values.FEATURES
     + clickhouse.FEATURES
+    + clocks.FEATURES
     + aggregates.FEATURES
     + snapshots.FEATURES
     # intervals' isfinite row is read before instants' (its call of no interval is that row's).

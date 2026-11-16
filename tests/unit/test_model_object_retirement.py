@@ -29,10 +29,13 @@ from provisa.core.database import Database
 from provisa.core.env_merge import merged_tree
 from provisa.core.env_project import project
 from provisa.core.models import Cardinality, Column, Metric, Relationship, Table, Tag
+from provisa.core.repositories import domain as domain_repo
 from provisa.core.repositories import metric as metric_repo
 from provisa.core.repositories import relationship as rel_repo
+from provisa.core.repositories import source as source_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import tag as tag_repo
+from provisa.core.repositories.domain import DomainDeleteRefused
 from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.core.schema_org import (
     domains,
@@ -159,6 +162,56 @@ async def test_a_retired_tables_name_is_refused_to_a_second_registration(plane):
         assert (await _row(conn, registered_tables, registered_tables.c.table_name == "orders"))[
             "retired"
         ]
+
+
+async def _retired_in_own_domain(conn, *columns: str) -> int:
+    """A table in a domain and on a source of its own, nothing else in either, then deleted:
+    retired."""
+    await conn.execute_core(insert(domains).values(id="archive"))
+    await conn.execute_core(insert(sources).values(id="archive-pg", type="postgresql"))
+    table = _table("ledger", *columns).model_copy(
+        update={"domain_id": "archive", "source_id": "archive-pg"}
+    )
+    table_id = await table_repo.upsert(conn, table)
+    assert table_id is not None
+    assert await table_repo.delete(conn, table_id, reason=WHY) is True
+    return table_id
+
+
+async def _delete_holder(
+    conn, holder: str
+) -> DomainDeleteRefused | source_repo.SourceDeleteRefused:
+    """Delete the domain or the source holding the retired table; the refusal it raises."""
+    if holder == "domain":
+        with pytest.raises(DomainDeleteRefused) as refused:
+            await domain_repo.delete(conn, "archive")
+        assert await domain_repo.get(conn, "archive") is not None
+    else:
+        with pytest.raises(source_repo.SourceDeleteRefused) as refused:
+            await source_repo.delete(conn, "archive-pg")
+        assert await source_repo.get(conn, "archive-pg") is not None
+    return refused.value
+
+
+@pytest.mark.parametrize("holder", ["domain", "source"])
+@pytest.mark.parametrize("columns", [("id", "amount"), ()], ids=["with columns", "no columns"])
+async def test_a_domain_or_source_holding_only_a_retired_table_is_kept(plane, holder, columns):
+    """Maintainer 2026-11-15 (REQ-2248): a retired table still holds its domain and its source --
+    a domain has no retired state, and a domain that still holds a table, retired or not, is kept;
+    a source the same. The delete is refused naming the retired table, and nothing is removed:
+    the table and its columns are not cascaded away."""
+    async with model_change.scope("delete", actor=lambda: "ada"), plane.acquire() as conn:
+        ledger = await _retired_in_own_domain(conn, *columns)
+        refused = await _delete_holder(conn, holder)
+        assert refused.reason == "dependents"
+        assert [(d.ref.kind, d.ref.id, d.retired) for d in refused.dependents] == [
+            ("table", ledger, True)
+        ]
+        _assert_retired(await _row(conn, registered_tables, registered_tables.c.id == ledger))
+        kept = await conn.execute_core(
+            select(table_columns.c.column_name).where(table_columns.c.table_id == ledger)
+        )
+        assert sorted(r[0] for r in kept) == sorted(columns)
 
 
 async def test_a_retired_tables_file_carries_the_retirement(plane):
@@ -411,6 +464,29 @@ def test_a_domain_a_merge_removes_still_goes():
     """Only the kinds REQ-2248 names are retired; a domain is not one of them."""
     merged = _merge({}, {"finance/domain.yaml": {"description": "ledgers"}}, removals=True)
     assert "finance/domain.yaml" not in merged
+
+
+def test_a_domain_a_merge_removes_stays_while_a_table_it_retires_sits_in_it():
+    """The retired table keeps its row, and its row its domain: removing the domain under it would
+    leave the merged tree naming a domain it does not hold, and the merge would be refused whole."""
+    domain = {"description": "revenue"}
+    merged = _merge({}, {"sales/domain.yaml": domain, ORDERS: _order()}, removals=True)
+    assert merged["sales/domain.yaml"] == domain
+    assert merged[ORDERS]["retired"] is True
+
+
+def test_a_term_a_merge_removes_stays_while_a_table_it_retires_names_it():
+    term = "terms/order.yaml"
+    merged = _merge(
+        {},
+        {
+            "sales/domain.yaml": {"description": "revenue"},
+            term: {"name": "order"},
+            ORDERS: _order(glossary=[{"column_name": "id", "term": term}]),
+        },
+        removals=True,
+    )
+    assert merged[term] == {"name": "order"}
 
 
 @pytest.mark.parametrize("removals", [False, True])

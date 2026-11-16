@@ -47,6 +47,8 @@ export function CandidatesTable({
             title={t("candidatesTable.acceptAllTitle")}
             consequence={t("candidatesTable.acceptAllConsequence", { count })}
             confirmLabel={t("candidatesTable.acceptAll")}
+            // Accepting removes nothing: the confirmation's non-destructive form (REQ-413).
+            destructive={false}
             onConfirm={() =>
               onAcceptAll(
                 candidates.map((c) => ({ id: c.id, name: candidateName(c, tableNameById) })),

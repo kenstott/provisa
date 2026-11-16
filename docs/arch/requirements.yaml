@@ -66431,7 +66431,7 @@
   - admin-graphql.md
 - id: REQ-1786
   value: 'Adding a new source immediately discovers its tables, with no separate crawl step needed.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Data Discovery
@@ -78196,7 +78196,7 @@
     has no outbox enqueue and no provisa/email/ package exists.'
   superseded_by: REQ-1330
 - id: REQ-1022
-  status: proposed
+  status: in-progress
   group: 11. Platform, Infrastructure & Delivery
   category: Email Delivery
   feature: saas-operations-email
@@ -78219,6 +78219,15 @@
     the code: creation_requests_router.py has no email notification; mail.py/mail_router.py send only
     invites. Still wanted as a future transactional mail under REQ-1330. Maintainer 2026-10-03: unbuilt;
     prioritised by score.'
+  tests:
+  - tests/unit/test_request_queue.py
+  scenario: 'Given an org with admin approvers
+
+    When a creation or approval request is raised
+
+    Then the admin approvers for the org are notified by email with approve and deny links
+
+    And the mail is sent through the EmailSender port'
 - id: REQ-087
   status: complete
   group: 1. Access Governance & Security
@@ -80515,7 +80524,7 @@
 
     And with authentication on, an Arrow Flight catalog listing requires a credential and lists only the tables, columns and commands that caller''s roles may see'
 - id: REQ-1953
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Data Products
@@ -80546,6 +80555,23 @@
   - REQ-1443
   - REQ-1945
   notes: 'Maintainer 2026-10-08: we should automatically add profile results to a data product''s data quality panel; (later) we would only put published data profile results, which have security by definition. Lead''s first reading proposed a value-free summary shown automatically and value-level detail only when registered; the maintainer''s rule is simpler and replaces it: registered results only, governed as any table.'
+  scenario: 'Given a data product containing a table that is a member of a data profiler whose result tables are registered
+
+    When a viewer opens the product''s Data Quality panel
+
+    Then the panel lists the published profile results beside its checks, under a heading of their own
+
+    And each result is read as the viewer reads any governed table, so visibility, masks and row rules decide what the viewer sees
+
+    Given a profiler whose result tables are not registered
+
+    When a viewer opens the product''s Data Quality panel
+
+    Then no profile of that profiler appears
+
+    When the product is published
+
+    Then its published profile results are sent to a catalog that takes table and column profiles'
 - id: REQ-1954
   status: complete
   since: 2026-10
@@ -84069,7 +84095,7 @@
     enterprise SaaS, files, streaming, data residency, cybersecurity). Lead''s elaboration: the scenario, data and
     feature assignment in the description.'
 - id: REQ-2034
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: UI
@@ -85464,7 +85490,7 @@ And a user whose record says us cannot act as region__eu'
   - regions.md
   - security.md
 - id: REQ-2058
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
@@ -85492,7 +85518,7 @@ And acting as analyst,region__eu it is'
   - REQ-2059
   notes: 'Maintainer 2026-10-15: "yes to composites"; "meta-roles are a union, but in rights they become ANDs". Built as part of REQ-2035 (ui).'
 - id: REQ-2059
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 1. Access Governance & Security
   category: Security
@@ -88017,7 +88043,7 @@ Then the schema <catalog>.customer_360 holds both tables, its comment and tags c
   code:
   - provisa/api/metadata_export/unity_catalog.py
 - id: REQ-2118
-  status: proposed
+  status: in-progress
   since: 2026-10
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -88636,7 +88662,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - tests/unit/test_column_lineage_edges.py
   - tests/integration/test_data_product_edges_e2e.py
 - id: REQ-2130
-  status: proposed
+  status: complete
   since: 2026-10
   group: 10. UI & Admin Surfaces
   category: Glossary Admin
@@ -88732,9 +88758,20 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1591
   - REQ-1592
   target: "2026-Q4"
+  tests:
+  - provisa-ui/src/components/graph3d/__tests__/glossaryView.test.tsx
+  - provisa-ui/src/components/graph3d/__tests__/glossaryGraph.test.ts
+  - provisa-ui/src/components/graph3d/__tests__/ontologyDataLayout.test.ts
+  - provisa-ui/src/components/graph3d/__tests__/ontologyDataTables.test.ts
+  - provisa-ui/src/components/graph3d/__tests__/ontologyNoTable.test.ts
+  - provisa-ui/src/components/graph3d/__tests__/ontologyQuery.test.ts
+  - provisa-ui/src/components/graph3d/__tests__/ontologyQueryCorpus.test.ts
+  - provisa-ui/src/components/graph3d/__tests__/SummaryMultiSelect.test.tsx
+  - provisa-ui/src/components/admin/__tests__/TermReadViewLayout.test.tsx
+  - provisa-ui/src/__tests__/termGrounding.test.tsx
 - id: REQ-2131
   value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
-  status: proposed
+  status: complete
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -88806,6 +88843,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - REQ-1993
   - REQ-2105
   target: "2027-Q1"
+  tests:
+  - tests/unit/test_code_columns.py
+  - tests/unit/test_columns_stage.py
+  - tests/integration/test_code_columns_e2e.py
+  - tests/unit/test_column_transform_grants_folded.py
 - id: REQ-2132
   value: 'State the business meaning of each data quality check in plain language, not just its technical predicate.'
   status: complete
@@ -89589,7 +89631,13 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     word or in quotes, and text beginning with - in quotes, are searched as text. There is no + mark. The
     search field''s hint says so. (Amended 2026-11-12, AN EXCLUSION IS WRITTEN WITH _not:) Maintainer 2026-11-12:
     where the Ontology View''s query excludes items, it does so with _not (REQ-184), so a term that has
-    no definition is kept by a search that excludes a word.'
+    no definition is kept by a search that excludes a word. (Amended 2026-11-15, A SEARCHED VIEW READS A
+    HOP AT A TIME AND OPENS AS ONE QUERY:) Recorded 2026-11-15 from the landed behaviour. A searched or
+    focused Ontology View reads its root, then each hop''s terms by id, reading each term once; it does
+    not nest each hop under the last. Open as query opens one query: the root''s fields and each hop''s
+    terms by the ids that hop read. Run, it draws what the view drew. Open as query always hands over the
+    query of the search now shown; while that search is still being read the control waits. This supersedes
+    ''the query reads each hop as a nested level of the terms an edge reaches''.'
   use_case: >-
     An ontology of thousands of terms opens at once, and a search shows the terms it matches and
     what they touch, read by the server and exportable as the same query, rather than reading the
@@ -89928,7 +89976,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     '
 - id: REQ-2150
   value: 'See a glossary term''s related terms and column bindings as a small interactive graph in its detail view.'
-  status: proposed
+  status: in-progress
   target: "2027-Q1"
   group: 10. UI & Admin Surfaces
   category: Glossary Admin
@@ -89944,6 +89992,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     at full size. (Amended 2026-10-29, A TERM GRAPH REACHES THE GROUND:) Maintainer 2026-10-30: a term''s
     graph extends along its edges until each path is grounded, ending at the columns or tables that ground
     it, where that is possible. A path that does not ground ends where it ends.'
+  tests:
+  - provisa-ui/src/components/admin/__tests__/TermDag.test.tsx
 - id: REQ-2151
   status: complete
   tests:
@@ -90074,7 +90124,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And a query reading customer_id is refused while currency is served per its grants'
 - id: REQ-2154
-  status: proposed
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -90114,9 +90165,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When viewer is removed from claims.diagnosis
 
     Then only data_steward and roles it delegates to can read diagnosis'
+  tests:
+  - tests/integration/test_code_table_read_e2e.py
+  - tests/unit/test_table_save_atomic.py
+  - tests/unit/test_read_grant_kept.py
+  - tests/unit/pgwire/test_table_privilege_and_default.py
 - id: REQ-2155
   value: 'Start from built-in analyst, steward and operator roles and extend them, instead of building access from scratch.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Security
@@ -90303,7 +90359,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     And Related holds fulfilment''s check on orders'
 - id: REQ-2158
   value: 'Declare a versioned data contract per output port so consumers know exactly what they can rely on.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -90584,7 +90640,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     adding a parent never lifts (REQ-2155).'
 - id: REQ-2160
   value: 'A product''s owner sees health and expectations; a consumer sees the contract, SLA and latest check results.'
-  status: proposed
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -90622,6 +90679,11 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     When an analyst outside revenue_team opens revenue
 
     Then the panel shows Promises, access, support and lineage only'
+  tests:
+  - provisa-ui/src/pages/data-products/__tests__/DataProductDetailPanel.claims.test.tsx
+  - provisa-ui/src/pages/data-products/__tests__/DataProductDetailPanel.alwaysShown.test.tsx
+  - provisa-ui/src/pages/data-products/__tests__/ContractView.layout.test.tsx
+  - provisa-ui/src/pages/__tests__/data-products-lineage-scope.test.tsx
 - id: REQ-2161
   value: 'See a role''s effective rights—the composition of its scope, capabilities and grants—in one panel.'
   status: complete
@@ -90700,7 +90762,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     each'
 - id: REQ-2163
   value: 'Query your business glossary as a live SQL, GraphQL or Cypher table, with row-level governance applied.'
-  status: proposed
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -91344,7 +91407,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
 
     And a foreign key the source declares is offered as a relationship candidate'
 - id: REQ-2171
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Schema Registration
@@ -91630,7 +91693,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - named-demos.md
 - id: REQ-2173
   value: 'Cypher queries that work with dates, times and durations run on Provisa as written.'
-  status: proposed
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 5. Query Languages, Compilation & Operations
   category: Cypher Query Frontend (Phase AU)
@@ -91679,6 +91743,9 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then d is ''P30Y8M13D''
 
     And RETURN date({year: 1984, month: 10, day: 11}) + duration(''P1M'') AS d answers ''1984-11-11'''
+  tests:
+  - tests/unit/test_cypher_durations.py
+  - tests/unit/test_cypher_tck_temporal.py
 - id: REQ-2174
   status: in-progress
   target: 2026-Q4
@@ -91867,7 +91934,8 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa-ui/src/pages/tables/profile3d/__tests__/turnPause.test.tsx
   - provisa-ui/src/components/graph3d/__tests__/graphModel.test.ts
 - id: REQ-2175
-  status: proposed
+  status: complete
+  since: 2026-10
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Protocol Conformance
@@ -91896,6 +91964,17 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     Then the rows and the table list are those the role is served
 
     And the same query over pgwire answers the same rows'
+  tests:
+  - tests/unit/test_flightsql_statement.py
+  - tests/unit/test_flightsql_prepared.py
+  - tests/unit/test_flightsql_catalog.py
+  - tests/unit/test_flightsql_ingest.py
+  - tests/unit/test_flightsql_temp_ingest.py
+  - tests/unit/test_flightsql_session.py
+  - tests/unit/test_flightsql_sessions.py
+  - tests/unit/test_flightsql_proto_generated.py
+  - tests/unit/test_conformance_flightsql_scripts.py
+  - tests/integration/test_session_temp_tables.py
 - id: REQ-2176
   status: in-progress
   target: 2026-Q4
@@ -92314,7 +92393,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   stakeholders:
   - data-steward
 - id: REQ-2179
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -92369,7 +92448,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 - id: REQ-2180
   value: 'Requesting a data product is how a consumer asks for access to it.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -92792,7 +92871,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-steward
 - id: REQ-2185
   value: 'An org keeps a reference library of useful documents, and Polly, MCP and the ontology draw on it, citing what they use.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -92926,7 +93005,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2186
   value: A file source can read the lists on its HTML pages as tables, plain lists as one column and link
     lists with their addresses.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: File Sources
@@ -93134,7 +93213,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - data-engineer
 - id: REQ-2190
   value: Every metadata detail a PostgreSQL client sees comes from one place, the meta domain.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: JDBC/ODBC Integration
@@ -94054,7 +94133,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     address'
 - id: REQ-2208
   value: Every security choice can cite the policy clause it implements, and a changed clause becomes a review item.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Authorization
@@ -94558,7 +94637,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2215
   value: 'Provisa can resolve a role to the principals who hold it, whichever system owns role membership, so work
     addressed to a role reaches people.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 2. Authentication & Identity
   category: Identity
@@ -94589,7 +94668,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2216
   value: 'External workflow tools run Provisa''s workflows: Provisa emits each workflow moment as an event and accepts
     each decision through its API, and an org may turn its own email notices off.'
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 8. Client Access & Protocols
   category: Workflow
@@ -94655,6 +94735,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the tool receives a signed, versioned event naming the request, the role and its members, and no email is sent
 
     And when the tool approves it through the API as an authorised person, the request is approved once, even if the call is retried'
+  tests:
+  - tests/integration/test_ops_requests_e2e.py
+  - tests/unit/test_request_queue.py
+  - tests/unit/test_idempotency.py
 - id: REQ-2217
   value: 'Data access is built in a feature branch and promoted, and a production user who needs a column or a join
     asks for it, without anyone editing roles in production.'
@@ -94762,7 +94846,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2219
   value: 'Per-principal access is entitlement attributes on a coarse role: each role grant from the identity provider
     carries, per kind of object, a list of semantic SQL identifiers the person is entitled to.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Role Assignments
@@ -95048,7 +95132,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2221
   value: An organization publishes its own code connectors from its own repositories, and offers them
     as sources through its model, with no publishing step in Provisa.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -95181,7 +95265,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
 - id: REQ-2222
   value: The config is the change surface, and the CLI moves it, runs what are actions rather than state, and drives and explains a query in any language.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Command Line
@@ -95232,7 +95316,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2223
   value: A start refuses a virtual environment out of step with the lock file, and names the command that
     fixes it.
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Command Line
@@ -95251,10 +95336,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the start stops, the environment is unchanged, and the sync command is printed'
   stakeholders:
   - app-developer
+  tests:
+  - tests/unit/test_start_script_venv_in_step.py
 - id: REQ-2224
   value: 'A table can say what a read does when nothing has landed yet: wait up to a time of its own, or
     answer no rows.'
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 3. Source Registration & Data Modeling
   category: Table Registration
@@ -95274,10 +95362,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     read waits for the rows
   stakeholders:
   - data-engineer
+  tests:
+  - tests/unit/federation/test_residency_role_ttl.py
+  - provisa-ui/src/pages/tables/__tests__/ReadWaitField.test.tsx
+  - tests/unit/test_flight_server_helpers.py
 - id: REQ-2225
   value: Provisa offers a Spark connector whose tables and commands come from one annotated Spark script
     given at setup.
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -95353,7 +95445,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2226
   value: A code source's command can take a governed table as an argument, so a materialized view can
     be table inputs, code, and a table output.
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -95393,10 +95486,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And the view''s lineage runs from the input table through the command to its output columns'
   stakeholders:
   - data-engineer
+  tests:
+  - tests/integration/test_code_table_read_e2e.py
 - id: REQ-2227
   value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
     or Go code source.
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -95432,7 +95528,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2228
   value: 'A dbt project is a source type: its manifest offers its models as governed tables and commands,
     while dbt keeps building them.'
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 12. Migration & Compatibility (Hasura)
   category: Hasura Migration
@@ -95526,7 +95622,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2229
   value: Provisa receives OpenLineage events, so lineage from Airflow, Spark, dbt and Flink joins its
     own graph with no work per tool.
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 1. Access Governance & Security
   category: Column-Level Lineage Graph
@@ -95553,9 +95650,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then it is shown as outside the model'
   stakeholders:
   - data-engineer
+  tests:
+  - tests/unit/test_openlineage_receiver.py
 - id: REQ-2230
   value: Snowflake Dynamic Tables and Tasks are surfaced as tables and commands on a Snowflake source.
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 12. Migration & Compatibility (Hasura)
   category: Hasura Migration
@@ -95583,8 +95683,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the Dynamic Table is refreshed and the call is recorded'
   stakeholders:
   - data-engineer
+  tests:
+  - tests/unit/test_snowflake_dynamic_tables.py
+  - tests/integration/test_snowflake_dynamic_tables_e2e.py
+  - provisa-ui/src/__tests__/CommandFormFields.test.tsx
 - id: REQ-2231
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 11. Platform, Infrastructure & Delivery
   category: Commercial Website
@@ -95644,7 +95748,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   stakeholders:
   - data-engineer
 - id: REQ-2233
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 11. Platform, Infrastructure & Delivery
   category: Commercial Website
@@ -95660,7 +95764,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a product that is not delivering value.'
 
 - id: REQ-2234
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Registration & Governance
@@ -95719,7 +95824,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     refuses is named while the others are registered.'
 
 - id: REQ-2235
-  status: proposed
+  status: in-progress
   target: 2027-Q3
   group: 4. Source Connectors
   category: Source Connectors
@@ -95776,7 +95881,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     language, so the Calcite adapters (Salesforce, ServiceNow, Jira, SharePoint, Splunk and the rest) sit
     in the tree as Java-runtime hosts, not as hand-built connectors.'
 - id: REQ-2236
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 1. Access Governance & Security
   category: Protocol Conformance
@@ -95906,8 +96011,18 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   use_case: A PostgreSQL user on DuckDB, Trino or another engine reads one page that says, feature by
     feature, what is native, what is polyfilled and how, and what differs or is refused, and that page
     cannot drift from what the product does.
+  tests:
+  - tests/unit/polyfill/test_polyfill_arrays.py
+  - tests/unit/polyfill/test_polyfill_clickhouse_bounded.py
+  - tests/unit/polyfill/test_polyfill_clickhouse_adapted.py
+  - tests/unit/polyfill/test_polyfill_cat0_and_trino_last_errors.py
+  - tests/integration/test_type_io_on_engines.py
+  - tests/unit/polyfill/test_polyfill_grid.py
+  - tests/unit/polyfill/test_polyfill_clickhouse_clocks.py
+  - tests/unit/polyfill/test_polyfill_zones.py
+  - tests/integration/test_clickhouse_time_on_server.py
 - id: REQ-2237
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -95940,8 +96055,35 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     IRI absent from a later release is a finding, not an ending. An applied release is never deleted.'
   use_case: A bank loads FIBO and its customer, account and transaction concepts ground through the columns
     Provisa already knows.
+  tests:
+  - tests/unit/test_ontology_import_parse.py
+  - tests/unit/test_ontology_import_release.py
+  - tests/unit/test_ontology_import_api.py
+  - provisa-ui/src/__tests__/ontologyImport.import.test.tsx
+  - provisa-ui/src/__tests__/ontologyImport.review.test.tsx
+  - provisa-ui/src/__tests__/ontologyImport.apply.test.tsx
+  scenario: 'Given an ontology made outside Provisa, as an Apache Ossie model or an RDF/OWL file
+
+    When it is imported
+
+    Then its classes and properties come in as curated terms with their definitions
+
+    And each is aligned with the terms Provisa already derived from the model
+
+    And a term that aligns with nothing stays a Concept
+
+    Given a whole ontology release as one archive
+
+    When it is imported
+
+    Then the imports between its files resolve locally and nothing is fetched
+
+    And a reference to a module outside the archive is counted as left out
+
+    And what Provisa''s terms do not model is stored on the term it belongs to and written back out on export'
 - id: REQ-2238
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 1. Access Governance & Security
   category: Data Catalog Integration
@@ -95966,8 +96108,35 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     links could not be told from a steward''s; DataZone receives no column-to-term links. Every other glossary
     catalog links each exported column to its grounded term, a key column included.'
   use_case: A consumer's catalog imports a Provisa product and shows each column's business term and definition.
+  tests:
+  - tests/unit/test_metadata_export_grounded_terms.py
+  - tests/unit/test_data_product_documents_router.py
+  - tests/unit/test_metadata_export_unity_catalog.py
+  - tests/unit/test_snowflake_horizon_export.py
+  - tests/unit/test_reconcile_landed.py
+  - tests/unit/test_reserved_term_tag.py
+  - tests/unit/test_metadata_export_dataplex.py
+  scenario: 'Given a data product whose fields are grounded in terms an agent may see
+
+    When the product is exported as ODCS contracts, an ODPS description, or a metadata export to a catalog
+
+    Then each field names its grounded term, in ODCS through authoritativeDefinitions of type semantics
+
+    And an Apache Ossie export of the terms the product reaches names them
+
+    And Snowflake Horizon and Unity Catalog carry each column''s term as a tag naming it and its definition in the column comment
+
+    Given a term an agent may not see
+
+    When the product is exported
+
+    Then that term is not named
+
+    When the product is exported to DataZone
+
+    Then no column-to-term link is sent'
 - id: REQ-2239
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -96056,8 +96225,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Terms then align to the columns by the lowest-angle score, as stated. There is no setting. (Amended
     2026-11-13, THE GRID IS OFF AT FIRST:) Maintainer 2026-11-13: every 3D graph draws no floor grid until
     the reader turns Grid on; the choice is remembered and restored, and Set Defaults returns it to off.'
+  tests:
+  - provisa-ui/src/components/__tests__/graphGuard.test.ts
+  - provisa-ui/src/components/provisa-graph/__tests__/lanes.test.ts
+  - provisa-ui/src/components/provisa-graph/__tests__/layingOut.test.tsx
+  - provisa-ui/src/components/provisa-graph/__tests__/layoutFails.test.tsx
+  - provisa-ui/src/components/provisa-graph/__tests__/opensOn.test.tsx
+  - provisa-ui/src/components/provisa-graph/__tests__/opensOnFocus.test.ts
 - id: REQ-2240
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -96080,8 +96256,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     2026-11-11: each object named in a refused delete is shown by the label its own page shows (a relationship
     as its two tables, e.g. users -> inquiries; a view or table by its table name), never by an internal
     identifier such as users-to-inquiries, so it can be found where the link leads.'
+  tests:
+  - tests/unit/test_bulk_delete.py
+  - provisa-ui/src/components/__tests__/ListTable.test.tsx
+  - provisa-ui/src/components/__tests__/DependentsDialog.test.tsx
+  - provisa-ui/src/components/list/__tests__/detailHrefGuard.test.ts
+  - provisa-ui/src/__tests__/bulkStorage.test.ts
 - id: REQ-2241
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -96096,6 +96279,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     and written in one shared place, so every link into a detail view (for example from a refused delete,
     REQ-2240) is that same URL.'
 
+  tests:
+  - provisa-ui/src/components/list/__tests__/useDetailParam.test.tsx
+  - provisa-ui/src/components/list/__tests__/detailParamPages.test.ts
+  - provisa-ui/src/components/list/__tests__/detailHrefGuard.test.ts
 - id: REQ-2242
   status: proposed
   target: 2026-Q4
@@ -96127,7 +96314,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     patched dialects reach past the five first listed: postgres, duckdb, trino, presto, spark, bigquery
     and clickhouse directly, and redshift, materialize, risingwave, athena, dune and databricks by inheritance.'
 - id: REQ-2243
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -96171,8 +96359,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the reader sees the term's definition and calculation method
     And the reader does not see the column's formula
 
+  tests:
+  - tests/unit/test_glossary_calculation_method.py
+  - tests/unit/test_dataset_metrics.py
+  - provisa-ui/src/__tests__/GlossaryTab.test.tsx
+  - provisa-ui/src/__tests__/ColumnGlossaryHover.test.tsx
 - id: REQ-2244
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: Admin UI
@@ -96238,7 +96431,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
   category: MCP & AI Integration
@@ -96283,8 +96477,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then it is listed the tools of the mode the operator setting names
 
     '
+  tests:
+  - tests/unit/test_mcp_sip_mode.py
+  - provisa-ui/src/__tests__/McpServerTab.test.tsx
 - id: REQ-2247
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -96377,7 +96574,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2248
-  status: proposed
+  status: in-progress
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Business Glossary & Ontology
@@ -96403,7 +96600,26 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     (Amended 2026-11-15, A DOMAIN HOLDING A RETIRED TABLE IS KEPT:) Maintainer 2026-11-15. A domain has
     no retired state. A domain that still holds a table, retired or not, is kept unchanged: an environment
     merge or a delete that would remove it leaves it in place, together with whatever the retired table
-    needs (its terms and the targets of its relationships).'
+    needs (its terms and the targets of its relationships). (Amended 2026-11-15, A SOURCE HOLDING A RETIRED
+    TABLE IS KEPT:) 2026-11-15. The same rule as a domain: a source that still holds a table, retired or
+    not, is not deleted; the delete is refused. Deleting it would hard-delete its retired tables. (Amended
+    2026-11-15, A DEMO REBUILD IS A SEED; A SWEPT DERIVED TERM IS REMOVED:) Maintainer 2026-11-15. A demo
+    organisation''s rebuild from its config is a built-in seed, like the startup seeds: it deletes and recreates
+    its own rows. A glossary term derived from columns that nothing names any more is removed by the sweep
+    and derived again if its columns return; a term a person deletes is retired. Deploy, undo, redo and
+    pull retire what the incoming tree lacks and keep each row''s id, so returning to a commit that has
+    it restores the same row. Retirement covers the kinds that have a retired state; roles, row filters,
+    regions, stores, triggers, connectors, naming rules, calendars, data products, commands and webhooks
+    are deleted as before. (Amended 2026-11-15, DELETING A SOURCE OR A DOMAIN RETIRES IT:) Maintainer 2026-11-15.
+    This replaces A DOMAIN HOLDING A RETIRED TABLE IS KEPT and A SOURCE HOLDING A RETIRED TABLE IS KEPT
+    [both SUPERSEDED by this amendment; kept for history, do not implement against them]. A source and a
+    domain have a retired state. Deleting one is refused only while it holds a live table (or another live
+    object that names it); otherwise the delete retires it together with the retired tables it holds. A
+    retired source or domain is hidden, is not counted against a one-per-kind limit, and leaves its name
+    free for reuse. It is listed with the other retired objects and restored from there with its tables;
+    a restore is refused while a live object holds its name. Nothing is removed. Reason: with the keep rule
+    a source that had ever held a table could never be deleted, so a kind that allows one source could never
+    be added again.'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
@@ -96423,8 +96639,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the same object is served again and the findings clear
 
     '
+  tests:
+  - tests/integration/test_glossary_lifecycle.py
+  - tests/unit/test_refusal_read_rights.py
+  - tests/unit/test_model_object_retirement.py
+  - tests/unit/test_retire_not_delete_loaders.py
+  - tests/unit/test_retired_not_served.py
+  - tests/unit/test_meta_seed_retires_undeclared.py
 - id: REQ-2249
-  status: proposed
+  status: in-progress
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -96458,7 +96681,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     three relationships over it, managed and retired as one set: one junction relationship from source to
     target through the bridge, which Cypher serves as a single edge carrying the score; and source to bridge
     and bridge to target, which GraphQL serves as two nested levels. When GraphQL serves junction relationships,
-    the two plain relationships are no longer saved.'
+    the two plain relationships are no longer saved. (Amended 2026-11-15, A BRIDGE IS ALWAYS LANDED AND
+    READ FROM ITS STORED RESULT:) Maintainer 2026-11-15. A view whose definition calls a code command is
+    always landed; the form offers no choice. It is read only from its stored table and secured as that
+    table, as a stored view with column transforms is (REQ-2131). The security check admits a registered
+    code command in such a view''s definition, with the command''s table arguments as the view''s inputs.
+    Each reader''s own row and column rules apply at each hop. The resolver runs when the bridge is refreshed,
+    never per read.'
   scenario: 'Given a code resolver matching stores to regions by distance, with a function marked @change
     naming its key, removal and cursor columns
 

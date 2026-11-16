@@ -273,6 +273,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2249: the code resolver set this view is the bridge of (its id), else NULL. The set's
+    -- objects are changed and retired together, through the set.
+    code_resolver TEXT,
     -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
     -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
     retired       BOOLEAN NOT NULL DEFAULT FALSE,
@@ -281,6 +284,11 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     status_at     TIMESTAMPTZ,
     UNIQUE (source_id, schema_name, table_name)
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS replicate INTEGER;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS region TEXT;
@@ -335,6 +343,11 @@ CREATE TABLE IF NOT EXISTS table_columns (
     status_at     TIMESTAMPTZ,
     UNIQUE (table_id, column_name)
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS masks JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS not_null BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS epoch_unit TEXT;
@@ -473,6 +486,9 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A join
     -- to a parameterized target (a code table) over this edge calls it with the source's values.
     parameters        JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2249: the code resolver set this relationship belongs to (its id), else NULL. The set's
+    -- objects are changed and retired together, through the set.
+    code_resolver     TEXT,
     -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
     -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
     retired       BOOLEAN NOT NULL DEFAULT FALSE,
@@ -498,6 +514,11 @@ CREATE TABLE IF NOT EXISTS relationships (
         OR (via_type_column IS NOT NULL AND via_type_value IS NOT NULL AND via_table_id IS NOT NULL)
     )
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}';
 
@@ -778,6 +799,11 @@ CREATE TABLE IF NOT EXISTS tags (
     status_by     TEXT,
     status_at     TIMESTAMPTZ
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1174,6 +1200,11 @@ CREATE TABLE IF NOT EXISTS metrics (
     status_by     TEXT,
     status_at     TIMESTAMPTZ
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 -- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
 -- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
 ALTER TABLE metrics ADD COLUMN IF NOT EXISTS term_id INTEGER
@@ -2721,6 +2752,29 @@ ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS budget_limit INTEGER;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS launch TEXT;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS progress_at TIMESTAMPTZ;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS source_table TEXT;
+
+-- REQ-413: a relationship discovery run in the background and its progress; Stop is asked on the
+-- row. Mirrors schema_org.discovery_runs.
+CREATE TABLE IF NOT EXISTS discovery_runs (
+    id              SERIAL PRIMARY KEY,
+    status          TEXT NOT NULL CONSTRAINT discovery_runs_status_check
+                        CHECK (status IN ('running', 'done', 'stopped', 'failed')),
+    scope           TEXT NOT NULL,
+    model           TEXT,
+    requests_total  INTEGER NOT NULL DEFAULT 0,
+    requests_done   INTEGER NOT NULL DEFAULT 0,
+    suggestions     INTEGER NOT NULL DEFAULT 0,
+    report          TEXT,
+    error           TEXT,
+    stop_requested  BOOLEAN NOT NULL DEFAULT false,
+    stopped_by      TEXT,
+    started_by      TEXT,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ,
+    launch          TEXT,
+    progress_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
 
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,

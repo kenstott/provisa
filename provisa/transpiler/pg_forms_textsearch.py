@@ -486,10 +486,26 @@ def _concat(e: Engine) -> str:
     )
 
 
+#: array_to_tsvector's errors, by the mark of the item that raises it (1 a NULL, 2 an empty text).
+_LEXEME_ERRORS = (
+    (1, "22004", "lexeme array may not contain nulls"),
+    (2, "2200F", "lexeme array may not contain empty strings"),
+)
+
+
 def _lexeme_list(e: Engine) -> str:
-    """array_to_tsvector of the list ``x``."""
-    written = e.map.format(e.sort.format(e.distinct.format("x")), "_l", _quoted(e, "_l"))
-    return e.join.format(written, "' '")
+    """array_to_tsvector of the list ``x``: PostgreSQL reads its items in order, raising for the
+    first that is a NULL or an empty text."""
+    written = e.join.format(
+        e.map.format(e.sort.format(e.distinct.format("x")), "_l", _quoted(e, "_l")), "' '"
+    )
+    marks = e.map.format("x", "_e", "CASE WHEN _e IS NULL THEN 1 WHEN _e = '' THEN 2 ELSE 0 END")
+    first = e.first.format(e.keep.format(marks, "_m", "_m > 0"))
+    guard = " + ".join(
+        e.fails.format(f"coalesce(_f = {mark}, false)", e.text(f"{MARK} {state}: {said} {END}"))
+        for mark, state, said in _LEXEME_ERRORS
+    )
+    return e.let.format("_f", first, e.guarded.format(guard, written))
 
 
 #: The configurations and dictionaries a row of a column reads, each its own row.

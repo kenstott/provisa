@@ -78,7 +78,7 @@ describe("Data Profiler source fields", () => {
     expect(screen.getByTestId("profiler-drift_psi-input")).toHaveValue("0.25");
   });
 
-  it("offers the rows sampled for classification, defaulted for a new profiler", () => {
+  it("offers the values sampled per column for classification, defaulted for a new profiler", () => {
     renderInForm(
       <ProfilerFormSection
         authFields={{ cron: "0 3 * * *", ...PROFILER_DEFAULTS }}
@@ -86,7 +86,7 @@ describe("Data Profiler source fields", () => {
       />,
     );
     expect(screen.getByTestId("profiler-classification_sample-input")).toHaveValue("500");
-    expect(screen.getByText("Rows sampled for classification")).toBeInTheDocument();
+    expect(screen.getByText("Values sampled per column for classification")).toBeInTheDocument();
   });
 
   it("keeps stored settings and round-trips the mapping", () => {

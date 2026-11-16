@@ -805,7 +805,7 @@ export function RegisterTableForm({
               />
             </FormField>
             {combine.offeredChoice && (
-              <FormField size="medium">
+              <FormField size="medium" afterLabel>
                 <SegmentedControl
                   aria-label={t("combineFiles.modeLabel")}
                   value={combine.mode}

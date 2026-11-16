@@ -60,7 +60,7 @@ from provisa.transpiler.interval_input import (
     interval_read,
     rejected,
 )
-from provisa.transpiler.polyfill import instants, trino
+from provisa.transpiler.polyfill import clocks, instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail
@@ -815,8 +815,8 @@ def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
 
 # --- an interval and a time of day ---------------------------------------------------------------
 
-#: A time of day, held as ClickHouse's Time64(6): a NULL of it.
-_NULL_TIME = "accurateCastOrNull(NULL, 'Time64(6)')"
+#: A time of day, held as an Int64 of its microseconds of the day (polyfill.clocks): a NULL of it.
+_NULL_TIME = clocks.NULL_HELD
 #: A day's microseconds, signed: ClickHouse's remainder of an Int64 by a UInt64 is unsigned. Its
 #: remainder takes the dividend's sign, as C's does (r -= r / D * D in timestamp.c).
 _DAY = f"toInt64({_DAY_US})"
@@ -860,8 +860,9 @@ def _clock(argument: exp.Expr, untyped: bool) -> str | None:
 
 
 def _time_of(micros: str) -> str:
-    """A time of day of its microseconds, an Int64 in [0, a day): Time64(6), exact."""
-    return f"toTime64(toDecimal64({micros}, 6) / {_SECOND_US}, 6)"
+    """A time of day of its microseconds, an Int64 in [0, a day): held as that Int64
+    (polyfill.clocks), exact."""
+    return f"toInt64({micros})"
 
 
 def _time_moved(negate: bool) -> Callable[[_Sql, str, str], str]:
@@ -895,6 +896,15 @@ def _time_interval(sql: _Sql, args: list[str]) -> str:
     return _literal(0, 0, int(args[0]))
 
 
+def _time_mi_time(sql: _Sql, args: list[str]) -> str:
+    """A time of day less a time of day (time_mi_time): the difference of their microseconds, no
+    months and no days."""
+    del sql
+    if "NULL" in args:
+        return _NULL_HELD
+    return _literal(0, 0, int(args[0]) - int(args[1]))
+
+
 def _interval_time(sql: _Sql, args: list[str]) -> str:
     """time of an interval (interval_time): its microseconds brought into the day, its months and
     days not read."""
@@ -909,8 +919,9 @@ def _interval_time(sql: _Sql, args: list[str]) -> str:
 
 
 #: overlaps' overloads of an interval (pg_proc's SQL functions: ($1, $1 + $2) overlaps ($3, $4),
-#: and so on), by their arguments' kinds: of timestamps (t), or of times of day (T).
-_OVERLAPS_KINDS = frozenset({"titi", "titt", "ttti", "TiTi", "TiTT", "TTTi"})
+#: and so on), by their arguments' kinds: of timestamps (t), or of times of day (T); and overlaps
+#: of four times (overlaps_time), whose ends are the times themselves.
+_OVERLAPS_KINDS = frozenset({"titi", "titt", "ttti", "TiTi", "TiTT", "TTTi", "TTTT"})
 _NULL_BOOL = "CAST(NULL AS Nullable(Bool))"
 
 
@@ -1222,12 +1233,15 @@ def _rows() -> dict[str, _Row]:
         frozenset({"overlaps_timestamp", "overlaps"}), "????", _overlaps, False
     )
     rows["interval"] = _Row(frozenset({"interval"}), "T", _time_interval, True)
+    rows["time_mi_time"] = _Row(frozenset({"time_mi_time"}), "TT", _time_mi_time, True)
     rows["time"] = _Row(frozenset({"time"}), "i", _interval_time, False)
     return rows
 
 
 _ROWS = _rows()
 _NAMES = frozenset(_ROWS)
+#: The rows whose answer is a time of day (held as polyfill.clocks holds one).
+_TIME_ANSWERS = frozenset({"time_pl_interval", "time_mi_interval", "interval_pl_time", "time"})
 
 #: PostgreSQL's operators of intervals, by sqlglot's node: the row each is, by its operands'
 #: kinds (unary minus has one).
@@ -1252,6 +1266,7 @@ _OPERATORS: dict[type[exp.Expr], dict[str, str]] = {
         "ti": "timestamp_mi_interval",
         "di": "date_mi_interval",
         "Ti": "time_mi_interval",
+        "TT": "time_mi_time",
     },
     exp.Neg: {"i": "interval_um"},
     exp.Mul: {"if": "interval_mul", "fi": "mul_d_interval"},
@@ -1307,8 +1322,8 @@ def _mentions_interval(node: exp.Expr) -> bool:
     for inner in node.walk():
         if inner.meta.get(HELD):
             return True
-        if isinstance(inner, exp.DataType) and inner.this == exp.DataType.Type.INTERVAL:
-            return True
+        if isinstance(inner, exp.DataType) and inner.this in _INTERVAL_OR_CLOCK:
+            return True  # a time less a time is an interval (time_mi_time)
         if isinstance(inner, exp.Interval):
             return True
         if isinstance(inner, exp.Anonymous) and inner.name.lower() in _NAMES - _SHARED:
@@ -1318,6 +1333,7 @@ def _mentions_interval(node: exp.Expr) -> bool:
     return False
 
 
+_INTERVAL_OR_CLOCK = frozenset({exp.DataType.Type.INTERVAL, exp.DataType.Type.TIME})
 #: The names of rows here that other types' calls have too: a call of one says no interval.
 _SHARED = frozenset(
     {"max", "min", "sum", "extract", "date_part", "isfinite", "time", "overlaps_timestamp"}
@@ -1353,6 +1369,9 @@ def _may_be(node: exp.Expr, name: str) -> bool:
     not once a row and a node, for each of its operators."""
     operators = _OPERATORS.get(type(node))
     if operators is not None:
+        if name == "time_mi_time":
+            # a time less a time: both operands say time, read without a walk (no interval in it)
+            return all(_said(o.unnest()) in _KIND_TYPES["time"] for o in node.iter_expressions())
         return name in operators.values()
     call = trino.called(node)
     return call is not None and name in call[0]
@@ -1545,6 +1564,8 @@ def _rewrite(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
         tree = sql.parsed(sql.text(text) if shown else text)
         if found[1].interval and not shown:
             tree.meta[HELD] = True
+        if found[0] in _TIME_ANSWERS:
+            tree.meta[clocks.HELD] = True  # shown as its text where it reaches the client
         return tree
 
     rewrite.__doc__ = f"{name} of intervals held as Tuple(months, days, microseconds)."
@@ -1702,7 +1723,8 @@ for _name, _what, _summary in (
 _CLOCK_STATED = (
     " The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
     "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
-    "A time answer is held as Time64(6), exact."
+    "A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the "
+    "select list as time_out's text."
 )
 _MOVED_STATED = (
     _CLOCK_STATED + " The interval's microseconds are added in int64 as PostgreSQL's C adds them, "
@@ -1717,11 +1739,19 @@ _DOCS["time_mi_interval"] = _Doc(
 _DOCS["interval_pl_time"] = _Doc(
     "interval_pl_time(interval, time)", "An interval plus a time of day (+).", _MOVED_STATED
 )
+_DOCS["time_mi_time"] = _Doc(
+    "time_mi_time(time, time)",
+    "A time of day less a time of day, an interval (-).",
+    " Each time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
+    "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
+    "The answer is the difference of their microseconds, no months and no days.",
+)
 _DOCS["overlaps_timestamp"] = _Doc(
     "overlaps(timestamp, interval, timestamp, interval)",
     "Whether two periods overlap, an end of either given as an interval from its start: "
     "overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, "
-    "timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.",
+    "timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and "
+    "overlaps of four times of day (overlaps_time).",
     " Each end given as an interval is its start plus the interval, as PostgreSQL's SQL function "
     "computes it: a timestamp's as timestamp_pl_interval's row writes it (a literal in ISO form "
     "or a NULL; the answer, or a step of it, outside "
@@ -2064,7 +2094,8 @@ def _feature(name: str) -> Feature:
         }
         rule = Rule("overlaps($a, $b, $c, $d)", forms, unlisted_keep=True)
     else:
-        rule = Rule(None, {_CLICKHOUSE: Rewrite(_rewrite(name), mentions=_MENTIONS)})
+        mentions = _MENTIONS if name != "time_mi_time" else r"\binterval\b|\btime\b"
+        rule = Rule(None, {_CLICKHOUSE: Rewrite(_rewrite(name), mentions=mentions)})
     return Feature(
         doc.feature,
         FAMILY,

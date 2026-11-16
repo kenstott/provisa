@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "外键：找到 {{count}} 个。",
-    "foreignKeys_other": "外键：找到 {{count}} 个。",
+    "foreignKeys": "外键：找到 {{found}} 个，建议 {{count}} 个。",
+    "foreignKeys_other": "外键：找到 {{found}} 个，建议 {{count}} 个。",
     "semanticsFound": "语义：{{count}} 条建议。",
     "semanticsFound_other": "语义：{{count}} 条建议。",
     "semanticsUnreadable": "语义：无。无法读取模型的回答。",
     "semanticsNoneProposed": "语义：无。模型未提出任何关系。",
-    "semanticsFiltered": "语义：模型提出的 {{count}} 个关系均未保留：{{why}}。",
-    "semanticsFiltered_other": "语义：模型提出的 {{count}} 个关系均未保留：{{why}}。",
-    "belowThreshold": "{{count}} 个低于 {{threshold}}% 的置信度阈值",
-    "belowThreshold_other": "{{count}} 个低于 {{threshold}}% 的置信度阈值",
-    "alreadyKnown": "{{count}} 个已被拒绝或已存在",
-    "alreadyKnown_other": "{{count}} 个已被拒绝或已存在",
-    "invalid": "{{count}} 个引用了不存在的表或列",
-    "invalid_other": "{{count}} 个引用了不存在的表或列",
-    "semanticsCutShort": "语义：无。模型的回答在写完一条建议之前就达到了长度上限而停止。",
-    "cutShortNote": "模型的回答达到长度上限而停止，因此只读取了已写完的建议。"
+    "semanticsBelowThreshold": "语义：无。每条建议都低于 {{threshold}}% 的置信度阈值。",
+    "semanticsFiltered": "语义：无。每条建议都因下列原因被排除。",
+    "split": "{{count}} 个请求被一分为二后重新发送。",
+    "split_other": "{{count}} 个请求被一分为二后重新发送。",
+    "cutShort": "{{count}} 个回答在长度上限处停止；其中已完成的建议会保留。",
+    "cutShort_other": "{{count}} 个回答在长度上限处停止；其中已完成的建议会保留。",
+    "failedRequest": "针对{{group}}列的一个请求失败：{{error}}",
+    "leftOut": "已排除：{{list}}。",
+    "leftOutItem": "{{label}}（{{count}}）",
+    "removed": {
+      "below_threshold": "低于 {{threshold}}% 置信度阈值",
+      "invalid": "引用了不存在的表或列",
+      "same_column": "从某列指向其自身",
+      "primary_key_to_primary_key": "主键到主键",
+      "both_repeating": "两侧均有重复值",
+      "existing": "已注册",
+      "pending": "已在等待",
+      "rejected": "之前已拒绝",
+      "matches_foreign_key": "与本次运行中找到的外键相同",
+      "out_of_scope": "不在所选表之内"
+    }
   }
 }

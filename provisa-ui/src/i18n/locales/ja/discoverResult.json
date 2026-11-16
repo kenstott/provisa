@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "外部キー: {{count}} 件見つかりました。",
-    "foreignKeys_other": "外部キー: {{count}} 件見つかりました。",
+    "foreignKeys": "外部キー: {{found}} 件検出、{{count}} 件提案。",
+    "foreignKeys_other": "外部キー: {{found}} 件検出、{{count}} 件提案。",
     "semanticsFound": "セマンティクス: {{count}} 件の提案。",
     "semanticsFound_other": "セマンティクス: {{count}} 件の提案。",
     "semanticsUnreadable": "セマンティクス: なし。モデルの回答を読み取れませんでした。",
     "semanticsNoneProposed": "セマンティクス: なし。モデルはリレーションシップを提案しませんでした。",
-    "semanticsFiltered": "セマンティクス: モデルが提案した {{count}} 件のリレーションシップは採用されませんでした: {{why}}。",
-    "semanticsFiltered_other": "セマンティクス: モデルが提案した {{count}} 件のリレーションシップはいずれも採用されませんでした: {{why}}。",
-    "belowThreshold": "{{count}} 件が信頼度しきい値 {{threshold}}% を下回りました",
-    "belowThreshold_other": "{{count}} 件が信頼度しきい値 {{threshold}}% を下回りました",
-    "alreadyKnown": "{{count}} 件はすでに却下済みか既存でした",
-    "alreadyKnown_other": "{{count}} 件はすでに却下済みか既存でした",
-    "invalid": "{{count}} 件が存在しないテーブルまたは列を指定していました",
-    "invalid_other": "{{count}} 件が存在しないテーブルまたは列を指定していました",
-    "semanticsCutShort": "セマンティクス: なし。モデルの回答は、提案を書き終える前に長さの上限で止まりました。",
-    "cutShortNote": "モデルの回答は長さの上限で止まったため、書き終えた提案だけを読み取りました。"
+    "semanticsBelowThreshold": "セマンティクス: なし。すべての提案が信頼度しきい値 {{threshold}}% を下回りました。",
+    "semanticsFiltered": "セマンティクス: なし。すべての提案が下記の理由で除外されました。",
+    "split": "{{count}} 件のリクエストを半分に分割して再送しました。",
+    "split_other": "{{count}} 件のリクエストを半分に分割して再送しました。",
+    "cutShort": "{{count}} 件の回答が長さの上限で止まりました。完成した提案は保持されます。",
+    "cutShort_other": "{{count}} 件の回答が長さの上限で止まりました。完成した提案は保持されます。",
+    "failedRequest": "{{group}} の列に対するリクエストが失敗しました: {{error}}",
+    "leftOut": "除外: {{list}}。",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "信頼度しきい値 {{threshold}}% 未満",
+      "invalid": "存在しないテーブルまたは列を指定",
+      "same_column": "列からその列自身へ",
+      "primary_key_to_primary_key": "主キーから主キーへ",
+      "both_repeating": "両側で値が重複",
+      "existing": "登録済み",
+      "pending": "保留中",
+      "rejected": "以前に却下",
+      "matches_foreign_key": "この実行で見つかった外部キーと一致",
+      "out_of_scope": "選んだテーブルの範囲外"
+    }
   }
 }

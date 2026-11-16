@@ -722,6 +722,8 @@ async def _seed_meta_relationships(conn: "Connection") -> None:
             )
         )
     ).scalars()
+    # REQ-2248 (amended 2026-11-15): a startup seed may delete Provisa's own built-in rows
+    # that it no longer declares; they are not a person's objects.
     for stale_id in undeclared_seed_relationship_ids(held):
         await remove_parts(conn, ObjectRef("relationship", stale_id))
         await _relationship_repo.remove_where(conn, _relationships_t.c.id == stale_id)

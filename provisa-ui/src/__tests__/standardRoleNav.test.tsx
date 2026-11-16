@@ -132,22 +132,22 @@ const GOVERNOR = [TABLES, ONTOLOGY, LIBRARY, MODEL, PRODUCTS, SECURITY];
 // role → [the bar's entries in order, whether the user menu offers Admin, the landing page]
 const EXPECTED: Record<string, [string[], boolean, string]> = {
   viewer: [READER, true, "/admin/ontology"],
-  analyst: [[...READER, EXPLORE], true, "/admin/ontology"],
-  developer: [BUILDER, true, "/relationships"],
-  modeler: [BUILDER, true, "/relationships"],
+  analyst: [[...READER, EXPLORE], true, "/schema"],
+  developer: [BUILDER, true, "/schema"],
+  modeler: [BUILDER, true, "/schema"],
   data_product_owner: [READER, true, "/admin/ontology"],
   security_admin: [GOVERNOR, true, "/tables"],
   data_steward: [
     [TABLES, RELATIONSHIPS, ONTOLOGY, LIBRARY, MODEL, PRODUCTS, SECURITY, EXPLORE],
     true,
-    "/tables",
+    "/schema",
   ],
   dq_reader: [READER, true, "/admin/ontology"],
   dq_steward: [READER, true, "/admin/ontology"],
   source_admin: [[SOURCES, TABLES, ONTOLOGY, LIBRARY, MODEL, PRODUCTS], true, "/sources"],
   org_operator: [READER, true, "/admin/ontology"],
-  org_admin: [EVERY_ENTRY, true, "/sources"],
-  sandbox: [EVERY_ENTRY, true, "/sources"],
+  org_admin: [EVERY_ENTRY, true, "/schema"],
+  sandbox: [EVERY_ENTRY, true, "/schema"],
   platform_admin: [[], true, "/admin/orgs"],
 };
 
@@ -196,15 +196,17 @@ describe("the standard roles' navigation", () => {
       await waitFor(() => expect(screen.getByTestId("landed")).toHaveTextContent(landing));
     });
 
-    it("lands on the first entry the bar shows it", () => {
-      // The landing page is the bar's first entry, or Admin's first page where the bar has none.
+    it("lands on Explore when the bar shows it, else on the first entry the bar shows it", () => {
+      // The landing page is Explore for a role that has it, else the bar's first entry, or Admin's
+      // first page where the bar has none.
       const bar: Record<string, string> = {
         [SOURCES]: "/sources",
         [TABLES]: "/tables",
         [RELATIONSHIPS]: "/relationships",
         [ONTOLOGY]: "/admin/ontology",
       };
-      if (entries.length > 0) expect(landing).toBe(bar[entries[0]]);
+      if (entries.includes(EXPLORE)) expect(landing).toBe("/schema");
+      else if (entries.length > 0) expect(landing).toBe(bar[entries[0]]);
       else expect(admin).toBe(true);
     });
   });

@@ -2209,12 +2209,12 @@ _CLICKHOUSE_INSTANT = zoned_instants.CLICKHOUSE_INSTANT
 
 def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
     """``tree`` with what ClickHouse would read otherwise said for it. A timestamp keeps its
-    microseconds and reads as one, a time is read by toTime64 (its Time reads PostgreSQL's text as
-    NULL), and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
+    microseconds and reads as one, a time of day is held as its microseconds (polyfill.clocks: the
+    server has no Time64) and shown as time_out's text, and a hex has no leading zeros, as to_hex has none. A refusal (pg_forms_types.refused), the cast of a text that is no
     number, raises: sqlglot writes a cast as Nullable, which reads such a text as NULL. Its argument
     is materialized so the refusal is not folded in a branch the statement does not take."""
 
-    from provisa.transpiler.polyfill import instants
+    from provisa.transpiler.polyfill import clickhouse, clocks, instants
 
     def said(node: exp.Expr) -> exp.Expr:
         outside = instants.outside_cast(node)
@@ -2231,12 +2231,12 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
         ):
             return exp.DataType.build(_CLICKHOUSE_INSTANT, dialect="clickhouse")
         if isinstance(node, exp.Cast) and node.to.is_type(exp.DataType.Type.TIME):
-            value = node.this
-            while isinstance(value, exp.Cast) and value.to.is_type(exp.DataType.Type.TIME):
-                value = value.this
-            # Its OrNull reads what the literal's own refuses, and a NULL it cannot.
-            reader = "toTime64" if isinstance(value, exp.Literal) else "toTime64OrNull"
-            return exp.Anonymous(this=reader, expressions=[value, exp.Literal.number(6)])
+            # REQ-2236: a time of day held as its microseconds (polyfill.clocks): the server has
+            # no Time64.
+            return clocks.cast(node, said, clickhouse.clock_micros)
+        clock = clocks.semantics(node, said)
+        if clock is not None:
+            return clock
         if isinstance(node, exp.Date) and not node.args.get("zone"):
             # REQ-2236: its DATE() is toDate, a Date of 1970 to 2149; PostgreSQL's day of a value
             # held as DateTime64(6, 'UTC') or Date32 is Date32's, exact from 1900 to 2299.
@@ -2261,7 +2261,8 @@ def clickhouse_semantics(tree: exp.Expr) -> exp.Expr:  # REQ-2171
             )
         return node
 
-    return tree.transform(said)
+    # A time in the select list reaches the client as time_out's text (polyfill.clocks).
+    return clocks.select_shown(tree, tree.transform(said))
 
 
 def _lower_universal_regex(pg_sql: str, target_dialect: str) -> exp.Expr | None:  # REQ-2142

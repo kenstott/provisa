@@ -76,6 +76,7 @@ async def model(control_plane, monkeypatch):
         metric=lambda row: True,
         term=lambda term_domains: True,
         command=lambda name: True,
+        retired=lambda domain_id: False,
     )
     monkeypatch.setattr(glossary_router, "_pool", _pool)
     monkeypatch.setattr(glossary_router, "_require_glossary_read", lambda request: None)
