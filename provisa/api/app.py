@@ -113,7 +113,6 @@ from provisa.core.schema_org import (
     naming_rules as _naming_rules_t,
     registered_tables as _registered_tables_t,
     roles as _roles_t,
-    sources as _sources_t,
 )
 from provisa.executor.pool import SourcePool
 from provisa.api.org_runtime import (
@@ -3163,7 +3162,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     sandbox's PROD runtime is always built first, so ``prod_rt`` is never None here.
     """
     from provisa.core.env_classes import BINDING_COLUMN, OWN, TEST_FAKE, UNBOUND
-    from provisa.core.schema_org import sources as _sources_t
+    from provisa.api.model_reload import registered_source_rows
 
     _rt = state._active_runtime()
 
@@ -3172,7 +3171,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     # carries an env-specific synthetic store path that differs from PROD's SQLite path.
     assert state.model_db is not None
     async with state.model_db.acquire() as conn:
-        _all_source_rows = (await conn.execute_core(select(_sources_t))).fetchall()
+        _source_rows = await registered_source_rows(conn)
         # REQ-1942: a source bound to a synthetic store is served from the store -- it is not
         # unbound. Use UNBOUND only, mirroring _reconcile_sources (model_reload.py).  The old
         # call to _unbound_sources also included SYNTHETIC, so generated envs got a 409.
@@ -3186,10 +3185,10 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
         await _rebuild_schemas(converge=False)
         return
 
-    env_runtime_sources = {r._mapping["id"]: dict(r._mapping) for r in _all_source_rows}
+    env_runtime_sources = _source_rows
     # source_binding_env: only OWN-bound sources; SYNTHETIC binding is not OWN.
     env_source_binding_env = {
-        r._mapping["id"]: _rt.env for r in _all_source_rows if r._mapping[BINDING_COLUMN] == OWN
+        sid: _rt.env for sid, row in _source_rows.items() if row[BINDING_COLUMN] == OWN
     }
 
     # --- Copy compiled schema from PROD (model is identical for a cloned env) ---
@@ -3293,7 +3292,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     # Bug A fix: mirror _reconcile_sources (model_reload.py) — only UNBOUND sources block
     # queries with 409 (REQ-1942).
     _rt.unbound_sources = frozenset(
-        r._mapping["id"] for r in _all_source_rows if r._mapping[BINDING_COLUMN] == UNBOUND
+        sid for sid, row in _source_rows.items() if row[BINDING_COLUMN] == UNBOUND
     )
     _rt.source_binding_env = env_source_binding_env
     _rt.runtime_sources = env_runtime_sources
@@ -3603,10 +3602,9 @@ async def _rebuild_schemas_impl(
                 for r in _assignment_rows
             ),
         )
-        sources = {
-            r._mapping["id"]: dict(r._mapping)
-            for r in (await conn.execute_core(select(_sources_t))).fetchall()
-        }
+        from provisa.api.model_reload import registered_source_rows
+
+        sources = await registered_source_rows(conn)
         # Backfill state.source_types; patch postgresql sources to use the engine catalog names.
         # REQ-1729: also backfill state.source_catalogs — a source registered through a REST
         # router (graphql-remote, openapi) writes straight to the ``sources`` table and never

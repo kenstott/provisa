@@ -10709,5 +10709,15 @@
   "de/serverErrors.json::serverErrors.schema.incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
   "de/serverErrors.json::serverErrors.schema.incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
   "de/tableEditForm.json::tableEditForm.mvRebuildEveryHelp": "How often the whole view is recomputed. Required for a view kept by a code source's @change function.",
-  "de/tableEditForm.json::tableEditForm.mvRebuildEveryLabel": "Whole rebuild every (seconds)"
+  "de/tableEditForm.json::tableEditForm.mvRebuildEveryLabel": "Whole rebuild every (seconds)",
+  "de/serverErrors.json::serverErrors.preflight.confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
+  "de/serverErrors.json::serverErrors.preflight.confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}}).",
+  "de/discoverResult.json::discoverResult.semanticsRequestsFailed": "Semantics failed: the request to the model failed.",
+  "de/discoverResult.json::discoverResult.semanticsRequestsFailed_other": "Semantics failed: all {{count}} requests to the model failed.",
+  "de/discoverResult.json::discoverResult.partial": "{{failed}} of {{count}} request failed, so the result is partial.",
+  "de/discoverResult.json::discoverResult.partial_other": "{{failed}} of {{count}} requests failed, so the result is partial.",
+  "de/serverErrors.json::serverErrors.discovery.answer_unreadable": "The model's answer held no readable list.",
+  "de/serverErrors.json::serverErrors.llm.request_failed": "The request to the model failed: {{reason}}",
+  "de/serverErrors.json::serverErrors.llm.no_answer_in_time": "The model gave no answer within {{seconds}} seconds.",
+  "de/serverErrors.json::serverErrors.llm.empty_answer": "The model returned no text."
 }

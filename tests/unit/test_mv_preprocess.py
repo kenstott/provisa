@@ -102,6 +102,84 @@ def test_impure_or_unsafe_checks_rejected(source: str, needle: str) -> None:
         validate_preprocess(source)
 
 
+#: A check that walks from a generator's frame to its caller's frame, and from there to a real
+#: module's globals and the real builtins. The payload is benign: it only says what it reached.
+_FRAME_WALK = (
+    "def preflight(streams, ctx):\n"
+    "    def gen():\n"
+    "        yield g.gi_frame.f_back\n"
+    "    g = gen()\n"
+    "    mine = list(g)[0]\n"
+    "    reached = mine.f_back.f_globals['__builtins__']\n"
+    "    if 'open' in reached:\n"
+    "        return ctx.abort('reached the real builtins')\n"
+    "    return ctx.ok()"
+)
+
+
+def test_frame_walk_to_the_real_builtins_is_refused() -> None:
+    """REQ-2133 (amended 2026-11-16): the hook the audit showed reaching the server's globals."""
+    ok, reason = check_preprocess_purity(_FRAME_WALK)
+    assert not ok
+    assert "gi_frame" in reason and "f_back" in reason and "f_globals" in reason
+    with pytest.raises(PreprocessValidationError):
+        compile_preprocess(_FRAME_WALK)
+
+
+@pytest.mark.parametrize(
+    "attr",
+    [
+        "gi_frame",
+        "gi_code",
+        "gi_yieldfrom",
+        "cr_frame",
+        "cr_code",
+        "cr_await",
+        "ag_frame",
+        "ag_code",
+        "ag_await",
+        "f_back",
+        "f_globals",
+        "f_locals",
+        "f_builtins",
+        "f_code",
+        "tb_frame",
+        "tb_next",
+    ],
+)
+def test_frame_generator_and_traceback_attributes_refused(attr: str) -> None:
+    source = f"def preflight(streams, ctx):\n    x = streams.{attr}\n    return ctx.ok()"
+    ok, reason = check_preprocess_purity(source)
+    assert not ok
+    assert repr(attr) in reason
+    with pytest.raises(PreprocessValidationError):
+        validate_preprocess(source)
+
+
+@pytest.mark.parametrize(
+    "subscript",
+    ["['__builtins__']", "['__globals__']", "['__import__']", "['__class__']"],
+)
+def test_string_subscript_naming_a_dunder_refused(subscript: str) -> None:
+    source = f"def preflight(streams, ctx):\n    x = streams{subscript}\n    return ctx.ok()"
+    ok, reason = check_preprocess_purity(source)
+    assert not ok
+    assert "subscript" in reason
+    with pytest.raises(PreprocessValidationError):
+        validate_preprocess(source)
+
+
+def test_ordinary_string_subscripts_still_accepted() -> None:
+    source = (
+        "def preflight(streams, ctx):\n"
+        "    if any(r['f_back'] is None or r['__x'] for r in streams['orders']):\n"
+        "        return ctx.abort('missing')\n"
+        "    return ctx.ok()"
+    )
+    ok, reason = check_preprocess_purity(source)
+    assert ok, reason
+
+
 def test_blank_check_is_absent() -> None:
     assert compile_preprocess(None) is None
     assert compile_preprocess("   ") is None

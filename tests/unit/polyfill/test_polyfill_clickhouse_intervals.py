@@ -409,11 +409,6 @@ READS = [
 ]
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _text(value: Any) -> str | None:
     """An answer as PostgreSQL's text of it, as pgwire writes the type the call returns."""
     if value is None:

@@ -17,22 +17,31 @@ mutation. Every other worker reaches the same state when its schema build reads 
 * an added or changed source is (re)built — a changed one after its old pool is dropped;
 * a deleted source loses its pool and its entries;
 * a source the config declares is built from the config's entry, where its credentials are;
-* a failure to build source state is logged and does not stop the schema build."""
+* a failure to build source state is logged and does not stop the schema build;
+* a retired source (REQ-2248) is not a registered source: the rows a build reads leave it out,
+  so it is given no state, and a restored one is built on the next pass."""
 
-# Requirements: REQ-1914
+# Requirements: REQ-1914, REQ-2248
 
 from __future__ import annotations
 
+import ast
 import asyncio
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
 import pytest
 
+from sqlalchemy import insert
+
 from provisa.api import model_reload
 from provisa.api.org_runtime import OrgRuntime
 from provisa.core.models import Source, SourceType
+from provisa.core.repositories import source as source_repo
+from provisa.core.repositories.retirement import RETIRED_MARK
+from provisa.core.schema_org import sources
 
 
 def _row(sid: str, host: str = "db1") -> dict:
@@ -195,3 +204,144 @@ def test_a_failure_to_build_source_state_does_not_stop_the_schema_build(
     assert "source state could not be brought in line" in caplog.text
     # Not recorded: the next build finds `b` still unbuilt and tries again.
     assert set(worker.runtime.source_rows) == {"a"}
+
+
+# --- REQ-2248: a retired source is not a registered source ---------------------------------------
+
+
+async def _register(conn, sid: str) -> None:
+    await conn.execute_core(
+        insert(sources).values(
+            id=sid, type="postgresql", host="db1", port=5432, database="d", username="u"
+        )
+    )
+
+
+async def _pass(db) -> dict[str, dict]:
+    """One schema build's source step: the rows it reads, then this worker brought in line."""
+    async with db.acquire() as conn:
+        rows = await model_reload.registered_source_rows(conn)
+    await model_reload.reconcile_sources(rows)
+    return rows
+
+
+@pytest.fixture
+async def plane(control_plane):
+    """A control plane holding the sources ``kept`` and ``old``."""
+    db = control_plane.org()
+    async with db.acquire() as conn:
+        await _register(conn, "kept")
+        await _register(conn, "old")
+    return db
+
+
+async def test_a_retired_source_is_not_among_the_rows_a_build_reads(plane):
+    async with plane.acquire() as conn:
+        assert await source_repo.delete(conn, "old", reason="moved")
+        rows = await model_reload.registered_source_rows(conn)
+    assert "kept" in rows
+    assert "old" not in rows
+    assert not [sid for sid in rows if RETIRED_MARK in sid]
+
+
+async def test_a_source_added_after_another_was_retired_is_built_here(plane, worker, caplog):
+    """Another worker retires ``old`` and registers ``new``. This worker's next build raises
+    nothing, builds ``new`` and holds nothing for the retired source."""
+    await _pass(plane)  # this worker's first build: both sources in service
+    worker.runtime.source_types.update(kept="postgresql", old="postgresql")
+    async with plane.acquire() as conn:
+        assert await source_repo.delete(conn, "old", reason="moved")
+        await _register(conn, "new")
+    with caplog.at_level(logging.ERROR):
+        await _pass(plane)
+    assert "source state could not be brought in line" not in caplog.text
+    assert [[s.id for s in batch] for batch in worker.built] == [["new"]]
+    worker.runtime.source_pools.remove.assert_awaited_once_with("old")
+    assert {"kept", "new"} <= set(worker.runtime.source_rows)
+    assert "old" not in worker.runtime.source_rows
+    assert "old" not in worker.runtime.source_types
+    assert not [sid for sid in worker.runtime.source_rows if RETIRED_MARK in sid]
+
+
+async def test_a_runtime_that_never_saw_the_retired_source_builds_the_next_one(
+    plane, worker, caplog
+):
+    """A runtime whose first build comes after the retirement: the retired source was never
+    known to it, and a source registered afterwards is still built."""
+    async with plane.acquire() as conn:
+        assert await source_repo.delete(conn, "old", reason="moved")
+    await _pass(plane)  # the first build, with the retired row in the store
+    assert not [sid for sid in worker.runtime.source_rows if RETIRED_MARK in sid]
+    async with plane.acquire() as conn:
+        await _register(conn, "new")
+    with caplog.at_level(logging.ERROR):
+        await _pass(plane)
+    assert "source state could not be brought in line" not in caplog.text
+    assert [[s.id for s in batch] for batch in worker.built] == [["new"]]
+    assert "new" in worker.runtime.source_rows
+
+
+async def test_a_restored_source_is_built_on_the_next_pass(plane, worker, caplog):
+    await _pass(plane)
+    async with plane.acquire() as conn:
+        assert await source_repo.delete(conn, "old", reason="moved")
+    await _pass(plane)
+    assert "old" not in worker.runtime.source_rows
+    async with plane.acquire() as conn:
+        retired = await source_repo.list_all(conn, retired=True)
+        assert [r["retired_id"] for r in retired] == ["old"]
+        assert await source_repo.restore(conn, retired[0]["id"])
+    with caplog.at_level(logging.ERROR):
+        await _pass(plane)
+    assert "source state could not be brought in line" not in caplog.text
+    assert [[s.id for s in batch] for batch in worker.built] == [["old"]]
+    assert "old" in worker.runtime.source_rows
+
+
+_SOURCES_TABLE_NAMES = {"sources", "sources_t", "_sources_t"}
+
+
+def _whole_table_source_reads(code: str) -> list[int]:
+    """The lines of ``code`` that select every row of the ``sources`` table: ``select(sources)``
+    with no ``.where(...)`` on it, so retired rows included."""
+    tree = ast.parse(code)
+    filtered = {
+        id(node.func.value)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "where"
+    }
+    return [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name)
+        and node.func.id == "select"
+        and len(node.args) == 1
+        and isinstance(node.args[0], ast.Name)
+        and node.args[0].id in _SOURCES_TABLE_NAMES
+        and id(node) not in filtered
+    ]
+
+
+def test_a_whole_table_read_of_sources_is_recognised():
+    code = (
+        "async def build(conn):\n"
+        "    every = await conn.execute_core(select(_sources_t))\n"
+        "    live = await conn.execute_core(select(sources).where(sources.c.retired.is_(False)))\n"
+    )
+    assert _whole_table_source_reads(code) == [2]
+
+
+@pytest.mark.parametrize(
+    "module", ["provisa/api/app.py", "provisa/api/apply_dry_run.py", "provisa/api/model_reload.py"]
+)
+def test_what_builds_a_runtimes_source_state_reads_no_retired_row(module):
+    """The schema build, the cloned environment's install and the configuration dry run each take
+    their source rows from ``registered_source_rows``: none selects the whole ``sources`` table,
+    which holds the retired rows under keys that are no source id (REQ-2248)."""
+    code = (Path(__file__).parents[2] / module).read_text()
+    assert _whole_table_source_reads(code) == []
+    if module != "provisa/api/model_reload.py":
+        assert "registered_source_rows(conn)" in code

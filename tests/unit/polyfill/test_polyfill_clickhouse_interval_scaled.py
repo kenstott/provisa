@@ -125,11 +125,6 @@ _ANSWERED = [(sql, want) for sql, want in PG if not isinstance(want, tuple)]
 _RAISED = [(sql, want[1]) for sql, want in PG if isinstance(want, tuple)]
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
     ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     return value

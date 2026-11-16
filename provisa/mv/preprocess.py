@@ -122,6 +122,31 @@ _FORBIDDEN_NAMES = frozenset(
     }
 )
 
+#: Attributes that lead from a generator, coroutine, async generator or traceback to a frame, and
+#: from a frame to its caller's globals and builtins (REQ-2133 amended 2026-11-16). Refusing them
+#: is a first refusal, not the boundary: on a server of many organizations the boundary is the
+#: code source's sandbox.
+_FORBIDDEN_ATTRIBUTES = frozenset(
+    {
+        "gi_frame",
+        "gi_code",
+        "gi_yieldfrom",
+        "cr_frame",
+        "cr_code",
+        "cr_await",
+        "ag_frame",
+        "ag_code",
+        "ag_await",
+        "f_back",
+        "f_globals",
+        "f_locals",
+        "f_builtins",
+        "f_code",
+        "tb_frame",
+        "tb_next",
+    }
+)
+
 REQUIRED_FUNC = "preflight"
 
 #: The one module a preflight may import (REQ-957, REQ-1165 amended 2026-10-21): Provisa's services,
@@ -129,6 +154,10 @@ REQUIRED_FUNC = "preflight"
 #: an SQL probe, and is excluded from replay determinism (REQ-964): its verdict is the state its
 #: service calls find at refresh time.
 SERVICES_MODULE = "provisa_services"
+
+
+def _is_dunder(name: str) -> bool:
+    return name.startswith("__") and name.endswith("__")
 
 
 class PreprocessValidationError(ValueError):
@@ -159,8 +188,19 @@ class _PurityVisitor(ast.NodeVisitor):
     def visit_Attribute(self, node: ast.Attribute) -> None:
         # Dunder attribute access (__globals__, __class__, __subclasses__, …) is the
         # classic sandbox-escape vector — reject it wholesale.
-        if node.attr.startswith("__") and node.attr.endswith("__"):
+        if _is_dunder(node.attr):
             self.errors.append(f"dunder attribute access is not allowed: {node.attr!r}")
+        if node.attr in _FORBIDDEN_ATTRIBUTES:
+            self.errors.append(
+                f"frame and traceback attribute access is not allowed: {node.attr!r}"
+            )
+        self.generic_visit(node)
+
+    def visit_Subscript(self, node: ast.Subscript) -> None:
+        # ``x["__builtins__"]``: the same reach as a dunder attribute, through a mapping.
+        key = node.slice
+        if isinstance(key, ast.Constant) and isinstance(key.value, str) and _is_dunder(key.value):
+            self.errors.append(f"a subscript naming a dunder is not allowed: {key.value!r}")
         self.generic_visit(node)
 
     def visit_Name(self, node: ast.Name) -> None:
@@ -173,7 +213,8 @@ def check_preprocess_purity(source: str) -> tuple[bool, str]:
     """Return (pure, reason). ``reason`` is empty when the hook is safe + deterministic.
 
     Fail-closed: unparseable source, a missing ``preflight(streams, ctx)`` definition,
-    any import, any forbidden name, or any dunder attribute access is rejected.
+    any import, any forbidden name, any dunder attribute access, any frame, generator, coroutine
+    or traceback attribute, or a string subscript naming a dunder is rejected.
     """
     try:
         tree = ast.parse(source)
@@ -239,19 +280,33 @@ def validate_preprocess(source: str | None) -> None:
         raise PreprocessValidationError(f"invalid preprocess hook: {reason}")
 
 
-def _services_import(name: str, *args: Any, **kwargs: Any) -> Any:
-    """The hook's ``__import__``: :data:`SERVICES_MODULE` and nothing else (the registration check
-    has already refused every other import; this refuses one that slipped past it)."""
-    del args, kwargs
-    if name != SERVICES_MODULE:
-        raise ImportError(f"a preflight may import only {SERVICES_MODULE}, not {name!r}")
+def _server_services() -> Any:
     from provisa.mv.preflight_services import services_module
 
     return services_module()
 
 
-def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
+def _services_import(services: Callable[[], Any]) -> Callable[..., Any]:
+    """The hook's ``__import__``: :data:`SERVICES_MODULE` (as ``services`` loads it) and nothing
+    else (the registration check has already refused every other import; this refuses one that
+    slipped past it)."""
+
+    def import_(name: str, *args: Any, **kwargs: Any) -> Any:
+        del args, kwargs
+        if name != SERVICES_MODULE:
+            raise ImportError(f"a preflight may import only {SERVICES_MODULE}, not {name!r}")
+        return services()
+
+    return import_
+
+
+def compile_preprocess(
+    source: str | None, *, services: Callable[[], Any] = _server_services
+) -> Callable[..., Any] | None:
     """Validate then compile a preflight script into a ``preflight(streams, ctx)`` callable.
+
+    ``services`` loads the module a check gets for ``import provisa_services``: the server's own
+    by default, the confined run's (:mod:`provisa.mv.preflight_runner`) in its process.
 
     Returns None for a blank/absent script (no hook — always continue). The compiled callable
     returns a verdict (normalized by :func:`provisa.mv.preflight.to_verdict`), never rows. It
@@ -263,7 +318,7 @@ def compile_preprocess(source: str | None) -> Callable[..., Any] | None:
     validate_preprocess(source)
     builtins = dict(_SAFE_BUILTINS)
     if uses_services(source):
-        builtins["__import__"] = _services_import
+        builtins["__import__"] = _services_import(services)
     namespace: dict[str, Any] = {"__builtins__": builtins}
     code = compile(source, filename="<preprocess>", mode="exec")
     # S102/B102 flag any exec — the source passed the purity check above and runs against a
