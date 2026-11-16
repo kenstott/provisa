@@ -298,6 +298,7 @@ async def test_a_refusal_names_a_document_tag_only_to_a_reader_of_the_document(
         metric=lambda row: True,
         term=lambda domains: "sales" in domains,
         command=lambda name: True,
+        retired=lambda domain_id: False,
     )
     async with plane.acquire() as conn:
         for document_id, readable in (

@@ -52,7 +52,7 @@ import {
   setSourceCacheTtl,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -93,7 +93,7 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
   });
 
   test.afterAll(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
     provision("down", ["hiveserver2"]);
   });
 

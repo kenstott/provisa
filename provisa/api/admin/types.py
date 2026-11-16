@@ -969,6 +969,8 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     via_label_source: str | None = None
     # REQ-2099: the target's parameters this edge feeds, each from a source column.
     parameters: list["RelationshipParameterType"] = strawberry.field(default_factory=list)
+    # REQ-2249: the code resolver set this edge belongs to; changed and retired only through it.
+    code_resolver: str | None = None
 
     @strawberry.field
     def auto_suggested(self) -> bool:
@@ -1527,6 +1529,38 @@ class RelationshipInput:  # REQ-019, REQ-020, REQ-158, REQ-413
     # each lost tag confirmed, or carried to the term the column moves to.
     confirm_tag_loss: list[str] = strawberry.field(default_factory=list)
     carry_tags: bool = False
+
+
+@strawberry.input
+class CodeResolverInput:  # REQ-2249
+    """A code resolver set as the form saves it: the resolver relating ``source_table`` to
+    ``target_table``, each table's key, the resolver's columns carrying them, and how often its
+    landed matches are worked out again at the latest (provisa/api/admin/code_resolver.py)."""
+
+    id: str
+    resolver: str
+    source_table: str
+    source_column: str
+    source_match: str
+    target_table: str
+    target_column: str
+    target_match: str
+    refresh_interval: int = 300
+
+
+@strawberry.type
+class CodeResolverType:  # REQ-2249
+    """A code resolver set in service, read back from its three objects."""
+
+    id: str
+    resolver: str
+    source_table: str
+    source_column: str
+    source_match: str
+    target_table: str
+    target_column: str
+    target_match: str
+    refresh_interval: int
 
 
 @strawberry.input

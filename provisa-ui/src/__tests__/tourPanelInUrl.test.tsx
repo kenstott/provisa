@@ -1,0 +1,186 @@
+// Copyright (c) 2026 Kenneth Stott
+// Canary: 5c2e8f17-3b9d-4a60-9e41-7d0b6a2f8c53
+//
+// This source code is licensed under the Business Source License 1.1
+// found in the LICENSE file in the root directory of this source tree.
+//
+// NOTICE: Use of this software for training artificial intelligence or
+// machine learning models is strictly prohibited without explicit written
+// permission from the copyright holder.
+
+/**
+ * REQ-2241: a list page's open panel is its URL (`/tables?source=…&table=…&section=…`). A tour card
+ * that continues on its predecessor's page (no `route` of its own) inherits that page's route,
+ * which names no panel. The runner took the page with a panel open for another page and navigated
+ * to the bare route, which closed the panel the card explains: the Data quality topic's "Checks on
+ * profile results" card came up over a closed table, its profiler panel gone
+ * (tour-profiler-step.spec.ts, run 43725827456).
+ */
+
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { useLayoutEffect, type ReactNode } from "react";
+import { BrowserRouter, useLocation } from "react-router-dom";
+import { useDetailParam } from "../components/list/useDetailParam";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { MantineProvider } from "@mantine/core";
+import { I18nextProvider } from "react-i18next";
+import { MockedProvider } from "@apollo/client/testing/react";
+import { theme } from "../theme/theme";
+import i18n from "../i18n";
+import { PollyProvider } from "../context/PollyContext";
+
+vi.mock("../hooks/useOrgHas", async () => {
+  const { STANDARD_DEMO_ORG } = await import("../test-utils/tourOrg");
+  const read = () => Promise.resolve(STANDARD_DEMO_ORG);
+  return { useOrgHas: () => read };
+});
+vi.mock("../pageChunks", () => ({ prefetchAllPageChunks: () => Promise.resolve() }));
+vi.mock("../hooks/useAdminQueries", () => ({ useTourPrefetch: () => () => Promise.resolve() }));
+// The Tables steps warm /admin/settings; there is no server here.
+vi.mock("../api/admin", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../api/admin")>()),
+  prefetchSettings: () => {},
+}));
+vi.mock("../context/AuthContext", async () => {
+  const { TOUR_STEPS } = await import("../tour/tourSteps");
+  const capabilities = [
+    ...new Set(TOUR_STEPS.flatMap((s) => (s.capability ? [s.capability] : []))),
+  ];
+  return { useAuth: () => ({ loading: false, capabilities }) };
+});
+
+const { TourProvider, useTour } = await import("../tour/useTour");
+
+function Compass() {
+  const { startTour } = useTour();
+  return (
+    <button type="button" onClick={() => startTour()}>
+      launch
+    </button>
+  );
+}
+
+const visited: string[] = [];
+
+/** The app's providers over a BrowserRouter: the runner reads the page shown from
+ * window.location, which a MemoryRouter never moves. */
+function AppProviders({ children }: { children: ReactNode }) {
+  return (
+    <MockedProvider mocks={[]}>
+      <MantineProvider theme={theme} defaultColorScheme="dark">
+        <I18nextProvider i18n={i18n}>
+          <BrowserRouter>
+            <PollyProvider>{children}</PollyProvider>
+          </BrowserRouter>
+        </I18nextProvider>
+      </MantineProvider>
+    </MockedProvider>
+  );
+}
+
+/**
+ * The Tables page as the quality topic reads it, drawn on /tables with the rows of the ?source=
+ * filtered on: a row opens its table's panel through the page's own useDetailParam, which writes
+ * `table` into the URL and shows the write at once, and clicking the open row closes it. While a
+ * table is open its read view, editor and Quality section's panels are shown.
+ */
+function TablesStandIn() {
+  const detail = useDetailParam("tables");
+  const location = useLocation();
+  // Recorded as each location commits, so a check right after a card appears reads it.
+  useLayoutEffect(() => {
+    visited.push(`${location.pathname}${location.search}`);
+  }, [location.pathname, location.search]);
+  const toggle = (id: string) => (detail.id === id ? detail.close() : detail.open(id));
+  // Its rows are on the Tables page only, as the real page's are.
+  if (location.pathname !== "/tables") return null;
+  const open = detail.id !== null;
+  // The filter box follows ?source=: only that source's rows are listed.
+  const source = new URLSearchParams(location.search).get("source");
+  return (
+    <div>
+      {source === "dq-checker" && (
+        <button
+          type="button"
+          data-table-row="dq-checker.pets_quality_dq_checker_dq"
+          onClick={() => toggle("302")}
+        />
+      )}
+      {source === "pet-store-sqlite" && (
+        <button
+          type="button"
+          data-table-row="pet-store-sqlite.pets"
+          onClick={() => toggle("296")}
+        />
+      )}
+      {open && (
+        <>
+          <button type="button" data-testid="table-read-view-edit" />
+          <button type="button" data-testid="table-edit-cancel" />
+          <button type="button" data-testid="table-section-quality" />
+          <div data-tour="dq-panel" />
+          <div data-tour="profiler-panel" />
+        </>
+      )}
+    </div>
+  );
+}
+
+const title = () => document.querySelector(".driver-popover-title")?.textContent;
+const location = () => `${window.location.pathname}${window.location.search}`;
+
+describe("a tour card on its predecessor's page, with a panel open in the URL", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    sessionStorage.clear();
+    visited.length = 0;
+    window.history.replaceState(null, "", "/sources");
+  });
+
+  it("stays on the page with the panel open, and a card with its own route still goes there", async () => {
+    localStorage.setItem("provisa_tour_seen", "true");
+    const nav = document.createElement("div");
+    nav.innerHTML = '<button class="navbar-tour-btn"></button>';
+    document.body.appendChild(nav);
+    try {
+      render(
+        <TourProvider>
+          <Compass />
+          <TablesStandIn />
+        </TourProvider>,
+        { wrapper: AppProviders },
+      );
+      fireEvent.click(screen.getByText("launch"));
+      fireEvent.click(await screen.findByTestId("tour-topic-quality"));
+
+      // The first card opens the checker's table: the page writes it into the URL.
+      await waitFor(() => expect(title()).toBe("A quality checker is just a source"), {
+        timeout: 5000,
+      });
+      expect(location()).toBe("/tables?source=dq-checker&table=302");
+
+      // The next card has no route of its own: it explains the panel that is open.
+      const opened = visited.length;
+      fireEvent.click(document.querySelector(".driver-popover-next-btn")!);
+      await waitFor(() => expect(title()).toBe("Build a quality contract"), { timeout: 5000 });
+      expect(visited.slice(opened)).toEqual([]);
+      expect(location()).toBe("/tables?source=dq-checker&table=302");
+
+      // "Profile a table" names another source: the tour goes there and opens the pets table.
+      fireEvent.click(document.querySelector(".driver-popover-next-btn")!);
+      await waitFor(() => expect(title()).toBe("Profile a table"), { timeout: 5000 });
+      expect(visited).toContain("/tables?source=pet-store-sqlite");
+      expect(location()).toBe("/tables?source=pet-store-sqlite&table=296");
+
+      // "Checks on profile results" continues on that page, over the same open panel.
+      const before = visited.length;
+      fireEvent.click(document.querySelector(".driver-popover-next-btn")!);
+      await waitFor(() => expect(title()).toBe("Checks on profile results"), { timeout: 5000 });
+      expect(visited.slice(before)).toEqual([]);
+      expect(location()).toBe("/tables?source=pet-store-sqlite&table=296");
+      expect(document.querySelector('[data-tour="profiler-panel"]')).not.toBeNull();
+    } finally {
+      nav.remove();
+    }
+  });
+});
