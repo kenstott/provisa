@@ -271,15 +271,6 @@ def test_a_set_with_no_change_function_cannot_be_kept_incrementally(server, geo)
     assert "REQ-" not in refused["message"]
 
 
-def test_a_set_kept_incrementally_needs_a_rebuild_interval(server, geo):
-    del geo
-    refused = _try(
-        server, f"createCodeResolver(input: {{{_set('unclocked_regions', 'incremental: true')}}})"
-    )
-    assert not refused["success"]
-    assert refused["code"] == "schema.incremental_needs_rebuild_every", refused
-
-
 def test_the_first_build_calls_change_with_no_cursor_and_lands_every_match(server, kept):
     del kept
     assert _matches(server) == _WHOLE
@@ -294,6 +285,17 @@ def test_the_first_build_calls_change_with_no_cursor_and_lands_every_match(serve
             "incrementalOption": {"available": True},
         }
     ]
+
+
+def test_a_set_kept_incrementally_needs_a_rebuild_interval(server, kept):
+    """Refused before anything is saved: the set keeps what it holds."""
+    del kept
+    refused = _try(
+        server, f"updateCodeResolver(input: {{{_set('store_regions', 'incremental: true')}}})"
+    )
+    assert not refused["success"]
+    assert refused["code"] == "schema.incremental_needs_rebuild_every", refused
+    assert "REQ-" not in refused["message"]
 
 
 def test_a_refresh_applies_the_changes_since_the_stored_cursor(server, kept):

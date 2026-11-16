@@ -1342,7 +1342,8 @@ class Query:  # REQ-021, REQ-042
         (its form disables the setting with the reason when not)."""
         from provisa.api.admin import code_resolver
 
-        del info
+        # Asked by the form that saves a set, which registers its bridge.
+        require_capability(info, "table_registration")
         return await code_resolver.incremental_option(resolver, id)
 
     @strawberry.field

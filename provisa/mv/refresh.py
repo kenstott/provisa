@@ -405,9 +405,10 @@ async def _landed_count(engine, mv: MVDefinition, target: str, authorization: Sy
     """The rows the view's store table holds, read where its refresh writes it (REQ-2249)."""
     broker = _mv_store_broker(engine)
     if broker is not None:
-        rows = await _in_executor(
-            lambda: broker.execute(f'SELECT COUNT(*) FROM "{mv.target_schema}"."{mv.target_table}"')
-        )
+        from provisa.federation.materialize_broker import _MAT_STORE_ALIAS  # noqa: PLC0415
+
+        landed = f'{_MAT_STORE_ALIAS}."{mv.target_schema}"."{mv.target_table}"'
+        rows = await _in_executor(lambda: broker.execute(f"SELECT COUNT(*) FROM {landed}"))
         return int(rows[0][0])
     counted = await engine.execute_engine(
         f"SELECT COUNT(*) FROM {target}", authorization=authorization

@@ -231,7 +231,12 @@ def _resolver(input: "CodeResolverInput") -> "tuple[MutationResult | None, dict]
 
 
 def _bridge_input(
-    input: "CodeResolverInput", command: dict, source: dict, target: dict, readers: list[str]
+    input: "CodeResolverInput",
+    command: dict,
+    source: dict,
+    target: dict,
+    readers: list[str],
+    schema_name: str = _VIEW_SCHEMA,
 ) -> Any:
     from provisa.api.admin.types import ColumnInput, TableInput
     from provisa.codesource.resolver import call_sql
@@ -240,7 +245,7 @@ def _bridge_input(
     return TableInput(
         source_id=DERIVED_SOURCE_ID,
         domain_id=source["domain_id"],
-        schema_name=_VIEW_SCHEMA,
+        schema_name=schema_name,
         table_name=names(input.id).bridge,
         description=(
             f"The matches of {input.source_table} to {input.target_table} that "
@@ -375,7 +380,15 @@ async def save(
             "schema.code_resolver_not_found",
             resolver=input.id,
         )
-    view = _bridge_input(input, command, source, target, readers)
+    # A change is saved over the bridge as it is registered: under the schema it was stored in.
+    view = _bridge_input(
+        input,
+        command,
+        source,
+        target,
+        readers,
+        _VIEW_SCHEMA if bridge is None else bridge["schema_name"],
+    )
     with _changing(input.id):
         if creating:
             saved = await ops.register_table(info, view)
