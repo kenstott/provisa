@@ -53,51 +53,13 @@ class SecretsProvider(ABC):  # REQ-125, REQ-320
 
 class EnvSecretsProvider(SecretsProvider):  # REQ-125
     def resolve(self, reference: str) -> str:
-        var, written_default, default = reference.partition(":-")
-        value = os.environ.get(var)
+        if ":-" in reference:
+            var, default = reference.split(":-", 1)
+            return os.environ.get(var, default)
+        value = os.environ.get(reference)
         if value is None:
-            if not written_default:
-                raise KeyError(f"Environment variable not set: {reference}")
-            return default  # the reference's own text, not the server's
-        # REQ-2087: what the server's environment held is matched by central redaction from its
-        # first use, so an error or a log line that echoes it does not carry it.
-        from provisa.security.redaction import note_secret_value
-
-        note_secret_value(f"env:{var}", value)
+            raise KeyError(f"Environment variable not set: {reference}")
         return value
-
-
-class EnvReferenceRefused(ValueError):
-    """``${env:NAME}`` in text the server's operator did not write, on a server of many
-    organizations (REQ-1557: an organization there does not own the process environment).
-    ``code`` and ``params`` are what the writer is answered with."""
-
-    code = "secrets.env_reference_refused"
-
-    def __init__(self, reference: str) -> None:
-        name = reference.partition(":-")[0]
-        super().__init__(
-            f"${{env:{name}}} reads the server's own environment, which only the server's "
-            "operator may reference on a server of many organizations. Store the value as an "
-            "organization secret and write ${secret:NAME}."
-        )
-        self.params = {"name": name}
-
-
-def env_is_the_operators_alone() -> bool:  # REQ-1557
-    """Whether ``${env:...}`` resolves here only in text the operator wrote: on a server of many
-    organizations, in every context but the deployment's own organization (whose text is the
-    operator's). With no organization bound there is nobody the text can be shown to belong to,
-    so it is held too. A single-organization install is never held (REQ-557)."""
-    from provisa.core.secrets_providers import many_organisations
-
-    if not many_organisations():
-        return False
-    from provisa.core.request_context import current_org
-    from provisa.security.sandbox_egress import held
-
-    org_id = current_org.get(None)
-    return org_id is None or held(org_id)
 
 
 #: The names :class:`ScopeProvider` answers, and how. Each is read from the context the resolution
@@ -173,19 +135,13 @@ def _provider_for(name: str) -> SecretsProvider:
 
 
 def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
-    value: str, *, providers: tuple[str, ...] | None = None, operator_written: bool = False
+    value: str, *, providers: tuple[str, ...] | None = None
 ) -> str:
     """Replace ${provider:reference} patterns with resolved secret values.
 
     ``providers`` narrows which provider names this particular call will honour. The caller that
     uses it is the one building a central backend from its config: that backend's own credential
     cannot come out of the store it opens, so its resolution is restricted to ``env``.
-
-    ``operator_written``: the caller states that the server's operator wrote ``value`` (the
-    deployment's own configuration, a demo template's). Only such text reads the process
-    environment on a server of many organizations (:func:`env_is_the_operators_alone`); a call
-    that does not say so is refused its ``${env:...}`` there (:class:`EnvReferenceRefused`), and
-    the variable is not read.
     """
 
     def _replace(match: re.Match) -> str:
@@ -196,8 +152,6 @@ def resolve_secrets(  # REQ-125, REQ-251, REQ-320, REQ-1557
                 f"Secrets provider {provider_name!r} is not permitted here; "
                 f"expected one of {', '.join(providers)}."
             )
-        if provider_name == "env" and not operator_written and env_is_the_operators_alone():
-            raise EnvReferenceRefused(reference)
         provider = _provider_for(provider_name)
         # REQ-1560: the NAME in the reference decides the vault. ``user`` never reads the org's
         # names and ``secret`` never reads a person's -- neither scope stands in for the other.
@@ -231,9 +185,7 @@ def expand_scope(value: str) -> str:  # REQ-1622
     return _SCOPE_PATTERN.sub(lambda m: _PROVIDERS["scope"].resolve(m.group(1)), value)
 
 
-async def resolve_api_key_field(  # REQ-1827
-    value: str | None, *, operator_written: bool = False
-) -> str | None:
+async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
     """A credential config field's value: either a ``${secret:NAME}``/``${env:NAME}``/
     ``${user:NAME}`` reference (this module's grammar), or — for backward compatibility with
     fields that only ever meant this — a bare env-var NAME whose OWN value is looked up.
@@ -255,17 +207,13 @@ async def resolve_api_key_field(  # REQ-1827
             from provisa.core.secrets_store import bound_to_request_org
 
             async with bound_to_request_org():
-                return resolve_secrets(ref, operator_written=operator_written)
-        return resolve_secrets(ref, operator_written=operator_written)
+                return resolve_secrets(ref)
+        return resolve_secrets(ref)
 
     if not value:
         return None
     if "${" in value:
         return await _resolve_reference(value)
-    # A bare name reads the process environment exactly as ``${env:NAME}`` does, so it is the
-    # operator's alone on the same terms (``operator_written``, as :func:`resolve_secrets`).
-    if not operator_written and env_is_the_operators_alone():
-        raise EnvReferenceRefused(value)
     # A plain name: look up the env var. Its OWN value is returned as-is unless it too contains a
     # reference (one layer deeper) — so a deployment can inject an env var whose own value is a
     # ${secret:...} reference, and that still resolves against the org's vault; a plain literal
@@ -287,22 +235,19 @@ def resolve_secret_name(name: str) -> str:  # REQ-2104
     return value
 
 
-def resolve_secrets_in_dict(  # REQ-251, REQ-320
-    data: dict, *, operator_written: bool = False
-) -> dict:
-    """Recursively resolve secret references in a dict (``operator_written`` as
-    :func:`resolve_secrets`)."""
+def resolve_secrets_in_dict(data: dict) -> dict:  # REQ-251, REQ-320
+    """Recursively resolve secret references in a dict."""
     result = {}
     for key, value in data.items():
         if isinstance(value, str):
-            result[key] = resolve_secrets(value, operator_written=operator_written)
+            result[key] = resolve_secrets(value)
         elif isinstance(value, dict):
-            result[key] = resolve_secrets_in_dict(value, operator_written=operator_written)
+            result[key] = resolve_secrets_in_dict(value)
         elif isinstance(value, list):
             result[key] = [
-                resolve_secrets_in_dict(item, operator_written=operator_written)
+                resolve_secrets_in_dict(item)
                 if isinstance(item, dict)
-                else resolve_secrets(item, operator_written=operator_written)
+                else resolve_secrets(item)
                 if isinstance(item, str)
                 else item
                 for item in value
