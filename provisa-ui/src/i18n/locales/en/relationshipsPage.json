@@ -7,7 +7,7 @@
     "addRelationship": "+ Relationship",
     "sqlModelingTool": "SQL Modeling tool",
     "viewErd": "View ERD",
-    "discovering": "Discovering...",
+    "discovering": "Discovery is running. Open it to see its progress.",
     "suggestWithAi": "Suggest with AI",
     "clearRejections": "Clear Rejections",
     "clearedRejections": "Cleared {{count}} rejection.",

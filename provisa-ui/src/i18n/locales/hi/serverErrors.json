@@ -458,6 +458,7 @@
       "role_id_taken": "भूमिका '{{role}}' पहले से मौजूद है",
       "role_updated": "भूमिका '{{role}}' अपडेट की गई",
       "relationship_id_taken": "संबंध '{{relationship}}' पहले से मौजूद है",
+      "relationship_id_reserved": "संबंध आईडी '{{id}}' '{{prefix}}' से शुरू होती है, जो अंतर्निहित संबंधों के लिए आरक्षित उपसर्ग है। कोई दूसरी आईडी चुनें।",
       "relationship_graphql_alias_taken": "GraphQL उपनाम '{{alias}}' पहले से '{{table}}' से संबंध '{{relationship}}' का उपनाम है",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "शेड्यूल किया गया कार्य '{{task}}' अपडेट किया गया",

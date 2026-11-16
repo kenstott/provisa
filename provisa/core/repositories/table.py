@@ -1328,8 +1328,9 @@ async def retire_generated(  # REQ-1918
 
 async def remove_registrations(conn: "Connection", *where) -> None:
     """Remove every registered table matching ``where`` (clauses on ``registered_tables``) —
-    for the code that registers tables as a SET and replaces or retires that set: the seed
-    retiring rows it wrote, the config loader dropping what the config no longer declares.
+    for the startup seed removing built-in rows it wrote and no longer declares. The one
+    exception to retirement it serves (REQ-2248, amended 2026-11-15): a startup seed may delete
+    Provisa's own built-in rows that it no longer declares; they are not a person's objects.
 
     It declares a set; it is not a deletion of one object, so it does not ask the dependency
     guard, as a full replace does not. What referred to those tables is left to the database, as

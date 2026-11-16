@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "Refererende sleutels: {{count}} gevonden.",
-    "foreignKeys_other": "Refererende sleutels: {{count}} gevonden.",
+    "foreignKeys": "Refererende sleutels: {{found}} gevonden, {{count}} voorgesteld.",
+    "foreignKeys_other": "Refererende sleutels: {{found}} gevonden, {{count}} voorgesteld.",
     "semanticsFound": "Semantiek: {{count}} voorstel.",
     "semanticsFound_other": "Semantiek: {{count}} voorstellen.",
     "semanticsUnreadable": "Semantiek: geen. Het antwoord van het model kon niet worden gelezen.",
     "semanticsNoneProposed": "Semantiek: geen. Het model stelde geen relaties voor.",
-    "semanticsFiltered": "Semantiek: de {{count}} relatie die het model voorstelde is niet behouden: {{why}}.",
-    "semanticsFiltered_other": "Semantiek: geen van de {{count}} relaties die het model voorstelde is behouden: {{why}}.",
-    "belowThreshold": "{{count}} lag onder de betrouwbaarheidsdrempel van {{threshold}}%",
-    "belowThreshold_other": "{{count}} lagen onder de betrouwbaarheidsdrempel van {{threshold}}%",
-    "alreadyKnown": "{{count}} was al afgewezen of al aanwezig",
-    "alreadyKnown_other": "{{count}} waren al afgewezen of al aanwezig",
-    "invalid": "{{count}} noemde een tabel of kolom die niet bestaat",
-    "invalid_other": "{{count}} noemden tabellen of kolommen die niet bestaan",
-    "semanticsCutShort": "Semantiek: geen. Het antwoord van het model stopte bij zijn lengtelimiet voordat het een voorstel had afgemaakt.",
-    "cutShortNote": "Het antwoord van het model stopte bij zijn lengtelimiet, dus alleen de voorstellen die het afmaakte zijn gelezen."
+    "semanticsBelowThreshold": "Semantiek: geen. Elk voorstel lag onder de betrouwbaarheidsdrempel van {{threshold}}%.",
+    "semanticsFiltered": "Semantiek: geen. Elk voorstel is weggelaten, om de redenen hieronder.",
+    "split": "{{count}} verzoek is gehalveerd en opnieuw gesteld.",
+    "split_other": "{{count}} verzoeken zijn gehalveerd en opnieuw gesteld.",
+    "cutShort": "{{count}} antwoord stopte bij zijn lengtelimiet; de voorstellen die het afmaakte, blijven bewaard.",
+    "cutShort_other": "{{count}} antwoorden stopten bij hun lengtelimiet; de voorstellen die ze afmaakten, blijven bewaard.",
+    "failedRequest": "Een verzoek voor kolommen van het type {{group}} is mislukt: {{error}}",
+    "leftOut": "Weggelaten: {{list}}.",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "onder de betrouwbaarheidsdrempel van {{threshold}}%",
+      "invalid": "noemt een tabel of kolom die niet bestaat",
+      "same_column": "van een kolom naar zichzelf",
+      "primary_key_to_primary_key": "primaire sleutel naar primaire sleutel",
+      "both_repeating": "herhaalde waarden aan beide kanten",
+      "existing": "al geregistreerd",
+      "pending": "wacht al",
+      "rejected": "eerder afgewezen",
+      "matches_foreign_key": "komt overeen met een refererende sleutel uit deze run",
+      "out_of_scope": "buiten de gekozen tabellen"
+    }
   }
 }

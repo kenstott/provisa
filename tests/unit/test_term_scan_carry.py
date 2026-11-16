@@ -25,6 +25,7 @@ from sqlalchemy import delete, insert, select
 from provisa.core import env_copy
 from provisa.core.database import Database
 from provisa.core.repositories import glossary as glossary_repo
+from provisa.core.repositories.integrity import ObjectRef, discard
 from provisa.core.schema_org import domains
 from provisa.core.schema_org import glossary_term_drafts as drafts_t
 from provisa.core.schema_org import glossary_term_scans as scans_t
@@ -113,7 +114,9 @@ async def _forget(db) -> None:
         await conn.execute_core(delete(scans_t))
         await conn.execute_core(delete(documents_t))
         for term in await glossary_repo.list_terms(conn):
-            await glossary_repo.delete_term(conn, term["id"])
+            # The rebuild's own removal (config_loader.reset_model, a built-in seed under
+            # REQ-2248's ruling of 2026-11-15), not a person's delete, which retires the term.
+            await discard(conn, ObjectRef("glossary_term", term["id"]))
         await glossary_repo.create_abstract_term(conn, "filler", domains={"bank"})
         await glossary_repo.create_abstract_term(conn, "cash transaction", domains={"bank"})
 
@@ -194,7 +197,9 @@ async def test_a_matched_term_the_org_does_not_hold_is_refused_by_name(control_p
     carry.export_scans(control_plane.url, SCHEMA, out)
     async with db.acquire() as conn, conn.transaction():
         for term in await glossary_repo.list_terms(conn):
-            await glossary_repo.delete_term(conn, term["id"])
+            # The rebuild's own removal (config_loader.reset_model, a built-in seed under
+            # REQ-2248's ruling of 2026-11-15), not a person's delete, which retires the term.
+            await discard(conn, ObjectRef("glossary_term", term["id"]))
     async with db.acquire() as conn:
         with pytest.raises(ValueError, match="'cash transaction', which this org does not hold"):
             await carry.load_scans(conn, out)

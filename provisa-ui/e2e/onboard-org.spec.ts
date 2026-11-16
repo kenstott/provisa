@@ -185,7 +185,9 @@ test("member-less user joins an existing org with an invite code and is routed i
   await page.getByTestId("onboard-org-invite").fill("invite-tok-xyz");
   await page.getByTestId("onboard-org-join-submit").click();
 
-  await page.waitForURL("**/query");
+  // REQ-1327: the join enters `/`, which opens the role's first page. The shell's role read is
+  // answered empty, so the joined member holds no query right and lands on its own first page.
+  await page.waitForURL("**/admin/my-secrets");
   await expect(page.getByTestId("onboard-org-page")).toHaveCount(0);
 
   expect(redeemBody).toEqual({ token: "invite-tok-xyz" });

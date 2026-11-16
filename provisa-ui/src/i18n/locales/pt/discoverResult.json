@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "Chaves estrangeiras: {{count}} encontrada.",
-    "foreignKeys_other": "Chaves estrangeiras: {{count}} encontradas.",
+    "foreignKeys": "Chaves estrangeiras: {{found}} encontradas, {{count}} sugerida.",
+    "foreignKeys_other": "Chaves estrangeiras: {{found}} encontradas, {{count}} sugeridas.",
     "semanticsFound": "Semântica: {{count}} sugestão.",
     "semanticsFound_other": "Semântica: {{count}} sugestões.",
     "semanticsUnreadable": "Semântica: nenhuma. Não foi possível ler a resposta do modelo.",
     "semanticsNoneProposed": "Semântica: nenhuma. O modelo não propôs relacionamentos.",
-    "semanticsFiltered": "Semântica: o {{count}} relacionamento proposto pelo modelo não foi mantido: {{why}}.",
-    "semanticsFiltered_other": "Semântica: nenhum dos {{count}} relacionamentos propostos pelo modelo foi mantido: {{why}}.",
-    "belowThreshold": "{{count}} ficou abaixo do limite de confiança de {{threshold}}%",
-    "belowThreshold_other": "{{count}} ficaram abaixo do limite de confiança de {{threshold}}%",
-    "alreadyKnown": "{{count}} já estava rejeitado ou já existia",
-    "alreadyKnown_other": "{{count}} já estavam rejeitados ou já existiam",
-    "invalid": "{{count}} indicava uma tabela ou coluna que não existe",
-    "invalid_other": "{{count}} indicavam tabelas ou colunas que não existem",
-    "semanticsCutShort": "Semântica: nenhuma. A resposta do modelo parou no seu limite de tamanho antes de terminar uma sugestão.",
-    "cutShortNote": "A resposta do modelo parou no seu limite de tamanho, então só as sugestões que ele terminou foram lidas."
+    "semanticsBelowThreshold": "Semântica: nenhuma. Todas as sugestões ficaram abaixo do limiar de confiança de {{threshold}}%.",
+    "semanticsFiltered": "Semântica: nenhuma. Todas as sugestões foram deixadas de fora, pelos motivos abaixo.",
+    "split": "{{count}} solicitação foi dividida ao meio e enviada de novo.",
+    "split_other": "{{count}} solicitações foram divididas ao meio e enviadas de novo.",
+    "cutShort": "{{count}} resposta parou no seu limite de tamanho; as sugestões que ela concluiu são mantidas.",
+    "cutShort_other": "{{count}} respostas pararam no seu limite de tamanho; as sugestões que elas concluíram são mantidas.",
+    "failedRequest": "Uma solicitação para colunas do tipo {{group}} falhou: {{error}}",
+    "leftOut": "Deixadas de fora: {{list}}.",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "abaixo do limiar de confiança de {{threshold}}%",
+      "invalid": "citando uma tabela ou coluna inexistente",
+      "same_column": "de uma coluna para ela mesma",
+      "primary_key_to_primary_key": "chave primária para chave primária",
+      "both_repeating": "valores repetidos nos dois lados",
+      "existing": "já registradas",
+      "pending": "já aguardando",
+      "rejected": "rejeitadas antes",
+      "matches_foreign_key": "iguais a uma chave estrangeira encontrada nesta execução",
+      "out_of_scope": "fora das tabelas escolhidas"
+    }
   }
 }

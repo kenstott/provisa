@@ -8,114 +8,72 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-413: discovery asks before it runs. The kinds to look for, both ticked; Semantics greyed
-// out and unticked, with the reason, when the model assigned to relationship inference has no key.
+// REQ-413: discovery asks before it runs. With no run to show, the dialog sets up a run's scope;
+// with one going, or the one last watched, it shows that run. Closing the dialog leaves a run
+// going: the run is the server's, and opening the dialog again shows it.
 
-import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Modal, Text } from "@mantine/core";
-import { fetchDiscoveryKinds, type DiscoveryKind, type DiscoveryKinds } from "../../api/admin";
-import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import { Modal } from "@mantine/core";
+import type { DiscoveryScope } from "../../api/admin";
+import { DiscoverRunView, type SuggestionActions } from "./DiscoverRunView";
+import { DiscoverScopeForm, type ScopeTable } from "./DiscoverScopeForm";
+import type { DiscoveryRunState } from "./useDiscoveryRun";
 
 interface DiscoverDialogProps {
   opened: boolean;
-  onCancel: () => void;
-  /** Run the kinds ticked. The dialog closes; the page shows the run and its result. */
-  onRun: (kinds: DiscoveryKind[]) => void;
+  onClose: () => void;
+  discovery: DiscoveryRunState;
+  tables: ScopeTable[];
+  /** The domains ticked in the Domains picker: the source domains a new run starts with. */
+  defaultDomains: string[];
+  /** Every waiting suggestion, with their actions: the dialog lists the shown run's own. */
+  suggestions: SuggestionActions;
 }
 
-export function DiscoverDialog({ opened, onCancel, onRun }: DiscoverDialogProps) {
+export function DiscoverDialog({
+  opened,
+  onClose,
+  discovery,
+  tables,
+  defaultDomains,
+  suggestions,
+}: DiscoverDialogProps) {
   const { t } = useTranslation();
-  // The choices mount each time the dialog opens: both ticked again, and which kinds can run read
-  // again, so a key set meanwhile counts.
+  const { run } = discovery;
+  const runScope = run ? `run:${run.id}` : null;
+  const runSuggestions = {
+    ...suggestions,
+    candidates: suggestions.candidates.filter((c) => c.scope === runScope),
+  };
   return (
     <Modal
       opened={opened}
-      onClose={onCancel}
+      onClose={onClose}
       title={t("discoverDialog.title")}
+      // A run lists its suggestions in the shared table, whose six columns need the room.
+      size={run ? "min(75rem, calc(100vw - 2rem))" : "lg"}
       centered
       data-testid="discover-dialog"
     >
-      {opened && <DiscoverChoices onCancel={onCancel} onRun={onRun} />}
+      {/* The scope mounts each time it is shown: the defaults again, and which models can run read
+          again, so a key set meanwhile counts. */}
+      {opened &&
+        (run ? (
+          <DiscoverRunView
+            run={run}
+            readError={discovery.error}
+            onStop={() => void discovery.stop()}
+            onNewRun={discovery.dismiss}
+            suggestions={runSuggestions}
+          />
+        ) : (
+          <DiscoverScopeForm
+            tables={tables}
+            defaultDomains={defaultDomains}
+            onCancel={onClose}
+            onRun={(scope: DiscoveryScope) => discovery.start(scope)}
+          />
+        ))}
     </Modal>
-  );
-}
-
-function DiscoverChoices({ onCancel, onRun }: Omit<DiscoverDialogProps, "opened">) {
-  const { t } = useTranslation();
-  const [kinds, setKinds] = useState<DiscoveryKinds | null>(null);
-  const [readError, setReadError] = useState("");
-  const [foreignKeys, setForeignKeys] = useState(true);
-  const [semantics, setSemantics] = useState(true);
-
-  useEffect(() => {
-    let live = true;
-    fetchDiscoveryKinds()
-      .then((k) => {
-        if (!live) return;
-        setKinds(k);
-        if (!k.semantics.available) setSemantics(false);
-      })
-      .catch((e) => {
-        if (live) setReadError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      live = false;
-    };
-  }, []);
-
-  const semanticsAvailable = kinds?.semantics.available === true;
-  const chosen: DiscoveryKind[] = [
-    ...(foreignKeys ? (["foreign_keys"] as const) : []),
-    ...(semantics && semanticsAvailable ? (["semantics"] as const) : []),
-  ];
-
-  return (
-    <>
-      <Text mb="md">{t("discoverDialog.intro")}</Text>
-      {readError && (
-        <Alert color="red" mb="md" data-testid="discover-dialog-error">
-          {readError}
-        </Alert>
-      )}
-      <FormLayout>
-        <FormChecks column>
-          <FormField size="long">
-            <Checkbox
-              label={t("discoverDialog.foreignKeys")}
-              checked={foreignKeys}
-              onChange={(e) => setForeignKeys(e.currentTarget.checked)}
-              data-testid="discover-kind-foreign-keys"
-            />
-          </FormField>
-          <FormField size="long">
-            <Checkbox
-              label={
-                kinds !== null && !semanticsAvailable
-                  ? t("discoverDialog.semanticsNoKey", { model: kinds.semantics.model })
-                  : t("discoverDialog.semantics")
-              }
-              checked={semantics && semanticsAvailable}
-              disabled={!semanticsAvailable}
-              onChange={(e) => setSemantics(e.currentTarget.checked)}
-              data-testid="discover-kind-semantics"
-            />
-          </FormField>
-        </FormChecks>
-        <FormFooter
-          onCancel={onCancel}
-          cancelProps={{ "data-testid": "discover-cancel" }}
-          action={
-            <Button
-              onClick={() => onRun(chosen)}
-              disabled={kinds === null || chosen.length === 0}
-              data-testid="discover-run"
-            >
-              {t("discoverDialog.run")}
-            </Button>
-          }
-        />
-      </FormLayout>
-    </>
   );
 }

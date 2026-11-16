@@ -153,13 +153,15 @@ async def test_the_read_hides_what_visible_to_hides_and_shows_no_formula(
     assert not hasattr(net, "expression")
 
 
-async def test_a_terms_deletion_leaves_the_metric_unnamed(control_plane):
+async def test_a_terms_deletion_retires_it_and_the_metric_keeps_naming_it(control_plane):
+    """REQ-2248: a deleted term is retired, and no rule moves or drops a link to it; a person
+    does."""
     async with _admin_db(control_plane) as db:
         async with db.acquire() as conn:
             ids = await _seed(conn)
             assert await glossary_repo.delete_term(conn, ids["term"])
             stored = await metric_repo.get(conn, "net_revenue")
-    assert stored is not None and stored["term"] is None
+    assert stored is not None and stored["term"] == "net revenue"
 
 
 async def test_the_term_a_metric_names_is_versioned_with_it(control_plane):

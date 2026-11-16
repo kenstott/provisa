@@ -458,6 +458,7 @@
       "role_id_taken": "角色 '{{role}}' 已存在",
       "role_updated": "角色 '{{role}}' 已更新",
       "relationship_id_taken": "关系 '{{relationship}}' 已存在",
+      "relationship_id_reserved": "关系 ID '{{id}}' 以 '{{prefix}}' 开头，该前缀为内置关系保留。请选择其他 ID。",
       "relationship_graphql_alias_taken": "GraphQL 别名 '{{alias}}' 已是来自 '{{table}}' 的关系 '{{relationship}}' 的别名",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "计划任务“{{task}}”已更新",

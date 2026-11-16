@@ -1,0 +1,211 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 4d6c0a3e-7b21-4f95-8c1e-b5a9e2f07d13
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
+"""The semantic requests of a discovery run, asked one at a time (REQ-413).
+
+An answer that is cut off or full, or a request the vendor refuses as too long, is split in half
+and asked again (:meth:`provisa.discovery.windows.Request.halves`); the complete suggestions of an
+answer are kept either way, so nothing is dropped. One failed request is reported and the rest
+continue. Between requests the run's control is asked whether to stop: a stop ends the run after
+the request in flight and keeps what was returned.
+"""
+
+# Requirements: REQ-413
+
+from __future__ import annotations
+
+import asyncio
+import re
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
+from typing import Any, Protocol
+
+from provisa.discovery.analyzer import read_answer_list
+from provisa.discovery.columns import comparable
+from provisa.discovery.direction import Proposal, from_answer
+from provisa.discovery.windows import Request
+
+#: The confidence a semantic suggestion needs to be kept (as the discovery router's MIN_CONFIDENCE).
+MIN_CONFIDENCE = 0.7
+
+# What a vendor says when it refuses a request as longer than the model reads: Anthropic's
+# "prompt is too long", OpenAI's "context_length_exceeded" / "maximum context length", and the
+# "too many tokens" other OpenAI-wire gateways answer with.
+_TOO_LONG = re.compile(
+    r"prompt is too long|context[_ ]length|maximum context length|too many tokens|input is too long",
+    re.IGNORECASE,
+)
+
+_REQUIRED = (
+    "source_table_id",
+    "source_column",
+    "target_table_id",
+    "target_column",
+    "cardinality",
+    "confidence",
+)
+
+
+def too_long(exc: BaseException) -> bool:
+    """Whether a model call's error is the vendor refusing the request as too long."""
+    return _TOO_LONG.search(str(exc)) is not None
+
+
+@dataclass
+class Tally:
+    """What the semantic requests have done so far."""
+
+    total: int
+    done: int = 0
+    split: int = 0
+    proposed: int = 0
+    invalid: int = 0
+    below_threshold: int = 0
+    cut_short: int = 0
+    unreadable: int = 0
+    failed: list[dict[str, Any]] = field(default_factory=list)
+    stopped: bool = False
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "requests_total": self.total,
+            "requests_done": self.done,
+            "split": self.split,
+            "proposed": self.proposed,
+            "invalid": self.invalid,
+            "below_threshold": self.below_threshold,
+            "threshold": MIN_CONFIDENCE,
+            "cut_short": self.cut_short,
+            "unreadable": self.unreadable,
+            "failed": list(self.failed),
+            "stopped": self.stopped,
+        }
+
+
+class Control(Protocol):
+    """The run's link to whoever watches it."""
+
+    async def stop_asked(self) -> bool: ...
+
+    async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
+        """A request returned: ``proposals`` are every semantic proposal so far."""
+        ...
+
+
+#: One model call: (prompt, max output tokens) -> the vendor's Completion. Blocking; run on a
+#: thread.
+Ask = Callable[[str, int], Any]
+
+
+def read_items(request: Request, items: list, tally: Tally) -> list[Proposal]:
+    """The proposals an answer's elements make: each names two different compared columns of
+    the request, of its group, whose classes meet; ``tally`` counts the rest."""
+    columns = {(t.table_id, c.name): c for t, c in request.source.columns()}
+    if request.target is not None:
+        columns.update({(t.table_id, c.name): c for t, c in request.target.columns()})
+    out: list[Proposal] = []
+    for raw in items:
+        tally.proposed += 1
+        if not isinstance(raw, dict) or any(k not in raw for k in _REQUIRED):
+            tally.invalid += 1
+            continue
+        try:
+            source = (int(raw["source_table_id"]), str(raw["source_column"]))
+            target = (int(raw["target_table_id"]), str(raw["target_column"]))
+            confidence = float(raw["confidence"])
+        except (TypeError, ValueError):
+            tally.invalid += 1
+            continue
+        a, b = columns.get(source), columns.get(target)
+        if (
+            a is None
+            or b is None
+            or raw["cardinality"] not in ("many-to-one", "one-to-many")
+            or not comparable(a, b, request.group)
+        ):
+            tally.invalid += 1
+            continue
+        if confidence < MIN_CONFIDENCE:
+            tally.below_threshold += 1
+            continue
+        out.append(
+            from_answer(
+                "semantics",
+                source,
+                target,
+                str(raw["cardinality"]),
+                confidence,
+                str(raw.get("reasoning", "")),
+                str(raw.get("suggested_name", "")),
+            )
+        )
+    return out
+
+
+async def execute(
+    requests: list[Request],
+    k: int,
+    max_tokens: int,
+    ask: Ask,
+    control: Control,
+    *,
+    refine: Callable[[list[Proposal]], Awaitable[list[Proposal]]] | None = None,
+    to_thread: Callable[..., Awaitable[Any]] = asyncio.to_thread,
+) -> tuple[Tally, list[Proposal]]:
+    """Ask every request in order, splitting as it must; stop when the control asks. ``refine``
+    re-scores a request's proposals (REQ-1789, when a Jev key is configured); those it drops fell
+    below the threshold."""
+    queue = list(requests)
+    tally = Tally(total=len(queue))
+    proposals: list[Proposal] = []
+    while queue:
+        if await control.stop_asked():
+            tally.stopped = True
+            break
+        request = queue.pop(0)
+        try:
+            answer = await to_thread(ask, request.prompt(k), max_tokens)
+        except Exception as exc:  # one failed request is reported, the rest go on (REQ-413)
+            if too_long(exc) and request.splittable:
+                halves = request.halves()
+                queue[0:0] = halves
+                tally.split += 1
+                tally.total += len(halves) - 1
+                continue
+            tally.done += 1
+            tally.failed.append({"group": request.group, "error": str(exc)})
+            await control.returned(tally, proposals)
+            continue
+        read = read_answer_list(answer.text, answer.cut_off)
+        tally.done += 1
+        if read.items is None:
+            tally.unreadable += 1
+            tally.failed.append(
+                {"group": request.group, "error": "the model's answer held no readable list"}
+            )
+            await control.returned(tally, proposals)
+            continue
+        found = read_items(request, read.items, tally)
+        if refine is not None and found:
+            kept = await refine(found)
+            tally.below_threshold += len(found) - len(kept)
+            found = kept
+        proposals.extend(found)
+        full = len(read.items) >= k
+        if (answer.cut_off or full) and request.splittable:
+            halves = request.halves()
+            queue[0:0] = halves
+            tally.split += 1
+            # The split request counted as done; its halves are new requests.
+            tally.total += len(halves)
+        elif answer.cut_off:
+            tally.cut_short += 1
+        await control.returned(tally, proposals)
+    return tally, proposals

@@ -223,7 +223,7 @@ async def test_a_declared_foreign_key_is_offered_as_a_relationship_candidate(
     assert [
         (c.source_table_id, c.source_column, c.target_table_id, c.target_column, c.cardinality)
         for c in candidates
-    ] == [(ids["pets"], "owner_id", ids["owners"], "id", "many_to_one")]
+    ] == [(ids["pets"], "owner_id", ids["owners"], "id", "many-to-one")]
 
 
 # --- each driver ---------------------------------------------------------------------------------
