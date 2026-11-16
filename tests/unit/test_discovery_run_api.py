@@ -1593,6 +1593,15 @@ async def test_a_left_out_proposal_is_accepted_as_a_suggestion_is(monkeypatch, t
     assert refused.value.status_code == 409
     assert refused.value.code == "discovery.left_out_not_acceptable"
 
+    # Not while its run is still going: the run writes its rows again as each request returns.
+    async with db.acquire() as conn:
+        await conn.execute_core(so.discovery_runs.update().values(status="running"))
+    with pytest.raises(ApiError) as early:
+        await discovery.accept_left_out(_REQUEST, below["id"])
+    assert early.value.status_code == 409 and "still going" in str(early.value)
+    async with db.acquire() as conn:
+        await conn.execute_core(so.discovery_runs.update().values(status="done"))
+
     accepted = await discovery.accept_left_out(
         _REQUEST, below["id"], discovery.AcceptRequest(name="orders-of-a-customer")
     )

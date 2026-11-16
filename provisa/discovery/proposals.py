@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete, insert, select, update
 
 from provisa.core.schema_org import discovery_run_proposals as rows_t
+from provisa.core.schema_org import discovery_runs as runs_t
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.direction import Kind, Proposal
@@ -173,6 +174,14 @@ async def accept(conn: "Connection", proposal_id: int, name: str | None) -> dict
         row = (await conn.execute_core(select(rows_t).where(rows_t.c.id == proposal_id))).fetchone()
         if row is None or row.left_out is None or row.accepted_as is not None:
             raise NotAcceptable(f"Proposal {proposal_id} not found among the left-out proposals")
+        status = (
+            await conn.execute_core(select(runs_t.c.status).where(runs_t.c.id == row.run_id))
+        ).scalar_one()
+        if status == "running":
+            # A run still going writes its rows again as each request returns.
+            raise NotAcceptable(
+                f"Proposal {proposal_id} cannot be accepted yet: its run is still going"
+            )
         if row.left_out not in ACCEPTABLE:
             raise NotAcceptable(
                 f"Proposal {proposal_id} cannot be accepted: it was left out as {row.left_out}"
