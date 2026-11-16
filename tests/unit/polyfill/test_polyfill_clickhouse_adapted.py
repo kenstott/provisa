@@ -477,11 +477,6 @@ OUTSIDE = (
 )
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
     return [row[0] for row in runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()]
 

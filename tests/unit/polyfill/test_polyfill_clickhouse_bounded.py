@@ -32,11 +32,6 @@ from provisa.transpiler.polyfill import GRID, aggregates
 from provisa.transpiler.transpile import transpile
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple[Any, ...]]:
     return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
 

@@ -61,19 +61,26 @@ def _in_session(set_zone: str, run: Any) -> Any:
 def chdb_session() -> Iterator[Any]:
     from chdb import session
 
+    # chdb's in-memory engine is one per process and lasts while any session on it is open, so
+    # the table is dropped here: closing this session alone does not remove it.
     held = session.Session()
-    held.query(
-        "CREATE TABLE default.t (i Int32, c DateTime64(6, 'UTC'), plain DateTime64(3), s String) "
-        "ENGINE = MergeTree ORDER BY i"
-    )
-    for i, instant in enumerate(INSTANTS):
-        wall = instant.replace("+00", "")
+    try:
         held.query(
-            f"INSERT INTO default.t SELECT {i}, toDateTime64('{wall}', 6, 'UTC'), "
-            f"toDateTime64('{wall}', 3, 'UTC'), 'text'"
+            "CREATE TABLE default.t (i Int32, c DateTime64(6, 'UTC'), plain DateTime64(3), "
+            "s String) ENGINE = MergeTree ORDER BY i"
         )
-    yield held
-    held.close()
+        try:
+            for i, instant in enumerate(INSTANTS):
+                wall = instant.replace("+00", "")
+                held.query(
+                    f"INSERT INTO default.t SELECT {i}, toDateTime64('{wall}', 6, 'UTC'), "
+                    f"toDateTime64('{wall}', 3, 'UTC'), 'text'"
+                )
+            yield held
+        finally:
+            held.query("DROP TABLE default.t")
+    finally:
+        held.close()
 
 
 def _rows(held: Any, sql: str) -> list[Any]:
