@@ -137,7 +137,11 @@
       "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_parameter_type": "הפרמטר {{parameter}} של בקשת ה-GraphQL חייב להיות {{expected}}.",
       "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET.",
-      "listed_only": "התפקיד {{role}} יכול רק לרשום את {{table}}: ניתן לקרוא את המטא-נתונים שלה, לא את הנתונים"
+      "listed_only": "התפקיד {{role}} יכול רק לרשום את {{table}}: ניתן לקרוא את המטא-נתונים שלה, לא את הנתונים",
+      "parameter_by_equality_only": "הפרמטר {{parameter}} מקבל ערך בשוויון: {{parameter}} = ערך, {{parameter}} IN (ערכים), או join על {{parameter}}. {{form}} אינו נותן לו ערך.",
+      "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
+      "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
+      "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",

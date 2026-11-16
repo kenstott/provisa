@@ -10667,5 +10667,11 @@
   "ja/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "ja/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "ja/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "ja/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "ja/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "ja/settings.json::settings.parameters.max_calls_per_statement.label": "Calls per statement to a parameterized table",
+  "ja/settings.json::settings.parameters.max_calls_per_statement.help": "The most calls one statement makes to one parameterized table. Each value a statement gives a parameter is one call to the source: each value of an IN list, each branch of an OR, each distinct key of a join. A statement that needs more is refused.",
+  "ja/serverErrors.json::serverErrors.data.parameter_by_equality_only": "The parameter {{parameter}} takes a value by equality: {{parameter}} = a value, {{parameter}} IN (values), or a join on {{parameter}}. {{form}} gives it no value.",
+  "ja/serverErrors.json::serverErrors.data.parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
+  "ja/serverErrors.json::serverErrors.data.parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
+  "ja/serverErrors.json::serverErrors.data.parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values."
 }

@@ -137,7 +137,11 @@
       "graphql_request_not_object": "GraphQL 请求是包含查询的 JSON 对象。",
       "graphql_parameter_type": "GraphQL 请求的 {{parameter}} 必须是 {{expected}}。",
       "graphql_mutation_over_get": "变更操作用 POST 发送,绝不用 GET。",
-      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以读取其元数据，不能读取其数据"
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以读取其元数据，不能读取其数据",
+      "parameter_by_equality_only": "参数 {{parameter}} 通过等值取值:{{parameter}} = 值、{{parameter}} IN (值列表),或在 {{parameter}} 上联接。{{form}} 不会给它任何值。",
+      "parameter_unbound_on_branch": "参数 {{parameter}} 在 OR 的一个分支中有值,在另一个分支中没有。请在每个分支中为 {{parameter}} 指定值。",
+      "parameter_conflict": "参数 {{parameter}} 同时被赋予两个不同的值({{first}} 和 {{second}})。请只给它一个值,或用 IN 或 OR 列出这些值。",
+      "parameter_calls_over_cap": "该语句需要对 {{table}} 发起 {{calls}} 次调用(其参数的每个值一次),而一条语句最多发起 {{cap}} 次(设置 {{setting}})。请减少值的数量。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",

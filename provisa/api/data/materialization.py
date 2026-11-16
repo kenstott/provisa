@@ -297,6 +297,70 @@ def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str |
     return filters
 
 
+def _real_parameters(state, table_ids: Iterable[int]) -> set[str]:
+    """The parameters of the tables the statement reads that are real columns of their tables (a
+    partition key, a column value): their meaning is known, so a condition on one that assigns
+    nothing is a filter (REQ-1986)."""
+    from provisa.core.parameter_binding import is_opaque
+    from provisa.core.parameters import is_parameter
+
+    ids = set(table_ids)
+    return {
+        c["column_name"]
+        for t in (getattr(state, "tables", None) or [])
+        if t.get("id") in ids
+        for c in t["columns"]
+        if is_parameter(c) and not is_opaque(c)
+    }
+
+
+async def _join_keys(join, ctx, role_id: str) -> list:
+    """The values a join gives a parameter (REQ-1986): the joined column of the other table, read
+    through the one pipeline as ``role_id`` reads it, so the role's row rules choose the rows and
+    its masks the values the source is asked for."""
+    for meta in ctx.tables.values():
+        if meta.table_name == join.table and join.schema in ("", meta.schema_name):
+            rows = await _fed_argument_sets(_Feed("join", {"key": join.column}, meta), role_id)
+            return [row["key"] for row in rows]
+    raise LookupError(f"{join.table!r}, joined on a parameter, is not a table of the role's model")
+
+
+async def bind_statement(
+    sql: str,
+    params: list | None,
+    state,
+    ctx,
+    table_ids: Iterable[int],
+    role_id: str,
+    parameters: set[str],
+):
+    """REQ-1986: the one step that binds the parameters of the tables a governed statement reads
+    (``nf_extractor.bind_parameters``), for every surface: what each read is asked for, with a
+    join's distinct values read first and the calls capped by the operator's setting. Returns
+    ``nf_extractor.Bound``. ``parameters``: the parameter columns that bind here."""
+    from provisa.compiler.nf_extractor import bind_parameters
+    from provisa.core import settings_registry
+    from provisa.core.parameter_binding import CALLS_SETTING
+
+    table_ids = tuple(table_ids)
+    typed = {
+        name: ir_type
+        for columns in ctx.native_filter_columns.values()
+        for name, ir_type in columns.items()
+        if name in parameters
+    }
+    binding = bind_parameters(
+        sql,
+        params or [],
+        typed,
+        frozen_parameter_filters(state, table_ids),
+        real=_real_parameters(state, table_ids),
+        cap=settings_registry.value(CALLS_SETTING),
+    )
+    keys = {join: await _join_keys(join, ctx, role_id) for join in binding.joins}
+    return binding.bound(keys)
+
+
 #: REQ-1986: the scratch tables landed for the statement being planned -- rows of a table with a
 #: TTL of 0 too many to inline -- each (CacheLocation, table name), dropped when it ends
 #: (``pgwire._pipeline._execute_plan_in_org``). Open while the statement is routed.
@@ -665,10 +729,10 @@ def _missing_parameters(
     ctx,
     feed: "_Feed | None" = None,
 ) -> list[str]:
-    """The required parameters of ``tn`` the statement gives no value (REQ-1986). An OpenAPI
-    parameter a model join feeds from its parent's keys is given by the join, and so is a
-    parameter the relationship ``feed`` feeds from the parent the statement reads (REQ-2099)."""
-    from provisa.api_source.fill_cache import joined_from
+    """The required parameters of ``tn`` the statement gives no value (REQ-1986). A join on a
+    parameter gives it its values through the statement's binding (``bind_statement``); a
+    parameter the relationship ``feed`` feeds from the parent the statement reads is given by
+    that relationship (REQ-2099)."""
     from provisa.compiler.naming import apply_sql_name
     from provisa.core.parameters import NF_PREFIX, missing_parameters
 
@@ -679,10 +743,7 @@ def _missing_parameters(
     return missing_parameters(
         columns,
         nf_args,
-        lambda column: (
-            (endpoint is not None and joined_from(endpoint, column, ctx) is not None)
-            or apply_sql_name(column.removeprefix(NF_PREFIX)) in fed
-        ),
+        lambda column: apply_sql_name(column.removeprefix(NF_PREFIX)) in fed,
     )
 
 
@@ -1478,17 +1539,15 @@ async def _mat_api_ep_table(
     # REQ-1730/REQ-1623: the source's API cache, where its fills are too.
     from provisa.api_source.fill_cache import (
         endpoint_args,
-        read_by_parent_keys,
         source_cache_location,
     )
 
     _cache_loc = source_cache_location(state, source_id, api_source)
     args = {**endpoint_args(ep, nf_args), **(pushed or {})}
-    # Read by its parent's keys, the fills are one argument set per key and the table is all of
-    # them, whatever else the statement gives. Read by argument, the table is that answer's:
-    # named as the fetch names it, with the endpoint's default parameters under the arguments.
-    by_keys = read_by_parent_keys(ep, args, ctx)
-    cache_tbl = cache_table_name(source_id, tn, {} if by_keys else {**ep.default_params, **args})
+    # The table is the answer to its arguments (REQ-1986: a join on a parameter is bound to one
+    # call per key before this, each call a read of its own): named as the fetch names it, with
+    # the endpoint's default parameters under the arguments.
+    cache_tbl = cache_table_name(source_id, tn, {**ep.default_params, **args})
     # REQ-1986: the one resolver; a TTL of 0 is set, and keeps nothing.
     ttl = landing_ttl(registration, state, endpoint_ttl=ep.ttl)
     from provisa.compiler.naming import apply_sql_name
@@ -1510,15 +1569,15 @@ async def _mat_api_ep_table(
     if ttl == 0:
         # REQ-1986: read live for this statement alone. Its cache is never read and nothing it
         # answers is kept or reused; of its fills it takes only the ones this statement fetched
-        # (a join's parent keys, batched by hydration), else it calls the endpoint.
-        rows = await _fills_fetched_this_statement(
-            ep, col_names, _META_COLS, state, None if by_keys else args
-        )
+        # (hydration's call for these arguments), else it calls the endpoint.
+        rows = await _fills_fetched_this_statement(ep, col_names, _META_COLS, state, args)
         if rows is None:
             missing = _missing_path_params(ep, args)
             if missing:
-                log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
-                return
+                # REQ-1986: never called without it, and never answered as if it held no row.
+                from provisa.core.parameters import ParameterRequired, missing_reason
+
+                raise ParameterRequired(tn, missing_reason(missing))
             live = await _mat_fetch_rows_from_rest(
                 ep,
                 col_names,
@@ -1527,7 +1586,7 @@ async def _mat_api_ep_table(
                 _cache_loc,
                 cache_tbl,
                 cache_rewrites,
-                params={} if by_keys else args,
+                params=args,
                 ttl=0,
             )
             assert live is not None  # a TTL-0 call never answers from a cache
@@ -1579,9 +1638,7 @@ async def _mat_api_ep_table(
         return
 
     # Priority 3: cache miss — the fills in the store, then REST
-    rows = await _mat_fetch_rows_from_fills(
-        ep, col_names, _META_COLS, state, None if by_keys else args
-    )
+    rows = await _mat_fetch_rows_from_fills(ep, col_names, _META_COLS, state, args)
     fetched = not rows  # the rows are a live fetch's, not the fills'
 
     if not rows:
@@ -1602,7 +1659,7 @@ async def _mat_api_ep_table(
             cache_tbl,
             cache_rewrites,
             # No argument when the table is all its parent-keyed fills: its name carries none.
-            params={} if by_keys else args,
+            params=args,
             ttl=ttl,
         )
         if rows is None:

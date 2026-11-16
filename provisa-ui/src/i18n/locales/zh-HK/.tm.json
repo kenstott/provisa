@@ -10664,5 +10664,11 @@
   "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "zh-HK/settings.json::settings.parameters.max_calls_per_statement.label": "Calls per statement to a parameterized table",
+  "zh-HK/settings.json::settings.parameters.max_calls_per_statement.help": "The most calls one statement makes to one parameterized table. Each value a statement gives a parameter is one call to the source: each value of an IN list, each branch of an OR, each distinct key of a join. A statement that needs more is refused.",
+  "zh-HK/serverErrors.json::serverErrors.data.parameter_by_equality_only": "The parameter {{parameter}} takes a value by equality: {{parameter}} = a value, {{parameter}} IN (values), or a join on {{parameter}}. {{form}} gives it no value.",
+  "zh-HK/serverErrors.json::serverErrors.data.parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
+  "zh-HK/serverErrors.json::serverErrors.data.parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
+  "zh-HK/serverErrors.json::serverErrors.data.parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values."
 }

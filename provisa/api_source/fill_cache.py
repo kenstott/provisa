@@ -142,21 +142,6 @@ def endpoint_args(endpoint: ApiEndpoint, given: dict | None) -> dict:
     return args
 
 
-def read_by_parent_keys(endpoint: ApiEndpoint, args: dict, ctx: Any) -> bool:
-    """Whether a statement that gives ``args`` reads ``endpoint`` by its parent's keys and not
-    by argument: a parameter a join feeds (a path parameter, or the query parameter a join
-    targets) is one the statement does not give. Its fills are then one argument set per
-    parent key, and together they are what the statement joins to."""
-    for c in endpoint.columns:
-        if c.param_type is None or (c.param_name or c.name) in args:
-            continue
-        if c.param_type.value == "path":
-            return True
-        if c.param_type.value == "query" and joined_from(endpoint, c.name, ctx) is not None:
-            return True
-    return False
-
-
 def joined_from(endpoint: ApiEndpoint, column: str | None, ctx: Any) -> tuple[Any, str] | None:
     """The parent table and its column a model join feeds ``endpoint`` from -- through
     ``column`` when one is named, else through any -- or None when no join does."""
