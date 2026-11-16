@@ -186,7 +186,12 @@ class BoltSession:
         self._send(pack_message(msg.SUCCESS, meta or {}))
 
     def send_failure(self, code: str, message: str) -> None:
-        self._send(pack_message(msg.FAILURE, {"code": code, "message": message}))
+        # REQ-2087, REQ-2152: every FAILURE's text as a client is told it on any transport --
+        # redacted with the bare marker, in the model's names of the session's org.
+        from provisa.api.engine_error_names import client_text
+
+        said = client_text(message, self.org_id)
+        self._send(pack_message(msg.FAILURE, {"code": code, "message": said}))
         self.state = State.FAILED
         self._end_all_requests()
 

@@ -164,5 +164,5 @@ def test_an_errors_text_is_redacted_and_its_code_is_not(conn: Any):
     message = (res.error_field(pq.DiagnosticField.MESSAGE_PRIMARY) or b"").decode()
     # The relation was looked up by the name written: the refusal is of that name, and only the
     # text shown is redacted.
-    assert message == f'relation "{MARKER}.no_such_relation" does not exist'
+    assert message == 'relation "[REDACTED].no_such_relation" does not exist'
     assert res.error_field(pq.DiagnosticField.SQLSTATE) == b"42P01"

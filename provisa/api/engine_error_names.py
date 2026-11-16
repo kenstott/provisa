@@ -58,13 +58,14 @@ _SCHEMA_TAIL = (
 
 def client_text(text: str, org_id: str | None = None) -> str:
     """``text`` as a client is told it: in the model's names (:func:`model_named`), without an
-    internal schema (:func:`no_internal_schema`), then redacted. ``org_id`` is the org the request
-    acted in; when the transport does not say, the org bound now."""
+    internal schema (:func:`no_internal_schema`), then redacted with the bare marker, which names
+    no rule and no variable (redaction.client_redact). ``org_id`` is the org the request acted in;
+    when the transport does not say, the org bound now."""
     from provisa.core.request_context import current_org
-    from provisa.security.redaction import redact
+    from provisa.security.redaction import client_redact
 
     org = org_id if org_id is not None else current_org.get()
-    return redact(no_internal_schema(model_named(no_internal_address(text), org), org))
+    return client_redact(no_internal_schema(model_named(no_internal_address(text), org), org))
 
 
 def no_internal_address(text: str) -> str:

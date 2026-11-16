@@ -353,7 +353,7 @@ async def org_embedder(state: Any) -> Embedder:
     it is given redacted as everything Provisa sends out is (provisa.security.redaction)."""
     from provisa.api.mcp.tools import resolve_embedding_model
     from provisa.core.request_context import current_org
-    from provisa.security.redaction import redact
+    from provisa.security.redaction import client_redact
     from provisa.vector.providers import get_provider
 
     model = await resolve_embedding_model(state, purpose="the reference library")
@@ -361,7 +361,7 @@ async def org_embedder(state: Any) -> Embedder:
     org_id = current_org.get()
 
     async def embed(texts: list[str]) -> list[list[float]]:
-        return await provider.embed([redact(t, org_id) for t in texts], model)
+        return await provider.embed([client_redact(t, org_id) for t in texts], model)
 
     return Embedder(model=model.id, embed=embed)
 

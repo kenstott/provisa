@@ -171,7 +171,7 @@ def test_what_goes_out_is_redacted(service):
         "chat/completions",
         {"model": "provisa:sql_generation", "messages": [{"role": "user", "content": secret}]},
     )
-    assert service["sent"]["messages"] == [{"role": "user", "content": "[REDACTED:bearer_token]"}]
+    assert service["sent"]["messages"] == [{"role": "user", "content": "[REDACTED]"}]
 
 
 def test_streaming_is_refused_by_name(service):
