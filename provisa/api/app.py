@@ -4633,6 +4633,10 @@ def create_app() -> FastAPI:
     # JSON response paid stdlib json's slower encode. A route building its own JSONResponse/
     # Response explicitly (there are several, e.g. endpoint_dev.py's stats-enabled branches)
     # keeps doing so unaffected — this only changes the class FastAPI reaches for on its own.
+    from fastapi import Depends as _Depends
+
+    from provisa.api.admin.env_reference_check import entered_body as _entered_body
+
     app = FastAPI(
         title="Provisa",
         lifespan=lifespan,
@@ -4640,6 +4644,9 @@ def create_app() -> FastAPI:
         redoc_url="/data/openapi/redoc",
         openapi_url="/data/openapi/openapi.json",
         default_response_class=OrjsonResponse,
+        # REQ-1557: what a held organization's member enters names no variable of the server's
+        # environment, checked before any admin route runs.
+        dependencies=[_Depends(_entered_body)],
     )
     state.shared_federation_engine.write_config(config_path_str())
     _setup_otel(app)
@@ -4830,6 +4837,23 @@ def create_app() -> FastAPI:
                 "params": {"source": exc.source_id},
             },
         )
+
+    from provisa.core.env_reference_guard import (
+        EnvReferenceEditRefused as _EnvReferenceEditRefused,
+        EnvReferenceRefused as _EnvReferenceRefused,
+    )
+
+    @app.exception_handler(_EnvReferenceRefused)
+    @app.exception_handler(_EnvReferenceEditRefused)
+    async def _env_reference_refused_handler(  # noqa: F841  # pyright: ignore[reportUnusedFunction]
+        _req: _Request,  # pyright: ignore[reportUnusedVariable]
+        exc: _EnvReferenceRefused | _EnvReferenceEditRefused,
+    ):
+        # REQ-1557: a held organization's member wrote, entered or edited a reference to the
+        # server's own environment; nothing was saved and the variable was not read.
+        from provisa.api.admin.env_reference_check import refused_response
+
+        return refused_response(exc)
 
     from provisa.core.secrets_providers import SecretNameRefused as _SecretNameRefused
 

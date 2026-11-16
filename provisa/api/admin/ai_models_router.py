@@ -212,6 +212,9 @@ async def get_vendor_models(
     api_key = None
     key_env = endpoint.get("api_key_env")
     if key_env:
+        from provisa.core.env_reference_guard import refuse_named_by_org
+
+        refuse_named_by_org(key_env)  # REQ-1557: a held organization's own key variable
         api_key = os.environ.get(key_env)
         if not api_key:
             raise ApiError(

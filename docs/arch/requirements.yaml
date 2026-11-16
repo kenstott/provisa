@@ -81804,7 +81804,7 @@
   - tests/unit/test_mongodb_connection_string.py
   - provisa-ui/src/pages/sources/__tests__/mongoConnectionString.test.tsx
 - id: REQ-1986
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 3. Source Registration & Data Modeling
   category: Table Registration
@@ -81868,7 +81868,49 @@
     The parameter''s column in the result repeats the value that was asked; it is never assumed to be an
     attribute of the rows returned. The table''s metadata says, for each parameter, whether it is opaque
     or a real column of the table that the source requires a value for (a partition key, a column value),
-    whose meaning is known.'
+    whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION; A TABLE
+    ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This narrows A PARAMETERIZED TABLE STAYS A
+    TABLE: its first sentence, that such a table always stays a table, is [SUPERSEDED by this amendment];
+    the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold for every parameterized table
+    that exists. Every operation of a source that requires a parameter is a function: its parameters are
+    its arguments, it returns its rows, and it is always kept. A parameterized table is added for it, as
+    a view of that function, only as a help to clients that read tables and cannot call a function (BI tools
+    above all): when the operation returns objects of a type that no operation without a required parameter
+    returns. Where a plain list of the same type exists, that list is the table, it is the one counted,
+    profiled and discovered, and no parameterized table is created beside it. Whether two operations return
+    the same type is read from the source''s own schema, never guessed from column names. A steward may
+    add the parameterized table for an operation that did not get one. (Amended 2026-11-16, THE PARAMETERIZED
+    TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a function is also exposed as
+    a parameterized table is an attribute of the function, changed where the function is edited; the table
+    is derived from the function while the attribute is on and is never registered on its own, so it cannot
+    differ from the function''s parameters or columns. This replaces the last sentence of A PARAMETERIZED
+    OPERATION IS ALWAYS A FUNCTION (a steward may add the table) [SUPERSEDED by this amendment]. The attribute''s
+    value when the function is registered follows that amendment''s rule: on when no operation without a
+    required parameter returns the same type, off otherwise. It is set once: a plain list of the same type
+    registered later does not change it, since that would remove a table in use. Turning it off is refused
+    while a relationship, a row rule, a data product or another live object refers to the derived table,
+    naming what refers to it, as deleting a table is. (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS
+    ITS VALUE:) Maintainer 2026-11-16 (''EQ means the value is assigned to the param''). An equality on
+    an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for
+    the call. The returned rows are not filtered by it again. Two different values assigned to the same
+    parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result.
+    (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN ERROR:) Maintainer 2026-11-16. IN on an opaque parameter
+    assigns as equality does, one call for each value. NOT IN, not-equal, and any negation of an equality
+    or of an IN on a parameter assign nothing and are an error: the statement is refused naming the parameter,
+    never answered as if the condition were absent and never answered empty. (Amended 2026-11-16, POINTS
+    SETTLED BEFORE BUILDING:) Maintainer 2026-11-16: the cap on calls per statement defaults to 1000; and
+    two operations without a required parameter that return the same type both stay tables, the rule deciding
+    only whether a parameterized operation also gets a table. Lead 2026-11-16, each following from the rules
+    above: (1) the derived table has a table row of its own, since every reference is keyed on one, but
+    the function''s attribute alone creates and removes it and its parameters and columns are not editable
+    on the table; (2) turning the attribute off is refused while a relationship, a row rule, a data product
+    or another live object refers to the table, the function''s own reference to what it returns not counting;
+    (3) a function whose table is off returns the plain list''s type in GraphQL, so its field is unchanged;
+    (4) a join assigns a parameter only when it is on the parameter itself, never on a result column presumed
+    to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment)
+    hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary
+    filters; (6) a source whose operations have no named return type cannot be compared, so each of its
+    parameterized operations gets its table.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 

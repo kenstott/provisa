@@ -338,6 +338,38 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     return config
 
 
+def sections_as_written(data: dict) -> dict:  # REQ-1557
+    """``data`` with its sections as :func:`parse_config_dict` reads them (views and Kafka
+    topics as tables), and nothing resolved: what a caller's rights are asked of before a
+    reference in the document is read."""
+    import copy
+
+    return kafka_topics_as_tables(commit_time_columns(views_as_tables(copy.deepcopy(data))))
+
+
+def invalid_text(refusal: ValueError, data: dict) -> str:  # REQ-1557
+    """What to tell the caller whose config ``data`` was refused by ``refusal``, carrying no
+    value a ``${env:...}`` in it resolved to: a validation's errors without the input each
+    refused (the resolved document), and any such value the remaining text holds replaced by
+    the name of the variable that gave it."""
+    import os
+
+    from pydantic import ValidationError
+
+    from provisa.core.env_reference_guard import env_names
+
+    if isinstance(refusal, ValidationError):
+        errors = refusal.errors(include_input=False, include_url=False, include_context=False)
+        text = "; ".join(f"{'.'.join(str(p) for p in e['loc'])}: {e['msg']}" for e in errors)
+    else:
+        text = str(refusal)
+    for name in sorted(set(env_names(data))):
+        value = os.environ.get(name)
+        if value:
+            text = text.replace(value, f"(the value of {name})")
+    return text
+
+
 def _code_secrets_as_written(data: dict, resolve: Any) -> dict:
     """``resolve(data)``, but the mapping values resolved at use kept as the references written:
     a code source's declared secrets (REQ-2104), each resolved only when the code reads it,
@@ -468,7 +500,7 @@ def register_sources(  # REQ-012, REQ-1266, REQ-1730, REQ-1919
         try:
             engine.register_source(
                 src,
-                resolve_secrets(src.password),
+                resolve_secrets(src.password, credential=True),
                 catalog_name=(catalog_names or {}).get(src.id),
             )
         except Exception:
