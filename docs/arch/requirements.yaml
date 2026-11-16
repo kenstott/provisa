@@ -96635,6 +96635,11 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the same object is served again and the findings clear
 
     '
+  tests:
+  - tests/integration/test_glossary_lifecycle.py
+  - tests/unit/test_refusal_read_rights.py
+  - tests/unit/test_model_object_retirement.py
+  - tests/unit/test_retire_not_delete_loaders.py
 - id: REQ-2249
   status: in-progress
   target: 2026-Q4

@@ -27048,7 +27048,7 @@ Maintainer 2026-11-14: 'when keeping things in sync you must have soft deletes';
 
 **Code:** —
 
-**Tests:** —
+**Tests:** `tests/integration/test_glossary_lifecycle.py`, `tests/unit/test_refusal_read_rights.py`, `tests/unit/test_model_object_retirement.py`, `tests/unit/test_retire_not_delete_loaders.py`
 
 ## 4. Source Connectors
 
