@@ -485,7 +485,18 @@
       "jdbc_invalid": "Source {{source}} : {{error}}",
       "jdbc_file_refused": "Source {{source}} : l'URL désigne {{path}}, que ce serveur ne peut pas ouvrir pour l'organisation.",
       "jdbc_options_refused": "Source {{source}} : l'URL de cette organisation ne peut pas indiquer l'option de pilote {{options}}.",
-      "jdbc_driver_refused": "Source {{source}} : un pilote JDBC du client s'exécute comme du code dans la JVM de Provisa, ce que seule une installation auto-hébergée permet."
+      "jdbc_driver_refused": "Source {{source}} : un pilote JDBC du client s'exécute comme du code dans la JVM de Provisa, ce que seule une installation auto-hébergée permet.",
+      "code_resolver_part": "{{kind}} « {{name}} » fait partie du resolver de code « {{resolver}} » : modifiez-le ou retirez-le là",
+      "code_resolver_no_key": "La table {{end}} « {{table}} » n'a pas de colonne « {{column}} »",
+      "code_resolver_no_reader": "Aucun rôle ne voit les deux clés, donc aucun rôle ne pourrait voir une correspondance",
+      "code_resolver_unknown": "Aucune commande « {{function}} » n'est enregistrée",
+      "code_resolver_refused": "Resolver de code « {{function}} » : {{reason}}",
+      "code_resolver_bad_id": "L'identifiant de resolver de code « {{resolver}} » n'est pas un nom : lettres minuscules, chiffres et tirets bas, commençant par une lettre",
+      "code_resolver_taken": "Le resolver de code « {{resolver}} » existe déjà",
+      "code_resolver_not_found": "Resolver de code « {{resolver}} » introuvable",
+      "code_resolver_saved": "Resolver de code « {{resolver}} » enregistré",
+      "code_resolver_retired": "Resolver de code « {{resolver}} » retiré",
+      "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend"
     },
     "secrets": {
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",

@@ -485,7 +485,18 @@
       "jdbc_invalid": "Bron {{source}}: {{error}}",
       "jdbc_file_refused": "Bron {{source}}: de URL noemt {{path}}, dat deze server niet voor de organisatie mag openen.",
       "jdbc_options_refused": "Bron {{source}}: de URL van deze organisatie mag de stuurprogramma-optie {{options}} niet geven.",
-      "jdbc_driver_refused": "Bron {{source}}: een eigen JDBC-stuurprogramma van de klant draait als code in de JVM van Provisa, wat alleen een zelfgehoste installatie toestaat."
+      "jdbc_driver_refused": "Bron {{source}}: een eigen JDBC-stuurprogramma van de klant draait als code in de JVM van Provisa, wat alleen een zelfgehoste installatie toestaat.",
+      "code_resolver_part": "{{kind}} '{{name}}' hoort bij coderesolver '{{resolver}}': wijzig of stel het daar buiten gebruik",
+      "code_resolver_no_key": "De {{end}}tabel '{{table}}' heeft geen kolom '{{column}}'",
+      "code_resolver_no_reader": "Geen rol ziet beide sleutels, dus geen rol zou een overeenkomst kunnen zien",
+      "code_resolver_unknown": "Er is geen opdracht '{{function}}' geregistreerd",
+      "code_resolver_refused": "Coderesolver '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "Coderesolver-id '{{resolver}}' is geen naam: kleine letters, cijfers en underscores, beginnend met een letter",
+      "code_resolver_taken": "Coderesolver '{{resolver}}' bestaat al",
+      "code_resolver_not_found": "Coderesolver '{{resolver}}' niet gevonden",
+      "code_resolver_saved": "Coderesolver '{{resolver}}' opgeslagen",
+      "code_resolver_retired": "Coderesolver '{{resolver}}' buiten gebruik gesteld",
+      "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt"
     },
     "secrets": {
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",

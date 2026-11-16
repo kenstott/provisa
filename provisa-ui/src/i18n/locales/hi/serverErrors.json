@@ -485,7 +485,18 @@
       "jdbc_invalid": "स्रोत {{source}}: {{error}}",
       "jdbc_file_refused": "स्रोत {{source}}: URL {{path}} बताता है, जिसे यह सर्वर संगठन के लिए नहीं खोल सकता।",
       "jdbc_options_refused": "स्रोत {{source}}: इस संगठन का URL ड्राइवर विकल्प {{options}} नहीं दे सकता।",
-      "jdbc_driver_refused": "स्रोत {{source}}: ग्राहक का JDBC ड्राइवर Provisa के अपने JVM में कोड के रूप में चलता है, जिसकी अनुमति केवल स्व-होस्टेड इंस्टॉल देता है।"
+      "jdbc_driver_refused": "स्रोत {{source}}: ग्राहक का JDBC ड्राइवर Provisa के अपने JVM में कोड के रूप में चलता है, जिसकी अनुमति केवल स्व-होस्टेड इंस्टॉल देता है।",
+      "code_resolver_part": "{{kind}} '{{name}}' कोड रिज़ॉल्वर '{{resolver}}' का हिस्सा है: इसे वहीं बदलें या सेवानिवृत्त करें",
+      "code_resolver_no_key": "{{end}} तालिका '{{table}}' में कॉलम '{{column}}' नहीं है",
+      "code_resolver_no_reader": "कोई भूमिका दोनों कुंजियाँ नहीं देखती, इसलिए कोई भूमिका मिलान नहीं देख सकती",
+      "code_resolver_unknown": "कोई कमांड '{{function}}' पंजीकृत नहीं है",
+      "code_resolver_refused": "कोड रिज़ॉल्वर '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "कोड रिज़ॉल्वर आईडी '{{resolver}}' नाम नहीं है: छोटे अक्षर, अंक और अंडरस्कोर, अक्षर से शुरू",
+      "code_resolver_taken": "कोड रिज़ॉल्वर '{{resolver}}' पहले से मौजूद है",
+      "code_resolver_not_found": "कोड रिज़ॉल्वर '{{resolver}}' नहीं मिला",
+      "code_resolver_saved": "कोड रिज़ॉल्वर '{{resolver}}' सहेजा गया",
+      "code_resolver_retired": "कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त किया गया",
+      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता"
     },
     "secrets": {
       "name_refused": "{{name}} {{service}} में इस संगठन के सीक्रेट्स के भीतर का नाम नहीं है: नाम संगठन के सापेक्ष होता है और उससे बाहर नहीं जा सकता",

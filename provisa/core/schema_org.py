@@ -382,6 +382,8 @@ registered_tables = Table(
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
+    # REQ-2249: the code resolver set this view is the bridge of (its id), else None.
+    Column("code_resolver", Text),
     # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
     *_retirement(),
     UniqueConstraint("source_id", "schema_name", "table_name"),
@@ -490,6 +492,8 @@ relationships = Table(
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
     Column("cypher_type", Text),
     Column("graphql_field", Text),
+    # REQ-2249: the code resolver set this relationship belongs to (its id), else None.
+    Column("code_resolver", Text),
     # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
     *_retirement(),
     Column("tenant_id", Uuid),

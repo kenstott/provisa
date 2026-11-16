@@ -65,6 +65,13 @@ const FILTER = {
 };
 
 vi.mock("../../hooks/useAdminQueries", () => ({
+  // REQ-2249: no code resolver set is in service here.
+  useCodeResolvers: () => ({
+    codeResolvers: [],
+    loading: false,
+    saveCodeResolver: vi.fn(),
+    retireCodeResolver: vi.fn(),
+  }),
   useRelationships: () => RELS,
   useAllRelationships: () => RELS,
   useTables: () => TABLES,

@@ -485,7 +485,18 @@
       "jdbc_invalid": "資料來源 {{source}}：{{error}}",
       "jdbc_file_refused": "資料來源 {{source}}：URL 指向 {{path}}，此伺服器不能為該組織開啟它。",
       "jdbc_options_refused": "資料來源 {{source}}：此組織的 URL 不能指定驅動程式選項 {{options}}。",
-      "jdbc_driver_refused": "資料來源 {{source}}：客戶自備的 JDBC 驅動程式會作為程式碼在 Provisa 本身的 JVM 中執行，只有自行託管的安裝才允許這樣做。"
+      "jdbc_driver_refused": "資料來源 {{source}}：客戶自備的 JDBC 驅動程式會作為程式碼在 Provisa 本身的 JVM 中執行，只有自行託管的安裝才允許這樣做。",
+      "code_resolver_part": "{{kind}} '{{name}}' 屬於代碼解析器 '{{resolver}}'：請在那裡更改或停用",
+      "code_resolver_no_key": "{{end}} 表 '{{table}}' 沒有欄 '{{column}}'",
+      "code_resolver_no_reader": "沒有角色能同時看到兩個鍵，因此沒有角色能看到配對",
+      "code_resolver_unknown": "未登記命令 '{{function}}'",
+      "code_resolver_refused": "代碼解析器 '{{function}}'：{{reason}}",
+      "code_resolver_bad_id": "代碼解析器 ID '{{resolver}}' 不是名稱：小寫字母、數字和底線，以字母開頭",
+      "code_resolver_taken": "代碼解析器 '{{resolver}}' 已存在",
+      "code_resolver_not_found": "找不到代碼解析器 '{{resolver}}'",
+      "code_resolver_saved": "已儲存代碼解析器 '{{resolver}}'",
+      "code_resolver_retired": "已停用代碼解析器 '{{resolver}}'",
+      "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",

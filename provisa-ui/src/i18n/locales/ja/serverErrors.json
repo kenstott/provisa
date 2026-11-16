@@ -485,7 +485,18 @@
       "jdbc_invalid": "ソース {{source}}: {{error}}",
       "jdbc_file_refused": "ソース {{source}}: URL が {{path}} を指定していますが、このサーバーは組織のためにこれを開けません。",
       "jdbc_options_refused": "ソース {{source}}: この組織の URL ではドライバーオプション {{options}} を指定できません。",
-      "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。"
+      "jdbc_driver_refused": "ソース {{source}}: 顧客の JDBC ドライバーは Provisa 自身の JVM 内でコードとして実行されるため、セルフホスト環境でのみ許可されます。",
+      "code_resolver_part": "{{kind}} '{{name}}' はコードリゾルバー '{{resolver}}' の一部です。そちらで変更または廃止してください",
+      "code_resolver_no_key": "{{end}} テーブル '{{table}}' に列 '{{column}}' がありません",
+      "code_resolver_no_reader": "両方のキーを見られるロールがないため、一致を見られるロールがありません",
+      "code_resolver_unknown": "コマンド '{{function}}' は登録されていません",
+      "code_resolver_refused": "コードリゾルバー '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "コードリゾルバー ID '{{resolver}}' は名前ではありません。英小文字・数字・アンダースコアで、英字で始めてください",
+      "code_resolver_taken": "コードリゾルバー '{{resolver}}' は既に存在します",
+      "code_resolver_not_found": "コードリゾルバー '{{resolver}}' が見つかりません",
+      "code_resolver_saved": "コードリゾルバー '{{resolver}}' を保存しました",
+      "code_resolver_retired": "コードリゾルバー '{{resolver}}' を廃止しました",
+      "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません"
     },
     "secrets": {
       "name_refused": "{{name}} は {{service}} 内のこの組織のシークレットに含まれる名前ではありません。名前は組織に対する相対指定であり、組織の外に出ることはできません",
