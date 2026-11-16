@@ -178,7 +178,7 @@ relationships:
   id: find-pets-by-status-to-get-pet-by-id
   source_column: id
   source_table_id: pet_by_status
-  target_column: id
+  target_column: _nf_petId
   target_table_id: pet_by_id
 - alias: BREED_INFO
   cardinality: many-to-one

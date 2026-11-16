@@ -322,9 +322,10 @@ def test_freshness_is_the_shared_freshness_modules_decision(store, monkeypatch):
 
 @respx.mock
 async def test_a_request_fetches_a_path_parameter_table_once_per_parent_key_with_its_auth(store):
-    """GraphQL hydration over the fills: the parent collection is filled, its keys are read
-    back from the store, and the dependent endpoint is called once per key — every call with
-    the source's credential, nothing written to the control plane (there is none here)."""
+    """REQ-1986: hydration fills the parent collection and never calls a path-parameter endpoint
+    for its parent's keys -- a join on the parameter is bound by the statement, one call per key
+    (``bind_statement``). Each such call is a fill of its own, made with the source's
+    credential, nothing written to the control plane (there is none here)."""
     from provisa.api.data import hydration
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -371,8 +372,14 @@ async def test_a_request_fetches_a_path_parameter_table_once_per_parent_key_with
     hydration._source_hydration_expiry.clear()
     _, _, rows, _ = await hydration._hydrate_api_tables_before_engine(compiled, ctx, state)
 
+    assert sorted(c.request.url.path for c in route.calls) == ["/pets"]
+    assert rows == {"api": 2}
+    # The statement's binding: one call per key, each under its own argument.
+    filled = await fill_cache.fill(
+        state, by_id, state.api_sources["api"], [{"petId": "1"}, {"petId": "2"}], 300
+    )
+    assert filled == 2
     assert sorted(c.request.url.path for c in route.calls) == ["/pets", "/pets/1", "/pets/2"]
-    assert rows == {"api": 4}
     table = fill_cache.fill_table(state, by_id, None)
     assert sorted(_rows(con, table)) == [
         (1, "pet 1", fill_cache.params_hash({"petId": "1"})),
@@ -557,31 +564,18 @@ def test_a_statements_arguments_for_an_endpoint_are_its_own_parameters_under_the
     assert fill_cache.endpoint_args(ep, None) == {}
 
 
-def test_an_endpoint_is_read_by_parent_keys_when_a_join_fed_parameter_is_not_given():
-    by_id = _by_id()
-    assert fill_cache.read_by_parent_keys(by_id, {}, _NO_JOINS)  # a path parameter, not given
-    assert not fill_cache.read_by_parent_keys(by_id, {"petId": 1}, _NO_JOINS)
+@respx.mock
+async def test_a_path_parameter_table_read_without_its_value_is_refused_whatever_joins_it(api_step):
+    """REQ-1986: a path parameter the statement gives no value is refused naming it -- never
+    read by a parent's keys through a join on some other column, never skipped as if it held no
+    row -- and the endpoint is not called."""
+    from provisa.core.parameters import ParameterRequired
 
-    orders = _endpoint(
-        path="/orders",
-        table_name="orders",
-        columns=[
-            ApiColumn(name="id", type=ApiColumnType.integer),
-            ApiColumn(name="customer_id", type=ApiColumnType.integer, param_type="query"),
-            ApiColumn(name="status", type=ApiColumnType.string, param_type="query"),
-        ],
-    )
-    join = SimpleNamespace(
-        target=SimpleNamespace(table_name="orders"), target_column="customer_id", source_column="id"
-    )
-    fed = SimpleNamespace(
-        joins={("Customer", "orders"): join},
-        tables={"customers": SimpleNamespace(type_name="Customer", table_name="customers")},
-    )
-    assert fill_cache.read_by_parent_keys(orders, {"status": "open"}, fed)  # the join's is not
-    assert not fill_cache.read_by_parent_keys(orders, {"customer_id": 5}, fed)
-    assert not fill_cache.read_by_parent_keys(orders, {}, _NO_JOINS)  # no join feeds it
-    assert not fill_cache.read_by_parent_keys(orders, {}, None)
+    route = respx.route(host="api.test").mock(side_effect=_one_pet)
+    _state, read = api_step
+    with pytest.raises(ParameterRequired, match="petId"):
+        await read(_by_id(), None, _pets_feeding_by_id())
+    assert not route.calls
 
 
 @respx.mock
@@ -641,12 +635,9 @@ async def test_a_fill_is_read_back_by_the_arguments_it_was_fetched_for(api_step)
 
 
 @respx.mock
-async def test_a_table_read_by_its_parents_keys_is_every_keys_fill_and_one_key_is_its_own(
-    api_step,
-):
-    """A path-parameter table joined to its parent is filled once per parent key, and a
-    statement that gives no argument reads all of them to join to. A statement that names one
-    pet reads that pet's fill, with no call."""
+async def test_each_key_of_a_join_on_a_path_parameter_is_a_read_of_its_own(api_step):
+    """REQ-1986: a join on a path parameter is bound to one call per key, each a read under its
+    own argument that answers that key alone; hydration calls nothing for the parent's keys."""
     from provisa.api.data import hydration
 
     def answer(request: httpx.Request) -> httpx.Response:
@@ -663,13 +654,13 @@ async def test_a_table_read_by_its_parents_keys_is_every_keys_fill_and_one_key_i
     await hydration._hydrate_api_tables_before_engine(
         SimpleNamespace(sources={"api"}, api_args={}), ctx, state
     )
-    calls = len(route.calls)
+    assert [c.request.url.path for c in route.calls] == ["/pets"]
 
-    joined, rows = await read(by_id, None, ctx)
-    assert rows == [(1, "pet 1"), (2, "pet 2")]
-    one, rows = await read(by_id, {"petId": "2"}, ctx)
-    assert rows == [(2, "pet 2")] and one != joined
-    assert len(route.calls) == calls
+    first, rows = await read(by_id, {"petId": "1"}, ctx)
+    assert rows == [(1, "pet 1")]
+    second, rows = await read(by_id, {"petId": "2"}, ctx)
+    assert rows == [(2, "pet 2")] and second != first
+    assert sorted(c.request.url.path for c in route.calls) == ["/pets", "/pets/1", "/pets/2"]
 
 
 @respx.mock

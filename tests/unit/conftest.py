@@ -82,6 +82,43 @@ def control_plane(embedded_postgres, control_plane_template):
     plane.close()
 
 
+@pytest.fixture
+def model_builds(monkeypatch, rebuild_recorder):
+    """Every call for a schema build made during the test (``rebuild_recorder``), with the model
+    build itself stood in for: it reads the stamps a build is loaded at, enters every phase in
+    order and installs the stamps on the runtime, as ``app._rebuild_schemas_impl`` does, and
+    compiles nothing. The entry (``app._rebuild_schemas``: its turn, its cause, its record, the
+    watcher's stamp check) is the real one, so a test asserts how many builds a write caused, by
+    whom and with which phases -- by counting, never by seconds (REQ-1914)."""
+    import provisa.api.app as app
+    from provisa.api import rebuild_trace
+    from provisa.core import config_stamp
+
+    async def _build(raw_config=None, *, announce=True, converge=True):
+        del raw_config, announce, converge
+        if app.state.model_db is None:
+            return
+        build = rebuild_trace.this_build()
+        runtime = app.state._active_runtime()
+        stamps: dict[str, int] = {}
+        for phase in rebuild_trace.PHASES:
+            build.phase(phase)
+            if phase == rebuild_trace.STAMP_READ:
+                stamps = await config_stamp.read(app.state.model_db)
+                build.stamps(
+                    loaded={
+                        config_stamp.MODEL: runtime.model_stamp,
+                        config_stamp.BUILD: runtime.build_stamp,
+                    },
+                    read={k: stamps[k] for k in (config_stamp.MODEL, config_stamp.BUILD)},
+                )
+        runtime.model_stamp = stamps[config_stamp.MODEL]
+        runtime.build_stamp = stamps[config_stamp.BUILD]
+
+    monkeypatch.setattr(app, "_rebuild_schemas_impl", _build)
+    return rebuild_recorder
+
+
 # The org a fresh AppState serves (AppState._org_id) -- used when the app module is not loaded.
 _DEPLOYMENT_ORG = "default"
 

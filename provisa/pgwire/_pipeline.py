@@ -3112,8 +3112,7 @@ async def route_governed(
     # same as the compiled path (_govern_and_route_compiled) — without this, an API table with a
     # required path param never resolves it, materialization skips, and the unmaterialized table
     # reaches the engine unchanged ("no such table").
-    from provisa.api.data.materialization import frozen_parameter_filters
-    from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
+    from provisa.api.data.materialization import bind_statement
 
     # REQ-1882: both stages are sqlglot-parse-based regex/AST rewrite work; off-load the combined
     # call (see _off_loop's own docstring).
@@ -3121,23 +3120,21 @@ async def route_governed(
         governed.memo,
         lambda: lower_to_catalog_physical(governed_semantic, ctx),
     )
-    # Each read of a table under arguments of its own -- a union of views over one search table
-    # -- is read under its own (REQ-1983, REQ-1986); a single one is extract_nf_args' as ever.
+    # REQ-1986: the one step that binds the statement's parameters -- each read's calls, by
+    # equality, IN, OR or a join on the parameter; every other condition on one refused.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
-    _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = (
-        context_parameters(ctx)
-        - _frozen.keys()
-        - _code_parameters(state, _table_ids, _physical_sql)
+    _bound = await bind_statement(
+        _physical_sql,
+        embedded_params,
+        state,
+        ctx,
+        _table_ids,
+        role_id,
+        context_parameters(ctx) - _code_parameters(state, _table_ids, _physical_sql),
     )
-    _physical_sql, _read_args = separate_parameter_reads(_physical_sql, _parameters)
-    _physical_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
-        _physical_sql, embedded_params or [], _parameters, _frozen
-    )
-    exec_params = (
-        _nf_clean_params if _nf_clean_params != (embedded_params or []) else embedded_params
-    )
-    _nf_args = _extracted_nf or None
+    _physical_sql, _read_args = _bound.sql, _bound.reads
+    exec_params = _bound.params if _bound.params != (embedded_params or []) else embedded_params
+    _nf_args = _bound.nf_args or None
 
     (
         _qualified,
@@ -6230,8 +6227,7 @@ async def _route_compiled(
     _exec_sql = read_logs(_exec_sql, state, ctx, travel)
     # REQ-372: an Iceberg or Delta table read at a recorded time reads that snapshot.
     _exec_sql = read_snapshots(_exec_sql, ctx, travel)
-    from provisa.api.data.materialization import frozen_parameter_filters
-    from provisa.compiler.nf_extractor import extract_nf_args, separate_parameter_reads
+    from provisa.api.data.materialization import bind_statement
     from provisa.vector import similarity as _similarity
 
     if exec_params and _similarity.mentions(governed_sql):
@@ -6239,17 +6235,20 @@ async def _route_compiled(
         exec_params = await _similarity.bind_query_vectors(
             governed_sql, exec_params, await vector_registry(state)
         )
+    # REQ-1986: the one step that binds the statement's parameters, as on the raw-SQL stage.
     # REQ-2031: a table kept for good is read from its landed rows, a parameter filtering them.
-    _frozen = frozen_parameter_filters(state, _table_ids)
-    _parameters = (
-        context_parameters(ctx) - _frozen.keys() - _code_parameters(state, _table_ids, _exec_sql)
+    _bound = await bind_statement(
+        _exec_sql,
+        exec_params,
+        state,
+        ctx,
+        _table_ids,
+        role_id,
+        context_parameters(ctx) - _code_parameters(state, _table_ids, _exec_sql),
     )
-    _exec_sql, _read_args = separate_parameter_reads(_exec_sql, _parameters)
-    _exec_sql, _nf_clean_params, _extracted_nf = extract_nf_args(
-        _exec_sql, exec_params or [], _parameters, _frozen
-    )
-    exec_params = _nf_clean_params if _nf_clean_params != (exec_params or []) else exec_params
-    _nf_args = {**(api_args or {}), **(_extracted_nf or {})} or None
+    _exec_sql, _read_args = _bound.sql, _bound.reads
+    exec_params = _bound.params if _bound.params != (exec_params or []) else exec_params
+    _nf_args = {**(api_args or {}), **_bound.nf_args} or None
     if api_compiled is not None:
         from provisa.api.data.hydration import _hydrate_api_tables_before_engine
 

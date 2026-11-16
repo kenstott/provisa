@@ -139,7 +139,11 @@
       "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_parameter_type": "De parameter {{parameter}} van het GraphQL-verzoek moet {{expected}} zijn.",
       "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET.",
-      "listed_only": "Rol {{role}} kan {{table}} alleen weergeven: de metadata is leesbaar, de gegevens niet"
+      "listed_only": "Rol {{role}} kan {{table}} alleen weergeven: de metadata is leesbaar, de gegevens niet",
+      "parameter_by_equality_only": "De parameter {{parameter}} krijgt een waarde door gelijkheid: {{parameter}} = een waarde, {{parameter}} IN (waarden) of een join op {{parameter}}. {{form}} geeft hem geen waarde.",
+      "parameter_unbound_on_branch": "De parameter {{parameter}} krijgt in één tak van een OR een waarde en in een andere niet. Geef {{parameter}} in elke tak een waarde.",
+      "parameter_conflict": "De parameter {{parameter}} krijgt tegelijk twee verschillende waarden ({{first}} en {{second}}). Geef hem één waarde, of som de waarden op met IN of OR.",
+      "parameter_calls_over_cap": "Het statement heeft {{calls}} aanroepen naar {{table}} nodig, één voor elke waarde van zijn parameters, en per statement worden er hoogstens {{cap}} gedaan (instelling {{setting}}). Geef minder waarden op."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",

@@ -186,11 +186,11 @@ def excluding_planes(monkeypatch):
     _cleanup(planes[2])
 
 
-def _make_app(admin_db: Database, tenant_db: Database) -> FastAPI:
+def _make_app(admin_db: Database, tenant_db: Database, *, email_verified: bool = True) -> FastAPI:
     app = FastAPI()
     app.add_middleware(
         AuthMiddleware,
-        provider=_FirebaseLikeProvider({"tok-alice": "alice"}),
+        provider=_FirebaseLikeProvider({"tok-alice": "alice"}, email_verified=email_verified),
         admin_pool=admin_db,
         db_pool=tenant_db,
         assignments_source="provisa",
@@ -243,6 +243,41 @@ def test_auto_join_grants_membership_role_and_resolves_org(matching_planes):
         ),
     )
     assert [(r[0], r[1]) for r in assignment] == [("analyst", "*")]
+
+
+def test_an_unverified_address_in_the_orgs_domain_joins_nothing(matching_planes):
+    """REQ-1261: the rule admits alice@example.com, but her token does not say the address is
+    verified (a typed address, or an IdP that has not verified it). She is not joined, and is
+    offered nothing to join."""
+    admin_db, tenant_db, sync_engine = matching_planes
+    app = _make_app(admin_db, tenant_db, email_verified=False)
+    with TestClient(app, raise_server_exceptions=True) as client:
+        named = client.get(
+            "/whoami", headers={"Authorization": "Bearer tok-alice", "x-org-provisa": "acme"}
+        )
+        offers = client.get("/auth/auto-join-offers", headers={"Authorization": "Bearer tok-alice"})
+        accepted = client.post(
+            "/auth/auto-join",
+            headers={"Authorization": "Bearer tok-alice"},
+            json={"org_id": "acme"},
+        )
+    assert named.status_code == 403, named.text
+    assert offers.status_code == 200, offers.text
+    assert offers.json() == {"offers": []}
+    assert accepted.status_code == 404, accepted.text
+    assert accepted.json() == {"detail": "That org is not offering to admit you."}
+    membership = _q(
+        sync_engine,
+        _ADMIN_SCHEMA,
+        select(user_org_memberships.c.org_id).where(user_org_memberships.c.user_id == "alice"),
+    )
+    assert membership == []
+    assignment = _q(
+        sync_engine,
+        _TENANT_SCHEMA,
+        select(user_role_assignments.c.role_id).where(user_role_assignments.c.user_id == "alice"),
+    )
+    assert assignment == []
 
 
 def test_auto_join_idempotent_across_requests(matching_planes):

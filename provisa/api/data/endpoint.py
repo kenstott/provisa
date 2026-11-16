@@ -43,6 +43,7 @@ from pydantic import BaseModel
 from provisa.api.role_surface import role_surface
 from provisa.core import request_deadline
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.statement_warnings import collecting, warn
 from provisa.api.errors import ApiError
 from provisa.cache.middleware import build_cache_headers
@@ -682,6 +683,8 @@ async def _executed(plan, state, root_field: str):
         ) from failed
     except (HTTPException, PermissionError, ReplicaBuilding, ReadRefused):
         raise  # ReadRefused (REQ-1922, REQ-1661): refused by name; the app answers it (503)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: a condition that binds no parameter; the app answers it (400)
     except (MemoryError, ConnectionError) as exc:
         log.error("Query resource error for %s: %s", root_field, exc)
         raise HTTPException(status_code=503, detail=str(exc)) from exc

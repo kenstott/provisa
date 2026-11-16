@@ -139,7 +139,11 @@
       "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_parameter_type": "GraphQL 請求的 {{parameter}} 必須是 {{expected}}。",
       "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。",
-      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料"
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料",
+      "parameter_by_equality_only": "參數 {{parameter}} 透過等值取值:{{parameter}} = 值、{{parameter}} IN (值清單),或在 {{parameter}} 上聯結。{{form}} 不會給它任何值。",
+      "parameter_unbound_on_branch": "參數 {{parameter}} 在 OR 的一個分支中有值,在另一個分支中沒有。請在每個分支中為 {{parameter}} 指定值。",
+      "parameter_conflict": "參數 {{parameter}} 同時被賦予兩個不同的值({{first}} 和 {{second}})。請只給它一個值,或用 IN 或 OR 列出這些值。",
+      "parameter_calls_over_cap": "該語句需要對 {{table}} 發出 {{calls}} 次呼叫(其參數的每個值一次),而一條語句最多發出 {{cap}} 次(設定 {{setting}})。請減少值的數量。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
