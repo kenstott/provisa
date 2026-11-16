@@ -26,7 +26,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { test, expect, BACKEND_URL } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables } from "./retire-source-tables";
 import {
   DOMAIN,
   listedTableNames,
@@ -58,8 +58,8 @@ const SUBDIR_TABLE = "subdir__extra";
 const UNSUPPORTED_STEMS = ["events", "config"];
 
 let fixtureDir: string;
-// The source this run added: removed with its tables after the run, so the table it registers
-// ("customers" in DOMAIN) is not left to clash with another spec registering that name.
+// The source this run added: its table ("customers" in DOMAIN) is retired after the run, so it is
+// not left in service; the source is kept (REQ-2248).
 let addedSource: string | null = null;
 
 async function gql(query: string, variables: Record<string, unknown> = {}) {
@@ -78,7 +78,7 @@ test.describe("file connector: every recognized format is discoverable, columned
   });
 
   test.afterAll(async () => {
-    if (addedSource) await deleteSourceAndItsTables(gql, addedSource);
+    if (addedSource) await retireSourceTables(gql, addedSource);
     if (fixtureDir) fs.rmSync(fixtureDir, { recursive: true, force: true });
   });
 
