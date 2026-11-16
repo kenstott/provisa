@@ -17,6 +17,7 @@ its setup from the action and never repeats the commands.
 | `setup-python` | uv, and the locked environment in `.venv` | `extras`, `client`, `cache`, `sync` (false: uv only) |
 | `setup-ui` | Node, `provisa-ui/node_modules`, optionally Chromium | `node-version`, `install`, `playwright` (`none`, `chromium`) |
 | `trino-plugins` | the pinned Trino plugin jars, restored or saved under one key | `phase` (`restore`, `save`), `cache-hit`, `key-prefix` |
+| `pyodide-downloads` | every file `provisa_notebook.build` downloads (Pyodide and its packages), from the cache or one download, in the directory `PROVISA_NOTEBOOK_DOWNLOADS` names | `python`; outputs `dir`, `cache-hit` |
 | `mssql-odbc` | ODBC Driver 18, registered | none |
 | `docs-site-deps` | MkDocs and its plugins | none |
 | `free-runner-disk` | the runner image's unused toolchains (.NET, Android, GHC, CodeQL) removed from `/`, and `df -h /` printed | none |
@@ -29,7 +30,8 @@ its setup from the action and never repeats the commands.
 
 **The lane workflow** (`.github/workflows/lane.yml`) — one job with a fixed order of steps. Any
 job that runs the container suite or Playwright is a call to it. The order: checkout, the setups
-the caller asked for (`odbc`, `python-extras`, `ui`, `java`, `trino-plugins`, `image-cache`,
+the caller asked for (`odbc`, `python-extras`, `ui`, `java`, `trino-plugins`, `pyodide-downloads`,
+`image-cache`,
 `splunk-cim-cache`), the caller's `env`, the sampler, `prepare`, `run`, `after`, `on-failure`
 when the lane failed, the cache saves, the uploads. A lane's own logic lives in
 `scripts/ci/lanes/`, not in the call.
