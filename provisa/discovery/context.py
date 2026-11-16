@@ -20,6 +20,9 @@ A table that requires a parameter is never read (REQ-1986): its context names it
 parameters with their types and says its values were not read, and its columns send the class
 ``not_read`` and no sample values.
 
+The instructions say what a confidence value states (:data:`RUBRIC`), by the evidence a request
+shows, so the threshold a run keeps suggestions at is a bar the model was told of.
+
 A sample value is sent in at most :data:`SAMPLE_VALUE_CHARS` characters as the request writes it
 (:func:`sample_text`), so what a column can send has a known greatest length
 (:func:`widest`): the request count before Run is computed from it, without reading a value.
@@ -151,6 +154,30 @@ _NOT_READ = (
 )
 
 
+#: The confidence a suggestion needs to be kept (REQ-413), as the instructions state it.
+KEPT_AT = 0.7
+
+#: What a confidence value states, by the evidence a request shows of the two columns. A request
+#: shows a few sample values of each column, so two columns of one key seldom show the same
+#: values: values of one form count as agreeing.
+RUBRIC = (
+    "confidence states the evidence shown here for the relationship, on this scale:\n"
+    "- 0.9 to 1.0: the target column identifies one row of its table (its key: named as the "
+    "table's id or code, its sample values all different), the source column's name says it "
+    "refers to it (the same name, or the target's table and key named, as customer_id names "
+    "customers.id), and the two columns' sample values overlap or are of one form (the same "
+    "prefix, pattern or range).\n"
+    "- 0.7 to 0.89: the names say so and the target is a key, and the sample values neither "
+    "confirm nor contradict it: none are shown for one of the columns, or too few to tell.\n"
+    "- 0.4 to 0.69: one kind of evidence alone: the same name with sample values of different "
+    "forms; sample values that overlap under unrelated names; or the same name on a column "
+    "that is a key of neither table (a status, a category, a place name, a date).\n"
+    "- below 0.4: a guess.\n"
+    f"A relationship is suggested at {KEPT_AT} or more; one below is kept for review as left "
+    "out, so give each the confidence its evidence has.\n"
+)
+
+
 def instructions(
     group: str, at_most: int, *, either_direction: bool, not_read: bool = False
 ) -> str:
@@ -179,6 +206,7 @@ def instructions(
         "A shared pii tag alone is weak evidence of a relationship.\n"
         f"{direction}\n"
         f"Propose at most {at_most} relationships, the strongest first.\n"
+        f"{RUBRIC}"
         "Return ONLY a JSON array, no other text, each element:\n"
         f"{_SHAPE}\n"
         "suggested_name names the business concept the join means, not its tables or columns.\n"

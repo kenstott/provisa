@@ -249,6 +249,9 @@ REFERENCES: tuple[Reference, ...] = (
     _part("tag_assignments", "table_id", "table"),
     _part("relationship_candidates", "source_table_id", "table"),
     _part("relationship_candidates", "target_table_id", "table"),
+    # REQ-413: what a discovery run read of a table goes with the table.
+    _part("discovery_run_proposals", "source_table_id", "table"),
+    _part("discovery_run_proposals", "target_table_id", "table"),
     _part("materialized_views", "id", "table", by="view_mv_id", of="materialized_view", owner="id"),
     _part("rls_rules", "table_id", "table"),
     _part("table_write_grants", "table_id", "table"),  # REQ-2074

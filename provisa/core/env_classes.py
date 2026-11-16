@@ -155,6 +155,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "relationship_candidates",
         # REQ-413: this environment's discovery runs and their progress.
         "discovery_runs",
+        # REQ-413: what each of those runs read, shown and left out.
+        "discovery_run_proposals",
         "creation_requests",
         # REQ-2216: the approve and decide calls this environment already answered.
         "idempotent_calls",

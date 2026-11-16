@@ -28,6 +28,7 @@ from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
 from provisa.discovery.prompt import build_prompt
+from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
 from provisa.discovery.run import (
     ChosenModel,
@@ -508,6 +509,10 @@ async def run_discovery(run_id: int, spec: RunSpec, model: ChosenModel | None) -
         async with pool.acquire() as _conn:
             return await runs_repo.stop_asked(cast("Connection", _conn), run_id)
 
+    async def record(read: list[proposals_repo.Recorded]) -> None:
+        async with pool.acquire() as _conn:
+            await proposals_repo.record(cast("Connection", _conn), run_id, read)
+
     try:
         prepared = await prepare(state, spec, model, reading)
         report = await perform(
@@ -518,6 +523,7 @@ async def run_discovery(run_id: int, spec: RunSpec, model: ChosenModel | None) -
             scope=f"run:{run_id}",
             progress=progress,
             stop_asked=stop_asked,
+            record=record,
         )
         async with pool.acquire() as _conn:
             await runs_repo.finish(cast("Connection", _conn), run_id, report)
@@ -616,6 +622,41 @@ async def stop_run(request: Request, run_id: int):  # REQ-413
         asked = await runs_repo.run(conn, run_id)
     assert asked is not None
     return {"run": asked.view()}
+
+
+@router.get("/runs/{run_id}/left-out")
+async def list_left_out(request: Request, run_id: int):  # REQ-413
+    """What a run read and does not suggest: each proposal with the confidence and reasoning
+    given, why it was left out, and whether it can be accepted."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        await _held(conn, run_id)
+        return {"left_out": await proposals_repo.left_out(conn, run_id)}
+
+
+@router.post("/left-out/{proposal_id}/accept")
+async def accept_left_out(
+    request: Request, proposal_id: int, body: AcceptRequest | None = None
+):  # REQ-413, REQ-612
+    """Accept a proposal a run left out, as a suggestion is accepted."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        try:
+            return await proposals_repo.accept(
+                cast("Connection", _conn), proposal_id, body.name if body else None
+            )
+        except proposals_repo.NotAcceptable as exc:
+            raise ApiError(
+                409,
+                "discovery.left_out_not_acceptable",
+                str(exc),
+                proposal_id=proposal_id,
+            ) from exc
 
 
 @router.get("/candidates")
