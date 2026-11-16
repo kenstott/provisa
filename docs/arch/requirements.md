@@ -6476,7 +6476,7 @@ Inherited roles: a role hierarchy where [SUPERSEDED by [REQ-2155](#REQ-2155), 20
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** behavioral
 
-Scheduled triggers: time-based execution of registered webhooks or internal functions. APScheduler in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background task pattern.
+Scheduled triggers: time-based execution of registered webhooks or internal functions. APScheduler in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background task pattern. (Amended 2026-11-16, A SCHEDULED TRIGGER BELONGS TO THE ORGANIZATION:) Maintainer 2026-11-16, on the security audit's finding that a trigger keeps running after its author loses the role: by design. A scheduled trigger is part of the organization's model; it sits with tables, views and webhooks as a saved data operation the organization depends on. The right to create or change one is checked when it is saved, against whoever saves it; it does not end and is not re-checked when its author's role changes or the author leaves, because a staffing change must not silently stop a pipeline. This is not the rule for a client's own sink or stream ([REQ-812](#REQ-812)), which ends with the role that started it.
 
 **Use case:** Hasura v2 parity: scheduled triggers run webhooks or functions on a cron schedule without external cron infra.
 
