@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// A source that was created and had its tables registered is saved: closing Your data shows it
-// read, in its detail panel's sections. Nothing is offered to save, and its edit form opens only
-// when the person presses Edit.
+// A source that was created is saved: its detail panel shows it read, in its sections, once its
+// tables are registered and Your data is closed, and equally when registering them is skipped.
+// Nothing is offered to save, and its edit form opens only when the person presses Edit.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { render, screen, waitFor, within } from "../../test-utils/render";
@@ -224,3 +224,30 @@ describe.each(KINDS)("$name, created and its tables registered", ({ type, made, 
     expectReadView(made.id);
   });
 });
+
+describe.each(KINDS)(
+  "$name, created and registering its tables skipped",
+  ({ type, made, fill }) => {
+    it("shows the source read on Skip, and opens its edit form on Edit alone", async () => {
+      await create(type, made, fill);
+      await userEvent.click(panel().getByTestId("register-tables-skip"));
+      await waitFor(() => expect(screen.queryByTestId("register-tables-skip")).toBeNull());
+      await panel().findByTestId("source-read");
+      expectReadView(made.id);
+      await userEvent.click(panel().getByTestId("source-detail-edit"));
+      expect(await panel().findByTestId("sources-edit-submit")).toBeInTheDocument();
+      expect(panel().getByTestId("source-section-connection")).toBeInTheDocument();
+    });
+
+    it("shows the source read when the panel is closed on Register tables and the source opened again", async () => {
+      await create(type, made, fill);
+      await userEvent.click(screen.getByTestId("sources-split-close"));
+      // The step has the source chosen: leaving it by the panel's close asks first, as any form does.
+      await userEvent.click(await screen.findByTestId("discard-changes-confirm"));
+      await waitFor(() => expect(screen.queryByTestId("sources-split-panel")).toBeNull());
+      await userEvent.click(await screen.findByTestId(`sources-row-${made.id}`));
+      await panel().findByTestId("source-read");
+      expectReadView(made.id);
+    });
+  },
+);
