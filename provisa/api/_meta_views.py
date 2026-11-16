@@ -1358,6 +1358,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # profiler names each result <member>_<member id>_profile_<kind> on the member's profiler
     # source (provisa.profiler.schema.result_table_name). Both are last, so an existing view is
     # replaced in place. REQ-2132: latest_outcome and latest_run_at are a checker's latest scan.
+    # REQ-1986: requires_parameters states that a read of the table must give a parameter.
     "registered_tables": """
         CREATE OR REPLACE VIEW registered_tables_meta AS
         SELECT rt.id, rt.source_id, rt.domain_id, rt.schema_name, rt.table_name,
@@ -1387,7 +1388,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- (compiler/stage2: a role holding table registration in its domain, and no
                -- other). Last, so an existing view is replaced in place.
                rt.draft,
-               -- REQ-1986: whether a read of the table must give a parameter; with one, the
+               -- Whether a read of the table must give a parameter; with one, the
                -- table gives no row count, profile or sample. Which parameters, of what type and
                -- kind, is in table_columns_meta. Last, so the view is replaced in place.
                EXISTS (SELECT 1 FROM table_columns p
@@ -1449,6 +1450,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                created_at
         FROM data_products
     """,
+    # REQ-1986: the parameter_* columns state a parameter's limits.
     "table_columns": """
         CREATE OR REPLACE VIEW table_columns_meta AS
         SELECT tc.id, tc.table_id, tc.domain_id, tc.column_name,
@@ -1463,7 +1465,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                tc.object_fields,
                tc.visible_to,
                tc.tenant_id,
-               -- REQ-1986: a parameter's limits, NULL for a column that is not one: whether
+               -- A parameter's limits, NULL for a column that is not one: whether
                -- the source requires it, whether a steward made it required, either of which
                -- makes it required, and whether it is opaque (an input to the source's call) or
                -- a real column of the table. Last, so the view is replaced in place.

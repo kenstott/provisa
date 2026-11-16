@@ -66,6 +66,8 @@ def _label_map(text_keyed: bool = False) -> CypherLabelMap:
         aggregate_columns=columns,
         pk_columns={},
         native_filter_columns={},
+        # The per-table parameter facts of a compiled context (label_map reads them).
+        parameters={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),
