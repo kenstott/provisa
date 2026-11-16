@@ -588,15 +588,6 @@ def sign_in_validator(auth_provider, provider_name: str, username: str, password
     return scheme, token, validator_for_scheme(auth_provider, scheme)
 
 
-def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
-    """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
-    transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
-    the read on the connection's loop."""
-    from provisa.auth.held_assignments import held_assignments
-
-    return {a.role_id for a in run(held_assignments(state, identity, org_id))} | {mapped}
-
-
 def _write_tag(sql: str, result: Any) -> str:
     """PostgreSQL's command tag for a data write: ``INSERT 0 n``, ``UPDATE n``, ``DELETE n``,
     ``MERGE n`` — the count the client reads as its rowcount."""
@@ -3803,14 +3794,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self, ctx: BVContext, identity, auth_config: dict
     ) -> None:
         """Map the validated identity to a role, bind its org, and admit the connection."""
-        from provisa.auth.role_mapping import resolve_role
-
-        default_role = auth_config.get("default_role")
-        if not default_role:
+        if not auth_config.get("default_role"):
             # No admin default: an identity matching no mapping rule is refused, not escalated
             # onto whatever role the deployment happens to have named first.
             raise RuntimeError("pgwire auth requires auth.default_role to be configured")
-        role = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
         # org's data-plane runtime. Resolution + build run on this connection's loop (REQ-1882); an
         # unresolvable principal fails the connection rather than silently landing on the default.
@@ -3847,13 +3834,30 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         ):
             self._send_pg_error("FATAL", "42501", role_probe.NOT_PERMITTED)
             return
-        members: tuple[str, ...] = (role,)
-        qualifiers: tuple[str, ...] = ()
         try:
             requested = requested_role(ctx.params)
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return
+        from provisa.auth.held_assignments import sign_in_roles
+
+        try:
+            # The role the sign-in acts as and the roles it may name, as every transport reads
+            # them, in the session's org. REQ-1263: a personal access token's are its scopes its
+            # owner still holds; with none it is refused.
+            role, may_name = run_on_connection_loop(
+                sign_in_roles(
+                    _state,
+                    identity,
+                    getattr(ctx.session, "org_id", None),
+                    naming=bool(requested),
+                )
+            )
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "42501", str(exc))
+            return
+        members: tuple[str, ...] = (role,)
+        qualifiers: tuple[str, ...] = ()
         if requested:
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
@@ -3865,7 +3869,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
             org_token = None
             org_id = getattr(ctx.session, "org_id", None)
-            permitted = _held_roles(_state, identity, role, org_id, run=run_on_connection_loop)
+            permitted = set(may_name)
             if org_id is not None:
                 from provisa.core.request_context import set_current_org
 

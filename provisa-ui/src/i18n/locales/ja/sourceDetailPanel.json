@@ -14,6 +14,7 @@
     "runProfilerTitle": "すべてのメンバーテーブルで今すぐ実行",
     "profilerNoMembers": "このプロファイラーに参加しているテーブルはありません。",
     "profilerRan": "{{table}}: プロファイル済み",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: 読み取っていません。{{parameters}} が必要なため、件数の取得もプロファイルもできません。"
   }
 }

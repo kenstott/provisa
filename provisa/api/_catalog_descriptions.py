@@ -385,13 +385,17 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
         "draft": "Whether the table is a draft, not yet released to its readers",
+        # REQ-1986
+        "requires_parameters": "Whether a read of the table must give a parameter; such a table "
+        "gives no row count, profile or sample without it. Its parameters are in table_columns",
     },
     # REQ-2190
     "table_details": {
         "id": "The registered table",
         "modeling_role": "The table's star role: fact or dimension, when it has one",
         "modeling_history": "The history mode of the entity the table was lowered from",
-        "comment": "The table's description, with its modeling role and tags in brackets",
+        "comment": "The table's description, the parameters it requires and what it cannot "
+        "give without them, and its modeling role and tags in brackets",
     },
     "column_details": {
         "id": "The column's row in table_columns",
@@ -506,14 +510,25 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "scope": "Where the column may be used — projection, filtering, or both",
         "masks": "The ordered mask list: each entry names the roles it is for and the mask they "
         "read the value through, or none; a reader reads it through the first entry it holds",
-        "native_filter_type": "Type the source expects in a filter on this column, when it "
-        "differs from the projected type",
+        "native_filter_type": "How the column, a parameter of the table, reaches the source: "
+        "a path, query, GraphQL, gRPC or native-query argument, a partition key, or a column "
+        "value; empty for a column that is not a parameter",
         "is_foreign_key": "Whether the column references another registered table",
         "is_alternate_key": "Whether the column uniquely identifies a row without being the "
         "primary key",
         "object_fields": "Field definitions for a structured (object) column",
         "visible_to": "Roles that may select this column; empty means no role",
         "tenant_id": _TENANT,
+        # REQ-1986
+        "parameter_required_by_source": "For a parameter, whether the source requires a value "
+        "for it; empty for a column that is not a parameter",
+        "parameter_required_by_steward": "For a parameter, whether a steward made it required "
+        "for this table; empty for a column that is not a parameter",
+        "parameter_required": "For a parameter, whether a read of the table must give it a "
+        "value; empty for a column that is not a parameter",
+        "parameter_opaque": "For a parameter, whether it is an input to the source's call, "
+        "bound by equality only, rather than a real column of the table (a partition key, a "
+        "column value); empty for a column that is not a parameter",
     },
     "domains": {
         "id": "Domain name — the identifier roles are granted access to",

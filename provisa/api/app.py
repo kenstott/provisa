@@ -4855,6 +4855,17 @@ def create_app() -> FastAPI:
 
         return refused_response(exc)
 
+    from provisa.core.parameters import RequiresParameters as _RequiresParameters
+
+    @app.exception_handler(_RequiresParameters)
+    async def _requires_parameters_handler(_req: _Request, exc: _RequiresParameters):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1986: a count, profile, sample or preview asked of one table whose metadata states
+        # required parameters; refused from that metadata, nothing was read.
+        return _JSONResponse(
+            status_code=422,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.secrets_providers import SecretNameRefused as _SecretNameRefused
 
     @app.exception_handler(_SecretNameRefused)

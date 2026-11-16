@@ -43,6 +43,10 @@
     "resolverHelp": "Una consulta de un origen de código que recibe la tabla de origen y la de destino y devuelve una fila por coincidencia.",
     "resolverNone": "Ninguna consulta de un origen de código recibe dos tablas",
     "sourceMatchLabel": "Columna de coincidencia con la clave de origen",
-    "targetMatchLabel": "Columna de coincidencia con la clave de destino"
+    "targetMatchLabel": "Columna de coincidencia con la clave de destino",
+    "incrementalLabel": "Mantener las coincidencias de forma incremental",
+    "incrementalHelp": "En cada actualización se piden a la función @change del resolver las coincidencias que cambiaron desde la última ejecución y se aplican por clave. Desactivado, cada actualización recalcula todas las coincidencias.",
+    "rebuildEveryLabel": "Recompilación completa cada (segundos)",
+    "rebuildEveryHelp": "Con qué frecuencia se recalculan todas las coincidencias, para corregir lo que los cambios no hayan captado. Obligatorio mientras las coincidencias se mantengan de forma incremental."
   }
 }

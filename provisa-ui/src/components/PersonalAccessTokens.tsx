@@ -29,6 +29,8 @@ import {
   type PersonalAccessToken,
 } from "../api/admin";
 import { CopyButton } from "./CopyButton";
+import { MultiSelect } from "./MultiSelect";
+import { useAuth } from "../context/AuthContext";
 import { selectedEnv } from "../lib/authFetch";
 
 /**
@@ -37,15 +39,20 @@ import { selectedEnv } from "../lib/authFetch";
  * act, so it lives on their profile rather than under an admin page, alongside leaving an org and
  * deleting the account.
  *
+ * A token's scopes are the roles it may act as: picked here from the roles the user holds, at
+ * least one, and shown for each token. The server issues a token only for roles its issuer holds.
+ *
  * The minted secret is displayed once, here, because the server stores only its SHA-256 and can
  * never show it again. Everything the listing carries is non-secret: a display prefix, the name
  * the user gave it, and its lifecycle timestamps.
  */
 export function PersonalAccessTokens() {
   const { t, i18n } = useTranslation();
+  const { availableRoles } = useAuth();
   const [tokens, setTokens] = useState<PersonalAccessToken[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [name, setName] = useState("");
+  const [scopes, setScopes] = useState<string[]>([]);
   const [expiresInDays, setExpiresInDays] = useState<number | "">("");
   const [issuing, setIssuing] = useState(false);
   const [minted, setMinted] = useState<string | null>(null);
@@ -68,10 +75,12 @@ export function PersonalAccessTokens() {
     try {
       const created = await issuePersonalAccessToken({
         name: name.trim(),
+        scopes,
         expires_in_days: expiresInDays === "" ? null : expiresInDays,
       });
       setMinted(created.token);
       setName("");
+      setScopes([]);
       setExpiresInDays("");
       await load();
     } catch (e) {
@@ -145,6 +154,16 @@ export function PersonalAccessTokens() {
             data-testid="profile-pat-name"
           />
         </FormField>
+        <FormField size="medium" hint={t("userProfileModal.patRolesHelp")}>
+          <MultiSelect
+            label={t("userProfileModal.patRoles")}
+            placeholder={t("userProfileModal.patRolesPlaceholder")}
+            options={availableRoles.map((r) => ({ id: r.id, label: r.id }))}
+            value={scopes}
+            onChange={setScopes}
+            required
+          />
+        </FormField>
         <FormField size="short">
           <NumberInput
             label={t("userProfileModal.patExpiresInDays")}
@@ -158,7 +177,7 @@ export function PersonalAccessTokens() {
         <FormFooter
           action={
             <Button
-              disabled={!name.trim() || issuing}
+              disabled={!name.trim() || scopes.length === 0 || issuing}
               onClick={handleIssue}
               data-testid="profile-pat-issue"
             >
@@ -183,6 +202,9 @@ export function PersonalAccessTokens() {
                 {t("userProfileModal.patPrefix")}
               </Table.Th>
               <Table.Th c="dimmed" fw={500}>
+                {t("userProfileModal.patRoles")}
+              </Table.Th>
+              <Table.Th c="dimmed" fw={500}>
                 {t("userProfileModal.patLastUsed")}
               </Table.Th>
               <Table.Th c="dimmed" fw={500}>
@@ -200,6 +222,9 @@ export function PersonalAccessTokens() {
                 <Table.Td>{tok.name}</Table.Td>
                 <Table.Td>
                   <Code>{tok.prefix}…</Code>
+                </Table.Td>
+                <Table.Td data-testid={`pat-roles-${tok.token_hash}`}>
+                  {tok.scopes.join(", ")}
                 </Table.Td>
                 <Table.Td>{when(tok.last_used_at)}</Table.Td>
                 <Table.Td>{when(tok.expires_at)}</Table.Td>

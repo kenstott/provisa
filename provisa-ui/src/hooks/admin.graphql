@@ -435,6 +435,12 @@ query TablesQuery {
     mvPersist
     mvPrimaryKey
     mvIncremental
+    mvRebuildEvery
+    incrementalOption {
+      available
+      code
+      reason
+    }
     mvCalendar
     mvGrain
     mvAllowedLateness
@@ -777,6 +783,21 @@ query CodeResolversQuery {
     targetColumn
     targetMatch
     refreshInterval
+    incremental
+    rebuildEvery
+    incrementalOption {
+      available
+      code
+      reason
+    }
+  }
+}
+
+query CodeResolverIncrementalQuery($resolver: String!, $id: String!) {
+  codeResolverIncremental(resolver: $resolver, id: $id) {
+    available
+    code
+    reason
   }
 }
 

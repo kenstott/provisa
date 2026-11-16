@@ -47,7 +47,7 @@ from provisa.api.admin.capabilities import (
     require_capability_request,
 )
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
-from provisa.api.admin.table_read import table_for_steward
+from provisa.api.admin.table_read import refuse_unparameterized, table_for_steward
 from provisa.api.errors import ApiError
 
 router = APIRouter(prefix="/admin", tags=["admin", "profiler"])
@@ -312,7 +312,9 @@ async def start_sensitive_scan(request: Request, table_id: int) -> dict:
     from provisa.core.connection_loop import spawn_background
     from provisa.profiler import hints
 
-    table_for_steward(request, state, table_id)
+    # REQ-1986: a table that requires parameters has no rows to scan; refused from its metadata
+    # before a scan is recorded.
+    refuse_unparameterized(table_for_steward(request, state, table_id))
     async with _db().acquire() as conn:
         scan_id = await hints.start(conn, table_id, _caller(request))
         scan = await hints.latest_scan(conn, table_id)

@@ -14,6 +14,7 @@
     "runProfilerTitle": "立即为每个成员表运行",
     "profilerNoMembers": "没有表加入此画像器。",
     "profilerRan": "{{table}}：已画像",
-    "profilerFailed": "{{table}}：{{error}}"
+    "profilerFailed": "{{table}}：{{error}}",
+    "profilerNotRead": "{{table}}：未读取。它需要 {{parameters}}，因此无法计数或生成概要。"
   }
 }

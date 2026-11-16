@@ -287,6 +287,8 @@
     "holdOnFailingChecksShowCode": "Mostra il codice",
     "holdOnFailingChecksHideCode": "Nascondi il codice",
     "holdOnFailingChecksCodeHelp": "Il controllo applicato da questa opzione. Copialo nel controllo preliminare qui sopra per modificarlo.",
-    "discoverHint": "Il salvataggio legge le colonne della sorgente live e aggiunge quelle che mancano a questa tabella; le sue colonne restano invariate. Una colonna aggiunta non è visibile ad alcun ruolo finché non viene concessa."
+    "discoverHint": "Il salvataggio legge le colonne della sorgente live e aggiunge quelle che mancano a questa tabella; le sue colonne restano invariate. Una colonna aggiunta non è visibile ad alcun ruolo finché non viene concessa.",
+    "mvRebuildEveryLabel": "Ricostruzione completa ogni (secondi)",
+    "mvRebuildEveryHelp": "Ogni quanto viene ricalcolata l'intera vista. Obbligatorio per una vista mantenuta dalla funzione @change di un'origine di codice."
   }
 }

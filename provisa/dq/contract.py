@@ -146,7 +146,7 @@ def resolve_contract_target(dataset: str, contexts: Mapping) -> Any:
     that has no lineage, no governance and no RLS, which is the opposite of REQ-967's estate.
     """
     matches = {
-        meta.table_id: meta
+        meta.table_id: (meta, ctx)
         for ctx in contexts.values()
         for meta in ctx.tables.values()
         if meta_dataset(meta) == dataset
@@ -158,7 +158,18 @@ def resolve_contract_target(dataset: str, contexts: Mapping) -> Any:
             # REQ-2152: not how many -- the count would include tables its author cannot read.
             f"contract dataset {dataset!r} is ambiguous: more than one governed table publishes it"
         )
-    return next(iter(matches.values()))
+    target, ctx = next(iter(matches.values()))
+    # REQ-1986: a checker counts and scans its dataset whole. A table whose metadata states
+    # required parameters has no such read: refused here, from the metadata, where a contract is
+    # registered, tried and scanned -- the checker is never started against it.
+    from provisa.core.parameters import RequiresParameters, required_of
+
+    required = required_of(ctx.parameters.get(target.table_id, ()))
+    if required:
+        raise ContractError(
+            f"contract dataset {dataset!r}: {RequiresParameters(target.table_name, required)}"
+        )
+    return target
 
 
 def contract_checks(text: str, checker: str) -> list[dict]:

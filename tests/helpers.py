@@ -394,7 +394,8 @@ def dq_contexts(*tables: tuple, role: str = "analyst") -> dict:
             domain_id=domain_id,
             display_name=alias[0] if alias else "",
         )
-    return {role: SimpleNamespace(tables=metas)}
+    # REQ-1986: no table of these requires a parameter (ctx.parameters).
+    return {role: SimpleNamespace(tables=metas, parameters={})}
 
 
 async def retire_tables_of_source(client, source_id: str) -> None:

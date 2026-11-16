@@ -14,6 +14,7 @@
     "runProfilerTitle": "Nu uitvoeren voor elke lidtabel",
     "profilerNoMembers": "Geen tabel hoort bij deze profiler.",
     "profilerRan": "{{table}}: geprofileerd",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: niet gelezen. Ze vereist {{parameters}} en kan dus niet worden geteld of geprofileerd."
   }
 }
