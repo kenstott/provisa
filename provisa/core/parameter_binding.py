@@ -44,6 +44,8 @@ class ParameterBindingRefused(ValueError):
 
     code: str = "data.parameter_binding_refused"
     params: dict[str, Any]
+    #: What pgwire reports it as: invalid_parameter_value, the statement's own mistake.
+    sqlstate: str = "22023"
 
 
 class ParameterByEqualityOnly(ParameterBindingRefused):

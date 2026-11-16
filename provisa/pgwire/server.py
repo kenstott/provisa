@@ -223,6 +223,16 @@ _SQLSTATE_BY_CLASS: dict[str, str] = {
 }
 
 
+def _coded(exc: BaseException) -> str | None:
+    """REQ-1986: a parameter-binding refusal's stable code and params, for the ErrorResponse's
+    Detail field -- the form a warning's are sent in. None for any other failure."""
+    from provisa.core.parameter_binding import ParameterBindingRefused
+
+    if not isinstance(exc, ParameterBindingRefused):
+        return None
+    return json.dumps({"code": exc.code, "params": exc.params}, ensure_ascii=True)
+
+
 def _sqlstate_of(exception: BaseException) -> str:
     """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
     the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
@@ -3186,7 +3196,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             # as PostgreSQL sends every error.
             org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
             said = str(_Said(str(exception), org_id))
-            self._send_pg_error("ERROR", _sqlstate_of(exception), said)
+            self._send_pg_error("ERROR", _sqlstate_of(exception), said, _coded(exception))
         else:
             self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
@@ -3344,18 +3354,25 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # end of the connection (the server closes the socket it accepted, not the TLS one).
         self.rfile = _FlushingReader(self.rfile, self._meter.flush)  # type: ignore[assignment]
 
-    def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
+    def _send_pg_error(
+        self, severity: str, sqlstate: str, message: str, detail: str | None = None
+    ) -> None:
+        """``detail`` goes in the Detail field: a coded refusal's code and params, as a
+        warning's are sent (``_send_warning``)."""
         from provisa.api.engine_error_names import client_text
 
         # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
         message = client_text(message)
         buf = BVBuffer()
-        for field, value in (
+        fields = [
             (b"S", severity),
             (b"V", severity),
             (b"C", sqlstate),
             (b"M", message),
-        ):
+        ]
+        if detail is not None:
+            fields.append((b"D", detail))
+        for field, value in fields:
             buf.write_bytes(field)
             buf.write_string(value)
         buf.write_bytes(b"\x00")
