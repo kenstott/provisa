@@ -23534,7 +23534,7 @@ The column editor is four tabs: Naming, Type and keys, Access, Testing. The colu
 
 **Status:** ✅ complete · **Priority:** SHOULD · **Type:** ui
 
-Creating an object is short. The page's + button asks only for what the object needs in order to exist; the object is then created, selected in the list, and its detail opens in edit. The create form is a subset of the edit form. For a table, creating registers every column.
+Creating an object is short. The page's + button asks only for what the object needs in order to exist; the object is then created, selected in the list, and its detail opens in edit. The create form is a subset of the edit form. For a table, creating registers every column. (Amended 2026-11-16, A SAVED SOURCE OPENS IN ITS READ VIEW:) Maintainer 2026-11-16. For a source, the rule that a new object's detail opens in edit is [SUPERSEDED by this amendment]. A source that has been created is saved, so its detail opens in the read view: after its tables are registered and the data view is closed, and equally when registering is skipped. Edit opens only when the user asks for it.
 
 **Use case:** An operator adds a source by giving its identity, sees it in the list at once, and completes the rest in the same editor used for any later change.
 
