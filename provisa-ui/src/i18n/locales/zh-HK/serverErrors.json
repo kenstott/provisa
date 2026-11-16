@@ -507,6 +507,8 @@
       "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用"
     },
     "secrets": {
+      "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
+      "env_reference_refused": "{{name}} 是伺服器自身環境的變數，不屬於本組織。請將該值儲存為組織密鑰，並改為引用該密鑰。",
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
       "name_too_long": "{{name}} 名稱過長：加上本組織的前綴後為 {{length}} 個字元，而 {{service}} 最多接受 {{limit}} 個",
       "org_not_found": "找不到組織「{{org_id}}」",

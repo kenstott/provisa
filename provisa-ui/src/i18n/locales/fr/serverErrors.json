@@ -507,6 +507,8 @@
       "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend"
     },
     "secrets": {
+      "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
+      "env_reference_refused": "{{name}} est une variable de l'environnement propre du serveur, dont cette organisation ne dispose pas. Stockez la valeur comme secret de l'organisation et référencez plutôt ce secret.",
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
       "name_too_long": "{{name}} est un nom trop long : avec le préfixe de cette organisation il compte {{length}} caractères, et {{service}} en accepte au plus {{limit}}",
       "org_not_found": "Organisation « {{org_id}} » introuvable",

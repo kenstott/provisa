@@ -169,6 +169,21 @@ def _retires(stmt: Any) -> bool:
     return isinstance(stmt, Update) and bool(stmt.get_execution_options().get(_RETIRES_OPTION))
 
 
+#: What a reader outside this module asks (REQ-1557: a retired row is a deleted one there too).
+retires = _retires
+
+
+def person_acting() -> bool:
+    """Whether a person is making this context's writes: a role is acting, and the path is not
+    one that writes the model with no person acting (:func:`unnarrowed`, a whole-model write).
+    The test :func:`narrowing_of` applies before it looks for a rule."""
+    return (
+        current_acting_role.get() is not None
+        and not _unnarrowed.get()
+        and not model_change.writes_whole_model()
+    )
+
+
 def narrowing_of(stmt: Any, dialect: str) -> Narrowing | None:
     """The rule ``stmt`` is held to, or None when it is held to none: not an UPDATE or DELETE, no
     acting person, or a role with no rule for the right on that table."""

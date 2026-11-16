@@ -77,7 +77,7 @@ class TestKaggleStaging:
         monkeypatch.setattr("provisa.kaggle.downloader.stage_dataset", fake_stage_dataset)
         resolved: list[str] = []
 
-        def fake_resolve(value):
+        def fake_resolve(value, **_marked):
             resolved.append(value)
             return "KGAT_the_real_token"
 
@@ -110,7 +110,7 @@ class TestKaggleStaging:
             raise UnsupportedKaggleDataset("bundle contains a .sqlite file")
 
         monkeypatch.setattr("provisa.kaggle.downloader.stage_dataset", fake_stage_dataset)
-        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", lambda ref: "token")
+        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", lambda ref, **_marked: "token")
 
         source = _source(federation_hints_json=json.dumps({"kaggle_owner": "x", "kaggle_ref": "y"}))
         result = await _stage_kaggle_if_needed(source)
@@ -125,7 +125,7 @@ class TestKaggleStaging:
             raise RuntimeError("Kaggle API returned 401")
 
         monkeypatch.setattr("provisa.kaggle.downloader.stage_dataset", fake_stage_dataset)
-        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", lambda ref: "token")
+        monkeypatch.setattr("provisa.core.secrets.resolve_secrets", lambda ref, **_marked: "token")
 
         source = _source(federation_hints_json=json.dumps({"kaggle_owner": "x", "kaggle_ref": "y"}))
         result = await _stage_kaggle_if_needed(source)
@@ -200,7 +200,9 @@ def _refresh(monkeypatch, password_ref: str | None):
         seen["token"] = token
 
     monkeypatch.setattr("provisa.kaggle.downloader.stage_dataset", fake_stage_dataset)
-    monkeypatch.setattr("provisa.core.secrets.resolve_secrets", lambda value: f"resolved({value})")
+    monkeypatch.setattr(
+        "provisa.core.secrets.resolve_secrets", lambda value, **_marked: f"resolved({value})"
+    )
     info = MagicMock()
     info.context = {}
     return schema_mutation.Mutation(), info, seen

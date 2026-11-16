@@ -454,6 +454,9 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
             vendor=vendor,
         )
     env = endpoint.get("api_key_env")
+    from provisa.core.env_reference_guard import refuse_named_by_org
+
+    refuse_named_by_org(env)  # REQ-1557: a held organization's own key variable is not read
     endpoint_key = os.environ.get(env) if env else None
     if env and not endpoint_key:
         raise ApiError(

@@ -307,6 +307,11 @@ async def set_source_binding(
             )
         # The environment's own credential, as entered; the parent's row is untouched.
         connection["password_ref"] = body.password or ""
+        # REQ-1557: this route writes the environment's model as a whole, which the write seam
+        # does not hold to a person; what was entered here is a member's all the same.
+        from provisa.core.env_reference_guard import refuse_entered
+
+        refuse_entered(connection)
     elif connection or body.password is not None:
         raise ApiError(
             422,

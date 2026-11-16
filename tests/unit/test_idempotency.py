@@ -149,7 +149,11 @@ async def test_environment_merge_decision_applies_once(monkeypatch, db):
     async def _org_db(_org_id):
         return db
 
+    async def _guard(_request, _org_id):
+        return "m"  # the guard runs before the org's store is opened
+
     monkeypatch.setattr(orgs, "_org_model_db", _org_db)
+    monkeypatch.setattr(mod, "_guard", _guard)
     decide = AsyncMock(side_effect=[{"state": "applied"}, {"state": "again"}])
     monkeypatch.setattr(mod, "_decide_merge_request", decide)
     req = _request("m", path="/admin/orgs/acme/environments/-/merge-requests/3/decide")
