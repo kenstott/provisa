@@ -81879,7 +81879,17 @@
     returns. Where a plain list of the same type exists, that list is the table, it is the one counted,
     profiled and discovered, and no parameterized table is created beside it. Whether two operations return
     the same type is read from the source''s own schema, never guessed from column names. A steward may
-    add the parameterized table for an operation that did not get one.'
+    add the parameterized table for an operation that did not get one. (Amended 2026-11-16, THE PARAMETERIZED
+    TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a function is also exposed as
+    a parameterized table is an attribute of the function, changed where the function is edited; the table
+    is derived from the function while the attribute is on and is never registered on its own, so it cannot
+    differ from the function''s parameters or columns. This replaces the last sentence of A PARAMETERIZED
+    OPERATION IS ALWAYS A FUNCTION (a steward may add the table) [SUPERSEDED by this amendment]. The attribute''s
+    value when the function is registered follows that amendment''s rule: on when no operation without a
+    required parameter returns the same type, off otherwise. It is set once: a plain list of the same type
+    registered later does not change it, since that would remove a table in use. Turning it off is refused
+    while a relationship, a row rule, a data product or another live object refers to the derived table,
+    naming what refers to it, as deleting a table is.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
