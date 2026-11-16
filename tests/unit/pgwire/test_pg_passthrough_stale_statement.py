@@ -163,7 +163,7 @@ class _StatefulPostgres:
             self.prepared.pop(name, None)  # closing a name that is not prepared is not an error
             return _msg(b"3"), False, portal
         if tag == b"B":
-            _portal_name, pos = _cstring(body, 0)
+            _, pos = _cstring(body, 0)  # the portal's name
             name, _ = _cstring(body, pos)
             self.log.append(("Bind", name))
             if name not in self.prepared:
@@ -195,9 +195,10 @@ class _StatefulPostgres:
         )
 
     def finish(self) -> None:
+        self._server.shutdown(socket.SHUT_RDWR)  # ends the server thread's read
+        self._thread.join(timeout=5)
         self.client.close()
         self._server.close()
-        self._thread.join(timeout=5)
 
     def assert_no_name_prepared_twice(self) -> None:
         """Every Parse names a statement the server does not hold: one never prepared, or one
