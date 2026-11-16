@@ -115,6 +115,7 @@ from provisa.api.admin.types import (
     RegisteredTableType,
     RelationshipType,
     CodeResolverType,
+    IncrementalOptionType,
     RLSRuleType,
     RoleType,
     ScheduledTaskType,
@@ -1332,6 +1333,17 @@ class Query:  # REQ-021, REQ-042
                 if served:
                     out.append(CodeResolverType(**found))
             return out
+
+    @strawberry.field
+    async def code_resolver_incremental(
+        self, info: StrawberryInfo, resolver: str, id: str
+    ) -> IncrementalOptionType:  # REQ-2249
+        """Whether a code resolver set ``id`` over ``resolver`` may keep its matches incrementally
+        (its form disables the setting with the reason when not)."""
+        from provisa.api.admin import code_resolver
+
+        del info
+        return await code_resolver.incremental_option(resolver, id)
 
     @strawberry.field
     async def all_relationships(

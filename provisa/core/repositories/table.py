@@ -614,6 +614,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "mv_persist": getattr(table, "mv_persist", "replace"),  # REQ-965
         "mv_primary_key": getattr(table, "mv_primary_key", []),  # REQ-970
         "mv_incremental": getattr(table, "mv_incremental", False),  # REQ-969
+        "mv_rebuild_every": getattr(table, "mv_rebuild_every", None),  # REQ-2249
         "mv_calendar": getattr(table, "mv_calendar", None),  # REQ-962
         "mv_grain": getattr(table, "mv_grain", None),  # REQ-962/1168
         "mv_allowed_lateness": getattr(table, "mv_allowed_lateness", 0.0),  # REQ-961
@@ -688,6 +689,7 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "mv_persist",  # REQ-965
         "mv_primary_key",  # REQ-970
         "mv_incremental",  # REQ-969
+        "mv_rebuild_every",  # REQ-2249
         "mv_calendar",  # REQ-962
         "mv_grain",  # REQ-962/1168
         "mv_allowed_lateness",  # REQ-961
