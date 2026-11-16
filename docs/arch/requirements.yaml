@@ -48101,7 +48101,15 @@
     that stored none has no AI: the vendor is shown as having no key and a call is refused with a catalogued
     message that says where to add one; the server''s environment variables are not read for it. An install
     of one organization keeps reading the deployment''s environment variable when the organization stored
-    no key.'
+    no key. (Amended 2026-11-16, ON A SERVER OF MANY ONLY THE SANDBOX TIER''S ENDPOINT IS THE OPERATOR''S,
+    AND NO LOCAL MODEL IS REACHED FROM THE ENVIRONMENT:) Maintainer 2026-11-16, two decisions completing
+    the rule above. On a server of many organizations: (1) the only AI endpoint that takes its key from
+    the deployment is the one the operator assigns to the sandbox tier (REQ-2006); an endpoint the deployment''s
+    configuration declares with a key from an environment variable serves no other organization; (2) a local
+    model server (Ollama, LM Studio) whose address comes from the server''s environment is refused like
+    a key from the environment; an organization may declare an endpoint address of its own. Lead''s consequence:
+    a vendor client is built with every value explicit, so no token, base address or organization id is
+    picked up from the server''s environment.'
   use_case: Organizations with distinct governance or compliance needs can use different LLM providers
     or models, enabling flexible multi-tenant deployments where each org controls its own AI surface.
   target: 2026-Q4
