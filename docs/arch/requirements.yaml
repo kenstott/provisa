@@ -56228,10 +56228,13 @@
     Then it names the missing settings and exits non-zero before pushing any code'
   code:
   - scripts/deploy-cloud.sh
+  - packaging/linux/first-launch.sh
   depends_on:
   - a private commercial requirement
   - REQ-1514
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: behaviour present, no test'
+  tests:
+  - tests/unit/test_deploy_cloud_commerce_preflight.py
 - id: REQ-1563
   status: in-progress
   target: 2026-Q4
@@ -56300,6 +56303,7 @@
     Then the commerce preflight names STRIPE_TEST_SECRET_KEY and exits non-zero'
   code:
   - scripts/deploy-cloud.sh
+  - packaging/linux/first-launch.sh
   depends_on:
   - a private commercial requirement
   - REQ-1514
@@ -56307,6 +56311,8 @@
   notes: 'Roadmap audit 2026-10-13: partly built. Missing: Deploy preflight asserts the mode-selected
     key, but the reader that raises a named error on a blank key is not in this repository and no test
     exists.'
+  tests:
+  - tests/unit/test_deploy_cloud_commerce_preflight.py
 - id: REQ-1567
   status: complete
   since: 2026-08

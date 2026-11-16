@@ -17114,9 +17114,9 @@ A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING. The
 
 **Use case:** A regenerated provisa.env drops the Stripe price ids; the next deploy stops instead of shipping a node where "Get started" shows Internal server error.
 
-**Code:** `scripts/deploy-cloud.sh`
+**Code:** `scripts/deploy-cloud.sh`, `packaging/linux/first-launch.sh`
 
-**Tests:** —
+**Tests:** `tests/unit/test_deploy_cloud_commerce_preflight.py`
 
 ### REQ-1563 · Deployment {#REQ-1563}
 
@@ -17138,9 +17138,9 @@ THE BILLING KEY IS ASSERTED FOR THE STORE THE DEPLOYMENT ACTUALLY TRANSACTS AGAI
 
 **Use case:** A hosted node runs in test mode with only the live key configured; the deploy names the missing sandbox key instead of shipping a signup page whose plan catalog 500s.
 
-**Code:** `scripts/deploy-cloud.sh`
+**Code:** `scripts/deploy-cloud.sh`, `packaging/linux/first-launch.sh`
 
-**Tests:** —
+**Tests:** `tests/unit/test_deploy_cloud_commerce_preflight.py`
 
 ## 13. Multi-Tenancy & Organizations
 
