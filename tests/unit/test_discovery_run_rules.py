@@ -17,6 +17,8 @@ direction rules in order, the removals, and Stop."""
 from __future__ import annotations
 
 import json
+from collections import Counter
+
 import pytest
 
 from provisa.discovery import context
@@ -49,7 +51,7 @@ from provisa.discovery.runner import Tally, execute
 from provisa.discovery.windows import (
     TOKENS_PER_SUGGESTION,
     at_most,
-    count_by_group,
+    bound,
     pack,
     plan,
     window_chars,
@@ -134,6 +136,32 @@ def test_a_zero_scale_decimal_is_compared_with_integers_and_with_decimals():
 def test_character_columns_are_text_and_a_text_based_subtype_is_not():
     assert type_groups("text", subtype=None, array_depth=0) == {TEXT}
     assert type_groups("text", subtype="inet", array_depth=0) == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("spelled", "groups"),
+    [
+        ("varchar", {TEXT}),
+        ('varchar collate "default"', {TEXT}),
+        ('text collate "c"', {TEXT}),
+        ("VARCHAR(255)", {TEXT}),
+        ("character varying", {TEXT}),
+        ("int4", {WHOLE}),
+        ("decimal(10,2)", {DECIMAL}),
+        ("timestamp with time zone", {TIMESTAMPTZ}),
+        ("timestamp without time zone", {TIMESTAMP}),
+        ("double precision", frozenset()),
+        ("real", frozenset()),
+        ("inet", frozenset()),
+        ("oid", frozenset()),
+        ("", frozenset()),
+    ],
+)
+def test_a_column_is_grouped_by_the_type_its_sources_spelling_names(spelled, groups):
+    """A live source's column keeps the spelling its source reports: the default demo's string
+    columns are registered ``varchar`` and ``varchar collate "default"``, and took part in no
+    group while only the spelling ``text`` was a character type."""
+    assert type_groups(spelled, subtype=None, array_depth=0) == groups
 
 
 @pytest.mark.parametrize(
@@ -327,7 +355,9 @@ def test_the_request_count_is_given_by_group():
     t1 = tbl(1, "orders", col("id", pk=True), col("customer_ref", "uuid"), col("day", "date"))
     t2 = tbl(2, "customers", col("id", pk=True), col("ref", "uuid"))
     _, requests = plan([t1, t2], None, *DEFAULT_LIMITS)
-    assert count_by_group(requests) == {WHOLE: 1, UUID: 1}
+    assert Counter(r.group for r in requests) == {WHOLE: 1, UUID: 1}
+    # The count before Run: the one date column has nothing to be compared with.
+    assert bound([t1, t2], None, *DEFAULT_LIMITS)[1] == {WHOLE: 1, UUID: 1}
 
 
 # --- split and retry, request count, stop ----------------------------------------------------------
@@ -384,7 +414,7 @@ async def test_the_request_count_equals_the_requests_the_run_then_makes():
         return _answer([])
 
     tally, _ = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
-    assert len(asked) == len(requests) == sum(count_by_group(requests).values())
+    assert len(asked) == len(requests)
     assert tally.done == tally.total == len(requests)
 
 

@@ -12,7 +12,8 @@
 // out when no vendor has a key), the model for this run, the source domains and tables, and the
 // target, the same as the source unless that is unticked. Tables default to every table of the
 // chosen domains, domains to those ticked in the Domains picker; system domains are never offered.
-// About how many requests the run makes is shown before Run, counted again as the scope changes.
+// At most how many requests the run makes is shown before Run, counted again as the scope changes:
+// the count reads no table, so it is an upper bound, and it says how many tables are never read.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -329,19 +330,31 @@ export function DiscoverScopeForm({
               {counted.error}
             </Alert>
           ) : (
-            <Text fz="sm" c="dimmed" data-testid="discover-count" aria-live="polite">
-              {counted.state === "counted" ? (
-                <>
-                  {asksSemantics ? countLine(counted.count) : t("discoverDialog.countNone")}{" "}
-                  {t("discoverDialog.tables", {
-                    source: counted.count.source_tables,
-                    target: counted.count.target_tables,
-                  })}
-                </>
-              ) : counted.state === "counting" ? (
-                t("discoverDialog.counting")
-              ) : null}
-            </Text>
+            <>
+              <Text fz="sm" c="dimmed" data-testid="discover-count" aria-live="polite">
+                {counted.state === "counted" ? (
+                  <>
+                    {asksSemantics ? countLine(counted.count) : t("discoverDialog.countNone")}{" "}
+                    {t("discoverDialog.tables", {
+                      source: counted.count.source_tables,
+                      target: counted.count.target_tables,
+                    })}
+                  </>
+                ) : counted.state === "counting" ? (
+                  t("discoverDialog.counting")
+                ) : null}
+              </Text>
+              {counted.state === "counted" && asksSemantics && counted.count.requests > 0 && (
+                <Text fz="sm" c="dimmed" data-testid="discover-count-bound">
+                  {t("discoverDialog.countBound")}
+                </Text>
+              )}
+              {counted.state === "counted" && counted.count.tables_not_read > 0 && (
+                <Text fz="sm" c="dimmed" data-testid="discover-not-read">
+                  {t("discoverDialog.notRead", { count: counted.count.tables_not_read })}
+                </Text>
+              )}
+            </>
           )}
         </FormField>
         {startError && (
