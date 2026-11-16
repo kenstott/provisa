@@ -341,8 +341,10 @@ personal_access_tokens = Table(
     Column("name", Text, nullable=False),
     Column("user_id", Text, nullable=False),
     Column("org_id", Text, ForeignKey("orgs.id", ondelete="CASCADE"), nullable=False),
-    Column("role_id", Text),  # cross-model ref -> org.roles; null means the owner's resolved role
-    Column("scopes", JSON, nullable=False, default=list),
+    # REQ-1263: the roles the token may act as, by name (cross-model ref -> org.roles). Never
+    # empty: a token is issued for roles its issuer holds, and acts only as one its owner still
+    # holds when it is used.
+    Column("scopes", JSON, nullable=False),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     # Null expiry is a non-expiring token — an explicit choice at issuance, not an absent value.
     Column("expires_at", DateTime(timezone=True)),

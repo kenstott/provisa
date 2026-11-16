@@ -400,22 +400,23 @@ class BoltSession:
         """The roles this identity may select, mapped role first (REQ-273, REQ-551).
 
         The server derives them from the validated identity — the claim-mapped role plus its
-        assignments, as every transport reads them (provisa.auth.held_assignments) — and keeps
-        only those that exist as compiled contexts. A role the identity does not hold is not
+        assignments, or a personal access token's scopes its owner still holds, as every transport
+        reads them (provisa.auth.held_assignments.sign_in_roles) — and keeps only those that exist
+        as compiled contexts. A role the identity does not hold is not
         selectable, whatever database the client names.
         """
-        from provisa.auth.held_assignments import held_assignments
-        from provisa.auth.role_mapping import resolve_role
+        from provisa.auth.held_assignments import sign_in_roles
 
-        default_role = app_state.auth_config.get("default_role")
-        if not default_role:
+        if not app_state.auth_config.get("default_role"):
             # No admin default: an identity matching no mapping rule is refused, not escalated.
             raise RuntimeError("bolt auth requires auth.default_role to be configured")
-        mapped = resolve_role(identity, app_state.auth_config.get("role_mapping", []), default_role)
-        held = [
-            a.role_id for a in await held_assignments(app_state, identity, identity.active_org_id)
-        ]
-        ordered = [mapped, *[r for r in held if r != mapped]]
+        try:
+            _acts_as, ordered = await sign_in_roles(
+                app_state, identity, identity.active_org_id, naming=True
+            )
+        except PermissionError:
+            # REQ-1263: a personal access token none of whose scopes its owner still holds.
+            return []
         return [r for r in ordered if r in app_state.contexts]
 
     def _bound_org(self) -> str:

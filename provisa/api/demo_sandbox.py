@@ -520,7 +520,9 @@ async def _build(demo: PublishedDemo, org_id: str, person: str, kind: str) -> st
         user_id=person,
         org_id=org_id,
         name=_TOKEN_NAME,
-        role_id=SANDBOX_ROLE,
+        # REQ-1263: the roles the token may act as -- every role its visitor was just granted, so
+        # the tour runs as each of them.
+        scopes=granted,
         env_name=PROD,  # REQ-1503: a sandbox is served from its one environment
     )
     return secret
