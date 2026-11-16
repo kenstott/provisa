@@ -56,7 +56,10 @@ from provisa.core.models import ProvisaConfig, Source  # noqa: F401
 from typing import TYPE_CHECKING, Any, cast  # noqa: F401
 
 if TYPE_CHECKING:
+    from collections.abc import Iterable
+
     from provisa.api.app import AppState
+    from provisa.api.org_runtime import OrgRuntime
     from provisa.core.database import Connection
     from provisa.mv.models import MVDefinition, TableIdentity
 
@@ -500,21 +503,46 @@ async def _build_source_pools_and_enums(
         if _src.cdc is not None:
             state.cdc_sources[_src.id] = _src
 
-    # REQ-221: Fetch enum types from all PostgreSQL sources
+    await _read_source_enums((*config.sources, *(extra_sources or ())))
+
+
+async def _read_source_enums(sources: Iterable[Source]) -> None:  # REQ-221, REQ-2171
+    """Read the enum types each of ``sources`` declares (a PostgreSQL source with a pool) and
+    hold them under its id, then serve the union of every source's held enums.
+
+    Only ``sources`` are contacted: a source not passed keeps what it declared when it was last
+    read, so registering or changing one source never waits on another's server."""
+    from provisa.api.app import state
+
+    rt = state._active_runtime()
+    for src in sources:
+        if src.type.value == "postgresql" and state.source_pools.has(src.id):
+            driver = state.source_pools.get(src.id)
+            if hasattr(driver, "fetch_enums"):
+                # Swallowing here silently mistypes enum columns — propagate.
+                rt.pg_enums_by_source[src.id] = (
+                    await cast(Any, driver).fetch_enums(),
+                    await cast(Any, driver).fetch_source_enums(),
+                )
+    _publish_source_enums(rt)
+
+
+def forget_source_enums(rt: OrgRuntime, source_id: str) -> None:  # REQ-221, REQ-2171
+    """Drop a deleted source's enum types from what ``rt`` serves."""
+    rt.pg_enums_by_source.pop(source_id, None)
+    _publish_source_enums(rt)
+
+
+def _publish_source_enums(rt: OrgRuntime) -> None:
     from provisa.compiler.enum_detect import build_enum_types
 
-    _enum_registry: dict[str, list[str]] = {}
-    _source_enums: dict = {}
-    for _src in (*config.sources, *(extra_sources or ())):
-        if _src.type.value == "postgresql" and state.source_pools.has(_src.id):
-            _driver = state.source_pools.get(_src.id)
-            if hasattr(_driver, "fetch_enums"):
-                # Swallowing here silently mistypes enum columns — propagate.
-                _reg = await cast(Any, _driver).fetch_enums()
-                _enum_registry.update(_reg)
-                _source_enums.update(await cast(Any, _driver).fetch_source_enums())
-    state.pg_enum_types = build_enum_types(_enum_registry)
-    state.pg_source_enums = _source_enums
+    registry: dict[str, list[str]] = {}
+    declared: dict = {}
+    for source_registry, source_declared in rt.pg_enums_by_source.values():
+        registry.update(source_registry)
+        declared.update(source_declared)
+    rt.pg_enum_types = build_enum_types(registry)
+    rt.pg_source_enums = declared
 
 
 async def apply_configuration(config: ProvisaConfig) -> None:  # REQ-1919, REQ-164
