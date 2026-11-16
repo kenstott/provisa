@@ -142,23 +142,6 @@ def endpoint_args(endpoint: ApiEndpoint, given: dict | None) -> dict:
     return args
 
 
-def joined_from(endpoint: ApiEndpoint, column: str | None, ctx: Any) -> tuple[Any, str] | None:
-    """The parent table and its column a model join feeds ``endpoint`` from -- through
-    ``column`` when one is named, else through any -- or None when no join does."""
-    if ctx is None:  # no model in hand: no join is known to feed it
-        return None
-    for (src_type, _), join in ctx.joins.items():
-        if join.target.table_name != endpoint.table_name:
-            continue
-        if column is not None and join.target_column != column:
-            continue
-        for parent in ctx.tables.values():
-            if parent.type_name == src_type:
-                return parent, join.source_column
-        return None
-    return None
-
-
 def source_cache_location(state: Any, source_id: str, api_source: Any) -> CacheLocation:
     """Where the acting org's API cache for ``source_id`` is, in the bound engine's terms: the
     source's own cache catalog when it names one, else the engine's own cache catalog (a native

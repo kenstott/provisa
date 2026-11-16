@@ -182,16 +182,18 @@ def _expose_landed(ast: exp.Expr, column: exp.Column, target: str) -> None:  # p
 
 @dataclass(frozen=True)
 class JoinKey:
-    """The column of another table a join gives a parameter its values from: one call for each
-    distinct value of it (REQ-1986). ``table`` is the registered table as the statement names it
-    (its schema in ``schema`` when the statement says it), ``column`` the column as it reads it."""
+    """The read that gives a parameter its values, one call for each distinct value (REQ-1986):
+    the column a join's equality names, read from its table as the statement reads it (under
+    that table's own conditions), or the rows of an ``IN (SELECT ...)``. ``query`` is that read
+    as a governed statement of one column, ``key``; ``label`` names it; ``listed`` is whether it
+    lists the values outright (IN), so nothing of the condition is left to apply."""
 
-    table: str
-    schema: str
-    column: str
+    query: str
+    label: str
+    listed: bool = False
 
     def __str__(self) -> str:
-        return f"{self.table}.{self.column}"
+        return self.label
 
 
 @dataclass
@@ -273,7 +275,7 @@ class _Binder:
         ast: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         params: list[Any],
         known: set[str],
-        real: set[str],
+        real: Mapping[str, str | None],
         types: Mapping[str, str],
         cap: int | None,
     ) -> None:
@@ -287,6 +289,7 @@ class _Binder:
         self.cap = cap
         self.relations = {id(r.table): r for r in relations(ast)}
         self.reads: list[_Read] = []
+        self.changed = False
         # The conditions that only assign values: taken out of the statement once bound.
         self.assigning: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         for select in ast.find_all(exp.Select):
@@ -358,13 +361,22 @@ class _Binder:
         return _NOT_LITERAL if value is None and index is None else value
 
     def _refuse(self, cond: exp.Expr, select: exp.Select) -> list[dict]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
-        """A condition that assigns nothing: refused naming its first opaque parameter; a filter
-        when every parameter in it is a real column of its table, whose meaning is known."""
+        """A condition that assigns nothing: refused naming its first opaque parameter. When
+        every parameter in it is a real column of its table, its meaning is known: it is a filter
+        on that column."""
         from provisa.core.parameter_binding import ParameterByEqualityOnly
 
         for _table, name in self._parameters_in(cond, select):
             if name.lower() not in self.real:
                 raise ParameterByEqualityOnly(name, _form(cond))
+        for column in list(cond.find_all(exp.Column)):
+            if self._parameter(column, select) is None:
+                continue
+            target = self.real[column.name.lower()]
+            if target is not None:
+                _expose_landed(self.ast, column, target)
+                column.set("this", exp.to_identifier(target, quoted=True))
+                self.changed = True
         return [{}]
 
     def _branches(self, cond: exp.Expr, select: exp.Select) -> list[dict]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
@@ -409,7 +421,62 @@ class _Binder:
             if parameter is not None and all(v is not _NOT_LITERAL for v in values):
                 key = (id(parameter[0]), parameter[1].lower(), parameter[1])
                 return [{key: v} for v in values]
+        if isinstance(cond, exp.In) and cond.args.get("query") is not None:
+            parameter = self._parameter(cond.this, select)
+            if parameter is not None:
+                key = (id(parameter[0]), parameter[1].lower(), parameter[1])
+                return [{key: self._listed_key(cond.args["query"], parameter[1])}]
         return self._refuse(cond, select)
+
+    def _inlined(self, node: exp.Expr) -> exp.Expr | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """``node`` with each bound ``$N`` as its value; None when one is not bound yet."""
+        node = node.copy()
+        for bound in list(node.find_all(exp.Parameter)):
+            index = int(str(bound.this)) if str(bound.this).isdigit() else 0
+            if not 0 < index <= len(self.params):
+                return None
+            bound.replace(exp.convert(self.params[index - 1]))
+        return node
+
+    def _listed_key(self, query: exp.Expr, parameter: str) -> JoinKey:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """``parameter IN (SELECT ...)``: the values the subquery lists, a read of its own. One
+        that reads a column of the statement around it lists nothing on its own and is refused."""
+        from provisa.core.parameter_binding import ParameterByEqualityOnly
+
+        body = query.this if isinstance(query, exp.Subquery) else query
+        own = {t.alias_or_name for t in body.find_all(exp.Table)} | {
+            q.alias for q in body.find_all(exp.Subquery) if q.alias
+        }
+        if any(c.table and c.table not in own for c in body.find_all(exp.Column)):
+            raise ParameterByEqualityOnly(parameter, "IN (a correlated subquery)")
+        inlined = self._inlined(body)
+        if inlined is None or len(getattr(body, "expressions", [])) != 1:
+            raise ParameterByEqualityOnly(parameter, "IN (SELECT ...)")
+        keys = exp.select(
+            exp.alias_(exp.column("key", table="_k", quoted=True), "key", quoted=True)
+        )
+        keys = keys.distinct().from_(
+            exp.Subquery(
+                this=inlined,
+                alias=exp.TableAlias(
+                    this=exp.to_identifier("_k", quoted=True),
+                    columns=[exp.to_identifier("key", quoted=True)],
+                ),
+            )
+        )
+        return JoinKey(keys.sql(dialect="postgres"), "IN (SELECT ...)", listed=True)
+
+    def _owner(self, column: exp.Column, select: exp.Select) -> exp.Select | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The SELECT whose FROM holds the table ``column`` is read from (``_source``)."""
+        table = self._source(column, select)
+        scope: exp.Expr | None = select  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        while scope is not None:
+            if isinstance(scope, exp.Select) and any(
+                t is table for t in _own_sources(scope).values()
+            ):
+                return scope
+            scope = scope.parent
+        return None
 
     def _join_key(
         self,
@@ -417,14 +484,66 @@ class _Binder:
         table: exp.Table,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         select: exp.Select,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
     ) -> JoinKey | None:
-        """The column of another registered table an equality joins a parameter of ``table`` on."""
+        """The column of another registered table an equality joins a parameter of ``table`` on,
+        as the read of its distinct values: from that table as the statement reads it, under the
+        conditions the statement puts on that table alone -- its WHERE, its inner joins' ON, and
+        the ON of the join to ``table`` -- so the calls made are the ones the join can use."""
         other = _unwrap(other)
         if not isinstance(other, exp.Column) or other.name.lower() in self.known:
             return None
         source = self._source(other, select)
-        if source is None or source is table or id(source) not in self.relations:
+        owner = self._owner(other, select)
+        if source is None or owner is None or source is table or id(source) not in self.relations:
             return None
-        return JoinKey(source.name, source.db, other.name)
+        relation = self.relations[id(source)].relation
+        alias = relation.alias
+        keys = (
+            exp.select(
+                exp.alias_(exp.column(other.name, table=alias, quoted=True), "key", quoted=True)
+            )
+            .distinct()
+            .from_(relation.copy())
+        )
+        for cond in self._own_conditions(source, owner, table if owner is select else None):
+            keys = keys.where(cond)
+        return JoinKey(keys.sql(dialect="postgres"), f"{source.name}.{other.name}")
+
+    def _own_conditions(
+        self,
+        source: exp.Table,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        owner: exp.Select,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        joined: exp.Table | None,  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+    ) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        """The conditions ``owner`` puts on ``source`` alone, each safe to apply before the join:
+        a WHERE conjunct, an inner join's ON conjunct, and an ON conjunct of the join to
+        ``joined`` (the parameterized table), which only decides which rows that join matches."""
+        from provisa.compiler.governed_relation import base_table
+
+        holders: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        where = owner.args.get("where")
+        if where is not None:
+            holders.append(where.this)
+        for join in owner.args.get("joins") or []:
+            on = join.args.get("on")
+            inner = not join.side and (join.kind or "").upper() in ("", "INNER", "CROSS")
+            if on is not None and (
+                inner or (joined is not None and base_table(join.this) is joined)
+            ):
+                holders.append(on)
+        kept: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+        for cond in [c for holder in holders for c in _flatten_and(holder)]:
+            columns = list(cond.find_all(exp.Column))
+            if (
+                not columns
+                or cond.find(exp.Select) is not None
+                or any(c.name.lower() in self.known for c in columns)
+                or any(self._source(c, owner) is not source for c in columns)
+            ):
+                continue
+            inlined = self._inlined(cond)
+            if inlined is not None:
+                kept.append(inlined)
+        return kept
 
     def _bind_select(self, select: exp.Select) -> None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         holders = [select.args.get("where"), *(select.args.get("joins") or [])]
@@ -504,6 +623,28 @@ class _Binder:
                 arms.append((name, one))
             self._put(read.table, arms)
         return {}, named
+
+    def stamp_unasked(self) -> bool:
+        """A read the statement assigns nothing that reads an opaque parameter's column: the
+        column answers NULL, since nothing was asked -- stated here, whatever the landing holds.
+        Whether any read was so stamped."""
+        bound = {id(r.table) for r in self.reads}
+        stamped = False
+        for relation in self.relations.values():
+            table = relation.table
+            body = table.find_ancestor(exp.Select)
+            if id(table) in bound or body is None:
+                continue
+            alias = table.alias_or_name
+            if any(
+                c.name.lower() in self.known
+                and c.name.lower() not in self.real
+                and c.table in ("", alias)
+                for c in body.find_all(exp.Column)
+            ):
+                self._put(table, [(None, {})])
+                stamped = True
+        return stamped
 
     def _put(self, table: exp.Table, arms: list[tuple[str | None, dict]]) -> None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """Put ``table``'s calls in its place: each arm the rows of one call (named for itself,
@@ -638,7 +779,7 @@ def _only_values(cond: exp.Expr, branches: list[dict]) -> bool:  # pyright: igno
     while isinstance(cond, exp.Paren):
         cond = cond.this
     return isinstance(cond, (exp.EQ, exp.In)) and not any(
-        isinstance(v, JoinKey) for b in branches for v in b.values()
+        isinstance(v, JoinKey) and not v.listed for b in branches for v in b.values()
     )
 
 
@@ -664,7 +805,7 @@ def bind_parameters(
     parameters: Collection[str] | Mapping[str, str],
     frozen: Mapping[str, str | None] | None = None,
     *,
-    real: Collection[str] = (),
+    real: Collection[str] | Mapping[str, str | None] = (),
     cap: int | None = None,
 ) -> "_Binding":  # REQ-1986, REQ-301, REQ-2031
     """Read what a statement (postgres dialect) assigns its tables' parameters.
@@ -681,7 +822,8 @@ def bind_parameters(
     with no such column is refused by name.
 
     ``real``: the parameters that are real columns of their tables (a partition key, a column
-    value). Equality and IN assign them as any parameter; any other condition on one is a filter.
+    value), each with that column's name where the table holds it. Equality and IN assign them as
+    any parameter; any other condition on one is a filter on the real column.
 
     ``cap``: the most calls one statement makes to one table
     (``parameter_binding.CALLS_SETTING``).
@@ -696,7 +838,7 @@ def bind_parameters(
 
     Returns a binding: ``joins`` are the columns whose distinct values it needs, and
     ``bound(keys)`` the statement with every call in place (:class:`Bound`)."""
-    return _Binding(sql, params, parameters, frozen, set(real), cap)
+    return _Binding(sql, params, parameters, frozen, real, cap)
 
 
 class _Binding:
@@ -706,7 +848,7 @@ class _Binding:
         params: list[Any],
         parameters: Collection[str] | Mapping[str, str],
         frozen: Mapping[str, str | None] | None,
-        real: set[str],
+        real: Collection[str] | Mapping[str, str | None],
         cap: int | None,
     ) -> None:
         self._sql = sql
@@ -739,7 +881,10 @@ class _Binding:
         types = parameters if isinstance(parameters, Mapping) else {}
         known = {p.lower() for p in parameters if p.startswith(_NF_PREFIX)} - set(landed)
         self._landed = set(landed)
-        self._binder = _Binder(ast, params, known, {r.lower() for r in real}, types, cap)
+        targets = real if isinstance(real, Mapping) else dict.fromkeys(real)
+        self._binder = _Binder(
+            ast, params, known, {k.lower(): v for k, v in targets.items()}, types, cap
+        )
 
     @property
     def joins(self) -> set[JoinKey]:
@@ -758,10 +903,13 @@ class _Binding:
             return Bound(self._sql, self._params, {}, {})
         if not binder.reads:
             dropped = _drop_unread_parameters(binder.ast, binder.known | self._landed)
-            sql = binder.ast.sql(dialect="postgres") if self._changed or dropped else self._sql
+            stamped = binder.stamp_unasked()
+            changed = self._changed or binder.changed or dropped or stamped
+            sql = binder.ast.sql(dialect="postgres") if changed else self._sql
             return Bound(sql, self._params, {}, {})
         nf_args, reads = binder.apply(keys or {})
         _drop_unread_parameters(binder.ast, self._landed)
+        binder.stamp_unasked()
         # A bound value an assignment held went with it, unless the statement reads it elsewhere.
         left = {
             int(str(p.this)) for p in binder.ast.find_all(exp.Parameter) if str(p.this).isdigit()

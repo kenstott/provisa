@@ -297,32 +297,63 @@ def frozen_parameter_filters(state, table_ids: Iterable[int]) -> dict[str, str |
     return filters
 
 
-def _real_parameters(state, table_ids: Iterable[int]) -> set[str]:
+def _real_parameters(state, table_ids: Iterable[int]) -> dict[str, str | None]:
     """The parameters of the tables the statement reads that are real columns of their tables (a
-    partition key, a column value): their meaning is known, so a condition on one that assigns
-    nothing is a filter (REQ-1986)."""
+    partition key, a column value), each with the table's column it is: the one read from the
+    parameter's path, else the one of its name. Their meaning is known, so a condition on one
+    that assigns nothing is a filter on that column (REQ-1986)."""
     from provisa.core.parameter_binding import is_opaque
-    from provisa.core.parameters import is_parameter
+    from provisa.core.parameters import is_parameter, parameter_name
 
     ids = set(table_ids)
-    return {
-        c["column_name"]
-        for t in (getattr(state, "tables", None) or [])
-        if t.get("id") in ids
-        for c in t["columns"]
-        if is_parameter(c) and not is_opaque(c)
-    }
+    real: dict[str, str | None] = {}
+    for t in getattr(state, "tables", None) or []:
+        if t.get("id") not in ids:
+            continue
+        held = {
+            c.get("path") or c["column_name"]: c["column_name"]
+            for c in t["columns"]
+            if not is_parameter(c)
+        }
+        for c in t["columns"]:
+            if is_parameter(c) and not is_opaque(c):
+                real[c["column_name"]] = held.get(c.get("path") or parameter_name(c))
+    return real
 
 
 async def _join_keys(join, ctx, role_id: str) -> list:
-    """The values a join gives a parameter (REQ-1986): the joined column of the other table, read
-    through the one pipeline as ``role_id`` reads it, so the role's row rules choose the rows and
-    its masks the values the source is asked for."""
-    for meta in ctx.tables.values():
-        if meta.table_name == join.table and join.schema in ("", meta.schema_name):
-            rows = await _fed_argument_sets(_Feed("join", {"key": join.column}, meta), role_id)
-            return [row["key"] for row in rows]
-    raise LookupError(f"{join.table!r}, joined on a parameter, is not a table of the role's model")
+    """The values a join or an ``IN (SELECT ...)`` gives a parameter (REQ-1986): ``join.query``,
+    the read the binder derived from the statement, sent through the one pipeline as ``role_id``
+    -- each governed relation in it read again as the registered table it is -- so the role's
+    row rules choose the rows and its masks the values the source is asked for."""
+    import sqlglot
+    import sqlglot.expressions as exp
+
+    from provisa.compiler.governed_relation import relations
+    from provisa.compiler.sql_rewrite import semantic_ref
+    from provisa.core.request_context import current_session_vars
+    from provisa.pgwire._pipeline import _execute_plan, _govern_and_route
+
+    tree = sqlglot.parse_one(join.query, dialect="postgres")
+    for relation in relations(tree):
+        table = relation.table
+        metas = [
+            m
+            for m in ctx.tables.values()
+            if m.table_name == table.name and table.db in ("", m.schema_name)
+        ]
+        if not metas:
+            raise LookupError(
+                f"{table.name!r}, read for a parameter's values, is not in the role's model"
+            )
+        named = sqlglot.parse_one(semantic_ref(metas[0]), into=exp.Table, dialect="postgres")
+        named.set("alias", exp.TableAlias(this=exp.to_identifier(relation.alias, quoted=True)))
+        relation.relation.replace(named)
+    plan = await _govern_and_route(
+        tree.sql(dialect="postgres"), role_id, session_vars=current_session_vars.get()
+    )
+    result = await _execute_plan(plan)
+    return [row[0] for row in result.rows]
 
 
 async def bind_statement(

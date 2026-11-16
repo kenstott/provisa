@@ -149,17 +149,18 @@ async def test_promotion_target_is_a_quoted_schema_qualified_name(monkeypatch):
     assert targets == ['org_a_api_cache."r_0123"', '"s""; x"."t""; y"']
 
 
-async def test_a_joins_key_lookup_quotes_its_names(monkeypatch):
-    """REQ-1986: the keys a join gives a parameter are read through the one pipeline (the parent
-    lookup hydration made on the tenant plane is gone); the column is named as an identifier."""
+async def test_a_joins_key_read_goes_through_the_pipeline_with_its_names_quoted(monkeypatch):
+    """REQ-1986: the keys a join gives a parameter are read through the one pipeline as the role
+    (the parent lookup hydration made on the tenant plane is gone): the binder's read, each
+    governed relation in it named again as its registered table, every name an identifier."""
     from provisa.api.data import materialization
     from provisa.compiler.nf_extractor import JoinKey
     from provisa.pgwire import _pipeline
 
-    governed: list[str] = []
+    governed: list[tuple[str, str]] = []
 
     async def _govern(sql, role_id, **_kwargs):
-        governed.append(sql)
+        governed.append((sql, role_id))
         return "plan"
 
     async def _execute(_plan):
@@ -172,11 +173,20 @@ async def test_a_joins_key_lookup_quotes_its_names(monkeypatch):
     )
     parent = SimpleNamespace(table_name='pa"rent', schema_name="s;x")
     ctx = SimpleNamespace(tables={"parent": parent})
+    query = (
+        'SELECT DISTINCT "p"."jo""in" AS "key" FROM (SELECT "p"."jo""in" AS "jo""in" '
+        'FROM "pg"."s;x"."pa""rent" AS "p") AS p WHERE p."jo""in" > 3'
+    )
 
-    keys = await materialization._join_keys(JoinKey('pa"rent', "s;x", 'jo"in'), ctx, "analyst")
+    keys = await materialization._join_keys(JoinKey(query, "parent.join"), ctx, "analyst")
 
     assert keys == [1, 2]
-    assert governed == ['SELECT DISTINCT "jo""in" AS "key" FROM "s;x"."pa""rent"']
+    assert governed == [
+        (
+            'SELECT DISTINCT "p"."jo""in" AS "key" FROM "s;x"."pa""rent" AS "p" WHERE p."jo""in" > 3',
+            "analyst",
+        )
+    ]
 
 
 @pytest.mark.parametrize("make_session", [_duckdb_engine_session, _duckdb_broker_session])

@@ -34,7 +34,7 @@ import sqlglot
 
 from provisa.cache.values_cte import InlineRows, build_values_ctes_sql
 from provisa.compiler.compiled_query_cache import CompiledQueryCache
-from provisa.compiler.nf_extractor import JoinKey, bind_parameters, read_base
+from provisa.compiler.nf_extractor import bind_parameters, read_base
 from provisa.compiler.sql_gen import CompilationContext
 from provisa.compiler.sql_types import TableMeta
 from provisa.core.parameter_binding import (
@@ -57,7 +57,7 @@ _PET = (
 )
 #: The governed relation of an ordinary table whose column a join gives the parameter from.
 _ORDERS = (
-    '(SELECT "o"."order_id" AS "order_id", "o"."pet" AS "pet" '
+    '(SELECT "o"."order_id" AS "order_id", "o"."pet" AS "pet", "o"."status" AS "status" '
     'FROM "pg"."public"."orders" AS "o") AS o'
 )
 
@@ -77,12 +77,30 @@ class _Source:
         return [{"id": int(asked) + 100, "name": f"pet {asked}"}]
 
 
-def _answer(sql: str, params: list | None = None, *, keys: list | None = None, **how):
-    """Bind ``sql``, call the source once per call the binding names, and answer the statement
-    in DuckDB over the substituted rows. Returns (rows, the source)."""
+def _duck(sql: str) -> str:
+    return sqlglot.transpile(
+        sql.replace('"pg"."public"."orders"', "pg.main.orders"), read="postgres", write="duckdb"
+    )[0]
+
+
+def _answer(sql: str, params: list | None = None, **how):
+    """Bind ``sql``, read each join's keys with the read the binding derived, call the source
+    once per call the binding names, and answer the statement in DuckDB over the substituted
+    rows. Returns (rows, the source)."""
     source = _Source()
+    con = duckdb.connect()
+    con.execute("ATTACH ':memory:' AS pg")
+    con.execute(
+        "CREATE TABLE pg.main.orders AS SELECT * FROM "
+        "(VALUES (1, 5, 'open'), (2, 6, 'open'), (3, 5, 'shut'), (4, NULL, 'open'), (5, 7, 'shut'))"
+        " t(order_id, pet, status)"
+    )
     binding = bind_parameters(sql, params or [], _TYPES, **how)
-    bound = binding.bound({join: keys or [] for join in binding.joins})
+    keys = {
+        join: [row[0] for row in con.execute(_duck(join.query)).fetchall()]
+        for join in binding.joins
+    }
+    bound = binding.bound(keys)
     tree = sqlglot.parse_one(bound.sql, dialect="postgres")
     entries: dict = {}
     for table in tree.find_all(sqlglot.exp.Table):
@@ -90,16 +108,8 @@ def _answer(sql: str, params: list | None = None, *, keys: list | None = None, *
             continue
         _base, args = bound.reads.get(table.name, ("pet_by_id", bound.nf_args))
         entries[table.name] = InlineRows(source.rows(args), ["id", "name"])
-    con = duckdb.connect()
-    con.execute("ATTACH ':memory:' AS pg")
-    con.execute(
-        "CREATE TABLE pg.main.orders AS SELECT * FROM (VALUES (1, 5), (2, 6), (3, 5)) t(order_id, pet)"
-    )
-    final = build_values_ctes_sql(bound.sql, entries).replace(
-        '"pg"."public"."orders"', "pg.main.orders"
-    )
-    final = sqlglot.transpile(final, read="postgres", write="duckdb")[0]
-    return sorted(con.execute(final, bound.params).fetchall()), source
+    final = _duck(build_values_ctes_sql(bound.sql, entries))
+    return sorted(con.execute(final, bound.params).fetchall(), key=repr), source
 
 
 # --- one value ----------------------------------------------------------------------------------
@@ -210,7 +220,7 @@ _REFUSED = [
     ("p.\"_nf_petId\" LIKE '5%'", "LIKE"),
     ('p."_nf_petId" IS NULL', "IS NULL"),
     ('p."_nf_petId" IS NOT NULL', "IS NOT NULL"),
-    ('p."_nf_petId" IN (SELECT 5)', "IN (SELECT ...)"),
+    ('p."_nf_petId" IN (SELECT 5, 6)', "IN (SELECT ...)"),
     ('p."_nf_petId" = p.id', "= (an expression)"),
     ('p."_nf_petId" = p.id + 1', "= (an expression)"),
 ]
@@ -242,14 +252,18 @@ def test_a_real_column_parameter_is_assigned_by_equality_and_in_as_any_parameter
     assert rows == [(105, 5), (106, 6)]
 
 
-def test_a_real_column_parameter_keeps_its_meaning_under_any_other_condition():
-    """A partition key or a column value is a real column of the table: a range on it is a
-    filter, never refused."""
-    binding = bind_parameters(
-        f'SELECT p.id FROM {_PET} WHERE p."_nf_petId" > 5', [], _TYPES, real={"_nf_petId"}
+def test_a_real_column_parameter_under_any_other_condition_filters_the_real_column():
+    """A partition key or a column value is a real column of the table: a range on it is a filter
+    on that column, never refused and never a filter on a column that holds nothing."""
+    rows, source = _answer(
+        f'SELECT p.id FROM {_PET} WHERE p."_nf_petId" > 5', real={"_nf_petId": "id"}
     )
-    bound = binding.bound()
-    assert bound.nf_args == {} and bound.reads == {} and '"_nf_petId" > 5' in bound.sql
+    assert source.calls == [{}]  # no value was assigned: the read is made without one
+    assert rows == []  # its one row has id 0, which the range on the real column refuses
+    rows, _source = _answer(
+        f'SELECT p.id FROM {_PET} WHERE p."_nf_petId" < 5', real={"_nf_petId": "id"}
+    )
+    assert rows == [(0,)]
 
 
 def test_opaque_is_every_kind_but_a_real_column_of_the_table():
@@ -262,31 +276,102 @@ def test_opaque_is_every_kind_but_a_real_column_of_the_table():
 
 # --- a join -------------------------------------------------------------------------------------
 
+_KEYS = (
+    'SELECT DISTINCT "o"."pet" AS "key" FROM (SELECT "o"."order_id" AS "order_id", '
+    '"o"."pet" AS "pet", "o"."status" AS "status" FROM "pg"."public"."orders" AS "o") AS o'
+)
+
 
 @pytest.mark.parametrize(
     "join",
     [
         f'{_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet',
         f'{_ORDERS} JOIN {_PET} ON o.pet = p."_nf_petId"',
-        f'{_ORDERS} LEFT JOIN {_PET} ON p."_nf_petId" = o.pet',
         f'{_ORDERS}, {_PET} WHERE p."_nf_petId" = o.pet',
     ],
 )
 def test_a_join_on_the_parameter_is_one_call_per_distinct_key(join):
     sql = f"SELECT o.order_id, p.id FROM {join}"
-    binding = bind_parameters(sql, [], _TYPES)
-    assert binding.joins == {JoinKey("orders", "public", "pet")}
-    rows, source = _answer(sql, keys=[5, 6, 5, None])  # orders.pet as read: a duplicate, a NULL
-    assert sorted(c["petId"] for c in source.calls) == [5, 6]  # duplicates are not repeated
-    assert rows == [(1, 105), (2, 106), (3, 105)]
+    assert [j.query for j in bind_parameters(sql, [], _TYPES).joins] == [_KEYS]
+    rows, source = _answer(sql)  # orders.pet holds 5 twice and a NULL
+    assert sorted(c["petId"] for c in source.calls) == [5, 6, 7]  # no duplicate, none for NULL
+    assert rows == [(1, 105), (2, 106), (3, 105), (5, 107)]
+
+
+@pytest.mark.parametrize(
+    "sql, narrowed, calls",
+    [
+        # the other table's own WHERE conditions
+        (
+            f'SELECT o.order_id, p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet '
+            f"WHERE o.status = 'shut' AND o.order_id < 5",
+            " WHERE o.status = 'shut' AND o.order_id < 5",
+            [5],
+        ),
+        # a bound value in them is read as its value
+        (
+            f'SELECT o.order_id, p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet '
+            f"WHERE o.status = $1",
+            " WHERE o.status = 'shut'",
+            [5, 7],
+        ),
+        # the join's other conditions on that table
+        (
+            f"SELECT o.order_id, p.id FROM {_ORDERS} LEFT JOIN {_PET} "
+            f"ON p.\"_nf_petId\" = o.pet AND o.status = 'open'",
+            " WHERE o.status = 'open'",
+            [5, 6],
+        ),
+        # a condition that also reads the rows returned narrows nothing before the call
+        (
+            f'SELECT o.order_id, p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet '
+            f"WHERE o.order_id < p.id",
+            "",
+            [5, 6, 7],
+        ),
+    ],
+)
+def test_a_joins_keys_are_read_from_the_other_table_as_the_statement_reads_it(sql, narrowed, calls):
+    """The calls are those of the rows the statement keeps of the other table, not one for
+    every row the table holds."""
+    params = ["shut"] if "$1" in sql else []
+    assert [j.query for j in bind_parameters(sql, params, _TYPES).joins] == [_KEYS + narrowed]
+    _rows, source = _answer(sql, params)
+    assert sorted(c["petId"] for c in source.calls) == calls
+
+
+def test_a_filtered_join_answers_the_rows_of_the_filtered_keys():
+    rows, source = _answer(
+        f'SELECT o.order_id, p.id, p."_nf_petId" FROM {_ORDERS} JOIN {_PET} '
+        f"ON p.\"_nf_petId\" = o.pet WHERE o.status = 'shut'"
+    )
+    assert sorted(c["petId"] for c in source.calls) == [5, 7]
+    assert rows == [(3, 105, 5), (5, 107, 7)]
+
+
+def test_a_correlated_join_on_the_parameter_binds_from_the_table_around_it():
+    """The LATERAL form a compiled relationship takes: the parameter is given the outer table's
+    column, under the outer table's own conditions."""
+    sql = (
+        f"SELECT o.order_id, d.id FROM {_ORDERS} LEFT JOIN LATERAL "
+        f'(SELECT p.id FROM {_PET} WHERE p."_nf_petId" = o.pet) AS d ON TRUE '
+        f"WHERE o.status = 'shut'"
+    )
+    assert [j.query for j in bind_parameters(sql, [], _TYPES).joins] == [
+        _KEYS + " WHERE o.status = 'shut'"
+    ]
+    rows, source = _answer(sql)
+    assert sorted(c["petId"] for c in source.calls) == [5, 7]
+    assert rows == [(3, 105), (5, 107)]
 
 
 def test_a_join_that_gives_no_key_makes_no_call_and_joins_no_row():
     rows, source = _answer(
-        f'SELECT o.order_id, p.id FROM {_ORDERS} LEFT JOIN {_PET} ON p."_nf_petId" = o.pet', keys=[]
+        f'SELECT o.order_id, p.id FROM {_ORDERS} LEFT JOIN {_PET} ON p."_nf_petId" = o.pet '
+        f"WHERE o.order_id = 4"
     )
     assert source.calls == []
-    assert rows == [(1, None), (2, None), (3, None)]
+    assert rows == [(4, None)]
 
 
 def test_a_join_on_a_result_column_does_not_assign():
@@ -304,6 +389,45 @@ def test_a_join_on_the_parameter_beside_a_value_for_it_is_a_conflict():
             f'SELECT p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet '
             f'WHERE p."_nf_petId" = 5'
         )
+
+
+# --- IN (SELECT ...) ----------------------------------------------------------------------------
+
+
+def test_in_a_subquery_binds_one_call_per_value_it_lists():
+    rows, source = _answer(
+        f'SELECT p.id, p."_nf_petId" FROM {_PET} WHERE p."_nf_petId" IN '
+        f"(SELECT o.pet FROM {_ORDERS} WHERE o.status = 'open')"
+    )
+    assert sorted(c["petId"] for c in source.calls) == [5, 6]  # the NULL it lists asks nothing
+    assert rows == [(105, 5), (106, 6)]
+
+
+def test_in_a_subquery_past_the_cap_is_refused():
+    with pytest.raises(ParameterCallsOverCap):
+        _answer(
+            f'SELECT p.id FROM {_PET} WHERE p."_nf_petId" IN (SELECT o.pet FROM {_ORDERS})', cap=2
+        )
+
+
+def test_in_a_correlated_subquery_is_refused_by_name():
+    with pytest.raises(ParameterByEqualityOnly) as refused:
+        _answer(
+            f'SELECT p.id FROM {_PET} WHERE p."_nf_petId" IN '
+            f"(SELECT o.pet FROM {_ORDERS} WHERE o.order_id = p.id)"
+        )
+    assert refused.value.params == {"parameter": "_nf_petId", "form": "IN (a correlated subquery)"}
+
+
+# --- nothing asked ------------------------------------------------------------------------------
+
+
+def test_a_read_that_assigns_nothing_answers_null_for_the_parameters_column():
+    """Nothing was asked, so the column holds nothing: stated in the statement, whatever the
+    landed rows hold (the source's rows here carry no such column at all)."""
+    rows, source = _answer(f'SELECT p.id, p."_nf_petId" FROM {_PET}')
+    assert source.calls == [{}]
+    assert rows == [(0, None)]
 
 
 # --- the cap ------------------------------------------------------------------------------------
@@ -329,11 +453,15 @@ def test_a_statement_at_the_cap_is_answered():
 
 def test_a_joins_keys_past_the_cap_are_refused():
     with pytest.raises(ParameterCallsOverCap):
-        _answer(
-            f'SELECT p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet',
-            keys=[1, 2, 3],
-            cap=2,
-        )
+        _answer(f'SELECT p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet', cap=2)
+
+
+def test_a_join_narrowed_under_the_cap_is_answered():
+    _rows, source = _answer(
+        f'SELECT p.id FROM {_ORDERS} JOIN {_PET} ON p."_nf_petId" = o.pet WHERE o.order_id < 3',
+        cap=2,
+    )
+    assert len(source.calls) == 2
 
 
 def test_the_cap_is_an_operator_setting_that_defaults_to_1000():
