@@ -165,13 +165,13 @@ jobs:
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       # The live APIs the job's specs call, each skipped by name without its key (run 40115205350
       # reported 10 NOT EXECUTED with every one of these present in the repo's secrets):
-      # AskAmerica/govdata (askamerica-*, source-to-query-special-cases), Kaggle (kaggle-source),
-      # OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox (source-to-query-stripe).
-      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}
+      # Kaggle (kaggle-source), OpenRouter (custom-ai-endpoint-secret), Stripe's sandbox
+      # (source-to-query-stripe). AskAmerica's is the provisioning job's, where its specs run.
       KAGGLE_API_TOKEN: ${{ secrets.KAGGLE_API_TOKEN }}
       STRIPE_API_KEY: ${{ secrets.STRIPE_API_KEY }}
 
-  # The specs that bring source stacks up and down, with ONE worker on a runner of their own.
+  # The specs that bring source stacks up and down, and the AskAmerica ones, with ONE worker on a
+  # runner of their own.
   provisioning:
     name: Playwright core lane, provisioning specs
     uses: ./.github/workflows/lane.yml
@@ -227,3 +227,6 @@ jobs:
       SP_CLIENT_ID: ${{ secrets.SP_CLIENT_ID }}
       SP_SITE_URL: ${{ secrets.SP_SITE_URL }}
       SP_CERT_PASSWORD: ${{ secrets.SP_CERT_PASSWORD }}
+      # AskAmerica/govdata (askamerica-*, the govdata case of source-to-query-special-cases): this
+      # job's, one worker (playwright.config.ts ASKAMERICA_SPECS); skipped by name without its key.
+      FREE_ASKAMERICA_KEY: ${{ secrets.FREE_ASKAMERICA_KEY }}

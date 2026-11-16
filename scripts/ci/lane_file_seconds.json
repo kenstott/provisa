@@ -64,6 +64,7 @@
   "tests/integration/test_cloudpolicy_demo.py": 0.0,
   "tests/integration/test_cockroachdb_source_e2e.py": 23.8,
   "tests/integration/test_code_columns_e2e.py": 137.8,
+  "tests/integration/test_code_resolver_change_e2e.py": 150.0,
   "tests/integration/test_code_front_bun.py": 2.3,
   "tests/integration/test_code_services_contract_go.py": 28.8,
   "tests/integration/test_code_services_contract_js.py": 23.4,

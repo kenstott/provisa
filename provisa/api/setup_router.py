@@ -408,6 +408,11 @@ async def run_setup(body: SetupRequest):  # REQ-120, REQ-121, REQ-124, REQ-125, 
             "setup.default_domain_required",
             "default_domain required when use_domains=false",
         )
+    # Setup runs on a deployment that still needs it, by the same answer /setup/status gives the
+    # app to decide whether to show the wizard. On a configured deployment nobody runs it again:
+    # it would seat another administrator, replace the signing key or turn sign-in off.
+    if not (await _setup_state())["needs_setup"]:
+        raise ApiError(409, "setup.already_configured", "This deployment is already set up")
 
     def _apply_naming(cfg: dict) -> None:
         # Domain policy is an install-time decision. Only persist when explicitly chosen

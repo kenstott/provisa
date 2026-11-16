@@ -496,7 +496,8 @@ def test_the_ui_specs_on_live_warehouses_run_only_in_the_nightly_warehouse_lane(
     assert 'const WAREHOUSE_SPECS = ["**/source-to-query-cloud-warehouse.spec.ts"];' in config
     core = config[config.index('name: "core",') :]
     core = core[: core.index("},")]
-    assert "...WAREHOUSE_SPECS," in core and "grepInvert: WAREHOUSE_TITLES" in core
+    assert "...WAREHOUSE_SPECS," in core
+    assert "grepInvert: [WAREHOUSE_TITLES, ASKAMERICA_TITLES]" in core
     assert 'name: "warehouse",' in config
     workflows = REPO / ".github" / "workflows"
     for path in sorted(workflows.glob("*.yml")):
