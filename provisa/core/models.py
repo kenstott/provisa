@@ -2046,6 +2046,9 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function; required while it is kept incrementally. None = no clock.
+    mv_rebuild_every: int | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.

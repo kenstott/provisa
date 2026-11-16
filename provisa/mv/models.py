@@ -204,6 +204,9 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     # with a PK (a declared-but-infeasible incremental MV is an explicit error, never a silent full
     # recompute). Default False = recompute-to-current (the REQ-966 NRT baseline).
     incremental: bool = False
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function (required while it is kept incrementally); None = no clock.
+    rebuild_every: int | None = None
 
     # REQ-1162: append-only bitemporal materialization. When set, each refresh APPENDS (never
     # UPDATEs) either the whole fresh dataset (snapshot mode) or engine-computed changes (delta

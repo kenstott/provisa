@@ -354,6 +354,9 @@ registered_tables = Table(
     Column("mv_persist", Text, nullable=False, server_default="replace"),
     Column("mv_primary_key", JSON(none_as_null=True)),
     Column("mv_incremental", Boolean, nullable=False, server_default=false()),
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function; required while it is kept incrementally. NULL = no clock.
+    Column("mv_rebuild_every", Integer),
     # REQ-961/962/1168: PERIODIC calendar trigger (snapshot schedule). mv_calendar names a registered
     # calendar; mv_grain is a nesting grain ("daily".."annual") OR an nth-weekday recurrence
     # ("3WE"/"LFR"). mv_allowed_lateness (s) extends the claim deadline; mv_expected_events is the
@@ -960,6 +963,11 @@ mv_build_state = Table(
     # REQ-2015: the indexes the view's standing landing asked for and how each stands, as a
     # replica's are (``replica_state.index_state``): {"for", "table", "wanted", "built", "failed"}.
     Column("index_state", JSON(none_as_null=True)),
+    # REQ-2249: a view kept by its code resolver's @change function: the cursor stored after its
+    # last successful apply (JSON; NULL = none yet, so the next build is whole) and when it was
+    # last rebuilt whole (its rebuild_every is counted from it).
+    Column("change_cursor", Text),
+    Column("change_rebuilt_at", DateTime(timezone=True)),
     CheckConstraint(
         "status IN ('fresh', 'stale', 'refreshing', 'disabled')",
         name="mv_build_state_status_check",

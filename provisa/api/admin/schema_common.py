@@ -1008,6 +1008,7 @@ async def _sync_view_mv(
     persist: str = "replace",  # REQ-965: replace | append | upsert
     primary_key: list[str] | None = None,  # REQ-970: row identity
     incremental: bool = False,  # REQ-969: incremental maintenance
+    rebuild_every: int | None = None,  # REQ-2249: whole rebuild interval of a view kept by @change
     calendar: str | None = None,  # REQ-962: periodic-snapshot calendar (None = not periodic)
     grain: str | None = None,  # REQ-962/1168: nesting grain or nth-weekday spec
     allowed_lateness: float = 0.0,  # REQ-961: seal-deadline slack (s)
@@ -1084,6 +1085,7 @@ async def _sync_view_mv(
         persist=persist,  # REQ-965
         primary_key=list(primary_key or []),  # REQ-970
         incremental=incremental,  # REQ-969
+        rebuild_every=rebuild_every,  # REQ-2249
         calendar=calendar,  # REQ-962
         grain=grain,  # REQ-962/1168
         allowed_lateness=allowed_lateness,  # REQ-961

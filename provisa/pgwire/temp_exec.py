@@ -43,7 +43,9 @@ async def _store_address(state: Any, session: TempSession, name: str) -> str:
 
 def _system_rows(state: Any, pg_sql: str, label: str) -> tuple[list[str], list[tuple]]:
     """The rows of the platform's own statement over a temporary table: the session's own rows,
-    which no role's rules apply to."""
+    which no role's rules apply to. ``pg_sql`` is the platform's own words alone -- the table's
+    address, its columns, values as literals -- never an expression a client wrote: that is read
+    through the pipeline as the session's role (:class:`provisa.compiler.temp_tables.Action`)."""
     from provisa.federation.execution_auth import SystemAuth, mint_system_token
 
     engine_rt = state.federation_engine
@@ -523,15 +525,25 @@ async def apply(
         _within_rows(name, len(held) + len(added))
         await _land(state, session, name, _batch(table.columns, [*held, *added]), table.columns)
         return QueryResult(rows=[], column_names=[], rowcount=len(added))
-    assert action.kind == "rewrite" and action.rewrite is not None
-    _, before = await asyncio.to_thread(_system_rows, state, f"SELECT * FROM {at}", name)
-    _, after = await asyncio.to_thread(
-        _system_rows, state, action.rewrite.format(table=f"{at} AS {_quoted(name)}"), name
-    )
+    assert action.kind == "rewrite"
+    # ``result`` is every row of the table as the statement leaves it, read through the pipeline
+    # as the role: the statement's WHERE and SET expressions ran there, governed, and nowhere
+    # else. The platform's own statement here counts the table's rows and carries no word of it.
+    held = await _held_count(state, session, name)
+    if len(result.rows) != held:
+        # The read was bounded like any read of the role's (its row limit); landing it would
+        # drop the rows it did not give.
+        raise ValueError(
+            f"temporary table {name!r} holds {held} row(s) and the statement read "
+            f"{len(result.rows)} of them: an UPDATE or a DELETE of a temporary table reads it "
+            f"whole, and a read is bounded by the role's row limit"
+        )
+    width = len(table.columns)
+    after = [tuple(r[:width]) for r in result.rows if not (action.marks_gone and r[width])]
     _within_rows(name, len(after))
     await _land(state, session, name, _batch(table.columns, after), table.columns)
     # A DELETE removes the rows that are gone; an UPDATE keeps every row, changed or not.
-    return QueryResult(rows=[], column_names=[], rowcount=len(before) - len(after))
+    return QueryResult(rows=[], column_names=[], rowcount=held - len(after))
 
 
 async def reland(

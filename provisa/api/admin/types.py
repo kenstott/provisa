@@ -547,6 +547,9 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
+    mv_rebuild_every: int | None = (
+        None  # REQ-2249: whole rebuild interval of a view kept by @change
+    )
     mv_calendar: str | None = None  # REQ-962: periodic-snapshot calendar (None = not periodic)
     mv_grain: str | None = None  # REQ-962/1168: nesting grain ("daily".."annual") or "3WE"/"LFR"
     mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
@@ -576,6 +579,22 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
         from provisa.api.admin._refresh_summary import summarize_table_policy
 
         return await summarize_table_policy(self)
+
+    @strawberry.field
+    async def incremental_option(self) -> IncrementalOptionType:  # REQ-2249
+        """Whether the view's incremental setting may be on. A view calling a code command may be
+        kept incrementally only through its resolver's @change function for it; any other table
+        is not judged here (available)."""
+        from provisa.api.app import state
+        from provisa.mv.change_refresh import code_call, incremental_option
+
+        called = code_call(self.view_sql, state.tracked_functions) if self.view_sql else None
+        if called is None:
+            return IncrementalOptionType(available=True)
+        option = await incremental_option(state, called[0], self.table_name)
+        return IncrementalOptionType(
+            available=option.available, code=option.code, reason=option.reason
+        )
 
     @strawberry.field
     def time_travel(self) -> str | None:  # REQ-1163
@@ -1456,6 +1475,9 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     mv_persist: str = "replace"  # REQ-965: replace | append | upsert
     mv_primary_key: list[str] = strawberry.field(default_factory=list)  # REQ-970: row identity
     mv_incremental: bool = False  # REQ-969: incremental maintenance
+    mv_rebuild_every: int | None = (
+        None  # REQ-2249: whole rebuild interval of a view kept by @change
+    )
     mv_calendar: str | None = None  # REQ-962: periodic-snapshot calendar (None = not periodic)
     mv_grain: str | None = None  # REQ-962/1168: nesting grain ("daily".."annual") or "3WE"/"LFR"
     mv_allowed_lateness: float = 0.0  # REQ-961: seal-deadline slack (s)
@@ -1546,6 +1568,20 @@ class CodeResolverInput:  # REQ-2249
     target_column: str
     target_match: str
     refresh_interval: int = 300
+    #: Its landed matches kept by the resolver's @change function, rebuilt whole every
+    #: ``rebuild_every`` seconds (required while on).
+    incremental: bool = False
+    rebuild_every: int | None = None
+
+
+@strawberry.type
+class IncrementalOptionType:  # REQ-2249
+    """Whether a view's incremental setting may be on. When not, ``code`` and ``reason`` say why
+    (the form disables the setting with that reason)."""
+
+    available: bool
+    code: str | None = None
+    reason: str | None = None
 
 
 @strawberry.type
@@ -1561,6 +1597,16 @@ class CodeResolverType:  # REQ-2249
     target_column: str
     target_match: str
     refresh_interval: int
+    incremental: bool = False
+    rebuild_every: int | None = None
+
+    @strawberry.field
+    async def incremental_option(self) -> IncrementalOptionType:
+        """Whether its landed matches may be kept incrementally: only when the resolver's source
+        declares a @change function for the set's bridge (named by the set's id)."""
+        from provisa.api.admin.code_resolver import incremental_option
+
+        return await incremental_option(self.resolver, self.id)
 
 
 @strawberry.input

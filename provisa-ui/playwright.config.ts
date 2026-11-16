@@ -215,6 +215,21 @@ const PROVISIONING_SPECS = [
   "**/source-to-query-olap-lake.spec.ts",
   "**/source-to-query-streaming.spec.ts",
 ];
+// The specs that add an AskAmerica (govdata) source. Its connector, a process of the backend's
+// (pgwire-govdata), held 57-108% of a core for about four minutes of run 43781680787 while the
+// govdata case and its retry ran; on the other worker a Great Expectations registration and the
+// grpc_remote case, both passing step by step, reached their 120 s limits waiting for CPU (the same
+// steps were two to three times faster in run 43775788692, where they did not run beside it). They
+// run in "core-provisioning" too: one worker, so no other spec runs beside the connector.
+const ASKAMERICA_SPECS = ["**/askamerica-*.spec.ts"];
+// The same, for a case that shares its file with others: matched by title (govdata, in
+// source-to-query-special-cases.spec.ts, whose other cases stay in "core").
+const ASKAMERICA_TITLE_SPECS = ["**/source-to-query-special-cases.spec.ts"];
+const ASKAMERICA_TITLES = /\bgovdata: source to query through the UI\b/;
+// What "core-provisioning" leaves out of that file: every case but the govdata one. A project's
+// grep reads "<project> <file> <describe ...> <test>", so the file's name is in it.
+const ASKAMERICA_TITLE_SPECS_OTHER_CASES =
+  /\bsource-to-query-special-cases\.spec\.ts (?!govdata: source to query through the UI\b)/;
 // The same, for a case that shares its file with others: matched by title (druid, in
 // source-to-query-olap-lake-trino.spec.ts).
 const AMD64_ONLY_TITLES = /\bdruid: /;
@@ -697,20 +712,22 @@ export default defineConfig({
               ...SWAP_SPECS,
               ...REGIONS_SPECS,
               ...PROVISIONING_SPECS,
+              ...ASKAMERICA_SPECS,
               ...WAREHOUSE_SPECS,
               ...(IS_AMD64 ? [] : AMD64_ONLY_SPECS),
             ],
-            grepInvert: WAREHOUSE_TITLES,
+            grepInvert: [WAREHOUSE_TITLES, ASKAMERICA_TITLES],
             // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
             // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
             // turning for a whole test held SwiftShader's GPU process at most of a core.
             use: { reducedMotion: "reduce" },
           },
           {
-            // Run with --workers=1, after "core" (see PROVISIONING_SPECS).
+            // Run with --workers=1 (see PROVISIONING_SPECS and ASKAMERICA_SPECS).
             name: "core-provisioning",
-            testMatch: PROVISIONING_SPECS,
+            testMatch: [...PROVISIONING_SPECS, ...ASKAMERICA_SPECS, ...ASKAMERICA_TITLE_SPECS],
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
+            grepInvert: ASKAMERICA_TITLE_SPECS_OTHER_CASES,
             use: { reducedMotion: "reduce" },
           },
           {
