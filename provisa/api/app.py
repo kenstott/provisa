@@ -3271,6 +3271,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.source_approval_hooks = prod_rt.source_approval_hooks
     _rt.pg_enum_types = prod_rt.pg_enum_types
     _rt.pg_source_enums = prod_rt.pg_source_enums
+    _rt.pg_enums_by_source = prod_rt.pg_enums_by_source
     _rt.graphql_remote_sources = prod_rt.graphql_remote_sources
     _rt.openapi_specs = prod_rt.openapi_specs
     _rt.grpc_remote_sources = prod_rt.grpc_remote_sources

@@ -213,6 +213,9 @@ class OrgRuntime:
     source_approval_hooks: dict[str, bool] = field(default_factory=dict)
     pg_enum_types: dict = field(default_factory=dict)
     pg_source_enums: dict = field(default_factory=dict)
+    # REQ-221, REQ-2171: source id -> (its enum registry, its declared enums) as last read; the
+    # two maps above are their union.
+    pg_enums_by_source: dict[str, tuple[dict, dict]] = field(default_factory=dict)
     graphql_remote_sources: dict[str, dict] = field(default_factory=dict)
     openapi_specs: dict[str, dict] = field(default_factory=dict)
     grpc_remote_sources: dict[str, dict] = field(default_factory=dict)
