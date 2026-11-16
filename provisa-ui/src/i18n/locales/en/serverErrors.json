@@ -47,11 +47,17 @@
       "mutation_not_permitted": "Mutation '{{field_name}}' not permitted: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Invalid Lemon Squeezy signature",
-      "tenant_no_ls_customer": "Tenant has no Lemon Squeezy customer",
-      "tenant_not_found": "Tenant not found",
-      "webhook_missing_customer_id": "Webhook missing customer id",
-      "webhook_missing_tenant_linkage": "Webhook missing tenant linkage"
+      "checkout_not_complete": "This checkout has not completed, so there is no subscription to attach yet.",
+      "invalid_signature": "Invalid webhook signature",
+      "no_trial": "This organization has no trial",
+      "org_no_customer": "This organization has no billing account yet.",
+      "org_not_found": "Organization not found",
+      "reconcile_not_creator": "Only the organization's creator can do this",
+      "session_org_mismatch": "This checkout was not opened for this organization.",
+      "subscription_items_unrecognized": "This subscription does not carry both a plan price and a data transfer price this deployment sells, so it cannot be moved.",
+      "trial_already_started": "This organization has already started its trial. A trial is offered once per organization.",
+      "webhook_missing_org_linkage": "Webhook subscription names no organization",
+      "webhook_missing_subscription": "Webhook names no subscription"
     },
     "control_plane": {
       "multitenancy_disabled": "multitenancy is not enabled"
