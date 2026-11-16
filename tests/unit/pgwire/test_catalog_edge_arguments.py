@@ -211,3 +211,18 @@ def test_format_type_is_not_strict_and_keeps_its_form():
     assert "CAST(NULL AS TEXT)" != addressed_statement(
         "SELECT format_type(23, NULL) AS v", _REQUEST
     ).removeprefix("SELECT ").removesuffix(" AS v")
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "SELECT pg_create_restore_point(NULL::text) AS v",  # pg_lsn
+        "SELECT to_regclass(NULL::text) AS v",  # regclass
+        "SELECT makeaclitem(NULL::oid, 1::oid, 'SELECT', false) AS v",  # aclitem
+    ],
+)
+def test_a_server_forms_null_is_of_the_type_its_engine_holds(sql: str):
+    """A server form is strict in its own SQL, in a type every engine has: never PostgreSQL's
+    name of a type an engine lacks."""
+    addressed = addressed_statement(sql, _REQUEST).upper()
+    assert not any(named in addressed for named in ("PG_LSN", "REGCLASS", "ACLITEM"))

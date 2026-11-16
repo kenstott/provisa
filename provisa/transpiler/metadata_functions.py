@@ -929,6 +929,10 @@ FORMS: dict[tuple[str, int], Form] = {
     },
     **{(f.name, len(f.params)): f for f in _FORMS},
 }
+#: The forms written in this module, which read an argument where they need it and so answer a
+#: NULL one they do not read: ``expand`` answers a constant NULL to a strict one of them. A server
+#: form (metadata_server_forms) is strict in its own SQL, in the type its engine holds.
+_WRITTEN_HERE = frozenset((f.name, len(f.params)) for f in _FORMS)
 #: The forms of a function called in FROM, where it has columns of its own.
 RELATION_FORMS: dict[tuple[str, int], Form] = {
     (name, arity): Form(
@@ -1144,7 +1148,7 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         name, args = call.name.lower(), list(call.expressions)
         if on_the_engine and name in _IN_THE_MACRO_TABLE:
             return node
-        if (name, len(args)) in FORMS:
+        if (name, len(args)) in _WRITTEN_HERE:
             null = strict_null(name, args)  # REQ-2236: a strict function is not called with NULL
             if null is not None:
                 return exp.alias_(null, name) if _is_column(node) else null
