@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING
 import sqlglot
 from sqlglot import expressions as exp
 from sqlglot.errors import SqlglotError
-from sqlalchemy import delete as _delete, select, update
+from sqlalchemy import select, update
 
 from provisa.core.models import Metric
 from provisa.core.repositories import retirement
@@ -153,10 +153,18 @@ async def delete(  # REQ-1317, REQ-1918, REQ-2248
         blocking = await guard(conn, ref)
         if blocking:
             raise MetricDeleteRefused(name, blocking)
-        await conn.execute_core(
-            update(metrics).where(metrics.c.name == name).values(**retirement.values(reason))
-        )
+        await conn.execute_core(_retire(metrics.c.name == name, reason=reason))
     return True
+
+
+def _retire(*where, reason: str | None):
+    """THE retirement of metrics (REQ-2248): each one in service matching ``where`` marked retired
+    with ``reason``, the acting person and the time."""
+    return (
+        update(metrics)
+        .where(metrics.c.retired.is_(False), *where)
+        .values(**retirement.values(reason))
+    )
 
 
 async def restore(conn: "Connection", name: str) -> bool:  # REQ-2248
@@ -171,8 +179,9 @@ async def restore(conn: "Connection", name: str) -> bool:  # REQ-2248
     return done.rowcount == 1
 
 
-async def remove_where(conn: "Connection", *where) -> None:
-    """Remove every metric matching ``where`` (clauses on ``metrics``) — for the config loader,
-    which declares metrics as a set and replaces that set. It is not a deletion of one object
-    and does not ask the dependency guard."""
-    await conn.execute_core(_delete(metrics).where(*where))
+async def retire_where(conn: "Connection", *where, reason: str | None = None) -> None:
+    """Retire every metric in service matching ``where`` (clauses on ``metrics``), as
+    :func:`delete` retires one (REQ-2248, amended 2026-11-15: metric removal retires a metric; it
+    no longer deletes it) -- for a loader that declares metrics as a set and replaces that set.
+    It is not a deletion of one object and does not ask the dependency guard."""
+    await conn.execute_core(_retire(*where, reason=reason))

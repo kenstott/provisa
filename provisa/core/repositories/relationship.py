@@ -298,7 +298,9 @@ async def _provided_elsewhere(
 
 
 async def _remove(conn: "Connection", rel_ids: list[str]) -> None:
-    """Remove offered relationships a declared one is, with their parts (their tag assignments)."""
+    """Remove offered relationships a declared one is, with their parts (their tag assignments).
+    REQ-2248 (amended 2026-11-15): de-duplication may remove a true duplicate; it is not a
+    person's object."""
     for rel_id in rel_ids:
         await remove_parts(conn, ObjectRef("relationship", rel_id))
         await remove_where(conn, relationships.c.id == rel_id)
@@ -425,9 +427,11 @@ async def restore(conn: "Connection", rel_id: str) -> bool:  # REQ-2248
 
 
 async def remove_where(conn: "Connection", *where) -> None:
-    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the
-    config loader, which declares relationships as a set and replaces that set. It is not a
-    deletion of one object and does not ask the dependency guard."""
+    """Remove every relationship matching ``where`` (clauses on ``relationships``) — for the two
+    callers REQ-2248 (amended 2026-11-15) allows a removal: de-duplication removing a true
+    duplicate (:func:`_remove`) and the startup seed removing a built-in relationship it no
+    longer declares. Any other relationship is retired (:func:`delete`). It does not ask the
+    dependency guard."""
     await conn.execute_core(_delete(relationships).where(*where))
 
 
