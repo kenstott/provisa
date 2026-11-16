@@ -9,10 +9,11 @@
 # permission from the copyright holder.
 
 """A held organization's Python preflight under the real sandbox (REQ-2133, REQ-1165): the check
-runs in a process the kernel confines, reaches the same verdict, and whatever code is in that
-process opens no file outside what the profile names and no connection but the egress proxy's.
+runs in the organization's preflight worker, which the kernel confines, reaches the same verdict,
+and whatever code is in that worker opens no file outside what the profile names and no connection
+but the egress proxy's.
 
-The last is shown by a probe run in the runner's place, with the runner's argv, read list and
+The last is shown by a probe served as the worker's code, by the same host, command, read list and
 environment: it stands for a check that has escaped the language's restrictions altogether."""
 
 # Requirements: REQ-2133, REQ-1165
@@ -27,6 +28,7 @@ import pytest
 
 import provisa.api.app  # noqa: F401  (says what the deployment is at import; the fixtures restate it)
 from provisa.core import secrets_providers
+from provisa.codesource.worker import pool
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.events.processor import NodeContext
 from provisa.mv import preflight_services
@@ -80,6 +82,7 @@ def held_org(monkeypatch):
     assert sandbox_egress.held("acme")
     yield
     reset_current_org(token)
+    pool.stop_all()
 
 
 def _ctx() -> NodeContext:
@@ -95,6 +98,9 @@ async def test_a_held_organizations_check_runs_confined_and_reaches_its_verdict(
     assert verdict is not None and verdict.is_abort and verdict.reason == "negative: [None]"
     (seen,) = ctx.warns
     assert int(seen) != os.getpid(), "the check ran in the server process"
+    again = _ctx()
+    assert (await evaluate(_ROWS, again)) == verdict
+    assert again.warns == [seen], "the second run was not served by the same worker process"
 
 
 @pytest.mark.asyncio
@@ -106,14 +112,12 @@ async def test_the_format_walk_reads_nothing_of_the_servers_under_the_sandbox(he
     assert raised.value.raised == "KeyError" and SERVER_SECRET not in str(raised.value)
 
 
-#: Run in the runner's place. It answers the run's frame with what each attempt came to.
+#: Served as the worker's code. It answers a preflight call with what each attempt came to.
 _PROBE = textwrap.dedent(
     """
-    import json, os, socket, struct, sys
+    import json, os, socket
 
-    def frame():
-        kind, length = struct.unpack(">cI", os.read(0, 5))
-        return os.read(0, length) if length else b""
+    ASKED = json.loads(ASKED_TEXT)
 
     def tried(what):
         try:
@@ -138,25 +142,21 @@ _PROBE = textwrap.dedent(
                 s.connect(address)
         return tried(attempt)
 
-    frame()
-    asked = json.loads(ASKED)
-    found = {
-        "environment": sorted(os.environ),
-        "own file": opened(__file__),
-        "outside file": opened(asked["outside"]),
-        "passwd": opened("/etc/passwd"),
-        "server environ": opened("/proc/%d/environ" % os.getppid()),
-        "write beside itself": opened(os.path.join(os.path.dirname(__file__), "w"), "wb"),
-        "write tmp": opened("/tmp/preflight-probe-w", "wb"),
-        "listener": connected(socket.AF_INET, socket.SOCK_STREAM, ("127.0.0.1", asked["port"])),
-        "internet": connected(socket.AF_INET, socket.SOCK_STREAM, ("1.1.1.1", 443)),
-        "udp": connected(socket.AF_INET, socket.SOCK_DGRAM, ("127.0.0.1", 53)),
-        "unix": connected(socket.AF_UNIX, socket.SOCK_STREAM, asked["unix"]),
-    }
-    body = json.dumps(
-        {"decision": "continue", "reason": json.dumps(found), "warns": [], "pid": os.getpid()}
-    ).encode()
-    os.write(1, struct.pack(">cI", b"R", len(body)) + body)
+    def _provisa_preflight(source, fields, inputs, whole, pull, pa):
+        found = {
+            "environment": sorted(os.environ),
+            "own file": opened(__file__),
+            "outside file": opened(ASKED["outside"]),
+            "passwd": opened("/etc/passwd"),
+            "server environ": opened("/proc/%d/environ" % os.getppid()),
+            "write beside itself": opened(os.path.join(os.path.dirname(__file__), "w"), "wb"),
+            "write tmp": opened("/tmp/preflight-probe-w", "wb"),
+            "listener": connected(socket.AF_INET, socket.SOCK_STREAM, ("127.0.0.1", ASKED["port"])),
+            "internet": connected(socket.AF_INET, socket.SOCK_STREAM, ("1.1.1.1", 443)),
+            "udp": connected(socket.AF_INET, socket.SOCK_DGRAM, ("127.0.0.1", 53)),
+            "unix": connected(socket.AF_UNIX, socket.SOCK_STREAM, ASKED["unix"]),
+        }
+        return {"decision": "continue", "reason": json.dumps(found), "warns": [], "pid": os.getpid()}
     """
 )
 
@@ -176,29 +176,34 @@ async def test_code_in_the_confined_process_opens_no_file_and_no_connection(held
     unix.bind(unix_path)
     unix.listen(1)
     asked = {"outside": str(outside), "port": listener.getsockname()[1], "unix": unix_path}
-    probe = probe_dir / "probe.py"
-    # The probe is started with the runner's argv (no argument of its own), so what it is asked
-    # is written into it.
-    probe.write_text(_PROBE.replace("ASKED", repr(json.dumps(asked))))
+    # The worker's entry module, in the probe's directory: what it is asked is written into it.
+    (probe_dir / "preflight_entry.py").write_text(
+        _PROBE.replace("ASKED_TEXT", repr(json.dumps(asked)))
+    )
     try:
         verdict = await run_confined(
             "def preflight(streams, ctx):\n    return ctx.ok()",
             {"orders": _ROWS},
             _ctx(),
             subject="table orders",
-            runner=probe,
+            code=probe_dir,
         )
     finally:
         listener.close()
         unix.close()
     found = json.loads(verdict.reason)
-    assert found.pop("own file") == "done", "the probe did not run as the runner does"
+    assert found.pop("own file") == "done", "the probe did not run as the worker's code does"
     environment = found.pop("environment")
     assert "PROVISA_SECRET_KEY" not in environment
     assert set(environment) <= {
         "PATH",
         "PYTHONDONTWRITEBYTECODE",
         "PYTHONUNBUFFERED",
+        "PROVISA_HOST_LIB",
+        "PROVISA_HOST_CONNECTIONS",
+        "PROVISA_CODE_HASH",
+        "PROVISA_SERVICES",  # the worker's own grant: its organization's, the builds' role
+        "UV_THREADPOOL_SIZE",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "http_proxy",

@@ -11,18 +11,25 @@
 """An organization's Python preflight run outside the server, in a held organization (REQ-2133).
 
 On a deployment of many organizations a preflight an organization wrote is another tenant's code:
-it never runs in the server process. Each run starts one process under the code source's sandbox
-(:func:`provisa.codesource.sandbox.sandboxed_once`) running :mod:`provisa.mv.preflight_runner`,
-which is handed the check's inputs a batch at a time as Arrow over the process's pipes and
-returns the verdict and the warnings. ``ctx`` crosses as a copy of its fields; the warnings come
-back as data and are applied here.
+it never runs in the server process. It runs as a preflight call (:meth:`Worker.preflight`) to
+the organization's preflight worker: one sandboxed host per organization per Provisa process,
+started at that organization's first check and kept, so a run pays no process start. The check's
+inputs go to it a batch at a time as Arrow, only as the check reads them; ``ctx`` crosses as a
+copy of its fields; the verdict and the warnings come back as data and are applied here.
 
-The process reads Provisa's own Python (its home and its packages), the runner's directory and
-the services client; it writes nothing; its network is the egress proxy with an empty allow-list,
-which answers Provisa's services for a check that imports them and refuses every other host. Its
-environment is PATH, the proxy's variables and, for such a check, ``PROVISA_SERVICES``.
+The worker is Python's own code-source host (``provisa/python/host.py``) under the code source's
+sandbox, run by the interpreter Provisa itself runs on, with ``provisa/mv/preflight_host`` as
+its code. A check is text, not an installed source, so it needs no install and no pinned
+runtime: the interpreter and the pyarrow the server already has serve it, and its rows are read
+by the same pyarrow that wrote them.
 
-A process that cannot be started refuses the run by name (:class:`PreflightConfinedUnavailable`):
+The worker reads Provisa's Python (its home and its packages), ``provisa/python`` (the host and
+the services client) and ``provisa/mv`` (the purity check); it writes nothing; its network is the
+egress proxy with an empty allow-list, which answers Provisa's services and refuses every other
+host. Its environment is PATH, Python's switches, the proxy's variables and ``PROVISA_SERVICES``,
+under a grant for its organization that answers as the role every build runs as.
+
+A worker that cannot be started refuses the run by name (:class:`PreflightConfinedUnavailable`):
 the check is never run in the server instead.
 """
 
@@ -31,26 +38,26 @@ from __future__ import annotations
 
 import asyncio
 import dataclasses
-import json
 import logging
-import pickle  # nosec B403 - written here for the confined process; never read here
-import subprocess  # nosec B404 - argv-list invocation only, never shell=True
 import sys
-import tempfile
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterator, Sequence
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from provisa.events.processor import PreprocessError
-from provisa.mv import preflight_runner as wire
 from provisa.mv.preflight import Decision, PreflightContractError, Verdict
+
+if TYPE_CHECKING:
+    from provisa.codesource.worker import HostCommand, Worker
 
 log = logging.getLogger(__name__)
 
-RUNNER = Path(wire.__file__).resolve()
+#: The worker's code: the directory of its entry module, and the module.
+CODE = Path(__file__).resolve().parent / "preflight_host"
+ENTRY = "preflight_entry"
 
-#: What the process says of itself on standard error, kept this far back for a refusal.
-_STDERR_TAIL = 2000
+#: What the pool knows the worker as, in each organization.
+WORKER = "preflight"
 
 
 class PreflightConfinedUnavailable(PreprocessError):
@@ -88,36 +95,78 @@ class PreflightRaised(Exception):
         self.raised = raised
 
 
-def readable(runner: Path = RUNNER) -> list[Path]:
-    """The directories the process may read beside the system's own: the runner's, the services
-    client's, and Provisa's Python (its environment and the interpreter's home)."""
+def readable(code: Path = CODE) -> list[Path]:
+    """The directories the worker may read beside the system's own: Python's host and the services
+    client, its code, the purity check's, and Provisa's Python (the interpreter's home, and the
+    packages pyarrow is among)."""
+    import pyarrow
+
+    from provisa.python.source import HOST
+
     return [
-        runner.parent,
-        RUNNER.parent,
-        wire.SERVICES_CLIENT.parent,
-        Path(sys.prefix),
+        HOST.parent,
+        code,
+        CODE.parent,
         Path(sys.base_prefix),
+        Path(pyarrow.__file__).resolve().parent.parent,
     ]
 
 
-def command(
-    *, runner: Path = RUNNER, services: str | None = None
-) -> tuple[list[str], dict[str, str]]:
-    """The confined process's argv and environment. ``services`` is the value of
-    ``PROVISA_SERVICES`` for a check that imports them."""
-    from provisa.codesource.sandbox import sandboxed_once
-    from provisa.codesource.services import SERVICES_ENV
+def command(org: str, *, code: Path = CODE) -> "HostCommand":
+    """How ``org``'s preflight worker is started: Python's host on :data:`ENTRY`, sandboxed, with
+    a services grant for the organization (each call is answered for the view it checks)."""
+    import pyarrow
+
+    from provisa.api.app import state
+    from provisa.codesource.sandbox import sandboxed
+    from provisa.codesource.services import ServiceGrant
     from provisa.codesource.worker import private_environment
+    from provisa.core import region_admin
+    from provisa.python.source import HOST
 
     python = Path(sys.executable)
-    extra = {SERVICES_ENV: services} if services is not None else {}
-    return sandboxed_once(
-        [str(python), "-I", str(runner)],
+    host_lib = Path(pyarrow.__file__).resolve().parent.parent
+    confined = sandboxed(
+        lambda address: [str(python), "-I", str(HOST), address, str(code), ENTRY],
         executable=python,
-        read=readable(runner),
-        env=private_environment(PYTHONDONTWRITEBYTECODE="1", PYTHONUNBUFFERED="1", **extra),
+        read=readable(code),
+        env=private_environment(
+            PYTHONDONTWRITEBYTECODE="1", PYTHONUNBUFFERED="1", PROVISA_HOST_LIB=str(host_lib)
+        ),
+        cwd=code,
         egress=(),
     )
+    grant = ServiceGrant(
+        org_id=org, source_id=WORKER, admin_db=state.admin_db, role=region_admin.ROLE
+    )
+    return dataclasses.replace(confined, services=grant)
+
+
+def content_hash() -> str:
+    """What the worker's hello must name: the protocol's own preflight host."""
+    from provisa.codesource.worker import PROTOCOL
+
+    return f"{WORKER}-{PROTOCOL}"
+
+
+def worker(org: str, subject: str, *, code: Path = CODE) -> "Worker":
+    """``org``'s preflight worker, started at its first use; refused by name when it cannot be."""
+    from provisa.codesource.linux_sandbox import SandboxUnavailable
+    from provisa.codesource.worker import WorkerFailed, pool
+
+    try:
+        return pool.get(
+            f"{WORKER}:{code}" if code != CODE else WORKER,
+            content_hash(),
+            lambda: command(org, code=code),
+            org=org,
+        )
+    except SandboxUnavailable as exc:
+        raise PreflightConfinedUnavailable(subject, str(exc)) from exc
+    except OSError as exc:
+        raise PreflightConfinedUnavailable(subject, str(exc)) from exc
+    except WorkerFailed as exc:
+        raise PreflightConfinedUnavailable(subject, str(exc)) from exc
 
 
 def _ctx_fields(ctx: Any) -> dict[str, Any]:
@@ -147,72 +196,31 @@ def _batches(stream: Any) -> Iterator[Any]:
     return record_batches(stream)
 
 
-def _exchange(
-    argv: Sequence[str], env: dict[str, str], subject: str, run: dict[str, Any], streams: Any
+def _ask(
+    org: str,
+    source: str,
+    fields: dict[str, Any],
+    streams: Any,
+    subject: str,
+    product_ids: Sequence[str],
+    code: Path,
 ) -> dict[str, Any]:
-    """Start the process, serve its reads of ``streams`` and return its answer (its ``kind``
-    added). Blocking: run on a thread."""
-    feeds = {node: _batches(stream) for node, stream in streams.items()}
-    with tempfile.TemporaryFile() as stderr:
+    """The worker's answer to one run of the check. Blocking: run on a thread."""
+    from provisa.codesource.worker import CodeFailed, WorkerFailed
 
-        def said() -> str:
-            stderr.seek(0)
-            return stderr.read().decode(errors="replace").strip()[-_STDERR_TAIL:]
-
-        try:
-            # The interpreter Provisa runs on and Provisa's own runner: a fixed argv, no shell.
-            proc = subprocess.Popen(  # nosec B603
-                list(argv), stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=stderr, env=env
-            )
-        except OSError as exc:
-            raise PreflightConfinedUnavailable(subject, str(exc)) from exc
-        assert proc.stdin is not None and proc.stdout is not None
-        answered = False
-        try:
-            wire.write_frame(proc.stdin, wire.RUN, pickle.dumps(run))
-            while True:
-                kind, payload = wire.read_frame(proc.stdout)
-                answered = True
-                if kind in (wire.RESULT, wire.FAILED):
-                    return {"kind": kind, **json.loads(payload)}
-                assert kind == wire.NEXT, kind
-                batch = next(feeds[payload.decode()], None)
-                if batch is None:
-                    wire.write_frame(proc.stdin, wire.END)
-                else:
-                    wire.write_frame(proc.stdin, wire.BATCH, _encoded(batch))
-        except (EOFError, BrokenPipeError) as exc:
-            code = proc.wait()
-            reason = said() or f"it exited with status {code}"
-            if answered:
-                raise PreflightConfinedFailed(subject, reason) from exc
-            # It ended before its first frame: the sandbox refused it, or it could not start.
-            raise PreflightConfinedUnavailable(subject, reason) from exc
-        finally:
-            if proc.poll() is None:
-                proc.kill()
-            proc.wait()
-            proc.stdin.close()
-            proc.stdout.close()
-
-
-def _services_token(subject: str, product_ids: Sequence[str]) -> str:
-    """A grant for the view's check, as the in-process run issues one (REQ-2133): dq answers as
-    the role every build runs as."""
-    from provisa.api.app import state
-    from provisa.codesource.services import ServiceGrant, issue
-    from provisa.core import region_admin
-    from provisa.core.request_context import require_current_org
-
-    return issue(
-        ServiceGrant(
-            org_id=require_current_org(),
-            source_id=subject,
-            admin_db=state.admin_db,
-            role=region_admin.ROLE,
-            product_ids=tuple(product_ids),
+    serving = worker(org, subject, code=code)
+    try:
+        return serving.preflight(
+            source,
+            fields,
+            {name: map(_encoded, _batches(stream)) for name, stream in streams.items()},
+            whole=[n for n, s in streams.items() if isinstance(s, (list, tuple))],
+            subject=subject,
+            product_ids=product_ids,
         )
-    )
+    except (WorkerFailed, CodeFailed) as exc:
+        # The worker ended under the call, or its host failed outside the check.
+        raise PreflightConfinedFailed(subject, str(exc)) from exc
 
 
 async def run_confined(
@@ -222,38 +230,20 @@ async def run_confined(
     *,
     subject: str,
     product_ids: Sequence[str] = (),
-    runner: Path = RUNNER,
+    code: Path = CODE,
 ) -> Verdict:
-    """The verdict of the check ``source`` over ``streams``, run in a confined process of its own.
-    The warnings it took are added to ``ctx``; a check that raised raises here
+    """The verdict of the check ``source`` over ``streams``, run in the bound organization's
+    preflight worker. The warnings it took are added to ``ctx``; a check that raised raises here
     (:class:`PreflightRaised`, or the contract error it broke)."""
-    from provisa.codesource.linux_sandbox import SandboxUnavailable
-    from provisa.codesource.services import address, revoke
-    from provisa.mv.preprocess import uses_services
+    from provisa.core.request_context import require_current_org
 
-    whole: Iterable[str] = [n for n, s in streams.items() if isinstance(s, (list, tuple))]
-    run = {
-        "source": source,
-        "ctx": _ctx_fields(ctx),
-        "nodes": list(streams),
-        "whole": list(whole),
-    }
-    token = _services_token(subject, product_ids) if uses_services(source) else None
-    try:
-        try:
-            argv, env = command(
-                runner=runner, services=address(token) if token is not None else None
-            )
-        except SandboxUnavailable as exc:
-            raise PreflightConfinedUnavailable(subject, str(exc)) from exc
-        answer = await asyncio.to_thread(_exchange, argv, env, subject, run, streams)
-    finally:
-        if token is not None:
-            revoke(token)
+    answer = await asyncio.to_thread(
+        _ask, require_current_org(), source, _ctx_fields(ctx), streams, subject, product_ids, code
+    )
     ctx.warn(answer["warns"])
     log.info("preflight of %s ran confined in process %s", subject, answer["pid"])
-    if answer["kind"] == wire.FAILED:
+    if "raised" in answer:
         if answer["contract"]:
             raise PreflightContractError(answer["message"])
-        raise PreflightRaised(answer["type"], answer["message"])
+        raise PreflightRaised(answer["raised"], answer["message"])
     return Verdict(Decision(answer["decision"]), answer["reason"])

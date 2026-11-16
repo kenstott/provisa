@@ -123,7 +123,7 @@ _HOST = textwrap.dedent(
             import os
             os._exit(3)
 
-    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "4")),
+    hello = {"op": "hello", "protocol": int(os.environ.get("TEST_PROTOCOL", "5")),
              "code_hash": os.environ["PROVISA_CODE_HASH"],
              "exports": ["many", "echo", "total", "boom", "slow", "ticks", "die"]}
 
@@ -354,7 +354,7 @@ def test_a_host_speaking_another_protocol_is_refused_by_name(command, tmp_path):
     with pytest.raises(w.WorkerFailed) as failed:
         worker.start()
     assert str(failed.value) == (
-        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 4: "
+        "source 'orders-src': its host speaks protocol 1, and this Provisa speaks 5: "
         "run a host built for this Provisa version"
     )
     assert not worker.alive()

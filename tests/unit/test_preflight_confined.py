@@ -8,12 +8,13 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Where an organization's Python preflight runs (REQ-2133, REQ-1165): in a held organization, in a
-process of its own started through the code source's sandbox, at each of the three places a check
-runs; in the server everywhere else, and for Provisa's own built-in check.
+"""Where an organization's Python preflight runs (REQ-2133, REQ-1165): in a held organization, in
+the organization's preflight worker (a warm host started through the code source's sandbox), at
+each of the three places a check runs; in the server everywhere else, and for Provisa's own
+built-in check.
 
-The process here is a real one, started with the argv and environment the sandbox was asked to
-confine; the confinement itself is the kernel's and is shown on Linux by
+The worker here is a real one, started with the command the sandbox was asked to confine; the
+confinement itself is the kernel's and is shown on Linux by
 ``tests/integration/test_preflight_sandboxed.py``."""
 
 # Requirements: REQ-2133, REQ-1165
@@ -24,6 +25,7 @@ import decimal
 import json
 import os
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 
 import pyarrow as pa
@@ -32,6 +34,7 @@ import pytest
 import provisa.api.app  # noqa: F401  (says what the deployment is at import; the fixtures restate it)
 from provisa.codesource import sandbox as code_sandbox
 from provisa.codesource import services as services_mod
+from provisa.codesource.worker import HostCommand, pool
 from provisa.core import secrets_providers
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.events.handlers import _apply_preflight
@@ -51,7 +54,7 @@ SERVER_SECRET = "the-server's-own-value-4f1c"
 
 #: The check says which process ran it: it reads ``PID`` from the globals of whatever called it,
 #: through a format string (which the registration check does not read). In the server that is a
-#: module of the server's; in a confined run it is the runner's.
+#: module of the server's; in a confined run it is the worker's entry module.
 _SAYS_ITS_PROCESS = """
 def preflight(streams, ctx):
     held = []
@@ -100,23 +103,44 @@ def preflight(streams, ctx):
 
 @pytest.fixture
 def started(monkeypatch):
-    """Every confined process asked for: the argv to confine, what it may read, its environment
-    and its egress. The process is started as asked, outside a sandbox (the kernel's part is the
-    integration test's)."""
+    """Every worker asked for: its argv, what it may read, its environment and its egress. The
+    host is started as asked, outside a sandbox (the kernel's part is the integration test's)."""
     asked: list[SimpleNamespace] = []
 
-    def once(argv, *, executable, read, env, egress):
-        proxy = code_sandbox.egress_proxy(egress)
-        env = {**env, **proxy.environment()}
+    def sandboxed(argv, *, executable, read, env, cwd, egress):
+        env = {**env, **code_sandbox.egress_proxy(egress).environment()}
         asked.append(
             SimpleNamespace(
-                argv=list(argv), executable=executable, read=list(read), env=env, egress=egress
+                argv=list(argv("ADDRESS")),
+                executable=executable,
+                read=list(read),
+                env=env,
+                cwd=cwd,
+                egress=egress,
             )
         )
-        return list(argv), env
+        return HostCommand(argv=argv, env=env, cwd=cwd)
 
-    monkeypatch.setattr(code_sandbox, "sandboxed_once", once)
+    monkeypatch.setattr(code_sandbox, "sandboxed", sandboxed)
+    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=object()), raising=False)
     return asked
+
+
+@pytest.fixture(autouse=True)
+def _no_worker_outlives_its_test():
+    """Each test starts with no preflight worker, and leaves none."""
+    pool.stop_source("preflight")
+    yield
+    pool.stop_source("preflight")
+
+
+def _worker_pid() -> int:
+    """The process of the bound organization's preflight worker."""
+    from provisa.mv import preflight_confined
+
+    process = preflight_confined.worker("acme", "a test")._process
+    assert process is not None
+    return process.pid
 
 
 def _deployment(monkeypatch, *, many: bool) -> None:
@@ -231,9 +255,73 @@ async def test_in_a_held_organization_the_check_runs_in_a_process_of_its_own(hel
     seen, counted = ctx.warns
     assert counted == f"orders={count}"
     assert int(seen) != os.getpid(), "the check ran in the server process"
+    assert int(seen) == _worker_pid(), "the check ran outside the organization's worker"
     (asked,) = held_org
-    assert asked.argv[0] == sys.executable and asked.argv[1] == "-I"
-    assert asked.argv[2].endswith("provisa/mv/preflight_runner.py")
+    assert asked.argv[:2] == [sys.executable, "-I"]
+    assert asked.argv[2].endswith("provisa/python/host.py")
+    assert asked.argv[3:] == ["ADDRESS", str(asked.cwd), "preflight_entry"]
+    assert str(asked.cwd).endswith("provisa/mv/preflight_host")
+
+
+# -- (h) the worker is warm: one process serves every run -----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_consecutive_runs_use_the_same_worker_process(held_org):
+    seen = []
+    for run, given, _count in _SITES.values():
+        for _ in range(2):
+            ctx = _ctx()
+            await run(_SAYS_ITS_PROCESS, given, ctx)
+            seen.append(int(ctx.warns[0]))
+    assert len(set(seen)) == 1 and seen[0] == _worker_pid() != os.getpid()
+    assert len(held_org) == 1, "a second worker was started"
+
+
+@pytest.mark.asyncio
+async def test_each_organization_has_a_worker_of_its_own(held_org):
+    ctx = _ctx()
+    await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
+    other = set_current_org("globex")
+    try:
+        theirs = _ctx()
+        await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, theirs)
+    finally:
+        reset_current_org(other)
+    assert ctx.warns[0] != theirs.warns[0] and len(held_org) == 2
+    assert [a.env["PATH"] for a in held_org] == [os.environ["PATH"]] * 2
+
+
+@pytest.mark.asyncio
+async def test_a_worker_that_ended_is_started_again_at_the_next_run(held_org):
+    ctx = _ctx()
+    await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
+    from provisa.mv import preflight_confined
+
+    preflight_confined.worker("acme", "a test").stop()
+    again = _ctx()
+    await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, again)
+    assert again.warns[0] != ctx.warns[0] and len(held_org) == 2
+
+
+@pytest.mark.asyncio
+async def test_runs_at_once_each_reach_their_own_verdict(held_org):
+    import asyncio
+
+    def check(n):
+        return (
+            "def preflight(streams, ctx):\n"
+            f"    total = sum(r['qty'] for r in streams['orders']) + {n}\n"
+            "    return ctx.abort(str(total))"
+        )
+
+    async def one(n):
+        evaluate = make_rows_evaluator(check(n), "orders")
+        assert evaluate is not None
+        return (await evaluate(_ROWS, _ctx())).reason
+
+    assert await asyncio.gather(*(one(n) for n in range(12))) == [str(6 + n) for n in range(12)]
+    assert len(held_org) == 1
 
 
 # -- (d) a single-organization install: in the server, as before ----------------------------------
@@ -383,6 +471,9 @@ async def test_a_confined_run_reaches_what_the_server_run_does(monkeypatch, star
         _deployment(monkeypatch, many=True)
         confined = await _outcome(run, _CHECKS[check], make())
         assert len(started) == 1
+        # A second run, on the worker the first left warm, comes to the same.
+        assert await _outcome(run, _CHECKS[check], make()) == confined
+        assert len(started) == 1
     finally:
         reset_current_org(token)
     assert confined == in_server
@@ -437,7 +528,7 @@ async def test_an_input_the_check_never_reads_is_never_read(held_org):
 @pytest.mark.parametrize("escape", [_FORMAT_WALK, _BUILT_KEY], ids=["format walk", "built key"])
 async def test_an_escape_reads_the_servers_globals_only_in_the_server(monkeypatch, started, escape):
     """Both forms pass the registration check. In the server they read a global of the server's;
-    in a held organization the frame they walk to is the runner's, in another process, where the
+    in a held organization the frame they walk to is the worker's, in another process, where the
     server's global does not exist."""
     _deployment(monkeypatch, many=False)
     token = set_current_org("acme")
@@ -459,35 +550,45 @@ async def test_an_escape_reads_the_servers_globals_only_in_the_server(monkeypatc
     assert len(started) == 1
 
 
-def test_the_confined_process_is_given_nothing_of_the_servers(monkeypatch, held_org):
-    """Its environment is PATH, Python's two switches and the proxy's variables; it reads the
-    runner's directory, the services client and Provisa's Python; its egress allows no host."""
+def test_the_worker_is_given_nothing_of_the_servers(monkeypatch, held_org):
+    """Its environment is PATH, Python's switches, where its pyarrow is and the proxy's variables;
+    it reads Python's host, its code, the purity check's directory and Provisa's Python; its
+    egress allows no host; its grant is the organization's, answering as the builds' role."""
+    import pyarrow
+
+    from provisa.core import region_admin
     from provisa.mv import preflight_confined
+    from provisa.python.source import HOST
 
     monkeypatch.setenv("PROVISA_SECRET_KEY", "not-for-a-check")
     monkeypatch.setenv("PG_PASSWORD", "not-for-a-check")
-    argv, env = preflight_confined.command()
+    command = preflight_confined.command("acme")
     (asked,) = held_org
-    assert argv == asked.argv == [sys.executable, "-I", str(preflight_confined.RUNNER)]
-    assert set(env) == {
+    packages = str(Path(pyarrow.__file__).resolve().parent.parent)
+    assert set(command.env) == {
         "PATH",
         "PYTHONDONTWRITEBYTECODE",
         "PYTHONUNBUFFERED",
+        "PROVISA_HOST_LIB",
         "HTTP_PROXY",
         "HTTPS_PROXY",
         "http_proxy",
         "https_proxy",
         "NODE_USE_ENV_PROXY",
     }
-    assert "not-for-a-check" not in json.dumps(env)
+    assert command.env["PROVISA_HOST_LIB"] == packages
+    assert "not-for-a-check" not in json.dumps(command.env)
     assert asked.egress == () and not code_sandbox.egress_proxy(()).admits("example.com", 443)
     assert [str(p) for p in asked.read] == [
-        str(preflight_confined.RUNNER.parent),
-        str(preflight_confined.RUNNER.parent),
-        str(preflight_confined.wire.SERVICES_CLIENT.parent),
-        sys.prefix,
+        str(HOST.parent),
+        str(preflight_confined.CODE),
+        str(preflight_confined.CODE.parent),
         sys.base_prefix,
+        packages,
     ]
+    grant = command.services
+    assert grant is not None and grant.org_id == "acme" and grant.role == region_admin.ROLE
+    assert grant.secrets == {} and grant.egress == () and grant.product_ids == ()
 
 
 # -- (e) Provisa's own built-in check runs in the server everywhere --------------------------------
@@ -502,18 +603,17 @@ _ASKS_DQ = (
 
 @pytest.fixture
 def answered(monkeypatch):
-    """Provisa's services: each call recorded with its grant, answered from ``replies``."""
+    """Provisa's services: each call recorded with the grant it is answered under, answered from
+    ``replies``."""
     seen: list[dict] = []
     replies: dict[str, dict] = {}
 
-    def answer(method, path, body=b"", headers=None):
-        del body, headers
-        token, _, rest = path.lstrip("/").partition("/")
-        grant = services_mod._grant(token)
-        seen.append({"method": method, "path": rest, "grant": grant, "pid": os.getpid()})
-        return 200, "application/json", json.dumps(replies[rest]).encode()
+    def dispatch(grant, service, method, sub, body, span, role):
+        del body, span
+        seen.append({"method": method, "path": f"{service}/{sub}", "grant": grant, "role": role})
+        return json.dumps(replies[f"{service}/{sub}"]).encode()
 
-    monkeypatch.setattr(services_mod, "answer", answer)
+    monkeypatch.setattr(services_mod, "_dispatch", dispatch)
     monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=object()), raising=False)
     return SimpleNamespace(seen=seen, replies=replies)
 
@@ -538,24 +638,30 @@ async def test_hold_on_failing_checks_runs_in_the_server_in_a_held_organization(
 
 
 @pytest.mark.asyncio
-async def test_an_organizations_copy_of_the_built_in_check_is_confined(
-    monkeypatch, held_org, answered
-):
+async def test_an_organizations_copy_of_the_built_in_check_is_confined(held_org, answered):
     """The option shows code a steward can copy into the view's own preflight: there it is the
-    organization's, and reaches dq from its process under a grant, through the proxy."""
+    organization's, and reaches dq from the worker, through the proxy, under the worker's grant:
+    answered for the view the call checks and its products, as the builds' role."""
     from provisa.core import region_admin
 
     answered.replies["dq/dataset/7"] = {"dataset": "sales.orders", "checker_tables": []}
     check = preflight_services.compile_check(_ASKS_DQ, subject="view v", product_ids=("p1",))
     verdict = await run_preflight(check, {}, _ctx())
     assert verdict.decision is Decision.ABORT and verdict.reason == "sales.orders"
+    other = preflight_services.compile_check(_ASKS_DQ, subject="view w", product_ids=("p2", "p3"))
+    await run_preflight(other, {}, _ctx())
     (asked,) = held_org
-    address = asked.env["PROVISA_SERVICES"]
-    assert address.startswith("http://provisa-services/")
-    (call,) = answered.seen
-    assert call["grant"].org_id == "acme" and call["grant"].role == region_admin.ROLE
-    assert call["grant"].product_ids == ("p1",) and call["grant"].source_id == "view v"
-    assert address.rsplit("/", 1)[1] not in services_mod._grants, "the grant outlived the run"
+    assert "PROVISA_SERVICES" not in asked.env, "the grant is issued as the worker starts"
+    first, second = answered.seen
+    assert first["grant"].org_id == "acme" and first["role"] == region_admin.ROLE
+    assert first["grant"].product_ids == ("p1",) and first["grant"].source_id == "view v"
+    assert second["grant"].product_ids == ("p2", "p3") and second["grant"].source_id == "view w"
+    held = [g for g in services_mod._grants.values() if g.org_id == "acme"]
+    assert len(held) == 1 and held[0].source_id == "preflight"
+    pool.stop_source("preflight")
+    assert not [g for g in services_mod._grants.values() if g.org_id == "acme"], (
+        "the grant outlived the worker"
+    )
 
 
 # -- (f) no confined process: refused by name, never run in the server -----------------------------
@@ -584,15 +690,22 @@ async def test_with_no_sandbox_a_held_organizations_check_is_refused_by_name(mon
     assert ctx.warns == [], "the check ran in the server instead"
 
 
-@pytest.mark.asyncio
-async def test_a_process_that_cannot_be_started_is_refused_by_name(monkeypatch, held_org):
-    from provisa.mv.preflight_confined import PreflightConfinedUnavailable
-
+def _host(monkeypatch, argv: list[str]) -> None:
+    """The sandbox answers with ``argv`` (given the socket's address last) as the host."""
     monkeypatch.setattr(
         code_sandbox,
-        "sandboxed_once",
-        lambda argv, **k: (["/nonexistent/sandbox-launcher", *argv], {}),
+        "sandboxed",
+        lambda _argv, *, env, cwd, **k: HostCommand(
+            argv=lambda address: [*argv, address], env=env, cwd=cwd
+        ),
     )
+
+
+@pytest.mark.asyncio
+async def test_a_host_that_cannot_be_started_is_refused_by_name(monkeypatch, held_org):
+    from provisa.mv.preflight_confined import PreflightConfinedUnavailable
+
+    _host(monkeypatch, ["/nonexistent/sandbox-launcher"])
     ctx = _ctx()
     with pytest.raises(PreflightConfinedUnavailable, match="sandbox-launcher"):
         await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
@@ -603,39 +716,63 @@ async def test_a_process_that_cannot_be_started_is_refused_by_name(monkeypatch, 
 async def test_a_launcher_that_refuses_to_confine_is_refused_with_what_it_said(
     monkeypatch, held_org
 ):
-    """The Linux launcher exits before the runner starts when the kernel gives it no Landlock."""
+    """The Linux launcher exits before the host starts when the kernel gives it no Landlock."""
     from provisa.mv.preflight_confined import PreflightConfinedUnavailable
 
     said = "code-source sandbox unavailable: the kernel has no Landlock"
-    launcher = [sys.executable, "-c", f"import sys; sys.exit({said!r})"]
-    monkeypatch.setattr(code_sandbox, "sandboxed_once", lambda argv, **k: (launcher, {}))
+    _host(monkeypatch, [sys.executable, "-c", f"import sys; sys.exit({said!r})"])
     ctx = _ctx()
     with pytest.raises(PreflightConfinedUnavailable) as refused:
         await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
-    assert refused.value.params["reason"] == said and ctx.warns == []
+    assert refused.value.params["subject"] == "table orders"
+    assert said in refused.value.params["reason"] and ctx.warns == []
+
+
+#: A host that says hello on each connection, then ends at the first call it is sent.
+_DIES_AT_ITS_FIRST_CALL = """
+import json, os, socket, struct, sys
+socks = []
+for _ in range(int(os.environ["PROVISA_HOST_CONNECTIONS"])):
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.connect(sys.argv[1])
+    hello = {"op": "hello", "protocol": 5, "code_hash": os.environ["PROVISA_CODE_HASH"],
+             "exports": []}
+    body = b"J" + json.dumps(hello).encode()
+    sock.sendall(struct.pack(">I", len(body)) + body)
+    socks.append(sock)
+import select
+select.select(socks, [], [])
+sys.exit("killed at its memory limit")
+"""
 
 
 @pytest.mark.asyncio
-async def test_a_process_that_ends_without_a_verdict_is_refused_by_name(monkeypatch, held_org):
+async def test_a_worker_that_ends_under_a_run_is_refused_by_name(monkeypatch, held_org):
     from provisa.mv.preflight_confined import PreflightConfinedFailed
 
-    dies = (
-        "import os, struct, sys\n"
-        "os.read(0, 5)\n"
-        "os.write(1, struct.pack('>cI', b'N', 6) + b'orders')\n"
-        "sys.exit('killed at its memory limit')\n"
-    )
-    monkeypatch.setattr(
-        code_sandbox, "sandboxed_once", lambda argv, **k: ([sys.executable, "-c", dies], {})
-    )
+    _host(monkeypatch, [sys.executable, "-c", _DIES_AT_ITS_FIRST_CALL])
     ctx = _ctx()
     with pytest.raises(PreflightConfinedFailed) as refused:
         await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
     assert refused.value.code == "preflight.confined_failed"
-    assert refused.value.params == {
-        "subject": "table orders",
-        "reason": "killed at its memory limit",
-    }
+    assert refused.value.params["subject"] == "table orders"
+    assert "killed at its memory limit" in refused.value.params["reason"]
+    assert ctx.warns == []
+
+
+@pytest.mark.asyncio
+async def test_a_code_sources_own_host_serves_no_preflight(tmp_path, monkeypatch, held_org):
+    """The call is the protocol's, and only the preflight worker's code answers it: a host on any
+    other code refuses it by name."""
+    from provisa.mv import preflight_confined
+    from provisa.mv.preflight_confined import PreflightConfinedFailed
+
+    (tmp_path / "preflight_entry.py").write_text("def rows():\n    return []\n")
+    with pytest.raises(PreflightConfinedFailed, match="this host serves no preflight"):
+        await preflight_confined.run_confined(
+            _CHECKS["continue"], {"orders": _ROWS}, _ctx(), subject="table orders", code=tmp_path
+        )
+    pool.stop_source(f"preflight:{tmp_path}")
 
 
 def test_both_refusals_stop_the_land_as_an_abort_does():
