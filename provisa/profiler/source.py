@@ -200,8 +200,8 @@ async def run_source(state: Any, source_id: str) -> list[dict]:
     """Profile every member of ``source_id`` in turn. Returns one outcome per member; a member's
     failure is recorded in its own history and in its outcome, and does not stop the others. A
     member whose metadata states required parameters (a steward made one required after it
-    joined) is not read: its outcome says so in ``not_read``, with no run and no error
-    (REQ-1986)."""
+    joined) is not read: its outcome says so in ``not_read``, with the parameters it ``requires``,
+    no run and no error (REQ-1986)."""
     from provisa.core.parameters import not_read_reason
     from provisa.profiler.run import ProfileError, not_read_whole, profile_table
     from provisa.core.schema_org import sources
@@ -227,6 +227,7 @@ async def run_source(state: Any, source_id: str) -> list[dict]:
                     "run_id": None,
                     "error": None,
                     "not_read": not_read_reason(refusal.parameters),
+                    "requires": refusal.parameters,
                 }
             )
             continue

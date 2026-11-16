@@ -963,7 +963,9 @@ def _table_limits_sql() -> str:
                               CASE WHEN p.native_filter_type IN ({_real_column_kinds_sql()})
                                    THEN '{REAL_COLUMN_WORD}' ELSE '{OPAQUE_WORD}' END) || ')',
                        ', ' ORDER BY p.id) || '{LIMITS_CLOSING}' AS statement
-            FROM table_columns p
+            -- registered_tables first: schema.sql locks it before table_columns (lock order).
+            FROM registered_tables r
+            JOIN table_columns p ON p.table_id = r.id
             WHERE {_is_required_parameter_sql("p")}
               AND NOT (SUBSTR(p.column_name, 1, {n}) = '{NF_PREFIX}' AND EXISTS (
                   SELECT 1 FROM table_columns b

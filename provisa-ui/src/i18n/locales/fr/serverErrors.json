@@ -762,6 +762,9 @@
       "impact_action": "Aucun aperçu n'existe pour cette action.",
       "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes."
     },
+    "table": {
+      "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."
+    },
     "tag": {
       "not_on_terms": "Le tag « {{tag}} » ne se pose pas sur un terme ; seul pii le peut.",
       "term_not_live": "Définissez « {{term}} » pour le marquer.",

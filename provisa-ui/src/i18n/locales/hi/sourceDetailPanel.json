@@ -14,6 +14,7 @@
     "runProfilerTitle": "हर सदस्य टेबल के लिए अभी चलाएँ",
     "profilerNoMembers": "इस प्रोफ़ाइलर में कोई टेबल शामिल नहीं है।",
     "profilerRan": "{{table}}: प्रोफ़ाइल की गई",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: पढ़ी नहीं गई। इसे {{parameters}} चाहिए, इसलिए इसकी गिनती या प्रोफ़ाइलिंग नहीं की जा सकती।"
   }
 }
