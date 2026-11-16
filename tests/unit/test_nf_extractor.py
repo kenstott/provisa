@@ -14,6 +14,8 @@ from __future__ import annotations
 
 import re
 
+import pytest
+
 from provisa.compiler.nf_extractor import (
     drop_joined_table,
     drop_union_branches_for_table,
@@ -124,11 +126,13 @@ def test_extract_nf_args_param_index_out_of_range_ignored():
     assert "id" in nf_args
 
 
-def test_extract_nf_args_non_eq_condition_kept():
-    sql = "SELECT * FROM widgets WHERE _nf_id > 1"
-    clean_sql, clean_params, nf_args = _extract(sql, [])
-    assert nf_args == {}
-    assert "_nf_id" in clean_sql
+def test_extract_nf_args_non_eq_condition_refused():
+    """REQ-1986: a range on a parameter assigns it nothing; it was once kept as a filter on a
+    column that holds no value."""
+    from provisa.core.parameter_binding import ParameterByEqualityOnly
+
+    with pytest.raises(ParameterByEqualityOnly, match="_nf_id"):
+        _extract("SELECT * FROM widgets WHERE _nf_id > 1", [])
 
 
 # --- find_api_table_names -------------------------------------------------------

@@ -4851,6 +4851,19 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.core.parameter_binding import (
+        ParameterBindingRefused as _ParameterBindingRefused,
+    )
+
+    @app.exception_handler(_ParameterBindingRefused)
+    async def _parameter_binding_handler(_req: _Request, exc: _ParameterBindingRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1986: a condition on a table's parameter that binds it no value, two values at
+        # once, or more calls than the operator's cap: the statement is refused, naming it.
+        return _JSONResponse(
+            status_code=400,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.federation.replica_state import ReplicaBuilding as _ReplicaBuilding
 
     @app.exception_handler(_ReplicaBuilding)

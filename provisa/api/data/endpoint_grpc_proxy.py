@@ -50,6 +50,7 @@ from provisa.grpc.query_ir import (
 from provisa.grpc.proto_gen import _to_proto_field_name
 from provisa.compiler.directives import cache_hint_from_grpc_metadata
 from provisa.pgwire._pipeline import _execute_plan, _govern_and_route_compiled
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.core.read_refusal import ReadRefused
 from provisa.compiler.complexity import ComplexityLimitExceeded
 from provisa.compiler.sql_validator import GovernanceRefused
@@ -429,6 +430,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
             raise  # REQ-1174: answered as 413 by the app's handler
         except ReadRefused:
             raise  # refused by name; the app answers it (core/read_refusal.py)
+        except ParameterBindingRefused:
+            raise  # REQ-1986: the app answers it under its code (400)
         except GovernanceRefused:
             raise  # REQ-2222: the app answers it under its code
         except PermissionError as exc:
@@ -497,6 +500,8 @@ async def grpc_proxy(type_name: str, request: Request):  # REQ-045, REQ-266
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: the app answers it under its code (400)
     except GovernanceRefused:
         raise  # REQ-2222: the app answers it under its code
     except PermissionError as exc:
