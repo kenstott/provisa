@@ -559,10 +559,7 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
             sized = f"NUMERIC({packed >> 16}, {packed & 0xFFFF})"
             return f"CAST(CAST({_sql(args[0])} AS {sized}) AS TEXT)"
     if name in _SIZED_CALLS and len(args) == 3:  # noqa: PLR2004 -- value, typmod, explicit
-        value, typmod = _sql(args[0]), _sql(args[1])
-        # A typmod below the header says no length; a character(n) is padded to it.
-        sized = "RPAD({v}, ({t}) - 4, ' ')" if name == "bpchar" else "LEFT({v}, ({t}) - 4)"
-        return f"CASE WHEN ({typmod}) < 4 THEN {value} ELSE {sized.format(v=value, t=typmod)} END"
+        return _sized(name, *(_sql(arg) for arg in args))
     if name == "bit" and len(args) == 3 and _is_null(args[1]):  # noqa: PLR2004
         return "CAST(NULL AS BIT)"
     if name == "bit" and len(args) == 3 and _cast_to(args[0], exp.DataType.Type.BIT):  # noqa: PLR2004
@@ -570,6 +567,30 @@ def _type_call(name: str, args: list[exp.Expr]) -> str | None:  # noqa: PLR0911 
     if name == "bit" and len(args) == 2:  # noqa: PLR2004 -- an integer, as so many bits
         return _sql(_integer_bits(args[0], args[1]))
     return None
+
+
+#: palloc's greatest request (MaxAllocSize, 1 GB - 1): a character(n) padded past it is XX000.
+MAX_ALLOC_SIZE = 1073741823
+
+
+def _sized(name: str, value: str, typmod: str, explicit: str) -> str:
+    """bpchar or varchar(value, typmod, explicit), both strict: a typmod below the header says no
+    length; a varchar is cut to it, a character(n) cut or padded, by palloc(typmod), which raises
+    XX000 past MAX_ALLOC_SIZE. The pad is 0 there: an engine folds a constant RPAD whether or not
+    its branch is taken."""
+    null = f"WHEN ({typmod}) IS NULL OR ({explicit}) IS NULL THEN NULL"
+    if name == "varchar":
+        return (
+            f"CASE {null} WHEN ({typmod}) < 4 THEN {value} ELSE LEFT({value}, ({typmod}) - 4) END"
+        )
+    alloc = raising("XX000", f"'invalid memory alloc request size ' || CAST(({typmod}) AS TEXT)")
+    past = f"({typmod}) > {MAX_ALLOC_SIZE}"
+    pad = f"CASE WHEN {past} THEN 0 ELSE ({typmod}) - 4 END"
+    return (
+        f"CASE {null} WHEN ({typmod}) < 4 THEN {value} "
+        f"WHEN {past} AND LENGTH({value}) <> ({typmod}) - 4 THEN {alloc} "
+        f"ELSE RPAD({value}, {pad}, ' ') END"
+    )
 
 
 def _int_said(node: exp.Expr) -> int | None:

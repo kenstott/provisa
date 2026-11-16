@@ -159,3 +159,34 @@ def test_an_infinite_date_moves_nowhere(
 ) -> None:
     """date_pli and date_mii answer an infinite date as it is (date.c: "can't change infinity")."""
     assert _run(con, sql) == want
+
+
+@pytest.mark.parametrize("typmod", [2147483647, 1073741828, 1073741827])
+@pytest.mark.parametrize("explicit", ["true", "false"])
+def test_a_character_past_maxallocsize_raises_as_bpchar_does(
+    con: duckdb.DuckDBPyConnection, typmod: int, explicit: str
+) -> None:
+    """bpchar(character, typmod, explicit) pads by palloc(typmod), which raises past 1 GB - 1."""
+    got = _raised(
+        con, f"SELECT pg_catalog.\"bpchar\"('abc'::character, {typmod}, {explicit}::boolean)"
+    )
+    assert got[0] == "XX000"
+    assert f"invalid memory alloc request size {typmod}" in got[1]
+
+
+@pytest.mark.parametrize(
+    "sql, want",
+    [
+        ("SELECT pg_catalog.\"bpchar\"('abc'::character, -2147483648, true)", "a"),
+        ("SELECT pg_catalog.\"bpchar\"('abc'::character, 3, NULL::boolean)", None),
+        ("SELECT pg_catalog.\"bpchar\"('abc'::character, NULL::integer, true)", None),
+        ("SELECT pg_catalog.\"bpchar\"('ab'::character(2), 9, true)", "ab   "),
+        ("SELECT pg_catalog.\"varchar\"('abc'::varchar, 2147483647, true)", "abc"),
+        ("SELECT pg_catalog.\"varchar\"('abc'::varchar, 6, NULL::boolean)", None),
+    ],
+)
+def test_a_sized_cast_answers_as_postgresql_does(
+    con: duckdb.DuckDBPyConnection, sql: str, want: str | None
+) -> None:
+    """bpchar and varchar are strict: a NULL typmod or explicit answers NULL (PostgreSQL 17.11)."""
+    assert _run(con, sql) == want
