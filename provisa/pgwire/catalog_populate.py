@@ -27,6 +27,7 @@ from typing import Any
 
 from provisa.core.ir_types import SUBTYPES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment
+from provisa.core.parameters import describe_limits
 from provisa.pgwire.cast_types import described_type, registered_spelling
 from provisa.pgwire.catalog_pg17 import RELATIONS, TYPES
 from provisa.transpiler.metadata_oids import INFORMATION_SCHEMA_OID, PG_CATALOG_OID, PUBLIC_OID
@@ -555,6 +556,9 @@ def _populate_pg_description(
         )
         # REQ-1415: the table's tag ids follow the role in the same suffix.
         _tags = (rt.get("tags") if isinstance(rt, dict) else getattr(rt, "tags", None)) or ()
+        # REQ-1986: a table that requires parameters says so in its comment, and what it
+        # therefore cannot give.
+        _tdesc = describe_limits(_tdesc, _cols)
         if _role or _tags:
             _tdesc = append_modeling_tag(_tdesc, _role, _hist, _tags)
         if _tdesc:

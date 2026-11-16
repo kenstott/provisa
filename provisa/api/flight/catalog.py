@@ -31,6 +31,7 @@ import pyarrow.flight as flight
 
 from provisa.security.rights import SQL_CATALOG_TABLES
 from provisa.core.modeling_tags import append_modeling_tag, column_comment, tags_by_object
+from provisa.core.parameters import describe_limits
 
 log = logging.getLogger(__name__)
 
@@ -117,7 +118,9 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
         )
         col_rows = await conn.fetch(
             "SELECT tc.table_id, tc.column_name, tc.alias, tc.data_type, tc.description, "
-            "tc.is_primary_key FROM table_columns tc WHERE NOT tc.retired ORDER BY tc.id"
+            "tc.is_primary_key, "
+            "tc.native_filter_type, tc.native_filter_required, tc.required_by_steward "  # REQ-1986
+            "FROM table_columns tc WHERE NOT tc.retired ORDER BY tc.id"
         )
         rel_rows = await conn.fetch(
             "SELECT source_table_id, source_column, target_table_id, target_column "
@@ -175,7 +178,10 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
         # pg_description, so MCP/Flight callers see the star shape too.
         # REQ-1415: the table's tag ids follow the role in the same suffix.
         description = append_modeling_tag(
-            row["description"],
+            # REQ-1986: a table that requires parameters says so, and what it cannot give.
+            describe_limits(
+                row["description"], [dict(cr) for cr in col_rows if cr["table_id"] == table_id]
+            ),
             row["modeling_role"],
             row["modeling_history"],
             table_tags.get(table_id, ()),
@@ -238,7 +244,9 @@ def build_catalog_tables_from_context(state) -> list[CatalogTable]:  # REQ-127, 
         table_id = tinfo.table_id
         role = getattr(tinfo, "modeling_role", None)
         description = append_modeling_tag(
-            getattr(tinfo, "description", None),
+            describe_limits(  # REQ-1986
+                getattr(tinfo, "description", None), getattr(tinfo, "native_filter_columns", ())
+            ),
             role,
             getattr(tinfo, "modeling_history", None),
             table_tags.get(table_id, ()),  # REQ-1415

@@ -41,7 +41,9 @@
       "role_not_assigned": "Rol '{{role_id}}' is niet aan deze gebruiker toegewezen",
       "simple_provider_not_configured": "Simple-authenticatieprovider niet geconfigureerd",
       "username_exists": "Gebruikersnaam bestaat al",
-      "not_permitted": "Niet toegestaan"
+      "not_permitted": "Niet toegestaan",
+      "token_scopes_required": "Kies ten minste één rol voor het token.",
+      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt."
     },
     "authz": {
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"
@@ -503,7 +505,9 @@
       "code_resolver_not_found": "Coderesolver '{{resolver}}' niet gevonden",
       "code_resolver_saved": "Coderesolver '{{resolver}}' opgeslagen",
       "code_resolver_retired": "Coderesolver '{{resolver}}' buiten gebruik gesteld",
-      "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt"
+      "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt",
+      "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden)."
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -761,6 +765,9 @@
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
       "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
     },
+    "table": {
+      "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."
+    },
     "tag": {
       "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",
       "term_not_live": "Definieer '{{term}}' om hem te markeren.",
@@ -824,6 +831,11 @@
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
       "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} gaf een rij terug zonder de sleutelkolom {{column}}",
+      "change_key_repeated": "{{function}} gaf de sleutel {{key}} tweemaal terug in één resultaat",
+      "change_cursor_backwards": "De cursor van {{function}} ging achteruit: {{returned}} werd teruggegeven, vóór de opgeslagen {{stored}}"
     }
   }
 }

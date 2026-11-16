@@ -282,6 +282,40 @@ jobs:
           cache-hit: ${{ steps.again.outputs.cache-hit }}
           key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
 
+  # The real key, not one of this run's own: what the action keeps is the pinned files themselves,
+  # each checked against its recorded sha256, so a save from here is the entry any job would save.
+  # A miss downloads them (the one request to Pyodide's CDN per pin); a hit asks it for nothing.
+  pyodide-downloads:
+    name: action / pyodide-downloads (every pinned file, and a build that asks the CDN for nothing)
+    needs: scope
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pyodide downloads
+        id: downloads
+        uses: ./.github/actions/pyodide-downloads
+      - name: The directory is named, and holds every file a build fetches, each the pinned one
+        env:
+          DIR: ${{ steps.downloads.outputs.dir }}
+          PYTHONPATH: provisa-notebook
+        run: |
+          [ -n "$DIR" ]
+          [ "$PROVISA_NOTEBOOK_DOWNLOADS" = "$DIR" ]
+          python3 - <<'EOF'
+          import urllib.request
+
+          def refuse(*args, **kwargs):
+              raise AssertionError(f"asked the network for {args[0]}")
+
+          urllib.request.urlopen = refuse
+          from provisa_notebook import build
+
+          names = build.download_only()
+          assert {build.LOCK, *build.CORE} < set(names), names
+          print(f"{len(names)} files kept, none downloaded")
+          EOF
+
   release-metadata:
     name: action / release-metadata
     needs: scope
@@ -381,6 +415,7 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - pyodide-downloads
       - release-metadata
       - ensure-release-off
     runs-on: ubuntu-latest
@@ -597,6 +632,7 @@ jobs:
       - free-runner-disk
       - demo-bundle
       - trino-plugins
+      - pyodide-downloads
       - release-metadata
       - ensure-release-off
       - lane

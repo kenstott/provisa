@@ -41,7 +41,9 @@
       "role_not_assigned": "Role '{{role_id}}' is not assigned to this user",
       "simple_provider_not_configured": "Simple auth provider not configured",
       "username_exists": "Username already exists",
-      "not_permitted": "Not permitted"
+      "not_permitted": "Not permitted",
+      "token_scopes_required": "Pick at least one role for the token.",
+      "token_scope_not_held": "A token can use only roles you hold."
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' not permitted: {{reason}}"
@@ -503,7 +505,9 @@
       "code_resolver_not_found": "Code resolver '{{resolver}}' not found",
       "code_resolver_saved": "Code resolver '{{resolver}}' saved",
       "code_resolver_retired": "Code resolver '{{resolver}}' retired",
-      "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+      "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+      "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\"."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -761,6 +765,9 @@
       "impact_action": "There is no preview for that action.",
       "impact_table_required": "Binding names a table, or one of its columns."
     },
+    "table": {
+      "requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows."
+    },
     "tag": {
       "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
       "term_not_live": "Define '{{term}}' to mark it.",
@@ -824,6 +831,11 @@
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
       "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} returned a row without its key column {{column}}",
+      "change_key_repeated": "{{function}} returned the key {{key}} twice in one result",
+      "change_cursor_backwards": "{{function}}'s cursor went backwards: it returned {{returned}}, before the stored {{stored}}"
     }
   }
 }

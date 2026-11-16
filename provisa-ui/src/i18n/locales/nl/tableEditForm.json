@@ -287,6 +287,8 @@
     "holdOnFailingChecksShowCode": "Code tonen",
     "holdOnFailingChecksHideCode": "Code verbergen",
     "holdOnFailingChecksCodeHelp": "De controle die deze optie toepast. Kopieer haar naar de voorcontrole hierboven om haar te wijzigen.",
-    "discoverHint": "Opslaan leest de kolommen van de live bron en voegt toe wat deze tabel mist; de bestaande kolommen blijven zoals ze zijn. Een toegevoegde kolom is voor geen enkele rol zichtbaar totdat hij wordt toegekend."
+    "discoverHint": "Opslaan leest de kolommen van de live bron en voegt toe wat deze tabel mist; de bestaande kolommen blijven zoals ze zijn. Een toegevoegde kolom is voor geen enkele rol zichtbaar totdat hij wordt toegekend.",
+    "mvRebuildEveryLabel": "Volledige herbouw elke (seconden)",
+    "mvRebuildEveryHelp": "Hoe vaak de hele view opnieuw wordt berekend. Verplicht voor een view die wordt bijgehouden door de @change-functie van een codebron."
   }
 }

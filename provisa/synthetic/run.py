@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING, Any
 import sqlalchemy as sa
 from sqlalchemy import delete, insert, select
 
+from provisa.core.parameters import not_read_reason
 from provisa.synthetic import datasets
 from provisa.synthetic import closeness
 from provisa.synthetic.generate import Closeness, closeness_sql, generation_sql
@@ -458,6 +459,25 @@ async def _real_rows(
         reset_current_env(token)
 
 
+def _unread(state: Any, t: DatasetTable) -> Any:
+    """Why ``t``'s rows are never read whole in the environment being read, asked of its metadata
+    before any read (REQ-1986, provisa.profiler.run.not_read_whole); None for a table read as any
+    other. A table whose environment generated it holds its required parameter as an ordinary
+    column there (REQ-1942), and is read."""
+    from provisa.profiler.run import not_read_whole
+
+    return not_read_whole(state, t.table_id, t.name)
+
+
+def _refuse_unread(state: Any, *tables: DatasetTable) -> None:
+    """Refuse a measurement that only the whole rows of one of ``tables`` could give, by the one
+    refusal of such a read (provisa.core.parameters.RequiresParameters)."""
+    for t in tables:
+        refusal = _unread(state, t)
+        if refusal is not None:
+            raise refusal
+
+
 async def _measure(state: Any, t: DatasetTable, column: str) -> list[tuple[str | None, int]]:
     """``column``'s values and their counts, nulls included, read from its table: one GROUP BY as
     the org admin through the governed pipeline, as the profiler reads (REQ-1494, MEASURED FROM
@@ -465,6 +485,7 @@ async def _measure(state: Any, t: DatasetTable, column: str) -> list[tuple[str |
     from provisa.profiler.run import PROFILE_ROLE, _governed
     from provisa.profiler.statement import _ident, qualified
 
+    _refuse_unread(state, t)
     exposed = state.contexts[PROFILE_ROLE].physical_to_sql.get((t.table_id, column))
     if exposed is None:
         raise DatasetRefused(f"{t.name}.{column} is not readable by {PROFILE_ROLE}")
@@ -564,6 +585,7 @@ async def _measure_difference(
     from provisa.profiler.run import PROFILE_ROLE
     from provisa.profiler.statement import qualified
 
+    _refuse_unread(state, t)
     p2s = state.contexts[PROFILE_ROLE].physical_to_sql
     exposed = {c: p2s.get((t.table_id, c)) for c in (column, other)}
     hidden = [c for c, e in exposed.items() if e is None]
@@ -837,6 +859,13 @@ async def _closeness_of(
             out[p.plan.name] = Closeness("", 0.0, 1, (), parents)
             unchecked += closeness.unchecked_table(p.plan.name)
             continue
+        unread = _unread(state, p.table)
+        if unread is not None:
+            # REQ-1986: no real sample is read of a table that requires parameters; its rows are
+            # not checked for closeness, and the report says so.
+            out[p.plan.name] = Closeness("", 0.0, 1, (), parents)
+            unchecked += closeness.unread_table(p.plan.name, not_read_reason(unread.parameters))
+            continue
         landed.append(sample_name(reg))
         address, distance_cols = await _land_sample(state, row.store_schema, p, reg, cols)
         close = Closeness(address, 0.0, row.closeness_draws, tuple(distance_cols), parents)
@@ -1053,6 +1082,7 @@ async def _measure_condition(
 
     edge = next(e for e in edges if e.relationship == c.relationship)
     parent, child = by_id[edge.parent_id], by_id[edge.child_id]
+    _refuse_unread(state, parent, child)
     p2s = state.contexts[PROFILE_ROLE].physical_to_sql
 
     def exposed(t: DatasetTable, column: str) -> str:
@@ -1113,12 +1143,26 @@ async def _dependence_entries(
         if dep is None:
             continue
         nodes = dep.nodes
+        unread = _unread(state, p.table)  # REQ-1986: asked before its rows are read
         measured = p.table.profile.dependence.spearman
         numbers = [c for c in dep.copula if nodes[c].kind == "number"]
         for i, a in enumerate(numbers):
             for b in numbers[i + 1 :]:
                 rho = measured.get((a, b), measured.get((b, a)))
                 if rho is None:
+                    continue
+                if unread is not None:
+                    out.append(
+                        row(
+                            p.plan.name,
+                            f"{a}~{b}",
+                            "dependence_spearman",
+                            rho,
+                            None,
+                            f"not measured beside generated: the table "
+                            f"{not_read_reason(unread.parameters)}",
+                        )
+                    )
                     continue
                 ca, cb = _ident(exposed(p.table, a)), _ident(exposed(p.table, b))
                 _n, rows = await _governed(
@@ -1267,6 +1311,9 @@ async def _private_tables(state: Any, tables: list, edges: list, row: Any) -> tu
     from provisa.profiler.statement import qualified
     from provisa.synthetic.private_run import private_tables
 
+    # REQ-1986: a private dataset measures every statistic from its tables' rows; a table that
+    # requires parameters has none to measure, and is refused before any is read.
+    _refuse_unread(state, *tables)
     return await private_tables(
         tables,
         edges,

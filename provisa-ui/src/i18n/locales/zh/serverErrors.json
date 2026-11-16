@@ -41,7 +41,9 @@
       "role_not_assigned": "角色 '{{role_id}}' 未分配给此用户",
       "simple_provider_not_configured": "未配置 Simple 身份验证提供程序",
       "username_exists": "用户名已存在",
-      "not_permitted": "不允许"
+      "not_permitted": "不允许",
+      "token_scopes_required": "请至少为令牌选择一个角色。",
+      "token_scope_not_held": "令牌只能使用您拥有的角色。"
     },
     "authz": {
       "mutation_not_permitted": "不允许执行变更 '{{field_name}}'：{{reason}}"
@@ -503,7 +505,9 @@
       "code_resolver_not_found": "未找到代码解析器 '{{resolver}}'",
       "code_resolver_saved": "已保存代码解析器 '{{resolver}}'",
       "code_resolver_retired": "已停用代码解析器 '{{resolver}}'",
-      "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用"
+      "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用",
+      "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
+      "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -761,6 +765,9 @@
       "impact_action": "该操作没有预览。",
       "impact_table_required": "绑定指定一张表或其中的一列。"
     },
+    "table": {
+      "requires_parameters": "无法对表 {{table}} 计数或生成概要：它需要 {{parameters}}。请为每个参数提供值以读取其行。"
+    },
     "tag": {
       "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",
       "term_not_live": "请先为“{{term}}”编写定义，再进行标记。",
@@ -824,6 +831,11 @@
       "expiry_in_past": "结束日期必须是将来的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 列表上设置结束日期不会移除任何内容。",
       "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} 返回了缺少键列 {{column}} 的行",
+      "change_key_repeated": "{{function}} 在一个结果中两次返回了键 {{key}}",
+      "change_cursor_backwards": "{{function}} 的游标发生倒退：返回了 {{returned}}，早于已存储的 {{stored}}"
     }
   }
 }

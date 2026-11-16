@@ -245,9 +245,34 @@ def _statement(table: dict, limit: int | None, request: Any) -> tuple[str, list]
     table's registration with every value bound (admin/viewer_statement.py)."""
     from provisa.api.admin.viewer_statement import viewer_statement
 
+    refuse_unparameterized(table, request)
     if request is not None:
         return viewer_statement(table, table_sql_ref(table), request)
     return f"SELECT * FROM {table_sql_ref(table)} LIMIT {int(limit or 0)}", []
+
+
+def refuse_unparameterized(table: dict, request: Any = None) -> None:
+    """Refuse a read of ``table``'s rows that gives no value to a parameter its metadata states
+    as required (REQ-1986): its first rows or a sample (no ``request``), or a viewer's page whose
+    ``request`` leaves one out. Asked of the registration, before any statement is written."""
+    from provisa.core.parameters import (
+        canonical_name,
+        parameter_facts,
+        required_of,
+        whole_read_refusal,
+    )
+
+    facts = [f for f in parameter_facts(table["columns"]) if f.required]
+    if request is not None:
+        named = {(c.get("alias") or c["column_name"]): c["column_name"] for c in table["columns"]}
+        given = {
+            canonical_name(named.get(p.column, p.column).removeprefix("_nf_"))
+            for p in request.params
+        }
+        facts = [f for f in facts if canonical_name(f.name) not in given]
+    refusal = whole_read_refusal(table["table_name"], required_of(facts))
+    if refusal is not None:
+        raise refusal
 
 
 async def read_as_caller(

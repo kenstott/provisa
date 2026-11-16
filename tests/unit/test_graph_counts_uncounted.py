@@ -49,8 +49,8 @@ async def test_bolt_totals_are_unknown_when_a_count_fails_and_say_why(monkeypatc
     from provisa.core.statement_warnings import collecting
 
     nodes = {
-        "Pet": SimpleNamespace(label="Pet", native_filter_columns=[]),
-        "Inquiry": SimpleNamespace(label="Inquiry", native_filter_columns=[]),
+        "Pet": SimpleNamespace(label="Pet", required_parameters=[]),
+        "Inquiry": SimpleNamespace(label="Inquiry", required_parameters=[]),
     }
     monkeypatch.setattr(
         session,
