@@ -1206,6 +1206,18 @@ def governed_table_functions(state: Any, role_id: str) -> frozenset[str]:  # REQ
     return catalog | frozenset(usable_commands(state, role_id, webhooks=False))
 
 
+def view_commands(state: Any) -> dict[str, dict]:  # REQ-2249
+    """The registered code commands a view's definition may call, by the lower-cased name a
+    statement calls them by: such a view is read from its stored table, so the reader calls none
+    of them (``sql_validator.view_command``)."""
+    from provisa.codesource.commands import CODE_COMMAND
+    from provisa.core.command_bindings import bound
+
+    commands = (getattr(state, "tracked_functions", None) or {}).values()
+    code = {id(c): c for c in commands if c.get("impl_kind") == CODE_COMMAND}
+    return {name.lower(): c for name, c in bound(code.values(), "sql").items()}
+
+
 async def _localize_inline_commands(tree, role_id: str, state) -> bool:
     """REQ-1159: rewrite every inline command call in ``tree`` to a typed local relation, in place.
 
@@ -1846,7 +1858,13 @@ async def govern_statement(
     from provisa.api.app import state
     from provisa.compiler.params import extract_params_comment, extract_relationship_guard_comment
     from provisa.compiler.stage2 import apply_governance
-    from provisa.compiler.sql_validator import READ, client_table_function, validate_sql
+    from provisa.compiler.sql_validator import (
+        READ,
+        client_table_function,
+        validate_sql,
+        view_command,
+        view_command_inputs,
+    )
 
     from provisa.audit.pipeline import write_denial
 
@@ -2023,6 +2041,7 @@ async def govern_statement(
         _bypass_guard,
     )
     _table_functions = governed_table_functions(state, role_id)
+    _view_commands = view_commands(state)
     if state.compiled_query_cache.get(_cq_key) is None:
         violations = validate_sql(
             _validated_sql,
@@ -2033,6 +2052,7 @@ async def govern_statement(
             bypass_relationship_guard=_bypass_guard,
             bypass_uncovered_relationships=True,
             table_functions=_table_functions,
+            view_commands=_view_commands,
         )
 
         _role_domain_access = role["domain_access"]
@@ -2044,9 +2064,14 @@ async def govern_statement(
                 _statement_ctes = (
                     {c.alias for c in parsed_tree.find_all(exp.CTE)} if _table_functions else set()
                 )
-                for tbl in parsed_tree.find_all(exp.Table):
+                # REQ-2249: a code command a view's definition calls reads its table arguments.
+                _read = [*parsed_tree.find_all(exp.Table)]
+                _read += view_command_inputs(parsed_tree, _view_commands)
+                for tbl in _read:
                     if isinstance(tbl.this, exp.XMLTable):
                         continue  # REQ-2167: no relation; what it reads is the statement's own
+                    if view_command(tbl, _view_commands) is not None:
+                        continue  # REQ-2249: its table arguments are read in its place
                     if client_table_function(tbl, _table_functions) or (
                         not tbl.db and tbl.name in _statement_ctes
                     ):
@@ -5947,6 +5972,7 @@ async def _govern_compiled(
         getattr(state, "tables", []),
         bypass_relationship_guard=sdl_joins or _reader_bypass,
         bypass_uncovered_relationships=True,
+        view_commands=view_commands(state),
     )
     if sdl_joins and not _reader_bypass:
         # The SDL defined the statement's own joins; a view's joins are its author's, and the

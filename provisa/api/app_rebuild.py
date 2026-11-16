@@ -107,7 +107,7 @@ async def _register_user_views_in_state(
         # REQ-2131: the org's column transforms, by name: a view applying one is landed (built as
         # a materialized view, declared or not) and read only from its stored table.
         from provisa.codesource.columns import COLUMN_TRANSFORM
-        from provisa.codesource.columns_fold import called
+        from provisa.mv.view_read import lands_stored_read
         from provisa.core.schema_org import tracked_functions as _tracked_functions_t
 
         _transforms = {
@@ -119,6 +119,22 @@ async def _register_user_views_in_state(
                     )
                 )
             ).fetchall()
+        }
+        # REQ-2249: the org's code commands, by the name a statement calls them by: a view whose
+        # definition calls one is landed as well, and read only from its stored table.
+        from provisa.codesource.commands import CODE_COMMAND
+        from provisa.core.command_bindings import binding_name
+
+        _code_commands = {
+            _name
+            for _r in (
+                await conn.execute_core(
+                    select(
+                        _tracked_functions_t.c.name, _tracked_functions_t.c.language_bindings
+                    ).where(_tracked_functions_t.c.impl_kind == CODE_COMMAND)
+                )
+            ).fetchall()
+            if (_name := binding_name(dict(_r._mapping), "sql")) is not None
         }
         state.stored_view_reads = set()
         _view_rows = [
@@ -226,8 +242,9 @@ async def _register_user_views_in_state(
                     with_inherited_read_columns(
                         next(t for t in tables if t["id"] == _vr["id"]), _bt_spec
                     )
-            elif called(_semantic_sql, _transforms):
-                # REQ-2131: its outputs exist only in its stored table, so that is what it reads.
+            elif lands_stored_read(_semantic_sql, _transforms, _code_commands):
+                # REQ-2131, REQ-2249: its outputs exist only in its stored table, so that is what
+                # it reads.
                 from provisa.mv.models import stored_table_ref
 
                 _tgt_cat, _tgt_schema = state.federation_engine.materialize_store_target(
@@ -285,7 +302,7 @@ async def _register_user_views_in_state(
                             semantic_sql=_semantic_sql,  # REQ-1921/1922
                             region=_vr.get("region"),  # REQ-1921
                             view_table=_vr["table_name"],  # REQ-1918: the view it builds
-                            read_tables=read_table_names(_semantic_sql),
+                            read_tables=read_table_names(_semantic_sql, state.tracked_functions),
                             expose_in_sdl=False,
                             status=MVStatus.STALE,
                             freshness_mode=_fresh,
@@ -321,7 +338,7 @@ async def _register_user_views_in_state(
                     _existing.enabled = not _vr["draft"]  # REQ-1921
                     _existing.semantic_sql = _semantic_sql  # REQ-1921/1922
                     _existing.region = _vr.get("region")  # REQ-1921
-                    _existing.read_tables = read_table_names(_semantic_sql)
+                    _existing.read_tables = read_table_names(_semantic_sql, state.tracked_functions)
                     _existing.preprocess = _vr.get("mv_preprocess")  # REQ-957
                     _existing.table_id = _vr["id"]  # REQ-2133
                     _existing.product_ids = _view_products.get(_vr["id"], [])  # REQ-2133
@@ -438,3 +455,10 @@ async def _finalize_rebuild_state(_rebuild_log: logging.Logger) -> None:
                 for name, sql in state.view_sql_map.items()
             }
         compile_registry_mvs_to_physical(state.mv_registry, ctx)
+        # A view over a command call reads the tables the call is given (REQ-2249). The commands
+        # are loaded after the views are registered, so what each view reads is taken again here.
+        from provisa.mv.readable_inputs import read_table_names
+
+        for _mv in state.mv_registry._mvs.values():
+            if _mv.view_table and _mv.semantic_sql:
+                _mv.read_tables = read_table_names(_mv.semantic_sql, state.tracked_functions)

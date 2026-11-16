@@ -43,6 +43,11 @@
     "parameterNotFed": "Não alimentado",
     "sameEntity": "Mesma entidade",
     "sameEntityHint": "As linhas unidas são a mesma coisa: um termo fundamenta as duas tabelas, unidas 1:1 por chaves",
-    "cardinalityOneToOne": "um-para-um"
+    "cardinalityOneToOne": "um-para-um",
+    "resolverNote": "Parte do resolver de código {{resolver}}. Sua visão de correspondências e suas três relações são alteradas e retiradas juntas.",
+    "changeResolver": "Alterar resolver de código",
+    "retireResolver": "Retirar resolver de código",
+    "retireResolverTitle": "Retirar o resolver de código {{resolver}}?",
+    "retireResolverConsequence": "Sua visão de correspondências e suas três relações são retiradas juntas. Seus nomes continuam ocupados."
   }
 }

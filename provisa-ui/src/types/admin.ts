@@ -832,6 +832,21 @@ export interface Relationship {
   viaLabelSource: string | null;
   // REQ-2099: the target's parameters this edge feeds, each from a source column.
   parameters: RelationshipParameter[];
+  /** REQ-2249: the code resolver set this edge is part of; changed and retired only through it. */
+  codeResolver?: string | null;
+}
+
+/** REQ-2249: a code resolver set as the form saves and shows it. */
+export interface CodeResolver {
+  id: string;
+  resolver: string;
+  sourceTable: string;
+  sourceColumn: string;
+  sourceMatch: string;
+  targetTable: string;
+  targetColumn: string;
+  targetMatch: string;
+  refreshInterval: number;
 }
 
 export interface RelationshipParameter {

@@ -484,7 +484,18 @@
       "jdbc_invalid": "Fuente {{source}}: {{error}}",
       "jdbc_file_refused": "Fuente {{source}}: la URL nombra {{path}}, que este servidor no puede abrir para la organización.",
       "jdbc_options_refused": "Fuente {{source}}: la URL de esta organización no puede indicar la opción de controlador {{options}}.",
-      "jdbc_driver_refused": "Fuente {{source}}: un controlador JDBC del cliente se ejecuta como código en la propia JVM de Provisa, algo que solo permite una instalación autoalojada."
+      "jdbc_driver_refused": "Fuente {{source}}: un controlador JDBC del cliente se ejecuta como código en la propia JVM de Provisa, algo que solo permite una instalación autoalojada.",
+      "code_resolver_part": "{{kind}} '{{name}}' forma parte del resolver de código '{{resolver}}': cámbielo o retírelo allí",
+      "code_resolver_no_key": "La tabla de {{end}} '{{table}}' no tiene la columna '{{column}}'",
+      "code_resolver_no_reader": "Ningún rol ve ambas claves, así que ningún rol podría ver una coincidencia",
+      "code_resolver_unknown": "No hay ningún comando '{{function}}' registrado",
+      "code_resolver_refused": "Resolver de código '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "El id de resolver de código '{{resolver}}' no es un nombre: letras minúsculas, dígitos y guiones bajos, empezando por una letra",
+      "code_resolver_taken": "El resolver de código '{{resolver}}' ya existe",
+      "code_resolver_not_found": "No se encontró el resolver de código '{{resolver}}'",
+      "code_resolver_saved": "Resolver de código '{{resolver}}' guardado",
+      "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
+      "code_resolver_has_dependents": "El resolver de código '{{resolver}}' no puede retirarse mientras algo dependa de él"
     },
     "secrets": {
       "name_refused": "{{name}} no es un nombre dentro de los secretos de esta organización en {{service}}: un nombre es relativo a la organización y no puede salir de ella",
