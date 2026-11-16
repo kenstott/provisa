@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} suggestions could not be accepted:",
     "rejectFailed": "{{count}} suggestion could not be rejected:",
     "rejectFailed_other": "{{count}} suggestions could not be rejected:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Reduced information: no values were compared",
+    "reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
   }
 }

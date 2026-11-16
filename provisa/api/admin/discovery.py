@@ -27,6 +27,7 @@ from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
+from provisa.discovery.gather import TableUnreadable
 from provisa.discovery.prompt import build_prompt
 from provisa.discovery import runs as runs_repo
 from provisa.discovery.run import (
@@ -367,6 +368,16 @@ async def _prepared(spec: RunSpec) -> tuple[ChosenModel | None, Prepared]:
             "discovery.model_has_no_room",
             f"The model cannot hold a request: {exc}",
             model=None if model is None else model.label,
+            reason=str(exc),
+        ) from exc
+    except TableUnreadable as exc:
+        raise ApiError(
+            422,
+            "discovery.table_unreadable",
+            f"Discovery cannot read the table {exc.table}: {exc.reason}. Leave it out of the "
+            "tables chosen, or correct it and try again.",
+            table=exc.table,
+            reason=exc.reason,
         ) from exc
     return model, prepared
 
@@ -450,9 +461,10 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
     if env and not endpoint_key:
         raise ApiError(
             409,
-            "discovery.vendor_has_no_key",
+            "discovery.endpoint_has_no_key",
             f"{vendor} has no key: set the {env} environment variable.",
             vendor=vendor,
+            env=env,
         )
     models = await _run_model_listing(
         vendor,
@@ -486,10 +498,7 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
             "by_group": {},
             "suggestions_per_request": 0,
             "model": None,
-            "source_tables": len(prepared.source),
-            "target_tables": len(
-                prepared.target if prepared.target is not None else prepared.source
-            ),
+            **prepared.sizes(),
         }
     return count(prepared, model)
 

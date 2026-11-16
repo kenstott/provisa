@@ -149,14 +149,22 @@
       "elasticsearch_index_hint_required": "Elasticsearch 发现需要 'index' 提示。",
       "elasticsearch_mapping_failed": "读取索引 '{{index}}' 的 Elasticsearch 映射失败：{{error}}",
       "endpoint_already_registered": "终结点已注册：{{error}}",
+      "endpoint_has_no_key": "{{vendor}} 没有密钥：请设置环境变量 {{env}}。",
       "model_failed": "模型 {{model}} 失败：{{error}}",
+      "model_has_no_room": "模型 {{model}} 无法容纳一个请求：{{reason}}",
+      "model_incomplete": "所选模型需同时指明其供应商和模型。",
       "no_adapter_for_source_type": "数据源类型 '{{source_type}}' 没有已注册的适配器",
       "no_live_connection": "数据源 '{{source_id}}' 没有活跃连接。MongoDB 架构发现需要连接池中存在活跃连接。请确认数据源已连接且服务器可达。",
+      "run_ended": "发现运行 {{run_id}} 已结束：{{status}}",
+      "run_not_found": "未找到发现运行 {{run_id}}",
       "schema_discovery_unsupported": "数据源类型 '{{source_type}}' 不支持架构发现。请手动定义列。",
       "semantics_unavailable": "无法运行语义推断：分配给关系推断的模型 {{model}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "table_id_required": "表范围需要 table_id",
-      "unknown_source_type": "未知数据源类型：{{type}}"
+      "table_unreadable": "发现无法读取表 {{table}}：{{reason}}。请将其从所选表中排除，或修正后重试。",
+      "unknown_source_type": "未知数据源类型：{{type}}",
+      "vendor_has_no_key": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"

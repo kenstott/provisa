@@ -140,6 +140,7 @@
   "tests/integration/test_direct_exec.py": 0.1,
   "tests/integration/test_direct_stream_bounded_memory.py": 100.7,
   "tests/integration/test_disconnect_cancels_statement.py": 270.0,
+  "tests/integration/test_discovery_count_demo_e2e.py": 60.0,
   "tests/integration/test_discovery_run_e2e.py": 60.0,
   "tests/integration/test_domain_delete_guarded.py": 69.6,
   "tests/integration/test_domain_policy_integration.py": 2.5,

@@ -16,30 +16,41 @@ A column's classes come from the table's latest profile run and the steward's de
 (REQ-2147); a table never profiled is classified during the run with the profiler's
 classification sample (:func:`provisa.profiler.run.classify_table`), and those classes are used
 for the run and not recorded. System domains are never included.
+
+A table's values are read as the profiler reads them: through the governed pipeline as the org
+admin, by the name the table is published under, so a view, an API table and a file are read the
+one way. A table that cannot be read stops the run, named (:class:`TableUnreadable`).
+
+A table that requires a parameter (REQ-1986) cannot give a row count and cannot be profiled. It
+is known from its registration (:func:`provisa.core.parameters.required_parameters` over its
+registered columns), before any read, and is never read: no profile is looked up for it, it is
+not classified and not sampled. It takes part on what is registered of it: its names and
+descriptions, its columns and their types, its tags, and its required parameters and their types.
 """
 
-# Requirements: REQ-413, REQ-2147
+# Requirements: REQ-413, REQ-1986, REQ-2147
 
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import select
 
-from provisa.compiler.naming import source_to_catalog
-from provisa.discovery.collector import _validate_ident
+from provisa.core.parameters import is_parameter, is_required, parameter_name, required_parameters
 from provisa.discovery.columns import (
+    NOT_READ,
     ColumnFacts,
     TableFacts,
     classes_of,
     type_groups,
 )
 from provisa.discovery.direction import Edge, Known, Sampled
-from provisa.federation.execution_auth import system_auth
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
+
+_T = TypeVar("_T")
 
 #: REQ-2147 (the new profiler's default, provisa-ui profilerMapping classification_sample): the
 #: non-null values per column a never-profiled table is classified from.
@@ -53,6 +64,46 @@ CONTEXT_SAMPLE_ROWS = 20
 CONTEXT_SAMPLE_VALUES = 5
 #: The bounded sample of a column read for repeated values when only it can choose a direction.
 UNIQUENESS_SAMPLE_ROWS = 500
+
+
+class TableUnreadable(Exception):
+    """A table of the run's sets could not be read: the table and why."""
+
+    def __init__(self, table: str, reason: str) -> None:
+        self.table = table
+        self.reason = reason
+        super().__init__(f"table {table!r} cannot be read: {reason}")
+
+
+async def _reading(table_name: str, read: Awaitable[_T]) -> _T:
+    """What one read of ``table_name`` answers. Whatever refuses or fails the read (its source
+    has no connection, is not bound in this environment, a row cap, a parameter its registration
+    does not record as required) is the table's, raised naming it: the one place a read's failure
+    is caught, so none reaches the caller unnamed."""
+    try:
+        return await read
+    except Exception as exc:  # noqa: BLE001 - whatever stopped the read, reported by table
+        raise TableUnreadable(table_name, str(exc) or type(exc).__name__) from exc
+
+
+def _published(state: Any, table_id: int, table_name: str) -> tuple[str, dict[str, str]]:
+    """The table as the org admin reads it: its quoted ``domain.table`` name, and each registered
+    column it can read by the name that column is published under."""
+    from provisa.profiler.run import ProfileError, resolve_target
+    from provisa.profiler.statement import qualified
+
+    try:
+        target = resolve_target(state, table_id, table_name, {})
+    except ProfileError as exc:
+        raise TableUnreadable(table_name, str(exc)) from exc
+    return qualified(target.pgwire_name), {c.physical: c.name for c in target.columns}
+
+
+async def _rows(table_name: str, sql: str) -> list[tuple]:
+    """The rows of one governed read of a table as the org admin (the profiler's read)."""
+    from provisa.profiler import run as profiler
+
+    return (await _reading(table_name, profiler._governed(sql)))[1]
 
 
 def _system_domains() -> frozenset[str]:
@@ -93,6 +144,40 @@ async def _table_tags(conn: "Connection", ids: list[int]) -> dict[int, list[str]
     for r in rows:
         out.setdefault(int(r.table_id), []).append(str(r.tag_id))
     return out
+
+
+async def _terms(conn: "Connection", ids: list[int]) -> dict[tuple[int, str], str]:
+    """The glossary term bound to each column, by (table id, registered column name)."""
+    from provisa.core.schema_org import glossary_term_refs as refs
+    from provisa.core.schema_org import glossary_terms as terms
+
+    rows = (
+        await conn.execute_core(
+            select(refs.c.table_id, refs.c.column_name, terms.c.name)
+            .join(terms, terms.c.id == refs.c.term_id)
+            .where(refs.c.table_id.in_(ids))
+        )
+    ).fetchall()
+    return {(int(r.table_id), str(r.column_name)): str(r.name) for r in rows}
+
+
+async def tables_requiring_a_parameter(conn: "Connection", ids: Sequence[int]) -> set[int]:
+    """Those of ``ids`` that require a parameter (REQ-1986), from their registered columns: the
+    tables discovery never reads, and whose suggestions were found on reduced information."""
+    from provisa.core.schema_org import table_columns as tc
+
+    rows = (
+        await conn.execute_core(
+            select(
+                tc.c.table_id,
+                tc.c.column_name,
+                tc.c.native_filter_type,
+                tc.c.native_filter_required,
+                tc.c.required_by_steward,
+            ).where(tc.c.table_id.in_(sorted(set(ids))))
+        )
+    ).fetchall()
+    return {int(r.table_id) for r in rows if required_parameters([dict(r._mapping)])}
 
 
 async def _decided(conn: "Connection", ids: list[int]) -> dict[tuple[int, str], set[str]]:
@@ -146,14 +231,17 @@ async def _profiled_classes(
 async def _classified_now(state: Any, table_id: int, table_name: str) -> dict[str, set[str]]:
     """A never-profiled table classified from the profiler's classification sample, recording
     nothing (REQ-2147)."""
-    from provisa.profiler.run import classify_table
+    from provisa.profiler import run as profiler
 
-    judged = await classify_table(
-        state,
-        table_id=table_id,
-        table_name=table_name,
-        values_per_column=VALUES_PER_COLUMN,
-        sample_above_cells=SAMPLE_ABOVE_CELLS,
+    judged = await _reading(
+        table_name,
+        profiler.classify_table(
+            state,
+            table_id=table_id,
+            table_name=table_name,
+            values_per_column=VALUES_PER_COLUMN,
+            sample_above_cells=SAMPLE_ABOVE_CELLS,
+        ),
     )
     return {j.physical: {m.kind.id for m in j.matches} for j in judged}
 
@@ -162,29 +250,20 @@ def _quote(name: str) -> str:
     return '"' + name.replace('"', '""') + '"'
 
 
-def _address(table: dict) -> str:
-    catalog = _validate_ident(source_to_catalog(table["source_id"]))
-    return (
-        f"{catalog}.{_validate_ident(table['schema_name'])}.{_validate_ident(table['table_name'])}"
-    )
-
-
-async def _engine_rows(engine: Any, sql: str) -> list:
-    result = await engine.execute_engine(
-        engine.address_replicas(sql), authorization=system_auth("discovery")
-    )
-    return list(result.rows)
-
-
-async def _samples(engine: Any, table: dict, columns: list[str]) -> dict[str, tuple[str, ...]]:
+async def _samples(
+    state: Any, table_id: int, table_name: str, columns: list[str]
+) -> dict[str, tuple[str, ...]]:
     """Up to :data:`CONTEXT_SAMPLE_VALUES` distinct non-null values of each column, from the
-    first :data:`CONTEXT_SAMPLE_ROWS` rows read."""
+    first :data:`CONTEXT_SAMPLE_ROWS` rows read. A column the org admin's relation does not hold
+    has none."""
     if not columns:
         return {}
-    cols = ", ".join(_quote(c) for c in columns)
-    rows = await _engine_rows(
-        engine, f"SELECT {cols} FROM {_address(table)} LIMIT {CONTEXT_SAMPLE_ROWS}"
-    )
+    relation, exposed = _published(state, table_id, table_name)
+    columns = [c for c in columns if c in exposed]
+    if not columns:
+        return {}
+    cols = ", ".join(_quote(exposed[c]) for c in columns)
+    rows = await _rows(table_name, f"SELECT {cols} FROM {relation} LIMIT {CONTEXT_SAMPLE_ROWS}")
     out: dict[str, list[str]] = {c: [] for c in columns}
     for row in rows:
         for name, value in zip(columns, row, strict=True):
@@ -243,6 +322,9 @@ async def table_facts(
                 tc.c.subtype,
                 tc.c.array_depth,
                 tc.c.is_primary_key,
+                tc.c.native_filter_type,
+                tc.c.native_filter_required,
+                tc.c.required_by_steward,
             )
             .where(tc.c.table_id.in_(id_list))
             .order_by(tc.c.table_id, tc.c.id)
@@ -252,23 +334,36 @@ async def table_facts(
     table_tags = await _table_tags(conn, id_list)
     column_tags = await effective_column_tags(conn, id_list)
     decided = await _decided(conn, id_list)
+    terms = await _terms(conn, id_list)
 
     out: list[TableFacts] = []
     for t in tables:
         tid = int(t["id"])
-        matched = await _profiled_classes(conn, tid, t["table_name"])
+        registered = columns.get(tid, [])
+        # REQ-1986: a table that requires a parameter gives no row count and no profile. It is
+        # known from its registration, here, and nothing below reads it.
+        reduced = bool(required_parameters(registered))
+        if reduced or not registered:
+            # A table with no registered column has nothing to classify or sample either.
+            matched: dict[str, set[str]] | None = {}
+        else:
+            matched = await _profiled_classes(conn, tid, t["table_name"])
         if matched is None:
             matched = await _classified_now(state, tid, t["table_name"])
         prepared = []
-        for c in columns.get(tid, []):
+        for c in registered:
             name = str(c["column_name"])
             groups = type_groups(
                 str(c["data_type"] or ""), subtype=c["subtype"], array_depth=int(c["array_depth"])
             )
-            classes = classes_of(matched.get(name, set()), decided.get((tid, name), set()))
-            prepared.append((c, name, groups, classes, _sensitive(classes)))
+            if reduced:
+                classes, sensitive = (NOT_READ,), False
+            else:
+                classes = classes_of(matched.get(name, set()), decided.get((tid, name), set()))
+                sensitive = _sensitive(classes)
+            prepared.append((c, name, groups, classes, sensitive))
         sampled = [name for _, name, groups, _, sensitive in prepared if groups and not sensitive]
-        samples = await _samples(state.federation_engine, t, sampled)
+        samples = {} if reduced else await _samples(state, tid, str(t["table_name"]), sampled)
         facts = tuple(
             ColumnFacts(
                 name=name,
@@ -280,6 +375,10 @@ async def table_facts(
                 samples=samples.get(name, ()),
                 is_primary_key=bool(c["is_primary_key"]),
                 groups=groups,
+                required_parameter=(
+                    parameter_name(c) if is_parameter(c) and is_required(c) else None
+                ),
+                term=terms.get((tid, name)),
             )
             for c, name, groups, classes, sensitive in prepared
         )
@@ -337,31 +436,24 @@ async def known(conn: "Connection") -> Known:
     )
 
 
-def uniqueness_reader(state: Any, rows: dict[int, dict]):
-    """A reader of a column's bounded sample for repeated values (REQ-413), ``rows`` the
-    registered rows of the run's tables by id."""
+def uniqueness_reader(state: Any):
+    """A reader of a column's bounded sample for repeated values (REQ-413). A column the org
+    admin's relation does not hold has a sample of no rows, as an empty table's column has. A
+    table that requires a parameter is never read (REQ-1986): the direction rules do not ask for
+    its sample, and asking is refused."""
 
     async def read(table: TableFacts, column: str) -> Sampled:
-        col = _quote(column)
-        values = await _engine_rows(
-            state.federation_engine,
-            f"SELECT {col} FROM {_address(rows[table.table_id])} WHERE {col} IS NOT NULL "
-            f"LIMIT {UNIQUENESS_SAMPLE_ROWS}",
+        if table.reduced:
+            raise TableUnreadable(table.table_name, "it requires a parameter and is never read")
+        relation, exposed = _published(state, table.table_id, table.table_name)
+        if column not in exposed:
+            return Sampled(rows=0, repeats=False)
+        col = _quote(exposed[column])
+        values = await _rows(
+            table.table_name,
+            f"SELECT {col} FROM {relation} WHERE {col} IS NOT NULL LIMIT {UNIQUENESS_SAMPLE_ROWS}",
         )
         seen = [r[0] for r in values]
         return Sampled(rows=len(seen), repeats=len(set(seen)) != len(seen))
 
     return read
-
-
-async def registered_rows(conn: "Connection", ids: Sequence[int]) -> dict[int, dict]:
-    from provisa.core.schema_org import registered_tables as rt
-
-    rows = (
-        await conn.execute_core(
-            select(
-                rt.c.id, rt.c.source_id, rt.c.domain_id, rt.c.schema_name, rt.c.table_name
-            ).where(rt.c.id.in_(sorted(set(ids))))
-        )
-    ).fetchall()
-    return {int(r.id): dict(r._mapping) for r in rows}

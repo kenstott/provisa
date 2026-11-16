@@ -149,14 +149,22 @@
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
+      "endpoint_has_no_key": "{{vendor}} 沒有金鑰：請設定環境變數 {{env}}。",
       "model_failed": "模型 {{model}} 失敗：{{error}}",
+      "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
+      "model_incomplete": "所選模型需同時指明其供應商和模型。",
       "no_adapter_for_source_type": "數據來源類型「{{source_type}}」沒有已註冊的配接器",
       "no_live_connection": "數據來源「{{source_id}}」沒有即時連線。MongoDB 結構描述探索需要來源集區中的作用中連線。請確認數據來源已連線且伺服器可連通。",
+      "run_ended": "探索執行 {{run_id}} 已結束：{{status}}",
+      "run_not_found": "找不到探索執行 {{run_id}}",
       "schema_discovery_unsupported": "數據來源類型「{{source_type}}」不支援結構描述探索。請手動定義欄位。",
       "semantics_unavailable": "無法執行語意推斷：指派給關係推斷的模型 {{model}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "table_id_required": "資料表範圍需要 table_id",
-      "unknown_source_type": "未知的數據來源類型：{{type}}"
+      "table_unreadable": "探索無法讀取資料表 {{table}}：{{reason}}。請將其從所選資料表中排除，或修正後重試。",
+      "unknown_source_type": "未知的數據來源類型：{{type}}",
+      "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"

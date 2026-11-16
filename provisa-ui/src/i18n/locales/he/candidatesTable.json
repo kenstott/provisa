@@ -27,6 +27,8 @@
     "acceptFailed_other": "לא ניתן היה לקבל {{count}} הצעות:",
     "rejectFailed": "לא ניתן היה לדחות הצעה {{count}}:",
     "rejectFailed_other": "לא ניתן היה לדחות {{count}} הצעות:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "מידע מצומצם: לא הושוו ערכים",
+    "reducedInformationHelp": "אחת מהטבלאות האלה דורשת פרמטר, ולכן היא לעולם אינה נקראת. הצעה זו מבוססת רק על שמות, תיאורים, סוגים ופרמטרים נדרשים."
   }
 }

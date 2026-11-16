@@ -149,14 +149,22 @@
       "elasticsearch_index_hint_required": "Elasticsearch discovery requires an 'index' hint.",
       "elasticsearch_mapping_failed": "Failed to read Elasticsearch mapping for index '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint already registered: {{error}}",
+      "endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
       "model_failed": "The model {{model}} failed: {{error}}",
+      "model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
+      "model_incomplete": "A chosen model names both its vendor and its model.",
       "no_adapter_for_source_type": "No adapter registered for source type '{{source_type}}'",
       "no_live_connection": "No live connection for source '{{source_id}}'. MongoDB schema discovery requires an active connection in the source pool. Verify the source is connected and the server is reachable.",
+      "run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+      "run_not_found": "Discovery run {{run_id}} not found",
       "schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
       "semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
-      "unknown_source_type": "Unknown source type: {{type}}"
+      "table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
+      "unknown_source_type": "Unknown source type: {{type}}",
+      "vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
+      "vendor_unknown": "{{vendor}} lists no models here; enter the model name."
     },
     "environments": {
       "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
