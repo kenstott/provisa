@@ -16,7 +16,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { TOUR_STEPS, stepRoute } from "../tour/tourSteps";
+import { TOUR_STEPS, showsRoute, stepRoute } from "../tour/tourSteps";
 
 describe("tour step route resolution", () => {
   it("resolves a route for every step index", () => {
@@ -38,5 +38,33 @@ describe("tour step route resolution", () => {
     for (const i of inherited) {
       expect(stepRoute(i)).toBe(stepRoute(i - 1));
     }
+  });
+});
+
+// REQ-2241: a page's open panel is in its URL. The page a route names is still the one shown with a
+// panel open, and a step continuing on it must not navigate to the bare route, closing the panel.
+describe("the page a step's route names", () => {
+  it("is shown with the parameters of a panel open beside the route's own", () => {
+    expect(
+      showsRoute(
+        "/tables?source=pet-store-sqlite",
+        "/tables",
+        "?source=pet-store-sqlite&table=296&section=quality",
+      ),
+    ).toBe(true);
+    expect(
+      showsRoute("/tables?source=pet-store-sqlite", "/tables", "?source=pet-store-sqlite"),
+    ).toBe(true);
+    expect(showsRoute("/sources", "/sources", "?expanded=3")).toBe(true);
+  });
+
+  it("is not shown on another path, or where a parameter the route names differs or is missing", () => {
+    expect(
+      showsRoute("/tables?source=pet-store-sqlite", "/views", "?source=pet-store-sqlite"),
+    ).toBe(false);
+    expect(
+      showsRoute("/tables?source=pet-store-sqlite", "/tables", "?source=dq-checker&table=302"),
+    ).toBe(false);
+    expect(showsRoute("/tables?source=pet-store-sqlite", "/tables", "?table=296")).toBe(false);
   });
 });

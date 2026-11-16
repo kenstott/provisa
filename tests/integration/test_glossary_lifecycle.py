@@ -16,7 +16,7 @@ table sweeps the orphaned terms, and an abstract term hanging on a departing ter
 the outcome from remove to deprecate — with relink reviving the SAME term row.
 """
 
-# Requirements: REQ-1387, REQ-1581
+# Requirements: REQ-1387, REQ-1581, REQ-2248
 
 from pathlib import Path
 
@@ -149,9 +149,10 @@ async def test_column_departure_removes_its_term_and_an_apply_departs_none(tenan
 
 
 @pytest.mark.asyncio(loop_scope="session")
-async def test_deleting_a_table_sweeps_its_terms_and_an_apply_removes_none(tenant_db):
-    """REQ-1919: an apply that no longer declares a table removes nothing, so its terms stay;
-    deleting the table (the model store's delete) sweeps them."""
+async def test_deleting_a_table_keeps_its_terms_and_an_apply_removes_none(tenant_db):
+    """REQ-1919: an apply that no longer declares a table removes nothing, so its terms stay.
+    REQ-2248: deleting the table (the model store's delete) retires it, and its links -- its
+    columns' terms -- are kept; no rule drops a link to a retired object."""
     async with tenant_db.acquire() as conn:
         await _load(conn, {"orders": ["cust_id"], "shipments": ["carrier_nm"]})
         assert "carrier name" in await _terms(conn)
@@ -159,9 +160,11 @@ async def test_deleting_a_table_sweeps_its_terms_and_an_apply_removes_none(tenan
         assert "carrier name" in await _terms(conn)
         shipments = await table_repo.find_by_table_name(conn, "shipments")
         assert shipments is not None
-        await table_repo.delete(conn, shipments["id"])
+        assert await table_repo.delete(conn, shipments["id"]) is True
+        retired = await table_repo.get(conn, shipments["id"])
         terms = await _terms(conn)
-    assert "carrier name" not in terms
+    assert retired is not None and retired["retired"] is True
+    assert terms["carrier name"]["ref_count"] == 1
     assert "customer" in terms
 
 

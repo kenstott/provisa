@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "Valore del tipo di relazione",
     "viaLabelSourceTable": "Nome della tabella",
     "viaLabelSourceFixed": "Alias Cypher",
-    "cardinalityOneToOne": "uno-a-uno"
+    "cardinalityOneToOne": "uno-a-uno",
+    "targetTypeResolver": "Resolver di codice",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "Una query di un'origine di codice che riceve la tabella di origine e quella di destinazione e restituisce una riga per corrispondenza.",
+    "resolverNone": "Nessuna query di un'origine di codice riceve due tabelle",
+    "sourceMatchLabel": "Colonna di corrispondenza con la chiave di origine",
+    "targetMatchLabel": "Colonna di corrispondenza con la chiave di destinazione"
   }
 }

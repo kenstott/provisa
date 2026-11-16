@@ -245,6 +245,7 @@ def _rel_from_row(row) -> RelationshipType:
         cypher_type=row["cypher_type"],
         disable_cypher=row.get("disable_cypher", False),
         same_entity=row["same_entity"],  # REQ-2141
+        code_resolver=row.get("code_resolver"),  # REQ-2249
         # REQ-1586: the junction declaration is part of the edge the UI reads back.
         via_table_id=row.get("via_table_id"),
         via_table_name=row.get("via_table_name"),
