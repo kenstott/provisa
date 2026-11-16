@@ -10,7 +10,7 @@
 
 import { useState } from "react";
 import type { ReactNode } from "react";
-import { Modal, Text } from "@mantine/core";
+import { Button, Modal, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { DestructiveConfirmButton } from "./form/DestructiveConfirmButton";
 import { FormFooter } from "./form/FormLayout";
@@ -26,10 +26,14 @@ interface Props {
   onCancel?: () => void;
   /** The action's own word, where "Confirm" does not say what it does. */
   confirmLabel?: string;
+  /** False: the non-destructive form, for an action that removes nothing (REQ-413, Accept all).
+   *  Its confirm is the filled primary button, not the red destructive one. */
+  destructive?: boolean;
   testId?: string;
 }
 
-/** Confirmation dialog for destructive actions with consequence summary (REQ-061).
+/** Confirmation dialog with consequence summary (REQ-061): destructive by default, or its
+ *  non-destructive form (`destructive={false}`, REQ-413).
  *  Backed by Mantine Modal for focus-trap, `role="dialog"`, aria-modal, ESC /
  *  overlay dismissal, and focus restoration on close (REQ-1013). */
 export function ConfirmDialog({
@@ -40,6 +44,7 @@ export function ConfirmDialog({
   opened,
   onCancel,
   confirmLabel,
+  destructive = true,
   testId,
 }: Props) {
   const { t } = useTranslation();
@@ -61,6 +66,9 @@ export function ConfirmDialog({
     }
   };
 
+  const label = loading ? t("common.processing") : (confirmLabel ?? t("common.confirm"));
+  const confirmTestId = testId ? `${testId}-confirm` : undefined;
+
   return (
     <>
       {children?.(() => setOwn(true))}
@@ -80,13 +88,29 @@ export function ConfirmDialog({
           onCancel={() => setOpen(false)}
           cancelProps={{ disabled: loading }}
           action={
-            <DestructiveConfirmButton
-              onClick={handleConfirm}
-              loading={loading}
-              testId={testId ? `${testId}-confirm` : undefined}
-            >
-              {loading ? t("common.processing") : (confirmLabel ?? t("common.confirm"))}
-            </DestructiveConfirmButton>
+            destructive ? (
+              <DestructiveConfirmButton
+                onClick={handleConfirm}
+                loading={loading}
+                testId={confirmTestId}
+              >
+                {label}
+              </DestructiveConfirmButton>
+            ) : (
+              <Button
+                variant="filled"
+                size="sm"
+                type="button"
+                onClick={handleConfirm}
+                loading={loading}
+                data-testid={confirmTestId}
+                data-tone="confirm"
+                // REQ-2115: it changes the model, so Polly asks the user first.
+                data-changes="true"
+              >
+                {label}
+              </Button>
+            )
           }
         />
       </Modal>

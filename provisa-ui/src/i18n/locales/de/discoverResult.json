@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "Fremdschlüssel: {{count}} gefunden.",
-    "foreignKeys_other": "Fremdschlüssel: {{count}} gefunden.",
+    "foreignKeys": "Fremdschlüssel: {{found}} gefunden, {{count}} vorgeschlagen.",
+    "foreignKeys_other": "Fremdschlüssel: {{found}} gefunden, {{count}} vorgeschlagen.",
     "semanticsFound": "Semantik: {{count}} Vorschlag.",
     "semanticsFound_other": "Semantik: {{count}} Vorschläge.",
     "semanticsUnreadable": "Semantik: keine. Die Antwort des Modells war nicht lesbar.",
     "semanticsNoneProposed": "Semantik: keine. Das Modell hat keine Beziehungen vorgeschlagen.",
-    "semanticsFiltered": "Semantik: von der {{count}} vom Modell vorgeschlagenen Beziehung wurde keine übernommen: {{why}}.",
-    "semanticsFiltered_other": "Semantik: von den {{count}} vom Modell vorgeschlagenen Beziehungen wurde keine übernommen: {{why}}.",
-    "belowThreshold": "{{count}} lag unter der Konfidenzschwelle von {{threshold}} %",
-    "belowThreshold_other": "{{count}} lagen unter der Konfidenzschwelle von {{threshold}} %",
-    "alreadyKnown": "{{count}} war bereits abgelehnt oder bereits vorhanden",
-    "alreadyKnown_other": "{{count}} waren bereits abgelehnt oder bereits vorhanden",
-    "invalid": "{{count}} nannte eine Tabelle oder Spalte, die es nicht gibt",
-    "invalid_other": "{{count}} nannten Tabellen oder Spalten, die es nicht gibt",
-    "semanticsCutShort": "Semantik: keine. Die Antwort des Modells endete an ihrer Längengrenze, bevor ein Vorschlag fertig war.",
-    "cutShortNote": "Die Antwort des Modells endete an ihrer Längengrenze; nur die fertigen Vorschläge wurden gelesen."
+    "semanticsBelowThreshold": "Semantik: keine. Jeder Vorschlag lag unter der Konfidenzschwelle von {{threshold}} %.",
+    "semanticsFiltered": "Semantik: keine. Jeder Vorschlag wurde ausgelassen, aus den unten genannten Gründen.",
+    "split": "{{count}} Anfrage wurde halbiert und erneut gestellt.",
+    "split_other": "{{count}} Anfragen wurden halbiert und erneut gestellt.",
+    "cutShort": "{{count}} Antwort endete an ihrem Längenlimit; die darin abgeschlossenen Vorschläge bleiben erhalten.",
+    "cutShort_other": "{{count}} Antworten endeten an ihrem Längenlimit; die darin abgeschlossenen Vorschläge bleiben erhalten.",
+    "failedRequest": "Eine Anfrage für Spalten vom Typ {{group}} ist fehlgeschlagen: {{error}}",
+    "leftOut": "Ausgelassen: {{list}}.",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "unter der Konfidenzschwelle von {{threshold}} %",
+      "invalid": "nennt eine Tabelle oder Spalte, die nicht existiert",
+      "same_column": "von einer Spalte zu sich selbst",
+      "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
+      "both_repeating": "Werte auf beiden Seiten wiederholt",
+      "existing": "bereits registriert",
+      "pending": "wartet bereits",
+      "rejected": "zuvor abgelehnt",
+      "matches_foreign_key": "entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
+      "out_of_scope": "außerhalb der gewählten Tabellen"
+    }
   }
 }

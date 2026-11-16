@@ -646,69 +646,215 @@ export async function fetchSdl(roleId: string): Promise<string> {
 const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
 
 /** The kinds of relationship discovery: foreign keys read from the sources' own constraints, and
- *  semantics inferred by the model assigned to relationship inference. */
+ *  semantics inferred by an AI model. */
 export type DiscoveryKind = "foreign_keys" | "semantics";
 
-/** Which kinds can run. Semantics needs the assigned model's own key; `reason` says why not. */
-export interface DiscoveryKinds {
-  foreign_keys: { available: true };
-  semantics: { available: boolean; model: string; reason: "no_key" | null };
+/** An /admin/discover error carrying the server's stable code (e.g. `discovery.vendor_unknown`). */
+export class DiscoveryError extends Error {
+  readonly status: number;
+  readonly code: string | null;
+  constructor(status: number, code: string | null, message: string) {
+    super(message);
+    this.name = "DiscoveryError";
+    this.status = status;
+    this.code = code;
+  }
 }
 
-/** What semantic inference found, and when it found none, why. */
+async function discoveryRequest<T>(path: string, label: string, init?: RequestInit): Promise<T> {
+  const resp = await fetch(`${API_BASE_RAW}/admin/discover${path}`, init);
+  if (!resp.ok) {
+    const body = (await resp.json().catch(() => ({ detail: resp.statusText }))) as {
+      code?: string;
+    };
+    throw new DiscoveryError(
+      resp.status,
+      typeof body.code === "string" ? body.code : null,
+      serverMessage(body as ServerMessageShape, requestFailed(label, resp.status)),
+    );
+  }
+  return resp.json() as Promise<T>;
+}
+
+const postJson = (body: unknown): RequestInit => ({
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify(body),
+});
+
+/** REQ-413: what a run looks at. A null table list is every table of the chosen domains; with
+ *  `target_same_as_source` the target fields are ignored. `vendor` and `model` are both given (a
+ *  model for this run only) or both null (the model assigned to relationship inference). */
+export interface DiscoveryScope {
+  kinds: DiscoveryKind[];
+  source_domains: string[];
+  source_tables: number[] | null;
+  target_same_as_source: boolean;
+  target_domains: string[];
+  target_tables: number[] | null;
+  vendor: string | null;
+  model: string | null;
+}
+
+/** Where a model's two limits come from: set by hand, the vendor's published figures, or the
+ *  default pair. */
+export type LimitsSource = "override" | "known" | "default";
+
+export interface DiscoveryModel {
+  vendor: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  limits_source: LimitsSource;
+}
+
+/** The Model select's start: the assigned model and every vendor with a key. */
+export interface DiscoveryModels {
+  assigned: (DiscoveryModel & { has_key: boolean }) | null;
+  vendors: string[];
+  semantics_available: boolean;
+}
+
+export interface ModelLimits {
+  vendor: string;
+  model: string;
+  input_tokens: number;
+  output_tokens: number;
+  source: LimitsSource;
+}
+
+/** The type groups columns are compared within. */
+export type TypeGroup =
+  | "whole_number"
+  | "decimal"
+  | "text"
+  | "uuid"
+  | "date"
+  | "timestamp"
+  | "timestamptz";
+
+/** About how many model requests a run of this scope makes, by type group. */
+export interface DiscoveryCount {
+  requests: number;
+  by_group: Partial<Record<TypeGroup, number>>;
+  suggestions_per_request?: number;
+  model: DiscoveryModel | null;
+  source_tables: number;
+  target_tables: number;
+}
+
+/** What semantic inference did in a run, and when it found none, why. */
 export interface SemanticsReport {
   suggested: number;
+  empty_reason: "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
+  requests_total: number;
+  requests_done: number;
+  split: number;
   proposed: number;
+  invalid: number;
   below_threshold: number;
   threshold: number;
-  already_known: number;
-  invalid: number;
-  empty_reason: "unreadable" | "cut_short" | "none_proposed" | "filtered" | null;
-  /** The model's answer stopped at its length limit before its list closed: what was suggested is
-   *  what it finished. */
-  cut_short: boolean;
+  cut_short: number;
+  unreadable: number;
+  failed: { group: TypeGroup; error: string }[];
+  stopped: boolean;
 }
 
-/** What a discovery run found: one entry per kind it was asked for. */
-export interface DiscoveryResult {
-  candidates_found: number;
+export type RemovedKind =
+  | "same_column"
+  | "primary_key_to_primary_key"
+  | "both_repeating"
+  | "existing"
+  | "pending"
+  | "rejected"
+  | "matches_foreign_key"
+  | "out_of_scope";
+
+/** A run's report once semantics is under way or the run has ended. */
+export interface DiscoveryReport {
+  suggestions: number;
   stored_ids: number[];
-  foreign_keys?: { found: number };
+  removed: Partial<Record<RemovedKind, number>>;
+  decided_by?: Record<string, number>;
+  foreign_keys?: { found: number; suggested: number };
   semantics?: SemanticsReport;
+  model?: DiscoveryModel;
 }
 
-export async function fetchDiscoveryKinds(): Promise<DiscoveryKinds> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/kinds`);
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(serverMessage(body, requestFailed("fetchDiscoveryKinds", resp.status)));
-  }
-  return resp.json();
+/** A run's report while it still reads its tables. */
+export interface DiscoveryReading {
+  phase: "reading";
+  tables_read: number;
+  tables_total: number;
 }
 
-/** Run the kinds of discovery asked for. A model that failed, or semantics asked for with no
- *  key for its model, is thrown with the server's words. */
-export async function discoverRelationships(
-  scope: string,
-  kinds: DiscoveryKind[],
-  tableId?: number,
-  domainId?: string,
-): Promise<DiscoveryResult> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/relationships`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      scope,
-      kinds,
-      table_id: tableId,
-      domain_id: domainId,
-    }),
-  });
-  if (!resp.ok) {
-    const body = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(serverMessage(body, requestFailed("Discovery", resp.status)));
-  }
-  return resp.json();
+export type DiscoveryRunStatus = "running" | "done" | "stopped" | "failed";
+
+export interface DiscoveryRun {
+  id: number;
+  status: DiscoveryRunStatus;
+  scope: DiscoveryScope;
+  model: string | null;
+  requests_total: number;
+  requests_done: number;
+  suggestions: number;
+  report: DiscoveryReport | DiscoveryReading | null;
+  error: string | null;
+  stop_requested: boolean;
+  stopped_by: string | null;
+  started_by: string | null;
+  started_at: string;
+  finished_at: string | null;
+}
+
+export function isReading(report: DiscoveryRun["report"]): report is DiscoveryReading {
+  return report !== null && "phase" in report && report.phase === "reading";
+}
+
+export function fetchDiscoveryModels(): Promise<DiscoveryModels> {
+  return discoveryRequest("/models", "Discovery models");
+}
+
+/** The models a vendor serves, read live from the vendor with the org's key. */
+export async function fetchVendorModels(vendor: string): Promise<string[]> {
+  const found = await discoveryRequest<{ models: string[] }>(
+    `/vendors/${encodeURIComponent(vendor)}/models`,
+    "Vendor models",
+  );
+  return found.models;
+}
+
+export function fetchModelLimits(vendor: string, model: string): Promise<ModelLimits> {
+  const q = new URLSearchParams({ vendor, model });
+  return discoveryRequest(`/limits?${q}`, "Model limits");
+}
+
+export function countDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryCount> {
+  return discoveryRequest("/runs/count", "Discovery count", postJson(scope));
+}
+
+export async function startDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryRun> {
+  return (await discoveryRequest<{ run: DiscoveryRun }>("/runs", "Discovery", postJson(scope))).run;
+}
+
+export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
+  return (await discoveryRequest<{ run: DiscoveryRun }>(`/runs/${id}`, "Discovery run")).run;
+}
+
+/** The latest runs, newest first. */
+export async function fetchDiscoveryRuns(limit: number): Promise<DiscoveryRun[]> {
+  return (
+    await discoveryRequest<{ runs: DiscoveryRun[] }>(`/runs?limit=${limit}`, "Discovery runs")
+  ).runs;
+}
+
+/** Stop after the request in flight; what was found is kept. */
+export async function stopDiscoveryRun(id: number): Promise<DiscoveryRun> {
+  return (
+    await discoveryRequest<{ run: DiscoveryRun }>(`/runs/${id}/stop`, "Stop discovery", {
+      method: "POST",
+    })
+  ).run;
 }
 
 export async function fetchCandidates(): Promise<unknown[]> {

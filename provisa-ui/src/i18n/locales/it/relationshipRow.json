@@ -43,6 +43,11 @@
     "parameterNotFed": "Non alimentato",
     "sameEntity": "Stessa entità",
     "sameEntityHint": "Le righe unite sono la stessa cosa: un termine ancora entrambe le tabelle, unite 1:1 su chiavi",
-    "cardinalityOneToOne": "uno-a-uno"
+    "cardinalityOneToOne": "uno-a-uno",
+    "resolverNote": "Parte del resolver di codice {{resolver}}. La sua vista delle corrispondenze e le sue tre relazioni vengono modificate e ritirate insieme.",
+    "changeResolver": "Modifica resolver di codice",
+    "retireResolver": "Ritira resolver di codice",
+    "retireResolverTitle": "Ritirare il resolver di codice {{resolver}}?",
+    "retireResolverConsequence": "La sua vista delle corrispondenze e le sue tre relazioni vengono ritirate insieme. I loro nomi restano occupati."
   }
 }

@@ -382,6 +382,8 @@ registered_tables = Table(
     Column("promotions", JSON, nullable=False, default=list, server_default="[]"),  # REQ-119
     Column("query_template", Text),  # REQ-1668/1683: neo4j / sparql tables
     Column("relay_pagination", Boolean),  # NULL = inherit
+    # REQ-2249: the code resolver set this view is the bridge of (its id), else None.
+    Column("code_resolver", Text),
     # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
     *_retirement(),
     UniqueConstraint("source_id", "schema_name", "table_name"),
@@ -490,6 +492,8 @@ relationships = Table(
     # REQ-351: the effective names, derived and stored once (core.relationship_names).
     Column("cypher_type", Text),
     Column("graphql_field", Text),
+    # REQ-2249: the code resolver set this relationship belongs to (its id), else None.
+    Column("code_resolver", Text),
     # REQ-2248: deleting it retires it, as a term is retired: why, who, when (schema.sql).
     *_retirement(),
     Column("tenant_id", Uuid),
@@ -2653,6 +2657,35 @@ glossary_term_scans = Table(
     Column("tenant_id", Uuid),
     CheckConstraint(
         "status IN ('running', 'done', 'failed')", name="glossary_term_scans_status_check"
+    ),
+)
+
+# REQ-413: a relationship discovery run in the background -- running, then done, stopped (a person
+# pressed Stop: the request in flight finished and what was found is kept) or failed with why. Its
+# row is what every worker reads: progress is written after each request, Stop is asked on it, and
+# the worker running the run checks it before each request (provisa/discovery/runs.py).
+discovery_runs = Table(
+    "discovery_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("status", Text, nullable=False),  # running | done | stopped | failed
+    Column("scope", Text, nullable=False),  # JSON: the kinds, model and sets asked for
+    Column("model", Text, nullable=True),  # vendor:model when semantics was asked
+    Column("requests_total", Integer, nullable=False, server_default="0"),
+    Column("requests_done", Integer, nullable=False, server_default="0"),
+    Column("suggestions", Integer, nullable=False, server_default="0"),
+    Column("report", Text, nullable=True),  # JSON: what each kind found so far
+    Column("error", Text, nullable=True),
+    Column("stop_requested", Boolean, nullable=False, server_default=false()),
+    Column("stopped_by", Text, nullable=True),
+    Column("started_by", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    Column("launch", Text, nullable=True),
+    Column("progress_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "status IN ('running', 'done', 'stopped', 'failed')", name="discovery_runs_status_check"
     ),
 )
 

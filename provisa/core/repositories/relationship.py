@@ -13,6 +13,7 @@
 # Requirements: REQ-018, REQ-019, REQ-020, REQ-399, REQ-400
 
 from provisa.core import model_change, model_uri
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from typing import TYPE_CHECKING
 
 from sqlalchemy import delete as _delete, func, or_, select, update
@@ -52,17 +53,20 @@ class ReservedRelationshipPrefix(ValueError):
 
 
 def reserved_prefix_of(rel_id: str) -> str | None:
-    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the seed's
-    own, from the one definition the seed's removal of undeclared rows uses."""
-    from provisa.api._meta_seed import seed_relationship_id_prefixes
-
-    return next((p for p in seed_relationship_id_prefixes() if rel_id.startswith(p)), None)
+    """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the one
+    definition in core that the seed's removal of undeclared rows uses too."""
+    return next((p for p in BUILTIN_RELATIONSHIP_ID_PREFIXES if rel_id.startswith(p)), None)
 
 
 async def upsert(
-    conn: "Connection", rel: Relationship
-) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-1919
+    conn: "Connection", rel: Relationship, *, derive_target_key: bool = True
+) -> None:  # REQ-019, REQ-020, REQ-399, REQ-400, REQ-413, REQ-1919
     """Upsert a relationship. Resolves table names to registered_tables IDs.
+
+    The source column is marked a foreign key. ``derive_target_key`` also marks a many-to-one or
+    one-to-one target column the target's primary key (or an alternate key where the table has
+    another): an accepted discovery suggestion passes False, marking the foreign key alone
+    (REQ-413: no column is marked a key from a sample or an accepted suggestion).
 
     Refuses (:class:`ReservedRelationshipPrefix`) an id with a built-in prefix: the seed writes
     its own relationships directly (``startup_seed._seed_meta_relationships``) and is the only
@@ -213,7 +217,8 @@ async def upsert(
     from provisa.core.models import Cardinality
 
     if (
-        target_tbl_id
+        derive_target_key
+        and target_tbl_id
         and rel.target_column
         and rel.cardinality
         in (

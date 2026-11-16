@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "विदेशी कुंजियाँ: {{count}} मिली।",
-    "foreignKeys_other": "विदेशी कुंजियाँ: {{count}} मिलीं।",
+    "foreignKeys": "विदेशी कुंजियाँ: {{found}} मिलीं, {{count}} सुझाई गई।",
+    "foreignKeys_other": "विदेशी कुंजियाँ: {{found}} मिलीं, {{count}} सुझाई गईं।",
     "semanticsFound": "सिमेंटिक्स: {{count}} सुझाव।",
     "semanticsFound_other": "सिमेंटिक्स: {{count}} सुझाव।",
     "semanticsUnreadable": "सिमेंटिक्स: कोई नहीं। मॉडल का उत्तर पढ़ा नहीं जा सका।",
     "semanticsNoneProposed": "सिमेंटिक्स: कोई नहीं। मॉडल ने कोई संबंध प्रस्तावित नहीं किया।",
-    "semanticsFiltered": "सिमेंटिक्स: मॉडल द्वारा प्रस्तावित {{count}} संबंध नहीं रखा गया: {{why}}।",
-    "semanticsFiltered_other": "सिमेंटिक्स: मॉडल द्वारा प्रस्तावित {{count}} संबंधों में से कोई नहीं रखा गया: {{why}}।",
-    "belowThreshold": "{{count}} {{threshold}}% विश्वास सीमा से नीचे था",
-    "belowThreshold_other": "{{count}} {{threshold}}% विश्वास सीमा से नीचे थे",
-    "alreadyKnown": "{{count}} पहले ही अस्वीकृत या पहले से मौजूद था",
-    "alreadyKnown_other": "{{count}} पहले ही अस्वीकृत या पहले से मौजूद थे",
-    "invalid": "{{count}} ने ऐसी तालिका या कॉलम का नाम लिया जो मौजूद नहीं है",
-    "invalid_other": "{{count}} ने ऐसी तालिकाओं या कॉलमों के नाम लिए जो मौजूद नहीं हैं",
-    "semanticsCutShort": "सिमेंटिक्स: कोई नहीं। मॉडल का उत्तर कोई सुझाव पूरा करने से पहले अपनी लंबाई सीमा पर रुक गया।",
-    "cutShortNote": "मॉडल का उत्तर अपनी लंबाई सीमा पर रुक गया, इसलिए केवल पूरे हुए सुझाव पढ़े गए।"
+    "semanticsBelowThreshold": "सिमेंटिक्स: कोई नहीं। हर सुझाव {{threshold}}% विश्वास सीमा से नीचे था।",
+    "semanticsFiltered": "सिमेंटिक्स: कोई नहीं। हर सुझाव नीचे दिए कारणों से छोड़ दिया गया।",
+    "split": "{{count}} अनुरोध को आधा बाँटकर फिर से भेजा गया।",
+    "split_other": "{{count}} अनुरोधों को आधा बाँटकर फिर से भेजा गया।",
+    "cutShort": "{{count}} उत्तर अपनी लंबाई सीमा पर रुक गया; उसके पूरे किए गए सुझाव रखे गए हैं।",
+    "cutShort_other": "{{count}} उत्तर अपनी लंबाई सीमा पर रुक गए; उनके पूरे किए गए सुझाव रखे गए हैं।",
+    "failedRequest": "{{group}} कॉलमों के लिए एक अनुरोध विफल रहा: {{error}}",
+    "leftOut": "छोड़े गए: {{list}}।",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "{{threshold}}% विश्वास सीमा से नीचे",
+      "invalid": "ऐसी तालिका या कॉलम का नाम जो मौजूद नहीं है",
+      "same_column": "किसी कॉलम से उसी कॉलम तक",
+      "primary_key_to_primary_key": "प्राथमिक कुंजी से प्राथमिक कुंजी",
+      "both_repeating": "दोनों ओर दोहराए गए मान",
+      "existing": "पहले से पंजीकृत",
+      "pending": "पहले से प्रतीक्षा में",
+      "rejected": "पहले अस्वीकृत",
+      "matches_foreign_key": "इस रन में मिली विदेशी कुंजी से मेल खाते",
+      "out_of_scope": "चुनी गई तालिकाओं से बाहर"
+    }
   }
 }

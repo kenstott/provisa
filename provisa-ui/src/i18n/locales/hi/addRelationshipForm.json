@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "संबंध प्रकार मान",
     "viaLabelSourceTable": "तालिका का नाम",
     "viaLabelSourceFixed": "Cypher उपनाम",
-    "cardinalityOneToOne": "one-to-one"
+    "cardinalityOneToOne": "one-to-one",
+    "targetTypeResolver": "कोड रिज़ॉल्वर",
+    "resolverLabel": "रिज़ॉल्वर",
+    "resolverHelp": "कोड स्रोत की एक क्वेरी जो स्रोत तालिका और लक्ष्य तालिका लेती है और हर मिलान के लिए एक पंक्ति लौटाती है।",
+    "resolverNone": "कोड स्रोत की कोई क्वेरी दो तालिकाएँ नहीं लेती",
+    "sourceMatchLabel": "स्रोत कुंजी रखने वाला मिलान कॉलम",
+    "targetMatchLabel": "लक्ष्य कुंजी रखने वाला मिलान कॉलम"
   }
 }

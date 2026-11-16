@@ -1,20 +1,31 @@
 {
   "discoverResult": {
-    "foreignKeys": "Foreign keys: {{count}} found.",
-    "foreignKeys_other": "Foreign keys: {{count}} found.",
+    "foreignKeys": "Foreign keys: {{found}} found, {{count}} suggested.",
+    "foreignKeys_other": "Foreign keys: {{found}} found, {{count}} suggested.",
     "semanticsFound": "Semantics: {{count}} suggestion.",
     "semanticsFound_other": "Semantics: {{count}} suggestions.",
     "semanticsUnreadable": "Semantics: none. The model's answer could not be read.",
     "semanticsNoneProposed": "Semantics: none. The model proposed no relationships.",
-    "semanticsFiltered": "Semantics: none kept of the {{count}} relationship the model proposed: {{why}}.",
-    "semanticsFiltered_other": "Semantics: none kept of the {{count}} relationships the model proposed: {{why}}.",
-    "belowThreshold": "{{count}} was below the {{threshold}}% confidence threshold",
-    "belowThreshold_other": "{{count}} were below the {{threshold}}% confidence threshold",
-    "alreadyKnown": "{{count}} was already rejected or already present",
-    "alreadyKnown_other": "{{count}} were already rejected or already present",
-    "invalid": "{{count}} named a table or column that does not exist",
-    "invalid_other": "{{count}} named tables or columns that do not exist",
-    "semanticsCutShort": "Semantics: none. The model's answer stopped at its length limit before it finished a suggestion.",
-    "cutShortNote": "The model's answer stopped at its length limit, so only the suggestions it finished were read."
+    "semanticsBelowThreshold": "Semantics: none. Every suggestion was below the {{threshold}}% confidence threshold.",
+    "semanticsFiltered": "Semantics: none. Every suggestion was left out, for the reasons below.",
+    "split": "{{count}} request was split in half and asked again.",
+    "split_other": "{{count}} requests were split in half and asked again.",
+    "cutShort": "{{count}} answer stopped at its length limit; the suggestions it finished are kept.",
+    "cutShort_other": "{{count}} answers stopped at their length limit; the suggestions they finished are kept.",
+    "failedRequest": "A request for {{group}} columns failed: {{error}}",
+    "leftOut": "Left out: {{list}}.",
+    "leftOutItem": "{{label}} ({{count}})",
+    "removed": {
+      "below_threshold": "below the {{threshold}}% confidence threshold",
+      "invalid": "naming a table or column that does not exist",
+      "same_column": "from a column to itself",
+      "primary_key_to_primary_key": "primary key to primary key",
+      "both_repeating": "values repeated on both sides",
+      "existing": "already registered",
+      "pending": "already waiting",
+      "rejected": "rejected before",
+      "matches_foreign_key": "matching a foreign key found in this run",
+      "out_of_scope": "outside the chosen tables"
+    }
   }
 }

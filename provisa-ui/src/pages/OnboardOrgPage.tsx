@@ -226,7 +226,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await redeemInvite(token);
-      await enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -260,7 +260,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await acceptAutoJoin(orgId);
-      await enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");
@@ -430,7 +430,7 @@ export function OnboardOrgPage() {
     setPhase("joining");
     try {
       const { org_id } = await redeemInvite(invite.trim());
-      await enterOrg(org_id, "/query");
+      await enterOrg(org_id, "/");
     } catch (err) {
       setError(err instanceof Error ? err.message : t("onboardOrg.joinFailed"));
       setPhase("form");

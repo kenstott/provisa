@@ -19,6 +19,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 
+from provisa.core.builtin_relationship_prefix import BUILTIN_RELATIONSHIP_ID_PREFIXES
 from provisa.core.glossary import TERM_EDGE_TYPES
 
 _ADMIN = "provisa-admin"
@@ -1503,8 +1504,8 @@ def undeclared_seed_relationship_ids(held_ids: Iterable[str]) -> list[str]:
     versions (``meta:data_products:registered_tables`` -> ``meta:data_products:member_tables``)
     leaves the old row behind, and that row still holds the edge's ``(source_table_id, alias)``,
     so the new id's insert is refused (``relationships_source_alias_unique``) and the boot stops.
-    A row is the seed's own when its id carries a prefix the declared ids carry (``meta:``,
-    ``ontology:``, derived from the declared set, never listed twice); a relationship a person
+    A row is the seed's own when its id carries a built-in prefix (``meta:``, ``ontology:``,
+    defined once in core); a relationship a person
     made carries no such id and is never returned. Sorted, for a deterministic removal order.
     """
     declared = _declared_relationship_ids()
@@ -1517,6 +1518,6 @@ def _declared_relationship_ids() -> set[str]:
 
 
 def seed_relationship_id_prefixes() -> tuple[str, ...]:
-    """The id prefixes of the seed's own relationships (``meta:``, ``ontology:``): those its
-    declared ids carry, sorted."""
-    return tuple(sorted({rid.split(":", 1)[0] + ":" for rid in _declared_relationship_ids()}))
+    """The id prefixes of the seed's own relationships (``meta:``, ``ontology:``), sorted; defined
+    once in core, where the relationship repository refuses them."""
+    return tuple(sorted(BUILTIN_RELATIONSHIP_ID_PREFIXES))
