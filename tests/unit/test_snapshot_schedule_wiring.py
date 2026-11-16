@@ -47,6 +47,7 @@ def _table_input(**overrides):
         mv_persist="replace",
         mv_primary_key=[],
         mv_incremental=False,
+        mv_rebuild_every=None,  # REQ-2249
         mv_calendar=None,
         mv_grain=None,
         mv_allowed_lateness=0.0,

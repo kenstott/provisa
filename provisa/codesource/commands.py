@@ -33,6 +33,7 @@ from typing import Any
 from provisa.api.errors import ApiError
 from provisa.otel_compat import MintedSession
 from provisa.codesource.manifest import (
+    CHANGE,
     COMMAND,
     COMMANDS,
     Anonymous,
@@ -152,6 +153,21 @@ async def registration(
     return command_kind(export), arguments, outputs
 
 
+async def change_of(state: Any, source_id: str, table: str) -> tuple[Export, Manifest] | None:
+    """REQ-2249: the source's ``@change`` function keeping ``table`` fresh, found by that name,
+    with the manifest it was read in; None when the source declares none for it."""
+    prepared = await _prepared(state, source_id, table)
+    export = next(
+        (
+            e
+            for e in prepared.manifest.exports
+            if e.kind == CHANGE and e.change is not None and e.change.table == table
+        ),
+        None,
+    )
+    return None if export is None else (export, prepared.manifest)
+
+
 def _rows(value: Any, export: Export, manifest: Manifest) -> list[dict]:
     """A call's result as rows: the rows it returned, its one object, or its value under
     ``result``; no rows when it returned nothing."""
@@ -171,7 +187,10 @@ async def run(state: Any, command: dict, payload: dict, session: MintedSession) 
 
     function = command["function_name"]
     prepared = await _prepared(state, command["source_id"], function)
-    export = _export(prepared.manifest, function)
+    # REQ-2249: a @change function is called as a command is, by the view it keeps fresh.
+    export = _export(prepared.manifest, function) or next(
+        (e for e in prepared.manifest.exports if e.name == function and e.kind == CHANGE), None
+    )
     if export is None:
         raise CodeCommandRefused(
             function,

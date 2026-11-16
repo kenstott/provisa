@@ -488,3 +488,38 @@ def test_rust_rules_take_an_iterator_as_a_stream_and_no_standard_tags():
         read_manifest(raw, RUST_RULES)
     raw["exports"].pop()
     assert read_manifest(raw, RUST_RULES).export("ticks").returns == Named("Row")
+
+
+def test_a_change_function_is_read_with_its_declaration(reader, toolchain, tmp_path):
+    """REQ-2249: Rust reads the @change lines of a doc comment, each a tag with its argument, and
+    the manifest carries what they state."""
+    from provisa.codesource.manifest import Change
+
+    code = _crate(
+        tmp_path,
+        """
+        use serde::{Deserialize, Serialize};
+
+        #[derive(Deserialize)]
+        pub struct TableRef<T> { pub name: String, #[serde(skip)] pub row: Option<T> }
+
+        #[derive(Serialize, Deserialize)]
+        pub struct Store { pub id: i64 }
+
+        #[derive(Serialize, Deserialize)]
+        pub struct Changed { pub store_id: i64, pub region_id: i64, pub removed: bool, pub seq: i64 }
+
+        /// What changed since the cursor.
+        /// @change table=store_regions
+        /// @change key=store_id,region_id
+        /// @change removed=removed
+        /// @change cursor=seq
+        pub fn store_regions_changes(
+            stores: TableRef<Store>, regions: TableRef<Store>, since: Option<i64>,
+        ) -> Vec<Changed> { vec![] }
+        """,
+    )
+    export = _read(reader, toolchain, code).export("store_regions_changes")
+    assert export.kind == "change"
+    assert export.change == Change("store_regions", ("store_id", "region_id"), "removed", "seq")
+    assert [p.name for p in export.parameters] == ["stores", "regions", "since"]

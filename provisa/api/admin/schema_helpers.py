@@ -560,6 +560,7 @@ async def _fetch_table_with_columns(
         mv_persist=row.get("mv_persist") or "replace",  # REQ-965
         mv_primary_key=list(row.get("mv_primary_key") or []),  # REQ-970
         mv_incremental=bool(row.get("mv_incremental", False)),  # REQ-969
+        mv_rebuild_every=row.get("mv_rebuild_every"),  # REQ-2249
         mv_calendar=row.get("mv_calendar"),  # REQ-962
         mv_grain=row.get("mv_grain"),  # REQ-962/1168
         mv_allowed_lateness=float(row.get("mv_allowed_lateness") or 0.0),  # REQ-961
