@@ -10667,5 +10667,10 @@
   "pt/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "pt/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "pt/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "pt/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "pt/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "pt/userProfileModal.json::userProfileModal.patRoles": "Roles",
+  "pt/userProfileModal.json::userProfileModal.patRolesHelp": "The token can act only as the roles you pick here, and only while you hold them.",
+  "pt/userProfileModal.json::userProfileModal.patRolesPlaceholder": "Pick roles",
+  "pt/serverErrors.json::serverErrors.auth.token_scopes_required": "Pick at least one role for the token.",
+  "pt/serverErrors.json::serverErrors.auth.token_scope_not_held": "A token can use only roles you hold."
 }

@@ -41,7 +41,9 @@
       "role_not_assigned": "A função '{{role_id}}' não está atribuída a este usuário",
       "simple_provider_not_configured": "Provedor de autenticação simples não configurado",
       "username_exists": "Nome de usuário já existe",
-      "not_permitted": "Não permitido"
+      "not_permitted": "Não permitido",
+      "token_scopes_required": "Escolha pelo menos uma função para o token.",
+      "token_scope_not_held": "Um token só pode usar funções que você tem."
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"

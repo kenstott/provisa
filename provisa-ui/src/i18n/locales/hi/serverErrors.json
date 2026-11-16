@@ -41,7 +41,9 @@
       "role_not_assigned": "भूमिका '{{role_id}}' इस उपयोगकर्ता को असाइन नहीं है",
       "simple_provider_not_configured": "Simple ऑथ प्रोवाइडर कॉन्फ़िगर नहीं है",
       "username_exists": "यूज़रनेम पहले से मौजूद है",
-      "not_permitted": "अनुमति नहीं"
+      "not_permitted": "अनुमति नहीं",
+      "token_scopes_required": "टोकन के लिए कम से कम एक भूमिका चुनें।",
+      "token_scope_not_held": "टोकन केवल उन्हीं भूमिकाओं का उपयोग कर सकता है जो आपके पास हैं।"
     },
     "authz": {
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"

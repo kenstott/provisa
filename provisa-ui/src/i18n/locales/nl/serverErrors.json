@@ -41,7 +41,9 @@
       "role_not_assigned": "Rol '{{role_id}}' is niet aan deze gebruiker toegewezen",
       "simple_provider_not_configured": "Simple-authenticatieprovider niet geconfigureerd",
       "username_exists": "Gebruikersnaam bestaat al",
-      "not_permitted": "Niet toegestaan"
+      "not_permitted": "Niet toegestaan",
+      "token_scopes_required": "Kies ten minste één rol voor het token.",
+      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt."
     },
     "authz": {
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"
