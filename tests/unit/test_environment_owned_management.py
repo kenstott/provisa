@@ -53,7 +53,8 @@ def plane(monkeypatch):
 
     def request(user: str, *rights: str):
         held[user] = set(rights)
-        return SimpleNamespace(user=user)
+        # bound to acme, the org every test here acts in: a right is read in the path's org
+        return SimpleNamespace(user=user, state=SimpleNamespace(active_org_id="acme"))
 
     return request
 
