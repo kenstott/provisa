@@ -100,11 +100,13 @@ def test_a_remote_caller_may_switch_to_what_its_token_holds_and_its_derived_role
     )
     i_token = server._request_identity.set(identity)
     r_token = server._request_role.set("analyst")
+    m_token = server._request_may_name.set(["analyst"])
     try:
         held = server.switchable_roles(state)
     finally:
         server._request_identity.reset(i_token)
         server._request_role.reset(r_token)
+        server._request_may_name.reset(m_token)
     assert held == {"analyst", "region", "region__eu"}
     assert "steward" not in held
 

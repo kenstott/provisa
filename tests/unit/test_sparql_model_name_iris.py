@@ -135,6 +135,25 @@ def test_a_table_without_an_alias_is_named_by_its_table_name():
     assert _table_classes(_label_map(alias=None)) == {table_class_iri(BASE, "hr", "persons")}
 
 
+def test_a_table_the_model_reads_through_a_view_is_named_by_its_registered_name():
+    """The meta domain's tables are read through views (domains through domains_meta): the view
+    is the relation read, never the model name."""
+    import dataclasses
+
+    from provisa.compiler.context import build_context
+
+    si = dataclasses.replace(
+        _schema_input("domains", None, "LegalName", "legal_name"),
+        physical_table_map={"domains": "domains_meta"},
+    )
+    lm = CypherLabelMap.from_schema(build_context(si), domain_access=["*"])
+    vocab = _vocab(lm)
+    assert set(vocab.classes) == {table_class_iri(BASE, "hr", "domains")}
+    assert column_iri(BASE, "hr", "domains", "legal_name") in vocab.columns
+    (node,) = lm.nodes.values()
+    assert (node.physical_table_name or node.table_name) == "domains_meta"  # still what is read
+
+
 # -- the predicate IRI of a column --
 
 

@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "输入 {{userId}} 以确认",
     "deleteAccountButton": "删除我的账号",
     "patEnvironment": "环境",
-    "patEnvironmentHelp": "令牌仅在一个环境中有效：即签发时您正在查看的环境。新令牌将在 {{env}} 中有效。"
+    "patEnvironmentHelp": "令牌仅在一个环境中有效：即签发时您正在查看的环境。新令牌将在 {{env}} 中有效。",
+    "patRoles": "角色",
+    "patRolesHelp": "令牌只能以您在此选择的角色执行操作,且仅在您拥有这些角色期间有效。",
+    "patRolesPlaceholder": "选择角色"
   }
 }

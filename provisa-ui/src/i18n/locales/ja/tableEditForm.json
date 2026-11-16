@@ -287,6 +287,8 @@
     "holdOnFailingChecksShowCode": "コードを表示",
     "holdOnFailingChecksHideCode": "コードを非表示",
     "holdOnFailingChecksCodeHelp": "このオプションが適用するチェックです。変更するには上のプリフライトチェックにコピーしてください。",
-    "discoverHint": "保存すると、ライブソースの列を読み取り、このテーブルにない列を追加します。既存の列はそのままです。追加された列は、付与されるまでどのロールにも表示されません。"
+    "discoverHint": "保存すると、ライブソースの列を読み取り、このテーブルにない列を追加します。既存の列はそのままです。追加された列は、付与されるまでどのロールにも表示されません。",
+    "mvRebuildEveryLabel": "全体の再ビルド間隔 (秒)",
+    "mvRebuildEveryHelp": "ビュー全体を再計算する頻度です。コードソースの @change 関数で維持されるビューでは必須です。"
   }
 }

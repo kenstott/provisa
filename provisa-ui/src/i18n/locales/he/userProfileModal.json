@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "יש להקליד {{userId}} לאישור",
     "deleteAccountButton": "מחיקת החשבון שלי",
     "patEnvironment": "סביבה",
-    "patEnvironmentHelp": "אסימון פועל בסביבה אחת: זו שבה צפיתם כשהנפקתם אותו. אסימון חדש יפעל ב-{{env}}."
+    "patEnvironmentHelp": "אסימון פועל בסביבה אחת: זו שבה צפיתם כשהנפקתם אותו. אסימון חדש יפעל ב-{{env}}.",
+    "patRoles": "תפקידים",
+    "patRolesHelp": "האסימון יכול לפעול רק בתפקידים שתבחרו כאן, ורק כל עוד הם ברשותכם.",
+    "patRolesPlaceholder": "בחרו תפקידים"
   }
 }
