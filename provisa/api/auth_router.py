@@ -693,9 +693,15 @@ async def register(body: RegisterRequest, request: Request):
     )
     if authenticated:
         from provisa.api.admin.capabilities import require_capability_request
+        from provisa.core.request_context import current_org
         from provisa.security.rights import Capability
 
-        require_capability_request(request, Capability.USER_MANAGEMENT.value)
+        right = Capability.USER_MANAGEMENT.value
+        # A right is held in an org. On a deployment of many, a request that names none acts in
+        # none (/auth/ is served without one), so its caller holds user_management nowhere.
+        if state.multitenancy and current_org.get() is None:
+            raise ApiError(403, "auth.missing_capability", f"Missing capability: {right!r}")
+        require_capability_request(request, right)
 
     import datetime
     from datetime import timezone

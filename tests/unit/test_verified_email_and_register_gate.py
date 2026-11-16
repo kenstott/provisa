@@ -207,6 +207,8 @@ def basic_deployment(monkeypatch):
     )
     monkeypatch.setattr(state, "roles", _ROLE_RIGHTS, raising=False)
     monkeypatch.setattr(state, "admin_db", _ControlPlane(), raising=False)
+    monkeypatch.setattr(state, "multitenancy", False, raising=False)
+    return state
 
 
 @pytest.mark.parametrize(
@@ -231,3 +233,24 @@ def test_a_signed_in_user_manager_passes_the_gate(basic_deployment):
     created against a real control plane in tests/integration/test_register_env_redemption_failure.py)."""
     with TestClient(_app("org_admin")) as client, pytest.raises(_ReachedTheControlPlane):
         client.post("/auth/register", json={"username": "second", "password": "pw-pw-pw"})
+
+
+def test_on_a_deployment_of_many_orgs_a_register_naming_no_org_holds_the_right_nowhere(
+    basic_deployment, monkeypatch
+):
+    """A right is held in an org. A signed-in register that names none acts in none, so even a
+    caller who administers some org is refused there, as any missing right is."""
+    from provisa.core.request_context import current_org
+
+    monkeypatch.setattr(basic_deployment, "multitenancy", True)
+    # The unit suite binds an org for every test; this request names none.
+    unbound = current_org.set(None)
+    try:
+        with TestClient(_app("org_admin")) as client:
+            response = client.post(
+                "/auth/register", json={"username": "second", "password": "pw-pw-pw"}
+            )
+    finally:
+        current_org.reset(unbound)
+    assert response.status_code == 403, response.text
+    assert response.json()["code"] == "auth.missing_capability"

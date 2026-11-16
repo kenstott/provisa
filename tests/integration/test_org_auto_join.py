@@ -265,7 +265,7 @@ def test_an_unverified_address_in_the_orgs_domain_joins_nothing(matching_planes)
     assert offers.status_code == 200, offers.text
     assert offers.json() == {"offers": []}
     assert accepted.status_code == 404, accepted.text
-    assert accepted.json()["code"] == "auth.auto_join_not_offered"
+    assert accepted.json() == {"detail": "That org is not offering to admit you."}
     membership = _q(
         sync_engine,
         _ADMIN_SCHEMA,
