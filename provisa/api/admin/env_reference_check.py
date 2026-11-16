@@ -25,7 +25,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from fastapi import Request
+from starlette.requests import HTTPConnection, Request
 from fastapi.responses import JSONResponse
 from graphql import ExecutionResult, GraphQLError
 from graphql.language import ArgumentNode, Visitor, visit
@@ -43,15 +43,18 @@ from provisa.core.env_reference_guard import (
 _ADMIN = "/admin"
 
 
-async def entered_body(request: Request) -> None:
+async def entered_body(connection: HTTPConnection) -> None:
     """The same check for an admin route's JSON body, as the route will parse it. A body that is
     not JSON (an upload) is checked by its own route once it is read (the configuration import);
     one that does not parse is answered by its route."""
-    if not request.url.path.startswith(_ADMIN) or held_org() is None:
+    # Declared as the connection either kind of route is given: a WebSocket has no body.
+    if not isinstance(connection, Request):
         return
-    if "json" not in request.headers.get("content-type", ""):
+    if not connection.url.path.startswith(_ADMIN) or held_org() is None:
         return
-    body = await request.body()
+    if "json" not in connection.headers.get("content-type", ""):
+        return
+    body = await connection.body()  # kept by the request, so the route reads it again
     if not body:
         return
     try:

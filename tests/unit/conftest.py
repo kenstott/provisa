@@ -194,6 +194,22 @@ def _a_deployment_of_one_organization_unless_said():
 
 
 @pytest.fixture(autouse=True)
+def _redactor_forgets_what_a_test_resolved():
+    """A secret, or an environment value given a credential field (REQ-1557), is matched by
+    central redaction from its first use, for the life of the process. A test's are forgotten
+    when it ends, so the value one test resolved is not redacted from another's text."""
+    from provisa.security import redaction
+
+    before = dict(redaction._user_values)
+    yield
+    if redaction._user_values != before:
+        with redaction._lock:
+            redaction._user_values.clear()
+            redaction._user_values.update(before)
+            redaction._rebuild()
+
+
+@pytest.fixture(autouse=True)
 def _role_probe_events(request):
     """REQ-2076: a role named that the caller does not hold is recorded through the admin plane
     (security.role_probe.record), which a unit test's state does not have. Here the events are

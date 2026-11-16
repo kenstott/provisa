@@ -176,12 +176,12 @@ async def test_an_imports_validation_error_carries_no_resolved_value(server, mem
     assert "port" in str(refused.value.detail)
 
 
-def test_a_refusal_that_quotes_a_resolved_value_is_given_back_its_reference(server):
+def test_a_refusal_that_quotes_a_resolved_value_names_its_variable_instead(server):
     from provisa.core.config_loader import invalid_text
 
     refusal = ValueError(f"source pg1: host {_VALUE!r} is not a host name")
     text = invalid_text(refusal, {"sources": [{"host": _REF}]})
-    assert _VALUE not in text and _REF in text
+    assert _VALUE not in text and f"(the value of {_VARIABLE})" in text
 
 
 async def test_an_imports_preview_does_not_dial_a_held_organizations_uploaded_sources(
@@ -226,14 +226,24 @@ async def test_an_imports_preview_does_not_dial_a_held_organizations_uploaded_so
 # --- an admin route's body --------------------------------------------------------------------
 
 
-class _Request:
-    def __init__(self, path: str, document: object, content_type: str = "application/json"):
-        self.url = SimpleNamespace(path=path)
-        self.headers = {"content-type": content_type}
-        self._body = json.dumps(document).encode()
+def _http(path: str, body: bytes, content_type: str = "application/json"):
+    from starlette.requests import Request
 
-    async def body(self) -> bytes:
-        return self._body
+    async def receive() -> dict:
+        return {"type": "http.request", "body": body, "more_body": False}
+
+    scope = {
+        "type": "http",
+        "method": "POST",
+        "path": path,
+        "query_string": b"",
+        "headers": [(b"content-type", content_type.encode())],
+    }
+    return Request(scope, receive)
+
+
+def _Request(path: str, document: object):
+    return _http(path, json.dumps(document).encode())
 
 
 async def test_an_admin_routes_body_is_checked_as_the_route_will_parse_it(server, member):
@@ -241,17 +251,22 @@ async def test_an_admin_routes_body_is_checked_as_the_route_will_parse_it(server
 
     server(True)
     member(_TENANT)
-    escaped = _Request("/admin/x", {})
-    escaped._body = b'{"token": "\\u0024{env:%s}"}' % _VARIABLE.encode()
+    escaped = _http("/admin/x", b'{"token": "\\u0024{env:%s}"}' % _VARIABLE.encode())
     for request in (
         _Request("/admin/dbt/preview", {"spec": "cloud", "token": _REF}),
         _Request("/admin/ai-models", {"ai_endpoints": [{"id": "e", "api_key_env": _VARIABLE}]}),
         escaped,
     ):
         with pytest.raises(EnvReferenceRefused):
-            await entered_body(request)  # type: ignore[arg-type]
+            await entered_body(request)
     # A query's own text is not an admin object: the data plane is not checked here.
-    await entered_body(_Request("/data/sql", {"sql": f"SELECT '{_REF}'"}))  # type: ignore[arg-type]
+    await entered_body(_Request("/data/sql", {"sql": f"SELECT '{_REF}'"}))
+    # A WebSocket's connection has no body to check.
+    from starlette.requests import HTTPConnection
+
+    await entered_body(
+        HTTPConnection({"type": "websocket", "path": "/admin/graphql", "headers": []})
+    )
     assert server.read == []
 
 

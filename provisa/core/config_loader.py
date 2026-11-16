@@ -350,8 +350,8 @@ def sections_as_written(data: dict) -> dict:  # REQ-1557
 def invalid_text(refusal: ValueError, data: dict) -> str:  # REQ-1557
     """What to tell the caller whose config ``data`` was refused by ``refusal``, carrying no
     value a ``${env:...}`` in it resolved to: a validation's errors without the input each
-    refused (the resolved document), and any such value the remaining text holds put back as the
-    reference that named it."""
+    refused (the resolved document), and any such value the remaining text holds replaced by
+    the name of the variable that gave it."""
     import os
 
     from pydantic import ValidationError
@@ -366,7 +366,7 @@ def invalid_text(refusal: ValueError, data: dict) -> str:  # REQ-1557
     for name in sorted(set(env_names(data))):
         value = os.environ.get(name)
         if value:
-            text = text.replace(value, f"${{env:{name}}}")
+            text = text.replace(value, f"(the value of {name})")
     return text
 
 

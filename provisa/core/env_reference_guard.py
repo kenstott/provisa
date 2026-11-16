@@ -80,7 +80,8 @@ class EnvReferenceRefused(PermissionError):
     def __init__(self, name: str) -> None:
         super().__init__(
             f"{name} is a variable of the server's own environment, which this organization "
-            "does not hold. Store the value as an organization secret and write ${secret:NAME}."
+            "does not hold. Store the value as an organization secret and reference the secret "
+            "instead."
         )
         self.params = {"name": name}
 
