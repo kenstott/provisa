@@ -27,8 +27,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Pyodide from this directory, not from its CDN mid-build.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Build the app image (linux/amd64, not pushed)
-        run: docker build --platform linux/amd64 -t provisa/provisa:ci .
+        run: >-
+          docker build --platform linux/amd64
+          --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS"
+          -t provisa/provisa:ci .
 
       # REQ-2194: provisa's compiled encoders are in the image (the Dockerfile imports them too).
       - name: provisa's encoders import inside the image
