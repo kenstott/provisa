@@ -45000,7 +45000,7 @@
   e2e_reason: Session lifecycle behavior (sign-in clearing stale state, logout cleanup, org membership
     reconciliation) is only verifiable through full sign-in/logout round-trips with server state changes.
 - id: REQ-1327
-  status: complete
+  status: in-progress
   group: 1. Access Governance & Security
   category: Authorization
   feature: roles-and-capabilities-platform-admins
@@ -45116,7 +45116,10 @@
     invite button is shown only when the roles being acted as hold user_management. No control changes the
     role picker on the member''s behalf. (Amended 2026-11-15, A QUERYING ROLE OPENS ON EXPLORE:) Maintainer
     2026-11-15. A role that holds the query right opens the app on Explore. Every other role opens on its
-    first page in bar order, as before.'
+    first page in bar order, as before. (Amended 2026-11-16, DELETING AN ORGANIZATION AND GRANTING ORG ADMIN
+    NEED ORG ADMIN:) Maintainer 2026-11-16 (''both need org_admin''; relayed by the audit session). Deleting
+    an organization and granting the org_admin role are done only by an org_admin of that organization;
+    the user_management capability alone allows neither.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -88818,7 +88821,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa-ui/src/__tests__/termGrounding.test.tsx
 - id: REQ-2131
   value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -88872,7 +88875,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     The classification decides the plan; with nothing known in advance and no join to run first, the CTE
     runs as written. (Amended 2026-10-27, ONLY WHERE A TRANSFORM IS CALLED:) Maintainer 2026-10-27: the
     classification and the staging apply only to a statement that calls a column transform; any other statement,
-    CTEs and all, is compiled and run exactly as before, with no added pass.'
+    CTEs and all, is compiled and run exactly as before, with no added pass. (Amended 2026-11-16, A STORED
+    VIEW IS READ UNDER THE READER''S ROLE:) Maintainer 2026-11-16 (''the readers role is applied''; relayed
+    by the audit session), after the security audit found a stored view answered from its build with no
+    check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
+    and visibility hold as on any governed read. The stored rows are served as they are only to a reader
+    who sees everything.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
