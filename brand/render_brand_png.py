@@ -15,10 +15,10 @@ carries no SVG rasteriser, and a mark that drifts from the app's own favicon is 
 
 One tile per slot, and the slots differ in what crops them:
 
-* ``provisa-product-image-1000.png`` is the Lemon Squeezy product image, which is where Provisa's
-  mark belongs -- the store logo is one image shared by SimpleIsHard's three products, so it cannot
-  be any one of their marks. 1000px because that is the width the store's own CDN serves the large
-  thumbnail at, and it is scaled ``fit=contain``, so the tile is square and full-bleed.
+* ``provisa-product-image-1000.png`` is the product image at the merchant of record, which is where
+  Provisa's mark belongs -- the account's logo is one image shared by SimpleIsHard's three products,
+  so it cannot be any one of their marks. 1000px square, scaled ``fit=contain``, so the tile is
+  full-bleed.
 * ``provisa-favicon-512.png`` keeps ``icon.svg``'s ``rx=112`` corner, because a favicon is shown as
   the square it was uploaded as -- the same tile the app already serves in its own tab. It has no
   slot on a store selling three brands; it is here for a store that sells only Provisa.
