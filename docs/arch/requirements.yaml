@@ -81889,7 +81889,11 @@
     required parameter returns the same type, off otherwise. It is set once: a plain list of the same type
     registered later does not change it, since that would remove a table in use. Turning it off is refused
     while a relationship, a row rule, a data product or another live object refers to the derived table,
-    naming what refers to it, as deleting a table is.'
+    naming what refers to it, as deleting a table is. (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS
+    ITS VALUE:) Maintainer 2026-11-16 (''EQ means the value is assigned to the param''). An equality on
+    an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for
+    the call. The returned rows are not filtered by it again. Two different values assigned to the same
+    parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
