@@ -754,7 +754,7 @@ def _same_from_rows(
 ) -> None:
     """REQ-2195: the same result as a row result is encoded from its rows to the same bytes, or
     refused as the Arrow form is."""
-    if not has_row_form(batch.schema):
+    if not has_row_form(batch):
         return
     try:
         from_rows = rows_wired_encode(batch.schema, [batch], types, formats, **described)
@@ -1968,6 +1968,12 @@ WITNESSES: dict[str, tuple[list[Any], list[Any], list[int], dict[str, Any]]] = {
     ),
     "coerced_infinity": ([_TS_INF], [T.DATE], [0], {"force_coerce": [(0, server._to_date)]}),
     "uuid_bytes": ([POOL_BY_NAME["fsb16"]], [T.UUID], [0], {}),
+    "date_range": (
+        [pa.array([_date(9999, 12, 31) + 1, _date(1, 1, 1) - 1, None], pa.date32())],
+        [T.DATE],
+        [0],
+        {},
+    ),
 }
 
 
