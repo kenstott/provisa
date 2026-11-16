@@ -82728,7 +82728,11 @@
     or a scheduled trigger calls is held to public destinations exactly as a source''s is: when it is saved
     and at each connection, judged on the resolved address, redirects included. A single-organization install,
     a local development start among them, is not held, as it is not for sources: calling its own internal
-    services is the use case there.'
+    services is the use case there. (Amended 2026-11-16, SYNCING AND METADATA-EXPORT ENDPOINTS ARE HELD
+    TO PUBLIC DESTINATIONS:) Maintainer 2026-11-16 (relayed by the audit session). On a server of many organizations
+    the endpoint a catalog sync or a metadata export sends to is held to public destinations as a webhook
+    is, although it is not a source: when it is saved and at each call. A single-organization install is
+    not held.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
