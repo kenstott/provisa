@@ -51,6 +51,17 @@
     "stopped": "Arrêté. Ce qui a été trouvé est conservé.",
     "failed": "L'exécution a échoué : {{error}}",
     "newRun": "Nouvelle exécution",
-    "noSuggestions": "Aucune suggestion de cette exécution n'est en attente."
+    "noSuggestions": "Aucune suggestion de cette exécution n'est en attente.",
+    "restore": {
+      "fromLastRun": "Ce sont les champs de votre dernière exécution.",
+      "reset": "Rétablir les valeurs par défaut",
+      "leftOut": "Écarté de ces champs, car ce n'est plus valable :",
+      "domainsGone": "Le domaine {{names}} n'est plus disponible.",
+      "domainsGone_other": "Les domaines {{names}} ne sont plus disponibles.",
+      "tablesGone": "{{count}} table n'y est plus enregistrée.",
+      "tablesGone_other": "{{count}} tables n'y sont plus enregistrées.",
+      "vendorNoKey": "{{vendor}} n'a pas de clé, le modèle est donc celui qui est attribué.",
+      "modelGone": "{{vendor}} ne propose plus {{model}}, le modèle est donc celui qui est attribué."
+    }
   }
 }

@@ -1640,13 +1640,14 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     assert [r["id"] for r in remaining] == [undecided["id"]]
 
     # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
-    # registered, the one marked as rejected before.
+    # registered (the one the model rates low too), the one marked as rejected before.
     _, again = await _answered(
         world,
         [
             _suggestion((1, "customer_id"), (2, "id"), 0.95),
             _suggestion((3, "region_id"), (2, "id"), 0.8),
             _suggestion((3, "region_id"), (1, "id"), 0.9),
+            _suggestion((1, "customer_id"), (3, "id"), 0.55),
         ],
     )
     assert [
@@ -1655,6 +1656,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
         (1, 2, "existing", False),
         (3, 1, "rejected", True),
         (3, 2, "pending", True),
+        (1, 3, "existing", False),
     ]
 
 

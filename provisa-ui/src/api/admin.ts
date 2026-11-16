@@ -794,9 +794,9 @@ export type RemovedKind =
   | "out_of_scope"
   | "weaker";
 
-/** Why a run left a proposal out of its suggestions: a reason of an answer's reading, or a
+/** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
-export type LeftOutReason =
+export type ProposalReason =
   | "invalid_shape"
   | "unknown_column"
   | "not_comparable"
@@ -804,10 +804,10 @@ export type LeftOutReason =
   | "scored_below_threshold"
   | RemovedKind;
 
-/** REQ-413: a proposal a run read and does not suggest. One that named no two compared columns has
- *  no tables or confidence, and `answer` is the element as the model wrote it. `scored` is Jev's
- *  confidence where Jev scored it. */
-export interface LeftOutProposal {
+/** REQ-413: a proposal a run read. `reason` null: one of the run's suggestions. One that named no
+ *  two compared columns has no tables or confidence, and `answer` is the element as the model
+ *  wrote it. `scored` is Jev's confidence where Jev scored it. */
+export interface RunProposal {
   id: number;
   run_id: number;
   kind: DiscoveryKind;
@@ -815,15 +815,17 @@ export interface LeftOutProposal {
   source_column: string | null;
   target_table_id: number | null;
   target_column: string | null;
-  cardinality: string;
+  cardinality: string | null;
   confidence: number | null;
   scored: number | null;
   reasoning: string | null;
   suggested_name: string | null;
-  reason: LeftOutReason;
+  reason: ProposalReason | null;
   answer: string | null;
-  /** Whether a reviewer may accept it, as a suggestion is accepted. */
-  acceptable: boolean;
+  /** Whether a reviewer may accept it or mark it not to be recommended again. */
+  decidable: boolean;
+  /** One of its tables requires a parameter, so it is never read: no values were compared. */
+  reduced_information: boolean;
 }
 
 /** A run's report once semantics is under way or the run has ended. */
@@ -836,7 +838,8 @@ export interface DiscoveryReport {
   semantics?: SemanticsReport;
   model?: DiscoveryModel;
   // What the run compared; absent from a run recorded before a run said so.
-  domains?: string[];
+  source_domains?: string[];
+  target_domains?: string[];
   source_tables?: number;
   target_tables?: number;
   target_same_as_source?: boolean;
@@ -902,10 +905,13 @@ export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
   return (await discoveryRequest<{ run: DiscoveryRun }>(`/runs/${id}`, "Discovery run")).run;
 }
 
-/** The latest runs, newest first. */
-export async function fetchDiscoveryRuns(limit: number): Promise<DiscoveryRun[]> {
+/** The latest runs, newest first; with `mine`, only those the signed-in person started. */
+export async function fetchDiscoveryRuns(limit: number, mine = false): Promise<DiscoveryRun[]> {
   return (
-    await discoveryRequest<{ runs: DiscoveryRun[] }>(`/runs?limit=${limit}`, "Discovery runs")
+    await discoveryRequest<{ runs: DiscoveryRun[] }>(
+      `/runs?limit=${limit}${mine ? "&mine=true" : ""}`,
+      "Discovery runs",
+    )
   ).runs;
 }
 
@@ -918,20 +924,43 @@ export async function stopDiscoveryRun(id: number): Promise<DiscoveryRun> {
   ).run;
 }
 
-/** A run's left-out proposals, the most confident first, and the confidence a suggestion needs. */
-export interface LeftOut {
-  left_out: LeftOutProposal[];
+/** Every proposal of a run no reviewer has decided, the highest score first, and the score from
+ *  which a row starts ticked. */
+export interface RunProposals {
+  proposals: RunProposal[];
   threshold: number;
 }
 
-/** REQ-413: what a run read and does not suggest. */
-export function fetchLeftOut(runId: number): Promise<LeftOut> {
-  return discoveryRequest(`/runs/${runId}/left-out`, "Left-out proposals");
+export function fetchRunProposals(runId: number): Promise<RunProposals> {
+  return discoveryRequest(`/runs/${runId}/proposals`, "Run proposals");
 }
 
-/** Accept a proposal a run left out, as a suggestion is accepted. */
-export function acceptLeftOut(id: number, name: string): Promise<unknown> {
-  return discoveryRequest(`/left-out/${id}/accept`, "Accept", postJson({ name }));
+/** What a reviewer decided in a run's result: the proposals to accept, each with its
+ *  relationship's name, and those not to recommend again. One in neither stays undecided. */
+export interface RunDecisions {
+  accept: { id: number; name: string }[];
+  not_again: number[];
+}
+
+export interface DecisionResult {
+  id: number;
+  action: "accept" | "not_again";
+  ok: boolean;
+  error?: string;
+  relationship_id?: string;
+}
+
+export async function applyRunDecisions(
+  runId: number,
+  decisions: RunDecisions,
+): Promise<DecisionResult[]> {
+  return (
+    await discoveryRequest<{ results: DecisionResult[] }>(
+      `/runs/${runId}/apply`,
+      "Apply",
+      postJson(decisions),
+    )
+  ).results;
 }
 
 export async function fetchCandidates(): Promise<unknown[]> {

@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "A ticked row is accepted when you apply. Rows scoring {{threshold}}% or more start ticked. A row with neither box ticked stays undecided.",
+    "colScore": "Score",
+    "colKind": "Kind",
+    "colReasoning": "Reasoning",
+    "colNote": "Note",
+    "colNotAgain": "Don't recommend again",
+    "notAgainAria": "Don't recommend {{name}} again",
+    "kind": {
+      "foreign_keys": "Constraint",
+      "semantics": "Semantic"
+    },
+    "asWritten": "As the model wrote it: {{answer}}",
+    "apply": "Apply",
+    "applyAccept": "Accept {{count}}",
+    "applyNotAgain": "Don't recommend {{count}} again",
+    "applyBoth": "Accept {{accept}}, don't recommend {{notAgain}} again",
+    "applied": "{{accepted}} accepted, {{notAgain}} not to be recommended again.",
+    "failed": "{{count}} could not be applied:",
+    "failed_other": "{{count}} could not be applied:",
+    "none": "This run has no proposal left to decide.",
+    "reason": {
+      "invalid_shape": "Not a relationship as asked for: a field is missing or has the wrong form",
+      "unknown_column": "Names a table or column the request did not compare",
+      "not_comparable": "The two columns have different classes, so they are not compared",
+      "below_threshold": "The model's confidence is below the {{threshold}}% threshold.",
+      "scored_below_threshold": "Jev scored it {{scored}}%, below the {{threshold}}% threshold. The model gave {{confidence}}%.",
+      "same_column": "From a column to itself",
+      "primary_key_to_primary_key": "Primary key to primary key",
+      "both_repeating": "Values repeat on both sides, so neither is the one side",
+      "existing": "Already registered",
+      "pending": "Already waiting among the suggestions",
+      "rejected": "Rejected before",
+      "matches_foreign_key": "Matches a foreign key found in this run",
+      "out_of_scope": "Outside the chosen source and target tables",
+      "weaker": "A stronger proposal of the same two columns was kept"
+    }
+  }
+}

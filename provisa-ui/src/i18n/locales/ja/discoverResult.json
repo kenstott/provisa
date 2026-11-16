@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "{{domains}} の {{count}} 件のテーブルを比較しました。",
-    "compared_other": "{{domains}} の {{count}} 件のテーブルを比較しました。",
-    "comparedTwoSets": "{{domains}} のソーステーブル {{source}} 件とターゲットテーブル {{target}} 件を比較しました。",
+    "scopeKinds": "対象: {{kinds}}。",
+    "scopeSource": "ソース: {{domains}} のテーブル {{count}} 件。",
+    "scopeSource_other": "ソース: {{domains}} のテーブル {{count}} 件。",
+    "scopeTargetSame": "ターゲット: ソースと同じ。",
+    "scopeTarget": "ターゲット: {{domains}} のテーブル {{count}} 件。",
+    "scopeTarget_other": "ターゲット: {{domains}} のテーブル {{count}} 件。",
     "foreignKeys": "外部キー: {{found}} 件検出、{{count}} 件提案。",
     "foreignKeys_other": "外部キー: {{found}} 件検出、{{count}} 件提案。",
     "semanticsFound": "セマンティクス: {{count}} 件の提案。",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev は {{count}} 件のリクエストの候補を評価できなかったため、モデルの信頼度をそのまま使いました。",
     "scoringFailed_other": "Jev は {{count}} 件のリクエストの候補を評価できなかったため、モデルの信頼度をそのまま使いました。",
     "failedRequest": "{{group}} の列: {{message}}",
-    "leftOut": "除外: {{list}}。",
+    "leftOut": "提案されなかったもの: {{list}}。",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "モデルの信頼度が {{threshold}}% 未満",

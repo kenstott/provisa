@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "{{count}} Tabelle aus {{domains}} verglichen.",
-    "compared_other": "{{count}} Tabellen aus {{domains}} verglichen.",
-    "comparedTwoSets": "{{source}} Quelltabellen mit {{target}} Zieltabellen verglichen, aus {{domains}}.",
+    "scopeKinds": "Gesucht: {{kinds}}.",
+    "scopeSource": "Quelle: {{count}} Tabelle aus {{domains}}.",
+    "scopeSource_other": "Quelle: {{count}} Tabellen aus {{domains}}.",
+    "scopeTargetSame": "Ziel: dieselben wie die Quelle.",
+    "scopeTarget": "Ziel: {{count}} Tabelle aus {{domains}}.",
+    "scopeTarget_other": "Ziel: {{count}} Tabellen aus {{domains}}.",
     "foreignKeys": "Fremdschlüssel: {{found}} gefunden, {{count}} vorgeschlagen.",
     "foreignKeys_other": "Fremdschlüssel: {{found}} gefunden, {{count}} vorgeschlagen.",
     "semanticsFound": "Semantik: {{count}} Vorschlag.",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev konnte die Vorschläge von {{count}} Anfrage nicht bewerten; sie behielten die Konfidenz des Modells.",
     "scoringFailed_other": "Jev konnte die Vorschläge von {{count}} Anfragen nicht bewerten; sie behielten die Konfidenz des Modells.",
     "failedRequest": "Für Spalten vom Typ {{group}}: {{message}}",
-    "leftOut": "Ausgelassen: {{list}}.",
+    "leftOut": "Nicht vorgeschlagen: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "vom Modell mit weniger als {{threshold}} % Konfidenz bewertet",

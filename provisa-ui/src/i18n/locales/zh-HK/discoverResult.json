@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "已比較 {{domains}} 中的 {{count}} 個表。",
-    "compared_other": "已比較 {{domains}} 中的 {{count}} 個表。",
-    "comparedTwoSets": "已將 {{domains}} 中的 {{source}} 個來源表與 {{target}} 個目標表作比較。",
+    "scopeKinds": "尋找內容：{{kinds}}。",
+    "scopeSource": "來源：{{domains}} 中的 {{count}} 個表。",
+    "scopeSource_other": "來源：{{domains}} 中的 {{count}} 個表。",
+    "scopeTargetSame": "目標：與來源相同。",
+    "scopeTarget": "目標：{{domains}} 中的 {{count}} 個表。",
+    "scopeTarget_other": "目標：{{domains}} 中的 {{count}} 個表。",
     "foreignKeys": "外部索引鍵：找到 {{found}} 個，建議 {{count}} 個。",
     "foreignKeys_other": "外部索引鍵：找到 {{found}} 個，建議 {{count}} 個。",
     "semanticsFound": "語意：{{count}} 項建議。",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev 無法為 {{count}} 個請求的提議評分，因此保留了模型的信心。",
     "scoringFailed_other": "Jev 無法為 {{count}} 個請求的提議評分，因此保留了模型的信心。",
     "failedRequest": "針對{{group}}欄：{{message}}",
-    "leftOut": "已排除：{{list}}。",
+    "leftOut": "未建議：{{list}}。",
     "leftOutItem": "{{label}}（{{count}}）",
     "removed": {
       "below_threshold": "模型給出的信心低於 {{threshold}}%",

@@ -10,7 +10,9 @@
 
 // REQ-413: relationship discovery asks before it runs. The dialog sets the run's scope (kinds,
 // model, source and target sets), says about how many requests it makes, runs it in the background
-// with its progress and a Stop, and lists its suggestions with Accept all behind a confirmation.
+// with its progress and a Stop, and lists every proposal it read in one table: ticked to accept,
+// ticked not to be recommended again, or left undecided, with one Apply. A run after the first
+// starts from the fields of the one before.
 // The run is the server's: the button animates while it runs, after the dialog is closed too.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -19,15 +21,14 @@ import userEvent from "@testing-library/user-event";
 import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
 import {
-  acceptCandidates,
-  acceptLeftOut,
+  applyRunDecisions,
   countDiscoveryRun,
   fetchCandidates,
   fetchDiscoveryModels,
   fetchDiscoveryRun,
   fetchDiscoveryRuns,
-  fetchLeftOut,
   fetchModelLimits,
+  fetchRunProposals,
   fetchVendorModels,
   startDiscoveryRun,
   stopDiscoveryRun,
@@ -35,7 +36,7 @@ import {
   type DiscoveryModels,
   type DiscoveryRun,
   type DiscoveryScope,
-  type LeftOutProposal,
+  type RunProposal,
 } from "../../api/admin";
 
 const RELS = { relationships: [], loading: false, refetch: vi.fn() };
@@ -98,9 +99,8 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
   stopDiscoveryRun: vi.fn(),
-  acceptCandidates: vi.fn(),
-  fetchLeftOut: vi.fn(),
-  acceptLeftOut: vi.fn(),
+  fetchRunProposals: vi.fn(),
+  applyRunDecisions: vi.fn(),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
@@ -201,27 +201,95 @@ const runMock = vi.mocked(fetchDiscoveryRun);
 const runsMock = vi.mocked(fetchDiscoveryRuns);
 const stopMock = vi.mocked(stopDiscoveryRun);
 const candidatesMock = vi.mocked(fetchCandidates);
-const acceptAllMock = vi.mocked(acceptCandidates);
-const leftOutMock = vi.mocked(fetchLeftOut);
-const acceptLeftOutMock = vi.mocked(acceptLeftOut);
-const leftOut = (over: Partial<LeftOutProposal>): LeftOutProposal => ({
+const proposalsMock = vi.mocked(fetchRunProposals);
+const applyMock = vi.mocked(applyRunDecisions);
+const proposal = (over: Partial<RunProposal>): RunProposal => ({
   id: 501,
   run_id: 7,
   kind: "semantics",
   source_table_id: 1,
-  source_column: "payer_id",
+  source_column: "customer_id",
   target_table_id: 2,
   target_column: "id",
   cardinality: "many-to-one",
-  confidence: 0.55,
+  confidence: 0.95,
   scored: null,
-  reasoning: "The payer is a customer",
-  suggested_name: "order-payer",
-  reason: "below_threshold",
+  reasoning: "Each order names its customer",
+  suggested_name: "customer-orders",
+  reason: null,
   answer: null,
-  acceptable: true,
+  decidable: true,
+  reduced_information: false,
   ...over,
 });
+/** A run's table: a constraint, a suggestion, one under the threshold, one Jev scored down, one
+ *  already waiting, one repeating the constraint, and one that named no two compared columns. */
+const PROPOSALS: RunProposal[] = [
+  proposal({
+    id: 500,
+    kind: "foreign_keys",
+    source_column: "store_id",
+    confidence: 1,
+    reasoning: "Foreign key constraint",
+    suggested_name: "order-store",
+  }),
+  proposal({}),
+  proposal({
+    id: 502,
+    source_column: "payer_id",
+    confidence: 0.9,
+    reason: "pending",
+    suggested_name: "order-payer",
+  }),
+  proposal({
+    id: 503,
+    source_column: "agent_id",
+    confidence: 0.55,
+    reason: "below_threshold",
+    reasoning: "Perhaps the agent is a customer",
+    suggested_name: "order-agent",
+  }),
+  proposal({
+    id: 504,
+    source_column: "ref",
+    confidence: 0.92,
+    scored: 0.31,
+    reason: "scored_below_threshold",
+    suggested_name: "order-ref",
+  }),
+  proposal({
+    id: 505,
+    source_column: "store_id",
+    confidence: 0.9,
+    reason: "matches_foreign_key",
+    decidable: false,
+  }),
+  proposal({
+    id: 506,
+    source_table_id: null,
+    source_column: null,
+    target_table_id: null,
+    target_column: null,
+    cardinality: null,
+    confidence: null,
+    reasoning: null,
+    suggested_name: null,
+    reason: "unknown_column",
+    answer: '{"source_table_id": 1, "target_table_id": 9}',
+    decidable: false,
+  }),
+];
+const acceptBox = (id: number) => screen.getByTestId(`list-select-${id}`) as HTMLInputElement;
+const notAgainBox = (id: number) =>
+  screen.getByTestId(`proposal-not-again-${id}`) as HTMLInputElement;
+const applyButton = () => screen.getByTestId("discover-apply");
+async function endedRun() {
+  runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+  proposalsMock.mockResolvedValue({ proposals: PROPOSALS, threshold: 0.7 });
+  await openDialog();
+  fireEvent.click(runButton());
+  await screen.findByTestId("proposal-501", {}, SLOW);
+}
 
 const discoverButton = () => screen.getByTestId("rels-discover");
 const dialog = () => screen.getByTestId("discover-dialog");
@@ -276,9 +344,8 @@ beforeEach(() => {
   runsMock.mockReset().mockResolvedValue([]);
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
   candidatesMock.mockReset().mockResolvedValue([]);
-  acceptAllMock.mockReset();
-  leftOutMock.mockReset().mockResolvedValue({ left_out: [], threshold: 0.7 });
-  acceptLeftOutMock.mockReset().mockResolvedValue({ relationship_id: "order-payer" });
+  proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7 });
+  applyMock.mockReset().mockResolvedValue([]);
 });
 
 describe("Discovery dialog: the run's scope", () => {
@@ -551,7 +618,7 @@ describe("Discovery dialog: the run in progress", () => {
     expect(result).toHaveTextContent("Foreign keys: 3 found, 1 suggested.");
     expect(result).toHaveTextContent("Semantics: 1 suggestion.");
     expect(result).toHaveTextContent(
-      "Left out: given less than 70% confidence by the model (1), already registered (2), rejected before (1).",
+      "Not suggested: given less than 70% confidence by the model (1), already registered (2), rejected before (1).",
     );
   });
 
@@ -600,6 +667,7 @@ describe("Discovery dialog: the run in progress", () => {
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {
+    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7 });
     candidatesMock.mockResolvedValue([
       suggestion(101, "customer_id", "run:7"),
       suggestion(55, "buyer_id", "cross-domain"),
@@ -634,9 +702,10 @@ describe("Discovery dialog: the run in progress", () => {
         ),
       SLOW,
     );
-    // Only this run's suggestions are listed in the dialog.
+    // What the stopped run read is listed in the dialog: its own proposals, read from the run.
     const listed = within(dialog());
-    expect(listed.getByText("orders-customer_id")).toBeInTheDocument();
+    expect(await listed.findByTestId("proposal-501")).toHaveTextContent("shop.orders.customer_id");
+    expect(proposalsMock).toHaveBeenCalledWith(7);
     expect(listed.queryByText("orders-buyer_id")).not.toBeInTheDocument();
   });
 
@@ -704,143 +773,265 @@ describe("Discovery: the button animates while a run is in progress", () => {
   });
 });
 
-describe("Discovery dialog: the run's suggestions", () => {
-  it("Accept all asks in the non-destructive confirmation, with the count, then accepts them", async () => {
-    candidatesMock.mockResolvedValue([
-      suggestion(101, "customer_id", "run:7"),
-      suggestion(102, "payer_id", "run:7"),
-    ]);
-    runMock.mockResolvedValue(runOf({ status: "done", suggestions: 2, report: REPORT }));
-    acceptAllMock.mockResolvedValue([
-      { id: 101, ok: true },
-      { id: 102, ok: true },
-    ]);
-    await openDialog();
-    fireEvent.click(runButton());
-    await waitFor(
-      () => expect(within(dialog()).getByText("orders-payer_id")).toBeInTheDocument(),
-      SLOW,
+describe("Discovery dialog: the run's proposals, in one table", () => {
+  it("lists every proposal the run read, the highest score first, with its kind and why", async () => {
+    await endedRun();
+    expect(proposalsMock).toHaveBeenCalledWith(7);
+    const rows = within(screen.getByTestId("discover-proposals"))
+      .getAllByTestId(/^proposal-\d+$/)
+      .map((row) => row.getAttribute("data-testid"));
+    expect(rows).toEqual(PROPOSALS.map((p) => `proposal-${p.id}`));
+
+    const constraint = screen.getByTestId("proposal-500");
+    expect(constraint).toHaveTextContent("100%");
+    expect(constraint).toHaveTextContent("shop.orders.store_id");
+    expect(constraint).toHaveTextContent("shop.customers.id");
+    expect(constraint).toHaveTextContent("many-to-one");
+    expect(constraint).toHaveTextContent("Constraint");
+    expect(screen.getByTestId("proposal-501")).toHaveTextContent("Semantic");
+    expect(screen.getByTestId("proposal-503")).toHaveTextContent(
+      "The model's confidence is below the 70% threshold.",
     );
-    fireEvent.click(within(dialog()).getByTestId("candidates-accept-all"));
-    // The page's own suggestions list has the same confirmation: the open one is asked.
-    const ask = await screen.findByRole("dialog", { name: "Accept all suggestions" });
-    expect(ask).toHaveTextContent(
-      "Accept all 2 listed suggestions? Each becomes a registered relationship.",
-    );
-    const confirm = within(ask).getByTestId("candidates-accept-all-confirm-confirm");
-    expect(confirm).toHaveAttribute("data-tone", "confirm");
-    fireEvent.click(confirm);
-    await waitFor(() =>
-      expect(acceptAllMock).toHaveBeenCalledWith([
-        { id: 101, name: "orders-customer_id" },
-        { id: 102, name: "orders-payer_id" },
-      ]),
+    // Jev's score is the row's; the note says both.
+    expect(screen.getByTestId("proposal-504")).toHaveTextContent("31%");
+    expect(screen.getByTestId("proposal-504")).toHaveTextContent(
+      "Jev scored it 31%, below the 70% threshold. The model gave 92%.",
     );
   });
 
-  it("lists what the run left out under its suggestions, closed, each with why", async () => {
-    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    leftOutMock.mockResolvedValue({
-      left_out: [
-        leftOut({}),
-        leftOut({
-          id: 502,
-          source_column: "customer_id",
-          confidence: 0.95,
-          scored: 0.31,
-          reason: "scored_below_threshold",
-          reasoning: "Each order names its customer",
-          suggested_name: "customer-orders",
-        }),
-        leftOut({
-          id: 503,
-          source_table_id: null,
-          source_column: null,
-          target_table_id: null,
-          target_column: null,
-          confidence: null,
-          reasoning: null,
-          suggested_name: null,
-          reason: "unknown_column",
-          answer: '{"source_table_id": 1, "target_table_id": 9}',
-          acceptable: false,
-        }),
-      ],
+  it("starts the rows scoring 70% or more ticked to accept, and none marked", async () => {
+    await endedRun();
+    expect(acceptBox(500).checked).toBe(true);
+    expect(acceptBox(501).checked).toBe(true);
+    // Already waiting from an earlier run: an ordinary row.
+    expect(acceptBox(502).checked).toBe(true);
+    expect(acceptBox(503).checked).toBe(false);
+    // The score is Jev's where Jev gave one.
+    expect(acceptBox(504).checked).toBe(false);
+    for (const id of [500, 501, 502, 503, 504]) expect(notAgainBox(id).checked).toBe(false);
+    expect(applyButton()).toHaveTextContent("Accept 3");
+    expect(applyButton()).toBeEnabled();
+  });
+
+  it("lists a proposal that cannot be decided with its reason and no box", async () => {
+    await endedRun();
+    const repeated = screen.getByTestId("proposal-505");
+    expect(repeated).toHaveTextContent("Matches a foreign key found in this run");
+    const unknown = screen.getByTestId("proposal-506");
+    expect(unknown).toHaveTextContent("Names a table or column the request did not compare");
+    expect(unknown).toHaveTextContent(
+      'As the model wrote it: {"source_table_id": 1, "target_table_id": 9}',
+    );
+    for (const row of [repeated, unknown]) {
+      expect(within(row).queryAllByRole("checkbox")).toEqual([]);
+    }
+  });
+
+  it("a row is ticked to accept or not to be recommended again, never both", async () => {
+    await endedRun();
+    fireEvent.click(notAgainBox(501));
+    expect(notAgainBox(501).checked).toBe(true);
+    expect(acceptBox(501).checked).toBe(false);
+    expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
+    fireEvent.click(acceptBox(501));
+    expect(acceptBox(501).checked).toBe(true);
+    expect(notAgainBox(501).checked).toBe(false);
+    expect(applyButton()).toHaveTextContent("Accept 3");
+  });
+
+  it("the header's box ticks every row that can be decided, or none", async () => {
+    await endedRun();
+    fireEvent.click(notAgainBox(503));
+    fireEvent.click(
+      within(screen.getByTestId("discover-proposals")).getByTestId("list-select-all"),
+    );
+    for (const id of [500, 501, 502, 503, 504]) expect(acceptBox(id).checked).toBe(true);
+    expect(notAgainBox(503).checked).toBe(false);
+    expect(applyButton()).toHaveTextContent("Accept 5");
+    fireEvent.click(
+      within(screen.getByTestId("discover-proposals")).getByTestId("list-select-all"),
+    );
+    for (const id of [500, 501, 502, 503, 504]) expect(acceptBox(id).checked).toBe(false);
+  });
+
+  it("with nothing ticked Apply is disabled, and with only marks it says so", async () => {
+    await endedRun();
+    for (const id of [500, 501, 502]) fireEvent.click(acceptBox(id));
+    expect(applyButton()).toBeDisabled();
+    expect(applyButton()).toHaveTextContent("Apply");
+    fireEvent.click(notAgainBox(503));
+    fireEvent.click(notAgainBox(504));
+    expect(applyButton()).toBeEnabled();
+    expect(applyButton()).toHaveTextContent("Don't recommend 2 again");
+  });
+
+  it("Apply sends what is ticked, each way, and leaves the rest undecided", async () => {
+    await endedRun();
+    fireEvent.click(acceptBox(502));
+    fireEvent.click(notAgainBox(504));
+    applyMock.mockResolvedValue([
+      { id: 500, action: "accept", ok: true, relationship_id: "order-store" },
+      {
+        id: 501,
+        action: "accept",
+        ok: false,
+        error: "A relationship named 'customer-orders' already exists",
+      },
+      { id: 504, action: "not_again", ok: true },
+    ]);
+    proposalsMock.mockResolvedValue({
+      proposals: PROPOSALS.filter((p) => ![500, 504].includes(p.id)),
       threshold: 0.7,
     });
-    await openDialog();
-    fireEvent.click(runButton());
-    const toggle = await within(dialog()).findByTestId("discover-left-out-toggle", {}, SLOW);
-    expect(leftOutMock).toHaveBeenCalledWith(7);
-    expect(toggle).toHaveTextContent("Left out (3)");
-    expect(toggle).toHaveAttribute("aria-expanded", "false");
-    fireEvent.click(toggle);
-    expect(toggle).toHaveAttribute("aria-expanded", "true");
-
-    const below = within(dialog()).getByTestId("left-out-501");
-    expect(below).toHaveTextContent("shop.orders.payer_id");
-    expect(below).toHaveTextContent("shop.customers.id");
-    expect(below).toHaveTextContent("55%");
-    expect(below).toHaveTextContent("The model's confidence is below the 70% threshold");
-    expect(within(dialog()).getByText("The payer is a customer")).toBeInTheDocument();
-
-    const scored = within(dialog()).getByTestId("left-out-502");
-    expect(scored).toHaveTextContent("95% by the model");
-    expect(scored).toHaveTextContent("31% by Jev");
-    expect(scored).toHaveTextContent("Jev scored it below the 70% threshold");
-
-    // One that named no two compared columns: as the model wrote it, and nothing to accept.
-    const unknown = within(dialog()).getByTestId("left-out-503");
-    expect(unknown).toHaveTextContent("Names a table or column the request did not compare");
-    expect(within(unknown).queryByRole("button")).toBeNull();
-    expect(
-      within(dialog()).getByText(
-        'As the model wrote it: {"source_table_id": 1, "target_table_id": 9}',
-      ),
-    ).toBeInTheDocument();
-  });
-
-  it("accepts a left-out proposal as a suggestion is accepted, and reads the list again", async () => {
-    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    leftOutMock
-      .mockResolvedValueOnce({ left_out: [leftOut({})], threshold: 0.7 })
-      .mockResolvedValue({ left_out: [], threshold: 0.7 });
-    await openDialog();
-    fireEvent.click(runButton());
-    fireEvent.click(await within(dialog()).findByTestId("discover-left-out-toggle", {}, SLOW));
-    fireEvent.click(
-      await within(dialog()).findByRole(
-        "button",
-        { name: "Accept left-out relationship order-payer" },
-        SLOW,
-      ),
-    );
-    await waitFor(() => expect(acceptLeftOutMock).toHaveBeenCalledWith(501, "order-payer"));
-    await waitFor(() => expect(leftOutMock).toHaveBeenCalledTimes(2));
+    expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
+    fireEvent.click(applyButton());
     await waitFor(() =>
-      expect(within(dialog()).queryByTestId("discover-left-out-toggle")).toBeNull(),
+      expect(applyMock).toHaveBeenCalledWith(7, {
+        accept: [
+          { id: 500, name: "order-store" },
+          { id: 501, name: "customer-orders" },
+        ],
+        not_again: [504],
+      }),
     );
+    expect(await screen.findByTestId("discover-applied")).toHaveTextContent(
+      "1 accepted, 1 not to be recommended again.",
+    );
+    expect(screen.getByTestId("discover-apply-failures")).toHaveTextContent(
+      "customer-orders: A relationship named 'customer-orders' already exists",
+    );
+    // The table is read again: what was decided has left it, the undecided rows are still there.
+    await waitFor(() => expect(screen.queryByTestId("proposal-500")).toBeNull());
+    expect(screen.getByTestId("proposal-502")).toBeInTheDocument();
+    expect(screen.getByTestId("proposal-503")).toBeInTheDocument();
   });
 
-  it("shows a refused accept of a left-out proposal in its list", async () => {
-    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    leftOutMock.mockResolvedValue({ left_out: [leftOut({})], threshold: 0.7 });
-    acceptLeftOutMock.mockRejectedValue(
-      new Error("A relationship named 'order-payer' already exists"),
+  it("sorts by a column when its header is pressed", async () => {
+    await endedRun();
+    fireEvent.click(screen.getByTestId("discover-proposals-sort-score"));
+    const rows = within(screen.getByTestId("discover-proposals"))
+      .getAllByTestId(/^proposal-\d+$/)
+      .map((row) => row.getAttribute("data-testid"));
+    // Ascending: the one with no score, then the lowest.
+    expect(rows.slice(0, 3)).toEqual(["proposal-506", "proposal-504", "proposal-503"]);
+  });
+
+  it("says the scope the run ran with in its result", async () => {
+    runMock.mockResolvedValue(
+      runOf({
+        status: "done",
+        report: {
+          ...REPORT,
+          source_domains: ["shop"],
+          target_domains: ["shop"],
+          source_tables: 2,
+          target_tables: 2,
+          target_same_as_source: true,
+        },
+      }),
     );
     await openDialog();
     fireEvent.click(runButton());
-    fireEvent.click(await within(dialog()).findByTestId("discover-left-out-toggle", {}, SLOW));
-    fireEvent.click(
-      await within(dialog()).findByRole(
-        "button",
-        { name: "Accept left-out relationship order-payer" },
-        SLOW,
-      ),
+    const result = await screen.findByTestId("discover-result", {}, SLOW);
+    expect(result).toHaveTextContent("Looked for: Foreign keys, Semantics.");
+    expect(result).toHaveTextContent("Model: anthropic:claude-haiku-4-5");
+    expect(result).toHaveTextContent("Source: 2 tables of shop.");
+    expect(result).toHaveTextContent("Target: the same as the source.");
+  });
+});
+
+const LAST: DiscoveryScope = {
+  kinds: ["semantics"],
+  source_domains: ["crm"],
+  source_tables: [3],
+  target_same_as_source: false,
+  target_domains: ["shop"],
+  target_tables: [2],
+  vendor: "openai",
+  model: "gpt-4.1-mini",
+};
+
+describe("Discovery dialog: a run starts from the fields of the one before", () => {
+  it("New run opens the form with the ended run's fields, not the defaults", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", scope: LAST, report: REPORT }));
+    startMock.mockResolvedValue(runOf({ scope: LAST }));
+    await openDialog();
+    fireEvent.click(runButton());
+    fireEvent.click(await screen.findByTestId("discover-new-run", {}, SLOW));
+    await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
+    expect(screen.getByTestId("discover-from-last-run")).toHaveTextContent(
+      "These are the fields of your last run.",
     );
-    expect(await within(dialog()).findByTestId("discover-left-out-error")).toHaveTextContent(
-      "A relationship named 'order-payer' already exists",
+    expect(fkBox().checked).toBe(false);
+    expect(semanticsBox().checked).toBe(true);
+    expect(sameBox().checked).toBe(false);
+    await waitFor(() => expect(lastScope()).toEqual(LAST), SLOW);
+    expect(screen.queryByTestId("discover-restore-notes")).toBeNull();
+  });
+
+  it("opening the dialog starts from the latest run the signed-in person started", async () => {
+    runsMock.mockImplementation(async (_limit, mine) =>
+      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
     );
+    await openDialog();
+    expect(runsMock).toHaveBeenCalledWith(1, true);
+    expect(fkBox().checked).toBe(false);
+    expect(sameBox().checked).toBe(false);
+    await waitFor(() => expect(lastScope()).toEqual(LAST), SLOW);
+  });
+
+  it("starts from the defaults when the person has run none", async () => {
+    await openDialog();
+    expect(screen.queryByTestId("discover-from-last-run")).toBeNull();
+    expect(screen.queryByTestId("discover-reset-defaults")).toBeNull();
+    expect(fkBox().checked).toBe(true);
+    await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
+  });
+
+  it("leaves out what no longer holds, says which, and keeps the rest", async () => {
+    const stale: DiscoveryScope = {
+      ...LAST,
+      source_domains: ["crm", "legacy"],
+      source_tables: [3, 99],
+      target_tables: [2, 98],
+      vendor: "mistral",
+      model: "mistral-large",
+    };
+    runsMock.mockImplementation(async (_limit, mine) =>
+      mine ? [runOf({ id: 5, status: "done", scope: stale })] : [],
+    );
+    await openDialog();
+    const notes = await screen.findByTestId("discover-restore-notes");
+    expect(notes).toHaveTextContent("Left out of them, because it no longer holds:");
+    expect(notes).toHaveTextContent("The domain legacy is no longer available.");
+    expect(notes).toHaveTextContent("2 tables are no longer registered there.");
+    expect(notes).toHaveTextContent("mistral has no key, so the model is the assigned one.");
+    // The rest is kept: the kinds, the domains and tables still there, and the target set.
+    await waitFor(() => expect(lastScope()).toEqual({ ...LAST, vendor: null, model: null }), SLOW);
+  });
+
+  it("leaves out a model its vendor no longer lists", async () => {
+    runsMock.mockImplementation(async (_limit, mine) =>
+      mine ? [runOf({ id: 5, status: "done", scope: { ...LAST, model: "gpt-3" } })] : [],
+    );
+    await openDialog();
+    expect(await screen.findByTestId("discover-restore-notes")).toHaveTextContent(
+      "openai no longer lists gpt-3, so the model is the assigned one.",
+    );
+    await waitFor(() => expect(lastScope()).toEqual({ ...LAST, vendor: null, model: null }), SLOW);
+  });
+
+  it("Reset to defaults sets the form up as a first run", async () => {
+    runsMock.mockImplementation(async (_limit, mine) =>
+      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
+    );
+    await openDialog();
+    expect(fkBox().checked).toBe(false);
+    fireEvent.click(screen.getByTestId("discover-reset-defaults"));
+    await waitFor(() => expect(fkBox().checked).toBe(true));
+    expect(sameBox().checked).toBe(true);
+    expect(screen.queryByTestId("discover-from-last-run")).toBeNull();
+    await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
   });
 
   it("New run sets up another run after one has ended", async () => {

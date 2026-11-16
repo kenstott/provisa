@@ -20,9 +20,11 @@ The model is an OpenAI-compatible endpoint served by this test on the loopback: 
 request and answers with the relationships a reader of those files would name, each only when its
 two columns are compared in the request, one of them at a confidence under the threshold.
 
-A run over the five tables suggests the key relationship and keeps what it left out, which a
-reviewer accepts; a run over the demo's own domains compares none of the five and says which
-domains it compared; a run over every domain reads the key relationship among the other tables.
+A run over the five tables suggests the key relationship and lists every proposal it read, the
+one under the threshold included; a reviewer accepts one, marks one not to be recommended again
+and leaves the rest undecided. A run over the demo's own domains compares none of the five and
+says which domains it compared; a run over every domain reads the key relationship among the other
+tables.
 """
 
 # Requirements: REQ-413
@@ -289,12 +291,15 @@ def _candidates(inst: Instance) -> list[dict]:
     return httpx.get(f"{inst.url}/admin/discover/candidates", headers=_HEADERS, timeout=60).json()
 
 
-def _left_out(inst: Instance, run_id: int) -> list[dict]:
+def _proposals(inst: Instance, run_id: int) -> list[dict]:
+    """Every proposal of the run no reviewer has decided, the highest score first."""
     listed = _ok(
-        httpx.get(f"{inst.url}/admin/discover/runs/{run_id}/left-out", headers=_HEADERS, timeout=60)
+        httpx.get(
+            f"{inst.url}/admin/discover/runs/{run_id}/proposals", headers=_HEADERS, timeout=60
+        )
     )
     assert listed["threshold"] == 0.7
-    return listed["left_out"]
+    return listed["proposals"]
 
 
 def _scope(**sets: Any) -> dict:
@@ -325,7 +330,7 @@ def test_the_files_register_with_the_types_their_source_reports(files):
     ]
 
 
-def test_a_run_over_the_files_suggests_their_key_and_keeps_what_it_left_out(
+def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     instance: Instance, endpoint: _Endpoint, files
 ):
     """The five tables alone: the JSON file's permit_id and the Parquet file's are text columns
@@ -339,7 +344,7 @@ def test_a_run_over_the_files_suggests_their_key_and_keeps_what_it_left_out(
         print(prompt)
 
     # What the run compared is said: five tables of one domain.
-    assert report["domains"] == [_DOMAIN]
+    assert report["source_domains"] == report["target_domains"] == [_DOMAIN]
     assert (report["source_tables"], report["target_tables"]) == (5, 5)
     assert report["target_same_as_source"] is True and report["tables_not_read"] == 0
 
@@ -371,31 +376,61 @@ def test_a_run_over_the_files_suggests_their_key_and_keeps_what_it_left_out(
     assert suggested[_PERMIT] == 0.95
     assert len(suggested) == 4
 
-    # Nothing read is dropped: the one the model rated 0.4 is listed, with why, and can be accepted.
-    (left,) = _left_out(instance, run["id"])
-    assert _edge(files, left) == _ADDRESS
-    assert (left["reason"], left["confidence"], left["acceptable"]) == (
-        "below_threshold",
-        0.4,
-        True,
+    # Nothing read is dropped: one table of the run's proposals, the highest score first, the one
+    # the model rated 0.4 with why it is not suggested.
+    listed = _proposals(instance, run["id"])
+    assert [(_edge(files, r), r["confidence"], r["reason"], r["decidable"]) for r in listed] == [
+        (_PERMIT, 0.95, None, True),
+        *(
+            ((table, "neighborhood", "budget_2026__budget", "neighborhood"), 0.8, None, True)
+            for table in ("complaints_2026_08", "complaints_2026_09", "building_permits")
+        ),
+        (_ADDRESS, 0.4, "below_threshold", True),
+    ]
+    by_edge = {_edge(files, r): r for r in listed}
+    assert by_edge[_ADDRESS]["reasoning"] == (
+        "complaints_2026_08.address names building_permits.address"
     )
-    assert left["reasoning"] == "complaints_2026_08.address names building_permits.address"
-    accepted = _ok(
+
+    # A reviewer accepts the key and the one under the threshold, marks one neighborhood pair
+    # not to be recommended again, and leaves the other two alone.
+    not_wanted = ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood")
+    applied = _ok(
         httpx.post(
-            f"{instance.url}/admin/discover/left-out/{left['id']}/accept",
-            json={"name": "complaint-at-a-permit-address"},
+            f"{instance.url}/admin/discover/runs/{run['id']}/apply",
+            json={
+                "accept": [
+                    {"id": by_edge[_PERMIT]["id"], "name": "inspection-of-a-permit"},
+                    {"id": by_edge[_ADDRESS]["id"], "name": "complaint-at-a-permit-address"},
+                ],
+                "not_again": [by_edge[not_wanted]["id"]],
+            },
             headers=_HEADERS,
             timeout=120,
         )
-    )
-    assert accepted["relationship_id"] == "complaint-at-a-permit-address"
+    )["results"]
+    assert [(r["action"], r["ok"]) for r in applied] == [
+        ("accept", True),
+        ("accept", True),
+        ("not_again", True),
+    ]
     registered = _gql(instance, "{ relationships { id sourceColumn targetColumn } }")
-    assert {
-        "id": "complaint-at-a-permit-address",
-        "sourceColumn": "address",
-        "targetColumn": "address",
-    } in (registered["relationships"])
-    assert _left_out(instance, run["id"]) == []
+    for name, column in (
+        ("inspection-of-a-permit", "permit_id"),
+        ("complaint-at-a-permit-address", "address"),
+    ):
+        assert {"id": name, "sourceColumn": column, "targetColumn": column} in (
+            registered["relationships"]
+        )
+    # What was decided leaves the run's table; the two left alone are undecided and still
+    # waiting as suggestions.
+    remaining = _proposals(instance, run["id"])
+    assert sorted(_edge(files, r)[0] for r in remaining) == [
+        "complaints_2026_08",
+        "complaints_2026_09",
+    ]
+    waiting = {_edge(files, c) for c in _candidates(instance) if c["scope"] == f"run:{run['id']}"}
+    assert waiting == {_edge(files, r) for r in remaining}
 
 
 def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
@@ -411,19 +446,21 @@ def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
         named = {table for table, _ in _compared(prompt)}
         assert not named & set(files), named & set(files)
     report = run["report"]
-    assert report["domains"] == ["pet-store", "shelter"]
+    assert report["source_domains"] == ["pet-store", "shelter"]
     assert report["source_tables"] > 5
     assert report["semantics"]["proposed"] == 0
     assert report["semantics"]["empty_reason"] == "none_proposed"
-    assert [r for r in _left_out(instance, run["id"]) if r["kind"] == "semantics"] == []
+    assert [r for r in _proposals(instance, run["id"]) if r["kind"] == "semantics"] == []
 
 
 def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     instance: Instance, endpoint: _Endpoint, files
 ):
     """All three domains, with the limits of a model that holds a whole type group in one request:
-    the permit columns share the text request with every other text column, the key relationship
-    is read again, and it is left out only because it is already waiting from the first run."""
+    the permit columns share the text request with every other text column, and every proposal is
+    read again. What the first run's reviewer decided shows: the accepted ones are registered and
+    cannot be decided, the one marked is said to be rejected before, and those left undecided are
+    ordinary rows that can still be accepted."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
     prompts = endpoint.prompts[before:]
@@ -435,7 +472,26 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     ) in compared
     assert len({table for table, _ in compared}) > 5
     report = run["report"]
-    assert report["domains"] == [_DOMAIN, "pet-store", "shelter"]
-    left = {_edge(files, r): r for r in _left_out(instance, run["id"]) if r["kind"] == "semantics"}
-    assert left[_PERMIT]["reason"] == "pending" and left[_PERMIT]["confidence"] == 0.95
-    assert left[_PERMIT]["acceptable"] is False
+    assert report["source_domains"] == [_DOMAIN, "pet-store", "shelter"]
+    read = {
+        _edge(files, r): (r["reason"], r["decidable"])
+        for r in _proposals(instance, run["id"])
+        if r["kind"] == "semantics"
+    }
+    assert read == {
+        _PERMIT: ("existing", False),
+        ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood"): (
+            "rejected",
+            True,
+        ),
+        ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
+            "pending",
+            True,
+        ),
+        ("complaints_2026_09", "neighborhood", "budget_2026__budget", "neighborhood"): (
+            "pending",
+            True,
+        ),
+        # Rated 0.4 again, and registered since: said as registered, not to be accepted twice.
+        _ADDRESS: ("existing", False),
+    }

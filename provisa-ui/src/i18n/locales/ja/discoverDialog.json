@@ -51,6 +51,17 @@
     "stopped": "停止しました。見つかったものは保持されます。",
     "failed": "実行に失敗しました: {{error}}",
     "newRun": "新しい実行",
-    "noSuggestions": "この実行の提案で保留中のものはありません。"
+    "noSuggestions": "この実行の提案で保留中のものはありません。",
+    "restore": {
+      "fromLastRun": "これは前回の実行のフィールドです。",
+      "reset": "既定値に戻す",
+      "leftOut": "次のものは無効になったため除外しました:",
+      "domainsGone": "ドメイン {{names}} は利用できなくなりました。",
+      "domainsGone_other": "ドメイン {{names}} は利用できなくなりました。",
+      "tablesGone": "{{count}} 件のテーブルはそこに登録されていません。",
+      "tablesGone_other": "{{count}} 件のテーブルはそこに登録されていません。",
+      "vendorNoKey": "{{vendor}} にはキーがないため、割り当て済みのモデルを使います。",
+      "modelGone": "{{vendor}} は {{model}} を提供しなくなったため、割り当て済みのモデルを使います。"
+    }
   }
 }

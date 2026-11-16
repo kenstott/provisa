@@ -14,13 +14,19 @@
 // chosen domains, domains to those ticked in the Domains picker; system domains are never offered.
 // At most how many requests the run makes is shown before Run, counted again as the scope changes:
 // the count reads no table, so it is an upper bound, and it says how many tables are never read.
+//
+// A run after the first starts from the fields of the one before (`initial`): its kinds, model and
+// sets. A value that no longer holds (a domain or table no longer offered, a vendor with no key, a
+// model its vendor no longer lists) is left out and said; the rest is kept. "Reset to defaults"
+// sets the form up as a first run.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Text } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, Text } from "@mantine/core";
 import {
   countDiscoveryRun,
   fetchDiscoveryModels,
+  fetchVendorModels,
   type DiscoveryCount,
   type DiscoveryKind,
   type DiscoveryModels,
@@ -31,6 +37,7 @@ import { isInternalDomain } from "../../lib/internalDomains";
 import { MultiSelect, type MultiSelectOption } from "../MultiSelect";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { DiscoverModelField } from "./DiscoverModelField";
+import { restoreSets, type RestoreNote } from "./restoreScope";
 import { typeGroupLabel } from "./discoveryResult";
 
 /** A registered table, as the scope offers it. */
@@ -64,12 +71,18 @@ type Counted =
 export function DiscoverScopeForm({
   tables,
   defaultDomains,
+  initial,
+  onReset,
   onCancel,
   onRun,
 }: {
   tables: ScopeTable[];
   /** The domains ticked in the Domains picker. */
   defaultDomains: string[];
+  /** The fields of the run before, which this one starts from; null: the defaults. */
+  initial: DiscoveryScope | null;
+  /** Set the form up from the defaults. */
+  onReset: () => void;
   onCancel: () => void;
   /** Start the run; a refusal is thrown with the server's words. */
   onRun: (scope: DiscoveryScope) => Promise<void>;
@@ -77,8 +90,12 @@ export function DiscoverScopeForm({
   const { t } = useTranslation();
   const [models, setModels] = useState<DiscoveryModels | null>(null);
   const [modelsError, setModelsError] = useState("");
-  const [foreignKeys, setForeignKeys] = useState(true);
-  const [semantics, setSemantics] = useState(true);
+  const [foreignKeys, setForeignKeys] = useState(
+    initial === null || initial.kinds.includes("foreign_keys"),
+  );
+  const [semantics, setSemantics] = useState(
+    initial === null || initial.kinds.includes("semantics"),
+  );
   const [vendor, setVendor] = useState("");
   const [model, setModel] = useState("");
 
@@ -89,13 +106,18 @@ export function DiscoverScopeForm({
         .sort((a, b) => a.localeCompare(b)),
     [tables],
   );
-  const [sourceDomains, setSourceDomains] = useState<string[]>(() =>
-    defaultDomains.filter((d) => domains.includes(d)),
+  // Read once, as the form mounts: what the run before asked for, as the form can hold it now.
+  const [restored] = useState(() =>
+    initial === null ? null : restoreSets(initial, domains, tables),
   );
-  const [sourceTables, setSourceTables] = useState<string[]>([]);
-  const [sameAsSource, setSameAsSource] = useState(true);
-  const [targetDomains, setTargetDomains] = useState<string[]>([]);
-  const [targetTables, setTargetTables] = useState<string[]>([]);
+  const [modelNotes, setModelNotes] = useState<RestoreNote[]>([]);
+  const [sourceDomains, setSourceDomains] = useState<string[]>(
+    () => restored?.sourceDomains ?? defaultDomains.filter((d) => domains.includes(d)),
+  );
+  const [sourceTables, setSourceTables] = useState<string[]>(restored?.sourceTables ?? []);
+  const [sameAsSource, setSameAsSource] = useState(restored?.sameAsSource ?? true);
+  const [targetDomains, setTargetDomains] = useState<string[]>(restored?.targetDomains ?? []);
+  const [targetTables, setTargetTables] = useState<string[]>(restored?.targetTables ?? []);
   const [counted, setCounted] = useState<Counted>({ state: "idle" });
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
@@ -107,11 +129,37 @@ export function DiscoverScopeForm({
         if (!live) return;
         setModels(m);
         if (!m.semantics_available) setSemantics(false);
-        if (m.assigned) {
-          setVendor(m.assigned.vendor);
-          setModel(m.assigned.model);
-        } else if (m.vendors.length > 0) {
-          setVendor(m.vendors[0]);
+        const assigned = () => {
+          if (m.assigned) {
+            setVendor(m.assigned.vendor);
+            setModel(m.assigned.model);
+          } else if (m.vendors.length > 0) {
+            setVendor(m.vendors[0]);
+            setModel("");
+          }
+        };
+        // The run before named a model for itself (null: it ran the assigned one).
+        const asked =
+          initial !== null && initial.vendor !== null && initial.model !== null
+            ? { vendor: initial.vendor, model: initial.model }
+            : null;
+        if (asked === null || !m.semantics_available) {
+          assigned();
+        } else if (!m.vendors.includes(asked.vendor)) {
+          assigned();
+          setModelNotes([{ kind: "vendorNoKey", vendor: asked.vendor }]);
+        } else {
+          setVendor(asked.vendor);
+          setModel(asked.model);
+          fetchVendorModels(asked.vendor)
+            .then((listed) => {
+              if (!live || listed.includes(asked.model)) return;
+              assigned();
+              setModelNotes([{ kind: "modelGone", ...asked }]);
+            })
+            // A vendor that lists no models takes a typed name, which nothing here can check:
+            // the model stands, and the count or the run refuses it if the vendor does.
+            .catch(() => undefined);
         }
       })
       .catch((e) => {
@@ -123,7 +171,25 @@ export function DiscoverScopeForm({
     return () => {
       live = false;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once as the form mounts
   }, []);
+
+  const notes = [...(restored?.notes ?? []), ...modelNotes];
+  const noteText = (note: RestoreNote) => {
+    switch (note.kind) {
+      case "domainsGone":
+        return t("discoverDialog.restore.domainsGone", {
+          count: note.names.length,
+          names: note.names.join(", "),
+        });
+      case "tablesGone":
+        return t("discoverDialog.restore.tablesGone", { count: note.count });
+      case "vendorNoKey":
+        return t("discoverDialog.restore.vendorNoKey", { vendor: note.vendor });
+      case "modelGone":
+        return t("discoverDialog.restore.modelGone", { vendor: note.vendor, model: note.model });
+    }
+  };
 
   const semanticsAvailable = models?.semantics_available === true;
   const kinds: DiscoveryKind[] = [
@@ -219,6 +285,32 @@ export function DiscoverScopeForm({
   return (
     <>
       <Text mb="md">{t("discoverDialog.intro")}</Text>
+      {initial !== null && (
+        <Group justify="space-between" align="center" mb="md" wrap="nowrap">
+          <Text fz="sm" c="dimmed" data-testid="discover-from-last-run">
+            {t("discoverDialog.restore.fromLastRun")}
+          </Text>
+          <Button
+            variant="default"
+            size="xs"
+            onClick={onReset}
+            data-testid="discover-reset-defaults"
+            style={{ flexShrink: 0 }}
+          >
+            {t("discoverDialog.restore.reset")}
+          </Button>
+        </Group>
+      )}
+      {notes.length > 0 && (
+        <Alert color="yellow" mb="md" data-testid="discover-restore-notes">
+          <Text fz="sm">{t("discoverDialog.restore.leftOut")}</Text>
+          {notes.map((note) => (
+            <Text key={noteText(note)} fz="sm">
+              {noteText(note)}
+            </Text>
+          ))}
+        </Alert>
+      )}
       {modelsError && (
         <Alert color="red" mb="md" data-testid="discover-dialog-error">
           {modelsError}

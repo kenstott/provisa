@@ -51,6 +51,17 @@
     "stopped": "已停止。已找到的內容會保留。",
     "failed": "執行失敗：{{error}}",
     "newRun": "新的執行",
-    "noSuggestions": "今次執行沒有待處理的建議。"
+    "noSuggestions": "今次執行沒有待處理的建議。",
+    "restore": {
+      "fromLastRun": "這些是你上次執行的欄位。",
+      "reset": "還原預設值",
+      "leftOut": "以下內容已不再有效，因此未帶入：",
+      "domainsGone": "網域 {{names}} 已不可用。",
+      "domainsGone_other": "網域 {{names}} 已不可用。",
+      "tablesGone": "有 {{count}} 個表已不在其中登記。",
+      "tablesGone_other": "有 {{count}} 個表已不在其中登記。",
+      "vendorNoKey": "{{vendor}} 沒有金鑰，因此使用已指派的模型。",
+      "modelGone": "{{vendor}} 不再提供 {{model}}，因此使用已指派的模型。"
+    }
   }
 }

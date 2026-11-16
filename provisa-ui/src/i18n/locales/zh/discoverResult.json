@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "已比较 {{domains}} 中的 {{count}} 个表。",
-    "compared_other": "已比较 {{domains}} 中的 {{count}} 个表。",
-    "comparedTwoSets": "已将 {{domains}} 中的 {{source}} 个源表与 {{target}} 个目标表进行比较。",
+    "scopeKinds": "查找内容：{{kinds}}。",
+    "scopeSource": "源：{{domains}} 中的 {{count}} 个表。",
+    "scopeSource_other": "源：{{domains}} 中的 {{count}} 个表。",
+    "scopeTargetSame": "目标：与源相同。",
+    "scopeTarget": "目标：{{domains}} 中的 {{count}} 个表。",
+    "scopeTarget_other": "目标：{{domains}} 中的 {{count}} 个表。",
     "foreignKeys": "外键：找到 {{found}} 个，建议 {{count}} 个。",
     "foreignKeys_other": "外键：找到 {{found}} 个，建议 {{count}} 个。",
     "semanticsFound": "语义：{{count}} 条建议。",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev 无法为 {{count}} 个请求的提议评分，因此保留了模型的置信度。",
     "scoringFailed_other": "Jev 无法为 {{count}} 个请求的提议评分，因此保留了模型的置信度。",
     "failedRequest": "针对{{group}}列：{{message}}",
-    "leftOut": "已排除：{{list}}。",
+    "leftOut": "未建议：{{list}}。",
     "leftOutItem": "{{label}}（{{count}}）",
     "removed": {
       "below_threshold": "模型给出的置信度低于 {{threshold}}%",

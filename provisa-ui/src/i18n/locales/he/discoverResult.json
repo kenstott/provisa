@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "הושוותה טבלה {{count}} מתוך {{domains}}.",
-    "compared_other": "הושוו {{count}} טבלאות מתוך {{domains}}.",
-    "comparedTwoSets": "הושוו {{source}} טבלאות מקור עם {{target}} טבלאות יעד, מתוך {{domains}}.",
+    "scopeKinds": "חיפשנו: {{kinds}}.",
+    "scopeSource": "מקור: טבלה {{count}} מתוך {{domains}}.",
+    "scopeSource_other": "מקור: {{count}} טבלאות מתוך {{domains}}.",
+    "scopeTargetSame": "יעד: זהה למקור.",
+    "scopeTarget": "יעד: טבלה {{count}} מתוך {{domains}}.",
+    "scopeTarget_other": "יעד: {{count}} טבלאות מתוך {{domains}}.",
     "foreignKeys": "מפתחות זרים: {{found}} נמצאו, {{count}} הוצע.",
     "foreignKeys_other": "מפתחות זרים: {{found}} נמצאו, {{count}} הוצעו.",
     "semanticsFound": "סמנטיקה: הצעה {{count}}.",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev לא הצליח לדרג את ההצעות של בקשה {{count}}, ולכן נשמר להן הביטחון של המודל.",
     "scoringFailed_other": "Jev לא הצליח לדרג את ההצעות של {{count}} בקשות, ולכן נשמר להן הביטחון של המודל.",
     "failedRequest": "עבור עמודות מסוג {{group}}: {{message}}",
-    "leftOut": "הושמטו: {{list}}.",
+    "leftOut": "לא הוצעו: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "קיבלו מהמודל ביטחון נמוך מ-{{threshold}}%",

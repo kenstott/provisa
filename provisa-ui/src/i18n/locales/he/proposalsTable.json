@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "שורה מסומנת מתקבלת בעת ההחלה. שורות שציונן {{threshold}}% ומעלה מסומנות מראש. שורה שאף תיבה בה אינה מסומנת נשארת ללא החלטה.",
+    "colScore": "ציון",
+    "colKind": "סוג",
+    "colReasoning": "נימוק",
+    "colNote": "הערה",
+    "colNotAgain": "לא להמליץ שוב",
+    "notAgainAria": "לא להמליץ שוב על {{name}}",
+    "kind": {
+      "foreign_keys": "אילוץ",
+      "semantics": "סמנטי"
+    },
+    "asWritten": "כפי שהמודל כתב: {{answer}}",
+    "apply": "החלה",
+    "applyAccept": "קבלת {{count}}",
+    "applyNotAgain": "לא להמליץ שוב על {{count}}",
+    "applyBoth": "קבלת {{accept}}, לא להמליץ שוב על {{notAgain}}",
+    "applied": "{{accepted}} התקבלו, {{notAgain}} לא יומלצו שוב.",
+    "failed": "לא ניתן היה להחיל {{count}}:",
+    "failed_other": "לא ניתן היה להחיל {{count}}:",
+    "none": "להרצה זו לא נותרה הצעה להחלטה.",
+    "reason": {
+      "invalid_shape": "אינה קשר בצורה שהתבקשה: שדה חסר או שצורתו שגויה",
+      "unknown_column": "מציינת טבלה או עמודה שהבקשה לא השוותה",
+      "not_comparable": "לשתי העמודות מחלקות שונות, ולכן אינן מושוות",
+      "below_threshold": "הביטחון של המודל מתחת לסף של {{threshold}}%.",
+      "scored_below_threshold": "Jev דירג אותה {{scored}}%, מתחת לסף של {{threshold}}%. המודל נתן {{confidence}}%.",
+      "same_column": "מעמודה לעצמה",
+      "primary_key_to_primary_key": "ממפתח ראשי למפתח ראשי",
+      "both_repeating": "ערכים חוזרים בשני הצדדים, ולכן אף אחד מהם אינו צד היחיד",
+      "existing": "כבר רשומה",
+      "pending": "כבר ממתינה בין ההצעות",
+      "rejected": "נדחתה בעבר",
+      "matches_foreign_key": "תואמת מפתח זר שנמצא בהרצה זו",
+      "out_of_scope": "מחוץ לטבלאות המקור והיעד שנבחרו",
+      "weaker": "נשמרה הצעה חזקה יותר לאותן שתי עמודות"
+    }
+  }
+}

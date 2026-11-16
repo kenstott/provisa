@@ -51,6 +51,17 @@
     "stopped": "Gestopt. Wat gevonden is, blijft bewaard.",
     "failed": "De run is mislukt: {{error}}",
     "newRun": "Nieuwe run",
-    "noSuggestions": "Er wachten geen voorstellen van deze run."
+    "noSuggestions": "Er wachten geen voorstellen van deze run.",
+    "restore": {
+      "fromLastRun": "Dit zijn de velden van uw laatste run.",
+      "reset": "Standaardwaarden herstellen",
+      "leftOut": "Hieruit weggelaten, omdat het niet meer geldt:",
+      "domainsGone": "Het domein {{names}} is niet meer beschikbaar.",
+      "domainsGone_other": "De domeinen {{names}} zijn niet meer beschikbaar.",
+      "tablesGone": "{{count}} tabel is daar niet meer geregistreerd.",
+      "tablesGone_other": "{{count}} tabellen zijn daar niet meer geregistreerd.",
+      "vendorNoKey": "{{vendor}} heeft geen sleutel, dus het model is het toegewezen model.",
+      "modelGone": "{{vendor}} biedt {{model}} niet meer aan, dus het model is het toegewezen model."
+    }
   }
 }

@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "Сравнена {{count}} таблица из {{domains}}.",
-    "compared_other": "Сравнено таблиц: {{count}}, из {{domains}}.",
-    "comparedTwoSets": "Сравнено исходных таблиц: {{source}}, с целевыми: {{target}}, из {{domains}}.",
+    "scopeKinds": "Искали: {{kinds}}.",
+    "scopeSource": "Источник: {{count}} таблица из {{domains}}.",
+    "scopeSource_other": "Источник: таблиц — {{count}}, из {{domains}}.",
+    "scopeTargetSame": "Цель: та же, что и источник.",
+    "scopeTarget": "Цель: {{count}} таблица из {{domains}}.",
+    "scopeTarget_other": "Цель: таблиц — {{count}}, из {{domains}}.",
     "foreignKeys": "Внешние ключи: найдено {{found}}, предложено {{count}}.",
     "foreignKeys_other": "Внешние ключи: найдено {{found}}, предложено {{count}}.",
     "semanticsFound": "Семантика: {{count}} предложение.",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev не смог оценить предложения запроса ({{count}}), поэтому у них осталась уверенность модели.",
     "scoringFailed_other": "Jev не смог оценить предложения запросов ({{count}}), поэтому у них осталась уверенность модели.",
     "failedRequest": "Для столбцов типа «{{group}}»: {{message}}",
-    "leftOut": "Отброшено: {{list}}.",
+    "leftOut": "Не предложено: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "модель дала уверенность ниже {{threshold}}%",

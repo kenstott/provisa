@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "{{count}} table de {{domains}} comparée.",
-    "compared_other": "{{count}} tables de {{domains}} comparées.",
-    "comparedTwoSets": "{{source}} tables source comparées à {{target}} tables cible, de {{domains}}.",
+    "scopeKinds": "Recherché : {{kinds}}.",
+    "scopeSource": "Source : {{count}} table de {{domains}}.",
+    "scopeSource_other": "Source : {{count}} tables de {{domains}}.",
+    "scopeTargetSame": "Cible : la même que la source.",
+    "scopeTarget": "Cible : {{count}} table de {{domains}}.",
+    "scopeTarget_other": "Cible : {{count}} tables de {{domains}}.",
     "foreignKeys": "Clés étrangères : {{found}} trouvées, {{count}} suggérée.",
     "foreignKeys_other": "Clés étrangères : {{found}} trouvées, {{count}} suggérées.",
     "semanticsFound": "Sémantique : {{count}} suggestion.",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev n'a pas pu noter les propositions de {{count}} requête ; elles ont gardé la confiance du modèle.",
     "scoringFailed_other": "Jev n'a pas pu noter les propositions de {{count}} requêtes ; elles ont gardé la confiance du modèle.",
     "failedRequest": "Pour les colonnes de type {{group}} : {{message}}",
-    "leftOut": "Écartées : {{list}}.",
+    "leftOut": "Non suggérées : {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "à moins de {{threshold}} % de confiance selon le modèle",

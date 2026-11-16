@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "Se comparó {{count}} tabla de {{domains}}.",
-    "compared_other": "Se compararon {{count}} tablas de {{domains}}.",
-    "comparedTwoSets": "Se compararon {{source}} tablas de origen con {{target}} tablas de destino, de {{domains}}.",
+    "scopeKinds": "Se buscó: {{kinds}}.",
+    "scopeSource": "Origen: {{count}} tabla de {{domains}}.",
+    "scopeSource_other": "Origen: {{count}} tablas de {{domains}}.",
+    "scopeTargetSame": "Destino: el mismo que el origen.",
+    "scopeTarget": "Destino: {{count}} tabla de {{domains}}.",
+    "scopeTarget_other": "Destino: {{count}} tablas de {{domains}}.",
     "foreignKeys": "Claves foráneas: {{found}} encontradas, {{count}} sugerida.",
     "foreignKeys_other": "Claves foráneas: {{found}} encontradas, {{count}} sugeridas.",
     "semanticsFound": "Semántica: {{count}} sugerencia.",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev no pudo puntuar las propuestas de {{count}} solicitud, así que conservaron la confianza del modelo.",
     "scoringFailed_other": "Jev no pudo puntuar las propuestas de {{count}} solicitudes, así que conservaron la confianza del modelo.",
     "failedRequest": "Para columnas de tipo {{group}}: {{message}}",
-    "leftOut": "Omitidas: {{list}}.",
+    "leftOut": "No sugeridas: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "con menos del {{threshold}} % de confianza según el modelo",

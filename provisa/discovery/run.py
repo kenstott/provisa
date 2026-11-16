@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from provisa.discovery import candidates as candidates_repo
@@ -385,6 +385,18 @@ async def perform(
     read_sample = _caching(gather.uniqueness_reader(state))
     tables = prepared.tables
 
+    def registered(read: Recorded) -> Recorded:
+        """``read``, said to be already registered where it is: a proposal left out as an answer
+        was read (the model rated it low, say) may be one of a relationship that exists, and is
+        then not one a reviewer can still accept."""
+        p = read.proposal
+        if p is None:
+            return read
+        reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
+        if p.edge in known.existing or reverse in known.existing:
+            return replace(read, left_out="existing")
+        return read
+
     async def settled(semantic: list[Proposal], unread: list[Recorded]) -> Outcome:
         outcome = await settle(
             [*fk, *semantic], tables, prepared.source_ids, prepared.target_ids, known, read_sample
@@ -393,7 +405,7 @@ async def perform(
         await record(
             [
                 *(Recorded(p.kind, None, p) for p in outcome.kept),
-                *unread,
+                *(registered(r) for r in unread),
                 *(Recorded(o.proposal.kind, o.reason, o.proposal) for o in outcome.left_out),
             ]
         )

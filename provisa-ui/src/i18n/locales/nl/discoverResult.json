@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "{{count}} tabel van {{domains}} vergeleken.",
-    "compared_other": "{{count}} tabellen van {{domains}} vergeleken.",
-    "comparedTwoSets": "{{source}} brontabellen vergeleken met {{target}} doeltabellen, van {{domains}}.",
+    "scopeKinds": "Gezocht naar: {{kinds}}.",
+    "scopeSource": "Bron: {{count}} tabel van {{domains}}.",
+    "scopeSource_other": "Bron: {{count}} tabellen van {{domains}}.",
+    "scopeTargetSame": "Doel: hetzelfde als de bron.",
+    "scopeTarget": "Doel: {{count}} tabel van {{domains}}.",
+    "scopeTarget_other": "Doel: {{count}} tabellen van {{domains}}.",
     "foreignKeys": "Refererende sleutels: {{found}} gevonden, {{count}} voorgesteld.",
     "foreignKeys_other": "Refererende sleutels: {{found}} gevonden, {{count}} voorgesteld.",
     "semanticsFound": "Semantiek: {{count}} voorstel.",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev kon de voorstellen van {{count}} verzoek niet beoordelen; ze hielden de betrouwbaarheid van het model.",
     "scoringFailed_other": "Jev kon de voorstellen van {{count}} verzoeken niet beoordelen; ze hielden de betrouwbaarheid van het model.",
     "failedRequest": "Voor kolommen van het type {{group}}: {{message}}",
-    "leftOut": "Weggelaten: {{list}}.",
+    "leftOut": "Niet voorgesteld: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "door het model minder dan {{threshold}}% betrouwbaarheid gegeven",

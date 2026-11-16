@@ -1,8 +1,11 @@
 {
   "discoverResult": {
-    "compared": "{{domains}} की {{count}} तालिका की तुलना की गई।",
-    "compared_other": "{{domains}} की {{count}} तालिकाओं की तुलना की गई।",
-    "comparedTwoSets": "{{domains}} की {{source}} स्रोत तालिकाओं की तुलना {{target}} लक्ष्य तालिकाओं से की गई।",
+    "scopeKinds": "खोजा गया: {{kinds}}।",
+    "scopeSource": "स्रोत: {{domains}} की {{count}} तालिका।",
+    "scopeSource_other": "स्रोत: {{domains}} की {{count}} तालिकाएँ।",
+    "scopeTargetSame": "लक्ष्य: स्रोत के समान।",
+    "scopeTarget": "लक्ष्य: {{domains}} की {{count}} तालिका।",
+    "scopeTarget_other": "लक्ष्य: {{domains}} की {{count}} तालिकाएँ।",
     "foreignKeys": "विदेशी कुंजियाँ: {{found}} मिलीं, {{count}} सुझाई गई।",
     "foreignKeys_other": "विदेशी कुंजियाँ: {{found}} मिलीं, {{count}} सुझाई गईं।",
     "semanticsFound": "सिमेंटिक्स: {{count}} सुझाव।",
@@ -23,7 +26,7 @@
     "scoringFailed": "Jev {{count}} अनुरोध के प्रस्तावों को आँक नहीं सका, इसलिए उन पर मॉडल का विश्वास ही रहा।",
     "scoringFailed_other": "Jev {{count}} अनुरोधों के प्रस्तावों को आँक नहीं सका, इसलिए उन पर मॉडल का विश्वास ही रहा।",
     "failedRequest": "{{group}} कॉलमों के लिए: {{message}}",
-    "leftOut": "छोड़े गए: {{list}}।",
+    "leftOut": "सुझाए नहीं गए: {{list}}।",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
       "below_threshold": "मॉडल ने {{threshold}}% से कम विश्वास दिया",
