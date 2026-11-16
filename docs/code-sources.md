@@ -419,6 +419,53 @@ GraphQL follows the two plain relationships as two nested levels: `stores { stor
 - **Refused.** A command that isn't a code `@query`, doesn't take exactly two tables, takes any other argument, or whose rows lack either key is refused when you save the relationship, with the reason.
 - **One thing.** The view and the three relationships carry the set's id, and you change or retire them only as a set. The Relationships page offers **Change code resolver** and **Retire code resolver** on each of the relationships. Editing or deleting one of them on its own page is refused, naming the set. Retiring the set retires all four, and their names stay taken.
 
+#### Keeping the matches incrementally: `@change` {: #code-resolver-change }
+
+By default every refresh runs the resolver again and replaces all the matches. When that costs too much, add a second function to the same source, tagged `@change`. Provisa then asks it only for the matches that changed since the last run.
+
+```python
+@dataclass
+class Changed:
+    store_id: int
+    region_id: int
+    removed: bool
+    seq: int
+
+
+def store_regions_changes(
+    stores: TableRef[Store], regions: TableRef[Region], since: int | None = None
+) -> list[Changed]:
+    """Store-region matches changed since ``since``.
+
+    @change table=store_regions
+    @change key=store_id,region_id
+    @change removed=removed
+    @change cursor=seq
+    """
+    ...
+```
+
+The four tag lines state what only you know.
+
+| Line | States |
+|---|---|
+| `table=` | The landed table this function keeps fresh. For a code resolver that is the id you gave the set. |
+| `key=` | The columns that identify one match, separated by commas. |
+| `removed=` | The column that is true when a match no longer holds. |
+| `cursor=` | The column whose value orders the changes. |
+
+The function takes the resolver's two tables and one more parameter, the cursor. Provisa passes the largest cursor value it stored after the last run that succeeded. Your function returns the matches that changed after it. Provisa upserts each returned row by its key and deletes the key of a row whose removed column is true. The function never learns where the matches are stored.
+
+On the first run and on every whole rebuild Provisa passes no cursor, and your function returns every match. One function serves both cases, so write the no-cursor branch to return the full result.
+
+Turn it on in the code resolver's form on the Relationships page. Tick **Keep matches incrementally**, then set **Whole rebuild every (seconds)**. The interval is required. A whole rebuild corrects anything the changes missed, and Provisa won't save the setting without one. An administrator's full refresh of the view is also a whole rebuild.
+
+A view you define yourself over a code command has the same setting on its **Load** tab, as **Incremental maintenance** with its own **Whole rebuild every (seconds)**.
+
+- **Unavailable without `@change`.** When the resolver's source declares no `@change` function for the table, the tick is disabled and its help icon says so. A save that turns it on by another route, such as the API, is refused with the same reason.
+- **Off means whole.** With the setting off, every refresh runs the resolver's own function and `@change` is never called.
+- **Refused results.** A refresh fails, applies nothing and keeps the old cursor when a returned row lacks a key column, when a key appears twice in one result, or when a returned cursor is before the stored one. The view's last error names the function and the row's fault.
+
 ### Where the code comes from {: #where-the-code-comes-from }
 
 - **A package.** An npm package for Node, a PyPI package for Python, or a Go module for Go, at an exact version (a Go module's is `v1.2.0`).

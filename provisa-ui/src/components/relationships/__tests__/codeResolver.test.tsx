@@ -13,12 +13,13 @@
 // that is part of one says so, offering to change or retire the set rather than itself.
 
 import { describe, it, expect, vi } from "vitest";
-import { render, screen } from "../../../test-utils/render";
+import { fireEvent, render, screen } from "../../../test-utils/render";
 import type { TrackedFunction } from "../../../api/actions";
-import type { ListedTable, Relationship } from "../../../types/admin";
+import type { IncrementalOption, ListedTable, Relationship } from "../../../types/admin";
+import { CodeResolverIncrementalQuery } from "../../../hooks/admin.graphql";
 import { AddRelationshipForm } from "../AddRelationshipForm";
 import { RelationshipDetail } from "../RelationshipDetail";
-import { EMPTY_FORM, isCodeResolver } from "../relationship-types";
+import { EMPTY_FORM, isCodeResolver, type RelForm } from "../relationship-types";
 
 function command(name: string, more: Partial<TrackedFunction>): TrackedFunction {
   return {
@@ -102,6 +103,103 @@ describe("the add form's code resolver target", () => {
       />,
     );
     expect(screen.getByTestId("rel-form-id")).toBeDisabled();
+  });
+});
+
+// REQ-2249: the set's incremental setting, which the server says may or may not be turned on.
+function option(resolverName: string, id: string, answer: IncrementalOption) {
+  return {
+    request: { query: CodeResolverIncrementalQuery, variables: { resolver: resolverName, id } },
+    result: { data: { codeResolverIncremental: answer } },
+  };
+}
+
+const AVAILABLE: IncrementalOption = { available: true, code: null, reason: null };
+const NO_CHANGE: IncrementalOption = {
+  available: false,
+  code: "schema.incremental_no_change",
+  reason: "server english text",
+};
+
+function resolverForm(more: Partial<RelForm>, answer: IncrementalOption, setForm = vi.fn()) {
+  render(
+    <AddRelationshipForm
+      form={{
+        ...EMPTY_FORM,
+        id: "order_clips",
+        targetType: "resolver",
+        resolver: "match_region",
+        ...more,
+      }}
+      setForm={setForm}
+      tables={[] as ListedTable[]}
+      functions={[resolver]}
+      saving={null}
+      problem=""
+      onSave={vi.fn()}
+      onCancel={vi.fn()}
+    />,
+    { mocks: [option("match_region", "order_clips", answer)] },
+  );
+  return setForm;
+}
+
+describe("a code resolver's incremental setting", () => {
+  it("can be turned on when the resolver's source has a @change function", async () => {
+    const setForm = resolverForm({}, AVAILABLE);
+    const tick = await screen.findByTestId("rel-form-incremental");
+    expect(tick).toBeEnabled();
+    expect(tick).not.toBeChecked();
+    // Off, no interval between whole rebuilds is asked.
+    expect(screen.queryByTestId("rel-form-rebuild-every")).toBeNull();
+    fireEvent.click(tick);
+    expect(setForm).toHaveBeenCalledWith(expect.objectContaining({ incremental: true }));
+  });
+
+  it("is disabled, with the catalog's reason at its (?), when the source has none", async () => {
+    resolverForm({}, NO_CHANGE);
+    const tick = await screen.findByTestId("rel-form-incremental");
+    expect(tick).toBeDisabled();
+    // Its (?) says why, in place of what the setting does.
+    expect(tick).toHaveAccessibleDescription(
+      expect.stringContaining("The code source has no @change function for order_clips."),
+    );
+    // The catalog words it; the server's English text is not shown.
+    expect(screen.queryByText("server english text", { exact: false })).toBeNull();
+  });
+
+  it("requires the interval between whole rebuilds while it is on", async () => {
+    const setForm = resolverForm({ incremental: true }, AVAILABLE);
+    const every = await screen.findByTestId("rel-form-rebuild-every");
+    expect(every).toBeRequired();
+    fireEvent.change(every, { target: { value: "3600" } });
+    expect(setForm).toHaveBeenCalledWith(expect.objectContaining({ rebuildEvery: "3600" }));
+  });
+
+  it("stays reachable when it is on and the source lost its @change function", async () => {
+    resolverForm({ incremental: true, rebuildEvery: "3600" }, NO_CHANGE);
+    const tick = await screen.findByTestId("rel-form-incremental");
+    expect(tick).toBeChecked();
+    expect(tick).toBeEnabled();
+    expect(tick).toHaveAccessibleDescription(
+      expect.stringContaining("has no @change function for order_clips"),
+    );
+  });
+
+  it("is not asked before the set's id and resolver are given", () => {
+    render(
+      <AddRelationshipForm
+        form={{ ...EMPTY_FORM, targetType: "resolver" }}
+        setForm={vi.fn()}
+        tables={[] as ListedTable[]}
+        functions={[resolver]}
+        saving={null}
+        problem=""
+        onSave={vi.fn()}
+        onCancel={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("rel-form-incremental")).toBeNull();
   });
 });
 

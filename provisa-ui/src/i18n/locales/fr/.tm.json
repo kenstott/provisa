@@ -10689,5 +10689,16 @@
   "fr/parametersPanel.json::parametersPanel.realColumn": "Real column of the table",
   "fr/parametersPanel.json::parametersPanel.kind.partition_key": "Partition key",
   "fr/serverErrors.json::serverErrors.table.requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows.",
-  "fr/sourceDetailPanel.json::sourceDetailPanel.profilerNotRead": "{{table}}: not read. It requires {{parameters}}, so it cannot be counted or profiled."
+  "fr/sourceDetailPanel.json::sourceDetailPanel.profilerNotRead": "{{table}}: not read. It requires {{parameters}}, so it cannot be counted or profiled.",
+  "fr/addRelationshipForm.json::addRelationshipForm.incrementalHelp": "On each refresh, the resolver's @change function is asked for the matches that changed since the last run, and they are applied by key. Off, each refresh recomputes every match.",
+  "fr/addRelationshipForm.json::addRelationshipForm.incrementalLabel": "Keep matches incrementally",
+  "fr/addRelationshipForm.json::addRelationshipForm.rebuildEveryHelp": "How often every match is recomputed, to correct anything the changes missed. Required while matches are kept incrementally.",
+  "fr/addRelationshipForm.json::addRelationshipForm.rebuildEveryLabel": "Whole rebuild every (seconds)",
+  "fr/serverErrors.json::serverErrors.mv.change_cursor_backwards": "{{function}}'s cursor went backwards: it returned {{returned}}, before the stored {{stored}}",
+  "fr/serverErrors.json::serverErrors.mv.change_key_missing": "{{function}} returned a row without its key column {{column}}",
+  "fr/serverErrors.json::serverErrors.mv.change_key_repeated": "{{function}} returned the key {{key}} twice in one result",
+  "fr/serverErrors.json::serverErrors.schema.incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
+  "fr/serverErrors.json::serverErrors.schema.incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
+  "fr/tableEditForm.json::tableEditForm.mvRebuildEveryHelp": "How often the whole view is recomputed. Required for a view kept by a code source's @change function.",
+  "fr/tableEditForm.json::tableEditForm.mvRebuildEveryLabel": "Whole rebuild every (seconds)"
 }

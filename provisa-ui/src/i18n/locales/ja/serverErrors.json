@@ -506,7 +506,9 @@
       "code_resolver_not_found": "コードリゾルバー '{{resolver}}' が見つかりません",
       "code_resolver_saved": "コードリゾルバー '{{resolver}}' を保存しました",
       "code_resolver_retired": "コードリゾルバー '{{resolver}}' を廃止しました",
-      "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません"
+      "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません",
+      "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
+      "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -830,6 +832,11 @@
       "expiry_in_past": "終了日は将来の日付にする必要があります。",
       "expiry_removes_nothing": "この {{kind}} リストに終了日を設定しても何も削除されません。",
       "pending_not_found": "ロール {{role_id}} と {{kind}} について {{email}} を待っている付与はありません。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} がキー列 {{column}} のない行を返しました",
+      "change_key_repeated": "{{function}} が 1 つの結果の中でキー {{key}} を 2 回返しました",
+      "change_cursor_backwards": "{{function}} のカーソルが逆行しました: 保存済みの {{stored}} より前の {{returned}} を返しました"
     }
   }
 }

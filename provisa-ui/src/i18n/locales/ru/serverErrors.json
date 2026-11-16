@@ -506,7 +506,9 @@
       "code_resolver_not_found": "Резолвер кода '{{resolver}}' не найден",
       "code_resolver_saved": "Резолвер кода '{{resolver}}' сохранён",
       "code_resolver_retired": "Резолвер кода '{{resolver}}' выведен из обращения",
-      "code_resolver_has_dependents": "Резолвер кода '{{resolver}}' нельзя вывести из обращения, пока от него что-то зависит"
+      "code_resolver_has_dependents": "Резолвер кода '{{resolver}}' нельзя вывести из обращения, пока от него что-то зависит",
+      "incremental_no_change": "В источнике кода нет функции @change для {{table}}. Объявите её с помощью @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} поддерживается инкрементально, поэтому полностью пересобирается по расписанию. Укажите, как часто (в секундах), в поле «Полная пересборка каждые»."
     },
     "secrets": {
       "env_reference_object_locked": "Этот объект принадлежит оператору: он читает собственное окружение сервера и не может быть изменён здесь. Добавьте вместо него собственный.",
@@ -830,6 +832,11 @@
       "expiry_in_past": "Дата окончания должна быть в будущем.",
       "expiry_removes_nothing": "Дата окончания для этого списка «{{kind}}» ничего бы не удалила.",
       "pending_not_found": "Нет выдачи, ожидающей {{email}} для роли {{role_id}} и «{{kind}}»."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} вернула строку без ключевого столбца {{column}}",
+      "change_key_repeated": "{{function}} вернула ключ {{key}} дважды в одном результате",
+      "change_cursor_backwards": "Курсор {{function}} пошёл назад: возвращено {{returned}}, раньше сохранённого {{stored}}"
     }
   }
 }

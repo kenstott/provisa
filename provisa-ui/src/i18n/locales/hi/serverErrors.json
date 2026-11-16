@@ -506,7 +506,9 @@
       "code_resolver_not_found": "कोड रिज़ॉल्वर '{{resolver}}' नहीं मिला",
       "code_resolver_saved": "कोड रिज़ॉल्वर '{{resolver}}' सहेजा गया",
       "code_resolver_retired": "कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त किया गया",
-      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता"
+      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता",
+      "incremental_no_change": "कोड स्रोत में {{table}} के लिए कोई @change फ़ंक्शन नहीं है। @change table={{table}} के साथ एक घोषित करें।",
+      "incremental_needs_rebuild_every": "{{table}} इंक्रीमेंटल रूप से बनाए रखा जाता है, इसलिए इसे घड़ी के अनुसार पूरा फिर से बनाया जाता है। \"पूरा पुनर्निर्माण हर\" में बताएँ कि कितनी बार (सेकंड में)।"
     },
     "secrets": {
       "env_reference_object_locked": "यह ऑब्जेक्ट ऑपरेटर का है: यह सर्वर के अपने एनवायरनमेंट को पढ़ता है और इसे यहाँ बदला नहीं जा सकता। इसके बजाय अपना ऑब्जेक्ट जोड़ें।",
@@ -830,6 +832,11 @@
       "expiry_in_past": "समाप्ति तिथि भविष्य में होनी चाहिए।",
       "expiry_removes_nothing": "इस {{kind}} सूची पर समाप्ति तिथि कुछ नहीं हटाएगी।",
       "pending_not_found": "भूमिका {{role_id}} और {{kind}} के लिए {{email}} पर कोई अनुदान प्रतीक्षा में नहीं है।"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} ने अपनी कुंजी कॉलम {{column}} के बिना एक पंक्ति लौटाई",
+      "change_key_repeated": "{{function}} ने एक ही परिणाम में कुंजी {{key}} दो बार लौटाई",
+      "change_cursor_backwards": "{{function}} का कर्सर पीछे चला गया: उसने {{returned}} लौटाया, जो संग्रहीत {{stored}} से पहले है"
     }
   }
 }
