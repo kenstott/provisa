@@ -1336,6 +1336,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
     """,
     # REQ-2248: the relationships of the model, as registered_tables_meta lists its tables: a
     # retired relationship is not listed, so no retirement column is either.
+    # REQ-2248: a retired domain is not listed; its retirement columns are not exposed.
+    "domains": """
+        CREATE OR REPLACE VIEW domains_meta AS
+        SELECT d.id, d.description, d.steward, d.graphql_alias, d.parent_domain_id, d.org_id,
+               d.tenant_id
+        FROM domains d
+        WHERE NOT d.retired
+    """,
     "relationships": """
         CREATE OR REPLACE VIEW relationships_meta AS
         SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, r.target_column,

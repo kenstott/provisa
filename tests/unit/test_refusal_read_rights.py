@@ -69,7 +69,6 @@ def _serving(*table_ids: int) -> DependentsReader:
         metric=lambda row: False,
         term=lambda domains: False,
         command=lambda name: False,
-        retired=lambda domain_id: False,
     )
 
 

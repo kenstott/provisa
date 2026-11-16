@@ -554,14 +554,17 @@ def cancel_background(name: str) -> list[concurrent.futures.Future[None]]:
     catalog index) is stopped by name before what it reads goes."""
     with _bg_lock:
         named = [(fut, slot) for fut, (label, slot) in _bg_inflight.items() if label == name]
-    running: list[concurrent.futures.Future[None]] = []
+    # The queued ones first: cancelling a running one frees its worker, which would start a queued
+    # one of the same name before its own cancel was tried.
+    running: list[tuple[concurrent.futures.Future[None], _TaskSlot]] = []
     for fut, slot in named:
         if fut.cancel():
             slot.close_unstarted()
-            continue
+        else:
+            running.append((fut, slot))
+    for _fut, slot in running:
         slot.cancel()
-        running.append(fut)
-    return running
+    return [fut for fut, _slot in running]
 
 
 def _caller_context() -> contextvars.Context:
