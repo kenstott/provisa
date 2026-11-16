@@ -635,7 +635,7 @@ class DuckDBSnowflakeConnector(_DuckDBExtensionConnector):  # REQ-899
             "TYPE snowflake",
             f"ACCOUNT {lit(account)}",
             f"USER {lit(resolve_secrets(source.username or ''))}",
-            f"PASSWORD {lit(resolve_secrets(source.password or ''))}",
+            f"PASSWORD {lit(resolve_secrets(source.password or '', credential=True))}",
             f"DATABASE {lit(resolve_secrets(source.database or ''))}",
         ]
         for hint, option in (("warehouse", "WAREHOUSE"), ("role", "ROLE")):

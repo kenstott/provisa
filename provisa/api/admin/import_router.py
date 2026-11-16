@@ -438,10 +438,18 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
         raise ApiError(400, "import.bad_yaml", f"config is not valid YAML: {exc}") from exc
     if not isinstance(raw, dict):
         raise ApiError(400, "import.bad_yaml", "config must be a YAML mapping")
+    # REQ-1557: checked before anything in the document is resolved; the right to import was
+    # asked above.
+    from provisa.core.config_loader import invalid_text
+    from provisa.core.env_reference_guard import refuse_entered
+
+    refuse_entered(raw)
     try:
         config = parse_config_dict(raw)
     except ValueError as exc:
-        raise ApiError(400, "import.invalid_config", f"config is not valid: {exc}") from exc
+        raise ApiError(
+            400, "import.invalid_config", f"config is not valid: {invalid_text(exc, raw)}"
+        ) from exc
     except KeyError as exc:
         # A reference the deployment cannot resolve, such as a handler URL's environment variable
         # the report named to set before applying (REQ-417): the administrator's to supply.

@@ -113,10 +113,10 @@ def exchange_refresh_token(auth: ApiAuthOAuth2RefreshToken) -> RefreshGrant:
     """One exchange of exactly the refresh token ``auth`` states. Nothing is held and nothing
     is stored: what the issuer answered is the caller's to keep."""
     client_id = resolve_secrets(auth.client_id)
-    refresh_token = resolve_secrets(auth.refresh_token)
+    refresh_token = resolve_secrets(auth.refresh_token, credential=True)
     form = {"grant_type": "refresh_token", "client_id": client_id, "refresh_token": refresh_token}
     if auth.client_secret is not None:
-        form["client_secret"] = resolve_secrets(auth.client_secret)
+        form["client_secret"] = resolve_secrets(auth.client_secret, credential=True)
     if auth.scope:
         form["scope"] = auth.scope
     body = _exchange(auth.token_url, form, _approval(client_id))

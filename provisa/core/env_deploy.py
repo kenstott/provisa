@@ -268,7 +268,36 @@ async def _load(
     scope = PROJECTED if seed else PROJECTED - SEEDED_AT_CREATION
     incoming = {p: b for p, b in tree.items() if in_scope(p, scope)}
     current = {p: b for p, b in (await project(conn, schema)).items() if in_scope(p, scope)}
+    # REQ-1557: a tree a fetch or a caller brought is text a member may have written, and this
+    # load writes the model as a whole, which the write seam does not hold to a person.
+    _refuse_brought(org_id, ref, incoming, current)
     return await land(conn, org_id, env, incoming, current, ref, seed, base_sha, apply=apply)
+
+
+def _refuse_brought(
+    org_id: str, ref: str, incoming: dict[str, Any], current: dict[str, Any]
+) -> None:  # REQ-1557
+    """Refuse a tree loaded into a held organization from outside its own stored history (a
+    commit a fetch brought, files a caller gave) when it adds or changes an object that names a
+    variable of the server's environment, or changes one that already does. An object the tree
+    carries exactly as the organization holds it is the organization's stored text, and loads."""
+    from provisa.core.env_reference_guard import (
+        EnvReferenceEditRefused,
+        EnvReferenceRefused,
+        env_names,
+    )
+    from provisa.core.env_repo import written_here
+    from provisa.security.sandbox_egress import held
+
+    if not held(org_id) or written_here(org_id, ref):
+        return
+    for path, body in incoming.items():
+        if path in current and current[path] == body:
+            continue
+        for name in env_names(body):
+            raise EnvReferenceRefused(name)
+        if path in current and next(env_names(current[path]), None) is not None:
+            raise EnvReferenceEditRefused(path)
 
 
 async def land(

@@ -427,7 +427,7 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
         if "bearer" in auth:
             headers["Authorization"] = f"Bearer {resolve_secrets(auth['bearer'])}"
         if "api_key_header" in auth and "api_key" in auth:
-            headers[auth["api_key_header"]] = resolve_secrets(auth["api_key"])
+            headers[auth["api_key_header"]] = resolve_secrets(auth["api_key"], credential=True)
         if "headers" in auth:
             for k, v in auth["headers"].items():
                 headers[k] = resolve_secrets(v)
@@ -435,14 +435,14 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
 
     match auth:
         case ApiAuthBearer(token=token):
-            headers["Authorization"] = f"Bearer {resolve_secrets(token)}"
+            headers["Authorization"] = f"Bearer {resolve_secrets(token, credential=True)}"
         case ApiAuthBasic(username=u, password=p):
             import base64
 
             cred = base64.b64encode(f"{resolve_secrets(u)}:{resolve_secrets(p)}".encode()).decode()
             headers["Authorization"] = f"Basic {cred}"
         case ApiAuthApiKey(key=key, name=name, location=loc):
-            resolved_key = resolve_secrets(key)
+            resolved_key = resolve_secrets(key, credential=True)
             if loc == ApiKeyLocation.header:
                 headers[name] = resolved_key
             else:
@@ -479,7 +479,7 @@ def _fetch_oauth2_token(oauth) -> str:  # REQ-320
     data = {
         "grant_type": "client_credentials",
         "client_id": resolve_secrets(oauth.client_id),
-        "client_secret": resolve_secrets(oauth.client_secret),
+        "client_secret": resolve_secrets(oauth.client_secret, credential=True),
     }
     if oauth.scope:
         data["scope"] = oauth.scope

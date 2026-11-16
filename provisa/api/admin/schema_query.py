@@ -1629,7 +1629,7 @@ class Query:  # REQ-021, REQ-042
 
         # The token as typed: a value, or a reference resolved in the org's vault.
         async with _bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         return await validate_token(resolved)
 
     @strawberry.field
@@ -1645,7 +1645,7 @@ class Query:  # REQ-021, REQ-042
         from provisa.kaggle.client import search_datasets
 
         async with _bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         results = await search_datasets(resolved, query=query, page=page)
         return [
             KaggleDatasetType(

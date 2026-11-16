@@ -288,7 +288,7 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
             code="schema.kaggle_token_missing",
             params={"owner": owner, "ref": ref},
         )
-    token = resolve_secrets(input.password)
+    token = resolve_secrets(input.password, credential=True)
     try:
         staged_root = await stage_dataset(token, owner, ref)
     except UnsupportedKaggleDataset as exc:
@@ -716,7 +716,7 @@ async def _add_source_pool(state, input: SourceInput) -> None:
         port=input.port,
         database=file_path or input.database,
         user=input.username,
-        password=resolve_secrets(input.password),
+        password=resolve_secrets(input.password, credential=True),
         extra={k: resolve_secrets(v) for k, v in hints.items()},
     )
 
@@ -848,7 +848,7 @@ def _register_source_on_engine(state, model, input: SourceInput) -> None:
             # the same credential every later reader of this source resolves. Reading it off the
             # raw form input instead would register the literal the operator typed and leave the
             # engine holding a value the control-plane row does not name.
-            resolve_secrets(model.password) if model.password else "",
+            resolve_secrets(model.password, credential=True) if model.password else "",
             # REQ-1266: the physical catalog the caller just published for this source. Registering
             # under the bare name put a non-default org's source at a catalog its own queries — which
             # address the org-prefixed name — could not find.

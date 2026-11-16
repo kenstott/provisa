@@ -22,14 +22,51 @@ GraphQL parsed it, with its variables in place. The variable is never read.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
+from fastapi import Request
+from fastapi.responses import JSONResponse
 from graphql import ExecutionResult, GraphQLError
 from graphql.language import ArgumentNode, Visitor, visit
 from graphql.utilities import value_from_ast_untyped
 from strawberry.extensions import SchemaExtension
 
-from provisa.core.env_reference_guard import EnvReferenceRefused, refuse_entered
+from provisa.core.env_reference_guard import (
+    EnvReferenceEditRefused,
+    EnvReferenceRefused,
+    held_org,
+    refuse_entered,
+)
+
+#: The admin plane: where a caller's text may become a model object or a connection.
+_ADMIN = "/admin"
+
+
+async def entered_body(request: Request) -> None:
+    """The same check for an admin route's JSON body, as the route will parse it. A body that is
+    not JSON (an upload) is checked by its own route once it is read (the configuration import);
+    one that does not parse is answered by its route."""
+    if not request.url.path.startswith(_ADMIN) or held_org() is None:
+        return
+    if "json" not in request.headers.get("content-type", ""):
+        return
+    body = await request.body()
+    if not body:
+        return
+    try:
+        document = json.loads(body)
+    except ValueError:
+        return
+    refuse_entered(document)
+
+
+def refused_response(exc: EnvReferenceRefused | EnvReferenceEditRefused) -> JSONResponse:
+    """The answer to either refusal. 403: the caller may not, whatever they send."""
+    return JSONResponse(
+        status_code=403,
+        content={"detail": str(exc), "code": exc.code, "params": exc.params},
+    )
 
 
 class _Arguments(Visitor):
