@@ -20255,7 +20255,15 @@
   feature: commands-and-functions-scheduled-triggers
   priority: SHOULD
   type: behavioral
-  description: 'Scheduled triggers: time-based execution of registered webhooks or internal functions. APScheduler in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background task pattern.'
+  description: 'Scheduled triggers: time-based execution of registered webhooks or internal functions. APScheduler
+    in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background
+    task pattern. (Amended 2026-11-16, A SCHEDULED TRIGGER BELONGS TO THE ORGANIZATION:) Maintainer 2026-11-16,
+    on the security audit''s finding that a trigger keeps running after its author loses the role: by design.
+    A scheduled trigger is part of the organization''s model; it sits with tables, views and webhooks as
+    a saved data operation the organization depends on. The right to create or change one is checked when
+    it is saved, against whoever saves it; it does not end and is not re-checked when its author''s role
+    changes or the author leaves, because a staffing change must not silently stop a pipeline. This is not
+    the rule for a client''s own sink or stream (REQ-812), which ends with the role that started it.'
   use_case: 'Hasura v2 parity: scheduled triggers run webhooks or functions on a cron schedule without external cron infra.'
   code:
   - provisa/compiler/
@@ -55890,25 +55898,37 @@
     (REQ-557) already names a provider, and a registry already exists to hold more than one -- [SUPERSEDED
     by REQ-1557 amendment, 2026-10-03 -- Before-state narrative; the secrets registry now registers five
     backends and ${secret:...} resolves through the configured one. Kept here for history; do not implement
-    against it.] but only ``env`` was ever registered, and ``register_provider`` has no callers, so in
-    practice a secret can only be an environment variable of the server process [END SUPERSEDED BLOCK].
-    THAT MAKES A SECRET SOMETHING ONLY THE OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own
-    git token, warehouse password or API key anywhere, because it does not own the process environment.
-    The provider set therefore becomes a registry in the shape the encryption providers already use (provisa/encryption/registry.py):
-    a named spec with a label, a description, the config fields it needs and an availability probe, so
-    a deployment wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault
-    reads its secrets from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE:
-    a built-in per-org store in the control plane, each value encrypted through the configured encryption
-    service (REQ-684, REQ-685) so the plaintext never rests in a column, and never reachable across orgs.
-    It is the default, not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE. A secret that cannot be resolved is never an empty string and never falls through to
-    another provider. WHAT AUTHORIZES A READ. The built-in store needs no key of its own: the row IS envelope
-    ciphertext, so the authority to read it is the encryption master key (REQ-684) the process already
-    holds, and a control-plane database copied without that key yields nothing. An EXTERNAL provider does
-    need a credential -- a Vault token, an AWS role -- and that credential is PROCESS CONFIGURATION resolved
-    through ${env:...} alone, never an org secret: a store whose own credential lives inside the store
-    cannot be opened, so the chain of trust terminates in the host environment by design. Every read and
-    write is scoped to ONE org: a name is looked up only in the namespace of the org the request is bound
-    to, so two orgs holding GIT_TOKEN hold two unrelated secrets and neither can name the other''s.'
+    against it.] but only ``env`` was ever registered, and ``register_provider`` has no callers, so in practice
+    a secret can only be an environment variable of the server process [END SUPERSEDED BLOCK]. THAT MAKES
+    A SECRET SOMETHING ONLY THE OPERATOR OF THE HOST CAN SET: a hosted org cannot put its own git token,
+    warehouse password or API key anywhere, because it does not own the process environment. The provider
+    set therefore becomes a registry in the shape the encryption providers already use (provisa/encryption/registry.py):
+    a named spec with a label, a description, the config fields it needs and an availability probe, so a
+    deployment wired to HashiCorp Vault, AWS Secrets Manager, GCP Secret Manager or Azure Key Vault reads
+    its secrets from there. WHEN NOTHING CENTRAL IS CONNECTED PROVISA IS ITS OWN SECRETS SERVICE: a built-in
+    per-org store in the control plane, each value encrypted through the configured encryption service (REQ-684,
+    REQ-685) so the plaintext never rests in a column, and never reachable across orgs. It is the default,
+    not the degraded case. AN UNKNOWN PROVIDER, AN UNSET NAME AND AN UNCONFIGURED BACKEND ALL RAISE. A secret
+    that cannot be resolved is never an empty string and never falls through to another provider. WHAT AUTHORIZES
+    A READ. The built-in store needs no key of its own: the row IS envelope ciphertext, so the authority
+    to read it is the encryption master key (REQ-684) the process already holds, and a control-plane database
+    copied without that key yields nothing. An EXTERNAL provider does need a credential -- a Vault token,
+    an AWS role -- and that credential is PROCESS CONFIGURATION resolved through ${env:...} alone, never
+    an org secret: a store whose own credential lives inside the store cannot be opened, so the chain of
+    trust terminates in the host environment by design. Every read and write is scoped to ONE org: a name
+    is looked up only in the namespace of the org the request is bound to, so two orgs holding GIT_TOKEN
+    hold two unrelated secrets and neither can name the other''s. (Amended 2026-11-16, A MEMBER OF A HELD
+    ORGANIZATION NEITHER WRITES NOR EDITS AN ENVIRONMENT REFERENCE:) Maintainer 2026-11-16, after the security
+    audit showed a sandbox visitor reading the server''s environment through a reference typed into a source.
+    In a held organization (a sandbox organization on any install, and every organization on a server of
+    many organizations; the deployment''s own organization is not held) a member''s save that contains a
+    reference to the process environment is refused, in every field that takes a reference and in a field
+    that names an environment variable outright (an AI endpoint''s key variable), and through every way
+    of saving, a configuration import included, which checks the caller''s right before it resolves anything.
+    An object that already carries such a reference is the operator''s (a demo''s own source): a member
+    cannot change it. Stored text is resolved at use as before, so a demo''s sources keep working. A single-organization
+    install outside a sandbox is unchanged. An environment value is kept out of logs and error text when
+    it is resolved into a credential field (password, token, key, secret); other values stay readable.'
   use_case: An org running on hosted Provisa can store its own git token or warehouse password without
     owning the server's environment, and an enterprise with Vault or AWS Secrets Manager reads the same
     references out of the service it already runs.
@@ -82720,7 +82740,11 @@
     or a scheduled trigger calls is held to public destinations exactly as a source''s is: when it is saved
     and at each connection, judged on the resolved address, redirects included. A single-organization install,
     a local development start among them, is not held, as it is not for sources: calling its own internal
-    services is the use case there.'
+    services is the use case there. (Amended 2026-11-16, SYNCING AND METADATA-EXPORT ENDPOINTS ARE HELD
+    TO PUBLIC DESTINATIONS:) Maintainer 2026-11-16 (relayed by the audit session). On a server of many organizations
+    the endpoint a catalog sync or a metadata export sends to is held to public destinations as a webhook
+    is, although it is not a source: when it is saved and at each call. A single-organization install is
+    not held.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
