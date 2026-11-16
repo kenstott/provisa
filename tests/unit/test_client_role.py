@@ -300,18 +300,29 @@ async def test_a_session_naming_a_role_it_does_not_hold_is_recorded_and_told_by_
 
 @pytest.mark.asyncio
 async def test_a_personal_access_token_naming_a_role_it_does_not_hold_is_told_nothing(
-    _role_probe_events,
+    _role_probe_events, monkeypatch
 ):
     # REQ-2076: a PAT is suspended on the event and learns nothing about the role.
     import json
 
+    from provisa.auth import held_assignments
+    from provisa.auth.models import RoleAssignment
+
     class _PatProvider(_Provider):
         async def validate_token(self, _token):
+            # REQ-1263: a token carries its scopes and no role claim of its own.
             identity = await super().validate_token(_token)
             identity.credential, identity.credential_id = "pat", "h1"
+            identity.raw_claims = {"pat": True, "scopes": ["analyst"]}
             return identity
 
-    mw = AuthMiddleware(app=None, provider=_PatProvider(["analyst"]), default_role="analyst")
+    async def _owner_holds(db_pool, user_id):  # noqa: ARG001  # the reader's
+        return [RoleAssignment("analyst", "*")]  # what the owner's last sign-in carried
+
+    monkeypatch.setattr(held_assignments, "mirrored_claims", _owner_holds)
+    mw = AuthMiddleware(
+        app=None, provider=_PatProvider([]), default_role="analyst", db_pool=object()
+    )
     out = await _dispatch(mw, _Req({"authorization": "Bearer tok", "x-provisa-role": "admin"}))
     assert out.status_code == 403 and json.loads(out.body)["detail"] == "not permitted"
     [event] = _role_probe_events

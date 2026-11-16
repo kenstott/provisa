@@ -287,6 +287,8 @@
     "holdOnFailingChecksShowCode": "Afficher son code",
     "holdOnFailingChecksHideCode": "Masquer son code",
     "holdOnFailingChecksCodeHelp": "Le contrôle qu'applique cette option. Copiez-le dans le contrôle préalable ci-dessus pour le modifier.",
-    "discoverHint": "L'enregistrement lit les colonnes de la source en direct et ajoute celles qui manquent à cette table ; ses colonnes restent telles quelles. Aucun rôle ne voit une colonne ajoutée tant qu'elle n'est pas accordée."
+    "discoverHint": "L'enregistrement lit les colonnes de la source en direct et ajoute celles qui manquent à cette table ; ses colonnes restent telles quelles. Aucun rôle ne voit une colonne ajoutée tant qu'elle n'est pas accordée.",
+    "mvRebuildEveryLabel": "Reconstruction complète toutes les (secondes)",
+    "mvRebuildEveryHelp": "Fréquence à laquelle la vue entière est recalculée. Obligatoire pour une vue maintenue par la fonction @change d'une source de code."
   }
 }

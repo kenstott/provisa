@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "輸入 {{userId}} 以確認",
     "deleteAccountButton": "刪除我的帳戶",
     "patEnvironment": "環境",
-    "patEnvironmentHelp": "權杖只在一個環境中有效：即簽發時您正在檢視的環境。新權杖將在 {{env}} 中有效。"
+    "patEnvironmentHelp": "權杖只在一個環境中有效：即簽發時您正在檢視的環境。新權杖將在 {{env}} 中有效。",
+    "patRoles": "角色",
+    "patRolesHelp": "權杖只能以您在此選擇的角色執行操作,且僅在您擁有這些角色期間有效。",
+    "patRolesPlaceholder": "選擇角色"
   }
 }

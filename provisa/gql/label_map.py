@@ -64,6 +64,9 @@ class NodeMapping:
     native_filter_columns: dict[str, str] = field(
         default_factory=dict
     )  # SQL column name → data_type for native API params
+    # The table's parameters as its metadata states them (core.parameters.ParameterFact,
+    # REQ-1986): name, type, kind, opaque or a real column, required.
+    parameters: tuple[Any, ...] = ()
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -90,6 +93,10 @@ class NodeMapping:
     #: REQ-1385: the table's alias, "" when it has none. With ``table_name`` it gives the table's
     #: model name (:attr:`model_name`), the name SPARQL's IRIs are built from.
     alias: str = ""
+    #: REQ-1385: the name the table is registered under where the model reads it through another
+    #: relation (meta's domains through domains_meta: TableMeta.original_table_name); "" where
+    #: ``table_name`` is the registered name. A model name is never the relation read.
+    registered_table_name: str = ""
     #: REQ-1385: each aliased column's alias, as (cypher prop name, alias) pairs: the column's
     #: model name, which its prop name need not spell (a GraphQL convention applied to the
     #: physical name when the alias is that name's SQL spelling). A tuple, as property_types is.
@@ -97,9 +104,9 @@ class NodeMapping:
 
     @property
     def model_name(self) -> str:
-        """The table's model name (REQ-1385): its alias when it has one, else its table name, the
-        rule metadata export's table_uri follows."""
-        return self.alias or self.table_name
+        """The table's model name (REQ-1385): its alias when it has one, else the name it is
+        registered under, the rule metadata export's table_uri follows."""
+        return self.alias or self.registered_table_name or self.table_name
 
     def property_model_name(self, prop: str) -> str:
         """The model name of the column ``prop`` reads (REQ-1385): its alias when it has one,
@@ -126,6 +133,14 @@ class NodeMapping:
         """Whether its table is read by arguments (REQ-1986): a function of them, with no rows of
         its own for a path to walk (REQ-2135)."""
         return bool(self.native_filter_columns)
+
+    @property
+    def required_parameters(self) -> list[str]:
+        """The parameters its table's metadata states as required (REQ-1986), by the name a caller
+        gives each. With any, the label gives no count without them."""
+        from provisa.core.parameters import required_of
+
+        return required_of(self.parameters)
 
     @property
     def role_label(self) -> str | None:  # REQ-1320
@@ -870,6 +885,7 @@ def _build_node_mappings(
             properties=props,
             physical_properties=phys_props,
             native_filter_columns=nf_cols,
+            parameters=ctx_typed.parameters.get(table_meta.table_id, ()),
             physical_table_name=physical_table_name,
             map_properties=map_props,
             property_types=tuple(
@@ -884,6 +900,7 @@ def _build_node_mappings(
             else (),
             key_readable=key_readable,
             alias=table_meta.display_name,
+            registered_table_name=_strip_domain_prefix(table_meta.original_table_name, domain_id),
             property_aliases=tuple(
                 (_published_property(ctx_typed, table_meta.table_id, c), alias)
                 for c in col_names

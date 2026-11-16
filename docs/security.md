@@ -556,7 +556,7 @@ A `—` in the table means the protocol has no username field to pair a password
 
 ### Personal access tokens
 
-A personal access token is a long-lived bearer secret you mint for a client that can't do an interactive login: a script, a BI tool, a driver. It carries its own org and role, and every surface checks it with the same validator, so no surface needs to know what one is.
+A personal access token is a long-lived bearer secret you mint for a client that can't do an interactive login: a script, a BI tool, a driver. It carries its own org and its scopes, the roles it may act as, and every surface checks it with the same validator, so no surface needs to know what one is. It acts only as a scope its owner still holds: with no role named it acts as the first of them, and naming any other role is refused like any role not held.
 
 On the wire it is `provisa_pat_` followed by 43 URL-safe base64 characters. The prefix is what sends a presented secret to the token store instead of the identity provider, and it makes a leaked token easy to find in logs and repositories.
 

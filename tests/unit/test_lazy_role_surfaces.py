@@ -328,7 +328,7 @@ def test_a_contract_and_a_field_name_resolve_with_no_role_built(builds, monkeypa
         display_name="",
         field_name="sales__orders",
     )
-    state._runtime.view_context = SimpleNamespace(tables={"sales__orders": meta})
+    state._runtime.view_context = SimpleNamespace(tables={"sales__orders": meta}, parameters={})
     state._runtime.view_path_map = {
         "sales__orders": {"domain_id": "sales", "schema_name": "public", "table_name": "orders"}
     }

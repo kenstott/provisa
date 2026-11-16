@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "Digite {{userId}} para confirmar",
     "deleteAccountButton": "Excluir minha conta",
     "patEnvironment": "Ambiente",
-    "patEnvironmentHelp": "Um token funciona em um único ambiente: aquele que você estava consultando ao emiti-lo. Um novo token funcionará em {{env}}."
+    "patEnvironmentHelp": "Um token funciona em um único ambiente: aquele que você estava consultando ao emiti-lo. Um novo token funcionará em {{env}}.",
+    "patRoles": "Funções",
+    "patRolesHelp": "O token só pode agir com as funções que você escolher aqui, e somente enquanto você as tiver.",
+    "patRolesPlaceholder": "Escolha funções"
   }
 }

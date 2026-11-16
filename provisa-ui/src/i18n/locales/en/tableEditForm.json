@@ -287,6 +287,8 @@
     "holdOnFailingChecksShowCode": "Show its code",
     "holdOnFailingChecksHideCode": "Hide its code",
     "holdOnFailingChecksCodeHelp": "The check this option applies. Copy it into the preflight check above to change it.",
-    "discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted."
+    "discoverHint": "Save reads the columns the live source has and adds those this table lacks; its columns stay as they are. An added column is seen by no role until it is granted.",
+    "mvRebuildEveryLabel": "Whole rebuild every (seconds)",
+    "mvRebuildEveryHelp": "How often the whole view is recomputed. Required for a view kept by a code source's @change function."
   }
 }

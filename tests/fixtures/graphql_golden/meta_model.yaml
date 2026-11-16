@@ -10416,6 +10416,10 @@ tables:
     data_type: integer
     visible_to:
     - viewer
+  - name: requires_parameters
+    data_type: boolean
+    visible_to:
+    - viewer
   - name: schema_name
     data_type: text
     visible_to:
@@ -10928,6 +10932,22 @@ tables:
     - viewer
   - name: object_fields
     data_type: text
+    visible_to:
+    - viewer
+  - name: parameter_opaque
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required_by_source
+    data_type: boolean
+    visible_to:
+    - viewer
+  - name: parameter_required_by_steward
+    data_type: boolean
     visible_to:
     - viewer
   - name: path

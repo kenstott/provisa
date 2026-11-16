@@ -55,7 +55,7 @@ async def admin(tmp_path) -> Database:
 
 async def _token(admin: Database, env: str, name: str = "ci") -> str:
     secret, _row = await PersonalAccessTokenStore(admin).issue(
-        user_id=ALICE, org_id=ORG, env_name=env, name=name
+        user_id=ALICE, org_id=ORG, env_name=env, name=name, scopes=["analyst"]
     )
     return secret
 
@@ -132,7 +132,11 @@ class TestADemoSandboxTokenAddressesItsWholeOrg:
                 )
             )
         secret, _row = await PersonalAccessTokenStore(admin).issue(
-            user_id=ALICE, org_id=self.SANDBOX, env_name="prod", name="Demo sandbox"
+            user_id=ALICE,
+            org_id=self.SANDBOX,
+            env_name="prod",
+            name="Demo sandbox",
+            scopes=["sandbox"],
         )
         return secret
 
