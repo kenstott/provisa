@@ -96017,6 +96017,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/polyfill/test_polyfill_clickhouse_adapted.py
   - tests/unit/polyfill/test_polyfill_cat0_and_trino_last_errors.py
   - tests/integration/test_type_io_on_engines.py
+  - tests/unit/polyfill/test_polyfill_grid.py
+  - tests/unit/polyfill/test_polyfill_clickhouse_clocks.py
+  - tests/unit/polyfill/test_polyfill_zones.py
+  - tests/integration/test_clickhouse_time_on_server.py
 - id: REQ-2237
   status: in-progress
   target: 2027-Q1
@@ -96640,6 +96644,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/test_refusal_read_rights.py
   - tests/unit/test_model_object_retirement.py
   - tests/unit/test_retire_not_delete_loaders.py
+  - tests/unit/test_retired_not_served.py
+  - tests/unit/test_meta_seed_retires_undeclared.py
 - id: REQ-2249
   status: in-progress
   target: 2026-Q4

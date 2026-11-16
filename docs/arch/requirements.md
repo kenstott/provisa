@@ -26912,7 +26912,7 @@ Maintainer 2026-11-11, on conformance discipline. How pgwire gives PostgreSQL's 
 
 **Code:** —
 
-**Tests:** `tests/unit/polyfill/test_polyfill_arrays.py`, `tests/unit/polyfill/test_polyfill_clickhouse_bounded.py`, `tests/unit/polyfill/test_polyfill_clickhouse_adapted.py`, `tests/unit/polyfill/test_polyfill_cat0_and_trino_last_errors.py`, `tests/integration/test_type_io_on_engines.py`
+**Tests:** `tests/unit/polyfill/test_polyfill_arrays.py`, `tests/unit/polyfill/test_polyfill_clickhouse_bounded.py`, `tests/unit/polyfill/test_polyfill_clickhouse_adapted.py`, `tests/unit/polyfill/test_polyfill_cat0_and_trino_last_errors.py`, `tests/integration/test_type_io_on_engines.py`, `tests/unit/polyfill/test_polyfill_grid.py`, `tests/unit/polyfill/test_polyfill_clickhouse_clocks.py`, `tests/unit/polyfill/test_polyfill_zones.py`, `tests/integration/test_clickhouse_time_on_server.py`
 
 ## 3. Source Registration & Data Modeling
 
@@ -27048,7 +27048,7 @@ Maintainer 2026-11-14: 'when keeping things in sync you must have soft deletes';
 
 **Code:** —
 
-**Tests:** `tests/integration/test_glossary_lifecycle.py`, `tests/unit/test_refusal_read_rights.py`, `tests/unit/test_model_object_retirement.py`, `tests/unit/test_retire_not_delete_loaders.py`
+**Tests:** `tests/integration/test_glossary_lifecycle.py`, `tests/unit/test_refusal_read_rights.py`, `tests/unit/test_model_object_retirement.py`, `tests/unit/test_retire_not_delete_loaders.py`, `tests/unit/test_retired_not_served.py`, `tests/unit/test_meta_seed_retires_undeclared.py`
 
 ## 4. Source Connectors
 
