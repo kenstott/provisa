@@ -2456,7 +2456,9 @@ async def _run_chat_aisuite(
         yield {"type": "done"}
         return
     provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
-    cap = output_cap(provider_key, custom_endpoint=bool(provider_configs))
+    # An endpoint is routed with its base_url; a named vendor with its key alone.
+    at_endpoint = "base_url" in provider_configs.get(provider_key, {})
+    cap = output_cap(provider_key, custom_endpoint=at_endpoint)
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
     system_text = _system_prompt(current_route)
     # REQ-2012: an Anthropic model behind an OpenAI-wire gateway (OpenRouter) caches only where a

@@ -62,6 +62,17 @@ _CATALOG = [
 ]
 
 
+@pytest.fixture(autouse=True)
+def _no_stored_ai_keys(monkeypatch):
+    """Listing the tools asks whether the organization has a Jev key (REQ-1395); the states
+    here hold no model store to ask, so the organization is said to have stored none."""
+
+    async def stored(_db):
+        return {}
+
+    monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", stored)
+
+
 def _make_state():
     """Fake AppState: a role context with one FK join + config domains."""
     orders_meta = TableMeta(
