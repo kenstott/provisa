@@ -73,7 +73,7 @@ class PgConnection:
             port=int(source.port or 5432),
             database=resolve_secrets(source.database or ""),
             user=resolve_secrets(source.username or ""),
-            password=resolve_secrets(source.password or ""),
+            password=resolve_secrets(source.password or "", credential=True),
         )
 
     def connect(self) -> Any:

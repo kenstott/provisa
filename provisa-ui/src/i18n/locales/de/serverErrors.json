@@ -499,6 +499,8 @@
       "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt"
     },
     "secrets": {
+      "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
+      "env_reference_refused": "{{name}} ist eine Variable der eigenen Umgebung des Servers, über die diese Organisation nicht verfügt. Speichern Sie den Wert als Secret der Organisation und verweisen Sie stattdessen auf das Secret.",
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
       "name_too_long": "{{name}} ist als Name zu lang: Mit dem Präfix dieser Organisation sind es {{length}} Zeichen, und {{service}} lässt höchstens {{limit}} zu",
       "org_not_found": "Organisation '{{org_id}}' nicht gefunden",

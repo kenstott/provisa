@@ -499,6 +499,8 @@
       "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt"
     },
     "secrets": {
+      "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
+      "env_reference_refused": "{{name}} is een variabele van de eigen omgeving van de server, waarover deze organisatie niet beschikt. Sla de waarde op als secret van de organisatie en verwijs in plaats daarvan naar het secret.",
       "name_refused": "{{name}} is geen naam binnen de secrets van deze organisatie in {{service}}: een naam is relatief ten opzichte van de organisatie en kan deze niet verlaten",
       "name_too_long": "{{name}} is een te lange naam: met het voorvoegsel van deze organisatie telt deze {{length}} tekens, en {{service}} accepteert er hoogstens {{limit}}",
       "org_not_found": "Organisatie '{{org_id}}' niet gevonden",

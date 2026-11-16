@@ -116,7 +116,7 @@ async def detect(input: JdbcSourceDetectInput, engine: Any) -> JdbcSourceDetecti
         found = await checks.detect(
             hints,
             input.username,
-            str(resolve_secrets(input.password)) if input.password else "",
+            str(resolve_secrets(input.password, credential=True)) if input.password else "",
             engine,
         )
     return JdbcSourceDetectionType(

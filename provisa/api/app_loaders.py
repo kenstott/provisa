@@ -448,7 +448,7 @@ async def _build_source_pools_and_enums(
                 or _is_flat_file
                 or src.type.value in CODE_SOURCES  # REQ-2100
             ):
-                resolved_pw = resolve_secrets(src.password)
+                resolved_pw = resolve_secrets(src.password, credential=True)
                 resolved_host = (
                     ""
                     if _is_flat_file
