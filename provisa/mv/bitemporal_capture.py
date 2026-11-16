@@ -128,7 +128,7 @@ def log_mv(
         sql=sql,
         semantic_sql=sql,
         region=row.get("region"),
-        read_tables=read_table_names(sql),
+        read_tables=read_table_names(sql, {}),  # the whole table: it calls no command
         expose_in_sdl=False,
         status=MVStatus.STALE,
         bitemporal=log_spec(table),

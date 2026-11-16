@@ -7,7 +7,7 @@
     "addRelationship": "+ Relation",
     "sqlModelingTool": "Outil de modélisation SQL",
     "viewErd": "Voir le diagramme entité-association",
-    "discovering": "Découverte en cours…",
+    "discovering": "La découverte est en cours. Ouvrez-la pour voir sa progression.",
     "suggestWithAi": "Suggérer avec l'IA",
     "clearRejections": "Effacer les rejets",
     "clearedRejections": "{{count}} rejet effacé.",

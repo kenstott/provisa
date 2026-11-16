@@ -27,6 +27,7 @@ both (``core.glossary.agent_view``).
 # Requirements: REQ-1387, REQ-1591, REQ-2130
 
 from provisa.core import model_change, model_uri
+from provisa.core.model_row_rules import as_delete
 from typing import TYPE_CHECKING, Any
 
 import json
@@ -561,7 +562,9 @@ async def _settle_terms(
             node["deprecated"] = True
         else:
             # The term lost its last ref, so nothing blocks it; its edges, domain links and
-            # experts go with it (the inventory's parts — no cascade is relied on).
+            # experts go with it (the inventory's parts — no cascade is relied on). REQ-2248
+            # (ruling 2026-11-15): this sweep of a derived term nothing names REMOVES it; it is
+            # derived from columns, not a person's object, so it is not retired.
             await remove_parts(conn, ObjectRef("glossary_term", term_id))
             await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
             graph.remove(term_id)
@@ -1411,7 +1414,23 @@ async def retire_term(
             )
         if role != "concept":
             await _move_to_successor(conn, term_id, successor, role)
-    await conn.execute_core(
+    await _mark_retired(conn, term_id, reason=text, successor=successor, by=by)
+
+
+async def _mark_retired(
+    conn: "Connection",
+    term_id: int,
+    *,
+    reason: "str | None",
+    successor: "int | None",
+    by: "str | None",
+    deleted: bool = False,
+) -> None:
+    """THE retirement of a term (REQ-2144, REQ-2248), once what it holds has gone to
+    ``successor`` or there was nothing to move: kept as an inert record with who, when and why,
+    replaced by ``successor`` when there is one. ``deleted``: a person's delete, held to the D
+    rule (REQ-2188) as the DELETE it replaces; a curator's retirement is a U write."""
+    stmt = (
         update(glossary_terms)
         .where(glossary_terms.c.id == term_id)
         .values(
@@ -1419,11 +1438,12 @@ async def retire_term(
             approved=False,
             deprecation_asserted=False,
             retire_on=None,
-            status_reason=text,
+            status_reason=reason,
             status_by=by,
             status_at=func.now(),
         )
     )
+    await conn.execute_core(as_delete(stmt) if deleted else stmt)
     if successor is not None:
         await add_edge(conn, successor, term_id, "REPLACES")
     model_change.name(  # REQ-1524
@@ -1520,20 +1540,27 @@ class TermDeleteRefused(ValueError):
         )
 
 
-async def delete_term(conn: "Connection", term_id: int) -> bool:  # REQ-1918
+async def delete_term(  # REQ-1918, REQ-2248
+    conn: "Connection", term_id: int, *, reason: str | None = None
+) -> bool:
     """Delete a term with no physical refs (abstract or deprecated): THE delete, for every
-    surface. False when there is no such term.
+    surface. It RETIRES the term (REQ-2248) as :func:`retire_term` does, by the acting person,
+    for ``reason``: its row, name, definition, edges, domain links and experts are kept, and a
+    link to it (a metric naming it, an alignment) is kept for a person to move. False when there
+    is no such term, or it is retired already.
 
     Rooted terms are lifecycle-managed: their removal happens only when the schema element
     departs. So a term's physical refs block it (:class:`TermDeleteRefused`, naming the tables)
-    — something that points an object at real data is a dependent, not a part. Its edges, in
-    either direction, its domain links and its experts go with it. One transaction."""
+    — something that points an object at real data is a dependent, not a part. One
+    transaction."""
     ref = ObjectRef("glossary_term", term_id)
     async with conn.transaction():
-        found = await conn.execute_core(
-            select(glossary_terms.c.id).where(glossary_terms.c.id == term_id)
-        )
-        if found.fetchone() is None:
+        found = (
+            await conn.execute_core(
+                select(glossary_terms.c.retired).where(glossary_terms.c.id == term_id)
+            )
+        ).fetchone()
+        if found is None or found.retired:
             return False
         # REQ-2141: a Class's tables are ungrounded first, so the primary-key refs it holds for
         # them go back to their own terms rather than blocking the delete.
@@ -1542,8 +1569,17 @@ async def delete_term(conn: "Connection", term_id: int) -> bool:  # REQ-1918
         blocking = await guard(conn, ref)
         if blocking:
             raise TermDeleteRefused(term_id, blocking)
-        await remove_parts(conn, ref)
-        await conn.execute_core(_delete(glossary_terms).where(glossary_terms.c.id == term_id))
+        # Nothing is attached now, so nothing moves; a delete's reason is optional, as every
+        # kind's delete is (a curator's retire_term asks for one).
+        text = reason.strip() if reason is not None else None
+        await _mark_retired(
+            conn,
+            term_id,
+            reason=text or None,
+            successor=None,
+            by=model_change.actor(),
+            deleted=True,
+        )
     return True
 
 

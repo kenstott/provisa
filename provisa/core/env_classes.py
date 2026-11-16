@@ -153,6 +153,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "mv_refresh_log",
         "mv_delta_ledger",
         "relationship_candidates",
+        # REQ-413: this environment's discovery runs and their progress.
+        "discovery_runs",
         "creation_requests",
         # REQ-2216: the approve and decide calls this environment already answered.
         "idempotent_calls",

@@ -7,7 +7,7 @@
     "addRelationship": "+ Beziehung",
     "sqlModelingTool": "SQL-Modellierungswerkzeug",
     "viewErd": "ERD anzeigen",
-    "discovering": "Wird ermittelt...",
+    "discovering": "Die Ermittlung läuft. Öffnen Sie sie, um den Fortschritt zu sehen.",
     "suggestWithAi": "Mit KI vorschlagen",
     "clearRejections": "Ablehnungen zurücksetzen",
     "clearedRejections": "{{count}} Ablehnung zurückgesetzt.",

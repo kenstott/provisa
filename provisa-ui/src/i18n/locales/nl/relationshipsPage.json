@@ -7,7 +7,7 @@
     "addRelationship": "+ Relatie",
     "sqlModelingTool": "SQL-modelleertool",
     "viewErd": "ERD bekijken",
-    "discovering": "Detecteren...",
+    "discovering": "De detectie loopt. Open deze om de voortgang te zien.",
     "suggestWithAi": "Voorstellen met AI",
     "clearRejections": "Afwijzingen wissen",
     "clearedRejections": "{{count}} afwijzing gewist.",

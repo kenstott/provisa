@@ -1882,14 +1882,13 @@ _MENTIONED = re.compile(
 
 @functools.cache
 def _grid_mentioned(dialect: str) -> re.Pattern[str] | None:
-    """A call of a function a grid row writes on ``dialect``, or what a row of no pattern that
-    rewrites there reads: a row that leaves the engine's own call there (array_agg on Trino, whose
-    row is ClickHouse's), or rewrites only on another dialect (a ClickHouse literal), does not walk
-    the statement."""
+    """A call of a function a grid row writes on ``dialect``, or what a rewrite of its column
+    mentions: a row that leaves the engine's own call there (array_agg on Trino, whose row is
+    ClickHouse's; ::text, which a ClickHouse rewrite mentions) does not walk the statement."""
     names = polyfill.GRID.names_on(dialect)
-    parts = [_called_by_name(names)] if names else []
-    parts.extend(polyfill.GRID.mentions_on(dialect))
-    return re.compile("|".join(parts), re.IGNORECASE) if parts else None
+    held = [_called_by_name(names)] if names else []
+    held.extend(polyfill.GRID.mentions_on(dialect))
+    return re.compile("|".join(held), re.IGNORECASE) if held else None
 
 
 #: A call by pg_catalog, or a value of a type a call of it may be refused for.

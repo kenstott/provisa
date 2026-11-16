@@ -17,9 +17,9 @@ from __future__ import annotations
 import uuid
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete, insert, select, update
+from sqlalchemy import delete as _delete, select, update
 
-from provisa.core.schema_org import relationship_candidates, relationships
+from provisa.core.schema_org import registered_tables, relationship_candidates, relationships
 from provisa.discovery.analyzer import RelationshipCandidate
 
 if TYPE_CHECKING:
@@ -80,8 +80,13 @@ async def list_pending(conn: "Connection") -> list[dict]:  # REQ-018, REQ-167
 
 async def accept(
     conn: "Connection", candidate_id: int, rel_id: str | None = None
-) -> dict:  # REQ-019, REQ-020
-    """Accept a candidate: mark accepted and create a relationship."""
+) -> dict:  # REQ-019, REQ-020, REQ-413
+    """Accept a candidate: mark it accepted and register its relationship through the existing
+    derivation (:func:`provisa.core.repositories.relationship.upsert`), which marks the referring
+    column a foreign key. No column is marked a primary or alternate key (REQ-413)."""
+    from provisa.core.models import Cardinality, Relationship
+    from provisa.core.repositories import relationship as relationship_repo
+
     async with conn.transaction():
         result = await conn.execute_core(
             select(relationship_candidates).where(
@@ -94,6 +99,27 @@ async def accept(
             raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
         row = dict(found._mapping)
 
+        name: str = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
+        taken = await conn.execute_core(
+            select(relationships.c.id).where(relationships.c.id == name)
+        )
+        if taken.fetchone() is not None:
+            raise ValueError(f"A relationship named {name!r} already exists; name this one")
+
+        names = {
+            int(r.id): r.alias or r.table_name
+            for r in (
+                await conn.execute_core(
+                    select(
+                        registered_tables.c.id,
+                        registered_tables.c.alias,
+                        registered_tables.c.table_name,
+                    ).where(
+                        registered_tables.c.id.in_([row["source_table_id"], row["target_table_id"]])
+                    )
+                )
+            ).fetchall()
+        }
         await conn.execute_core(
             update(relationship_candidates)
             .where(
@@ -102,21 +128,21 @@ async def accept(
             )
             .values(status="accepted")
         )
-
-        rel_id = rel_id or row.get("suggested_name") or f"disc-{uuid.uuid4().hex[:12]}"
-        await conn.execute_core(
-            insert(relationships).values(
-                id=rel_id,
-                source_table_id=row["source_table_id"],
-                target_table_id=row["target_table_id"],
+        await relationship_repo.upsert(
+            conn,
+            Relationship(
+                id=name,
+                source_table_id=names[int(row["source_table_id"])],
+                target_table_id=names[int(row["target_table_id"])],
                 source_column=row["source_column"],
                 target_column=row["target_column"],
-                cardinality=row["cardinality"],
-            )
+                cardinality=Cardinality(row["cardinality"]),
+            ),
+            derive_target_key=False,
         )
 
     return {
-        "relationship_id": rel_id,
+        "relationship_id": name,
         "source_table_id": row["source_table_id"],
         "target_table_id": row["target_table_id"],
         "source_column": row["source_column"],
@@ -145,3 +171,17 @@ async def reject(conn: "Connection", candidate_id: int, reason: str) -> None:  #
     )
     if (result.rowcount or 0) == 0:
         raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+
+
+async def withdraw(conn: "Connection", ids: list[int]) -> int:  # REQ-413
+    """Remove suggestions a discovery run stored and no longer shows (a later answer of the same
+    run turned the pair the other way); one a person has decided is left as it is."""
+    if not ids:
+        return 0
+    result = await conn.execute_core(
+        _delete(relationship_candidates).where(
+            relationship_candidates.c.id.in_(ids),
+            relationship_candidates.c.status == "suggested",
+        )
+    )
+    return result.rowcount or 0

@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "Relationship type value",
     "viaLabelSourceTable": "Table name",
     "viaLabelSourceFixed": "Cypher alias",
-    "cardinalityOneToOne": "one-to-one"
+    "cardinalityOneToOne": "one-to-one",
+    "targetTypeResolver": "Code resolver",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "A query of a code source that takes the source table and the target table and returns one row per match.",
+    "resolverNone": "No code source query takes two tables",
+    "sourceMatchLabel": "Match column holding the source key",
+    "targetMatchLabel": "Match column holding the target key"
   }
 }

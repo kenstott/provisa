@@ -278,12 +278,16 @@ export function FormField({
   hint,
   help,
   section,
+  afterLabel = false,
   className,
   style,
   children,
   ...rest
 }: Omit<HTMLAttributes<HTMLDivElement>, "style"> & {
   size: FormFieldSize;
+  /** An unlabelled control beside a labelled input in a `FieldGroup`: it starts level with the
+   *  input's control, not with its label. */
+  afterLabel?: boolean;
   hint?: string;
   help?: string;
   style?: CSSProperties;
@@ -349,7 +353,12 @@ export function FormField({
     <div
       {...rest}
       style={style}
-      className={classes("form-field", `form-field--${size}`, className)}
+      className={classes(
+        "form-field",
+        `form-field--${size}`,
+        afterLabel ? "form-field--after-label" : undefined,
+        className,
+      )}
     >
       {content}
     </div>,

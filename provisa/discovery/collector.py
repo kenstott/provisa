@@ -206,9 +206,6 @@ async def collect_fk_candidates(  # REQ-018, REQ-413
 
     Imported lazily to avoid circular import with analyzer.
     """
-    from provisa.discovery.analyzer import RelationshipCandidate
-    from provisa.discovery.fk_introspect import introspect_fk_constraints
-
     all_tables = await pg_conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name FROM registered_tables ORDER BY id"
     )
@@ -227,6 +224,39 @@ async def collect_fk_candidates(  # REQ-018, REQ-413
         tables = all_tables
     else:
         return []
+
+    return await _fk_candidates(source_pools, source_types, pg_conn, tables, table_by_name)
+
+
+async def collect_fk_for_tables(  # REQ-413
+    source_pools: Any,
+    source_types: dict[str, str],
+    pg_conn: "Connection",
+    table_ids: set[int],
+) -> list:
+    """:func:`collect_fk_candidates` for the tables of a run's source set: the foreign keys each
+    declares, read from its own source, its referenced table found among the registered tables."""
+    all_tables = [
+        dict(r)
+        for r in await pg_conn.fetch(
+            "SELECT id, source_id, domain_id, schema_name, table_name FROM registered_tables "
+            "ORDER BY id"
+        )
+    ]
+    table_by_name: dict[str, dict] = {t["table_name"]: t for t in all_tables}
+    tables = [t for t in all_tables if t["id"] in table_ids]
+    return await _fk_candidates(source_pools, source_types, pg_conn, tables, table_by_name)
+
+
+async def _fk_candidates(
+    source_pools: Any,
+    source_types: dict[str, str],
+    pg_conn: "Connection",
+    tables: list[dict],
+    table_by_name: dict[str, dict],
+) -> list:
+    from provisa.discovery.analyzer import RelationshipCandidate
+    from provisa.discovery.fk_introspect import introspect_fk_constraints
 
     existing = {
         (r["source_table_id"], r["source_column"], r["target_table_id"], r["target_column"])
@@ -272,7 +302,7 @@ async def collect_fk_candidates(  # REQ-018, REQ-413
                     source_column=fk["column_name"],
                     target_table_id=target["id"],
                     target_column=fk["referenced_column"],
-                    cardinality="many_to_one",
+                    cardinality="many-to-one",  # a Cardinality value (provisa.core.models)
                     confidence=1.0,
                     reasoning="Foreign key constraint",
                     suggested_name=f"{t['table_name']}-{fk['column_name']}-to-{fk['referenced_table']}",

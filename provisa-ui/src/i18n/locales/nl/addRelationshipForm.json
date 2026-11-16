@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "Waarde van het relatietype",
     "viaLabelSourceTable": "Tabelnaam",
     "viaLabelSourceFixed": "Cypher-alias",
-    "cardinalityOneToOne": "één-op-één"
+    "cardinalityOneToOne": "één-op-één",
+    "targetTypeResolver": "Coderesolver",
+    "resolverLabel": "Resolver",
+    "resolverHelp": "Een query van een codebron die de brontabel en de doeltabel krijgt en per overeenkomst één rij teruggeeft.",
+    "resolverNone": "Geen query van een codebron krijgt twee tabellen",
+    "sourceMatchLabel": "Overeenkomstkolom met de bronsleutel",
+    "targetMatchLabel": "Overeenkomstkolom met de doelsleutel"
   }
 }

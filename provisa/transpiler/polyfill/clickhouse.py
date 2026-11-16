@@ -294,8 +294,12 @@ NULL_ARRAY = Feature(
     FAMILY,
     "A call PostgreSQL answers NULL for its NULL array argument, as that NULL.",
     read=Side(
+        # A NULL array is written by its type: the statement holds an array type's brackets.
         rules=(
-            Rule(None, {"clickhouse": Rewrite(null_of_a_null_array, mentions=r"\[\]", first=True)}),
+            Rule(
+                None,
+                {"clickhouse": Rewrite(null_of_a_null_array, first=True, mentions=r"\[\]")},
+            ),
         ),
         limitations={
             "clickhouse": (

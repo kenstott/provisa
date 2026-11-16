@@ -7,7 +7,7 @@
     "addRelationship": "+ संबंध",
     "sqlModelingTool": "SQL मॉडलिंग टूल",
     "viewErd": "ERD देखें",
-    "discovering": "खोज हो रही है...",
+    "discovering": "खोज चल रही है। इसकी प्रगति देखने के लिए इसे खोलें।",
     "suggestWithAi": "AI से सुझाव लें",
     "clearRejections": "अस्वीकृतियाँ साफ़ करें",
     "clearedRejections": "{{count}} अस्वीकृति साफ़ की गई।",
