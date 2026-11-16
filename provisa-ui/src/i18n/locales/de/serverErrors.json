@@ -496,7 +496,9 @@
       "code_resolver_not_found": "Code-Resolver „{{resolver}}“ nicht gefunden",
       "code_resolver_saved": "Code-Resolver „{{resolver}}“ gespeichert",
       "code_resolver_retired": "Code-Resolver „{{resolver}}“ stillgelegt",
-      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt"
+      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt",
+      "incremental_no_change": "Die Codequelle hat keine @change-Funktion für {{table}}. Deklarieren Sie eine mit @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden)."
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
@@ -815,6 +817,11 @@
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
       "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",
+      "change_key_repeated": "{{function}} hat den Schlüssel {{key}} in einem Ergebnis zweimal zurückgegeben",
+      "change_cursor_backwards": "Der Cursor von {{function}} ist rückwärts gelaufen: Zurückgegeben wurde {{returned}}, vor dem gespeicherten {{stored}}"
     }
   }
 }

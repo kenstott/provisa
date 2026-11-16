@@ -10661,5 +10661,16 @@
   "ru/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "ru/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "ru/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "ru/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "ru/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "ru/addRelationshipForm.json::addRelationshipForm.incrementalHelp": "On each refresh, the resolver's @change function is asked for the matches that changed since the last run, and they are applied by key. Off, each refresh recomputes every match.",
+  "ru/addRelationshipForm.json::addRelationshipForm.incrementalLabel": "Keep matches incrementally",
+  "ru/addRelationshipForm.json::addRelationshipForm.rebuildEveryHelp": "How often every match is recomputed, to correct anything the changes missed. Required while matches are kept incrementally.",
+  "ru/addRelationshipForm.json::addRelationshipForm.rebuildEveryLabel": "Whole rebuild every (seconds)",
+  "ru/serverErrors.json::serverErrors.mv.change_cursor_backwards": "{{function}}'s cursor went backwards: it returned {{returned}}, before the stored {{stored}}",
+  "ru/serverErrors.json::serverErrors.mv.change_key_missing": "{{function}} returned a row without its key column {{column}}",
+  "ru/serverErrors.json::serverErrors.mv.change_key_repeated": "{{function}} returned the key {{key}} twice in one result",
+  "ru/serverErrors.json::serverErrors.schema.incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
+  "ru/serverErrors.json::serverErrors.schema.incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
+  "ru/tableEditForm.json::tableEditForm.mvRebuildEveryHelp": "How often the whole view is recomputed. Required for a view kept by a code source's @change function.",
+  "ru/tableEditForm.json::tableEditForm.mvRebuildEveryLabel": "Whole rebuild every (seconds)"
 }

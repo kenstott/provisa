@@ -496,7 +496,9 @@
       "code_resolver_not_found": "Resolver di codice '{{resolver}}' non trovato",
       "code_resolver_saved": "Resolver di codice '{{resolver}}' salvato",
       "code_resolver_retired": "Resolver di codice '{{resolver}}' ritirato",
-      "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso"
+      "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso",
+      "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\"."
     },
     "secrets": {
       "name_refused": "{{name}} non è un nome all'interno dei segreti di questa organizzazione in {{service}}: un nome è relativo all'organizzazione e non può uscirne",
@@ -815,6 +817,11 @@
       "expiry_in_past": "La data di fine deve essere futura.",
       "expiry_removes_nothing": "Una data di fine su questa lista {{kind}} non rimuoverebbe nulla.",
       "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} ha restituito una riga senza la sua colonna chiave {{column}}",
+      "change_key_repeated": "{{function}} ha restituito la chiave {{key}} due volte in un unico risultato",
+      "change_cursor_backwards": "Il cursore di {{function}} è tornato indietro: ha restituito {{returned}}, precedente al valore memorizzato {{stored}}"
     }
   }
 }

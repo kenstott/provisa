@@ -496,7 +496,9 @@
       "code_resolver_not_found": "מפענח הקוד '{{resolver}}' לא נמצא",
       "code_resolver_saved": "מפענח הקוד '{{resolver}}' נשמר",
       "code_resolver_retired": "מפענח הקוד '{{resolver}}' הוצא משימוש",
-      "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו"
+      "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו",
+      "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
+      "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\"."
     },
     "secrets": {
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
@@ -815,6 +817,11 @@
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
       "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} החזירה שורה ללא עמודת המפתח שלה {{column}}",
+      "change_key_repeated": "{{function}} החזירה את המפתח {{key}} פעמיים בתוצאה אחת",
+      "change_cursor_backwards": "הסמן של {{function}} נע לאחור: הוחזר {{returned}}, לפני הערך השמור {{stored}}"
     }
   }
 }

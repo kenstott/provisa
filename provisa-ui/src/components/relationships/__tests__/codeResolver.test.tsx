@@ -156,12 +156,14 @@ describe("a code resolver's incremental setting", () => {
     expect(setForm).toHaveBeenCalledWith(expect.objectContaining({ incremental: true }));
   });
 
-  it("is disabled, with the catalog's reason beside it, when the source has none", async () => {
+  it("is disabled, with the catalog's reason at its (?), when the source has none", async () => {
     resolverForm({}, NO_CHANGE);
     const tick = await screen.findByTestId("rel-form-incremental");
     expect(tick).toBeDisabled();
-    const reason = "The code source has no @change function for order_clips.";
-    expect(screen.getByText(reason, { exact: false })).toBeInTheDocument();
+    // Its (?) says why, in place of what the setting does.
+    expect(tick).toHaveAccessibleDescription(
+      expect.stringContaining("The code source has no @change function for order_clips."),
+    );
     // The catalog words it; the server's English text is not shown.
     expect(screen.queryByText("server english text", { exact: false })).toBeNull();
   });
@@ -179,9 +181,9 @@ describe("a code resolver's incremental setting", () => {
     const tick = await screen.findByTestId("rel-form-incremental");
     expect(tick).toBeChecked();
     expect(tick).toBeEnabled();
-    expect(
-      screen.getByText("has no @change function for order_clips", { exact: false }),
-    ).toBeInTheDocument();
+    expect(tick).toHaveAccessibleDescription(
+      expect.stringContaining("has no @change function for order_clips"),
+    );
   });
 
   it("is not asked before the set's id and resolver are given", () => {

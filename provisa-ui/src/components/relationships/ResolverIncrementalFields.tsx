@@ -21,7 +21,7 @@ import type { RelForm } from "./relationship-types";
  * A code resolver set's incremental setting: its landed matches kept by the resolver's @change
  * function, and how often they are rebuilt whole, which that requires. The server says whether
  * the resolver's source has such a function for this set; where it has none the setting cannot
- * be turned on, and the reason is shown beneath it. Shown once the set's id and resolver are
+ * be turned on, and its (?) gives the reason. Shown once the set's id and resolver are
  * given: the answer depends on both.
  */
 export function ResolverIncrementalFields({
@@ -38,7 +38,8 @@ export function ResolverIncrementalFields({
   return (
     <>
       <FormChecks>
-        <FormField size="medium" help={t("addRelationshipForm.incrementalHelp")} hint={reason}>
+        {/* Where it cannot be turned on, its (?) says why in place of what it does. */}
+        <FormField size="medium" help={reason ?? t("addRelationshipForm.incrementalHelp")}>
           <Checkbox
             label={t("addRelationshipForm.incrementalLabel")}
             checked={form.incremental}

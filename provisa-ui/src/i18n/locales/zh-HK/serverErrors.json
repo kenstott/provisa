@@ -496,7 +496,9 @@
       "code_resolver_not_found": "找不到代碼解析器 '{{resolver}}'",
       "code_resolver_saved": "已儲存代碼解析器 '{{resolver}}'",
       "code_resolver_retired": "已停用代碼解析器 '{{resolver}}'",
-      "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用"
+      "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用",
+      "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
+      "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。"
     },
     "secrets": {
       "name_refused": "{{name}} 並非 {{service}} 中本組織密鑰範圍內的名稱：名稱相對於組織，不能超出組織範圍",
@@ -815,6 +817,11 @@
       "expiry_in_past": "結束日期必須是將來的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
       "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} 傳回了缺少鍵欄 {{column}} 的資料列",
+      "change_key_repeated": "{{function}} 在一個結果中兩次傳回了鍵 {{key}}",
+      "change_cursor_backwards": "{{function}} 的游標出現倒退：傳回了 {{returned}}，早於已儲存的 {{stored}}"
     }
   }
 }

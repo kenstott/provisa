@@ -62,15 +62,13 @@ describe("a landed view's incremental setting", () => {
     expect(set).toHaveBeenCalledWith(expect.objectContaining({ mvIncremental: true }));
   });
 
-  it("is disabled, with the catalog's reason beside it, when the source has no @change", () => {
+  it("is disabled, with the catalog's reason at its (?), when the source has no @change", () => {
     panels(landedView({ incrementalOption: NO_CHANGE }));
     const tick = screen.getByTestId("mv-incremental");
     expect(tick).toBeDisabled();
-    expect(
-      screen.getByText("The code source has no @change function for store_regions.", {
-        exact: false,
-      }),
-    ).toBeInTheDocument();
+    expect(tick).toHaveAccessibleDescription(
+      expect.stringContaining("The code source has no @change function for store_regions."),
+    );
     expect(screen.queryByText("server english text", { exact: false })).toBeNull();
   });
 

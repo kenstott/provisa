@@ -181,12 +181,13 @@ export function MaterializedViewPanels({
       <FormChecks>
         {editingTable.materialize && !timeTravel && (
           <FormField
-            help={t("tableEditForm.incrementalHelp")}
             // REQ-2249: a view calling a code command is kept incrementally only by its
-            // resolver's @change function; without one the reason is shown beneath the tick.
-            hint={incrementalReason(editingTable.incrementalOption, {
-              table: editingTable.tableName,
-            })}
+            // resolver's @change function; without one the (?) says why in place of the help.
+            help={
+              incrementalReason(editingTable.incrementalOption, {
+                table: editingTable.tableName,
+              }) ?? t("tableEditForm.incrementalHelp")
+            }
             size="short"
           >
             <Checkbox
