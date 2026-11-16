@@ -1369,6 +1369,9 @@ def _may_be(node: exp.Expr, name: str) -> bool:
     not once a row and a node, for each of its operators."""
     operators = _OPERATORS.get(type(node))
     if operators is not None:
+        if name == "time_mi_time":
+            # a time less a time: both operands say time, read without a walk (no interval in it)
+            return all(_said(o.unnest()) in _KIND_TYPES["time"] for o in node.iter_expressions())
         return name in operators.values()
     call = trino.called(node)
     return call is not None and name in call[0]

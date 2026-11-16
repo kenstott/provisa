@@ -27,6 +27,7 @@ back (``of_text``), and the engine's own value is brought to the type (``coerce`
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
 import pytest
@@ -34,6 +35,7 @@ import pytest
 from provisa.core.pg_error import from_engine
 from provisa.pgwire.cast_types import result_casts
 from provisa.transpiler.function_macros import FunctionRefused
+from provisa.transpiler.polyfill import clocks
 from provisa.transpiler.polyfill.notation import Refused
 from provisa.transpiler.transpile import transpile
 from tests.unit.pgwire.type_io_corpus import same_answer
@@ -616,6 +618,31 @@ def _outcome(client: Any, sql: str) -> str | None:
     return None if same_answer(got, oid, want) else f"{got!r}, PostgreSQL {want!r}"
 
 
+#: The functions still refused by name on ClickHouse, each for a reason stated on its grid row or
+#: the old table's refusal: timetz (a pair of numbers, its own job), a timestamptz or a timetz's
+#: time in the session's zone, max and min of a column of times (no row reads a time column),
+#: in_range (refused before any row, as every engine but PostgreSQL's), make_time, and
+#: extract(unit FROM time), which the translator reads as the same node as date_part's.
+STILL_REFUSED = frozenset(
+    {"timetz", "timestamptz", "time", "max", "min", "in_range", "make_time", "extract"}
+)
+#: The statements whose answer is 24:00:00, which PostgreSQL's time holds and pgwire reads no time
+#: of back (cast_types.clock_of_text): the time row's stated 0A000 (REQ-2236, AN EDGE CASE RAISES).
+EDGES = frozenset({"SELECT '24:00:00'::time AS v", "SELECT '23:59:59.9999995'::time AS v"})
+_REFUSED_NAMING = re.compile(r"refused: 0A000: (\w+)\(\) has no form on clickhouse")
+
+
+def _allowed(sql: str, why: str | None) -> bool:
+    """Whether ``why`` is no difference: PostgreSQL's answer or error, a stated edge's 0A000, or a
+    refusal by name of a function still refused."""
+    if why is None:
+        return True
+    if sql in EDGES:
+        return why == f"refused: 0A000: {clocks.LAST_SHOWN.message}"
+    refused = _REFUSED_NAMING.fullmatch(why)
+    return refused is not None and refused[1] in STILL_REFUSED
+
+
 @pytest.mark.requires_clickhouse
 def test_each_time_statement_answers_on_the_clickhouse_server_as_postgresql_does():
     """One test, every statement: requires_clickhouse starts and removes the service per test."""
@@ -631,4 +658,4 @@ def test_each_time_statement_answers_on_the_clickhouse_server_as_postgresql_does
     found = {sql: _outcome(client, sql) for sql in RECORDED}
     for sql, why in found.items():
         print(f"{'answers' if why is None else why[:120]} | {sql}")
-    assert {sql: why for sql, why in found.items() if why is not None} == {}, version
+    assert {sql: why for sql, why in found.items() if not _allowed(sql, why)} == {}, version

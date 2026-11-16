@@ -38,6 +38,7 @@ row's stated bound."""
 from __future__ import annotations
 
 import datetime
+import re
 from decimal import Decimal
 
 import pytest
@@ -45,18 +46,21 @@ import pytest
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
 from provisa.transpiler.function_macros import RowRefused
-from provisa.transpiler.polyfill import GRID
+from provisa.transpiler.polyfill import GRID, clocks
 from provisa.transpiler.transpile import transpile
 
 _US = 1_000_000
 
 
 def _clock(hours: int, minutes: int, seconds: int = 0, micros: int = 0) -> int:
-    """A time of day as its microseconds, as Time64(6) holds it (24:00:00 is PostgreSQL's last)."""
+    """A time of day as its microseconds, as Provisa holds it on ClickHouse (polyfill.clocks:
+    an Int64; 24:00:00 is PostgreSQL's last)."""
     return ((hours * 60 + minutes) * 60 + seconds) * _US + micros
 
 
-#: 1. A text cast to a time, answered as its microseconds of the day.
+#: 1. A text cast to a time, answered as its microseconds of the day: the select list shows it as
+#: time_out's text, read back here as pgwire reads it. 24:00:00 is read through a cast to text: a
+#: result column of it raises (test_a_result_column_of_the_last_time_raises).
 TIMES = [
     ("SELECT '12:30'::time AS v", _clock(12, 30)),
     ("SELECT '1:2'::time AS v", _clock(1, 2)),
@@ -65,9 +69,9 @@ TIMES = [
     ("SELECT CAST('7:05' AS time without time zone) AS v", _clock(7, 5)),
     ("SELECT time '23:59' AS v", _clock(23, 59)),
     ("SELECT '12:30:60'::time AS v", _clock(12, 31)),
-    ("SELECT '23:59:60'::time AS v", _clock(24, 0)),
-    ("SELECT '24:00'::time AS v", _clock(24, 0)),
-    ("SELECT '24:00:00.0000001'::time AS v", _clock(24, 0)),
+    ("SELECT '23:59:60'::time::text AS v", _clock(24, 0)),
+    ("SELECT '24:00'::time::text AS v", _clock(24, 0)),
+    ("SELECT '24:00:00.0000001'::time::text AS v", _clock(24, 0)),
     ("SELECT '12:30:45.1234567'::time AS v", _clock(12, 30, 45, 123457)),
     ("SELECT '12:30:45.9999995'::time AS v", _clock(12, 30, 46)),
     ("SELECT '12:30:59.9999999'::time AS v", _clock(12, 31)),
@@ -231,10 +235,15 @@ def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
 
 
 def _held(value: object) -> object:
-    """A Time64(6) as the engine hands it over (its microseconds, little-endian), as an integer."""
-    if isinstance(value, bytes):
-        return int.from_bytes(value, "little", signed=True)
+    """A time as the select list shows it (time_out's text, polyfill.clocks), as its microseconds
+    of the day; any other value as it is."""
+    if isinstance(value, str) and (clock := _TIME_OUT.fullmatch(value)) is not None:
+        hours, minutes, seconds = int(clock[1]), int(clock[2]), int(clock[3])
+        return _clock(hours, minutes, seconds, int((clock[4] or "").ljust(6, "0")))
     return value
+
+
+_TIME_OUT = re.compile(r"(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?")
 
 
 def _sqlstate(runtime: ClickHouseFederationRuntime, sql: str) -> tuple[str | None, str]:
@@ -254,6 +263,19 @@ def test_clickhouse_answers_postgresql_s(runtime, sql, want):
     (got,) = _rows(runtime, sql)
     got = _held(got)
     assert got == want and type(got) is type(want), (want, got)
+
+
+@pytest.mark.parametrize(
+    "sql", ["SELECT '24:00'::time AS v", "SELECT '23:59:60'::time AS v", "SELECT time '24:00' AS v"]
+)
+def test_a_result_column_of_the_last_time_raises(sql):
+    """24:00:00 is held (and compared) as PostgreSQL holds it, but pgwire reads no time of day past
+    23:59:59.999999 back: a result column of it raises the row's stated 0A000 (REQ-2236, AN EDGE
+    CASE RAISES), never 00:00:00."""
+    with pytest.raises(RowRefused) as refused:
+        transpile(sql, "clickhouse")
+    assert refused.value.sqlstate == "0A000"
+    assert str(refused.value) == clocks.LAST_SHOWN.message
 
 
 @pytest.mark.parametrize(("sql", "state"), RAISED)
