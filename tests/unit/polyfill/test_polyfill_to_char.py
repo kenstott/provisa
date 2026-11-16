@@ -30,11 +30,6 @@ from provisa.transpiler.to_char import Token, plain_strftime, tokens
 from provisa.transpiler.transpile import transpile, transpile_to_duckdb
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _on_clickhouse(runtime: ClickHouseFederationRuntime, sql: str) -> list[tuple]:
     return list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
 
