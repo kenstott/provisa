@@ -875,6 +875,70 @@ async def test_a_parameter_referring_to_another_tables_key_is_suggested_and_mark
         "the parameter names an order; no values were compared: get_order_by_id requires a "
         "parameter and is never read"
     )
+    # The list the suggestions table reads says so too, from the tables' registration.
+    (listed,) = await discovery.list_candidates(_REQUEST)
+    assert listed["id"] == stored["id"] and listed["reduced_information"] is True
+
+
+async def test_a_suggestion_between_tables_read_whole_is_not_marked(monkeypatch, tmp_path):
+    import json as _json
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.answers = [_json.dumps([_suggestion((1, "customer_id"), (2, "id"))])]
+    run = await _run(world, _scope())
+    assert run["report"]["on_reduced_information"] == 0 and run["report"]["tables_not_read"] == 0
+    (listed,) = await discovery.list_candidates(_REQUEST)
+    assert listed["reduced_information"] is False
+    assert listed["reasoning"] == "orders name their customer"
+
+
+async def test_the_glossary_term_bound_to_a_column_is_sent_whether_or_not_its_table_is_read(
+    monkeypatch,
+):
+    db = await _store()
+    await _pet_store(db)
+    async with db.acquire() as conn:
+        await conn.execute_core(insert(so.glossary_terms).values(id=1, name="Order"))
+        for table_id, column in ((_ORDER_BY_ID, "_nf_orderId"), (_ORDERS, "id")):
+            await conn.execute_core(
+                insert(so.glossary_term_refs).values(
+                    term_id=1, table_id=table_id, column_name=column
+                )
+            )
+    world = _pet_world(monkeypatch, db)
+    facts = await _facts(db, [_ORDER_BY_ID, _ORDERS])
+    assert world.reads.attempted == []
+    assert facts["get_order_by_id"].column("_nf_orderId").term == "Order"
+    assert facts["orders"].column("id").term == "Order"
+    assert facts["orders"].column("pet_id").term is None
+    _, prepared = await discovery._prepared(
+        _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS]).spec()
+    )
+    sent = prepared.requests[0].prompt(prepared.k)
+    assert (
+        '{"name":"_nf_orderId","description":null,"classes":["not_read"],"tags":[],"term":"Order"}'
+    ) in sent
+    assert '"tags":[],"term":"Order","sample_values":["1","2","3"]' in sent
+
+
+async def test_a_model_whose_limits_hold_no_request_is_refused_saying_why(monkeypatch):
+    db = await _store()
+    await _orders_customers(db)
+    config = {
+        **_ASSIGNED,
+        "ai_models": {
+            **_ASSIGNED["ai_models"],
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 100}}},
+        },
+    }
+    _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
+    with pytest.raises(ApiError) as caught:
+        await discovery.count_run(_REQUEST, _scope())
+    assert caught.value.code == "discovery.model_has_no_room"
+    assert caught.value.params["model"] == "openai:gpt-test"
+    assert "100 tokens holds no suggestion" in caught.value.params["reason"]
 
 
 async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_parameter(

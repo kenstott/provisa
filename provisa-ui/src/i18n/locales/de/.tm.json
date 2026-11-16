@@ -10666,5 +10666,14 @@
   "de/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "de/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "de/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "de/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "de/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "de/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
+  "de/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
+  "de/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
+  "de/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+  "de/serverErrors.json::serverErrors.discovery.run_not_found": "Discovery run {{run_id}} not found",
+  "de/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+  "de/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
+  "de/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
 }

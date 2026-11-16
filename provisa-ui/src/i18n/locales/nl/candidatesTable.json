@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} voorstellen konden niet worden geaccepteerd:",
     "rejectFailed": "{{count}} voorstel kon niet worden afgewezen:",
     "rejectFailed_other": "{{count}} voorstellen konden niet worden afgewezen:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Beperkte informatie: er zijn geen waarden vergeleken",
+    "reducedInformationHelp": "Een van deze tabellen vereist een parameter en wordt daarom nooit gelezen. Deze suggestie berust alleen op namen, beschrijvingen, typen en vereiste parameters."
   }
 }

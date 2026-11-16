@@ -224,11 +224,8 @@ def _fixed_order(tables: dict[int, TableFacts], a: ColumnRef, b: ColumnRef) -> D
 
 
 def reduced_tables(p: Proposal, tables: dict[int, TableFacts]) -> list[str]:
-    """The tables of a semantic suggestion that were never read (each requires a parameter): the
-    suggestion was found on their registration alone, no value of theirs compared. A foreign key
-    is a declared constraint, found on no value, and has none."""
-    if p.kind != "semantics":
-        return []
+    """The tables of a suggestion that were never read (each requires a parameter): it was found
+    on reduced information, their registration alone, and no value of theirs was compared."""
     ids = dict.fromkeys((p.start[0], p.end[0]))
     return [tables[i].table_name for i in ids if tables[i].reduced]
 

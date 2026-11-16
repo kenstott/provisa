@@ -10663,5 +10663,14 @@
   "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "zh-HK/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "zh-HK/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
+  "zh-HK/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
+  "zh-HK/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
+  "zh-HK/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+  "zh-HK/serverErrors.json::serverErrors.discovery.run_not_found": "Discovery run {{run_id}} not found",
+  "zh-HK/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
+  "zh-HK/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+  "zh-HK/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
+  "zh-HK/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
 }

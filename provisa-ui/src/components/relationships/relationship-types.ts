@@ -29,6 +29,8 @@ export interface Candidate {
   suggested_name?: string;
   /** Where it came from: a run's suggestions are `run:<id>`. */
   scope?: string | null;
+  /** One of its tables requires a parameter, so it is never read: no values were compared. */
+  reduced_information?: boolean;
 }
 
 /** The name a suggestion's relationship takes when accepted: the one suggested, else one made from

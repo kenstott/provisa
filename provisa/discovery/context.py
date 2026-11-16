@@ -13,7 +13,7 @@ the instructions around them (REQ-413).
 
 A table's context is its name, description, tags, role of fact or dimension, and the names of all
 its columns, those not compared included. A compared column's context is its name, description,
-classes, tags and sample values, never its type; a column with a sensitive class sends its class
+the glossary term bound to it, classes, tags and sample values, never its type; a column with a sensitive class sends its class
 and no sample values. The prompt states that a shared pii tag alone is weak evidence.
 
 A table that requires a parameter is never read (REQ-1986): its context names its required
@@ -60,6 +60,8 @@ def column_context(column: ColumnFacts) -> dict[str, Any]:
         "classes": list(column.classes),
         "tags": list(column.tags),
     }
+    if column.term is not None:
+        out["term"] = column.term
     if not column.sensitive and NOT_READ not in column.classes:
         out["sample_values"] = list(column.samples)
     return out

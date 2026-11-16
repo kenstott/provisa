@@ -146,6 +146,40 @@ async def _table_tags(conn: "Connection", ids: list[int]) -> dict[int, list[str]
     return out
 
 
+async def _terms(conn: "Connection", ids: list[int]) -> dict[tuple[int, str], str]:
+    """The glossary term bound to each column, by (table id, registered column name)."""
+    from provisa.core.schema_org import glossary_term_refs as refs
+    from provisa.core.schema_org import glossary_terms as terms
+
+    rows = (
+        await conn.execute_core(
+            select(refs.c.table_id, refs.c.column_name, terms.c.name)
+            .join(terms, terms.c.id == refs.c.term_id)
+            .where(refs.c.table_id.in_(ids))
+        )
+    ).fetchall()
+    return {(int(r.table_id), str(r.column_name)): str(r.name) for r in rows}
+
+
+async def tables_requiring_a_parameter(conn: "Connection", ids: Sequence[int]) -> set[int]:
+    """Those of ``ids`` that require a parameter (REQ-1986), from their registered columns: the
+    tables discovery never reads, and whose suggestions were found on reduced information."""
+    from provisa.core.schema_org import table_columns as tc
+
+    rows = (
+        await conn.execute_core(
+            select(
+                tc.c.table_id,
+                tc.c.column_name,
+                tc.c.native_filter_type,
+                tc.c.native_filter_required,
+                tc.c.required_by_steward,
+            ).where(tc.c.table_id.in_(sorted(set(ids))))
+        )
+    ).fetchall()
+    return {int(r.table_id) for r in rows if required_parameters([dict(r._mapping)])}
+
+
 async def _decided(conn: "Connection", ids: list[int]) -> dict[tuple[int, str], set[str]]:
     """The steward's accepted classes, by (table id, registered column name)."""
     from provisa.core.schema_org import profiler_classifications as pc
@@ -300,6 +334,7 @@ async def table_facts(
     table_tags = await _table_tags(conn, id_list)
     column_tags = await effective_column_tags(conn, id_list)
     decided = await _decided(conn, id_list)
+    terms = await _terms(conn, id_list)
 
     out: list[TableFacts] = []
     for t in tables:
@@ -343,6 +378,7 @@ async def table_facts(
                 required_parameter=(
                     parameter_name(c) if is_parameter(c) and is_required(c) else None
                 ),
+                term=terms.get((tid, name)),
             )
             for c, name, groups, classes, sensitive in prepared
         )

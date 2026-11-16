@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} suggestions n'ont pas pu être acceptées :",
     "rejectFailed": "{{count}} suggestion n'a pas pu être rejetée :",
     "rejectFailed_other": "{{count}} suggestions n'ont pas pu être rejetées :",
-    "failedOne": "{{name}} : {{error}}"
+    "failedOne": "{{name}} : {{error}}",
+    "reducedInformation": "Informations réduites : aucune valeur n'a été comparée",
+    "reducedInformationHelp": "L'une de ces tables exige un paramètre et n'est donc jamais lue. Cette suggestion repose uniquement sur les noms, les descriptions, les types et les paramètres requis."
   }
 }

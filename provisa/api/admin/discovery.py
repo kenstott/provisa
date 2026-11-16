@@ -368,6 +368,7 @@ async def _prepared(spec: RunSpec) -> tuple[ChosenModel | None, Prepared]:
             "discovery.model_has_no_room",
             f"The model cannot hold a request: {exc}",
             model=None if model is None else model.label,
+            reason=str(exc),
         ) from exc
     except TableUnreadable as exc:
         raise ApiError(
@@ -457,9 +458,10 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
     if env and not endpoint_key:
         raise ApiError(
             409,
-            "discovery.vendor_has_no_key",
+            "discovery.endpoint_has_no_key",
             f"{vendor} has no key: set the {env} environment variable.",
             vendor=vendor,
+            env=env,
         )
     models = await _run_model_listing(
         vendor,

@@ -91,6 +91,8 @@ class ColumnFacts:
     groups: frozenset[str]
     #: The parameter this column is, as a caller names it, when a read must give it a value.
     required_parameter: str | None = None
+    #: The glossary term bound to the column, by name; None where none is bound.
+    term: str | None = None
 
 
 @dataclass(frozen=True)

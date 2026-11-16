@@ -147,15 +147,22 @@
       "elasticsearch_index_hint_required": "L'individuazione Elasticsearch richiede un hint 'index'.",
       "elasticsearch_mapping_failed": "Lettura del mapping Elasticsearch per l'indice '{{index}}' non riuscita: {{error}}",
       "endpoint_already_registered": "Endpoint già registrato: {{error}}",
+      "endpoint_has_no_key": "{{vendor}} non ha una chiave: imposta la variabile d'ambiente {{env}}.",
       "model_failed": "Il modello {{model}} non è riuscito: {{error}}",
+      "model_has_no_room": "Il modello {{model}} non può contenere una richiesta: {{reason}}",
+      "model_incomplete": "Un modello scelto indica sia il fornitore sia il modello.",
       "no_adapter_for_source_type": "Nessun adattatore registrato per il tipo di origine '{{source_type}}'",
       "no_live_connection": "Nessuna connessione attiva per l'origine '{{source_id}}'. L'individuazione dello schema MongoDB richiede una connessione attiva nel pool dell'origine. Verificare che l'origine sia connessa e che il server sia raggiungibile.",
+      "run_ended": "L'esecuzione di rilevamento {{run_id}} è già terminata: {{status}}",
+      "run_not_found": "Esecuzione di rilevamento {{run_id}} non trovata",
       "schema_discovery_unsupported": "Il tipo di origine '{{source_type}}' non supporta l'individuazione dello schema. Definire le colonne manualmente.",
       "semantics_unavailable": "La semantica non può essere eseguita: {{model}}, il modello assegnato all'inferenza delle relazioni, non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "source_not_found": "Origine '{{source_id}}' non trovata",
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "table_unreadable": "Il rilevamento non può leggere la tabella {{table}}: {{reason}}. Escludila dalle tabelle scelte, oppure correggila e riprova.",
-      "unknown_source_type": "Tipo di origine sconosciuto: {{type}}"
+      "unknown_source_type": "Tipo di origine sconosciuto: {{type}}",
+      "vendor_has_no_key": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
+      "vendor_unknown": "{{vendor}} non elenca modelli qui; inserisci il nome del modello."
     },
     "environments": {
       "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo."

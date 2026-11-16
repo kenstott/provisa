@@ -10,8 +10,9 @@
 
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Group, Table, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, Table, Text, Title } from "@mantine/core";
 import { ConfirmDialog } from "../ConfirmDialog";
+import { Tip } from "../Tip";
 import { candidateName, type Candidate } from "./relationship-types";
 
 interface CandidatesTableProps {
@@ -140,6 +141,19 @@ export function CandidatesTable({
                         borderTop: "none",
                       }}
                     >
+                      {c.reduced_information && (
+                        <Tip text={t("candidatesTable.reducedInformationHelp")}>
+                          <Badge
+                            size="xs"
+                            color="gray"
+                            variant="filled"
+                            mb={4}
+                            data-testid={`candidate-reduced-${c.id}`}
+                          >
+                            {t("candidatesTable.reducedInformation")}
+                          </Badge>
+                        </Tip>
+                      )}
                       <Text c="dimmed" fz="sm" fs="italic">
                         {c.reasoning}
                       </Text>

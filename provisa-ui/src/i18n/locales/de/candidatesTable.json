@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} Vorschläge konnten nicht übernommen werden:",
     "rejectFailed": "{{count}} Vorschlag konnte nicht abgelehnt werden:",
     "rejectFailed_other": "{{count}} Vorschläge konnten nicht abgelehnt werden:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Reduzierte Informationen: Es wurden keine Werte verglichen",
+    "reducedInformationHelp": "Eine dieser Tabellen erfordert einen Parameter und wird daher nie gelesen. Dieser Vorschlag beruht allein auf Namen, Beschreibungen, Typen und erforderlichen Parametern."
   }
 }

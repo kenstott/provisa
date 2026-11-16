@@ -69,13 +69,22 @@ async def store_candidates(
 
 
 async def list_pending(conn: "Connection") -> list[dict]:  # REQ-018, REQ-167
-    """List all candidates with status='suggested'."""
+    """List all candidates with status='suggested'. ``reduced_information`` (REQ-413, REQ-1986):
+    one of its tables requires a parameter, so it is never read and no values were compared; said
+    from the tables' registration as it is now, beside the note its reasoning carries."""
+    from provisa.discovery.gather import tables_requiring_a_parameter
+
     result = await conn.execute_core(
         select(relationship_candidates)
         .where(relationship_candidates.c.status == "suggested")
         .order_by(relationship_candidates.c.confidence.desc())
     )
-    return [dict(r._mapping) for r in result.fetchall()]
+    found = [dict(r._mapping) for r in result.fetchall()]
+    ends = {c["source_table_id"] for c in found} | {c["target_table_id"] for c in found}
+    never_read = await tables_requiring_a_parameter(conn, sorted(ends)) if ends else set()
+    for c in found:
+        c["reduced_information"] = bool({c["source_table_id"], c["target_table_id"]} & never_read)
+    return found
 
 
 async def accept(
