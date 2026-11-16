@@ -95402,7 +95402,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 - id: REQ-2227
   value: A code source can be written in Rust, with the same tables, commands and streams as a Node, Python
     or Go code source.
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -95666,7 +95667,8 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     a product that is not delivering value.'
 
 - id: REQ-2234
-  status: proposed
+  status: complete
+  since: 2026-11
   target: 2027-Q1
   group: 3. Source Registration & Data Modeling
   category: Registration & Governance
