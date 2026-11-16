@@ -455,7 +455,6 @@
       "logs_invalid": "Logs-Quelle {{source}}: {{error}}",
       "logs_path_refused": "Logs-Quelle {{source}}: {{reason}}",
       "file_path_leaves_org": "Quelle {{source}}: {{path}} verlässt den Ordner der Organisation.",
-      "file_path_local_refused": "Quelle {{source}}: Ein Server mit vielen Organisationen liest keine Datei auf seinem eigenen Datenträger; laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an.",
       "relationship_alias_taken": "Der Alias '{{alias}}' ist bereits der Alias der Beziehung '{{relationship}}' von '{{table}}'",
       "relationship_ambiguous_table": "Der Tabellenname '{{table}}' ({{end}}) bezeichnet eine Tabelle in mehr als einer Quelle ({{sources}})",
       "relationship_unknown_source": "Die Quelltabelle '{{table}}' ist nicht registriert",
@@ -707,7 +706,8 @@
       "not_a_file_source": "Einer {{type}}-Quelle wird keine Datei per Upload gegeben."
     },
     "sources": {
-      "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine."
+      "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine.",
+      "local_path_refused": "Die Quellen dieser Organisation lesen keine Datei auf dem eigenen Datenträger des Servers außerhalb ihres eigenen Ordners; {{path}} ist eine solche. Laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an."
     },
     "sandbox": {
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",

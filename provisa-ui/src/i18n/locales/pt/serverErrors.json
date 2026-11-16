@@ -455,7 +455,6 @@
       "logs_invalid": "Fonte Logs {{source}}: {{error}}",
       "logs_path_refused": "Fonte Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "Fonte {{source}}: {{path}} sai da pasta da organização.",
-      "file_path_local_refused": "Fonte {{source}}: um servidor de muitas organizações não lê arquivos do próprio disco; envie o arquivo ou indique-o como {files}/… ou por um endereço remoto.",
       "relationship_alias_taken": "O alias '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "relationship_ambiguous_table": "O nome de tabela '{{table}}' ({{end}}) designa uma tabela em mais de uma origem ({{sources}})",
       "relationship_unknown_source": "A tabela de origem '{{table}}' não está registrada",
@@ -707,7 +706,8 @@
       "not_a_file_source": "Uma fonte {{type}} não recebe arquivo por envio."
     },
     "sources": {
-      "private_destination": "As fontes desta organização só podem alcançar endereços públicos; {{host}} é {{address}}, que não é um deles."
+      "private_destination": "As fontes desta organização só podem alcançar endereços públicos; {{host}} é {{address}}, que não é um deles.",
+      "local_path_refused": "As fontes desta organização não leem arquivos do disco do próprio servidor fora da pasta da organização; {{path}} é um deles. Envie o arquivo ou indique-o como {files}/… ou por um endereço remoto."
     },
     "sandbox": {
       "wrong_tier": "Este sandbox é servido em outro lugar; abra-o pelo seu próprio endereço.",
