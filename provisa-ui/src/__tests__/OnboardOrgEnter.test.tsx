@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1276: an org create lands on its welcome; a join enters the app at /query. Where the host
+// REQ-1276: an org create lands on its welcome; a join enters the app at `/`, which resolves the role's first page (REQ-1327). Where the host
 // names no org (localhost, a desktop install) that entry is an in-app route. The identity refresh
 // that follows a create or a join is what lifts the membership gate, and the shell opens on the URL
 // shown at that moment. The route was taken after the refresh, so the shell had already opened at
@@ -38,6 +38,7 @@ vi.mock("../api/billing", async (importOriginal) => ({
 let settleRefresh: () => void = () => {};
 const mockAuth = {
   billing: false,
+  capabilities: [] as string[],
   email: "carol@example.com",
   selectOrg: vi.fn(),
   refresh: vi.fn(
@@ -91,7 +92,10 @@ describe("leaving onboarding for an org on a host that names none", () => {
     await waitFor(() => expect(screen.getByTestId("where").textContent).toBe("/welcome"));
   });
 
-  it("is on /query before the refresh lifts the gate after a join", async () => {
+  // REQ-1327: before the identity refresh the page holds no capabilities for the new org, so the
+  // join does not choose a page: it enters `/`, whose home entry resolves the role's first page
+  // (a role without the query right lands on its own first page, not on /query) once loaded.
+  it("is on / before the refresh lifts the gate after a join", async () => {
     vi.mocked(redeemInvite).mockResolvedValue({
       user_id: "carol",
       org_id: "carolco",
@@ -111,6 +115,6 @@ describe("leaving onboarding for an org on a host that names none", () => {
 
     await waitFor(() => expect(mockAuth.refresh).toHaveBeenCalledTimes(1));
     expect(mockAuth.selectOrg).toHaveBeenCalledWith("carolco");
-    expect(screen.getByTestId("where").textContent).toBe("/query");
+    expect(screen.getByTestId("where").textContent).toBe("/");
   });
 });
