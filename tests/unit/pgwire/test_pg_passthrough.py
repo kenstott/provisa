@@ -250,7 +250,7 @@ def test_a_statement_deallocated_behind_the_passthrough_is_prepared_again_and_ru
         [
             ("PDH", one_column),
             ("BES", gone + _READY),
-            ("PDH", one_column),
+            ("CPDH", _msg(b"3") + one_column),  # its name is closed before it is used again
             ("BES", _BIND_OK + row + _msg(b"C", b"SELECT 1\x00") + _READY),
         ]
     )
@@ -264,17 +264,22 @@ def test_a_statement_deallocated_behind_the_passthrough_is_prepared_again_and_ru
 
 
 def test_a_statement_whose_columns_changed_at_its_source_is_refused_not_run():
-    """A stale statement (0A000: the source's plan changed type) prepared again describes other
-    columns than the client was told: the run is refused and the connection closed."""
+    """A stale statement (0A000 from PostgreSQL's plan cache: the plan changed type) prepared again
+    describes other columns than the client was told: the run is refused and the connection
+    closed."""
     pg = _FakePostgres(
         [
             ("PDH", _PARSE_OK + _PARAMS_NONE + _row_description([("x", 23)])),
             (
                 "BES",
-                _msg(b"E", b"SERROR\x00C0A000\x00Mcached plan must not change result type\x00\x00")
+                _msg(
+                    b"E",
+                    b"SERROR\x00C0A000\x00Mcached plan must not change result type\x00"
+                    b"Fplancache.c\x00L723\x00RRevalidateCachedQuery\x00\x00",
+                )
                 + _READY,
             ),
-            ("PDH", _PARSE_OK + _PARAMS_NONE + _row_description([("x", 20)])),
+            ("CPDH", _msg(b"3") + _PARSE_OK + _PARAMS_NONE + _row_description([("x", 20)])),
             ("S", _READY),
         ]
     )
