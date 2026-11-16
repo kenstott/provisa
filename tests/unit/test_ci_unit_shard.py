@@ -102,6 +102,8 @@ def test_the_plugin_leaves_out_the_other_shards_files_and_nothing_else(tmp_path,
     every = shard.test_files()
     seconds = tmp_path / "seconds.json"
     seconds.write_text(json.dumps({every[0]: 4.0}))
+    # In CI this test runs inside a shard, whose own setting is in the environment.
+    monkeypatch.delenv(shard.SHARD_ENV, raising=False)
     assert shard.pytest_ignore_collect(REPO / every[0], None) is None
     monkeypatch.setenv(shard.SHARD_ENV, "2/3")
     monkeypatch.setenv(shard.SECONDS_ENV, str(seconds))
