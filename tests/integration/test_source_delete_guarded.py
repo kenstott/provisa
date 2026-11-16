@@ -132,7 +132,7 @@ def test_a_source_holding_only_retired_tables_is_retired_listed_and_restored(ser
             assert gone["success"], gone
     retired_tables = _gql(
         served,
-        "mutation { deleteTables(ids: %s) { deleted refused { name message } } }" % sorted(held),
+        "mutation { deleteTables(ids: %s) { deleted refused { name reason } } }" % sorted(held),
     )["deleteTables"]
     assert retired_tables["refused"] == [], retired_tables
 
