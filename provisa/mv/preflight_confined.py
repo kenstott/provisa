@@ -97,8 +97,9 @@ class PreflightRaised(Exception):
 
 def readable(code: Path = CODE) -> list[Path]:
     """The directories the worker may read beside the system's own: Python's host and the services
-    client, its code, the purity check's, and Provisa's Python (the interpreter's home, and the
-    packages pyarrow is among)."""
+    client, its code, the purity check's, and Provisa's Python (the interpreter's home, its
+    environment -- whose ``pyvenv.cfg`` the interpreter reads as it starts -- and the packages
+    pyarrow is among)."""
     import pyarrow
 
     from provisa.python.source import HOST
@@ -108,6 +109,7 @@ def readable(code: Path = CODE) -> list[Path]:
         code,
         CODE.parent,
         Path(sys.base_prefix),
+        Path(sys.prefix),
         Path(pyarrow.__file__).resolve().parent.parent,
     ]
 

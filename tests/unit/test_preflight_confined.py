@@ -584,6 +584,7 @@ def test_the_worker_is_given_nothing_of_the_servers(monkeypatch, held_org):
         str(preflight_confined.CODE),
         str(preflight_confined.CODE.parent),
         sys.base_prefix,
+        sys.prefix,
         packages,
     ]
     grant = command.services
