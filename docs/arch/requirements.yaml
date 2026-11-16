@@ -81893,7 +81893,11 @@
     ITS VALUE:) Maintainer 2026-11-16 (''EQ means the value is assigned to the param''). An equality on
     an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for
     the call. The returned rows are not filtered by it again. Two different values assigned to the same
-    parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result.'
+    parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result.
+    (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN ERROR:) Maintainer 2026-11-16. IN on an opaque parameter
+    assigns as equality does, one call for each value. NOT IN, not-equal, and any negation of an equality
+    or of an IN on a parameter assign nothing and are an error: the statement is refused naming the parameter,
+    never answered as if the condition were absent and never answered empty.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
