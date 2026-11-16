@@ -163,7 +163,13 @@
       "table_id_required": "表范围需要 table_id",
       "unknown_source_type": "未知数据源类型：{{type}}",
       "vendor_has_no_key": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
+      "answer_unreadable": "模型的回答中没有可读取的列表。"
+    },
+    "llm": {
+      "request_failed": "对模型的请求失败：{{reason}}",
+      "no_answer_in_time": "模型未在 {{seconds}} 秒内作出回答。",
+      "empty_answer": "模型未返回任何文本。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"

@@ -163,7 +163,13 @@
       "table_id_required": "table_id obrigatório para escopo de tabela",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_has_no_key": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
-      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível."
+    },
+    "llm": {
+      "request_failed": "A solicitação ao modelo falhou: {{reason}}",
+      "no_answer_in_time": "O modelo não respondeu em {{seconds}} segundos.",
+      "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
       "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."

@@ -10706,5 +10706,13 @@
   "it/serverErrors.json::serverErrors.schema.incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
   "it/serverErrors.json::serverErrors.schema.incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
   "it/tableEditForm.json::tableEditForm.mvRebuildEveryHelp": "How often the whole view is recomputed. Required for a view kept by a code source's @change function.",
-  "it/tableEditForm.json::tableEditForm.mvRebuildEveryLabel": "Whole rebuild every (seconds)"
+  "it/tableEditForm.json::tableEditForm.mvRebuildEveryLabel": "Whole rebuild every (seconds)",
+  "it/discoverResult.json::discoverResult.semanticsRequestsFailed": "Semantics failed: the request to the model failed.",
+  "it/discoverResult.json::discoverResult.semanticsRequestsFailed_other": "Semantics failed: all {{count}} requests to the model failed.",
+  "it/discoverResult.json::discoverResult.partial": "{{failed}} of {{count}} request failed, so the result is partial.",
+  "it/discoverResult.json::discoverResult.partial_other": "{{failed}} of {{count}} requests failed, so the result is partial.",
+  "it/serverErrors.json::serverErrors.discovery.answer_unreadable": "The model's answer held no readable list.",
+  "it/serverErrors.json::serverErrors.llm.request_failed": "The request to the model failed: {{reason}}",
+  "it/serverErrors.json::serverErrors.llm.no_answer_in_time": "The model gave no answer within {{seconds}} seconds.",
+  "it/serverErrors.json::serverErrors.llm.empty_answer": "The model returned no text."
 }

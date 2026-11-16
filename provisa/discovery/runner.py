@@ -12,8 +12,8 @@
 
 An answer that is cut off or full, or a request the vendor refuses as too long, is split in half
 and asked again (:meth:`provisa.discovery.windows.Request.halves`); the complete suggestions of an
-answer are kept either way, so nothing is dropped. One failed request is reported and the rest
-continue. Between requests the run's control is asked whether to stop: a stop ends the run after
+answer are kept either way, so nothing is dropped. One failed request is reported, as a
+catalogued message (:func:`provisa.llm.client.failure`), and the rest continue. Between requests the run's control is asked whether to stop: a stop ends the run after
 the request in flight and keeps what was returned.
 """
 
@@ -31,6 +31,7 @@ from provisa.discovery.analyzer import read_answer_list
 from provisa.discovery.columns import comparable
 from provisa.discovery.direction import Proposal, from_answer
 from provisa.discovery.windows import Request
+from provisa.llm.client import failure
 
 #: The confidence a semantic suggestion needs to be kept (as the discovery router's MIN_CONFIDENCE).
 MIN_CONFIDENCE = 0.7
@@ -53,6 +54,14 @@ _REQUIRED = (
 )
 
 
+#: An answer no list could be read from, as a failed request's catalogued message.
+UNREADABLE = {
+    "code": "discovery.answer_unreadable",
+    "params": {},
+    "message": "The model's answer held no readable list.",
+}
+
+
 def too_long(exc: BaseException) -> bool:
     """Whether a model call's error is the vendor refusing the request as too long."""
     return _TOO_LONG.search(str(exc)) is not None
@@ -70,6 +79,8 @@ class Tally:
     below_threshold: int = 0
     cut_short: int = 0
     unreadable: int = 0
+    #: Each failed request: its ``group`` and its catalogued message (``code``, ``params`` and the
+    #: English ``message``). An unreadable answer is one of them.
     failed: list[dict[str, Any]] = field(default_factory=list)
     stopped: bool = False
 
@@ -180,16 +191,14 @@ async def execute(
                 tally.total += len(halves) - 1
                 continue
             tally.done += 1
-            tally.failed.append({"group": request.group, "error": str(exc)})
+            tally.failed.append({"group": request.group, **failure(exc)})
             await control.returned(tally, proposals)
             continue
         read = read_answer_list(answer.text, answer.cut_off)
         tally.done += 1
         if read.items is None:
             tally.unreadable += 1
-            tally.failed.append(
-                {"group": request.group, "error": "the model's answer held no readable list"}
-            )
+            tally.failed.append({"group": request.group, **UNREADABLE})
             await control.returned(tally, proposals)
             continue
         found = read_items(request, read.items, tally)

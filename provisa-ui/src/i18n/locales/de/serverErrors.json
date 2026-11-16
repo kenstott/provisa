@@ -163,7 +163,13 @@
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
       "vendor_has_no_key": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
-      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
+      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
+      "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste."
+    },
+    "llm": {
+      "request_failed": "Die Anfrage an das Modell ist fehlgeschlagen: {{reason}}",
+      "no_answer_in_time": "Das Modell hat innerhalb von {{seconds}} Sekunden nicht geantwortet.",
+      "empty_answer": "Das Modell hat keinen Text zurückgegeben."
     },
     "environments": {
       "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
