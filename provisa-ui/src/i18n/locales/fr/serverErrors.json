@@ -41,7 +41,9 @@
       "role_not_assigned": "Le rôle '{{role_id}}' n'est pas attribué à cet utilisateur",
       "simple_provider_not_configured": "Fournisseur d'authentification simple non configuré",
       "username_exists": "Ce nom d'utilisateur existe déjà",
-      "not_permitted": "Non autorisé"
+      "not_permitted": "Non autorisé",
+      "token_scopes_required": "Choisissez au moins un rôle pour le jeton.",
+      "token_scope_not_held": "Un jeton ne peut utiliser que des rôles que vous détenez."
     },
     "authz": {
       "mutation_not_permitted": "Mutation « {{field_name}} » non autorisée : {{reason}}"
@@ -510,7 +512,9 @@
       "code_resolver_not_found": "Resolver de code « {{resolver}} » introuvable",
       "code_resolver_saved": "Resolver de code « {{resolver}} » enregistré",
       "code_resolver_retired": "Resolver de code « {{resolver}} » retiré",
-      "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend"
+      "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend",
+      "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les »."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -768,6 +772,9 @@
       "impact_action": "Aucun aperçu n'existe pour cette action.",
       "impact_table_required": "Une liaison nomme une table, ou l'une de ses colonnes."
     },
+    "table": {
+      "requires_parameters": "La table {{table}} ne peut être ni comptée ni profilée : elle exige {{parameters}}. Donnez une valeur à chacun pour lire ses lignes."
+    },
     "tag": {
       "not_on_terms": "Le tag « {{tag}} » ne se pose pas sur un terme ; seul pii le peut.",
       "term_not_live": "Définissez « {{term}} » pour le marquer.",
@@ -831,6 +838,11 @@
       "expiry_in_past": "Une date de fin doit être dans le futur.",
       "expiry_removes_nothing": "Une date de fin sur cette liste {{kind}} ne retirerait rien.",
       "pending_not_found": "Aucun octroi n'attend {{email}} pour le rôle {{role_id}} et {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} a renvoyé une ligne sans sa colonne de clé {{column}}",
+      "change_key_repeated": "{{function}} a renvoyé la clé {{key}} deux fois dans un même résultat",
+      "change_cursor_backwards": "Le curseur de {{function}} a reculé : il a renvoyé {{returned}}, antérieur à la valeur stockée {{stored}}"
     }
   }
 }

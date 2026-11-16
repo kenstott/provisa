@@ -550,6 +550,10 @@ export interface RegisteredTable {
   mvPersist: string; // REQ-965: replace | append | upsert
   mvPrimaryKey: string[]; // REQ-970: row identity (required for upsert / incremental)
   mvIncremental: boolean; // REQ-969: incremental maintenance
+  /** REQ-2249: seconds between whole rebuilds of a view kept by a @change function. */
+  mvRebuildEvery: number | null;
+  /** REQ-2249: whether the incremental setting may be on; when not, the refusal's code. */
+  incrementalOption: IncrementalOption;
   mvCalendar: string | null; // REQ-962: snapshot-schedule calendar name (null = not periodic)
   mvGrain: string | null; // REQ-962/1168: nesting grain ("daily".."annual") or nth-weekday ("3WE"/"LFR")
   mvAllowedLateness: number; // REQ-961: seal-deadline slack in seconds
@@ -837,7 +841,16 @@ export interface Relationship {
 }
 
 /** REQ-2249: a code resolver set as the form saves and shows it. */
-export interface CodeResolver {
+/** REQ-2249: whether a view's incremental setting may be on. When not, `code` names why (the
+ * serverErrors catalog words it) and `reason` is the server's English text. */
+export interface IncrementalOption {
+  available: boolean;
+  code: string | null;
+  reason: string | null;
+}
+
+/** What a code resolver set is saved with. */
+export interface CodeResolverInput {
   id: string;
   resolver: string;
   sourceTable: string;
@@ -847,6 +860,14 @@ export interface CodeResolver {
   targetColumn: string;
   targetMatch: string;
   refreshInterval: number;
+  /** Its landed matches are kept by the resolver's @change function. */
+  incremental: boolean;
+  /** Seconds between whole rebuilds; required while `incremental`. */
+  rebuildEvery: number | null;
+}
+
+export interface CodeResolver extends CodeResolverInput {
+  incrementalOption: IncrementalOption;
 }
 
 export interface RelationshipParameter {

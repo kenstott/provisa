@@ -569,7 +569,10 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 update_columns=["email", "display_name", "updated_at"],
             )
         await _record_idp_attributes(self._db_pool, identity)
-        if self._assignments_source == "claims":
+        if self._assignments_source == "claims" and identity.credential != "pat":
+            # REQ-1263: a personal access token carries no sign-in. Its owner's roles are READ
+            # from this mirror (held_assignments.mirrored_claims); a request under the token
+            # never rewrites it.
             await _record_idp_roles(self._db_pool, identity)
         await _record_idp_entitlements(self._db_pool, identity)
 
@@ -1007,6 +1010,13 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # platform admin (holds cross_org), which the org gate below needs before an org is bound.
         if self._assignments_source == "provisa" and self._db_pool:
             platform_assignments = await self._read_assignments(identity)
+        elif self._assignments_source == "claims" and identity.credential == "pat":
+            # REQ-1263: a token's owner holds what their identity provider last sent, as every
+            # transport reads it for a token (provisa.auth.held_assignments.read_held).
+            from provisa.auth.held_assignments import mirrored_claims
+
+            assert self._db_pool, "no tenant control plane bound for the active org"
+            platform_assignments = await mirrored_claims(self._db_pool, identity.user_id)
         else:
             platform_assignments = resolve_assignments(identity)
 
@@ -1020,6 +1030,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
 
         platform_assignments = await settle(
             platform_assignments,
+            identity=identity,
             claimant=bootstrap_claimant,
             org_id=None,
             root_org_id=self._default_org_id,
@@ -1277,6 +1288,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 # The rule every transport's sign-in applies (provisa.auth.held_assignments).
                 assignments = await settle(
                     assignments,
+                    identity=identity,
                     claimant=False,
                     org_id=active_org_id,
                     root_org_id=self._default_org_id,
@@ -1324,7 +1336,20 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
         # Scoped to assignments_source "provisa", where the DB rows ARE the authority. In "claims"
         # mode the mapping rules (REQ-120/551) deliberately map an IdP claim to a role the token's
         # roles claim need not name, and that mapping stays the answer.
-        if (
+        from provisa.auth.held_assignments import live_scopes
+
+        token_roles = live_scopes(identity, [a.role_id for a in assignments])
+        if token_roles is not None:
+            # REQ-1263: a personal access token acts only as a scope its owner still holds
+            # (``assignments`` is already narrowed to them, held_assignments.settle): the first
+            # when the request names none, never the mapped role. With none held the token is
+            # dead, and is answered as an unknown one is.
+            if not token_roles:
+                return _deny(
+                    request, 401, "Invalid or expired token", cause="no scope of the token is held"
+                )
+            role = token_roles[0]
+        elif (
             self._assignments_source == "provisa"
             and assignments
             and role not in {a.role_id for a in assignments}

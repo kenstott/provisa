@@ -41,7 +41,9 @@
       "role_not_assigned": "Il ruolo '{{role_id}}' non è assegnato a questo utente",
       "simple_provider_not_configured": "Provider di autenticazione simple non configurato",
       "username_exists": "Nome utente già esistente",
-      "not_permitted": "Non consentito"
+      "not_permitted": "Non consentito",
+      "token_scopes_required": "Scegli almeno un ruolo per il token.",
+      "token_scope_not_held": "Un token può usare solo ruoli che detieni."
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' non consentita: {{reason}}"
@@ -510,7 +512,9 @@
       "code_resolver_not_found": "Resolver di codice '{{resolver}}' non trovato",
       "code_resolver_saved": "Resolver di codice '{{resolver}}' salvato",
       "code_resolver_retired": "Resolver di codice '{{resolver}}' ritirato",
-      "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso"
+      "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso",
+      "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\"."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",
@@ -768,6 +772,9 @@
       "impact_action": "Non esiste un'anteprima per questa azione.",
       "impact_table_required": "Un collegamento nomina una tabella o una delle sue colonne."
     },
+    "table": {
+      "requires_parameters": "La tabella {{table}} non può essere contata né profilata: richiede {{parameters}}. Assegna un valore a ciascuno per leggerne le righe."
+    },
     "tag": {
       "not_on_terms": "Il tag '{{tag}}' non va su un termine; solo pii.",
       "term_not_live": "Definisci '{{term}}' per contrassegnarlo.",
@@ -831,6 +838,11 @@
       "expiry_in_past": "La data di fine deve essere futura.",
       "expiry_removes_nothing": "Una data di fine su questa lista {{kind}} non rimuoverebbe nulla.",
       "pending_not_found": "Nessuna concessione attende {{email}} per il ruolo {{role_id}} e {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} ha restituito una riga senza la sua colonna chiave {{column}}",
+      "change_key_repeated": "{{function}} ha restituito la chiave {{key}} due volte in un unico risultato",
+      "change_cursor_backwards": "Il cursore di {{function}} è tornato indietro: ha restituito {{returned}}, precedente al valore memorizzato {{stored}}"
     }
   }
 }

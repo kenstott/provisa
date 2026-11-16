@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "確認のため {{userId}} と入力してください",
     "deleteAccountButton": "アカウントを削除",
     "patEnvironment": "環境",
-    "patEnvironmentHelp": "トークンは 1 つの環境でのみ機能します。発行時に表示していた環境です。新しいトークンは {{env}} で機能します。"
+    "patEnvironmentHelp": "トークンは 1 つの環境でのみ機能します。発行時に表示していた環境です。新しいトークンは {{env}} で機能します。",
+    "patRoles": "ロール",
+    "patRolesHelp": "トークンは、ここで選択したロールとしてのみ、かつそのロールを保持している間のみ動作します。",
+    "patRolesPlaceholder": "ロールを選択"
   }
 }

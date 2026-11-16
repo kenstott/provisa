@@ -18,11 +18,11 @@ A personal access token is accepted anywhere a bearer token is, this endpoint in
 
 | Route | Effect |
 | ------- | -------- |
-| `POST /auth/tokens` | Mint a token for the caller. Body: `name`, optional `role_id`, `scopes`, `expires_in_days` (1–366). The response is the only place the secret ever appears |
+| `POST /auth/tokens` | Mint a token for the caller. Body: `name`, `scopes` (the roles the token may act as, at least one), optional `expires_in_days` (1–366). The response is the only place the secret ever appears |
 | `GET /auth/tokens` | The caller's active tokens in this org: display prefix, name, lifecycle timestamps, and the hash that identifies a token for revocation. Never a working credential |
 | `DELETE /auth/tokens/{token_hash}` | Revoke one of the caller's tokens. 404 when it is not theirs or already revoked |
 
-Omitting `role_id` leaves the token resolving to whatever role its owner holds; naming one narrows the token below its owner. Revocation also happens implicitly. Removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
+A token's `scopes` are role names. Each must be a role you hold when you issue it; a scope you don't hold is refused and recorded as a security event, and a token with no scopes isn't issued. The token acts only as a scope you still hold, on every protocol: it never reaches another of your roles, and a scope whose role you lose stops working. Revocation also happens implicitly. Removing a user's org membership revokes their tokens for that org. See [Security Model](security.md#personal-access-tokens) for the credential itself.
 
 ## Capabilities
 

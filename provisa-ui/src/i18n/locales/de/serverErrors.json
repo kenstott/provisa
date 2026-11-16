@@ -41,7 +41,9 @@
       "role_not_assigned": "Rolle '{{role_id}}' ist diesem Benutzer nicht zugewiesen",
       "simple_provider_not_configured": "Simple-Auth-Anbieter nicht konfiguriert",
       "username_exists": "Benutzername existiert bereits",
-      "not_permitted": "Nicht erlaubt"
+      "not_permitted": "Nicht erlaubt",
+      "token_scopes_required": "Wählen Sie mindestens eine Rolle für das Token aus.",
+      "token_scope_not_held": "Ein Token kann nur Rollen verwenden, die Sie innehaben."
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"
@@ -510,7 +512,9 @@
       "code_resolver_not_found": "Code-Resolver „{{resolver}}“ nicht gefunden",
       "code_resolver_saved": "Code-Resolver „{{resolver}}“ gespeichert",
       "code_resolver_retired": "Code-Resolver „{{resolver}}“ stillgelegt",
-      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt"
+      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt",
+      "incremental_no_change": "Die Codequelle hat keine @change-Funktion für {{table}}. Deklarieren Sie eine mit @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden)."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -768,6 +772,9 @@
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
       "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
     },
+    "table": {
+      "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
+    },
     "tag": {
       "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",
       "term_not_live": "Definieren Sie '{{term}}', um ihn zu markieren.",
@@ -831,6 +838,11 @@
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
       "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",
+      "change_key_repeated": "{{function}} hat den Schlüssel {{key}} in einem Ergebnis zweimal zurückgegeben",
+      "change_cursor_backwards": "Der Cursor von {{function}} ist rückwärts gelaufen: Zurückgegeben wurde {{returned}}, vor dem gespeicherten {{stored}}"
     }
   }
 }

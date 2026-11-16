@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "Saisissez {{userId}} pour confirmer",
     "deleteAccountButton": "Supprimer mon compte",
     "patEnvironment": "Environnement",
-    "patEnvironmentHelp": "Un jeton fonctionne dans un seul environnement : celui que vous consultiez lors de son émission. Un nouveau jeton fonctionnera dans {{env}}."
+    "patEnvironmentHelp": "Un jeton fonctionne dans un seul environnement : celui que vous consultiez lors de son émission. Un nouveau jeton fonctionnera dans {{env}}.",
+    "patRoles": "Rôles",
+    "patRolesHelp": "Le jeton ne peut agir qu'avec les rôles que vous choisissez ici, et seulement tant que vous les détenez.",
+    "patRolesPlaceholder": "Choisir des rôles"
   }
 }

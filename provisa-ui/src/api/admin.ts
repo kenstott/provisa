@@ -368,7 +368,7 @@ export interface PersonalAccessToken {
   token_hash: string;
   prefix: string;
   name: string;
-  role_id: string | null;
+  // The roles the token may act as, by name: at least one, each a role its issuer held.
   scopes: string[];
   created_at: string;
   expires_at: string | null;
@@ -389,8 +389,7 @@ export async function listPersonalAccessTokens(): Promise<PersonalAccessToken[]>
 
 export async function issuePersonalAccessToken(body: {
   name: string;
-  role_id?: string | null;
-  scopes?: string[];
+  scopes: string[];
   expires_in_days?: number | null;
 }): Promise<{ token: string; prefix: string; name: string; expires_at: string | null }> {
   const res = await fetch(`${API_BASE}/auth/tokens`, {

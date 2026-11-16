@@ -14,6 +14,7 @@
     "runProfilerTitle": "Jetzt für jede Mitgliedstabelle ausführen",
     "profilerNoMembers": "Keine Tabelle gehört zu diesem Profiler.",
     "profilerRan": "{{table}}: profiliert",
-    "profilerFailed": "{{table}}: {{error}}"
+    "profilerFailed": "{{table}}: {{error}}",
+    "profilerNotRead": "{{table}}: nicht gelesen. Sie verlangt {{parameters}} und kann daher nicht gezählt oder profiliert werden."
   }
 }
