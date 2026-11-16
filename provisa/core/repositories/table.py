@@ -425,7 +425,12 @@ async def _require_label_not_a_domain(conn: "Connection", table: Table) -> None:
     from provisa.compiler.naming import refuse_label_clash
     from provisa.core.schema_org import domains
 
-    domain_ids = [r.id for r in (await conn.execute_core(select(domains.c.id))).fetchall()]
+    domain_ids = [
+        r.id
+        for r in (
+            await conn.execute_core(select(domains.c.id).where(domains.c.retired.is_(False)))
+        ).fetchall()
+    ]
     candidate = {
         "source_id": table.source_id,
         "schema_name": table.schema_name,

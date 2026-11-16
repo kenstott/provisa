@@ -168,7 +168,11 @@ async def domain_steward_unset(conn: "Connection", _ctx: Context) -> dict[str, l
     unset = {
         r.id
         for r in (
-            await conn.execute_core(select(domains.c.id).where(domains.c.steward.is_(None)))
+            await conn.execute_core(
+                select(domains.c.id).where(
+                    domains.c.steward.is_(None), domains.c.retired.is_(False)
+                )
+            )
         ).fetchall()
     }
     return {

@@ -1042,7 +1042,7 @@ def test_the_guaranteed_list_is_answers_checked_and_type_and_form_checked_on_eve
     assert doc["counts"]["a"]["not_checked"] == 1
     assert doc["not_checked_reasons"]["a"] == {"volatile": 1}
     text = support.merged_markdown(doc)
-    assert "| a | 3 | 2 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 3 | 2 | 0 | 0 | 0 | 1 | 1 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 3 | 1 + 1 + 0, 1 not checked, of 3 | 1 + 1 + 0, 1 not checked, of 3 | 2 |"
         in text
@@ -1119,8 +1119,8 @@ def test_the_summary_gives_every_engine_and_every_family():
         }
     )
     text = support.merged_markdown(doc)
-    assert "| a | 2 | 1 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 |" in text
-    assert "| b | 2 | 2 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+    assert "| a | 2 | 1 | 0 | 0 | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 |" in text
+    assert "| b | 2 | 2 | 0 | 0 | 0 | 0 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
     assert (
         "| Numeric | 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 + 0 + 0, 0 not checked, of 1 | 1 |"
         in text
@@ -1484,8 +1484,12 @@ def test_the_rules_are_the_ones_the_requirement_and_the_brief_name():
 def test_the_report_fails_per_engine_never_overall_and_keeps_a_wrong_answer_in_view():
     doc = _results(("pg", "wrong_answer", []), ("duckdb", "refused", []))
     for text in (report.pgwire_block(doc), report.overview_block(doc)):
-        assert "| Engine | Passed | Skipped by design | Failed | Not tested |" in text
-        assert "| Postgres | 0 | 0 | 1 | 0 |" in text and "| DuckDB | 0 | 0 | 1 | 0 |" in text
+        assert (
+            "| Engine | Served | Of which within bound | Skipped by design | Failed | Not tested |"
+            in text
+        )
+        assert "| Postgres | 0 | 0 | 0 | 1 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
         assert "| Total" not in text and "| All" not in text
     assert "| `abs(integer)` | x |" in report.pgwire_block(doc)
 
@@ -1562,9 +1566,11 @@ def test_both_pages_are_filled_from_the_results_between_their_markers(tmp_path):
     for name in ("pgwire.md", "overview.md"):
         text = (tmp_path / name).read_text()
         assert "stale text" not in text and "After." in text
-        assert "| Postgres | 1 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 1 |" in text
-        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
-        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 |" in text
+        assert (
+            "| Postgres | 1 | 0 | 0 | 0 | 0 |" in text and "| DuckDB | 0 | 0 | 0 | 1 | 0 |" in text
+        )
+        assert "| Postgres | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
+        assert "| DuckDB | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |" in text
 
 
 def test_a_page_without_markers_is_refused():
@@ -1603,6 +1609,7 @@ class Served(Fake):
         self.literal, self.column = answer, column
 
     def answer(self, sql: str) -> dict[str, Any]:
+        # An edge call (function_edges.bounded) of a scalar reads no column either.
         reads_a_column = " FROM " in sql
         return self.column if reads_a_column else self.literal
 
@@ -1825,6 +1832,10 @@ def test_the_results_a_floor_reads_keep_their_keys():
         "not_callable",
         "not_reached",
         "total",
+        "right",
+        "within_bound",
+        "differs_wrong_at_edge",
+        "differs_error_at_edge",
     )
     assert not set(report.RESULT_KEYS) & set(report.COLUMN_KEYS)
 
@@ -3108,7 +3119,8 @@ def test_an_overload_postgresql_answers_a_value_call_of_is_callable():
     planned = support.calls(ABS, "Numeric")
     answered = {planned[0].sql: _ok(None), planned[1].sql: _ok("3")}
     pg = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
-    entry = support.measure_overload(ABS, "Numeric", pg, Fake(answered), _route, engine="pg")
+    provisa = Refusing(answered, sqlstate="0A000", error="ERROR:  not supported")
+    entry = support.measure_overload(ABS, "Numeric", pg, provisa, _route, engine="pg")
     assert entry["outcome"] == "pass"
 
 

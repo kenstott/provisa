@@ -116,7 +116,9 @@ async def _source_ids(conn: "Connection", schema: str, source_ids: list[str] | N
     from provisa.core.models import BUILT_IN_SOURCE_IDS
 
     sources = _table("sources", schema)
-    rows = (await conn.execute_core(select(sources.c.id))).fetchall()
+    rows = (
+        await conn.execute_core(select(sources.c.id).where(sources.c.retired.is_(False)))
+    ).fetchall()
     known = {r[0] for r in rows} - set(BUILT_IN_SOURCE_IDS)
     ids = sorted(known) if source_ids is None else sorted(source_ids)
     missing = sorted(set(ids) - known)
@@ -421,7 +423,11 @@ async def source_bindings(conn: "Connection", schema: str) -> list[dict[str, Any
 
     sources = _table("sources", schema)
     rows = (
-        await conn.execute_core(select(sources.c.id, sources.c.type, sources.c[BINDING_COLUMN]))
+        await conn.execute_core(
+            select(sources.c.id, sources.c.type, sources.c[BINDING_COLUMN]).where(
+                sources.c.retired.is_(False)  # REQ-2248
+            )
+        )
     ).fetchall()
     return [
         {"id": r[0], "type": r[1], "binding": r[2]}

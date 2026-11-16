@@ -455,7 +455,9 @@ async def _as_config(
     from provisa.core.models import ProvisaConfig
     from provisa.core.schema_org import registered_tables, roles, sources
 
-    source_rows = await conn.execute_core(select(sources.c.id, sources.c.region))
+    source_rows = await conn.execute_core(
+        select(sources.c.id, sources.c.region).where(sources.c.retired.is_(False))  # REQ-2248
+    )
     t = registered_tables
     table_rows = await conn.execute_core(
         select(t.c.source_id, t.c.schema_name, t.c.table_name, t.c.region)

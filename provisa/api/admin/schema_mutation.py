@@ -3934,8 +3934,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def restore_model_object(
         self, info: StrawberryInfo, kind: str, key: str
     ) -> MutationResult:  # REQ-2248
-        """Restore a retired table, column, relationship, tag or metric (``kind``) named by
-        ``key`` as the retired listing names it: the same object, served again."""
+        """Restore a retired source, domain, table, column, relationship, tag or metric
+        (``kind``) named by ``key`` as the retired listing names it: the same object, served
+        again; a source or domain at the id it had, with its tables."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)

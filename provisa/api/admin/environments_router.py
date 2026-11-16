@@ -128,13 +128,6 @@ async def _guard(request: Request, org_id: str) -> str | None:
     the org being acted in — not user_management, and never cross_org: a platform admin does not
     act on an org's model branches. Returns the acting user for the audit entry."""
     user_id = await _member_rights(request, org_id, MANAGE_CAPABILITY)
-    if user_id is not None and getattr(request.state, "active_org_id", None) != org_id:
-        raise ApiError(
-            403,
-            "environments.capability_required_in_org",
-            f"{MANAGE_CAPABILITY} in {org_id} required",
-            org=org_id,
-        )
     await _org_ready_on_this_node(org_id)
     return user_id
 
@@ -195,6 +188,10 @@ async def _member_rights(request: Request, org_id: str, *rights: str) -> str | N
     attacker and not against an accident: an environment is a schema and a place in the org's plan
     ceiling, and an analyst has no reason to make one. org_admin and developer carry the right in
     the seed; analyst and modeler do not.
+
+    REQ-1327: the right is held as a member of the org being acted in. A request's rights are
+    those of the org it is bound to, so a request bound to another org than the path's is
+    refused: a right held elsewhere says nothing about this org.
     """
     from provisa.api.admin.capabilities import _resolved_capabilities
     from provisa.api.app import state as _app_state
@@ -226,7 +223,19 @@ async def _member_rights(request: Request, org_id: str, *rights: str) -> str | N
                 f"Acting on the environments of {org_id!r} requires membership of it.",
                 org=org_id,
             )
+    if not _bound_to(request, org_id):
+        raise ApiError(
+            403,
+            "environments.capability_required_in_org",
+            " or ".join(rights) + f" in {org_id} required",
+            org=org_id,
+        )
     return user_id
+
+
+def _bound_to(request: Request, org_id: str) -> bool:
+    """Whether the request is bound to ``org_id``, the org its rights were resolved in."""
+    return getattr(request.state, "active_org_id", None) == org_id
 
 
 async def _pinned_env(request: Request, org_id: str) -> str | None:
@@ -313,6 +322,7 @@ async def _guard_owned(request: Request, org_id: str, name: str) -> str | None: 
     user_id = _caller_user_id(request)
     if (
         user_id is not None
+        and _bound_to(request, org_id)  # REQ-1327: the right is read in the path's org
         and OWNED_CAPABILITY in _caller_capabilities(request)
         and await owns_environment(_admin_pool(), org_id, name, user_id)
     ):
@@ -1387,19 +1397,20 @@ async def decide_merge_request(
     from provisa.api.admin.orgs_router import _org_model_db
     from provisa.api.idempotency import once
 
+    # The guard comes before the org's store is opened: a refused caller has the node build nothing.
+    actor = await _guard(request, org_id)
     return await once(
         await _org_model_db(org_id),
         request,
-        lambda: _decide_merge_request(request, org_id, request_id, body),
+        lambda: _decide_merge_request(request, org_id, request_id, body, actor),
     )
 
 
 async def _decide_merge_request(
-    request: Request, org_id: str, request_id: int, body: DecideBody
+    request: Request, org_id: str, request_id: int, body: DecideBody, actor: str | None
 ) -> dict:
     from provisa.api.admin.orgs_router import _org_model_db
 
-    actor = await _guard(request, org_id)
     decided_on = await _request_or_404(org_id, request_id)
     await _confined(request, org_id, decided_on["source_env"], decided_on["target_env"])
     if body.approve and decided_on["retire_source"] and decided_on["source_env"] is not None:

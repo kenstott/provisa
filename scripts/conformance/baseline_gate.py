@@ -29,10 +29,41 @@ list fails; neither is ever read as empty.
 A surface at its baseline (by_design.AT_BASELINE) is judged by its list like any other: its
 summary script already fails on the part it gates, and the list holds the rest.
 
-``functions`` judges function_support.json per engine against ``expected/functions.json``: every
-engine of the list has a full result; a wrong answer is listed (as ``<engine>::<fn>(<overload>)``)
-or fails; ``passed`` does not fall below the committed count; engine errors and refusals by name
-do not rise above theirs. A count that moves the good way is said, so the file can be lowered.
+``functions`` judges function_support.json per engine against ``expected/functions.json``, which
+functions_baseline.py writes from a run's merged result and nobody types. An overload's base calls
+(its NULL call and its samples) and its edge calls (REQ-2236, function_edges.py) are held apart: an
+edge is tried only when the base calls are right, so an overload failing at an edge still passes
+its base calls.
+
+    {"measured": {"run": "43861326336", "sha": "426be55f44"},
+     "engines": {"trino": {
+       "total": 3319,
+       "base": {"passed": 1768,           # base calls right; may not fall
+                "wrong_answer": 0,        # as many as the list holds at "base"
+                "engine_error": 0,
+                "refused_by_name": 625},  # may not rise
+       "edge": {"served": 1296,           # base calls and every edge call right, or within bound
+                "wrong_answer": 203,      # as many as the list holds at "edge"
+                "engine_error": 269}}},
+     "expected": [
+       {"case": "trino::abs(bigint)",     # <engine>::<function>(<overload>)
+        "at": "edge",                     # or "base": a base call fails
+        "kind": "wrong_answer",           # or "engine_error"
+        "calls": 1,                       # the edge calls failing so (an edge entry's)
+        "statement": "SELECT ...",        # the first failing call
+        "edge": "bigint least",           # its edge value (an edge entry's)
+        "said": "...",                    # a wrong answer: the engine's answer and PostgreSQL's;
+                                          # an engine error: the engine's error
+        "sqlstate": "22003",              # an engine error's, where it has one
+        "postgres": "22003 ERROR: ...",   # an engine error's: PostgreSQL's error, or "answers"
+        "job": "J1388b", "since": "2026-11-16"}]}
+
+Every wrong answer and every engine error is listed, by engine and overload, with where it fails
+and how. The run fails on one not listed; on a listed one failing otherwise than listed (an edge
+entry whose base call now fails, an engine error now a wrong answer); on a listed edge entry with
+more failing edge calls than listed; on a listed one now right ("fixed but still listed"); on base
+calls right below the committed count; and on refusals by name above theirs. A count that moves the
+good way is said, so the file can be regenerated. A run that passes prints its baseline.
 
 Usage: baseline_gate.py cases <surface> <report.json>
        baseline_gate.py functions <function_support.json>
@@ -45,6 +76,7 @@ from __future__ import annotations
 import json
 import re
 import sys
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -57,12 +89,24 @@ ENTRY_FIELDS = {"case", "job", "since", "reason"}
 JOB = re.compile(r"J\d+[a-z]?")
 SINCE = re.compile(r"\d{4}-\d{2}-\d{2}")
 
-#: The function counts held to the committed file: (count, whether it may only rise).
-FUNCTION_COUNTS = {
-    "passed": True,
-    "differs_engine_error": False,
-    "refused_by_name": False,
+#: Where an overload fails and how: an entry of functions.json's list.
+AT = ("base", "edge")
+KINDS = {"wrong_answer": "wrong_answer", "error": "engine_error"}
+FUNCTION_ENTRY_FIELDS = {
+    "case",
+    "at",
+    "kind",
+    "calls",
+    "statement",
+    "edge",
+    "said",
+    "sqlstate",
+    "postgres",
+    "job",
+    "since",
 }
+BASE_COUNTS = ("passed", "wrong_answer", "engine_error", "refused_by_name")
+EDGE_COUNTS = ("served", "wrong_answer", "engine_error")
 
 
 class Refused(ValueError):
@@ -82,7 +126,9 @@ def _read(path: Path, what: str) -> dict:
     return json.loads(path.read_text())
 
 
-def _entries(path: Path, entries: list[dict] | None) -> dict[str, dict]:
+def _entries(
+    path: Path, entries: list[dict] | None, fields: frozenset[str] | set[str] = ENTRY_FIELDS
+) -> dict[str, dict]:
     if not isinstance(entries, list):
         raise Refused(f"{path.name}: expected is not a list")
     out: dict[str, dict] = {}
@@ -90,7 +136,7 @@ def _entries(path: Path, entries: list[dict] | None) -> dict[str, dict]:
         where = f"{path.name} entry {i}"
         if not isinstance(entry, dict):
             raise Refused(f"{where} is not an object")
-        unknown = sorted(set(entry) - ENTRY_FIELDS)
+        unknown = sorted(set(entry) - fields)
         if unknown:
             raise Refused(f"{where} has unknown field(s) {unknown}")
         for name in ("case", "job", "since"):
@@ -115,17 +161,106 @@ def load_expected(surface: str) -> Expected:
     return Expected(path, total, _entries(path, doc.get("expected")))
 
 
-def load_functions_expected() -> tuple[Path, dict[str, dict[str, int]], dict[str, dict]]:
+def load_functions_expected() -> tuple[Path, dict[str, dict], dict[str, dict]]:
+    """The committed functions file: its path, each engine's counts and its list by case. Refused
+    when an entry does not say where and how its overload fails, or when the counts are not the
+    list's own: the file is written from a run (functions_baseline.py), never by hand."""
     path = EXPECTED / "functions.json"
     doc = _read(path, "expected-failures file")
     engines = doc.get("engines")
     if not isinstance(engines, dict) or not engines:
         raise Refused(f"{path.name}: no engines")
     for engine, counts in engines.items():
-        missing = [k for k in ("total", *FUNCTION_COUNTS) if not isinstance(counts.get(k), int)]
-        if missing:
-            raise Refused(f"{path.name}: engine {engine} has no {missing}")
-    return path, engines, _entries(path, doc.get("expected"))
+        if not isinstance(counts.get("total"), int):
+            raise Refused(f"{path.name}: engine {engine} has no total")
+        for part, names in (("base", BASE_COUNTS), ("edge", EDGE_COUNTS)):
+            held = counts.get(part)
+            missing = [
+                k for k in names if not isinstance(held, dict) or not isinstance(held.get(k), int)
+            ]
+            if missing:
+                raise Refused(f"{path.name}: engine {engine} has no {part} {missing}")
+    listed = _entries(path, doc.get("expected"), FUNCTION_ENTRY_FIELDS)
+    tally: dict[tuple[str, str, str], int] = {}
+    for case, entry in listed.items():
+        engine = case.split("::", 1)[0]
+        if engine not in engines:
+            raise Refused(f"{path.name}: {case} is of an engine the file does not hold")
+        if entry.get("at") not in AT or entry.get("kind") not in KINDS.values():
+            raise Refused(f"{path.name}: {case} does not say where (at) and how (kind) it fails")
+        if not entry.get("statement") or not entry.get("said"):
+            raise Refused(f"{path.name}: {case} does not name its failing call and what it said")
+        at_edge = entry["at"] == "edge"
+        if at_edge != isinstance(entry.get("calls"), int) or at_edge != bool(entry.get("edge")):
+            raise Refused(f"{path.name}: {case}: an edge entry, and no other, has calls and edge")
+        key = (engine, entry["at"], entry["kind"])
+        tally[key] = tally.get(key, 0) + 1
+    for engine, counts in engines.items():
+        for at in AT:
+            for kind in KINDS.values():
+                if counts[at][kind] != tally.get((engine, at, kind), 0):
+                    raise Refused(
+                        f"{path.name}: {engine} counts {counts[at][kind]} {at} {kind} and lists "
+                        f"{tally.get((engine, at, kind), 0)}: regenerate it (functions_baseline.py)"
+                    )
+    return path, engines, listed
+
+
+def function_counts(doc: dict, engine: str) -> dict:
+    """An engine's counts of a merged run, base calls and edge calls apart. An edge is tried only
+    when the base calls are right, so what fails at an edge passes its base calls."""
+    got = doc["by_engine"][engine]
+    wrong_at_edge, error_at_edge = got["differs_wrong_at_edge"], got["differs_error_at_edge"]
+    return {
+        "total": got["total"],
+        "base": {
+            "passed": got["passed"] + wrong_at_edge + error_at_edge,
+            "wrong_answer": got["differs_wrong_answer"] - wrong_at_edge,
+            "engine_error": got["differs_engine_error"] - error_at_edge,
+            "refused_by_name": got["refused_by_name"],
+        },
+        "edge": {
+            "served": got["passed"],
+            "wrong_answer": wrong_at_edge,
+            "engine_error": error_at_edge,
+        },
+    }
+
+
+def function_failures(doc: dict, engines: Iterable[str]) -> dict[str, dict]:
+    """Every wrong answer and engine error of a merged run on ``engines``, by case: where it fails
+    (``at``), how (``kind``), and its first failing call as the run said it."""
+    held = set(engines)
+    out: dict[str, dict] = {}
+    for fn in doc["functions"]:
+        for engine, outcome in fn["outcomes"].items():
+            if engine not in held or outcome["outcome"] not in KINDS:
+                continue
+            kind = KINDS[outcome["outcome"]]
+            at_edge = bool(outcome.get("wrong_at_edge") or outcome.get("error_at_edge"))
+            detail = outcome["detail"]
+            entry = {
+                "case": f"{engine}::{fn['function']}({fn['overload']})",
+                "at": "edge" if at_edge else "base",
+                "kind": kind,
+            }
+            if at_edge:
+                edges = outcome["edges"]
+                entry["calls"] = (
+                    edges["wrong"] if kind == "wrong_answer" else edges["raised"] + edges["errors"]
+                )
+            entry["statement"] = detail["statement"]
+            if at_edge:
+                entry["edge"] = detail["edge"]
+            entry["said"] = detail["difference"] if kind == "wrong_answer" else detail["error"]
+            if kind == "engine_error":
+                if detail.get("sqlstate"):
+                    entry["sqlstate"] = detail["sqlstate"]
+                if at_edge:
+                    # _measure_edges: a raise with no PostgreSQL error is one where it answered.
+                    entry["postgres"] = detail.get("postgres", "answers")
+            out[entry["case"]] = entry
+    return out
 
 
 def _failures(surface: str, doc: dict) -> list[dict]:
@@ -170,6 +305,22 @@ def judge_cases(surface: str, report: Path) -> list[str]:
     return errors
 
 
+def _state(entry: dict) -> str:
+    kind = "a wrong answer" if entry["kind"] == "wrong_answer" else "an engine error"
+    return f"{kind} {'at an edge value' if entry['at'] == 'edge' else 'on a base call'}"
+
+
+def baseline_lines(engines: dict[str, dict]) -> list[str]:
+    """Each engine's counts as one line, base calls and edge calls apart."""
+    return [
+        f"functions on {engine}: {c['total']} overloads; base calls: {c['base']['passed']} right, "
+        f"{c['base']['wrong_answer']} wrong, {c['base']['engine_error']} engine errors, "
+        f"{c['base']['refused_by_name']} refused by name; edge calls: {c['edge']['served']} "
+        f"served, {c['edge']['wrong_answer']} wrong, {c['edge']['engine_error']} engine errors"
+        for engine, c in sorted(engines.items())
+    ]
+
+
 def judge_functions(report: Path) -> list[str]:
     path, engines, listed = load_functions_expected()
     doc = _read(report, "report")
@@ -180,42 +331,60 @@ def judge_functions(report: Path) -> list[str]:
     if absent:
         raise Refused(f"functions: the run has no result on {absent}: not a full run")
     errors: list[str] = []
+    measured = {engine: function_counts(doc, engine) for engine in engines}
     for engine, committed in sorted(engines.items()):
-        got = doc["by_engine"][engine]
+        got = measured[engine]
         if got["total"] != committed["total"]:
             raise Refused(
                 f"functions on {engine}: {got['total']} of the committed {committed['total']} "
                 "overloads: not a full run"
             )
-        for count, rises in FUNCTION_COUNTS.items():
-            now, then = got[count], committed[count]
+        for count, rises in (("passed", True), ("refused_by_name", False)):
+            now, then = got["base"][count], committed["base"][count]
             worse = now < then if rises else now > then
             if worse:
                 side = "below" if rises else "above"
                 errors.append(
-                    f"functions on {engine}: {count} {now}, {side} the committed {then} "
+                    f"functions on {engine}: base {count} {now}, {side} the committed {then} "
                     f"({path.name})"
                 )
             elif now != then:
                 print(
-                    f"::notice::functions on {engine}: {count} {now} (committed {then}): "
-                    f"update {path.name}",
+                    f"::notice::functions on {engine}: base {count} {now} (committed {then}): "
+                    f"regenerate {path.name}",
                     file=sys.stderr,
                 )
-    wrong = {
-        f"{engine}::{fn['function']}({fn['overload']})"
-        for fn in doc["functions"]
-        for engine, outcome in fn["outcomes"].items()
-        if engine in engines and outcome["outcome"] == "wrong_answer"
-    }
-    errors += [
-        f"functions: {case} answers wrong and is not on the expected-failures list ({path.name})"
-        for case in sorted(wrong - set(listed))
-    ]
+    found = function_failures(doc, engines)
+    for case in sorted(set(found) - set(listed)):
+        now = found[case]
+        errors.append(
+            f"functions: {case} is {_state(now)} and is not on the expected-failures list "
+            f"({path.name}): {now['statement']}: {now['said']}"
+        )
+    for case in sorted(set(found) & set(listed)):
+        now, then = found[case], listed[case]
+        if (now["at"], now["kind"]) != (then["at"], then["kind"]):
+            errors.append(
+                f"functions: {case} is listed as {_state(then)} ({then['job']}) and is now "
+                f"{_state(now)}: {now['statement']}: {now['said']}"
+            )
+        elif now["at"] == "edge" and now["calls"] > then["calls"]:
+            errors.append(
+                f"functions: {case} fails {now['calls']} edge calls, above the listed "
+                f"{then['calls']} ({then['job']}): a new {_state(now)}"
+            )
+        elif now["at"] == "edge" and now["calls"] < then["calls"]:
+            print(
+                f"::notice::functions: {case} fails {now['calls']} edge calls (listed "
+                f"{then['calls']}): regenerate {path.name}",
+                file=sys.stderr,
+            )
     errors += [
         f"functions: {case} fixed but still listed ({listed[case]['job']}): take it off {path.name}"
-        for case in sorted(set(listed) - wrong)
+        for case in sorted(set(listed) - set(found))
     ]
+    if not errors:
+        print("\n".join(baseline_lines(measured)))
     return errors
 
 

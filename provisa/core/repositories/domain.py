@@ -10,16 +10,17 @@
 
 """Domain repository — CRUD for domains, via SQLAlchemy Core (dialect-portable)."""
 
-# Requirements: REQ-021, REQ-154, REQ-367, REQ-402
+# Requirements: REQ-021, REQ-154, REQ-367, REQ-402, REQ-2248
 
 from provisa.core import model_change, model_uri
 from typing import TYPE_CHECKING
 
-from sqlalchemy import delete as _delete, select
+from sqlalchemy import delete as _delete, select, update
 
 from provisa.core.models import Domain
-from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
-from provisa.core.schema_org import domains
+from provisa.core.repositories import retirement
+from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, rekey, remove_parts
+from provisa.core.schema_org import domains, registered_tables
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -72,13 +73,19 @@ async def _require_label_not_a_table(conn: "Connection", domain_id: str) -> None
 
 
 async def get(conn: "Connection", domain_id: str) -> dict | None:  # REQ-021, REQ-402
+    """The domain at ``domain_id``. A retired domain is under a key of its own (REQ-2248:
+    :func:`provisa.core.repositories.retirement.retired_key`), so a live id never finds one."""
     result = await conn.execute_core(select(domains).where(domains.c.id == domain_id))
     row = result.fetchone()
     return dict(row._mapping) if row is not None else None
 
 
-async def list_all(conn: "Connection") -> list[dict]:  # REQ-021
-    result = await conn.execute_core(select(domains).order_by(domains.c.id))
+async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]:  # REQ-021
+    """Every domain in service; ``retired`` lists the retired ones instead (REQ-2248), each with
+    who retired it, when and why, and the id it had (``retired_id``)."""
+    result = await conn.execute_core(
+        select(domains).where(domains.c.retired.is_(retired)).order_by(domains.c.id)
+    )
     return [dict(r._mapping) for r in result.fetchall()]
 
 
@@ -103,17 +110,24 @@ class DomainDeleteRefused(Exception):
         super().__init__(message)
 
 
-async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-1917, REQ-1918
-    """Delete one domain: THE delete, for every surface. False when there is no such domain.
+async def delete(  # REQ-021, REQ-1917, REQ-1918, REQ-2248
+    conn: "Connection", domain_id: str, *, reason: str | None = None
+) -> bool:
+    """Delete one domain: THE delete, for every surface. It RETIRES the domain (REQ-2248): the
+    row is kept, marked retired with ``reason``, the acting person and the time, together with the
+    retired tables in it. False when there is no such domain.
 
-    A domain is deleted only when nothing refers to it (REQ-1917): refused
-    (:class:`DomainDeleteRefused`), naming each dependent, while a table or view sits in it
-    (a retired one too: a domain that still holds a table, retired or not, is kept, REQ-2248), a
-    data product, row filter, command, webhook, glossary term or remote registration is placed
-    in it, a role lists it, an assignment is scoped to it, or a source allows it. It has no
-    parts, so the delete removes the one row. A domain the deployment keeps is refused.
+    Refused (:class:`DomainDeleteRefused`), naming each dependent, while anything live refers to
+    it (REQ-1917): a table or view sits in it, a data product, row filter, command, webhook,
+    glossary term or remote registration is placed in it, a role lists it, an assignment is
+    scoped to it, a source allows it, or a domain sits under it. A domain the deployment keeps is
+    refused.
+
+    A retired domain is hidden and leaves its id free: its row and the retired rows in it move to
+    a key of its own (:func:`retirement.retired_key`), and ``retired_id`` keeps the id it had, for
+    :func:`restore`. One transaction; nothing is removed.
     """
-    model_change.name("delete", model_change.uri(model_uri.domain_uri, domain_id))  # REQ-1524
+    model_change.name("retire", model_change.uri(model_uri.domain_uri, domain_id))  # REQ-1524
     from provisa.core import domain_policy
 
     ref = ObjectRef("domain", domain_id)
@@ -125,7 +139,41 @@ async def delete(conn: "Connection", domain_id: str) -> bool:  # REQ-021, REQ-19
         blocking = await guard(conn, ref)
         if blocking:
             raise DomainDeleteRefused(domain_id, "dependents", blocking)
-        await discard(conn, domain_id)
+        key = retirement.retired_key(domain_id)
+        await rekey(conn, "domain", domain_id, key)
+        await conn.execute_core(
+            update(domains)
+            .where(domains.c.id == key)
+            .values(**retirement.values(reason), retired_id=domain_id)
+        )
+    return True
+
+
+async def restore(conn: "Connection", key: str) -> bool:  # REQ-2248
+    """Restore the retired domain kept at ``key``: back at the id it had, its retirement cleared,
+    with the tables in it restored. Refused (:class:`retirement.NameHeld`) while a live domain
+    holds that id; refused as a new domain is (REQ-572) while a table's label is that id. False
+    when there is no retired domain at ``key``."""
+    async with conn.transaction():
+        row = await get(conn, key)
+        if row is None or not row["retired"]:
+            return False
+        live_id = row["retired_id"]
+        model_change.name("restore", model_change.uri(model_uri.domain_uri, live_id))  # REQ-1524
+        if await get(conn, live_id) is not None:
+            raise retirement.NameHeld("domain", live_id, f"domain {live_id!r}")
+        await _require_label_not_a_table(conn, live_id)
+        await rekey(conn, "domain", key, live_id)
+        await conn.execute_core(
+            update(domains)
+            .where(domains.c.id == live_id)
+            .values(**retirement.cleared(), retired_id=None)
+        )
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.domain_id == live_id, registered_tables.c.retired.is_(True))
+            .values(**retirement.cleared())
+        )
     return True
 
 
