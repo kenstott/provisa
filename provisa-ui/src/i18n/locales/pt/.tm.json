@@ -10679,7 +10679,6 @@
   "pt/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
   "pt/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
   "pt/serverErrors.json::serverErrors.discovery.run_not_found": "Discovery run {{run_id}} not found",
-  "pt/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
   "pt/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
   "pt/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
   "pt/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone.",
@@ -10713,5 +10712,10 @@
   "pt/serverErrors.json::serverErrors.discovery.answer_unreadable": "The model's answer held no readable list.",
   "pt/serverErrors.json::serverErrors.llm.request_failed": "The request to the model failed: {{reason}}",
   "pt/serverErrors.json::serverErrors.llm.no_answer_in_time": "The model gave no answer within {{seconds}} seconds.",
-  "pt/serverErrors.json::serverErrors.llm.empty_answer": "The model returned no text."
+  "pt/serverErrors.json::serverErrors.llm.empty_answer": "The model returned no text.",
+  "pt/aiModelsTab.json::aiModelsTab.apiKeysIntroOrgOnly": "Your org's own API key for each vendor, used for AI-assisted operations assigned to that vendor. A vendor with no key set is not used. Keys are never shown once saved. You may paste a vault reference such as ${secret:NAME} in place of the key; it is resolved against your org's secrets each time it is used.",
+  "pt/aiModelsTab.json::aiModelsTab.apiKeyNotSetOrgOnly": "No key set.",
+  "pt/aiModelsTab.json::aiModelsTab.jevIntroOrgOnly": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. With no key set, those features use the model's confidence alone.",
+  "pt/serverErrors.json::serverErrors.ai.key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
+  "pt/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
 }

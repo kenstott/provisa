@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
+    },
     "api": {
       "answer_cut": "Het antwoord voor {{table}} is afgekapt bij max_pages={{max_pages}} ({{rows}} rijen): de API heeft meer. Verhoog max_pages of de paginagrootte van het endpoint om alles te lezen.",
       "answer_row_cut": "Het antwoord voor {{table}} is afgekapt bij max_rows={{max_rows}}: de remote heeft meer. Verhoog graphql_remote.max_rows om alles te lezen."
@@ -162,7 +166,6 @@
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "table_id_required": "table_id vereist voor tabelbereik",
       "unknown_source_type": "Onbekend brontype: {{type}}",
-      "vendor_has_no_key": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
       "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst."
     },

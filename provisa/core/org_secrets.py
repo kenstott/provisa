@@ -215,7 +215,7 @@ class AiKeyRequired(Exception):
         super().__init__(message)
         self.vendor = vendor
         self.code = code
-        self.params = {"vendor": vendor, "where": WHERE_TO_ADD_AI_KEY}
+        self.params = {"vendor": vendor}
 
 
 def _no_key(vendor: str) -> AiKeyRequired:

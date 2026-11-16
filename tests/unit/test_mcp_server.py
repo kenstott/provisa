@@ -637,7 +637,7 @@ async def test_jev_tool_present_with_api_key(monkeypatch):
 
 async def test_jev_evaluate_calls_client_with_configured_key(state, monkeypatch):
     monkeypatch.setenv("TYPESAFEAI_API_KEY", "ts_test_key")
-    # resolve_jev_api_key treats tenant_db=None as "no org override, env var only" — the sentinel
+    # org_secrets.org_ai_key treats model_db=None as "no org override, env var only" — the sentinel
     # `object()` this fixture otherwise carries (for _catalog()'s truthiness check) isn't a real
     # Database and would blow up read_org_secret's `.acquire()` call.
     state.tenant_db = None
@@ -661,8 +661,11 @@ async def test_jev_evaluate_fails_loud_without_api_key(state, monkeypatch):
     monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
     state.tenant_db = None  # see note in test_jev_evaluate_calls_client_with_configured_key
     state.model_db = state.tenant_db
-    with pytest.raises(ValueError):
+    from provisa.core.org_secrets import AiKeyRequired
+
+    with pytest.raises(AiKeyRequired) as refused:
         await tools.jev_evaluate(state, "analyst", None, [{"id": "q1", "type": "noul"}])
+    assert refused.value.code == "ai.key_required"
 
 
 # --- REQ-1847: GraphQL field-name authority --------------------------------

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
     },
+    "ai": {
+      "key_required": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
+      "vendor_uses_server_credentials": "{{vendor}} तक सर्वर के अपने क्रेडेंशियल से पहुँचा जाता है, जिनका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में कुंजी लेने वाला वेंडर या कोई AI एंडपॉइंट चुनें।"
+    },
     "api": {
       "answer_cut": "{{table}} का उत्तर max_pages={{max_pages}} पर काट दिया गया ({{rows}} पंक्तियाँ): API में और डेटा है। सब पढ़ने के लिए एंडपॉइंट का max_pages या पृष्ठ आकार बढ़ाएँ।",
       "answer_row_cut": "{{table}} का उत्तर max_rows={{max_rows}} पर काट दिया गया: रिमोट में और डेटा है। सब पढ़ने के लिए graphql_remote.max_rows बढ़ाएँ।"
@@ -162,7 +166,6 @@
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}",
-      "vendor_has_no_key": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।",
       "answer_unreadable": "मॉडल के उत्तर में कोई पढ़ने योग्य सूची नहीं थी।"
     },

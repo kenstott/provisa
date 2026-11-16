@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "ogni voce di vector_models richiede id, provider e dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
+      "vendor_uses_server_credentials": "{{vendor}} viene raggiunto con le credenziali proprie del server, che un'organizzazione su questo server non usa. Scegli un fornitore che accetta una chiave, o un endpoint AI, in Amministrazione, Modelli AI."
+    },
     "api": {
       "answer_cut": "La risposta per {{table}} è stata troncata a max_pages={{max_pages}} ({{rows}} righe): l'API ha altri dati. Aumenta max_pages o la dimensione di pagina dell'endpoint per leggerla tutta.",
       "answer_row_cut": "La risposta per {{table}} è stata troncata a max_rows={{max_rows}}: il remoto ha altri dati. Aumenta graphql_remote.max_rows per leggerla tutta."
@@ -162,7 +166,6 @@
       "source_not_found": "Origine '{{source_id}}' non trovata",
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}",
-      "vendor_has_no_key": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "vendor_unknown": "{{vendor}} non elenca modelli qui; inserisci il nome del modello.",
       "answer_unreadable": "La risposta del modello non conteneva un elenco leggibile."
     },

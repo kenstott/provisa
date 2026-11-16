@@ -24,7 +24,7 @@ BUDGET_CHARS = 45_000
 
 
 async def test_tool_definitions_fit_the_budget(monkeypatch):
-    # jev_evaluate is registered only with a Jev key; the budget is for the default tool list.
+    # jev_evaluate is listed only with a Jev key; the budget is for the default tool list.
     monkeypatch.delenv("TYPESAFEAI_API_KEY", raising=False)
     sizes = await mcp_tool_sizes()
     total = sum(sizes.values())

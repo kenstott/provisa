@@ -443,7 +443,7 @@ class TestLlmConfiguredPreflight:  # REQ-1794
         monkeypatch.setitem(os.environ, "PROVISA_CONFIG", str(cfg))
         ok, reason = await chat_mod._llm_configured(_state())
         assert ok is False
-        assert "ANTHROPIC_API_KEY" in reason
+        assert reason == "anthropic has no API key. Add one under Admin, AI Models."
 
     async def test_key_present_is_configured(self, monkeypatch, tmp_path):
         import os

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。"
+    },
     "api": {
       "answer_cut": "{{table}} 的响应在 max_pages={{max_pages}} 处被截断（{{rows}} 行）：API 还有更多数据。请提高端点的 max_pages 或页面大小以读取全部数据。",
       "answer_row_cut": "{{table}} 的响应在 max_rows={{max_rows}} 处被截断：远程端还有更多数据。请提高 graphql_remote.max_rows 以读取全部数据。"
@@ -162,7 +166,6 @@
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "table_id_required": "表范围需要 table_id",
       "unknown_source_type": "未知数据源类型：{{type}}",
-      "vendor_has_no_key": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
       "answer_unreadable": "模型的回答中没有可读取的列表。"
     },
