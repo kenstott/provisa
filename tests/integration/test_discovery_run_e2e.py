@@ -142,7 +142,15 @@ def server(tmp_path_factory, endpoint):
         "naming": {"domain_prefix": False, "rules": []},
         "domains": [{"id": "shop", "description": "A shop"}],
         "roles": [],
-        "ai_endpoints": [{"id": "test-endpoint", "style": "openai", "base_url": endpoint.url}],
+        "ai_endpoints": [
+            {
+                "id": "test-endpoint",
+                "style": "openai",
+                "base_url": endpoint.url,
+                # The OpenAI client the endpoint is called through needs a key, any key.
+                "api_key_env": "DISCOVERY_TEST_ENDPOINT_KEY",
+            }
+        ],
         "ai_models": {"relationship_inference": {"vendor": "test-endpoint", "model": _MODEL}},
         "sources": [{"id": "shop-db", "type": "sqlite", "path": str(home / "shop.sqlite")}],
         "tables": [
@@ -169,7 +177,13 @@ def server(tmp_path_factory, endpoint):
     }
     path = home / "config.yaml"
     path.write_text(yaml.safe_dump(config))
-    srv = IsolatedServer("discovery_run", engine="duckdb", config=str(path), control_plane="own")
+    srv = IsolatedServer(
+        "discovery_run",
+        engine="duckdb",
+        config=str(path),
+        control_plane="own",
+        env={"DISCOVERY_TEST_ENDPOINT_KEY": "test-key"},
+    )
     srv.start(timeout=240)
     try:
         yield srv
@@ -234,7 +248,7 @@ def test_a_small_discovery_runs_end_to_end(server, endpoint):
 
     assert run["status"] == "done", run
     assert run["model"] == f"test-endpoint:{_MODEL}"
-    assert len(endpoint.prompts) == counted["requests"]
+    assert len(endpoint.prompts) == counted["requests"], run["report"]
     assert run["requests_done"] == run["requests_total"] == counted["requests"]
     assert run["report"]["semantics"]["suggested"] == 1
     assert run["suggestions"] == 1

@@ -1069,7 +1069,7 @@ async def _sync_view_mv(
         sql=view_sql,
         semantic_sql=view_sql,  # REQ-1921/1922
         region=region,  # REQ-1921
-        read_tables=read_table_names(view_sql),
+        read_tables=read_table_names(view_sql, state.tracked_functions),
         expose_in_sdl=False,
         status=existing.status if existing is not None else MVStatus.STALE,
         freshness_mode=freshness,

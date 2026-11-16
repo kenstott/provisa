@@ -24,7 +24,7 @@ import {
   fillCheckerConnection,
   openRegisterForm,
   openSourcesForm,
-  removeTestSource,
+  retireTestSourceTables,
   saveRegistration,
   submitSourceAndExpectListed,
 } from "./source-to-query-helpers";
@@ -63,14 +63,15 @@ const CHECKERS = [
   },
 ] as const;
 
-// The source the running case added, removed after it whatever its outcome.
+// The source the running case added: its tables are retired after it whatever its outcome, and
+// the source is kept (REQ-2248).
 let addedSource: string | undefined;
 
 test.afterEach(async () => {
   if (addedSource === undefined) return;
   const sourceId = addedSource;
   addedSource = undefined;
-  await removeTestSource(sourceId);
+  await retireTestSourceTables(sourceId);
 });
 
 for (const c of CHECKERS) {
@@ -79,7 +80,7 @@ for (const c of CHECKERS) {
   }) => {
     test.setTimeout(120000);
     const stamp = Date.now();
-    // e2e_<kind>_<13-digit stamp>: the shape removeTestSources tells a test's source by.
+    // e2e_<kind>_<13-digit stamp>: the shape retireTestSourcesTables tells a test's source by.
     const sourceId = `e2e_${c.type}_${stamp}`;
     // Unique across retries and workers; kept short, as the result relation appends the source id.
     const resultsTable = `${c.short}_${stamp}`;

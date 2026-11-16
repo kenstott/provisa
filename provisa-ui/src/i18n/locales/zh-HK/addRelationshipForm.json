@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "關係類型值",
     "viaLabelSourceTable": "資料表名稱",
     "viaLabelSourceFixed": "Cypher 別名",
-    "cardinalityOneToOne": "一對一"
+    "cardinalityOneToOne": "一對一",
+    "targetTypeResolver": "代碼解析器",
+    "resolverLabel": "解析器",
+    "resolverHelp": "代碼來源的一個查詢，接收來源表和目標表，並為每個配對傳回一行。",
+    "resolverNone": "沒有接收兩張表的代碼來源查詢",
+    "sourceMatchLabel": "包含來源鍵的配對欄",
+    "targetMatchLabel": "包含目標鍵的配對欄"
   }
 }

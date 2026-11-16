@@ -45,7 +45,7 @@ import {
   submitSourceAndExpectListed,
   typeSql,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const E2E_RSS_PORT = 37801;
@@ -210,11 +210,12 @@ async function pollUntilLanded(
 }
 
 test.describe("source to query through the UI — streaming/push types (REQ-1739/REQ-1745)", () => {
-  // Each test's source goes when the test ends, also after a failure. Left to the kafka block's
-  // afterAll, all six of the file's sources were deleted inside that one hook's 90 s, each table
-  // and source delete paying a schema rebuild of 4-16 s: the hook ran out (run 42187604573).
+  // Each test's tables are retired when the test ends, also after a failure; its source is kept
+  // (REQ-2248). Left to the kafka block's afterAll, all six of the file's sources were cleaned up
+  // inside that one hook's 90 s, each table and source delete paying a schema rebuild of 4-16 s:
+  // the hook ran out (run 42187604573).
   test.afterEach(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
   });
 
   test("ingest: add the source, register a table, POST a row, query it on the SQL page", async ({
@@ -485,13 +486,13 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
   // Per test, as in the block above: one source and its table per test, not all of the file's in
   // one hook.
   test.afterEach(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
   });
 
   test.afterAll(async () => {
-    // Nothing is left by the afterEach above unless it failed; a source left registered against
+    // Nothing is left by the afterEach above unless it failed; a table left in service against
     // the stack going down would be rebuilt against a refused connection for the rest of the lane.
-    await removeTestSources();
+    await retireTestSourcesTables();
     provisionKafka("down");
   });
 

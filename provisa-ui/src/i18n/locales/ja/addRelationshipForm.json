@@ -37,6 +37,12 @@
     "viaLabelSourceColumn": "リレーションシップタイプの値",
     "viaLabelSourceTable": "テーブル名",
     "viaLabelSourceFixed": "Cypher エイリアス",
-    "cardinalityOneToOne": "一対一"
+    "cardinalityOneToOne": "一対一",
+    "targetTypeResolver": "コードリゾルバー",
+    "resolverLabel": "リゾルバー",
+    "resolverHelp": "ソーステーブルとターゲットテーブルを受け取り、一致ごとに 1 行を返すコードソースのクエリ。",
+    "resolverNone": "2 つのテーブルを受け取るコードソースのクエリはありません",
+    "sourceMatchLabel": "ソースキーを持つ一致列",
+    "targetMatchLabel": "ターゲットキーを持つ一致列"
   }
 }

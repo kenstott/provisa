@@ -458,6 +458,7 @@
       "role_id_taken": "Role '{{role}}' already exists",
       "role_updated": "Role '{{role}}' updated",
       "relationship_id_taken": "Relationship '{{relationship}}' already exists",
+      "relationship_id_reserved": "Relationship id '{{id}}' begins with '{{prefix}}', a prefix kept for built-in relationships. Choose another id.",
       "relationship_graphql_alias_taken": "GraphQL alias '{{alias}}' is already the alias of relationship '{{relationship}}' from '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Scheduled task '{{task}}' updated",
@@ -484,7 +485,18 @@
       "jdbc_invalid": "Source {{source}}: {{error}}",
       "jdbc_file_refused": "Source {{source}}: the URL names {{path}}, which this server may not open for the organization.",
       "jdbc_options_refused": "Source {{source}}: this organization's URL may not give the driver option {{options}}.",
-      "jdbc_driver_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows."
+      "jdbc_driver_refused": "Source {{source}}: a customer's JDBC driver runs as code in Provisa's own JVM, which only a self-hosted install allows.",
+      "code_resolver_part": "{{kind}} '{{name}}' is part of code resolver '{{resolver}}': change or retire it there",
+      "code_resolver_no_key": "The {{end}} table '{{table}}' has no column '{{column}}'",
+      "code_resolver_no_reader": "No role sees both keys, so no role could see a match",
+      "code_resolver_unknown": "No command '{{function}}' is registered",
+      "code_resolver_refused": "Code resolver '{{function}}': {{reason}}",
+      "code_resolver_bad_id": "Code resolver id '{{resolver}}' is not a name: lower-case letters, digits and underscores, starting with a letter",
+      "code_resolver_taken": "Code resolver '{{resolver}}' already exists",
+      "code_resolver_not_found": "Code resolver '{{resolver}}' not found",
+      "code_resolver_saved": "Code resolver '{{resolver}}' saved",
+      "code_resolver_retired": "Code resolver '{{resolver}}' retired",
+      "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
     },
     "secrets": {
       "name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",

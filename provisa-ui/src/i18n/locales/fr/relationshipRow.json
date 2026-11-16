@@ -43,6 +43,11 @@
     "parameterNotFed": "Non alimenté",
     "sameEntity": "Même entité",
     "sameEntityHint": "Les lignes jointes sont une même chose : un terme ancre les deux tables, jointes 1:1 sur des clés",
-    "cardinalityOneToOne": "un-à-un"
+    "cardinalityOneToOne": "un-à-un",
+    "resolverNote": "Fait partie du resolver de code {{resolver}}. Sa vue des correspondances et ses trois relations sont modifiées et retirées ensemble.",
+    "changeResolver": "Modifier le resolver de code",
+    "retireResolver": "Retirer le resolver de code",
+    "retireResolverTitle": "Retirer le resolver de code {{resolver}} ?",
+    "retireResolverConsequence": "Sa vue des correspondances et ses trois relations sont retirées ensemble. Leurs noms restent pris."
   }
 }

@@ -102,6 +102,10 @@ declare module "*.graphql" {
   export const CreateRelationship: DocumentNode;
   export const UpdateRelationship: DocumentNode;
   export const DeleteRelationship: DocumentNode;
+  export const CodeResolversQuery: DocumentNode;
+  export const CreateCodeResolver: DocumentNode;
+  export const UpdateCodeResolver: DocumentNode;
+  export const RetireCodeResolver: DocumentNode;
   export const CreateSource: DocumentNode;
   export const UpdateSource: DocumentNode;
   export const DeleteSource: DocumentNode;

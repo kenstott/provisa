@@ -48,7 +48,7 @@ export const EMPTY_FORM = {
   sourceDomain: "",
   sourceTableId: "",
   sourceColumn: "",
-  targetType: "table" as "table" | "function",
+  targetType: "table" as "table" | "function" | "resolver",
   targetDomain: "",
   targetTableId: "",
   targetColumn: "",
@@ -73,6 +73,10 @@ export const EMPTY_FORM = {
   viaLabelSource: "",
   // REQ-2099: the target's parameters this edge feeds, each from a source column.
   parameters: [] as RelationshipParameter[],
+  // REQ-2249: a code resolver relating the two tables, and its columns carrying each one's key.
+  resolver: "",
+  sourceMatch: "",
+  targetMatch: "",
 };
 
 export type RelForm = typeof EMPTY_FORM;
@@ -89,4 +93,21 @@ export function relationshipTargetLabel(
   return tDomain && tDomain !== sDomain
     ? `${tDomain}.${r.targetTableName}.${r.targetColumn}`
     : `${r.targetTableName}.${r.targetColumn}`;
+}
+
+/** REQ-2249: whether a command has a code resolver's shape: a code @query taking exactly two
+ * tables and returning columns. The server checks it again, with the keys, on save. */
+export function isCodeResolver(f: {
+  implKind?: string;
+  kind: string;
+  arguments: { argKind?: string }[];
+  outputColumns?: unknown[] | null;
+}): boolean {
+  return (
+    f.implKind === "code_command" &&
+    f.kind === "query" &&
+    f.arguments.length === 2 &&
+    f.arguments.every((a) => a.argKind === "table_ref") &&
+    (f.outputColumns?.length ?? 0) > 0
+  );
 }
