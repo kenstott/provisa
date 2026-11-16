@@ -896,6 +896,15 @@ def _time_interval(sql: _Sql, args: list[str]) -> str:
     return _literal(0, 0, int(args[0]))
 
 
+def _time_mi_time(sql: _Sql, args: list[str]) -> str:
+    """A time of day less a time of day (time_mi_time): the difference of their microseconds, no
+    months and no days."""
+    del sql
+    if "NULL" in args:
+        return _NULL_HELD
+    return _literal(0, 0, int(args[0]) - int(args[1]))
+
+
 def _interval_time(sql: _Sql, args: list[str]) -> str:
     """time of an interval (interval_time): its microseconds brought into the day, its months and
     days not read."""
@@ -910,8 +919,9 @@ def _interval_time(sql: _Sql, args: list[str]) -> str:
 
 
 #: overlaps' overloads of an interval (pg_proc's SQL functions: ($1, $1 + $2) overlaps ($3, $4),
-#: and so on), by their arguments' kinds: of timestamps (t), or of times of day (T).
-_OVERLAPS_KINDS = frozenset({"titi", "titt", "ttti", "TiTi", "TiTT", "TTTi"})
+#: and so on), by their arguments' kinds: of timestamps (t), or of times of day (T); and overlaps
+#: of four times (overlaps_time), whose ends are the times themselves.
+_OVERLAPS_KINDS = frozenset({"titi", "titt", "ttti", "TiTi", "TiTT", "TTTi", "TTTT"})
 _NULL_BOOL = "CAST(NULL AS Nullable(Bool))"
 
 
@@ -1223,6 +1233,7 @@ def _rows() -> dict[str, _Row]:
         frozenset({"overlaps_timestamp", "overlaps"}), "????", _overlaps, False
     )
     rows["interval"] = _Row(frozenset({"interval"}), "T", _time_interval, True)
+    rows["time_mi_time"] = _Row(frozenset({"time_mi_time"}), "TT", _time_mi_time, True)
     rows["time"] = _Row(frozenset({"time"}), "i", _interval_time, False)
     return rows
 
@@ -1255,6 +1266,7 @@ _OPERATORS: dict[type[exp.Expr], dict[str, str]] = {
         "ti": "timestamp_mi_interval",
         "di": "date_mi_interval",
         "Ti": "time_mi_interval",
+        "TT": "time_mi_time",
     },
     exp.Neg: {"i": "interval_um"},
     exp.Mul: {"if": "interval_mul", "fi": "mul_d_interval"},
@@ -1310,8 +1322,8 @@ def _mentions_interval(node: exp.Expr) -> bool:
     for inner in node.walk():
         if inner.meta.get(HELD):
             return True
-        if isinstance(inner, exp.DataType) and inner.this == exp.DataType.Type.INTERVAL:
-            return True
+        if isinstance(inner, exp.DataType) and inner.this in _INTERVAL_OR_CLOCK:
+            return True  # a time less a time is an interval (time_mi_time)
         if isinstance(inner, exp.Interval):
             return True
         if isinstance(inner, exp.Anonymous) and inner.name.lower() in _NAMES - _SHARED:
@@ -1321,6 +1333,7 @@ def _mentions_interval(node: exp.Expr) -> bool:
     return False
 
 
+_INTERVAL_OR_CLOCK = frozenset({exp.DataType.Type.INTERVAL, exp.DataType.Type.TIME})
 #: The names of rows here that other types' calls have too: a call of one says no interval.
 _SHARED = frozenset(
     {"max", "min", "sum", "extract", "date_part", "isfinite", "time", "overlaps_timestamp"}
@@ -1723,11 +1736,19 @@ _DOCS["time_mi_interval"] = _Doc(
 _DOCS["interval_pl_time"] = _Doc(
     "interval_pl_time(interval, time)", "An interval plus a time of day (+).", _MOVED_STATED
 )
+_DOCS["time_mi_time"] = _Doc(
+    "time_mi_time(time, time)",
+    "A time of day less a time of day, an interval (-).",
+    " Each time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
+    "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
+    "The answer is the difference of their microseconds, no months and no days.",
+)
 _DOCS["overlaps_timestamp"] = _Doc(
     "overlaps(timestamp, interval, timestamp, interval)",
     "Whether two periods overlap, an end of either given as an interval from its start: "
     "overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, "
-    "timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.",
+    "timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and "
+    "overlaps of four times of day (overlaps_time).",
     " Each end given as an interval is its start plus the interval, as PostgreSQL's SQL function "
     "computes it: a timestamp's as timestamp_pl_interval's row writes it (a literal in ISO form "
     "or a NULL; the answer, or a step of it, outside "
@@ -2070,7 +2091,8 @@ def _feature(name: str) -> Feature:
         }
         rule = Rule("overlaps($a, $b, $c, $d)", forms, unlisted_keep=True)
     else:
-        rule = Rule(None, {_CLICKHOUSE: Rewrite(_rewrite(name), mentions=_MENTIONS)})
+        mentions = _MENTIONS if name != "time_mi_time" else r"\binterval\b|\btime\b"
+        rule = Rule(None, {_CLICKHOUSE: Rewrite(_rewrite(name), mentions=mentions)})
     return Feature(
         doc.feature,
         FAMILY,

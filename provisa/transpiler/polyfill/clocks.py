@@ -30,13 +30,14 @@ from __future__ import annotations
 
 import datetime
 from collections.abc import Callable
+from typing import Literal
 
 import sqlglot
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
-from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
+from provisa.transpiler.polyfill.notation import Refusal, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail
 
 _CLICKHOUSE = "clickhouse"
@@ -55,6 +56,14 @@ DAY_US = 86_400 * SECOND_US
 NULL_HELD = "CAST(NULL AS Nullable(Int64))"
 #: A NULL of a time's text, where the select list shows it.
 NULL_TEXT = "CAST(NULL AS Nullable(String))"
+
+
+def _refused(function: str, refusal: Refusal) -> Exception:
+    """The client's refusal ``refusal`` of a call of ``function`` that ClickHouse's semantics
+    (provisa.transpiler.transpile.clickhouse_semantics), after the grid's rows, cannot tell it."""
+    from provisa.transpiler.function_macros import RowRefused
+
+    return RowRefused(function, _CLICKHOUSE, refusal)
 
 
 def text_of(micros: int) -> str:
@@ -77,9 +86,19 @@ def held_null() -> exp.Expr:
     return node
 
 
-def text_sql(held: str) -> str:
+#: The refusal of 24:00:00 where a column of the select list shows it: PostgreSQL's time holds it,
+#: but pgwire reads no time of day past 23:59:59.999999 back (cast_types.clock_of_text).
+LAST_SHOWN = Refusal(
+    "0A000",
+    "time 24:00:00 in a result column has no form on clickhouse: pgwire reads no time of day "
+    "past 23:59:59.999999",
+)
+
+
+def text_sql(held: str, column: bool = False) -> str:
     """ClickHouse's SQL of time_out's text of a held time ``held`` (an Int64, maybe NULL): two
-    digits each of hours, minutes and seconds, and the fraction without its trailing zeros."""
+    digits each of hours, minutes and seconds, and the fraction without its trailing zeros.
+    ``column``: the text is a result column's, which raises LAST_SHOWN of 24:00:00."""
     x = "provisa_clock"
 
     def two(count: str) -> str:
@@ -91,6 +110,11 @@ def text_sql(held: str) -> str:
         f"':', {two(f'intDiv({x}, {SECOND_US}) % 60')}, "
         f"if({x} % {SECOND_US} = 0, '', concat('.', {fraction})))"
     )
+    if column:
+        last = ch_fail(LAST_SHOWN.sqlstate, LAST_SHOWN.message).format(
+            condition=f"({x} = {DAY_US})"
+        )
+        written = f"if({last} = 0, {written}, '')"
     return f"arrayElement(arrayMap({x} -> {written}, [toInt64({held})]), 1)"
 
 
@@ -106,17 +130,20 @@ def graft(template: str, **nodes: exp.Expr) -> exp.Expr:
     return tree.transform(grafted)
 
 
-def shown(node: exp.Expr) -> exp.Expr:
+def shown(node: exp.Expr, column: bool = False) -> exp.Expr:
     """``node``, a held time, as time_out's text: a literal's text where the held value is a
-    literal, a NULL of text for a NULL."""
+    literal, a NULL of text for a NULL. ``column``: a result column's, which raises LAST_SHOWN of
+    24:00:00."""
     value = node.unnest()
     if isinstance(value, exp.Anonymous) and value.name == "toInt64" and value.meta.get(HELD):
         micros = value.expressions[0]
         if isinstance(micros, exp.Literal) and not micros.is_string:
+            if column and int(micros.this) == DAY_US:
+                raise _refused("time_out", LAST_SHOWN)
             return exp.Literal.string(text_of(int(micros.this)))
     if isinstance(value, exp.Cast) and isinstance(value.this, exp.Null):
         return sqlglot.parse_one(NULL_TEXT, read=_CLICKHOUSE)
-    return graft(text_sql("provisa_held_clock"), provisa_held_clock=node)
+    return graft(text_sql("provisa_held_clock", column), provisa_held_clock=node)
 
 
 def time_valued(node: exp.Expr) -> bool:
@@ -209,8 +236,9 @@ def cast(
     if isinstance(value, exp.Literal) and value.is_string:
         micros = micros_of(value.this)
         if micros is None:
-            raise Refused(
-                Refusal("0A000", f'time_in() of "{value.this}" has no form on {_CLICKHOUSE}')
+            raise _refused(
+                "time_in",
+                Refusal("0A000", f'time_in() of "{value.this}" has no form on {_CLICKHOUSE}'),
             )
         return held_literal(micros)
     stamp = isinstance(value, exp.CurrentTimestamp) or (
@@ -263,8 +291,9 @@ def semantics(node: exp.Expr, said: Callable[[exp.Expr], exp.Expr]) -> exp.Expr 
             provisa_c=held(clock, said),
         )
     if isinstance(node, exp.Sub) and time_valued(node.this) and time_valued(node.expression):
-        raise Refused(
-            Refusal("0A000", f"time_mi_time() of a time no row reads has no form on {_CLICKHOUSE}")
+        raise _refused(
+            "time_mi_time",
+            Refusal("0A000", f"time_mi_time() of a time no row reads has no form on {_CLICKHOUSE}"),
         )
     return None
 
@@ -291,7 +320,7 @@ def select_shown(before: exp.Expr, after: exp.Expr) -> exp.Expr:
         value = now.unalias()
         if isinstance(value, exp.Literal) and value.is_string:
             continue  # already its text
-        value.replace(shown(value))
+        value.replace(shown(value, column=True))
     return after
 
 
@@ -345,6 +374,128 @@ def time_of_stamp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     return exp.Cast(this=stamp.copy(), to=exp.DataType.build("time", dialect="postgres"))
 
 
+def _integer(argument: exp.Expr) -> int | None | Literal[False]:
+    """An integer the statement writes (a literal, signed, maybe cast): its value; None for a NULL;
+    False for any other value."""
+    value = argument.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    negative = isinstance(value, exp.Neg)
+    if negative:
+        value = value.this.unnest()
+    if not isinstance(value, exp.Literal) or value.is_string or not value.this.isdigit():
+        return False
+    return -int(value.this) if negative else int(value.this)
+
+
+def time_scaled(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """time of a time and a precision (time_scale): its microseconds rounded half up to the
+    precision's digits (AdjustTimeForTypmod); a precision outside 0 to 6 leaves it."""
+    call = trino.called(node) if dialect == _CLICKHOUSE else None
+    if call is None or "time" not in call[0] or len(call[1]) != 2:
+        return None
+    clock, precision = call[1]
+    digits = _integer(precision)
+    if not _typed(clock, exp.DataType.Type.TIME) or digits is False:
+        return None
+    if digits is None:
+        return held_null()
+    if not 0 <= digits <= 6:
+        return clock.copy()
+    scale = 10 ** (6 - digits)
+    rounded = graft(
+        f"toInt64(intDiv(toInt64(provisa_c) + {scale // 2}, {scale}) * {scale})",
+        provisa_c=clock.copy(),
+    )
+    rounded.meta[HELD] = True
+    return rounded
+
+
+#: Each unit extract reads of a time (time_part_common), as numeric: the held time's SQL of it,
+#: its scale. date_part's double precision of each: its SQL, as timestamp.c computes the double.
+_PARTS: dict[str, tuple[str, str]] = {
+    "microseconds": (
+        "toDecimal64(provisa_c % 60000000, 0)",
+        "toFloat64(intDiv(provisa_c % 60000000, 1000000)) * 1000000.0 "
+        "+ toFloat64(provisa_c % 1000000)",
+    ),
+    "milliseconds": (
+        "toDecimal64(provisa_c % 60000000, 3) / 1000",
+        "toFloat64(intDiv(provisa_c % 60000000, 1000000)) * 1000.0 "
+        "+ toFloat64(provisa_c % 1000000) / 1000.0",
+    ),
+    "second": (
+        "toDecimal64(provisa_c % 60000000, 6) / 1000000",
+        "toFloat64(intDiv(provisa_c % 60000000, 1000000)) + toFloat64(provisa_c % 1000000) / 1000000.0",
+    ),
+    "minute": (
+        "toDecimal64(intDiv(provisa_c, 60000000) % 60, 0)",
+        "toFloat64(intDiv(provisa_c, 60000000) % 60)",
+    ),
+    "hour": (
+        "toDecimal64(intDiv(provisa_c, 3600000000), 0)",
+        "toFloat64(intDiv(provisa_c, 3600000000))",
+    ),
+    "epoch": (
+        "toDecimal64(provisa_c, 6) / 1000000",
+        "toFloat64(provisa_c) / 1000000.0",
+    ),
+}
+#: Each unit's other spellings PostgreSQL reads (datetktbl's and deltatktbl's).
+_PART_NAMES = {
+    "microseconds": ("microsecond", "microseconds", "us", "usec", "usecs", "useconds"),
+    "milliseconds": ("millisecond", "milliseconds", "ms", "msec", "msecs", "mseconds"),
+    "second": ("second", "seconds", "s", "sec", "secs"),
+    "minute": ("minute", "minutes", "m", "min", "mins"),
+    "hour": ("hour", "hours", "h", "hr", "hrs"),
+    "epoch": ("epoch",),
+}
+_PART_OF = {spelling: unit for unit, names in _PART_NAMES.items() for spelling in names}
+
+
+def _text(argument: exp.Expr) -> str | None | Literal[False]:
+    """A text the statement writes (maybe cast): its value; None for a NULL; False for any other."""
+    value = argument.unnest()
+    while isinstance(value, exp.Cast):
+        value = value.this.unnest()
+    if isinstance(value, exp.Null):
+        return None
+    if isinstance(value, exp.Literal) and value.is_string:
+        return value.this
+    return False
+
+
+def _part_of(names: frozenset[str], numeric: bool) -> Callable[[exp.Expr, str], exp.Expr | None]:
+    """extract (``numeric``) or date_part of a unit and a time, called by its name."""
+
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        if dialect != _CLICKHOUSE or not isinstance(node, exp.Anonymous):
+            return None
+        if node.name.lower() not in names or len(node.expressions) != 2:
+            return None
+        unit, clock = node.expressions
+        text = _text(unit)
+        if text is False or not _typed(clock, exp.DataType.Type.TIME):
+            return None
+        if text is None:
+            typed = "Nullable(Decimal(18, 6))" if numeric else "Nullable(Float64)"
+            return graft(f"CAST(NULL AS {typed})")
+        part = _PART_OF.get(text.strip().lower())
+        if part is None:
+            return None  # a unit time has none of (day, year): the function's refusal
+        held = graft(_PARTS[part][0 if numeric else 1], provisa_c=clock.copy())
+        return graft(
+            "if(isNull(provisa_t), NULL, provisa_p)", provisa_t=clock.copy(), provisa_p=held
+        )
+
+    name = sorted(names)[0]
+    rewrite.__doc__ = f"{name} of a unit and a time of day, of its held microseconds."
+    rewrite.__qualname__ = rewrite.__name__ = f"{name}_of_a_clock"
+    return rewrite
+
+
 _HELD_STATED = (
     "ClickHouse's server has no Time64: a time is held as an Int64 of its microseconds of the "
     "day, and shown in the select list as time_out's text (polyfill.clocks)."
@@ -374,7 +525,30 @@ def _row(
     )
 
 
+_PART_STATED = (
+    " The unit is read as a literal or a NULL (microseconds, milliseconds, second, minute, hour, "
+    "epoch, and their other spellings); any other unit, and one the statement computes, keeps the "
+    "function's refusal by name. Called by its name only: extract(unit FROM time), which the "
+    "translator reads as the same node as date_part's, keeps its refusal."
+)
+
 FEATURES: tuple[Feature, ...] = (
+    _row(
+        "extract(text, time)",
+        "A unit of a time of day, as numeric.",
+        _part_of(frozenset({"extract"}), numeric=True),
+        _HELD_STATED + " Each unit is computed of the microseconds as time_part_common computes "
+        "it, a numeric of PostgreSQL's scale (second 6, milliseconds 3, epoch 6)." + _PART_STATED,
+        r"\bextract\b",
+    ),
+    _row(
+        "date_part(text, time)",
+        "A unit of a time of day, as double precision.",
+        _part_of(frozenset({"date_part"}), numeric=False),
+        _HELD_STATED + " Each unit is computed of the microseconds in double precision as "
+        "timestamp.c computes it, so it is the same double." + _PART_STATED,
+        r"\bdate_part\b",
+    ),
     _row(
         "datetime_pl(date, time)",
         "A date plus a time of day, a timestamp (+).",
@@ -402,6 +576,16 @@ FEATURES: tuple[Feature, ...] = (
         time_of_stamp,
         _HELD_STATED + " The timestamp is held as DateTime64(6, 'UTC'), exact from 1900-01-01 "
         "to 2299-12-31; its wall time's time of day is read.",
+        r"\btime\b",
+    ),
+    _row(
+        "time(time, integer)",
+        "A time of day rounded to a precision (time_scale).",
+        time_scaled,
+        _HELD_STATED + " The microseconds are rounded half up to the precision's digits, as "
+        "AdjustTimeForTypmod rounds them (23:59:59.9999995 to 24:00:00 at six); a precision "
+        "outside 0 to 6 leaves the time. The precision is read as a literal or a NULL; any other is "
+        "refused by name.",
         r"\btime\b",
     ),
 )

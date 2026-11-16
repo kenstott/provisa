@@ -60,7 +60,7 @@ RECORDED: dict[str, tuple[int | None, str | None]] = {
     "SELECT date '2024-06-15' + time '12:30' AS v": (1114, "2024-06-15 12:30:00"),
     "SELECT date_part('second', time '12:30:45.25') AS v": (701, "45.25"),
     "SELECT extract(hour from time '12:30:45') AS v": (1700, "12"),
-    "SELECT interval '90 minutes' + '23:00'::time AS v": (1083, "00:30:00"),
+    "SELECT interval '90 minutes' + time '23:00' AS v": (1083, "00:30:00"),
     "SELECT pg_catalog.\"date_part\"('hour'::text, '12:30:45'::time without time zone) AS v": (
         701,
         "12",
