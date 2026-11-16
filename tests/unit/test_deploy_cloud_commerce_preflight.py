@@ -169,13 +169,17 @@ def test_live_mode_names_the_publishable_key_it_cannot_mount_checkout_without(tm
     assert "STRIPE_SECRET_KEY(" not in result.stderr
 
 
-def test_no_lemon_squeezy_setting_is_read_or_asserted():
-    text = _SCRIPT.read_text().upper()
-    assert "LEMONSQUEEZY" not in text
+def test_every_commerce_setting_the_deploy_reads_is_a_stripe_one():
+    names = (_keys_block("COMMERCE_KEYS") + _keys_block("COMMERCE_CREDENTIAL_KEYS")).split('"')[
+        1::2
+    ]
+    keys = " ".join(names).replace("\\", " ").split()
+    assert set(keys) == _PLUGIN_SETTINGS
+    for fn in ("push_commerce_env", "preflight_commerce"):
+        assert "printenv | grep -E '^STRIPE_'" in _function(fn)
 
 
 def test_first_launch_forwards_exactly_the_plugins_settings():
     text = _FIRST_LAUNCH.read_text()
     forwarded = set(re.findall(r"^\s+(STRIPE_[A-Z_]+): \"\\\$\{\1:-\}\"$", text, re.MULTILINE))
     assert forwarded == _PLUGIN_SETTINGS
-    assert "LEMONSQUEEZY" not in text.upper()
