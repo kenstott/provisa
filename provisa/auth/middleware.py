@@ -24,7 +24,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from provisa.audit.context import audit_identity_scope
-from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment
+from provisa.auth.models import AuthIdentity, AuthProvider, RoleAssignment, verified_email
 from provisa.auth.role_mapping import resolve_assignments, resolve_role
 from provisa.auth.superuser import check_superuser, validate_superuser_session
 from provisa.auth.throttle import LockedOut, throttled
@@ -313,25 +313,29 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
     """Attach the grants waiting on this sign-in token's email to its principal, through the write
     API's own write, after the token's lists are mirrored: where the token sends a list for the
     grant's role and kind, the grant is refused as the write API refuses it. Each outcome goes to
-    the org's administrative trail, as set by whoever granted it."""
+    the org's administrative trail, as set by whoever granted it.
+
+    REQ-1261: only an address the identity's provider verified is matched. A grant waiting on an
+    address stays waiting for a sign-in that proves it."""
     from provisa.api.app import state
     from provisa.core.org_membership import record_admin_action
     from provisa.core.request_context import current_env, current_org
     from provisa.entitlements import pending, store
 
-    if not identity.email:
+    email = verified_email(identity)
+    if not email:
         return
     key = (
         current_org.get(),
         current_env.get(),
         identity.user_id,
-        pending.normalize_email(identity.email),
+        pending.normalize_email(email),
     )
     if key in _attached_pending:
         return
     async with db_pool.acquire() as conn:
         async with conn.transaction():
-            outcomes = await pending.attach(conn, identity.user_id, identity.email, lists)
+            outcomes = await pending.attach(conn, identity.user_id, email, lists)
         if any(outcome == pending.ATTACHED for _grant, outcome in outcomes):
             state.held_entitlements = await store.load_held(conn)
     for grant, outcome in outcomes:
@@ -1075,18 +1079,21 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
             # membership + the default role of the auto-join org whose email rule matches — no
             # invite needed. Runs only while member_org_ids is empty (the common member case skips
             # the lookup entirely) and only for a real identity (never the anonymous dev principal).
+            # REQ-1261: and only on an address the identity's provider verified. One a person typed
+            # for themselves (a basic-provider account) or one an IdP has not verified names any
+            # domain its holder likes, so it joins nothing.
+            join_email = verified_email(identity)
             if (
                 not member_org_ids
                 and not can_cross_org
                 and self._admin_pool is not None
                 and identity.user_id != "anonymous"
+                and join_email
             ):
                 from provisa.api.auto_join import join_org_automatically
                 from provisa.core.org_membership import resolve_auto_join_orgs
 
-                auto = await resolve_auto_join_orgs(
-                    self._admin_pool, identity.email, identity.user_id
-                )
+                auto = await resolve_auto_join_orgs(self._admin_pool, join_email, identity.user_id)
                 # REQ-1568: one claim on this address is an answer; several are a question. Joining
                 # them all would seat someone in orgs that have no idea who they are, and joining
                 # the first would let row order decide. So nothing is joined here — the person is
@@ -1095,7 +1102,7 @@ class AuthMiddleware:  # REQ-120, REQ-125, REQ-273
                 if len(auto) == 1:
                     auto_org_id, auto_role = auto[0]
                     await join_org_automatically(
-                        self._admin_pool, identity.user_id, identity.email, auto_org_id, auto_role
+                        self._admin_pool, identity.user_id, join_email, auto_org_id, auto_role
                     )
                     member_org_ids.append(auto_org_id)
                 elif auto:

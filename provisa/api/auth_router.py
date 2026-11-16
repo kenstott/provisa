@@ -21,6 +21,7 @@ from pydantic import BaseModel
 from sqlalchemy import delete, func, insert, select, update
 
 from provisa.api.errors import ApiError
+from provisa.auth.models import verified_email
 from provisa.auth.scram_store import write_verifier
 from provisa.core.schema_admin import (
     local_users,
@@ -431,14 +432,18 @@ async def my_invites(request: Request):  # REQ-1287
     user who arrived without their token looked identical to a stranger, so the UI could only offer
     "create an org". Returns [] for a link-only invite (email is null) or a dev principal with no
     email; the caller then falls through to org creation or pasting a token.
+
+    REQ-1261: the address is matched only when the caller's provider verified it. An answer here
+    carries the invitation's token, so an address the caller typed for themselves (a
+    basic-provider account) or one their IdP has not verified is shown nothing: that person
+    redeems with the link they were sent, where the token is the proof.
     """
     import datetime
     from datetime import timezone
 
     from provisa.api.app import state
 
-    identity = getattr(request.state, "identity", None)
-    email = getattr(identity, "email", None) if identity is not None else None
+    email = verified_email(getattr(request.state, "identity", None))
     if not email:
         return {"invites": []}
 
@@ -487,6 +492,8 @@ async def _auto_join_offers(request: Request) -> list[dict]:
     Auto-join is a multitenant act: the middleware joins only inside its multitenant branch, so a
     single-tenant deployment offers nothing either. Offering there would put to the person a choice
     sign-in never makes, for an org the single-tenant path never joins.
+
+    REQ-1261: as at sign-in, only an address the caller's provider verified is matched.
     """
     from provisa.api.app import state
     from provisa.core.org_membership import resolve_auto_join_orgs
@@ -496,10 +503,13 @@ async def _auto_join_offers(request: Request) -> list[dict]:
     identity = getattr(request.state, "identity", None)
     if identity is None or identity.user_id == "anonymous":
         return []
+    email = verified_email(identity)
+    if not email:
+        return []
 
     admin_db = state.admin_db
     assert admin_db is not None
-    matches = await resolve_auto_join_orgs(admin_db, identity.email, identity.user_id)
+    matches = await resolve_auto_join_orgs(admin_db, email, identity.user_id)
     if not matches:
         return []
     roles_by_org = dict(matches)
@@ -557,8 +567,9 @@ async def accept_auto_join(request: Request, body: AcceptAutoJoinBody):  # REQ-1
     identity = request.state.identity
     admin_db = state.admin_db
     assert admin_db is not None
+    # An offer exists only for a verified address (_auto_join_offers).
     await join_org_automatically(
-        admin_db, identity.user_id, identity.email, chosen["org_id"], chosen["role_id"]
+        admin_db, identity.user_id, verified_email(identity), chosen["org_id"], chosen["role_id"]
     )
     for other in offers:
         if other["org_id"] != chosen["org_id"]:
@@ -672,12 +683,19 @@ async def register(body: RegisterRequest, request: Request):
     # middleware's credential-less /auth/register relaxation (AuthMiddleware._process). Such a
     # caller — a redeemer following an invite link, not signed in — may create an account ONLY by
     # presenting a valid, unspent, unexpired invite, and that is checked BEFORE any row is written
-    # so a bad token writes nothing. An already-authenticated caller (identity resolved by the
-    # middleware) keeps the open behaviour.
+    # so a bad token writes nothing.
+    # A signed-in caller is creating an account for someone else, which is managing the
+    # deployment's users: it needs user_management, as creating one at /admin/users does. Being
+    # signed in alone creates nothing.
     identity = getattr(request.state, "identity", None)
     authenticated = (
         identity is not None and getattr(identity, "user_id", "anonymous") != "anonymous"
     )
+    if authenticated:
+        from provisa.api.admin.capabilities import require_capability_request
+        from provisa.security.rights import Capability
+
+        require_capability_request(request, Capability.USER_MANAGEMENT.value)
 
     import datetime
     from datetime import timezone
@@ -686,9 +704,9 @@ async def register(body: RegisterRequest, request: Request):
     admin_db = state.admin_db
     assert admin_db is not None
 
-    if not authenticated:
-        if not body.invite_token:
-            raise ApiError(401, "auth.invite_required", "An invite is required to register")
+    if not authenticated and not body.invite_token:
+        raise ApiError(401, "auth.invite_required", "An invite is required to register")
+    if body.invite_token:
         now = datetime.datetime.now(tz=timezone.utc)
         async with admin_db.acquire() as conn:
             result = await conn.execute_core(

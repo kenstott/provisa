@@ -72,6 +72,8 @@ class FirebaseAuthProvider(AuthProvider):  # REQ-120, REQ-121
         return AuthIdentity(
             user_id=decoded["uid"],
             email=decoded.get("email"),
+            # REQ-1261: the issuer's own statement; absent or false, the address matches nothing.
+            email_verified=decoded.get("email_verified") is True,
             display_name=decoded.get("name"),
             roles=decoded.get("roles", []),
             raw_claims=decoded,

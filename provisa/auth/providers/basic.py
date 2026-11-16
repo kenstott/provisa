@@ -97,6 +97,9 @@ class BasicAuthProvider(AuthProvider):  # REQ-124
         return AuthIdentity(
             user_id=row["id"],
             email=row["email"],
+            # REQ-1261: a local account's address is whatever was typed when it was made; nothing
+            # verified it, so it matches no invitation, email rule or waiting grant.
+            email_verified=False,
             display_name=row["display_name"],
             roles=[],
             raw_claims={"username": row["username"], **dict(row["attributes"] or {})},
