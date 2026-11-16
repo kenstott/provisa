@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
     },
+    "ai": {
+      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
+    },
     "api": {
       "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול.",
       "answer_row_cut": "התשובה עבור {{table}} נחתכה ב-max_rows={{max_rows}}: למקור המרוחק יש עוד. הגדילו את graphql_remote.max_rows כדי לקרוא הכול."
@@ -166,7 +170,6 @@
       "source_not_found": "המקור '{{source_id}}' לא נמצא",
       "table_id_required": "table_id נדרש עבור היקף table",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
-      "vendor_has_no_key": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל.",
       "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה."
     },

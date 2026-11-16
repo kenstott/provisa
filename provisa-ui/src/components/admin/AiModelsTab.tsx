@@ -453,11 +453,16 @@ export function AiModelsTab() {
       </Group>
     );
 
+  // REQ-1395: on a server of many organizations a vendor with no key set is not called.
+  const keyNotSet = s.deployment_keys
+    ? "aiModelsTab.apiKeyNotSet"
+    : "aiModelsTab.apiKeyNotSetOrgOnly";
+
   return (
     <Stack gap="md">
       <Panel testId="ai-models-keys-panel" title={t("aiModelsTab.apiKeysHeading")}>
         <Text c="dimmed" size="sm">
-          {t("aiModelsTab.apiKeysIntro")}
+          {t(s.deployment_keys ? "aiModelsTab.apiKeysIntro" : "aiModelsTab.apiKeysIntroOrgOnly")}
         </Text>
         <Stack gap="sm">
           {LLM_VENDORS.map((vendor) => {
@@ -473,7 +478,7 @@ export function AiModelsTab() {
                     color={isSet ? "green" : "gray"}
                     data-testid={`ai-models-${vendor}-key-status`}
                   >
-                    {isSet ? t("aiModelsTab.apiKeySet") : t("aiModelsTab.apiKeyNotSet")}
+                    {isSet ? t("aiModelsTab.apiKeySet") : t(keyNotSet)}
                   </Badge>
                 </Group>
                 <FormLayout>
@@ -825,7 +830,7 @@ export function AiModelsTab() {
 
       <Panel testId="ai-models-jev-panel" title={t("aiModelsTab.jevHeading")}>
         <Text c="dimmed" size="sm">
-          {t("aiModelsTab.jevIntro")}
+          {t(s.deployment_keys ? "aiModelsTab.jevIntro" : "aiModelsTab.jevIntroOrgOnly")}
         </Text>
         <Stack gap={4}>
           <Group gap="xs" align="center">
@@ -836,7 +841,7 @@ export function AiModelsTab() {
               color={s.api_keys_set[JEV_KEY] ? "green" : "gray"}
               data-testid="ai-models-jev-key-status"
             >
-              {s.api_keys_set[JEV_KEY] ? t("aiModelsTab.apiKeySet") : t("aiModelsTab.apiKeyNotSet")}
+              {s.api_keys_set[JEV_KEY] ? t("aiModelsTab.apiKeySet") : t(keyNotSet)}
             </Badge>
           </Group>
           <FormLayout>

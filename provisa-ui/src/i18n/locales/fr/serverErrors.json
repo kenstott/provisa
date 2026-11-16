@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
+    },
     "api": {
       "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire.",
       "answer_row_cut": "La réponse pour {{table}} a été tronquée à max_rows={{max_rows}} : le service distant en a davantage. Augmentez graphql_remote.max_rows pour tout lire."
@@ -166,7 +170,6 @@
       "source_not_found": "Source « {{source_id}} » introuvable",
       "table_id_required": "table_id requis pour la portée table",
       "unknown_source_type": "Type de source inconnu : {{type}}",
-      "vendor_has_no_key": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle.",
       "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible."
     },

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
+      "vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+    },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
       "answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all."
@@ -166,7 +170,6 @@
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
       "unknown_source_type": "Unknown source type: {{type}}",
-      "vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."
     },

@@ -71,6 +71,7 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         read_org_api_keys,
         read_org_secret,
     )
+    from provisa.core.secrets_providers import many_organisations
 
     assert state.model_db is not None
     cfg = await _effective_config()
@@ -97,6 +98,9 @@ async def get_ai_models(request: Request):  # REQ-464, REQ-419, REQ-500, REQ-370
         "ai_endpoints": list(cfg.get("ai_endpoints", []) or []),  # REQ-1790
         "nl": {"rate_limit": nl.get("rate_limit")},
         "api_keys_set": api_keys_set,
+        # REQ-1395: whether a vendor with no key set is called with the deployment's own (an
+        # install of one organization); on a server of many organizations it is not called.
+        "deployment_keys": not many_organisations(),
         "restart_required_note": _RESTART_NOTE,
     }
 
@@ -173,9 +177,8 @@ async def get_vendor_models(
     import os
 
     from provisa.api.app import state
-    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_secrets import org_ai_key
     from provisa.llm.vendor_models import (
-        VENDOR_API_KEY_ENV,
         VENDOR_MODEL_APIS,
         fetch_endpoint_models,
         fetch_vendor_models,
@@ -184,18 +187,9 @@ async def get_vendor_models(
     assert state.model_db is not None
 
     if vendor in VENDOR_MODEL_APIS:
-        # The org's key when it has set one; otherwise the deployment credential this vendor's
-        # calls already run on — the same resolution order the LLM client uses, so the picker
-        # lists exactly the models the org's queries would reach (REQ-1395, REQ-1398).
-        api_key = (await read_org_api_keys(state.model_db)).get(vendor)
-        if not api_key and vendor in VENDOR_API_KEY_ENV:
-            api_key = os.environ.get(VENDOR_API_KEY_ENV[vendor])
-        if not api_key:
-            raise ApiError(
-                400,
-                "ai_models.vendor_key_required",
-                f"set an API key for '{vendor}' to list its models",
-            )
+        # The key the vendor's calls are made with, so the picker lists exactly the models the
+        # org's queries would reach; refused when there is none (REQ-1395, REQ-1398).
+        api_key = await org_ai_key(state.model_db, vendor)
         models = await _run_model_listing(vendor, lambda: fetch_vendor_models(vendor, api_key))
         return {"vendor": vendor, "models": models}
 

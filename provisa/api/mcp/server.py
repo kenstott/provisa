@@ -1194,23 +1194,34 @@ def build_mcp_server(state: Any):
 
     model_tool_server.register(_tool, _role, _capability_request, state)
 
-    # Optional: only registered when a Jev credential is configured, so an agent never sees
-    # a tool it cannot use — no fallback, the tool simply does not exist without the key.
-    if os.environ.get("TYPESAFEAI_API_KEY", "").strip():
+    # Jev's tool is listed to an organization that has a Jev key and to no other (REQ-1395), so
+    # an agent never sees a tool it cannot use. The key is the acting organization's, so this
+    # is decided at each listing, by the same resolver the call takes its key from.
+    @_tool
+    async def jev_evaluate(
+        questions: list[dict],
+        jev_state: Any = None,
+        role: str | None = None,
+    ) -> dict:
+        """Calibrated typed decisions (not text) via TypeSafe's Jev API, all judged against
+        jev_state (any JSON: the context). Each question is {id, type, instructions,
+        criteria}: noul (yes/no; criteria {true, false}; returns P(yes)), choice (up to 255
+        options; criteria {option: description}) or score (2-10 levels; criteria [level
+        description, ...]). Each answer has a distribution and a confidence: send
+        low-confidence ones to a person or further reasoning."""
+        return await tools.jev_evaluate(state, _role(role), jev_state, questions)
 
-        @_tool
-        async def jev_evaluate(
-            questions: list[dict],
-            jev_state: Any = None,
-            role: str | None = None,
-        ) -> dict:
-            """Calibrated typed decisions (not text) via TypeSafe's Jev API, all judged against
-            jev_state (any JSON: the context). Each question is {id, type, instructions,
-            criteria}: noul (yes/no; criteria {true, false}; returns P(yes)), choice (up to 255
-            options; criteria {option: description}) or score (2-10 levels; criteria [level
-            description, ...]). Each answer has a distribution and a confidence: send
-            low-confidence ones to a person or further reasoning."""
-            return await tools.jev_evaluate(state, _role(role), jev_state, questions)
+    every_tool = mcp.list_tools
+
+    async def usable_tools() -> list:
+        from provisa.core.org_secrets import JEV, org_ai_key_or_none
+
+        listed = await every_tool()
+        if await org_ai_key_or_none(getattr(state, "model_db", None), JEV) is None:
+            return [t for t in listed if t.name != "jev_evaluate"]
+        return listed
+
+    mcp.list_tools = usable_tools  # pyright: ignore[reportAttributeAccessIssue]
 
     _install_tool_groups(mcp)  # REQ-2246: sip mode; before the titles go, so its tool loses its own
     # A client is sent every tool's schemas on every model call. Pydantic titles each schema and
