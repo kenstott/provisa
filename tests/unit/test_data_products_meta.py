@@ -61,6 +61,7 @@ _VIEWS = (
     "table_columns",
     "tracked_functions",
     "tag_assignments",
+    "domains",  # REQ-2248: domains_meta, a product's domain read through its relationship
     "_domains",  # _term_refs_ontology reads each term's domains from it
     "_term_refs",
 )

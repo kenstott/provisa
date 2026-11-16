@@ -677,6 +677,8 @@ Each function is answered in the catalog intercept layer alongside `pg_catalog` 
 
 Every overload of every `pg_catalog` function is called the way PostgreSQL requires it, with the `VARIADIC` form, `WITHIN GROUP`, `OVER`, or a real argument where PostgreSQL refuses a `NULL`. Each overload then has a result on each engine, because what an engine can answer is that engine's own: its native answer, or the answer of a polyfill. A function refused by name on an engine is that engine's result, and a wrong answer on any engine is a defect.
 
+Each overload with samples is also called with edge values of its argument types: NULL, an empty value, the least and greatest values the type holds, zero and negative values, multi-byte and combining text, and a value PostgreSQL itself raises an error for. A form that answers the samples but cannot answer some edge value is still served. It must raise an error for that value, never give a different answer, and its polyfill page must state the limitation. Such an overload counts as served within its bound, and the count is shown separately.
+
 One group is skipped by design and listed under the pass rate. Internal functions cannot be called by PostgreSQL itself: each takes an `internal` argument, or PostgreSQL refuses the call whatever the server's state. Index access method support and index maintenance functions a client can call, such as `brin_summarize_range`, are ordinary functions with a result on each engine.
 
 <!-- function-results:begin -->

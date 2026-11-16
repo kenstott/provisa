@@ -156,6 +156,7 @@ async def _register_user_views_in_state(
                         _registered_tables_t.c.mv_persist,  # REQ-965
                         _registered_tables_t.c.mv_primary_key,  # REQ-970
                         _registered_tables_t.c.mv_incremental,  # REQ-969
+                        _registered_tables_t.c.mv_rebuild_every,  # REQ-2249
                         _registered_tables_t.c.mv_calendar,  # REQ-962
                         _registered_tables_t.c.mv_grain,  # REQ-962/1168
                         _registered_tables_t.c.mv_allowed_lateness,  # REQ-961
@@ -314,6 +315,7 @@ async def _register_user_views_in_state(
                             persist=_vr.get("mv_persist") or "replace",  # REQ-965
                             primary_key=list(_vr.get("mv_primary_key") or []),  # REQ-970
                             incremental=bool(_vr.get("mv_incremental")),  # REQ-969
+                            rebuild_every=_vr["mv_rebuild_every"],  # REQ-2249
                             calendar=_vr.get("mv_calendar"),  # REQ-962
                             grain=_vr.get("mv_grain"),  # REQ-962/1168
                             allowed_lateness=float(
@@ -347,6 +349,7 @@ async def _register_user_views_in_state(
                     _existing.persist = _vr.get("mv_persist") or "replace"  # REQ-965
                     _existing.primary_key = list(_vr.get("mv_primary_key") or [])  # REQ-970
                     _existing.incremental = bool(_vr.get("mv_incremental"))  # REQ-969
+                    _existing.rebuild_every = _vr["mv_rebuild_every"]  # REQ-2249
                     _existing.calendar = _vr.get("mv_calendar")  # REQ-962
                     _existing.grain = _vr.get("mv_grain")  # REQ-962/1168
                     _existing.allowed_lateness = float(

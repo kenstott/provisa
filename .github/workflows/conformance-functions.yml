@@ -2,11 +2,16 @@ name: Conformance (functions)
 
 # REQ-2167 (THE GOAL IS THE GUARANTEED LIST), REQ-2171 (AN ANSWER THAT DIFFERS IS REFUSED, EXACT OR
 # EQUIVALENT, RESULTS ARE BY ENGINE): which pg_catalog functions work today, per federation engine.
-# Each overload has a result on each engine: exact, equivalent under a written rule, refused by name
-# or differs. Nothing adds the engines up. Measurement only: it writes no function form. Its last
+# Each overload has a result on each engine: exact, equivalent under a written rule, within a stated
+# bound (REQ-2236: called with its types' edge values too, scripts/conformance/function_edges.py, it
+# raises where it cannot answer, as its polyfill grid row states), refused by name or differs.
+# Nothing adds the engines up. Measurement only: it writes no function form. Its last
 # step judges the merged result per engine against scripts/conformance/expected/functions.json
-# (scripts/conformance/baseline_gate.py): an unlisted wrong answer, passed below the committed
-# count, or engine errors or refusals above theirs fail the run. Separate from Conformance (pgwire), whose land gate reads its own report.
+# (scripts/conformance/baseline_gate.py), which holds base calls and edge calls apart: a wrong
+# answer or an engine error the file does not list fails the run, at a base call or at an edge
+# value, as do base calls right below the committed count and refusals by name above theirs. The
+# file is written from a run's merged result by scripts/conformance/functions_baseline.py.
+# Separate from Conformance (pgwire), whose land gate reads its own report.
 # Each overload with a sample value is called once more reading it from a column of
 # conformance.function_columns, which this workflow alone seeds and registers: a pass whose column
 # call fails passes on literals only, reported beside its result and changing none.
@@ -254,9 +259,10 @@ jobs:
           if-no-files-found: error
 
       # REQ-2167: the run judged per engine against scripts/conformance/expected/functions.json:
-      # a wrong answer not listed fails, and so does a listed one now right; passed may not fall
-      # below the committed count, engine errors and refusals by name may not rise above theirs;
-      # every listed engine has a full result.
+      # a wrong answer or an engine error not listed fails, at a base call or at an edge value, and
+      # so does a listed one now right or failing otherwise than listed; base calls right may not
+      # fall below the committed count, refusals by name may not rise above theirs; every listed
+      # engine has a full result. A run that passes prints its baseline.
       - name: Judge against the expected-failures list
         if: ${{ !cancelled() }}
         run: .venv/bin/python scripts/conformance/baseline_gate.py functions scripts/conformance/function_support.json

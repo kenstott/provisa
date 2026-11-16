@@ -230,6 +230,22 @@ def default_mail_watermark(model: Any, source_type: str | None) -> None:
         model.watermark_column = logs.LANDED_AT
 
 
+async def incremental_refused(input: TableInput) -> MutationResult | None:
+    """REQ-2249: a view calling a code command saved with its incremental setting on: refused when
+    its resolver's source declares no @change function for it, or it names no rebuild interval."""
+    from provisa.api.app import state
+    from provisa.mv.change_refresh import incremental_refusal
+
+    refused = await incremental_refusal(
+        state, input.table_name, input.view_sql, input.mv_incremental, input.mv_rebuild_every
+    )
+    if refused is None:
+        return None
+    return MutationResult(
+        success=False, message=str(refused), code=refused.code, params=refused.params
+    )
+
+
 async def register_table(
     info: StrawberryInfo, input: TableInput
 ) -> (
@@ -324,6 +340,9 @@ async def register_table(
         validate_preprocess(input.mv_preprocess)
     except ValueError as _pp_err:
         return MutationResult(success=False, message=str(_pp_err))
+    _incremental = await incremental_refused(input)  # REQ-2249
+    if _incremental is not None:
+        return _incremental
     # REQ-2066: the window a read of the table (a materialized view's) is judged by is parsed when
     # it is saved, as the load management save does; one that does not parse is refused here. ""
     # is no window (as scheduled_refresh reads it); a table naming no zone takes its source's, and
@@ -829,6 +848,7 @@ async def register_table(
             persist=input.mv_persist,  # REQ-965
             primary_key=list(input.mv_primary_key),  # REQ-970
             incremental=input.mv_incremental,  # REQ-969
+            rebuild_every=input.mv_rebuild_every,  # REQ-2249
             calendar=input.mv_calendar,  # REQ-962
             grain=input.mv_grain,  # REQ-962/1168
             allowed_lateness=input.mv_allowed_lateness,  # REQ-961

@@ -223,13 +223,13 @@ _SQLSTATE_BY_CLASS: dict[str, str] = {
 }
 
 
-def _sqlstate_of(exception: object) -> str:
+def _sqlstate_of(exception: BaseException) -> str:
     """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
     the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
     PostgreSQL's code for the engine error's class -- read through the chain of errors that
     carried it up (the pipeline re-raises a statement's failure from it) -- else XX000."""
     chain: list[BaseException] = []
-    seen = exception if isinstance(exception, BaseException) else None
+    seen: BaseException | None = exception
     while seen is not None and seen not in chain:
         chain.append(seen)
         seen = seen.__cause__ or seen.__context__
@@ -2978,6 +2978,37 @@ class _SourceFailed(Exception):
     them to the client's socket. The statement is answered with it; the connection goes on."""
 
 
+#: The encoder's errors of a value past what it writes, as PostgreSQL raises each (REQ-2236): its
+#: message -> the SQLSTATE and message. A year past 9999 is a timestamp's, which PostgreSQL holds
+#: to 294276 and pgwire sends of years 1 to 9999 only: raised by name.
+_UNSENDABLE = {
+    "money out of range": ("22003", "money out of range"),
+    "float too large to pack with f format": ("22003", "value out of range: overflow"),
+    "year is out of range": (
+        "22008",
+        "timestamp out of range for pgwire: a timestamp of years 1 to 9999 is sent",
+    ),
+    "days is out of range": ("22008", "interval out of range"),
+    # A date past PostgreSQL's (an engine's date32 holds more): date_in's error.
+    "date out of range": ("22008", "date out of range"),
+    "date value out of range": ("22008", "date out of range"),
+}
+
+
+def _unsendable(error: ValueError | OverflowError) -> PostgresError:
+    """The statement's error of a value the encoder cannot write (REQ-2236, amended 2026-11-15,
+    AN EDGE CASE RAISES): PostgreSQL's where it raises for the value; 22003 for any other overflow;
+    XX000 with the encoder's message for anything else. The encoder writes a batch only once it
+    is whole, so the client has every row before it and the connection goes on."""
+    said = str(error)
+    known = _UNSENDABLE.get(said)
+    if known is not None:
+        return PostgresError(*known)
+    if isinstance(error, OverflowError):
+        return PostgresError("22003", f"value out of range: {said}")
+    return PostgresError("XX000", f"a value pgwire cannot send: {said}")
+
+
 class _ReadData:
     """A result's ``ResultData``, each failure of its source as it is read a ``_SourceFailed``. A
     timeout is raised as it is: the request's deadline answers it (``ProvisaHandler._timed_out``)."""
@@ -3261,7 +3292,12 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             read = query_result if session is None else in_session_zone(query_result, session.zone)
             # An error the source raises as its rows are read is the statement's, answered to the
             # client by the message handler (_SourceFailed); one writing them is the connection's.
-            sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
+            # A value the encoder cannot write is the statement's error too (_unsendable): the
+            # source's errors are _SourceFailed, so a ValueError here is the encoder's.
+            try:
+                sent = super().send_data_rows(cast(BVQueryResult, _ReadResult(read)), limit)
+            except (ValueError, OverflowError) as error:
+                raise _unsendable(error) from error
             _annotate_request(db__row_count=sent)
         # REQ-1949: what the rows themselves showed -- the answer was cut at a row limit -- is
         # known when the drain ends, and goes as a NOTICE after the last row, ahead of the

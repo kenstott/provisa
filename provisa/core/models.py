@@ -237,6 +237,24 @@ class Cardinality(str, Enum):
 _SAFE_ID_PATTERN = re.compile(r"^[a-zA-Z][a-zA-Z0-9_-]*$")
 
 
+def source_object_name(value: str, what: str) -> str:
+    """``value`` as the name of a schema, table or column of a source, or why it is not one.
+
+    A source's names are its own: they hold spaces, dots, quotes and letters of any script, and
+    every statement that carries one writes it as a quoted identifier. What no source's name
+    holds is a control character (a NUL, a line break, a tab, an escape), so one is refused
+    here, where the name is registered."""
+    import unicodedata
+
+    for char in value:
+        if unicodedata.category(char) == "Cc":
+            raise ValueError(
+                f"{what} name {value!r} holds a control character (U+{ord(char):04X}); a "
+                "source's schema, table and column names hold none"
+            )
+    return value
+
+
 class SourceCdcConfig(BaseModel):  # REQ-824
     """Source-level CDC transport config (Debezium/Kafka), entered once per source.
 
@@ -1436,6 +1454,11 @@ class Column(
     gql_is_list: bool = False
     scope: str = "domain"  # "domain" | "listed" | "public" | "own-domain" (core/column_scope.py)
 
+    @field_validator("name")
+    @classmethod
+    def _a_sources_column_name(cls, v: str) -> str:
+        return source_object_name(v, "column")
+
     @model_validator(mode="before")
     @classmethod
     def _writes_are_granted_by_table(cls, data: Any) -> Any:  # REQ-2074
@@ -1878,6 +1901,16 @@ class Table(
     off_peak_tz: str | None = None  # None = inherit source off_peak_tz
     gql_naming_convention: str | None = None  # overrides source; None = inherit
 
+    @field_validator("schema_name")
+    @classmethod
+    def _a_sources_schema_name(cls, v: str) -> str:
+        return source_object_name(v, "schema")
+
+    @field_validator("table_name")
+    @classmethod
+    def _a_sources_table_name(cls, v: str) -> str:
+        return source_object_name(v, "table")
+
     @field_validator("gql_naming_convention")
     @classmethod
     def _preset_convention(cls, v: str | None) -> str | None:  # REQ-195, REQ-416
@@ -2046,6 +2079,9 @@ class Table(
     mv_persist: str = "replace"
     mv_primary_key: list[str] = []
     mv_incremental: bool = False
+    # REQ-2249: seconds between whole rebuilds of a view kept by its code resolver's @change
+    # function; required while it is kept incrementally. None = no clock.
+    mv_rebuild_every: int | None = None
     # REQ-2141: the glossary term this table's rows are instances of, by name. Resolved when the
     # configuration loads, after the terms it declares or derives exist; the table must have a
     # primary key.

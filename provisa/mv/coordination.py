@@ -68,8 +68,6 @@ async def ensure_mv_row(model: "Database", state: "Database", mv: "MVDefinition"
     Dialect-agnostic (the control plane is PostgreSQL in production, SQLite in tests): a plain
     INSERT whose duplicate-key IntegrityError — the row already exists, or a concurrent fleet
     instance seeded it first — is the success case and is passed over."""
-    from provisa.core import process_region
-
     definition = insert(_definitions).values(
         id=mv.id,
         # A join-pattern view's tables as it was bound to them (source/schema.table), so the
@@ -82,13 +80,20 @@ async def ensure_mv_row(model: "Database", state: "Database", mv: "MVDefinition"
         enabled=mv.enabled,
         custom_sql=mv.sql,
     )
-    build = insert(_mvt).values(mv_id=mv.id, region=process_region.region(), status="stale")
     from provisa.core import model_change
 
     # The definition is the model's: its seeding is a model change, whoever runs the first build
     # (a mutation's scope is joined; a draft view's preview or the scheduler opens its own).
     async with model_change.scope(f"seed view {mv.id}"):
         await _insert_if_absent(model, definition)
+    await ensure_build_row(state, mv)
+
+
+async def ensure_build_row(state: "Database", mv: "MVDefinition") -> None:
+    """Seed this region's build row of ``mv`` in its ``state`` store, if absent (idempotent)."""
+    from provisa.core import process_region
+
+    build = insert(_mvt).values(mv_id=mv.id, region=process_region.region(), status="stale")
     await _insert_if_absent(state, build)
 
 

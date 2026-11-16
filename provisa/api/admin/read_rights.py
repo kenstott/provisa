@@ -51,16 +51,12 @@ class DependentsReader:  # REQ-2152
 
     ``column(table_id, column)``: the caller is served that column (``None``: any column of the
     table); ``metric(row)``: the metric (its stored row) is granted to it; ``term(domains)``: a term
-    scoped to ``domains`` is readable to it; ``command(name)``: the command is assigned to it;
-    ``retired(domain_id)``: it may act on a retired object in that domain, as the retired listing
-    shows it one to restore (REQ-2248) -- a retired table is served to no one, so ``column``
-    never names it."""
+    scoped to ``domains`` is readable to it; ``command(name)``: the command is assigned to it."""
 
     column: Callable[[int, str | None], bool]
     metric: Callable[[dict], bool]
     term: Callable[[set[str]], bool]
     command: Callable[[str], bool]
-    retired: Callable[[str], bool]
 
 
 #: Provisa's own identity (REQ-2152's second exception: builds, fakes, checkers), which reads
@@ -70,14 +66,13 @@ SERVICE_READER = DependentsReader(
     metric=lambda row: True,
     term=lambda domains: True,
     command=lambda name: True,
-    retired=lambda domain_id: True,
 )
 
 
 def reader_for(info: Any) -> DependentsReader:
     """The reader of the caller behind a GraphQL ``info``: the columns its acting role is served,
     the metrics and commands granted to it, the terms its domains read."""
-    from provisa.api.admin.capabilities import allowed_domains_request, require_domain
+    from provisa.api.admin.capabilities import allowed_domains_request
     from provisa.api.admin.catalog_scope import catalog_scope
     from provisa.api.admin.schema_query import _sees_metric
     from provisa.api.app import state
@@ -102,20 +97,11 @@ def reader_for(info: Any) -> DependentsReader:
             if r in state.roles
         )
 
-    def _acts_in(domain_id: str) -> bool:
-        # REQ-2248: the retired listing's right (_retired_objects): the caller acts in the domain.
-        try:
-            require_domain(info, domain_id)
-        except PermissionError:
-            return False
-        return True
-
     return DependentsReader(
         column=scope.lists_column,
         metric=lambda row: _sees_metric(info, row),
         term=lambda domains: scope.whole or readable_term(allowed, domains),
         command=_command,
-        retired=_acts_in,
     )
 
 
@@ -146,17 +132,6 @@ async def _readable(conn: "Connection", reader: DependentsReader, dependent: "De
     )
 
     kind, key = dependent.ref.kind, dependent.ref.id
-    if kind == "table" and dependent.retired:
-        # REQ-2248: a retired table (one that still holds its domain or source) is named to a
-        # caller who may restore it.
-        from provisa.core.schema_org import registered_tables
-
-        row = (
-            await conn.execute_core(
-                select(registered_tables.c.domain_id).where(registered_tables.c.id == int(key))
-            )
-        ).fetchone()
-        return row is not None and reader.retired(row.domain_id)
     if kind == "table":
         return reader.column(int(key), None)
     if kind == "column":
@@ -282,9 +257,7 @@ def referred_text(lead: str, readable: "list[Dependent]") -> str:
     -- the refusal stands either way, naming and counting nothing else."""
     if not readable:
         return f"{lead} objects outside your grants"
-    return f"{lead}: " + ", ".join(
-        f"{'retired ' if d.retired else ''}{d.ref.kind} {d.name or d.ref.id}" for d in readable
-    )
+    return f"{lead}: " + ", ".join(f"{d.ref.kind} {d.name or d.ref.id}" for d in readable)
 
 
 async def refusal(

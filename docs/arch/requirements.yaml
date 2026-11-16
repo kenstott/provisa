@@ -45000,7 +45000,7 @@
   e2e_reason: Session lifecycle behavior (sign-in clearing stale state, logout cleanup, org membership
     reconciliation) is only verifiable through full sign-in/logout round-trips with server state changes.
 - id: REQ-1327
-  status: complete
+  status: in-progress
   group: 1. Access Governance & Security
   category: Authorization
   feature: roles-and-capabilities-platform-admins
@@ -45116,7 +45116,10 @@
     invite button is shown only when the roles being acted as hold user_management. No control changes the
     role picker on the member''s behalf. (Amended 2026-11-15, A QUERYING ROLE OPENS ON EXPLORE:) Maintainer
     2026-11-15. A role that holds the query right opens the app on Explore. Every other role opens on its
-    first page in bar order, as before.'
+    first page in bar order, as before. (Amended 2026-11-16, DELETING AN ORGANIZATION AND GRANTING ORG ADMIN
+    NEED ORG ADMIN:) Maintainer 2026-11-16 (''both need org_admin''; relayed by the audit session). Deleting
+    an organization and granting the org_admin role are done only by an org_admin of that organization;
+    the user_management capability alone allows neither.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -88818,7 +88821,7 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   - provisa-ui/src/__tests__/termGrounding.test.tsx
 - id: REQ-2131
   value: 'Process columns in batch with a Python or Node function, reducing round-trip overhead on large tables.'
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 4. Source Connectors
   category: Source Connectors
@@ -88872,7 +88875,12 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     The classification decides the plan; with nothing known in advance and no join to run first, the CTE
     runs as written. (Amended 2026-10-27, ONLY WHERE A TRANSFORM IS CALLED:) Maintainer 2026-10-27: the
     classification and the staging apply only to a statement that calls a column transform; any other statement,
-    CTEs and all, is compiled and run exactly as before, with no added pass.'
+    CTEs and all, is compiled and run exactly as before, with no added pass. (Amended 2026-11-16, A STORED
+    VIEW IS READ UNDER THE READER''S ROLE:) Maintainer 2026-11-16 (''the readers role is applied''; relayed
+    by the audit session), after the security audit found a stored view answered from its build with no
+    check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
+    and visibility hold as on any governed read. The stored rows are served as they are only to a reader
+    who sees everything.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -89018,17 +89026,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: commands-and-functions-tracked-functions
   priority: MUST
   type: behavioral
-  description: >-
-    A deployment setting, commands.allow_host_code (off by default), governs host code: the python
-    command kind (an in-process module:attr callable) and the script command kind (a subprocess on
-    the server's host). Both run with the server's full access to its memory, credentials, files and
-    network, so code that is malicious, buggy or greedy can read anything the server can, starve it
-    or take it down. A model entry holds only a reference to the code (module:attr or a path), so the
-    code does not travel with the model when it is promoted. While the setting is off, registering or
-    updating a command of either kind is refused, from the admin API and from a config file alike, and
-    calling an existing one is refused; one check makes both refusals. The setting is the operator's,
-    never an organization's, and has its field in Deployment settings. Code resolvers are the governed
-    alternative: sandboxed, pinned, and promoted with the model.
+  description: 'A deployment setting, commands.allow_host_code (off by default), governs host code: the
+    python command kind (an in-process module:attr callable) and the script command kind (a subprocess on
+    the server''s host). Both run with the server''s full access to its memory, credentials, files and network,
+    so code that is malicious, buggy or greedy can read anything the server can, starve it or take it down.
+    A model entry holds only a reference to the code (module:attr or a path), so the code does not travel
+    with the model when it is promoted. While the setting is off, registering or updating a command of either
+    kind is refused, from the admin API and from a config file alike, and calling an existing one is refused;
+    one check makes both refusals. The setting is the operator''s, never an organization''s, and has its
+    field in Deployment settings. Code resolvers are the governed alternative: sandboxed, pinned, and promoted
+    with the model. (Amended 2026-11-16, A FILE SOURCE''S PRODUCER COMMAND IS HOST CODE:) Lead 2026-11-16,
+    following the security audit (item C4) and this requirement''s own rule that the setting is the operator''s,
+    never an organization''s. A source''s producer command (REQ-861) is a subprocess on the server''s host,
+    so it is held to commands.allow_host_code like the script command kind: with the setting off, a source
+    carrying one is refused when it is saved, through the form, a configuration import or a configuration
+    file at start, and a stored one is not run.'
   use_case: >-
     An operator runs a server of many organizations without any of them, or a model promoted into
     it, being able to run code with the server's own access.
@@ -96794,3 +96806,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And an underwriter of another region sees none of these policies
 
     '
+- id: REQ-2251
+  status: proposed
+  target: 2026-Q3
+  group: 4. Source Connectors
+  category: Connector Abstraction
+  feature: federation-and-routing-engines
+  priority: SHOULD
+  type: structural
+  description: 'Maintainer 2026-11-16 (''i approve the arch suggestions''), on a review that found the
+    facts about a source type spread over hand-kept sets that core code consults by name. Each source
+    type has one descriptor, declared by the source''s own package, and core code asks the descriptor
+    and never names a type, so adding a source type needs no edit to core code. The descriptor declares:
+    the dialect; how the type is reached (its own driver, an API call, the engine only, landed); its driver,
+    adapter and loader; how it lands (a replica, materialize only, served tables); what it can write (the
+    path, the operations, whether rows are returned, the forms refused); whether it is a lake and whether
+    it travels in time; and the connection fields it takes. Behaviour that depends on the table or the
+    statement is a hook on the descriptor: the write operations a table allows, whether the type''s own
+    driver can answer a statement, whether a table is read once per statement, and introspection (schemas,
+    tables, columns). The descriptors are served from an endpoint and the UI reads its list of source
+    types, their fields and their sign-in from it, not from constants of its own. Two checks hold it:
+    every source type has a descriptor, and the compiler, the transpiler and the query pipeline contain
+    no comparison against a source type''s name. A connector stays per engine: a new type still needs
+    one connector for each engine that reaches it. It is reached in steps that each leave behaviour unchanged:
+    the descriptor as data, with every existing set generated from it and a test that the generated set
+    equals the hand-kept one; the hand-kept sets removed; the type branches moved into hooks one at a
+    time, each with its existing tests; the endpoint and the UI; the two checks.'

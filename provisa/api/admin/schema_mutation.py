@@ -3934,8 +3934,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def restore_model_object(
         self, info: StrawberryInfo, kind: str, key: str
     ) -> MutationResult:  # REQ-2248
-        """Restore a retired table, column, relationship, tag or metric (``kind``) named by
-        ``key`` as the retired listing names it: the same object, served again."""
+        """Restore a retired source, domain, table, column, relationship, tag or metric
+        (``kind``) named by ``key`` as the retired listing names it: the same object, served
+        again; a source or domain at the id it had, with its tables."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)
@@ -4574,6 +4575,11 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             validate_preprocess(input.mv_preprocess)
         except ValueError as _pp_err:
             return MutationResult(success=False, message=str(_pp_err))
+        from provisa.api.admin.schema_mutation_ops import incremental_refused
+
+        _incremental = await incremental_refused(input)  # REQ-2249
+        if _incremental is not None:
+            return _incremental
         # REQ-2066: the window a read of the table (a materialized view's) is judged by is parsed when
         # it is saved, as the load management save does; one that does not parse is refused here. ""
         # is no window (as scheduled_refresh reads it); a table naming no zone takes its source's, and
@@ -5000,6 +5006,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     persist=input.mv_persist,  # REQ-965
                     primary_key=list(input.mv_primary_key),  # REQ-970
                     incremental=input.mv_incremental,  # REQ-969
+                    rebuild_every=input.mv_rebuild_every,  # REQ-2249
                     calendar=input.mv_calendar,  # REQ-962
                     grain=input.mv_grain,  # REQ-962/1168
                     allowed_lateness=input.mv_allowed_lateness,  # REQ-961
