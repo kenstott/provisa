@@ -186,14 +186,7 @@ df = provisa_client.query(<span class="c-str">"""
     JOIN orders o   ON o.customer_id = c.id
     JOIN queries t  ON t.actor = c.email
     WHERE o.total &gt; 1000
-"""</span>, role=<span class="c-str">"analyst"</span>)
-
-<span class="c-comment"># The same call takes Cypher or GraphQL</span>
-df = provisa_client.query(<span class="c-str">"""
-    MATCH (c:Customer)-[:PLACED]-&gt;(o:Order)
-    WHERE o.total &gt; 1000
-    RETURN c.name, o.total
-"""</span>)</code></pre>
+"""</span>, role=<span class="c-str">"analyst"</span>)</code></pre>
             </div>
 
             <div class="proto-panel" role="tabpanel" id="panel-odata" aria-labelledby="tab-odata" hidden>
