@@ -2240,6 +2240,9 @@ async def reset_model(conn: "Connection") -> None:  # REQ-1919
         # A calendar is removed by name, every version at once (integrity.discard).
         ("calendar", await _ids(select(calendars.c.name).distinct())),
     ]
+    # REQ-2248 (ruling 2026-11-15): a demo organisation's rebuild from its configuration is a
+    # built-in seed, so it DELETES its model rather than retiring it; the apply that follows
+    # declares the same objects again. Nothing else deletes a person's model objects.
     for kind, idents in order:
         for ident in idents:
             if kind == "table":

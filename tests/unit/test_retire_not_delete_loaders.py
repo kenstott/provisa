@@ -10,7 +10,7 @@
 
 """A deploy, an undo or the load of a commit that lacks an object's file retires it (REQ-2248,
 amended 2026-11-15: "The config loader, metric removal and deploy/undo retire a model object;
-they no longer delete it")."""
+they no longer delete it"), and so does a person's delete of a glossary term."""
 
 # Requirements: REQ-2248
 
@@ -26,8 +26,17 @@ from provisa.core.database import Database
 from provisa.core.env_deploy import land
 from provisa.core.env_project import project
 from provisa.core.models import Column, Table
+from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import domains, registered_tables, roles, sources, table_columns
+from provisa.core.schema_org import (
+    domains,
+    glossary_term_edges,
+    glossary_terms,
+    registered_tables,
+    roles,
+    sources,
+    table_columns,
+)
 from tests.unit.gate_identity import serve_every_column
 
 SCHEMA = "org_default"
@@ -124,3 +133,27 @@ async def test_an_undo_to_a_commit_holding_the_file_restores_the_same_table(plan
         after = await _orders(conn)
     assert after["id"] == before["id"]
     assert after["retired"] is False
+
+
+async def test_deleting_a_glossary_term_retires_it_with_who_and_why(plane):
+    """A person's delete of a term retires it through retire_term (REQ-2248): the row, its name
+    and its edges are kept; a second delete finds nothing to do."""
+    async with model_change.scope("delete", actor=lambda: "ada"), plane.acquire() as conn:
+        party = await glossary_repo.create_abstract_term(conn, "party", domains={"sales"})
+        person = await glossary_repo.create_abstract_term(conn, "person", domains={"sales"})
+        await glossary_repo.add_edge(conn, person, party, "KIND_OF")
+        assert await glossary_repo.delete_term(conn, party, reason="merged into person") is True
+        assert await glossary_repo.delete_term(conn, party) is False
+        row = dict(
+            (await conn.execute_core(select(glossary_terms).where(glossary_terms.c.id == party)))
+            .one()
+            ._mapping
+        )
+        edges = (
+            await conn.execute_core(
+                select(glossary_term_edges.c.from_term_id, glossary_term_edges.c.to_term_id)
+            )
+        ).fetchall()
+    assert (row["name"], row["retired"], row["status_by"]) == ("party", True, "ada")
+    assert row["status_reason"] == "merged into person"
+    assert (person, party) in [tuple(e) for e in edges]
