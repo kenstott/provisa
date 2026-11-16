@@ -20255,7 +20255,15 @@
   feature: commands-and-functions-scheduled-triggers
   priority: SHOULD
   type: behavioral
-  description: 'Scheduled triggers: time-based execution of registered webhooks or internal functions. APScheduler in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background task pattern.'
+  description: 'Scheduled triggers: time-based execution of registered webhooks or internal functions. APScheduler
+    in-process, cron expression syntax. Config per trigger in `provisa.yaml`. Reuses existing async background
+    task pattern. (Amended 2026-11-16, A SCHEDULED TRIGGER BELONGS TO THE ORGANIZATION:) Maintainer 2026-11-16,
+    on the security audit''s finding that a trigger keeps running after its author loses the role: by design.
+    A scheduled trigger is part of the organization''s model; it sits with tables, views and webhooks as
+    a saved data operation the organization depends on. The right to create or change one is checked when
+    it is saved, against whoever saves it; it does not end and is not re-checked when its author''s role
+    changes or the author leaves, because a staffing change must not silently stop a pipeline. This is not
+    the rule for a client''s own sink or stream (REQ-812), which ends with the role that started it.'
   use_case: 'Hasura v2 parity: scheduled triggers run webhooks or functions on a cron schedule without external cron infra.'
   code:
   - provisa/compiler/
@@ -25088,19 +25096,26 @@
   stakeholders:
   - data-engineer
 - id: REQ-812
-  status: complete
+  status: in-progress
   group: 8. Client Access & Protocols
   category: API & Integration
   feature: subscriptions-and-live-queries-sinks
   priority: SHOULD
   type: behavioral
-  description: The `X-Provisa-Sink` request header on a subscription request redirects the subscription's
-    change-event output to a Kafka sink instead of the SSE response stream. subscription_sse.py parses
-    the header and launches a Kafka sink consumer for the subscription, returning 202 Accepted rather
-    than an open SSE stream. (Amended 2026-09-30, the operator's cluster only:) The X-Provisa-Sink header's
-    broker, like @sink(broker:), may only repeat the operator's KAFKA_BOOTSTRAP_SERVERS; any other broker,
-    or a sink with no operator cluster configured, is rejected with SubscriptionFloorViolation (REQ-030).
-    A malformed header is no longer silently ignored.
+  description: 'The `X-Provisa-Sink` request header on a subscription request redirects the subscription''s
+    change-event output to a Kafka sink instead of the SSE response stream. subscription_sse.py parses the
+    header and launches a Kafka sink consumer for the subscription, returning 202 Accepted rather than an
+    open SSE stream. (Amended 2026-09-30, the operator''s cluster only:) The X-Provisa-Sink header''s broker,
+    like @sink(broker:), may only repeat the operator''s KAFKA_BOOTSTRAP_SERVERS; any other broker, or a
+    sink with no operator cluster configured, is rejected with SubscriptionFloorViolation (REQ-030). A malformed
+    header is no longer silently ignored. (Amended 2026-11-16, A SINK OR STREAM ENDS WITH ITS OWNER''S ROLE;
+    SINKS ARE CAPPED:) Maintainer 2026-11-16. A client-started sink ends when its owner no longer holds
+    the role it was started under, and so does an open subscription stream: neither outlives the right that
+    started it. The number of running sinks one principal may hold is capped by an operator setting, with
+    its field in the settings UI; a request past the cap is refused. The cap''s default value is not settled.
+    (Amended 2026-11-16, THE SINK CAP DEFAULTS TO 5:) Maintainer 2026-11-16. The cap on running sinks per
+    principal defaults to 5; this settles the default left open in A SINK OR STREAM ENDS WITH ITS OWNER''S
+    ROLE; SINKS ARE CAPPED.'
   use_case: An X-Provisa-Sink header lets a client wire a live subscription directly into a Kafka topic
     for downstream stream processing without holding an SSE connection.
   code:
@@ -41504,7 +41519,7 @@
   - provisa-ui/src/__tests__/LoginPage.test.tsx
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1263
-  status: complete
+  status: in-progress
   since: 2026-08
   group: 2. Authentication & Identity
   category: API Token Management
@@ -41515,12 +41530,22 @@
     (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored
     hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity
     via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing
-    per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name
-    from the user profile — so audit and usage reporting attribute the act to the person, identically
-    to an interactive session; the token's own label is carried as a separate claim recording WHICH of
-    that person's credentials was used. Token management is self-service on the user's own profile, where
-    the secret is displayed exactly once at issuance and the listing shows only a display prefix and lifecycle
-    timestamps.
+    per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name from
+    the user profile — so audit and usage reporting attribute the act to the person, identically to an interactive
+    session; the token's own label is carried as a separate claim recording WHICH of that person's credentials
+    was used. Token management is self-service on the user's own profile, where the secret is displayed
+    exactly once at issuance and the listing shows only a display prefix and lifecycle timestamps. (Amended
+    2026-11-16, A TOKEN'S ROLE NARROWS IT:) Maintainer 2026-11-16 ('should narrow'). A personal access token
+    that names a role acts only as that role, on every transport and in both assignment modes; it never
+    reaches another role its owner holds. A token may name only a role its issuer holds when it is issued
+    (REQ-2076). Whether a token's scopes are enforced or removed, and what each scope would allow, is not
+    settled. (Amended 2026-11-16, A TOKEN'S SCOPES ARE THE ROLES IT MAY USE:) Maintainer 2026-11-16 ('scope
+    is always a role name'; 'the PAT creator must assign specific roles'). This completes A TOKEN'S ROLE
+    NARROWS IT, whose last sentence (scopes not settled) and whose single named role are [SUPERSEDED by
+    this amendment]. A token carries one non-empty list of role names, its scopes; the separate single-role
+    field is gone. The token acts only as a role in its scopes. Each scope must be a role the issuer holds
+    when the token is issued and still holds when it is used; a token with no scopes is not issued. The
+    token form picks the roles with the standard multi-select.
   use_case: Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate
     against all Provisa protocols using the same role/scope model as browser auth, eliminating the need
     for separate credential management per client type.
@@ -82697,7 +82722,17 @@
     509: every demo must open and work, and that gates a release. The time a demo takes to open does not:
     the bound on a demo opened again is 20 s on the server, in place of the 11 s accepted on 2026-11-03,
     which was measured on the embedded PostgreSQL and is exceeded in the release''s core lane (9.5 to 13.4
-    s against the compose PostgreSQL). Making the open faster continues as ordinary work.'
+    s against the compose PostgreSQL). Making the open faster continues as ordinary work. (Amended 2026-11-16,
+    WEBHOOKS AND SCHEDULED TRIGGERS ARE HELD TO PUBLIC DESTINATIONS:) Maintainer 2026-11-16 (''MUST be public
+    address'', ''except in local dev mode''). On a server of many organizations the address a webhook action
+    or a scheduled trigger calls is held to public destinations exactly as a source''s is: when it is saved
+    and at each connection, judged on the resolved address, redirects included. A single-organization install,
+    a local development start among them, is not held, as it is not for sources: calling its own internal
+    services is the use case there. (Amended 2026-11-16, SYNCING AND METADATA-EXPORT ENDPOINTS ARE HELD
+    TO PUBLIC DESTINATIONS:) Maintainer 2026-11-16 (relayed by the audit session). On a server of many organizations
+    the endpoint a catalog sync or a metadata export sends to is held to public destinations as a webhook
+    is, although it is not a source: when it is saved and at each call. A single-organization install is
+    not held.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true
@@ -88906,28 +88941,33 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: change-events-and-streams-derived-tables
   priority: SHOULD
   type: behavioral
-  description: >-
-    The Python preflight check (REQ-1165) can call Provisa's services, the provisa_services module a
-    code source's worker gets (REQ-2106: llm, vectors, http, cache, settings), plus a dq service that
-    finds everything about the data quality of any dataset or data product. For a dataset, dq returns
-    the checker tables (REQ-1443) scanning it, the description and contract of each, the latest run of
-    each (its outcome, when it ran and its failing checks) and the product each is assigned to. It
-    also returns the dataset's profiles (REQ-1934): the profile result tables registered for it and the
-    latest run of each, so a check can compare this load against the dataset's profiled history (a row
-    count, null rate or distribution that moved). For a data product, it returns its promises, expectations, partner DQ and orphans as REQ-1443 defines
-    them. Asked from a view's preflight, each result also says how it relates to the view's product:
-    promise, expectation or partner DQ. The dq service is also offered to code sources through the same
-    module, and what it returns is what the meta domain shows the caller. A materialized view has a Hold on failing checks option. It is
-    a built-in Python preflight that calls dq: a refresh is aborted, and the view keeps its previous
-    copy, if the latest run of any checker table scanning one of the view's inputs failed. The inputs
-    are the view's nearest physical datasets, as REQ-2126 finds them. All checker tables scanning an
-    input count, whatever product they are assigned to, since a failing check on an input means the
-    view would land data built from it. The abort's reason names each failing checker table and the
-    input it scans, and the failure propagates downstream as any preflight abort does (REQ-941). The
-    option shows the preflight code it applies, and a steward can copy it into the view's own
-    preflight to change it. It combines with any preflight the view already declares: the refresh
-    lands only if both continue. Service calls from a preflight are metered and audited as for a code
-    source; they run in the server process, without a code source's sandbox.
+  description: 'The Python preflight check (REQ-1165) can call Provisa''s services, the provisa_services
+    module a code source''s worker gets (REQ-2106: llm, vectors, http, cache, settings), plus a dq service
+    that finds everything about the data quality of any dataset or data product. For a dataset, dq returns
+    the checker tables (REQ-1443) scanning it, the description and contract of each, the latest run of each
+    (its outcome, when it ran and its failing checks) and the product each is assigned to. It also returns
+    the dataset''s profiles (REQ-1934): the profile result tables registered for it and the latest run of
+    each, so a check can compare this load against the dataset''s profiled history (a row count, null rate
+    or distribution that moved). For a data product, it returns its promises, expectations, partner DQ and
+    orphans as REQ-1443 defines them. Asked from a view''s preflight, each result also says how it relates
+    to the view''s product: promise, expectation or partner DQ. The dq service is also offered to code sources
+    through the same module, and what it returns is what the meta domain shows the caller. A materialized
+    view has a Hold on failing checks option. It is a built-in Python preflight that calls dq: a refresh
+    is aborted, and the view keeps its previous copy, if the latest run of any checker table scanning one
+    of the view''s inputs failed. The inputs are the view''s nearest physical datasets, as REQ-2126 finds
+    them. All checker tables scanning an input count, whatever product they are assigned to, since a failing
+    check on an input means the view would land data built from it. The abort''s reason names each failing
+    checker table and the input it scans, and the failure propagates downstream as any preflight abort does
+    (REQ-941). The option shows the preflight code it applies, and a steward can copy it into the view''s
+    own preflight to change it. It combines with any preflight the view already declares: the refresh lands
+    only if both continue. Service calls from a preflight are metered and audited as for a code source;
+    they run in the server process, without a code source''s sandbox. (Amended 2026-11-16, ON A SERVER OF
+    MANY ORGANIZATIONS A PYTHON PREFLIGHT RUNS IN THE SANDBOX:) Maintainer 2026-11-16 (''Sandbox them''),
+    after the security audit showed a hook the purity check accepts reaching the server''s own globals.
+    On a server of many organizations a Python preflight runs in the code source''s sandbox, never in the
+    server process; the rule that preflights run in the server process without a sandbox holds only for
+    a single-organization install, where the author is the customer''s own steward. The purity check stays
+    as a first refusal, not as the boundary.'
   use_case: >-
     A product owner stops a gold view from refreshing on bad input with one switch, instead of writing
     a preflight query over checker results, and still has the full preflight for every other condition.
