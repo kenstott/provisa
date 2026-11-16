@@ -266,6 +266,16 @@ def test_a_sentinel_marker_outside_the_folder_is_not_read(held):
     assert _code(refused.value) == _REFUSED
 
 
+def test_a_jdbc_sources_file_url_outside_the_folder_is_refused(held):
+    """A JDBC source's file is named by its URL, checked where it is saved and where it is
+    connected to (``jdbc_source.url``)."""
+    from provisa.jdbc_source.url import FileUrlRefused, check
+
+    with pytest.raises(FileUrlRefused):
+        check(f"sqlite:///{held.outside}/secret.json")
+    check("sqlite:///{files}/own.json")
+
+
 # --- what still works ---------------------------------------------------------------------------
 
 
