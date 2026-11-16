@@ -32,6 +32,7 @@ import type {
   DqDryRunVars,
   Relationship,
   MutationResult,
+  CodeResolver,
   ColumnDependentsResult,
   UserSummary,
 } from "../types/admin";
@@ -68,6 +69,10 @@ import {
   TableMetricsQuery as TABLE_METRICS_QUERY,
   RelationshipsQuery as RELATIONSHIPS_QUERY,
   AllRelationshipsQuery as ALL_RELATIONSHIPS_QUERY,
+  CodeResolversQuery as CODE_RESOLVERS_QUERY,
+  CreateCodeResolver,
+  UpdateCodeResolver,
+  RetireCodeResolver,
   AvailableSchemas,
   AvailableTables,
   KaggleTokenValid,
@@ -569,6 +574,36 @@ export function useDeleteRelationship() {
       return (result.data?.deleteRelationship ?? { success: false, message: "" }) as MutationResult;
     },
     loading,
+  };
+}
+
+/** REQ-2249: the code resolver sets in service, and saving, changing and retiring one. Each
+ * act changes three objects (a bridge view and two relationships), so the lists are read again. */
+export function useCodeResolvers() {
+  const reread = {
+    refetchQueries: [{ query: RELATIONSHIPS_QUERY }, { query: CODE_RESOLVERS_QUERY }],
+    awaitRefetchQueries: true,
+  };
+  const { data, loading } = useQuery<{ codeResolvers: CodeResolver[] }>(CODE_RESOLVERS_QUERY);
+  const [create] = useMutation<{ createCodeResolver: MutationResult }>(CreateCodeResolver, reread);
+  const [update] = useMutation<{ updateCodeResolver: MutationResult }>(UpdateCodeResolver, reread);
+  const [retire] = useMutation<{ retireCodeResolver: MutationResult }>(RetireCodeResolver, reread);
+  const failed: MutationResult = { success: false, message: "" };
+  return {
+    codeResolvers: data?.codeResolvers ?? [],
+    loading,
+    saveCodeResolver: async (input: CodeResolver, isNew: boolean): Promise<MutationResult> => {
+      if (isNew) {
+        const result = await create({ variables: { input } });
+        return result.data?.createCodeResolver ?? failed;
+      }
+      const result = await update({ variables: { input } });
+      return result.data?.updateCodeResolver ?? failed;
+    },
+    retireCodeResolver: async (id: string): Promise<MutationResult> => {
+      const result = await retire({ variables: { id } });
+      return result.data?.retireCodeResolver ?? failed;
+    },
   };
 }
 

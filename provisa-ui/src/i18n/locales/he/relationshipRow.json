@@ -43,6 +43,11 @@
     "parameterNotFed": "לא מוזן",
     "sameEntity": "אותה ישות",
     "sameEntityHint": "השורות שהוא מחבר הן אותו דבר: מונח אחד מעגן את שתי הטבלאות, 1:1 לפי מפתחות",
-    "cardinalityOneToOne": "אחד-לאחד"
+    "cardinalityOneToOne": "אחד-לאחד",
+    "resolverNote": "חלק ממפענח הקוד {{resolver}}. תצוגת ההתאמות שלו ושלושת הקשרים שלו משתנים ומוצאים משימוש יחד.",
+    "changeResolver": "שינוי מפענח קוד",
+    "retireResolver": "הוצאת מפענח קוד משימוש",
+    "retireResolverTitle": "להוציא משימוש את מפענח הקוד {{resolver}}?",
+    "retireResolverConsequence": "תצוגת ההתאמות שלו ושלושת הקשרים שלו מוצאים משימוש יחד. השמות שלהם נשארים תפוסים."
   }
 }

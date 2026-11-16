@@ -484,7 +484,18 @@
       "jdbc_invalid": "Quelle {{source}}: {{error}}",
       "jdbc_file_refused": "Quelle {{source}}: Die URL nennt {{path}}, das dieser Server für die Organisation nicht öffnen darf.",
       "jdbc_options_refused": "Quelle {{source}}: Die URL dieser Organisation darf die Treiberoption {{options}} nicht angeben.",
-      "jdbc_driver_refused": "Quelle {{source}}: Ein kundeneigener JDBC-Treiber läuft als Code in Provisas eigener JVM, was nur eine selbst gehostete Installation erlaubt."
+      "jdbc_driver_refused": "Quelle {{source}}: Ein kundeneigener JDBC-Treiber läuft als Code in Provisas eigener JVM, was nur eine selbst gehostete Installation erlaubt.",
+      "code_resolver_part": "{{kind}} „{{name}}“ gehört zum Code-Resolver „{{resolver}}“: dort ändern oder stilllegen",
+      "code_resolver_no_key": "Die {{end}}-Tabelle „{{table}}“ hat keine Spalte „{{column}}“",
+      "code_resolver_no_reader": "Keine Rolle sieht beide Schlüssel, daher könnte keine Rolle einen Treffer sehen",
+      "code_resolver_unknown": "Kein Befehl „{{function}}“ ist registriert",
+      "code_resolver_refused": "Code-Resolver „{{function}}“: {{reason}}",
+      "code_resolver_bad_id": "Die Code-Resolver-ID „{{resolver}}“ ist kein Name: Kleinbuchstaben, Ziffern und Unterstriche, beginnend mit einem Buchstaben",
+      "code_resolver_taken": "Code-Resolver „{{resolver}}“ existiert bereits",
+      "code_resolver_not_found": "Code-Resolver „{{resolver}}“ nicht gefunden",
+      "code_resolver_saved": "Code-Resolver „{{resolver}}“ gespeichert",
+      "code_resolver_retired": "Code-Resolver „{{resolver}}“ stillgelegt",
+      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt"
     },
     "secrets": {
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",

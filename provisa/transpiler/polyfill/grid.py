@@ -232,16 +232,20 @@ class Grid:
             for name in _called(notation.pattern(rule.pattern))
         )
 
-    @property
-    def mentions(self) -> tuple[str, ...]:
-        """What a statement a rule of no pattern may rewrite holds, where it names no function."""
+    def mentions_on(self, dialect: str) -> tuple[str, ...]:
+        """What a statement a rule of no pattern may rewrite on ``dialect`` holds, where it names no
+        function: the mentions of the rewrites in the dialect's column, or of every rewrite on a
+        dialect with no column. A rewrite of another column leaves the statement as it is here."""
+        column = column_of(dialect)
         return tuple(
             sorted(
                 {
                     form.mentions
-                    for _, rule in self._rewrites
-                    for form in rule.forms.values()
-                    if isinstance(form, Rewrite) and form.mentions
+                    for _, rule in (*self._first, *self._rewrites)
+                    for of, form in rule.forms.items()
+                    if isinstance(form, Rewrite)
+                    and form.mentions
+                    and (column is None or of == column)
                 }
             )
         )
