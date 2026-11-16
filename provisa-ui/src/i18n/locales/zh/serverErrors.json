@@ -161,10 +161,15 @@
       "semantics_unavailable": "无法运行语义推断：分配给关系推断的模型 {{model}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "table_id_required": "表范围需要 table_id",
-      "table_unreadable": "发现无法读取表 {{table}}：{{reason}}。请将其从所选表中排除，或修正后重试。",
       "unknown_source_type": "未知数据源类型：{{type}}",
       "vendor_has_no_key": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
+      "answer_unreadable": "模型的回答中没有可读取的列表。"
+    },
+    "llm": {
+      "request_failed": "对模型的请求失败：{{reason}}",
+      "no_answer_in_time": "模型未在 {{seconds}} 秒内作出回答。",
+      "empty_answer": "模型未返回任何文本。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
@@ -837,6 +842,10 @@
       "change_key_missing": "{{function}} 返回了缺少键列 {{column}} 的行",
       "change_key_repeated": "{{function}} 在一个结果中两次返回了键 {{key}}",
       "change_cursor_backwards": "{{function}} 的游标发生倒退：返回了 {{returned}}，早于已存储的 {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} 的预检未运行：在此组织中它只在受限进程中运行，而该进程无法启动（{{reason}}）。",
+      "confined_failed": "{{subject}} 的预检未返回结论：其受限进程已先行结束（{{reason}}）。"
     }
   }
 }

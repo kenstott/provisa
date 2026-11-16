@@ -38,8 +38,9 @@ if TYPE_CHECKING:
 
 RUNNING, DONE, STOPPED, FAILED = "running", "done", "stopped", "failed"
 
-#: A running run that has not moved on for this long has failed: a step is one model call, tried
-#: on the model and on its fallback, each held to CALL_TIMEOUT_S (as a term scan's).
+#: A running run that has not moved on for this long has failed. A request in flight counts as
+#: moving on: the worker says it is still going every provisa.discovery.run.STILL_GOING_EVERY_S,
+#: however long the request may take (provisa.llm.client, ``call_timeout_s``).
 STALLED_AFTER = timedelta(seconds=2 * CALL_TIMEOUT_S + 60)
 RESTARTED = "the server restarted while discovery was running; run it again"
 STALLED = f"discovery made no progress for {STALLED_AFTER.total_seconds():g} seconds; run it again"

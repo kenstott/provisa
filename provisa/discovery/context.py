@@ -19,6 +19,10 @@ and no sample values. The prompt states that a shared pii tag alone is weak evid
 A table that requires a parameter is never read (REQ-1986): its context names its required
 parameters with their types and says its values were not read, and its columns send the class
 ``not_read`` and no sample values.
+
+A sample value is sent in at most :data:`SAMPLE_VALUE_CHARS` characters as the request writes it
+(:func:`sample_text`), so what a column can send has a known greatest length
+(:func:`widest`): the request count before Run is computed from it, without reading a value.
 """
 
 # Requirements: REQ-413, REQ-1986
@@ -27,9 +31,16 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
+from dataclasses import replace
 from typing import Any
 
-from provisa.discovery.columns import NOT_READ, ColumnFacts, TableFacts
+from provisa.discovery.columns import NOT_READ, UNKNOWN, ColumnFacts, TableFacts
+
+#: The characters one sample value takes in a request, as written there (escapes counted, its
+#: quotes not): a longer value is cut to fit. A uuid and a timestamp fit whole.
+SAMPLE_VALUE_CHARS = 64
+#: The distinct sample values sent of a column.
+SAMPLE_VALUES = 5
 
 
 def table_context(table: TableFacts) -> dict[str, Any]:
@@ -69,6 +80,37 @@ def column_context(column: ColumnFacts) -> dict[str, Any]:
 
 def _dump(value: Any) -> str:
     return json.dumps(value, separators=(",", ":"), ensure_ascii=False)
+
+
+def sample_text(value: Any) -> str:
+    """A sample value as it is sent: its text, cut so that the request writes it in at most
+    :data:`SAMPLE_VALUE_CHARS` characters."""
+    text = str(value)[:SAMPLE_VALUE_CHARS]
+    while len(_dump(text)) > SAMPLE_VALUE_CHARS + 2:
+        text = text[:-1]
+    return text
+
+
+def widest(column: ColumnFacts) -> ColumnFacts:
+    """``column`` with the longest classes and sample values a run could send for it, whatever
+    its table holds: every kind of the classifier's catalogue and no values (one of them is
+    sensitive), or the kinds that are not sensitive and :data:`SAMPLE_VALUES` values of
+    :data:`SAMPLE_VALUE_CHARS` characters, whichever is longer. A column of a table that is never
+    read sends what it has: nothing is read to add to it."""
+    if NOT_READ in column.classes:
+        return column
+    from provisa.profiler.classify import catalogue
+
+    kinds = catalogue()
+    every = replace(column, classes=tuple(sorted(k.id for k in kinds)), sensitive=True, samples=())
+    plain = tuple(sorted(k.id for k in kinds if not k.sensitive)) or (UNKNOWN,)
+    valued = replace(
+        column,
+        classes=plain,
+        sensitive=False,
+        samples=tuple("x" * SAMPLE_VALUE_CHARS for _ in range(SAMPLE_VALUES)),
+    )
+    return max(every, valued, key=lambda c: len(_dump(column_context(c))))
 
 
 def block(table: TableFacts, columns: Sequence[ColumnFacts]) -> dict[str, Any]:

@@ -12,6 +12,8 @@
 // source is saved, the panel opens on Register tables: Register Table with the source already
 // chosen, the same form as the Tables page's, its tables that need no input already picked, so
 // one action registers them all. Once they are registered, the panel shows Your data. Skipping a step closes it.
+// Registering tables is the end of creating the source: `onRegistered` says so as it happens, and
+// the page leaves the edit the new source opened in, so closing Your data shows the source read.
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -30,7 +32,15 @@ import { YourDataStep } from "../tables/YourDataStep";
 import { registeredOf, type Registered } from "../tables/useManyTables";
 import { PanelWorking } from "./PanelWorking";
 
-export function AfterSaveSteps({ sourceId, onClose }: { sourceId: string; onClose: () => void }) {
+export function AfterSaveSteps({
+  sourceId,
+  onRegistered,
+  onClose,
+}: {
+  sourceId: string;
+  onRegistered: () => void;
+  onClose: () => void;
+}) {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { domainAccess, actingRoles } = useAuth();
@@ -67,7 +77,10 @@ export function AfterSaveSteps({ sourceId, onClose }: { sourceId: string; onClos
         suggestTableAlias={suggestTableAlias}
         initialSourceId={sourceId}
         pickReady
-        onRegisteredMany={(outcomes) => setRegistered(registeredOf(outcomes))}
+        onRegisteredMany={(outcomes) => {
+          setRegistered(registeredOf(outcomes));
+          onRegistered();
+        }}
         // A table registered on its own: its settings follow in the table editor, as on the
         // Tables page.
         onContinue={(registration) => navigate("/tables", { state: { createTable: registration } })}

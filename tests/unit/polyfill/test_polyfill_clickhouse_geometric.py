@@ -30,11 +30,6 @@ from provisa.transpiler.polyfill import GRID, geometric, trino
 from provisa.transpiler.transpile import transpile
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
     ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     return value

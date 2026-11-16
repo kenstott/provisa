@@ -161,10 +161,15 @@
       "semantics_unavailable": "セマンティクスを実行できません: リレーションシップ推論に割り当てられたモデル {{model}} にキーがありません。管理 > AIモデルで設定してください。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "table_id_required": "table スコープには table_id が必要です",
-      "table_unreadable": "検出はテーブル {{table}} を読み取れません: {{reason}}。選択したテーブルから外すか、修正してからもう一度お試しください。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_has_no_key": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
-      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
+      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。",
+      "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。"
+    },
+    "llm": {
+      "request_failed": "モデルへのリクエストが失敗しました: {{reason}}",
+      "no_answer_in_time": "モデルは {{seconds}} 秒以内に回答しませんでした。",
+      "empty_answer": "モデルはテキストを返しませんでした。"
     },
     "environments": {
       "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
@@ -837,6 +842,10 @@
       "change_key_missing": "{{function}} がキー列 {{column}} のない行を返しました",
       "change_key_repeated": "{{function}} が 1 つの結果の中でキー {{key}} を 2 回返しました",
       "change_cursor_backwards": "{{function}} のカーソルが逆行しました: 保存済みの {{stored}} より前の {{returned}} を返しました"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
+      "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
     }
   }
 }

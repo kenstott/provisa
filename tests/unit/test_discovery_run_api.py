@@ -13,14 +13,22 @@ boundary and the source tables' reads faked at the governed read the profiler ma
 admin: system domains never included, a never-profiled table classified for the run and nothing
 recorded, the request count before Run for every table a domain can hold (one that requires a
 parameter and is never read, one with no column, one that cannot be read), and the run's model
-chosen for that run only."""
+chosen for that run only.
 
-# Requirements: REQ-413, REQ-464, REQ-1986, REQ-2147
+The count before Run reads nothing: it is answered with every read seam and every source call
+refusing, and it is never lower than the requests the run then makes."""
+
+# Requirements: REQ-413, REQ-464, REQ-1986, REQ-2031, REQ-2147
 
 from __future__ import annotations
 
 from types import SimpleNamespace
 from typing import Any, cast
+
+import json
+import random
+from collections import Counter
+from dataclasses import replace
 
 import pytest
 from sqlalchemy import func, insert, select
@@ -32,10 +40,11 @@ from provisa.core import schema_org as so
 from provisa.core.database import Database, create_engine_from_url
 from provisa.core.parameters import ParameterRequired, missing_reason
 from provisa.core.read_refusal import SourceUnavailable
-from provisa.discovery import gather
-from provisa.discovery.columns import NOT_READ, ColumnFacts, classes_meet
+from provisa.discovery import context, gather, windows
+from provisa.discovery.columns import NOT_READ, ColumnFacts, TableFacts, classes_meet, type_groups
 from provisa.discovery.direction import Sampled
 from provisa.llm.client import Completion
+from provisa.profiler.classify import catalogue
 from provisa.profiler.run import ProfileError
 
 _REQUEST = cast(
@@ -163,6 +172,10 @@ class _World:
             {"id": [1, 2, 3], "customer_id": [1, 1, 2], "name": ["a", "b", "c"], "ref": ["x"]}
         )
         self.classified: list[dict] = []
+        #: The kinds a table's latest profile run matched, by column; a table absent was never
+        #: profiled and is classified during the run, with the kinds ``classifies`` gives it.
+        self.profiles: dict[str, dict[str, set[str]]] = {}
+        self.classifies: dict[str, dict[str, list[str]]] = {}
         self.model_calls: list[tuple[str, str, int]] = []
         self.answers: list[str] = []
         self.on_call: Any = None
@@ -180,12 +193,18 @@ class _World:
         async def profiled(conn, table_id, table_name):
             if table_name in self.reads.never_read:
                 self.reads.attempted.append(table_name)  # it has no profile to look up
-            return None  # never profiled: classified during the run
+            return self.profiles.get(table_name)  # None, never profiled: classified in the run
 
         async def classify_table(state, **kwargs):
             self.classified.append(kwargs)
             self.reads.refuse(kwargs["table_name"])
-            return []
+            return [
+                SimpleNamespace(
+                    physical=column,
+                    matches=[SimpleNamespace(kind=SimpleNamespace(id=k)) for k in kinds],
+                )
+                for column, kinds in self.classifies.get(kwargs["table_name"], {}).items()
+            ]
 
         async def org_config(pool):
             return config
@@ -269,6 +288,8 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
     await _orders_customers(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     await discovery.count_run(_REQUEST, _scope())
+    assert world.classified == []  # the count before Run classifies nothing
+    await discovery.prepare(discovery.state, _scope().spec(), None)
     assert [
         (c["table_id"], c["values_per_column"], c["sample_above_cells"]) for c in world.classified
     ] == [
@@ -292,6 +313,7 @@ async def test_the_count_is_given_by_group_before_any_model_call(monkeypatch):
     counted = await discovery.count_run(_REQUEST, _scope())
     assert world.model_calls == []
     assert counted["requests"] == 1
+    assert counted["requests_are"] == "upper_bound"
     assert counted["by_group"] == {"whole_number": 1}
     assert counted["model"]["vendor"] == "openai" and counted["model"]["model"] == "gpt-test"
     assert counted["suggestions_per_request"] == 4_096 // 150
@@ -300,9 +322,11 @@ async def test_the_count_is_given_by_group_before_any_model_call(monkeypatch):
 async def test_foreign_keys_alone_count_no_request(monkeypatch):
     db = await _store()
     await _orders_customers(db)
-    _World(monkeypatch, db, config=_ASSIGNED, api_keys={})
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={})
     counted = await discovery.count_run(_REQUEST, _scope(kinds=["foreign_keys"]))
     assert counted["requests"] == 0 and counted["model"] is None
+    assert counted["by_group"] == {} and counted["source_tables"] == 2
+    assert world.classified == [] and world.reads.sql == []  # and reads no table for it
 
 
 async def test_the_count_is_sized_from_the_chosen_models_limits(monkeypatch):
@@ -360,6 +384,12 @@ def _pet_world(monkeypatch, db: Database) -> _World:
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     world.reads.never_read = set(_PARAMETERIZED)
     return world
+
+
+async def _prepared(scope: discovery.RunScope) -> Any:
+    """The run's tables and requests, as the background run prepares them."""
+    spec = scope.spec()
+    return await discovery.prepare(discovery.state, spec, await discovery._run_model(spec))
 
 
 async def _facts(db: Database, ids: list[int]) -> dict[str, Any]:
@@ -432,9 +462,10 @@ async def test_relationship_requests_are_planned_on_reduced_information(
     assert world.reads.attempted == []
     assert counted["tables_not_read"] == not_read
     assert counted["by_group"]["whole_number"] >= 1
+    assert world.classified == [] and world.reads.sql == []  # the count reads nothing
+    prepared = await _prepared(scope)
     if not_read == len(set(source) | set(target or [])):
         assert world.classified == [] and world.reads.sql == []  # nothing in scope is read
-    _, prepared = await discovery._prepared(scope.spec())
     sent = "\n".join(r.prompt(prepared.k) for r in prepared.requests)
     assert (
         '"required_parameters":[{"column":"_nf_orderId","parameter":"orderId","type":"integer"}],'
@@ -482,6 +513,8 @@ async def test_a_table_with_no_column_is_counted_and_never_read(monkeypatch):
     world.reads.unpublished = {"empty_view"}
     counted = await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"]))
     assert counted["source_tables"] == 5
+    assert world.classified == []
+    await _prepared(_scope(source_domains=["pet-store"]))
     assert [c["table_id"] for c in world.classified] == [_ORDERS, _PETS]
 
 
@@ -538,8 +571,12 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
         ),
     ],
 )
-async def test_a_table_whose_read_is_refused_is_refused_by_name(monkeypatch, refusal, at, reason):
-    db = await _store()
+async def test_a_table_whose_read_is_refused_fails_the_run_by_name(
+    monkeypatch, tmp_path, refusal, at, reason
+):
+    """The count before Run reads nothing, so it is answered; the run reads the table, and one
+    that cannot be read fails it, named."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _pet_store(db)
     world = _pet_world(monkeypatch, db)
     if at == "schema":
@@ -547,18 +584,16 @@ async def test_a_table_whose_read_is_refused_is_refused_by_name(monkeypatch, ref
     else:
         world.reads.failing = {"pets": refusal}
     if at == "sample":
-
-        async def profiled(conn, table_id, table_name):
-            return {}  # profiled: no classification read, so the sample read is the first
-
-        monkeypatch.setattr(gather, "_profiled_classes", profiled)
-    with pytest.raises(ApiError) as caught:
-        await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"]))
-    assert caught.value.status_code == 422
-    assert caught.value.code == "discovery.table_unreadable"
-    assert caught.value.params["table"] == "pets"
-    assert reason in caught.value.params["reason"]
-    assert "pets" in caught.value.detail and "Leave it out" in caught.value.detail
+        world.profiles = {"orders": {}, "pets": {}}  # profiled: the sample read is the first
+    scope = _scope(source_domains=["pet-store"])
+    counted = await discovery.count_run(_REQUEST, scope)
+    assert counted["source_tables"] == 4 and world.reads.sql == []
+    run = await _run(world, scope)
+    assert run["status"] == "failed"
+    assert "'pets' cannot be read" in run["error"] and reason in run["error"]
+    with pytest.raises(gather.TableUnreadable) as caught:
+        await _prepared(scope)
+    assert caught.value.table == "pets" and reason in caught.value.reason
 
 
 async def test_a_chosen_model_whose_vendor_has_no_key_is_refused(monkeypatch):
@@ -611,7 +646,7 @@ async def _candidates(db: Database) -> list[dict]:
     return [dict(r._mapping) for r in rows]
 
 
-async def test_a_run_makes_exactly_the_requests_counted(monkeypatch, tmp_path):
+async def test_a_run_makes_no_more_requests_than_were_counted(monkeypatch, tmp_path):
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _orders_customers(db)
     await _table(
@@ -627,10 +662,11 @@ async def test_a_run_makes_exactly_the_requests_counted(monkeypatch, tmp_path):
     world = _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
     counted = await discovery.count_run(_REQUEST, _scope())
     assert counted["requests"] > 1
+    assert world.classified == [] and world.reads.sql == []
     run = await _run(world, _scope())
     assert run["status"] == "done"
-    assert len(world.model_calls) == counted["requests"]
-    assert run["requests_done"] == run["requests_total"] == counted["requests"]
+    assert 1 < len(world.model_calls) <= counted["requests"]
+    assert run["requests_done"] == run["requests_total"] == len(world.model_calls)
 
 
 async def test_a_run_stores_its_suggestions_and_reports_what_each_kind_found(monkeypatch, tmp_path):
@@ -707,7 +743,7 @@ async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_
     assert len(world.model_calls) == 1
     assert run["status"] == "stopped"
     assert run["report"]["semantics"]["stopped"] is True
-    assert run["requests_done"] == 1 and run["requests_total"] == counted["requests"]
+    assert run["requests_done"] == 1 and 1 < run["requests_total"] <= counted["requests"]
     assert [(c["source_column"], c["target_column"]) for c in await _candidates(db)] == [
         ("customer_id", "id")
     ]
@@ -745,9 +781,92 @@ async def test_a_run_whose_model_fails_every_request_reports_each_and_finishes(
     world.on_call = boom
     run = await _run(world, _scope())
     assert run["status"] == "done"
-    assert run["report"]["semantics"]["failed"] == [
-        {"group": "whole_number", "error": "vendor unavailable"}
+    semantics = run["report"]["semantics"]
+    assert semantics["failed"] == [
+        {
+            "group": "whole_number",
+            "code": "llm.request_failed",
+            "params": {"reason": "vendor unavailable"},
+            "message": "The request to the model failed: vendor unavailable",
+        }
     ]
+    # Every request failed: that is not the model proposing no relationships.
+    assert semantics["empty_reason"] == "requests_failed"
+    assert semantics["requests_done"] == len(semantics["failed"]) == 1
+
+
+_SMALL_WINDOWS = {
+    **_ASSIGNED,
+    "ai_models": {
+        **_ASSIGNED["ai_models"],
+        "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+    },
+}
+
+
+async def test_a_run_with_some_requests_failed_counts_them_of_the_requests_made(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "stores", [("id", "integer", True), ("region_id", "integer", False)]
+    )
+    world = _World(monkeypatch, db, config=_SMALL_WINDOWS, api_keys={"openai": "k"})
+
+    def first_fails(calls: int) -> None:
+        if calls == 1:
+            raise RuntimeError("vendor unavailable")
+
+    world.on_call = first_fails
+    run = await _run(world, _scope())
+    semantics = run["report"]["semantics"]
+    assert semantics["requests_done"] > 1
+    assert len(semantics["failed"]) == 1
+    # The requests that were answered proposed none; the one that failed is counted beside it.
+    assert semantics["empty_reason"] == "none_proposed"
+
+
+async def test_a_run_whose_every_answer_is_unreadable_says_unreadable(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.answers = ["no list here"]
+    run = await _run(world, _scope())
+    assert run["report"]["semantics"]["empty_reason"] == "unreadable"
+
+
+async def test_a_request_longer_than_the_stall_window_keeps_the_run_moving(monkeypatch, tmp_path):
+    """While a request is in flight the run's row is written again, so a long streamed request
+    is not taken for a run that has stopped moving."""
+    import time
+
+    from provisa.discovery import run as discovery_run
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    monkeypatch.setattr(discovery_run, "STILL_GOING_EVERY_S", 0.02)
+    written = 0
+    record = discovery.runs_repo.record_progress
+
+    async def counted(conn, run_id, report):
+        nonlocal written
+        written += 1
+        return await record(conn, run_id, report)
+
+    monkeypatch.setattr(discovery.runs_repo, "record_progress", counted)
+    during: list[int] = []
+
+    def slow(calls: int) -> None:
+        before = written
+        time.sleep(0.3)
+        during.append(written - before)
+
+    world.on_call = slow
+    run = await _run(world, _scope())
+    assert run["status"] == "done"
+    assert during and during[0] >= 2
 
 
 async def test_a_run_left_by_an_earlier_launch_is_reported_failed(monkeypatch, tmp_path):
@@ -913,8 +1032,8 @@ async def test_the_glossary_term_bound_to_a_column_is_sent_whether_or_not_its_ta
     assert facts["get_order_by_id"].column("_nf_orderId").term == "Order"
     assert facts["orders"].column("id").term == "Order"
     assert facts["orders"].column("pet_id").term is None
-    _, prepared = await discovery._prepared(
-        _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS]).spec()
+    prepared = await _prepared(
+        _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS])
     )
     sent = prepared.requests[0].prompt(prepared.k)
     assert (
@@ -969,3 +1088,405 @@ async def test_a_direction_is_decided_without_reading_a_table_that_requires_a_pa
     assert stored["reasoning"].endswith(
         "no values were compared: get_order_by_id requires a parameter and is never read"
     )
+
+
+# --- the count before Run reads nothing, and is an upper bound (REQ-413) ---------------------------
+
+_KEPT_ORDER = 5
+
+
+class _Refusing:
+    """A seam the count must not reach: any use of it fails the test, naming the seam."""
+
+    def __init__(self, seam: str) -> None:
+        self._seam = seam
+
+    def __getattr__(self, name: str) -> Any:
+        raise AssertionError(f"the count before Run used {self._seam}.{name}")
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        raise AssertionError(f"the count before Run called {self._seam}")
+
+    def __iter__(self) -> Any:
+        raise AssertionError(f"the count before Run read {self._seam}")
+
+    def __len__(self) -> int:
+        raise AssertionError(f"the count before Run read {self._seam}")
+
+
+def _kept_for_good(world_state: Any, table_id: int, name: str, columns: list[dict]) -> None:
+    """Record, as the running model holds it, that API table ``name`` never expires and its
+    replica has landed (REQ-2031): its rows are stored and read whole."""
+    world_state.tables = [
+        {
+            "id": table_id,
+            "source_id": "pg",
+            "schema_name": "public",
+            "table_name": name,
+            "cache_ttl": -1,
+            "columns": columns,
+        }
+    ]
+    world_state.api_endpoints = {("pg", name): object()}
+    world_state.replica_routes = SimpleNamespace(kept_for_good=frozenset({("pg", "public", name)}))
+
+
+async def _every_kind_of_table(monkeypatch, db: Database, *, config: dict = _ASSIGNED) -> _World:
+    """A scope holding a never-profiled table (orders), a profiled one (pets), API tables that
+    require a parameter (get_order_by_id, get_pet_by_id) and a parameterized table kept for good
+    (order_history: its rows are stored)."""
+    await _pet_store(db)
+    await _table(
+        db,
+        _KEPT_ORDER,
+        "pet-store",
+        "order_history",
+        [
+            ("_nf_orderId", "integer", False, "path_param"),
+            ("id", "integer", True),
+            ("note", "text", False),
+        ],
+    )
+    world = _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
+    world.reads.never_read = set(_PARAMETERIZED)
+    world.profiles = {"pets": {"name": {"city"}}}
+    _kept_for_good(
+        discovery.state,
+        _KEPT_ORDER,
+        "order_history",
+        [
+            {
+                "column_name": "_nf_orderId",
+                "native_filter_type": "path_param",
+                "native_filter_required": True,
+            },
+            {"column_name": "id", "native_filter_type": None},
+            {"column_name": "note", "native_filter_type": None},
+        ],
+    )
+    return world
+
+
+def _refuse_every_read(monkeypatch) -> None:
+    """Every seam a table's values, profile or source is reached through refuses."""
+    for seam in (
+        "provisa.profiler.run.classify_table",
+        "provisa.profiler.run.resolve_target",
+        "provisa.profiler.run._governed",
+        "provisa.profiler.run.profile_table",
+        "provisa.profiler.history.relation",
+        "provisa.profiler.schema.ensure_result_table",
+        "provisa.discovery.run.collect_fk_for_tables",
+        "provisa.discovery.gather._profiled_classes",
+        "provisa.discovery.gather._classified_now",
+        "provisa.discovery.gather._samples",
+        "provisa.discovery.gather._rows",
+        "provisa.discovery.gather._published",
+    ):
+        monkeypatch.setattr(seam, _Refusing(seam))
+    # The sources' connections; state.source_types is the model's own map of each source's kind.
+    monkeypatch.setattr(discovery.state, "source_pools", _Refusing("state.source_pools"))
+
+
+@pytest.mark.parametrize(
+    "scope",
+    [
+        pytest.param({"kinds": ["semantics"]}, id="semantics"),
+        pytest.param({"kinds": ["foreign_keys", "semantics"]}, id="both-kinds"),
+        pytest.param({"kinds": ["foreign_keys"]}, id="foreign-keys-alone"),
+        pytest.param(
+            {
+                "kinds": ["semantics"],
+                "source_tables": [_ORDER_BY_ID, _PETS],
+                "target_same_as_source": False,
+                "target_domains": ["pet-store"],
+                "target_tables": [_ORDERS, _PET_BY_ID, _KEPT_ORDER],
+            },
+            id="a-target-set",
+        ),
+    ],
+)
+async def test_the_count_before_run_reads_no_table_and_calls_no_source(monkeypatch, scope):
+    db = await _store()
+    world = await _every_kind_of_table(monkeypatch, db)
+    _refuse_every_read(monkeypatch)
+    counted = await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"], **scope))
+    assert world.reads.attempted == [] and world.reads.sql == [] and world.classified == []
+    assert world.model_calls == []
+    assert counted["requests_are"] == "upper_bound"
+    if "source_tables" not in scope:
+        assert counted["source_tables"] == counted["target_tables"] == 5
+        # The two API tables are never read; the one kept for good is read from its stored rows.
+        assert counted["tables_not_read"] == 2
+    if "semantics" in scope["kinds"]:
+        assert counted["requests"] >= 1
+        assert sum(counted["by_group"].values()) == counted["requests"]
+    else:
+        assert counted["requests"] == 0 and counted["by_group"] == {}
+
+
+async def test_the_count_writes_nothing_to_the_model_store(monkeypatch):
+    db = await _store()
+    await _every_kind_of_table(monkeypatch, db)
+    statements: list[str] = []
+
+    from sqlalchemy import event
+
+    def seen(conn, cursor, statement, parameters, context_, executemany):
+        statements.append(statement.lstrip().split(None, 1)[0].upper())
+
+    event.listen(db.engine, "before_cursor_execute", seen)
+    try:
+        await discovery.count_run(_REQUEST, _scope(source_domains=["pet-store"]))
+    finally:
+        event.remove(db.engine, "before_cursor_execute", seen)
+    assert statements and set(statements) <= {"SELECT", "PRAGMA"}, statements
+
+
+_LONG = 'a "quoted" value\n' * 40
+_EVERY_KIND = [k.id for k in catalogue()]
+
+
+@pytest.mark.parametrize(
+    ("input_tokens", "values", "kinds"),
+    [
+        pytest.param(200_000, "short", "none", id="one-window-short-values"),
+        pytest.param(700, "short", "none", id="small-windows-short-values"),
+        pytest.param(700, "long", "none", id="small-windows-long-values"),
+        pytest.param(700, "long", "every", id="small-windows-every-kind-matched"),
+        pytest.param(900, "long", "plain", id="mid-windows-kinds-that-are-not-sensitive"),
+        pytest.param(1500, "long", "every", id="wider-windows-every-kind-matched"),
+    ],
+)
+@pytest.mark.parametrize("same_as_source", [True, False], ids=["same-set", "a-target-set"])
+async def test_a_run_never_makes_more_requests_than_the_count_gave(
+    monkeypatch, tmp_path, input_tokens, values, kinds, same_as_source
+):
+    """The bound (REQ-413): for never-profiled, profiled and parameterized tables, whatever the
+    run then reads (long values, every kind matched), its requests are at most the count's, in
+    all and in each group."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    config = {
+        **_ASSIGNED,
+        "ai_models": {
+            **_ASSIGNED["ai_models"],
+            "model_limits": {
+                "openai": {"gpt-test": {"input_tokens": input_tokens, "output_tokens": 4096}}
+            },
+        },
+    }
+    world = await _every_kind_of_table(monkeypatch, db, config=config)
+    await _table(
+        db,
+        6,
+        "pet-store",
+        "visits",
+        [
+            ("id", "integer", True),
+            ("pet_id", "integer", False),
+            ("vet", "text", False),
+            ("seen_on", "date", False),
+            ("clinic", "text", False),
+        ],
+    )
+    if values == "long":
+        for column in ("name", "note", "vet", "clinic"):
+            world.reads.values[column] = [f"{i}{_LONG}" for i in range(9)]
+        world.reads.values["id"] = list(range(10**15, 10**15 + 9))
+    matched = {
+        "none": [],
+        "every": _EVERY_KIND,
+        "plain": [k.id for k in catalogue() if not k.sensitive],
+    }[kinds]
+    world.profiles = {"pets": {"id": set(matched), "name": set(matched)}}
+    world.classifies = {
+        t: dict.fromkeys(cols, matched)
+        for t, cols in {
+            "orders": ["id", "pet_id"],
+            "order_history": ["_nf_orderId", "id", "note"],
+            "visits": ["id", "pet_id", "vet", "seen_on", "clinic"],
+        }.items()
+    }
+    scope = (
+        _scope(source_domains=["pet-store"])
+        if same_as_source
+        else _scope(
+            source_domains=["pet-store"],
+            source_tables=[_ORDER_BY_ID, _ORDERS, 6],
+            target_same_as_source=False,
+            target_domains=["pet-store"],
+            target_tables=[_PET_BY_ID, _PETS, _KEPT_ORDER, 6],
+        )
+    )
+    counted = await discovery.count_run(_REQUEST, scope)
+    assert world.reads.sql == [] and world.classified == []
+    prepared = await _prepared(scope)
+    planned = Counter(r.group for r in prepared.requests)
+    assert planned, "the fixture gives the run something to ask"
+    assert len(prepared.requests) <= counted["requests"]
+    for group, asked in planned.items():
+        assert asked <= counted["by_group"][group], (group, planned, counted["by_group"])
+    run = await _run(world, scope)
+    assert run["status"] == "done", run
+    assert run["requests_total"] == len(world.model_calls) == len(prepared.requests)
+    assert len(world.model_calls) <= counted["requests"]
+    assert world.reads.attempted == []
+
+
+def _random_tables(rng: random.Random, kinds: list[str], sensitive: set[str]) -> list[TableFacts]:
+    """Tables as a run could read them: any classes of the catalogue, any values within the cap."""
+    types = ["integer", "text", "numeric(10,0)", "date", "uuid", "boolean", "timestamp"]
+    tables = []
+    for tid in range(1, rng.randint(2, 7)):
+        parameterized = rng.random() < 0.25
+        columns = []
+        for n in range(rng.randint(1, 6)):
+            data_type = rng.choice(types)
+            classes = tuple(sorted(rng.sample(kinds, rng.randint(0, len(kinds))))) or ("unknown",)
+            hidden = bool(set(classes) & sensitive)
+            samples = tuple(
+                context.sample_text(rng.choice(["x", _LONG, "é" * 90, "\x00" * 70]) + str(i))
+                for i in range(rng.randint(0, context.SAMPLE_VALUES))
+            )
+            columns.append(
+                ColumnFacts(
+                    name=f"c{n}",
+                    data_type=data_type,
+                    description=rng.choice([None, "what it is"]),
+                    tags=(),
+                    classes=(NOT_READ,) if parameterized else classes,
+                    sensitive=False if parameterized else hidden,
+                    samples=() if parameterized or hidden else samples,
+                    is_primary_key=n == 0,
+                    groups=type_groups(data_type, subtype=None, array_depth=0),
+                    required_parameter="p" if parameterized and n == 0 else None,
+                )
+            )
+        tables.append(TableFacts(tid, "d", "public", f"t{tid}", None, (), None, tuple(columns)))
+    return tables
+
+
+def _as_registered(tables: list[TableFacts]) -> list[TableFacts]:
+    """The same tables as the model store alone gives them: nothing read."""
+    return [
+        t
+        if t.reduced
+        else replace(
+            t,
+            columns=tuple(
+                replace(c, classes=("unknown",), sensitive=False, samples=()) for c in t.columns
+            ),
+        )
+        for t in tables
+    ]
+
+
+@pytest.mark.parametrize("seed", range(40))
+def test_the_bound_holds_whatever_the_tables_hold(seed):
+    rng = random.Random(seed)
+    kinds = [k.id for k in catalogue()]
+    sensitive = {k.id for k in catalogue() if k.sensitive}
+    read = _random_tables(rng, kinds, sensitive)
+    cut = rng.randint(1, len(read))
+    target = None if rng.random() < 0.5 else read[cut - 1 :]
+    source = read if target is None else read[:cut]
+    input_tokens = rng.choice([650, 800, 1200, 3000, 100_000])
+    _, requests = windows.plan(source, target, input_tokens, 4096)
+    k, by_group = windows.bound(
+        _as_registered(source),
+        None if target is None else _as_registered(target),
+        input_tokens,
+        4096,
+    )
+    planned = Counter(r.group for r in requests)
+    assert k == 4096 // 150
+    for group, asked in planned.items():
+        assert asked <= by_group.get(group, 0), (seed, group, planned, by_group)
+
+
+def test_a_group_with_no_two_columns_to_compare_counts_no_request():
+    def table(tid: int, *types: str) -> TableFacts:
+        columns = tuple(
+            ColumnFacts(
+                f"c{i}",
+                t,
+                None,
+                (),
+                ("unknown",),
+                False,
+                (),
+                False,
+                type_groups(t, subtype=None, array_depth=0),
+            )
+            for i, t in enumerate(types)
+        )
+        return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
+
+    one_text = [table(1, "integer", "text"), table(2, "integer")]
+    assert windows.bound(one_text, None, 100_000, 4096)[1] == {"whole_number": 1}
+    # The one column on both sides is not compared with itself.
+    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096)[1] == {}
+    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096)[1] == {}
+
+
+def test_a_sample_value_is_sent_in_a_bounded_length():
+    for value in ("short", _LONG, "\x00" * 500, "é" * 500, 10**80, '"' * 200):
+        sent = context.sample_text(value)
+        assert len(json.dumps(sent, ensure_ascii=False)) <= context.SAMPLE_VALUE_CHARS + 2
+        assert str(value).startswith(sent)
+    assert context.sample_text("3f2b8c1e-0d4a-4b7e-9c55-1a2b3c4d5e6f") == (
+        "3f2b8c1e-0d4a-4b7e-9c55-1a2b3c4d5e6f"
+    )
+    assert context.sample_text("2026-11-16 09:30:00.123456+00:00") == (
+        "2026-11-16 09:30:00.123456+00:00"
+    )
+
+
+async def test_long_values_read_in_a_run_are_cut_before_they_are_sent(monkeypatch):
+    db = await _store()
+    await _table(db, 1, "pet-store", "pets", [("name", "text", False)])
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.reads.values["name"] = ["n" * 300, "m" * 300, "short"]
+    facts = await _facts(db, [1])
+    assert facts["pets"].columns[0].samples == ("n" * 64, "m" * 64, "short")
+
+
+# --- a parameterized table kept for good: its rows are stored (REQ-1986, REQ-2031) -----------------
+
+
+async def test_a_parameterized_table_kept_for_good_is_read_from_its_stored_rows(
+    monkeypatch, tmp_path
+):
+    """Decided from the model, never by trying: the running model says the table never expires
+    and its replica has landed, so a run reads it as any stored table; the same registration
+    with no landed replica is never read."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    world = await _every_kind_of_table(monkeypatch, db)
+    world.reads.values["note"] = ["late", "on time", "late"]
+    facts = await _facts(db, [_ORDER_BY_ID, _KEPT_ORDER])
+    kept = facts["order_history"]
+    assert not kept.reduced and kept.parameters == ()
+    assert [c.required_parameter for c in kept.columns] == [None, None, None]
+    assert kept.column("note").samples == ("late", "on time")
+    assert NOT_READ not in {cls for c in kept.columns for cls in c.classes}
+    assert [c["table_id"] for c in world.classified] == [_KEPT_ORDER]
+    assert facts["get_order_by_id"].reduced and world.reads.attempted == []
+    read = gather.uniqueness_reader(discovery.state)
+    assert await read(kept, "id") == Sampled(rows=3, repeats=False)
+
+    answer = _suggestion((_KEPT_ORDER, "_nf_orderId"), (_ORDERS, "id"))
+    world.answers = [json.dumps([answer])]
+    run = await _run(world, _scope(source_domains=["pet-store"], source_tables=[_KEPT_ORDER, 2]))
+    assert run["status"] == "done", run
+    assert run["report"]["tables_not_read"] == 0 and run["report"]["on_reduced_information"] == 0
+    (listed,) = await discovery.list_candidates(_REQUEST)
+    assert listed["reduced_information"] is False
+    assert listed["reasoning"] == "orders name their customer"
+
+    # Its replica not landed here: the model no longer says its rows are stored.
+    discovery.state.replica_routes = SimpleNamespace(kept_for_good=frozenset())
+    world.classified.clear()
+    facts = await _facts(db, [_KEPT_ORDER])
+    assert facts["order_history"].reduced and world.classified == []
+    (listed,) = await discovery.list_candidates(_REQUEST)
+    assert listed["reduced_information"] is True
