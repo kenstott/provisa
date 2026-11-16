@@ -421,7 +421,8 @@ def test_a_key_variable_is_refused_wherever_one_is_read():
     reads = sorted(
         path for path, source in _sources().items() if named.search(source) and read.search(source)
     )
-    assert reads == sorted(readers), (
+    # core.secrets reads the name it is handed (resolve_api_key_field) and names no field.
+    assert reads == sorted(set(readers) - {"provisa/core/secrets.py"}), (
         "a file names api_key_env and reads the environment by a name it was given: refuse a "
         "held organization's own key variable there (refuse_named_by_org), and list it here"
     )
