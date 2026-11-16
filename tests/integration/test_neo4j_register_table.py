@@ -20,6 +20,8 @@ from __future__ import annotations
 
 import json
 import os
+import uuid
+from dataclasses import dataclass
 
 import httpx
 import pytest
@@ -34,13 +36,32 @@ pytestmark = [
     pytest.mark.asyncio(loop_scope="session"),
 ]
 
-_SOURCE_ID = "neo4j_ui_it"
-_DOMAIN = "graph_ui_it"
-_TABLE = "ui_adopter"
 _CYPHER = (
     "MATCH (a:UiAdopter) RETURN a.adopter_id AS adopter_id, a.name AS name ORDER BY a.adopter_id"
 )
 _SEED = [(1, "Sara Kim"), (2, "Tom Evans")]
+
+
+@dataclass(frozen=True)
+class _Names:
+    """The source, domain and table one test creates.
+
+    REQ-2248: deleting a table retires it, keeping its row, its name and its (source, schema,
+    table) key, and a source or domain that still holds a table, retired or not, is kept. So a
+    test's names are its own: the next test never meets a source, domain or table an earlier
+    one left holding a retired table."""
+
+    source_id: str
+    domain: str
+    table: str
+
+
+@pytest.fixture
+def names() -> _Names:
+    run = uuid.uuid4().hex[:8]
+    return _Names(
+        source_id=f"neo4j_ui_it_{run}", domain=f"graph_ui_it_{run}", table=f"ui_adopter_{run}"
+    )
 
 
 def _neo4j_port() -> int:
@@ -60,7 +81,7 @@ def _seed_neo4j():
 
 
 @pytest_asyncio.fixture(loop_scope="session")
-async def admin_client(monkeypatch):
+async def admin_client(monkeypatch, names):
     """An in-process app on the default (native) engine — a neo4j table needs no Trino."""
     import provisa.api.app as app_mod
 
@@ -83,25 +104,11 @@ async def admin_client(monkeypatch):
         transport = ASGITransport(app=app)
         async with AsyncClient(transport=transport, base_url="http://test", timeout=180) as c:
             yield c
-            # Leave nothing behind for the next module.
-            listing = await c.post(
-                "/admin/graphql", json={"query": "query { tables { id tableName } }"}
-            )
-            for t in listing.json()["data"]["tables"]:
-                if t["tableName"].startswith(_TABLE):
-                    await c.post(
-                        "/admin/graphql",
-                        json={"query": f"mutation {{ deleteTable(id: {t['id']}) {{ success }} }}"},
-                    )
-            await c.post(
-                "/admin/graphql",
-                json={"query": f'mutation {{ deleteSource(id: "{_SOURCE_ID}") {{ success }} }}'},
-            )
-            # The domain each test creates goes with the rest: a create refuses an id that exists.
-            await c.post(
-                "/admin/graphql",
-                json={"query": f'mutation {{ deleteDomain(id: "{_DOMAIN}") {{ success }} }}'},
-            )
+            # Retire the tables this test registered (REQ-2248). Its source and its domain stay:
+            # they hold the retired tables, and the product never removes a retired object.
+            from tests.helpers import retire_tables_of_source
+
+            await retire_tables_of_source(c, names.source_id)
 
 
 async def _gql(client: AsyncClient, query: str) -> dict:
@@ -112,11 +119,11 @@ async def _gql(client: AsyncClient, query: str) -> dict:
     return body["data"]
 
 
-async def test_preview_then_register_then_tables_reports_the_cypher(admin_client):
-    await create_domain(admin_client, _DOMAIN)
+async def test_preview_then_register_then_tables_reports_the_cypher(admin_client, names):
+    await create_domain(admin_client, names.domain)
     await create_source(
         admin_client,
-        source_id=_SOURCE_ID,
+        source_id=names.source_id,
         source_type="neo4j",
         host="localhost",
         port=_neo4j_port(),
@@ -128,7 +135,7 @@ async def test_preview_then_register_then_tables_reports_the_cypher(admin_client
     preview = (
         await _gql(
             admin_client,
-            f'query {{ neo4jPreview(sourceId: "{_SOURCE_ID}", cypher: {json.dumps(_CYPHER)}) '
+            f'query {{ neo4jPreview(sourceId: "{names.source_id}", cypher: {json.dumps(_CYPHER)}) '
             "{ rows columns { name dataType } error } }",
         )
     )["neo4jPreview"]
@@ -146,16 +153,17 @@ async def test_preview_then_register_then_tables_reports_the_cypher(admin_client
     result = (
         await _gql(
             admin_client,
-            f'mutation {{ registerTable(input: {{ sourceId: "{_SOURCE_ID}", domainId: "{_DOMAIN}", '
-            f'schemaName: "neo4j", tableName: "{_TABLE}", queryTemplate: {json.dumps(_CYPHER)}, '
+            f'mutation {{ registerTable(input: {{ sourceId: "{names.source_id}", '
+            f'domainId: "{names.domain}", '
+            f'schemaName: "neo4j", tableName: "{names.table}", queryTemplate: {json.dumps(_CYPHER)}, '
             f"columns: [{cols}] }}) {{ success message }} }}",
         )
     )["registerTable"]
     assert result["success"], result
 
     tables = (await _gql(admin_client, "query { tables { tableName queryTemplate } }"))["tables"]
-    mine = [t for t in tables if t["tableName"] == _TABLE]
-    assert mine == [{"tableName": _TABLE, "queryTemplate": _CYPHER}]
+    mine = [t for t in tables if t["tableName"] == names.table]
+    assert mine == [{"tableName": names.table, "queryTemplate": _CYPHER}]
 
     # Persisted, not process-lifetime: the endpoint row is what a restart hydrates from.
     from provisa.api.app import state
@@ -164,7 +172,7 @@ async def test_preview_then_register_then_tables_reports_the_cypher(admin_client
     async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT body_encoding, query_template, response_normalizer FROM api_endpoints "
-            f"WHERE table_name = '{_TABLE}'"
+            f"WHERE table_name = '{names.table}'"
         )
     assert [dict(r) for r in rows] == [
         {
@@ -175,11 +183,11 @@ async def test_preview_then_register_then_tables_reports_the_cypher(admin_client
     ]
 
 
-async def test_register_without_cypher_is_refused(admin_client):
-    await create_domain(admin_client, _DOMAIN)
+async def test_register_without_cypher_is_refused(admin_client, names):
+    await create_domain(admin_client, names.domain)
     await create_source(
         admin_client,
-        source_id=_SOURCE_ID,
+        source_id=names.source_id,
         source_type="neo4j",
         host="localhost",
         port=_neo4j_port(),
@@ -190,8 +198,9 @@ async def test_register_without_cypher_is_refused(admin_client):
     result = (
         await _gql(
             admin_client,
-            f'mutation {{ registerTable(input: {{ sourceId: "{_SOURCE_ID}", domainId: "{_DOMAIN}", '
-            f'schemaName: "neo4j", tableName: "{_TABLE}_nocypher", '
+            f'mutation {{ registerTable(input: {{ sourceId: "{names.source_id}", '
+            f'domainId: "{names.domain}", '
+            f'schemaName: "neo4j", tableName: "{names.table}_nocypher", '
             'columns: [{ name: "adopter_id", dataType: "integer", visibleTo: ["org_admin"] }] }) '
             "{ success message code } }",
         )
