@@ -57,6 +57,7 @@
   "tests/integration/test_clickhouse_engine_attach_names_per_org.py": 0.2,
   "tests/integration/test_clickhouse_runtime_e2e.py": 0.4,
   "tests/integration/test_clickhouse_source_e2e.py": 41.6,
+  "tests/integration/test_clickhouse_time_on_server.py": 32.0,
   "tests/integration/test_client_access_integration.py": 3.7,
   "tests/integration/test_client_auth_login.py": 0.0,
   "tests/integration/test_cloudops_source_e2e.py": 0.0,

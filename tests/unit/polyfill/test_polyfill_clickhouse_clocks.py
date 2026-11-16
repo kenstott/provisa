@@ -73,6 +73,10 @@ ANSWERED = [
     ("SELECT CAST(c AS time) AS v FROM (VALUES (NULL::text)) AS t(c)", None),
     ("SELECT CASE WHEN true THEN '12:30'::time ELSE '13:00'::time END AS v", "12:30:00"),
     ("SELECT '12:30:45.5'::time::text AS v", "12:30:45.5"),
+    # Refused on the server before polyfill.clocks held a time as its microseconds (no toTime64).
+    ("SELECT timestamp('2024-06-15'::date, '12:30:45'::time) AS v", "2024-06-15 12:30:45"),
+    ('SELECT pg_catalog."datetime_pl"(\'2024-06-15\'::date, \'12:30:45\'::time) AS v', "2024-06-15 12:30:45"),
+    ('SELECT pg_catalog."overlaps"(NULL::time, NULL::time, NULL::time, NULL::time) AS v', None),
 ]  # fmt: skip
 
 #: PostgreSQL's error of a value a time's input does not read, read at run time (a table's column):
