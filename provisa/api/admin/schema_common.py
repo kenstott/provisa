@@ -406,9 +406,9 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
     from provisa.core.source_uploads import (
         UPLOAD_TYPES,
         LocalPathRefused,
-        on_own_disk,
         require_source_own_disk,
     )
+    from provisa.federation.connector_duckdb import location_kind
 
     def _held_refusal() -> Optional[MutationResult]:
         fields = {
@@ -430,12 +430,15 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
             )
         return None
 
-    if input.type not in UPLOAD_TYPES or not input.path or not on_own_disk(input.path):
-        return _held_refusal()
+    refusal = _held_refusal()
+    if refusal is not None:
+        return refusal
+    if input.type not in UPLOAD_TYPES or not input.path or location_kind(input.path) is not None:
+        return None
     try:
         if org_files.is_org_path(input.path):
             org_files.resolve_path(input.path)
-            return _held_refusal()
+            return None
         rewritten = org_files.token_path(input.path)
     except org_files.OrgPathRefused as exc:
         return MutationResult(
@@ -446,7 +449,7 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
         )
     if org_files.is_org_path(rewritten):
         input.path = rewritten
-    return _held_refusal()
+    return None
 
 
 async def download_source_file(input: SourceInput) -> Optional[MutationResult]:  # REQ-2113

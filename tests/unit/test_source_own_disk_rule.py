@@ -174,8 +174,7 @@ def test_the_admin_save_refuses_a_place_outside_the_orgs_folder(held, source_typ
 
     refused = file_source_path(_input(source_type, field, _bad(way, held)))
     assert refused is not None and not refused.success
-    # A token path that leaves the folder keeps the name it always had on an upload type.
-    assert refused.code in (_REFUSED, "schema.file_path_leaves_org")
+    assert refused.code == _REFUSED
     assert (refused.params or {})["source"] == "probe"
 
 
@@ -314,8 +313,15 @@ def test_an_install_of_one_organization_reads_a_local_path_as_before(
 ):
     from provisa.api.admin.schema_common import file_source_path
 
+    from provisa.core.source_uploads import UPLOAD_TYPES
+
     written = _bad(way, one_org)
-    assert file_source_path(_input(source_type, field, written)) is None
+    if way == "looks_remote_host" and field == "path" and source_type in UPLOAD_TYPES:
+        # As before: an upload type's path at a scheme no reader knows is refused by name.
+        with pytest.raises(ValueError, match="reads no file at a weird:// location"):
+            file_source_path(_input(source_type, field, written))
+    else:
+        assert file_source_path(_input(source_type, field, written)) is None
     assert egress.pinned_source(_source(source_type, field, written)) is not None
     assert org_files.resolve_path(written) == written
 
