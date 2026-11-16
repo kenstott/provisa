@@ -51,6 +51,13 @@ const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<str
 const SETTINGS = vi.hoisted(() => ({ convention: "apollo_graphql" }));
 
 vi.mock("../../hooks/useAdminQueries", () => ({
+  // REQ-2249: no code resolver set is in service here.
+  useCodeResolvers: () => ({
+    codeResolvers: [],
+    loading: false,
+    saveCodeResolver: vi.fn(),
+    retireCodeResolver: vi.fn(),
+  }),
   useRelationships: () => RELS,
   useAllRelationships: () => RELS,
   useTables: () => TABLES,

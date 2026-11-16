@@ -22,6 +22,9 @@ The query compiler's order, on every surface: query -> ONE semantic SQL statemen
   is materialized and fresh. Governance of its SQL changes nothing for that reader, so it stays
   the registered table it is through governance (its own rules applied), and its stored rows are
   put in after.
+* A view applying a column transform (REQ-2131) or calling a code command (REQ-2249) is landed
+  and read only from its stored table, by every reader, as the registered table it is; the
+  V-rules judge its definition for the reader (:func:`lands_stored_read`).
 * A view that names another region (REQ-1921) is read from the copy that region keeps, by every
   reader, with the view's own rules on top: its inputs are not read here. A request-level as-of
   reads a bitemporal view from its append log (REQ-1163).
@@ -30,6 +33,7 @@ The pipeline's raw-SQL and compiled stages both call these two, nothing else."""
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -226,9 +230,25 @@ def _bitemporal_reads(state: Any) -> dict:
 
 
 def _stored_reads(state: Any) -> set[str]:
-    """The views that apply a column transform (REQ-2131): each answered from its stored table,
-    whose entry in the view map reads it, since its outputs exist nowhere else."""
+    """The views that apply a column transform (REQ-2131) or call a code command (REQ-2249): each
+    answered from its stored table, whose entry in the view map reads it, since its outputs exist
+    nowhere else."""
     return getattr(state, "stored_view_reads", None) or set()
+
+
+def lands_stored_read(
+    semantic_sql: str, transforms: Collection[str], code_commands: Collection[str]
+) -> bool:
+    """Whether a view of ``semantic_sql`` is landed and read only from its stored table: it
+    applies one of the column ``transforms`` (REQ-2131), or reads a call of one of the
+    ``code_commands`` (REQ-2249) -- a code resolver's bridge among them. Such a view's command
+    runs when it is built, never when it is read, and it is secured as the table it is; the
+    V-rules judge its definition for each reader, the command's table arguments as its inputs
+    (``sql_validator.view_command``)."""
+    from provisa.codesource.columns_fold import called  # noqa: PLC0415
+    from provisa.mv.view_inputs import calls_command  # noqa: PLC0415
+
+    return bool(called(semantic_sql, transforms)) or calls_command(semantic_sql, code_commands)
 
 
 def _answered_after_governance(

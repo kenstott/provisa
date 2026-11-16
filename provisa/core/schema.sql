@@ -273,6 +273,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     promotions    JSONB NOT NULL DEFAULT '[]',  -- REQ-119
     query_template TEXT,  -- REQ-1668/1683: neo4j / sparql tables
     relay_pagination BOOLEAN,  -- NULL = inherit
+    -- REQ-2249: the code resolver set this view is the bridge of (its id), else NULL. The set's
+    -- objects are changed and retired together, through the set.
+    code_resolver TEXT,
     -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
     -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
     retired       BOOLEAN NOT NULL DEFAULT FALSE,
@@ -483,6 +486,9 @@ CREATE TABLE IF NOT EXISTS relationships (
     -- REQ-2099: the target table's parameters this edge feeds, {parameter: source column}. A join
     -- to a parameterized target (a code table) over this edge calls it with the source's values.
     parameters        JSONB NOT NULL DEFAULT '{}',
+    -- REQ-2249: the code resolver set this relationship belongs to (its id), else NULL. The set's
+    -- objects are changed and retired together, through the set.
+    code_resolver     TEXT,
     -- REQ-2248: deleting it retires it -- the row, its name and its file are kept, out of
     -- service, with why (status_reason), who (status_by) and when (status_at), as a term's.
     retired       BOOLEAN NOT NULL DEFAULT FALSE,
