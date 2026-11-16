@@ -27073,3 +27073,15 @@ Maintainer 2026-11-15. A named demo answers 'how much insured value sits inside 
 **Code:** —
 
 **Tests:** —
+
+## 4. Source Connectors
+
+### REQ-2251 · Connector Abstraction {#REQ-2251}
+
+**Status:** 💡 proposed · **Priority:** SHOULD · **Type:** structural
+
+Maintainer 2026-11-16 ('i approve the arch suggestions'), on a review that found the facts about a source type spread over hand-kept sets that core code consults by name. Each source type has one descriptor, declared by the source's own package, and core code asks the descriptor and never names a type, so adding a source type needs no edit to core code. The descriptor declares: the dialect; how the type is reached (its own driver, an API call, the engine only, landed); its driver, adapter and loader; how it lands (a replica, materialize only, served tables); what it can write (the path, the operations, whether rows are returned, the forms refused); whether it is a lake and whether it travels in time; and the connection fields it takes. Behaviour that depends on the table or the statement is a hook on the descriptor: the write operations a table allows, whether the type's own driver can answer a statement, whether a table is read once per statement, and introspection (schemas, tables, columns). The descriptors are served from an endpoint and the UI reads its list of source types, their fields and their sign-in from it, not from constants of its own. Two checks hold it: every source type has a descriptor, and the compiler, the transpiler and the query pipeline contain no comparison against a source type's name. A connector stays per engine: a new type still needs one connector for each engine that reaches it. It is reached in steps that each leave behaviour unchanged: the descriptor as data, with every existing set generated from it and a test that the generated set equals the hand-kept one; the hand-kept sets removed; the type branches moved into hooks one at a time, each with its existing tests; the endpoint and the UI; the two checks.
+
+**Code:** —
+
+**Tests:** —
