@@ -47,11 +47,17 @@
       "mutation_not_permitted": "不允許執行變更「{{field_name}}」：{{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy 簽章無效",
-      "tenant_no_ls_customer": "租用戶沒有 Lemon Squeezy 客戶",
-      "tenant_not_found": "找不到租用戶",
-      "webhook_missing_customer_id": "Webhook 缺少客戶 ID",
-      "webhook_missing_tenant_linkage": "Webhook 缺少租用戶連結"
+      "checkout_not_complete": "此結帳尚未完成，因此仍未有可連結的訂閱。",
+      "invalid_signature": "webhook 簽署無效",
+      "no_trial": "此機構沒有試用",
+      "org_no_customer": "此機構仍未有收費帳戶。",
+      "org_not_found": "找不到機構",
+      "reconcile_not_creator": "只有機構的建立者可以執行此操作",
+      "session_org_mismatch": "此結帳並非為此機構開啟。",
+      "subscription_items_unrecognized": "此訂閱未同時包含本部署出售的計劃價格及數據傳輸價格，因此無法變更。",
+      "trial_already_started": "此機構已開始試用。每個機構只提供一次試用。",
+      "webhook_missing_org_linkage": "webhook 訂閱未有註明任何機構",
+      "webhook_missing_subscription": "webhook 未有註明任何訂閱"
     },
     "control_plane": {
       "multitenancy_disabled": "未啟用多租用戶功能"

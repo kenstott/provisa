@@ -47,11 +47,17 @@
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy の署名が無効です",
-      "tenant_no_ls_customer": "テナントに Lemon Squeezy の顧客がありません",
-      "tenant_not_found": "テナントが見つかりません",
-      "webhook_missing_customer_id": "Webhook に顧客IDがありません",
-      "webhook_missing_tenant_linkage": "Webhook にテナントの関連付けがありません"
+      "checkout_not_complete": "このチェックアウトは完了していないため、関連付けるサブスクリプションはまだありません。",
+      "invalid_signature": "webhook の署名が無効です",
+      "no_trial": "この組織には試用期間がありません",
+      "org_no_customer": "この組織にはまだ請求アカウントがありません。",
+      "org_not_found": "組織が見つかりません",
+      "reconcile_not_creator": "これを行えるのは組織の作成者だけです",
+      "session_org_mismatch": "このチェックアウトはこの組織のために開かれたものではありません。",
+      "subscription_items_unrecognized": "このサブスクリプションには、このデプロイメントが販売するプラン価格とデータ転送価格の両方が含まれていないため、移行できません。",
+      "trial_already_started": "この組織はすでに試用を開始しています。試用は組織ごとに 1 回提供されます。",
+      "webhook_missing_org_linkage": "webhook のサブスクリプションに組織が示されていません",
+      "webhook_missing_subscription": "webhook にサブスクリプションが示されていません"
     },
     "control_plane": {
       "multitenancy_disabled": "マルチテナントは有効になっていません"

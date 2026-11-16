@@ -47,11 +47,17 @@
       "mutation_not_permitted": "Mutation '{{field_name}}' non consentita: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Firma Lemon Squeezy non valida",
-      "tenant_no_ls_customer": "Il tenant non ha un cliente Lemon Squeezy",
-      "tenant_not_found": "Tenant non trovato",
-      "webhook_missing_customer_id": "Id cliente mancante nel webhook",
-      "webhook_missing_tenant_linkage": "Collegamento al tenant mancante nel webhook"
+      "checkout_not_complete": "Questo pagamento non è stato completato, quindi non c'è ancora un abbonamento da collegare.",
+      "invalid_signature": "Firma del webhook non valida",
+      "no_trial": "Questa organizzazione non ha una prova",
+      "org_no_customer": "Questa organizzazione non ha ancora un account di fatturazione.",
+      "org_not_found": "Organizzazione non trovata",
+      "reconcile_not_creator": "Solo il creatore dell'organizzazione può farlo",
+      "session_org_mismatch": "Questo pagamento non è stato aperto per questa organizzazione.",
+      "subscription_items_unrecognized": "Questo abbonamento non contiene sia un prezzo del piano sia un prezzo di trasferimento dati venduti da questa installazione, quindi non può essere spostato.",
+      "trial_already_started": "Questa organizzazione ha già iniziato la sua prova. La prova è offerta una volta per organizzazione.",
+      "webhook_missing_org_linkage": "L'abbonamento del webhook non indica alcuna organizzazione",
+      "webhook_missing_subscription": "Il webhook non indica alcun abbonamento"
     },
     "control_plane": {
       "multitenancy_disabled": "la multitenancy non è abilitata"

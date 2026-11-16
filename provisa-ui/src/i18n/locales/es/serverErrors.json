@@ -47,11 +47,17 @@
       "mutation_not_permitted": "Mutación '{{field_name}}' no permitida: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Firma de Lemon Squeezy no válida",
-      "tenant_no_ls_customer": "El inquilino no tiene cliente de Lemon Squeezy",
-      "tenant_not_found": "No se encontró el inquilino",
-      "webhook_missing_customer_id": "Falta el id de cliente en el webhook",
-      "webhook_missing_tenant_linkage": "Falta la vinculación de inquilino en el webhook"
+      "checkout_not_complete": "Este pago no se ha completado, así que aún no hay ninguna suscripción que vincular.",
+      "invalid_signature": "Firma de webhook no válida",
+      "no_trial": "Esta organización no tiene prueba",
+      "org_no_customer": "Esta organización aún no tiene cuenta de facturación.",
+      "org_not_found": "Organización no encontrada",
+      "reconcile_not_creator": "Solo el creador de la organización puede hacer esto",
+      "session_org_mismatch": "Este pago no se abrió para esta organización.",
+      "subscription_items_unrecognized": "Esta suscripción no incluye a la vez un precio de plan y un precio de transferencia de datos que esta implementación venda, así que no se puede cambiar.",
+      "trial_already_started": "Esta organización ya ha iniciado su prueba. La prueba se ofrece una vez por organización.",
+      "webhook_missing_org_linkage": "La suscripción del webhook no indica ninguna organización",
+      "webhook_missing_subscription": "El webhook no indica ninguna suscripción"
     },
     "control_plane": {
       "multitenancy_disabled": "el modo multiinquilino no está habilitado"
