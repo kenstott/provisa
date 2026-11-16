@@ -33,7 +33,7 @@ from provisa.api.admin.read_rights import (
 from provisa.core.models import Column, Table
 from provisa.core.repositories import source as source_repo
 from provisa.core.repositories import table as table_repo
-from provisa.core.schema_org import domains, sources
+from provisa.core.schema_org import domains, sources, tracked_functions
 
 pytestmark = pytest.mark.asyncio
 
@@ -97,13 +97,12 @@ async def test_provisas_own_identity_is_told_every_dependent(model):
     assert sorted(d["id"] for d in named) == sorted(ids.values())
 
 
-# --- a retired table still holds its source (REQ-2248, maintainer 2026-11-15) ------------------
+# --- a retired table blocks nothing (REQ-2248, amended 2026-11-15) ------------------------------
 
 
 @pytest.fixture
 async def retired_holder(control_plane):
-    """Source ``old`` and domain ``archive`` hold one table, ``ledger``, deleted: retired. The
-    source's delete is refused."""
+    """Source ``old`` and domain ``archive`` hold one table, ``ledger``, deleted: retired."""
     db = control_plane.org()
     async with db.acquire() as conn:
         await conn.execute_core(insert(sources).values(id="old", type="postgresql"))
@@ -120,39 +119,27 @@ async def retired_holder(control_plane):
         )
         assert table_id is not None
         assert await table_repo.delete(conn, table_id) is True
+    return db
+
+
+async def test_a_retired_table_is_never_named_in_a_refusal(retired_holder):
+    """A live command keeps the source; the refusal names it, and not the retired table, even to
+    Provisa's own identity, which is told every dependent."""
+    async with retired_holder.acquire() as conn:
+        await conn.execute_core(
+            insert(tracked_functions).values(name="refund", source_id="old", domain_id="archive")
+        )
         with pytest.raises(source_repo.SourceDeleteRefused) as refused:
             await source_repo.delete(conn, "old")
-    return db, table_id, refused.value
+        said, named = await refusal(conn, SERVICE_READER, refused.value)
+    assert said == "Source 'old' is still referred to by: command refund"
+    assert [(d["kind"], d["id"]) for d in named] == [("command", "refund")]
 
 
-def _acting_in(*domain_ids: str) -> DependentsReader:
-    """A caller served no column, acting in ``domain_ids``: it may act on a retired object in
-    them, as the retired listing shows it one to restore (REQ-2248)."""
-    return DependentsReader(
-        column=lambda table_id, column: False,
-        metric=lambda row: False,
-        term=lambda domains: False,
-        command=lambda name: False,
-        retired=lambda domain_id: domain_id in domain_ids,
-    )
-
-
-async def test_a_retired_table_is_named_as_retired_to_a_caller_acting_in_its_domain(
-    retired_holder,
-):
-    db, ledger, refused = retired_holder
-    async with db.acquire() as conn:
-        said, named = await refusal(conn, _acting_in("archive"), refused)
-    assert said == "Source 'old' is still referred to by: retired table ledger"
-    assert [(d["kind"], d["id"], d["retired"]) for d in named] == [("table", ledger, True)]
-
-
-async def test_a_retired_table_outside_the_callers_domains_is_not_named(retired_holder):
-    db, _ledger, refused = retired_holder
-    async with db.acquire() as conn:
-        said, named = await refusal(conn, _acting_in("sales"), refused)
-    assert named == []
-    assert said == "Source 'old' is still referred to by objects outside your grants"
+async def test_a_source_holding_only_a_retired_table_is_retired_not_refused(retired_holder):
+    async with retired_holder.acquire() as conn:
+        assert await source_repo.delete(conn, "old") is True
+        assert await source_repo.get(conn, "old") is None
 
 
 def test_a_column_drop_names_per_column_only_what_is_readable():

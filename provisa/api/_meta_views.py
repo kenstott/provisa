@@ -234,6 +234,7 @@ def _tag_instances_sql() -> str:
                             '|') AS read_any_domains,
                    CAST(NULL AS TEXT) AS read_term_domains, CAST(NULL AS TEXT) AS read_roles
             FROM sources s
+            WHERE NOT s.retired
             UNION ALL
             SELECT 'table', rt.draft, 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
                    CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
@@ -1364,7 +1365,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
     # table's rules are parsed with. Its connection settings stay out of the catalog.
     "sources": """
         CREATE OR REPLACE VIEW sources_meta AS
-        SELECT id, type FROM sources
+        SELECT id, type FROM sources WHERE NOT retired
     """,
     # REQ-2125: one row per data product, its own fields only. Everything one-to-many about a
     # product -- members, commands, tags, terms, profiles -- is reached through meta-domain
@@ -1435,7 +1436,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                r.id AS role_id, 'meta' AS domain_id, d.id AS accessed_domain_id
         FROM roles r
         CROSS JOIN domains d
-        WHERE d.id <> ''
+        WHERE d.id <> '' AND NOT d.retired
     """,
     "tracked_webhooks": """
         CREATE OR REPLACE VIEW tracked_webhooks_meta AS
@@ -1749,7 +1750,7 @@ _OPS_REPORT_VIEWS: dict[str, str] = {
         SELECT 'domain:' || d.id, 'domain', d.id, d.id,
                'missing_steward'
         FROM domains d
-        WHERE d.id <> '' AND d.id NOT IN (
+        WHERE d.id <> '' AND NOT d.retired AND d.id NOT IN (
             -- a domain under a stewarded one answers to that steward
             WITH RECURSIVE stewarded(id) AS (
                 SELECT id FROM domains WHERE steward IS NOT NULL

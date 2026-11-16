@@ -119,6 +119,14 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS synthetic JSONB;
+-- REQ-2248: deleting a source that holds no live table retires it, as a table is retired: why
+-- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
+-- and retired_id holds the id it had while live, so that id is free for reuse.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired_id TEXT;
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -133,6 +141,14 @@ ALTER TABLE domains ADD COLUMN IF NOT EXISTS parent_domain_id TEXT;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 -- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
+-- REQ-2248: deleting a domain that holds no live table retires it, as a table is retired: why
+-- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
+-- and retired_id holds the id it had while live, so that id is free for reuse.
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS retired_id TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
 INSERT INTO domains (id, description) VALUES ('', 'No domain')

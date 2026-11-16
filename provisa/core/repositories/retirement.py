@@ -16,7 +16,12 @@ retirement takes (``retired``, ``status_reason``, ``status_by``, ``status_at``;
 :func:`provisa.core.repositories.glossary.retire_term`). Who is the person the change commits as
 (:func:`provisa.core.model_change.actor`); why is the caller's, when it gives one.
 
-A retired name stays taken: the store refuses to write a second object at it
+A retired source or domain is the exception (maintainer 2026-11-15): its id is its name, and a
+retired one leaves it free for reuse. Its row is kept under a key of its own (:func:`retired_key`)
+with the id it had in ``retired_id``, and its restore is refused while a live object holds that
+id (:class:`NameHeld`).
+
+A retired name otherwise stays taken: the store refuses to write a second object at it
 (:class:`RetiredNameTaken`), since an object at that name would otherwise be the retired one
 brought back by a write that did not ask for it.
 """
@@ -27,6 +32,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
+from uuid import uuid4
 
 from sqlalchemy import func
 
@@ -77,3 +83,27 @@ def stamped(reason: str | None, by: str | None) -> dict[str, Any]:
         "status_by": by,
         "status_at": datetime.now(UTC),
     }
+
+
+class NameHeld(Exception):
+    """A restore of a retired object whose name a live object now holds (REQ-2248). Its message
+    names both."""
+
+    def __init__(self, kind: str, name: str, holder: str) -> None:
+        self.kind = kind
+        self.name = name
+        self.holder = holder
+        super().__init__(
+            f"the retired {kind} {name!r} cannot be restored: {holder} holds that name now"
+        )
+
+
+#: What separates a retired source's or domain's id from the rest of the key it is kept under.
+#: A source id is letters, digits, hyphens and underscores, so no live id holds it.
+RETIRED_MARK = "~retired~"
+
+
+def retired_key(live_id: str) -> str:
+    """The key a retired source or domain is kept under (REQ-2248): its id, marked, and unique to
+    this retirement, so the id is free and the same id can be retired again."""
+    return f"{live_id}{RETIRED_MARK}{uuid4().hex[:12]}"

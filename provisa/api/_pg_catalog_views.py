@@ -416,7 +416,7 @@ def _pg_namespace() -> str:
             {"oid": "n.oid", "nspname": "n.name", "nspowner": str(OWNER_OID)},
             "FROM (SELECT DISTINCT o, n FROM ("
             f"SELECT {schema_oid_sql('s.name')} AS o, s.name AS n FROM (SELECT {domains} AS name "
-            "FROM domains d WHERE d.id <> '') s "
+            "FROM domains d WHERE d.id <> '' AND NOT d.retired) s "
             f"UNION ALL SELECT oid, name FROM {_rows(fixed, 'name, oid')} "
             f"UNION ALL SELECT {schema_oid_sql('s.name')}, s.name FROM (SELECT DISTINCT "
             f"{domain_sql_name_sql('rt.domain_id')} AS name FROM registered_tables rt "
@@ -713,7 +713,7 @@ def _pg_description() -> str:
             "objsubid": "0",
             "description": "d.description",
         },
-        "FROM domains d WHERE d.id <> '' AND d.description <> ''",
+        "FROM domains d WHERE d.id <> '' AND NOT d.retired AND d.description <> ''",
     )
     metrics = _select(
         relation,

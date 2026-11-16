@@ -918,8 +918,13 @@ async def _catalog_counts(conn) -> dict[str, int]:  # REQ-1919
         "tables": select(func.count()).where(
             registered_tables.c.source_id.not_in(SEEDED_SOURCE_IDS)
         ),
-        "sources": select(func.count()).where(sources.c.id.not_in(SEEDED_SOURCE_IDS)),
-        "domains": select(func.count()).where(domains.c.id.not_in(seeded_domains)),
+        # REQ-2248: a retired source or domain is not one the org holds.
+        "sources": select(func.count()).where(
+            sources.c.id.not_in(SEEDED_SOURCE_IDS), sources.c.retired.is_(False)
+        ),
+        "domains": select(func.count()).where(
+            domains.c.id.not_in(seeded_domains), domains.c.retired.is_(False)
+        ),
     }
     statements["tables"] = statements["tables"].select_from(registered_tables)
     statements["sources"] = statements["sources"].select_from(sources)

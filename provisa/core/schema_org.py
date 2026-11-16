@@ -197,6 +197,9 @@ sources = Table(
     Column("cache_schema", Text, nullable=False, server_default="api_cache"),
     Column("approval_hook", Boolean, nullable=False, server_default=false()),
     Column("is_system", Boolean, nullable=False, server_default=false()),
+    # REQ-2248: deleting a source that holds no live table retires it, as a table is retired.
+    *_retirement(),
+    Column("retired_id", Text),  # REQ-2248: its id while live (retirement.retired_key)
 )
 
 domains = Table(
@@ -213,6 +216,9 @@ domains = Table(
     # by name wherever a tree is written (security.domain_tree).
     Column("parent_domain_id", Text),
     Column("org_id", Text),  # cross-model ref -> admin.orgs
+    # REQ-2248: deleting a domain that holds no live table retires it, as a table is retired.
+    *_retirement(),
+    Column("retired_id", Text),  # REQ-2248: its id while live (retirement.retired_key)
     Column("tenant_id", Uuid),
 )
 

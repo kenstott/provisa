@@ -187,7 +187,7 @@ async def _another_govdata_source(pool, input: SourceInput) -> Optional[Mutation
 
     REQ-540: an AskAmerica subscription reaches every table, and its server is the one
     installed bundle, so one such source is served; a second is refused at save naming the one
-    that exists, not started beside it."""
+    that exists, not started beside it. A retired one is not counted (REQ-2248)."""
     from sqlalchemy import select
 
     from provisa.core.schema_org import sources
@@ -196,7 +196,9 @@ async def _another_govdata_source(pool, input: SourceInput) -> Optional[Mutation
         held = (
             await conn.execute_core(
                 select(sources.c.id).where(
-                    (sources.c.type == "govdata") & (sources.c.id != input.id)
+                    (sources.c.type == "govdata")
+                    & (sources.c.id != input.id)
+                    & sources.c.retired.is_(False)
                 )
             )
         ).fetchone()

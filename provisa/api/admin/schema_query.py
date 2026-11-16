@@ -481,7 +481,11 @@ async def _assignments_in_scope(conn, rows: list[dict], scope: frozenset[str]) -
     source_domains = {
         r.id: list(r.allowed_domains or [])
         for r in (
-            await conn.execute_core(select(sources.c.id, sources.c.allowed_domains))
+            await conn.execute_core(
+                select(sources.c.id, sources.c.allowed_domains).where(
+                    sources.c.retired.is_(False)  # REQ-2248
+                )
+            )
         ).fetchall()
     }
     command_domain: dict[str, str] = {}
@@ -812,9 +816,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _dres = await conn.execute_core(
-                select(domains.c.id, domains.c.description, domains.c.graphql_alias).order_by(
-                    domains.c.id
-                )
+                select(domains.c.id, domains.c.description, domains.c.graphql_alias)
+                .where(domains.c.retired.is_(False))  # REQ-2248
+                .order_by(domains.c.id)
             )
             domain_rows = _dres.fetchall()
             _tres = await conn.execute_core(
@@ -844,7 +848,9 @@ class Query:  # REQ-021, REQ-042
         connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _res = await conn.execute_core(select(sources).order_by(sources.c.id))
+            _res = await conn.execute_core(
+                select(sources).where(sources.c.retired.is_(False)).order_by(sources.c.id)
+            )
             # REQ-1958: a source is named to its registrar, and to a caller answered a table
             # from it.
             named = None if connection else await _listed_sources(conn, catalog_scope(info))
@@ -861,7 +867,9 @@ class Query:  # REQ-021, REQ-042
         connection = has_capability(info, "source_registration")
         pool = await _get_pool()
         async with pool.acquire() as conn:
-            _res = await conn.execute_core(select(sources).where(sources.c.id == id))
+            _res = await conn.execute_core(
+                select(sources).where(sources.c.id == id, sources.c.retired.is_(False))
+            )
             row = _res.fetchone()
             if row is None:
                 return None
@@ -897,7 +905,9 @@ class Query:  # REQ-021, REQ-042
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _res = await conn.execute_core(
-                select(domains).where(domains.c.id != "").order_by(domains.c.id)
+                select(domains)
+                .where(domains.c.id != "", domains.c.retired.is_(False))  # REQ-2248
+                .order_by(domains.c.id)
             )
             rows = [dict(r._mapping) for r in _res.fetchall()]
             # REQ-1958: the domains the caller's roles reach, and any holding a table it is

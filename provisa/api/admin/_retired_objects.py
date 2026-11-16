@@ -10,7 +10,7 @@
 
 """Retired model objects in the admin API (REQ-2248).
 
-A retired table, column, relationship, tag or metric is in no ordinary list. It is listed here,
+A retired source, domain, table, column, relationship, tag or metric is in no ordinary list. It is listed here,
 with who retired it, when and why, as a retired glossary term is on its own record, and it is
 restored from here: the same object, its retirement cleared, served again. A write that would put
 another object at a retired name is refused naming the retired one (:func:`retired_name_result`).
@@ -26,7 +26,7 @@ from typing import TYPE_CHECKING
 import strawberry
 
 from provisa.api.admin.types import MutationResult
-from provisa.core.repositories.retirement import RetiredNameTaken
+from provisa.core.repositories.retirement import NameHeld, RetiredNameTaken
 
 if TYPE_CHECKING:
     from strawberry.types import Info as StrawberryInfo
@@ -34,7 +34,10 @@ if TYPE_CHECKING:
     from provisa.core.database import Connection
 
 #: The kinds a model object is retired as, in the order they are listed.
-KINDS = ("table", "column", "relationship", "tag", "metric")
+KINDS = ("source", "domain", "table", "column", "relationship", "tag", "metric")
+
+#: REQ-2248: the right that deletes, lists and restores a retired source or domain (its delete's).
+_HOLDER_CAPABILITY = {"source": "source_registration", "domain": "org_settings"}
 
 
 def retired_name_result(taken: RetiredNameTaken) -> MutationResult:
@@ -50,9 +53,10 @@ def retired_name_result(taken: RetiredNameTaken) -> MutationResult:
 
 @strawberry.type
 class RetiredObjectType:
-    """One retired model object: its kind, what names it (``key``: the table id, the table id and
-    column name as ``<id>.<column>``, the relationship id, the tag id or the metric name), its
-    model name, and who retired it, when and why."""
+    """One retired model object: its kind, what names it (``key``: the key a retired source or
+    domain is kept under, the table id, the table id and column name as ``<id>.<column>``, the
+    relationship id, the tag id or the metric name), its model name (a source's or domain's id
+    while live), and who retired it, when and why."""
 
     kind: str
     key: str
@@ -88,9 +92,10 @@ def _held(info: "StrawberryInfo", domains: set[str]) -> bool:
 
 
 async def retired_objects(info: "StrawberryInfo", conn: "Connection") -> list[RetiredObjectType]:
-    """Every retired model object the caller may act on, by kind then name: a table or column in
-    a domain it holds, a relationship whose tables' domains it holds, a metric whose read domains
-    it holds, and every retired tag."""
+    """Every retired model object the caller may act on, by kind then name: a source or domain
+    when it holds the right that deletes one, a table or column in a domain it holds, a
+    relationship whose tables' domains it holds, a metric whose read domains it holds, and every
+    retired tag."""
     from provisa.api.admin.domain_guard import metric_domains
     from provisa.core.repositories import metric as metric_repo
     from provisa.core.repositories import relationship as rel_repo
@@ -99,7 +104,15 @@ async def retired_objects(info: "StrawberryInfo", conn: "Connection") -> list[Re
     from provisa.core.schema_org import registered_tables
     from sqlalchemy import select
 
+    from provisa.api.admin.capabilities import has_capability
+    from provisa.core.repositories import domain as domain_repo
+    from provisa.core.repositories import source as source_repo
+
     found: list[RetiredObjectType] = []
+    for kind, repo in (("source", source_repo), ("domain", domain_repo)):
+        if has_capability(info, _HOLDER_CAPABILITY[kind]):
+            for h in await repo.list_all(conn, retired=True):
+                found.append(_retired(kind, h["id"], h["retired_id"], None, h))
     every_table = {
         int(r.id): dict(r._mapping)
         for r in (
@@ -183,7 +196,22 @@ async def restore(
     from provisa.security.sensitive import SENSITIVE_DATA
 
     done: bool
-    if kind in ("table", "column"):
+    if kind in _HOLDER_CAPABILITY:
+        from provisa.core.repositories import domain as domain_repo
+        from provisa.core.repositories import source as source_repo
+
+        require_capability(info, _HOLDER_CAPABILITY[kind])
+        repo = source_repo if kind == "source" else domain_repo
+        try:
+            done = await repo.restore(conn, key)
+        except NameHeld as held:
+            return MutationResult(
+                success=False,
+                message=str(held),
+                code="schema.restore_name_held",
+                params={"kind": held.kind, "name": held.name},
+            )
+    elif kind in ("table", "column"):
         require_capability(info, "table_registration")
         table_part, _, column = key.partition(".")
         if not table_part.isdigit() or (kind == "column") != bool(column):

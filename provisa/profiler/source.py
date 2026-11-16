@@ -153,7 +153,7 @@ async def profiler_sources(conn: Any) -> list[dict]:
 
     result = await conn.execute_core(
         select(sources.c.id, sources.c.mapping)
-        .where(sources.c.type == PROFILER_SOURCE_TYPE)
+        .where(sources.c.type == PROFILER_SOURCE_TYPE, sources.c.retired.is_(False))  # REQ-2248
         .order_by(sources.c.id)
     )
     return [
