@@ -94,8 +94,12 @@ class EnteredEnvReference(SchemaExtension):
 
     def on_execute(self):
         context = self.execution_context
+        document = context.graphql_document
+        if document is None:  # not parsed: the operation is answered with its own error
+            yield
+            return
         try:
-            refuse_entered(*entered_arguments(context.graphql_document, context.variables))
+            refuse_entered(*entered_arguments(document, context.variables))
         except EnvReferenceRefused as refused:
             context.result = ExecutionResult(
                 data=None,

@@ -39,6 +39,7 @@ template and an environment copy write the operator's or already-stored text and
 
 from __future__ import annotations
 
+import functools
 import json
 import re
 from collections.abc import Iterator
@@ -58,6 +59,7 @@ NAMED_OUTRIGHT: frozenset[str] = frozenset({"api_key_env"})
 _NOT_RESOLVED: frozenset[str] = NEVER_RUNTIME | NEVER_SENSITIVE
 
 
+@functools.cache
 def _held_tables() -> frozenset[str]:
     """The control plane's tables whose text may be resolved: every table of an organization's
     schema (``env_classes.CLASSIFIED``, which a test holds equal to the schema, so a table added
