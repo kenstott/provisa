@@ -56207,15 +56207,19 @@
   feature: saas-operations-provisioning
   priority: MUST
   type: behavioral
-  description: A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING. The plan catalog
-    is the first thing the signup page asks for (REQ-1514), and a Lemon Squeezy variant id has no default
-    -- variant_id_for_plan raises rather than inventing one (a private commercial requirement) -- so a node missing those ids
-    answers GET /billing/catalog with a 500 and nobody can create an organization. The deploy therefore
-    preflights the variant, store and signing settings from the RUNNING container, exactly as it preflights
-    the engine pin, and refuses to deploy rather than leaving a node whose sign-up is broken.
-  use_case: A regenerated provisa.env drops the Lemon Squeezy variant ids; the next deploy stops instead
-    of shipping a node where "Get started" shows Internal server error.
-  scenario: 'Given the running API container has no LEMONSQUEEZY_VARIANT_STARTER
+  description: 'A HOSTED DEPLOY ASSERTS ITS COMMERCE CONFIGURATION BEFORE IT SHIPS ANYTHING. The plan
+    catalog is the first thing the signup page asks for (REQ-1514), and a Lemon Squeezy variant id has
+    no default -- variant_id_for_plan raises rather than inventing one (a private commercial requirement)
+    -- so a node missing those ids answers GET /billing/catalog with a 500 and nobody can create an organization.
+    The deploy therefore preflights the variant, store and signing settings from the RUNNING container,
+    exactly as it preflights the engine pin, and refuses to deploy rather than leaving a node whose sign-up
+    is broken. (Amended 2026-11-16, STRIPE MANAGED PAYMENTS:) The merchant of record is Stripe Managed
+    Payments (a private commercial requirement). The settings the preflight asserts are the Stripe ones:
+    STRIPE_PRICE_STARTER, STRIPE_PRICE_PRO_S, STRIPE_PRICE_PRO_M, STRIPE_PRICE_PRO_L, the four STRIPE_PRICE_EGRESS_
+    counterparts, and STRIPE_WEBHOOK_SECRET. No LEMONSQUEEZY_ setting is read or asserted.'
+  use_case: A regenerated provisa.env drops the Stripe price ids; the next deploy stops instead of shipping
+    a node where "Get started" shows Internal server error.
+  scenario: 'Given the running API container has no STRIPE_PRICE_STARTER
 
 
     When the operator runs the cloud deploy
@@ -56271,30 +56275,38 @@
   priority: MUST
   type: behavioral
   description: 'THE BILLING KEY IS ASSERTED FOR THE STORE THE DEPLOYMENT ACTUALLY TRANSACTS AGAINST, AND
-    A BLANK KEY IS A MISSING KEY. LEMONSQUEEZY_MODE selects which credential signs every Lemon Squeezy
-    call (a private commercial requirement): test mode reads TEST_LEMONSQUEEZY_API_KEY and leaves LEMONSQUEEZY_API_KEY inert.
-    Two consequences follow. First, the reader raises a named error when the selected key is empty rather than signing with it. Docker compose forwards every declared variable, so an unset key reaches the
+    A BLANK KEY IS A MISSING KEY. [SUPERSEDED by REQ-1564, 2026-11-16 -- the credentials are Stripe''s
+    (a private commercial requirement). Kept here for history; do not implement against it.] LEMONSQUEEZY_MODE
+    selects which credential signs every Lemon Squeezy call (a private commercial requirement): test mode
+    reads TEST_LEMONSQUEEZY_API_KEY and leaves LEMONSQUEEZY_API_KEY inert. [END SUPERSEDED BLOCK] Two
+    consequences follow. First, the reader raises a named error when the selected key is empty rather
+    than signing with it. Docker compose forwards every declared variable, so an unset key reaches the
     process as an empty string that os.environ hands back happily, and the request then carries "Authorization:
     Bearer " for the transport to reject; the operator must see the setting they never wrote, not a protocol
     error from inside httpx. Second, the deploy preflight asserts the mode-selected key rather than a
     fixed list, because a node holding the live key with the test key blank satisfies a fixed list and
-    still cannot price a single plan.'
+    still cannot price a single plan. (Amended 2026-11-16, STRIPE MANAGED PAYMENTS:) STRIPE_MODE selects
+    the credentials: test mode reads STRIPE_TEST_SECRET_KEY and STRIPE_TEST_PUBLISHABLE_KEY and leaves
+    STRIPE_SECRET_KEY and STRIPE_PUBLISHABLE_KEY inert. The publishable key is asserted with the secret
+    one, because the embedded checkout cannot mount without it. A blank key is still a missing key.'
   use_case: A hosted node runs in test mode with only the live key configured; the deploy names the missing
     sandbox key instead of shipping a signup page whose plan catalog 500s.
-  scenario: 'Given LEMONSQUEEZY_MODE is test and TEST_LEMONSQUEEZY_API_KEY is empty
+  scenario: 'Given STRIPE_MODE is test and STRIPE_TEST_SECRET_KEY is empty
 
 
     When the operator runs the cloud deploy
 
 
-    Then the commerce preflight names TEST_LEMONSQUEEZY_API_KEY and exits non-zero'
+    Then the commerce preflight names STRIPE_TEST_SECRET_KEY and exits non-zero'
   code:
   - scripts/deploy-cloud.sh
   depends_on:
   - a private commercial requirement
   - REQ-1514
   - REQ-1562
-  notes: 'Roadmap audit 2026-10-13: partly built. Missing: Deploy preflight asserts the mode-selected key, but the reader that raises a named error on a blank key is not in this repository and no test exists.'
+  notes: 'Roadmap audit 2026-10-13: partly built. Missing: Deploy preflight asserts the mode-selected
+    key, but the reader that raises a named error on a blank key is not in this repository and no test
+    exists.'
 - id: REQ-1567
   status: complete
   since: 2026-08
