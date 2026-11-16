@@ -20,6 +20,7 @@ from __future__ import annotations
 
 
 import logging
+from collections.abc import Coroutine
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
 
@@ -155,10 +156,14 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
     return True
 
 
-async def _rebuild_schemas():
+def _rebuild_schemas() -> Coroutine[Any, Any, bool]:
+    """The schema build (``app._rebuild_schemas``), for the mutations that import it from here.
+    The build's recorded cause is the mutation calling this, not this pass-through (REQ-1914): a
+    plain function, so the caller's frame is the one read."""
     from provisa.api.app import _rebuild_schemas as rebuild
+    from provisa.api.rebuild_trace import calling_function
 
-    await rebuild()
+    return rebuild(cause=calling_function())
 
 
 def _compute_can_deploy_to_db(

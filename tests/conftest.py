@@ -1791,3 +1791,14 @@ def sample_config():
     config_path = Path(__file__).parent / "fixtures" / "sample_config.yaml"
     with open(config_path) as f:
         return yaml.safe_load(f)
+
+
+@pytest.fixture
+def rebuild_recorder():
+    """Every call for a schema build that ends in this process during the test, as the build
+    recorded it (provisa/api/rebuild_trace.py): ``.builds`` are the ones that ran, each with its
+    cause, phases, stamps and counts. A test counts them; it never times them (REQ-1914)."""
+    from provisa.api import rebuild_trace
+
+    with rebuild_trace.capture() as recorded:
+        yield recorded
