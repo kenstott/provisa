@@ -24,6 +24,7 @@ if TYPE_CHECKING:
     from provisa.compiler.native_nested import NestedColumns
     from provisa.compiler.native_subtype import SubtypeColumns
     from provisa.compiler.introspect import ColumnMetadata
+    from provisa.core.parameters import ParameterFact
 
 
 # Protocol mirroring schema_gen._TableInfo — avoids a circular import while
@@ -224,6 +225,10 @@ class CompilationContext:
     column_aliases: dict[tuple[int, str], str] = field(default_factory=dict)
     # table_id → set of column names that require native API params (_nf_ prefix)
     native_filter_columns: dict[int, dict[str, str]] = field(default_factory=dict)
+    # table_id → the table's parameters as its metadata states them (REQ-1986:
+    # core.parameters.parameter_facts): name, type, kind, opaque or a real column, required. What
+    # a reader that counts, profiles, samples or scans a table asks before reading it.
+    parameters: dict[int, tuple[ParameterFact, ...]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → (key column, {key value → literal})}: a virtual column whose

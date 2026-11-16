@@ -198,6 +198,11 @@ def _register_table_in_ctx(
     ctx.native_filter_columns[t.table_id] = {
         nfc["column_name"]: _nfc_type(nfc) for nfc in t.native_filter_columns
     }
+    from provisa.core.parameters import parameter_facts
+
+    ctx.parameters[t.table_id] = tuple(
+        parameter_facts({**nfc, "data_type": _nfc_type(nfc)} for nfc in t.native_filter_columns)
+    )
 
     for col in t.visible_columns:
         phys = col["column_name"]
