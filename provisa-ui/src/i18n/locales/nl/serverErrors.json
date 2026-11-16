@@ -159,7 +159,6 @@
       "semantics_unavailable": "Semantiek kan niet worden uitgevoerd: {{model}}, het model dat aan relatie-inferentie is toegewezen, heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "table_id_required": "table_id vereist voor tabelbereik",
-      "table_unreadable": "Detectie kan de tabel {{table}} niet lezen: {{reason}}. Laat deze uit de gekozen tabellen weg, of corrigeer de tabel en probeer het opnieuw.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
       "vendor_has_no_key": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
