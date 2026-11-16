@@ -46,6 +46,7 @@ from provisa.pgwire.catalog_pg17_procs import (
     VIEW_DEFINITIONS,
 )
 from provisa.pgwire.catalog_pg17_viewdefs import VIEW_WRAPS
+from provisa.transpiler.metadata_arguments import strict_null
 from provisa.transpiler.metadata_facts import (
     PRIVILEGES,
     ROLE_PRIVILEGES,
@@ -1143,6 +1144,10 @@ def expand(tree: exp.Expr, facts: CatalogFacts) -> exp.Expr:
         name, args = call.name.lower(), list(call.expressions)
         if on_the_engine and name in _IN_THE_MACRO_TABLE:
             return node
+        if (name, len(args)) in FORMS:
+            null = strict_null(name, args)  # REQ-2236: a strict function is not called with NULL
+            if null is not None:
+                return exp.alias_(null, name) if _is_column(node) else null
         if name == "pg_column_size" and len(args) == 1:
             sized = _column_size(args[0].transform(rewrite))
             return exp.alias_(sized, name) if _is_column(node) else sized
