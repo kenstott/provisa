@@ -68,7 +68,7 @@ import {
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
   FORM_FIELD,
-  removeTestSources,
+  retireTestSourcesTables,
 } from "./source-to-query-helpers";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
@@ -117,7 +117,7 @@ test.describe("source to query through the UI, community-extension sources (REQ-
   });
 
   test.afterAll(async () => {
-    await removeTestSources();
+    await retireTestSourcesTables();
     provisionSources("down");
     fs.rmSync(WIDGETS_DUCKDB_PATH, { force: true });
   });
