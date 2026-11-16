@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
+      "vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+    },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
       "answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all."
@@ -139,7 +143,11 @@
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
       "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
       "graphql_mutation_over_get": "A mutation is sent with POST, never GET.",
-      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot"
+      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot",
+      "parameter_by_equality_only": "The parameter {{parameter}} takes a value by equality: {{parameter}} = a value, {{parameter}} IN (values), or a join on {{parameter}}. {{form}} gives it no value.",
+      "parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
+      "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
+      "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -162,7 +170,6 @@
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
       "unknown_source_type": "Unknown source type: {{type}}",
-      "vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."
     },

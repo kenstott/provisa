@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
+    },
     "api": {
       "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo.",
       "answer_row_cut": "A resposta para {{table}} foi cortada em max_rows={{max_rows}}: o remoto tem mais. Aumente graphql_remote.max_rows para ler tudo."
@@ -139,7 +143,11 @@
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_parameter_type": "O parâmetro {{parameter}} da requisição GraphQL deve ser {{expected}}.",
       "graphql_mutation_over_get": "Uma mutação é enviada com POST, nunca com GET.",
-      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não"
+      "listed_only": "A função {{role}} só pode listar {{table}}: os metadados podem ser lidos, os dados não",
+      "parameter_by_equality_only": "O parâmetro {{parameter}} recebe o valor por igualdade: {{parameter}} = um valor, {{parameter}} IN (valores) ou um join em {{parameter}}. {{form}} não lhe dá nenhum valor.",
+      "parameter_unbound_on_branch": "O parâmetro {{parameter}} recebe um valor num ramo de um OR e nenhum noutro. Dê um valor a {{parameter}} em todos os ramos.",
+      "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
+      "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -162,7 +170,6 @@
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "table_id_required": "table_id obrigatório para escopo de tabela",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
-      "vendor_has_no_key": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
       "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
       "answer_unreadable": "A resposta do modelo não continha uma lista legível."
     },

@@ -388,6 +388,7 @@
   "tests/integration/test_otel_missing_metadata.py": 39.3,
   "tests/integration/test_otlp2parquet_columns.py": 11.7,
   "tests/integration/test_output_formats.py": 0.0,
+  "tests/integration/test_parameter_binding_e2e.py": 110.0,
   "tests/integration/test_pat_scopes_e2e.py": 290.0,
   "tests/integration/test_per_org_triggers_store.py": 57.2,
   "tests/integration/test_percentile_null_elements_on_engines.py": 15.8,

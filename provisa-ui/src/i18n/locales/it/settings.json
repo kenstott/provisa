@@ -868,6 +868,12 @@
         "label": "Durata predefinita delle viste materializzate",
         "help": "Per quanto tempo una vista materializzata viene usata prima di essere aggiornata, quando non fissa una durata propria. Richiede un riavvio."
       }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Chiamate per istruzione a una tabella parametrizzata",
+        "help": "Il numero massimo di chiamate che un'istruzione fa a una tabella parametrizzata. Ogni valore che un'istruzione dà a un parametro è una chiamata alla sorgente: ogni valore di una lista IN, ogni ramo di un OR, ogni chiave distinta di un join. Un'istruzione che ne richiede di più viene rifiutata."
+      }
     }
   }
 }

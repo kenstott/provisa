@@ -65,6 +65,20 @@ DECLARED: list[Setting] = [
         unit="points",
     ),
     Setting(
+        key="parameters.max_calls_per_statement",
+        card="limits",
+        type="int",
+        effect="live",  # read when a statement's parameters are bound
+        # REQ-1986: each value a statement gives a table's parameter is one call to its source
+        # (an IN list, the branches of an OR, a join's distinct keys); a statement that needs
+        # more calls to one table than this is refused, naming this setting.
+        req="REQ-1986",
+        env="PROVISA_PARAMETERS_MAX_CALLS_PER_STATEMENT",
+        default=1000,
+        min=1,
+        unit="calls",
+    ),
+    Setting(
         key="logs.preview_lines",
         card="limits",
         type="int",

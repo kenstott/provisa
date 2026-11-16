@@ -868,6 +868,12 @@
         "label": "Durée de vie par défaut des vues matérialisées",
         "help": "La durée pendant laquelle une vue matérialisée est utilisée avant d'être actualisée, quand elle ne fixe pas sa propre durée de vie. Redémarrage requis."
       }
+    },
+    "parameters": {
+      "max_calls_per_statement": {
+        "label": "Appels par instruction à une table paramétrée",
+        "help": "Le nombre maximal d'appels qu'une instruction adresse à une table paramétrée. Chaque valeur qu'une instruction donne à un paramètre est un appel à la source : chaque valeur d'une liste IN, chaque branche d'un OR, chaque clé distincte d'une jointure. Une instruction qui en demande davantage est refusée."
+      }
     }
   }
 }

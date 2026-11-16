@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
+    },
     "api": {
       "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire.",
       "answer_row_cut": "La réponse pour {{table}} a été tronquée à max_rows={{max_rows}} : le service distant en a davantage. Augmentez graphql_remote.max_rows pour tout lire."
@@ -139,7 +143,11 @@
       "graphql_request_not_object": "Une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_parameter_type": "Le paramètre {{parameter}} de la requête GraphQL doit être {{expected}}.",
       "graphql_mutation_over_get": "Une mutation s'envoie en POST, jamais en GET.",
-      "listed_only": "Le rôle {{role}} peut seulement lister {{table}} : ses métadonnées sont lisibles, pas ses données"
+      "listed_only": "Le rôle {{role}} peut seulement lister {{table}} : ses métadonnées sont lisibles, pas ses données",
+      "parameter_by_equality_only": "Le paramètre {{parameter}} reçoit sa valeur par égalité : {{parameter}} = une valeur, {{parameter}} IN (valeurs) ou une jointure sur {{parameter}}. {{form}} ne lui donne aucune valeur.",
+      "parameter_unbound_on_branch": "Le paramètre {{parameter}} reçoit une valeur dans une branche d'un OR et aucune dans une autre. Donnez une valeur à {{parameter}} dans chaque branche.",
+      "parameter_conflict": "Le paramètre {{parameter}} reçoit deux valeurs différentes à la fois ({{first}} et {{second}}). Donnez-lui une seule valeur, ou énumérez les valeurs avec IN ou OR.",
+      "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -162,7 +170,6 @@
       "source_not_found": "Source « {{source_id}} » introuvable",
       "table_id_required": "table_id requis pour la portée table",
       "unknown_source_type": "Type de source inconnu : {{type}}",
-      "vendor_has_no_key": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle.",
       "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible."
     },

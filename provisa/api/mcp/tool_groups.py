@@ -163,10 +163,6 @@ GROUP_OF: dict[str, str] = {
     "export_model_config": "test_data",
 }
 
-# Tools registered only under a condition (jev_evaluate: a Jev credential is configured). A
-# server built without it still holds every other tool of this table.
-CONDITIONAL = frozenset({"jev_evaluate"})
-
 
 def check_registered(registered: set[str]) -> None:
     """Refuse a server whose tools and this table differ: a tool with no group, a group naming a
@@ -179,7 +175,7 @@ def check_registered(registered: set[str]) -> None:
     ungrouped = sorted(registered - GROUP_OF.keys())
     if ungrouped:
         raise RuntimeError(f"MCP tools with no group (tool_groups.GROUP_OF): {ungrouped}")
-    missing = sorted(GROUP_OF.keys() - registered - CONDITIONAL)
+    missing = sorted(GROUP_OF.keys() - registered)
     if missing:
         raise RuntimeError(f"MCP tool groups name tools that are not registered: {missing}")
 

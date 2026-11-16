@@ -24,6 +24,7 @@ import pytest
 
 from provisa.api.data.materialization import _materialize_api_to_engine_cache
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ParamType
+from provisa.core.parameters import ParameterRequired
 
 TABLE = 7
 
@@ -231,7 +232,10 @@ async def test_a_table_only_in_a_union_branch_has_the_branch_dropped_instead():
     step.assert_not_awaited()
 
 
-async def test_a_parameter_a_model_join_feeds_is_given_by_the_join():
+async def test_a_model_join_the_statement_does_not_make_gives_a_parameter_nothing():
+    """REQ-1986: a parameter is bound by the statement -- an equality, or a join on the
+    parameter that the statement itself makes (``bind_statement`` then gives each key its own
+    read). A join the model declares and the statement does not make once counted as giving it."""
     state = _openapi_state(_param("region", "query_param", True))
     joined = SimpleNamespace(type_name="Customer")
     ctx = SimpleNamespace(
@@ -246,8 +250,18 @@ async def test_a_parameter_a_model_join_feeds_is_given_by_the_join():
     )
     step = AsyncMock()
     with patch(_STEPS["openapi"], new=step):
+        with pytest.raises(ParameterRequired, match="region"):
+            await _materialize_api_to_engine_cache(
+                "SELECT * FROM orders", state, nf_args={}, table_ids=[TABLE], ctx=ctx
+            )
+        step.assert_not_awaited()
+        # The statement's binding of a join on the parameter: one read per key, each given.
         await _materialize_api_to_engine_cache(
-            "SELECT * FROM orders", state, nf_args={}, table_ids=[TABLE], ctx=ctx
+            "SELECT * FROM orders__nf1 AS orders",
+            state,
+            table_ids=[TABLE],
+            ctx=ctx,
+            read_args={"orders__nf1": ("orders", {"region": "emea"})},
         )
     step.assert_awaited_once()
 

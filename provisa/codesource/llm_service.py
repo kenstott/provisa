@@ -326,7 +326,12 @@ async def _provider(cfg: dict, model_db: "Database", vendor: str) -> tuple[Any, 
     org's key for it, as Polly is routed (provisa.api.mcp.chat._resolve_aisuite_routing)."""
     from aisuite.provider import ProviderFactory
 
-    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_secrets import (
+        NO_KEY,
+        endpoint_provider_key,
+        provider_key,
+        read_org_api_keys,
+    )
     from provisa.core.request_context import current_org
     from provisa.core.sandbox_ai import endpoint_key
     from provisa.core.secrets import resolve_secrets
@@ -334,14 +339,14 @@ async def _provider(cfg: dict, model_db: "Database", vendor: str) -> tuple[Any, 
     endpoints = {ep["id"]: ep for ep in (cfg.get("ai_endpoints") or []) if ep.get("enabled", True)}
     endpoint = endpoints.get(vendor)
     if endpoint is None:
-        key = (await read_org_api_keys(model_db)).get(vendor)
+        key = provider_key(await read_org_api_keys(model_db), vendor)
         return ProviderFactory.create_provider(vendor, {"api_key": key} if key else {}), vendor
     style = endpoint["style"]
     config: dict[str, Any] = {"base_url": resolve_secrets(endpoint["base_url"])}
     key = await endpoint_key(endpoint, current_org.get())
     # aisuite's OpenAI provider requires a key even for a server that checks none (a local
     # Ollama): a placeholder satisfies that constructor, and is no credential.
-    config["api_key"] = key or ("not-required" if style == "openai" else None)
+    config["api_key"] = endpoint_provider_key(key) or (NO_KEY if style == "openai" else None)
     return ProviderFactory.create_provider(style, config), style
 
 

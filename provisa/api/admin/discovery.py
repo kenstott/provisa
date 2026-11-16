@@ -196,9 +196,9 @@ async def _semantics(
 
     # Optional: when a Jev key is configured, replace each candidate's self-reported confidence
     # with Jev's calibrated score (REQ-1789); those it drops fell below the threshold.
-    from provisa.core.org_secrets import resolve_jev_api_key
+    from provisa.core.org_secrets import JEV, org_ai_key_or_none
 
-    jev_key = await resolve_jev_api_key(state.model_db)
+    jev_key = await org_ai_key_or_none(state.model_db, JEV)
     if jev_key and kept:
         from provisa.jev.decisions import refine_relationship_confidence
 
@@ -392,10 +392,9 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
     import os
 
     from provisa.api.admin.ai_models_router import _run_model_listing
-    from provisa.core.org_secrets import read_org_api_keys
+    from provisa.core.org_secrets import org_ai_key
     from provisa.core.org_settings import resolve_org_config
     from provisa.llm.vendor_models import (
-        VENDOR_API_KEY_ENV,
         VENDOR_MODEL_APIS,
         fetch_endpoint_models,
         fetch_vendor_models,
@@ -404,18 +403,8 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
     pool = state.model_db
     assert pool is not None
     if vendor in VENDOR_MODEL_APIS:
-        # The org's key, else the deployment's, as the LLM client resolves it (REQ-1395).
-        api_key = (await read_org_api_keys(pool)).get(vendor)
-        if not api_key and vendor in VENDOR_API_KEY_ENV:
-            api_key = os.environ.get(VENDOR_API_KEY_ENV[vendor])
-        if not api_key:
-            raise ApiError(
-                409,
-                "discovery.vendor_has_no_key",
-                f"{vendor} has no key. Set one under {WHERE_TO_SET}.",
-                vendor=vendor,
-            )
-        key = api_key
+        # The key the vendor's calls are made with; refused when there is none (REQ-1395).
+        key = await org_ai_key(pool, vendor)
         models = await _run_model_listing(vendor, lambda: fetch_vendor_models(vendor, key))
         return {"vendor": vendor, "models": models}
     config = await resolve_org_config(pool)

@@ -87,7 +87,8 @@ def is_opaque(column: Any) -> bool:
     """Whether a parameter is an input to the source's call (a path, query, GraphQL, gRPC or
     native-query argument) rather than a real column of the table (a partition key, a column
     value)."""
-    return _get(column, "native_filter_type") not in REAL_COLUMN_KINDS
+    kind = _get(column, "native_filter_type")
+    return kind is not None and kind not in REAL_COLUMN_KINDS
 
 
 @dataclass(frozen=True)

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
+    },
     "api": {
       "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
       "answer_row_cut": "{{table}} 的回應在 max_rows={{max_rows}} 處被截斷：遠端還有更多資料。請提高 graphql_remote.max_rows 以讀取全部資料。"
@@ -139,7 +143,11 @@
       "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_parameter_type": "GraphQL 請求的 {{parameter}} 必須是 {{expected}}。",
       "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。",
-      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料"
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料",
+      "parameter_by_equality_only": "參數 {{parameter}} 透過等值取值:{{parameter}} = 值、{{parameter}} IN (值清單),或在 {{parameter}} 上聯結。{{form}} 不會給它任何值。",
+      "parameter_unbound_on_branch": "參數 {{parameter}} 在 OR 的一個分支中有值,在另一個分支中沒有。請在每個分支中為 {{parameter}} 指定值。",
+      "parameter_conflict": "參數 {{parameter}} 同時被賦予兩個不同的值({{first}} 和 {{second}})。請只給它一個值,或用 IN 或 OR 列出這些值。",
+      "parameter_calls_over_cap": "該語句需要對 {{table}} 發出 {{calls}} 次呼叫(其參數的每個值一次),而一條語句最多發出 {{cap}} 次(設定 {{setting}})。請減少值的數量。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -162,7 +170,6 @@
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "table_id_required": "資料表範圍需要 table_id",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
       "answer_unreadable": "模型的回答中沒有可讀取的清單。"
     },

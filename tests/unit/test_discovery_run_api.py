@@ -212,7 +212,7 @@ class _World:
         async def org_keys(pool):
             return dict(api_keys)
 
-        async def no_jev(pool):
+        async def no_jev(pool, vendor):
             return None
 
         def respond(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
@@ -234,7 +234,7 @@ class _World:
         monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
-        monkeypatch.setattr("provisa.core.org_secrets.resolve_jev_api_key", no_jev)
+        monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)
         monkeypatch.setattr("provisa.llm.client.ProvisaLLMClient._respond", respond)
 
 
