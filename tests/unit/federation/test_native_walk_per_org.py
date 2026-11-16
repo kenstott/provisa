@@ -32,8 +32,13 @@ _DEPLOYMENT = "default"
 _OWN = "sbxlake"  # an org on the engine as its own (a demo sandbox)
 
 
-def _store(tmp_path, name: str, rows: int) -> str:
-    path = tmp_path / f"{name}.sqlite"
+def _store(tmp_path, name: str, rows: int, org: str) -> str:
+    """A store in ``org``'s own folder: a held org's source reads no other place on the disk."""
+    from provisa.core import org_files
+
+    files = org_files.folder(org) / "files"
+    files.mkdir(parents=True, exist_ok=True)
+    path = files / f"{name}.sqlite"
     conn = sqlite3.connect(path)
     conn.execute("CREATE TABLE orders (id INTEGER PRIMARY KEY)")
     conn.executemany("INSERT INTO orders VALUES (?)", [(i,) for i in range(rows)])
@@ -86,6 +91,7 @@ def engine(tmp_path, monkeypatch):
     from provisa.federation.duckdb_runtime import DuckDBFederationRuntime
 
     monkeypatch.setattr("provisa.core.operator_floor.floor_setting", lambda _src: None)
+    monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
     engine = build_engine("duckdb")
     store = f"duckdb:///{tmp_path / 'mat.duckdb'}"
     engine.backend._runtime = DuckDBFederationRuntime(materialize_dsn=store)
@@ -105,16 +111,16 @@ def _count(engine, org: str, state) -> int:
 
 
 def test_each_orgs_statement_reads_its_own_store_whichever_walked_last(engine, tmp_path):
-    deployment = _org_state(_DEPLOYMENT, _store(tmp_path, "deployment", 2))
-    own = _org_state(_OWN, _store(tmp_path, "own", 3))
+    deployment = _org_state(_DEPLOYMENT, _store(tmp_path, "deployment", 2, _DEPLOYMENT))
+    own = _org_state(_OWN, _store(tmp_path, "own", 3, _OWN))
     for _ in range(3):
         assert _count(engine, _DEPLOYMENT, deployment) == 2
         assert _count(engine, _OWN, own) == 3
 
 
 def test_each_orgs_walk_stands_for_it_while_the_other_org_is_served(engine, tmp_path, monkeypatch):
-    deployment = _org_state(_DEPLOYMENT, _store(tmp_path, "deployment", 2))
-    own = _org_state(_OWN, _store(tmp_path, "own", 3))
+    deployment = _org_state(_DEPLOYMENT, _store(tmp_path, "deployment", 2, _DEPLOYMENT))
+    own = _org_state(_OWN, _store(tmp_path, "own", 3, _OWN))
     walks: list[str] = []
     walk = type(engine.backend)._walk_registry
 

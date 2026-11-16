@@ -468,7 +468,6 @@
       "logs_invalid": "Logs-bron {{source}}: {{error}}",
       "logs_path_refused": "Logs-bron {{source}}: {{reason}}",
       "file_path_leaves_org": "Bron {{source}}: {{path}} gaat buiten de map van de organisatie.",
-      "file_path_local_refused": "Bron {{source}}: een server met veel organisaties leest geen bestand van zijn eigen schijf; upload het bestand of geef het op als {files}/… of met een extern adres.",
       "relationship_alias_taken": "De alias '{{alias}}' is al de alias van relatie '{{relationship}}' vanuit '{{table}}'",
       "relationship_ambiguous_table": "De tabelnaam '{{table}}' ({{end}}) wijst een tabel aan in meer dan één bron ({{sources}})",
       "relationship_unknown_source": "Brontabel '{{table}}' is niet geregistreerd",
@@ -720,7 +719,8 @@
       "not_a_file_source": "Een {{type}}-bron krijgt geen bestand via upload."
     },
     "sources": {
-      "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen."
+      "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen.",
+      "local_path_refused": "De bronnen van deze organisatie lezen geen bestand van de eigen schijf van de server buiten de eigen map; {{path}} is er zo een. Upload het bestand of geef het op als {files}/… of met een extern adres."
     },
     "sandbox": {
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",

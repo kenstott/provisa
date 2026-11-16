@@ -468,7 +468,6 @@
       "logs_invalid": "Logs ソース {{source}}: {{error}}",
       "logs_path_refused": "Logs ソース {{source}}: {{reason}}",
       "file_path_leaves_org": "ソース {{source}}: {{path}} は組織のフォルダーの外を指しています。",
-      "file_path_local_refused": "ソース {{source}}: 多数の組織を抱えるサーバーは自身のディスク上のファイルを読み取りません。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。",
       "relationship_alias_taken": "エイリアス '{{alias}}' は、すでに '{{table}}' からのリレーションシップ '{{relationship}}' のエイリアスです",
       "relationship_ambiguous_table": "テーブル名 '{{table}}' ({{end}}) は複数のソース ({{sources}}) のテーブルを指しています",
       "relationship_unknown_source": "ソーステーブル '{{table}}' は登録されていません",
@@ -720,7 +719,8 @@
       "not_a_file_source": "{{type}} ソースにはアップロードでファイルを渡せません。"
     },
     "sources": {
-      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
+      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。",
+      "local_path_refused": "この組織のソースは、組織自身のフォルダー外にあるサーバーのディスク上のファイルを読み取りません。{{path}} はそのようなファイルです。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。"
     },
     "sandbox": {
       "wrong_tier": "このサンドボックスは別の場所で提供されています。サンドボックス自身のアドレスから開いてください。",

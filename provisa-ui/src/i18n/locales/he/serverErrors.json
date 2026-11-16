@@ -468,7 +468,6 @@
       "logs_invalid": "מקור Logs {{source}}: {{error}}",
       "logs_path_refused": "מקור Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "מקור {{source}}: {{path}} יוצא מתיקיית הארגון.",
-      "file_path_local_refused": "מקור {{source}}: שרת של ארגונים רבים אינו קורא קבצים מהדיסק שלו; העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת.",
       "relationship_alias_taken": "הכינוי '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "relationship_ambiguous_table": "שם הטבלה '{{table}}' ({{end}}) מציין טבלה ביותר ממקור אחד ({{sources}})",
       "relationship_unknown_source": "טבלת המקור '{{table}}' אינה רשומה",
@@ -720,7 +719,8 @@
       "not_a_file_source": "למקור {{type}} לא ניתן קובץ בהעלאה."
     },
     "sources": {
-      "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו."
+      "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו.",
+      "local_path_refused": "המקורות של הארגון הזה אינם קוראים קבצים מהדיסק של השרת מחוץ לתיקייה של הארגון; {{path}} הוא קובץ כזה. העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת."
     },
     "sandbox": {
       "wrong_tier": "ארגז החול הזה מוגש ממקום אחר; פתחו אותו מהכתובת שלו.",

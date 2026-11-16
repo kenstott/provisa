@@ -202,9 +202,14 @@ def is_org_path(path: str | None) -> bool:
 def resolve_path(path: str, org_id: str | None = None) -> str:
     """``path`` as the file it names: a path written with an org token is that place under the
     org's folder (``{files}/a.csv`` -> ``<org folder>/files/a.csv``), refused by name when it
-    leaves the folder through ``..`` or a symlink; any other path is returned as it is."""
+    leaves the folder through ``..`` or a symlink; any other path is returned as it is, once a
+    held org's is shown not to be a place on the server's own disk outside its folder
+    (``source_uploads.require_own_disk``): this is where a file source's path is opened."""
     found = _token_of(path)
     if found is None:
+        from provisa.core.source_uploads import require_own_disk
+
+        require_own_disk(path, org_id)
         return path
     token, rest = found
     root = org_root(org_id)

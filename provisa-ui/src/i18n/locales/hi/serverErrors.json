@@ -468,7 +468,6 @@
       "logs_invalid": "Logs स्रोत {{source}}: {{error}}",
       "logs_path_refused": "Logs स्रोत {{source}}: {{reason}}",
       "file_path_leaves_org": "स्रोत {{source}}: {{path}} संगठन के फ़ोल्डर से बाहर जाता है।",
-      "file_path_local_refused": "स्रोत {{source}}: कई संगठनों वाला सर्वर अपनी डिस्क की कोई फ़ाइल नहीं पढ़ता; फ़ाइल अपलोड करें, या उसे {files}/… या किसी दूरस्थ पते से बताएँ।",
       "relationship_alias_taken": "उपनाम '{{alias}}' पहले से '{{table}}' से संबंध '{{relationship}}' का उपनाम है",
       "relationship_ambiguous_table": "तालिका नाम '{{table}}' ({{end}}) एक से अधिक स्रोतों ({{sources}}) में तालिका दर्शाता है",
       "relationship_unknown_source": "स्रोत तालिका '{{table}}' पंजीकृत नहीं है",
@@ -720,7 +719,8 @@
       "not_a_file_source": "{{type}} स्रोत को अपलोड से फ़ाइल नहीं दी जाती।"
     },
     "sources": {
-      "private_destination": "इस संगठन के स्रोत केवल सार्वजनिक पतों तक पहुँच सकते हैं; {{host}} {{address}} है, जो सार्वजनिक नहीं है।"
+      "private_destination": "इस संगठन के स्रोत केवल सार्वजनिक पतों तक पहुँच सकते हैं; {{host}} {{address}} है, जो सार्वजनिक नहीं है।",
+      "local_path_refused": "इस संगठन के स्रोत सर्वर की अपनी डिस्क पर संगठन के फ़ोल्डर के बाहर की कोई फ़ाइल नहीं पढ़ते; {{path}} ऐसी ही एक फ़ाइल है। फ़ाइल अपलोड करें, या उसे {files}/… या किसी दूरस्थ पते से बताएँ।"
     },
     "sandbox": {
       "wrong_tier": "यह सैंडबॉक्स कहीं और से परोसा जाता है; इसे इसके अपने पते से खोलें।",

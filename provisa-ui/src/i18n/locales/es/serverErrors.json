@@ -468,7 +468,6 @@
       "logs_invalid": "Origen Logs {{source}}: {{error}}",
       "logs_path_refused": "Origen Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "Origen {{source}}: {{path}} sale de la carpeta de la organización.",
-      "file_path_local_refused": "Origen {{source}}: un servidor de muchas organizaciones no lee archivos de su propio disco; suba el archivo o indíquelo como {files}/… o con una dirección remota.",
       "relationship_alias_taken": "El alias '{{alias}}' ya es el alias de la relación '{{relationship}}' desde '{{table}}'",
       "relationship_ambiguous_table": "El nombre de tabla '{{table}}' ({{end}}) designa una tabla en más de un origen ({{sources}})",
       "relationship_unknown_source": "La tabla de origen '{{table}}' no está registrada",
@@ -720,7 +719,8 @@
       "not_a_file_source": "A un origen {{type}} no se le da un archivo por subida."
     },
     "sources": {
-      "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es."
+      "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es.",
+      "local_path_refused": "Las fuentes de esta organización no leen archivos del propio disco del servidor fuera de su carpeta; {{path}} es uno de ellos. Suba el archivo o indíquelo como {files}/… o con una dirección remota."
     },
     "sandbox": {
       "wrong_tier": "Este sandbox se sirve en otro lugar; ábralo desde su propia dirección.",

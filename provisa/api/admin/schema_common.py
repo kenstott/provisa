@@ -393,13 +393,46 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
     want to reveal the physical location of the file)". So a path inside the organization's
     folder is kept written with its token ({files}/... or {org}/...) -- an absolute one, such as
     an upload saved before, is rewritten so -- and a token path that leaves the folder is
-    refused by name; on a server of many organizations a path on the server's own disk is
-    refused unless it is written with a token. A remote location (https, s3, gs, az) stands."""
+    refused by name. A remote location (https, s3, gs, az) stands.
+
+    In a held organization (a sandbox org; any org but the deployment's own on a server of many
+    organizations) every place on the server's own disk a source of any type names -- its path,
+    an OpenAPI specification, a proto file, a credentials or certificate file, a sentinel marker
+    -- is refused by name unless it is inside the organization's folder or is its demo's own
+    (source_uploads.require_own_disk)."""
+    import json as _json
+
     from provisa.core import org_files
-    from provisa.core.secrets_providers import many_organisations
-    from provisa.core.source_uploads import UPLOAD_TYPES
+    from provisa.core.source_uploads import (
+        UPLOAD_TYPES,
+        LocalPathRefused,
+        require_source_own_disk,
+    )
     from provisa.federation.connector_duckdb import location_kind
 
+    def _held_refusal() -> Optional[MutationResult]:
+        fields = {
+            "path": input.path,
+            "sentinel_path": input.sentinel_path,
+            "mapping": _json.loads(input.mapping_json) if input.mapping_json else None,
+            "federation_hints": (
+                _json.loads(input.federation_hints_json) if input.federation_hints_json else None
+            ),
+        }
+        try:
+            require_source_own_disk(input.type, fields)
+        except LocalPathRefused as refused:
+            return MutationResult(
+                success=False,
+                message=f"Source {input.id!r}: {refused}",
+                code=refused.code,
+                params={"source": input.id, **refused.params},
+            )
+        return None
+
+    refusal = _held_refusal()
+    if refusal is not None:
+        return refusal
     if input.type not in UPLOAD_TYPES or not input.path or location_kind(input.path) is not None:
         return None
     try:
@@ -416,17 +449,6 @@ def file_source_path(input: SourceInput) -> Optional[MutationResult]:  # REQ-199
         )
     if org_files.is_org_path(rewritten):
         input.path = rewritten
-        return None
-    if many_organisations():
-        return MutationResult(
-            success=False,
-            message=(
-                f"Source {input.id!r}: a server of many organizations reads no file on its own "
-                f"disk; upload the file, or name it as {{files}}/... or by a remote address"
-            ),
-            code="schema.file_path_local_refused",
-            params={"source": input.id},
-        )
     return None
 
 
@@ -665,11 +687,13 @@ def sandbox_destination_refusal(input: SourceInput) -> "MutationResult | None":
         UnpinnableDestinationRefused,
         require_connectable,
     )
+    from provisa.core.source_uploads import LocalPathRefused
 
     fields = {
         "host": input.host,
         "port": input.port,
         "path": input.path,
+        "sentinel_path": input.sentinel_path,
         "mapping": json.loads(input.mapping_json) if input.mapping_json else None,
         "federation_hints": (
             json.loads(input.federation_hints_json) if input.federation_hints_json else None
@@ -677,7 +701,7 @@ def sandbox_destination_refusal(input: SourceInput) -> "MutationResult | None":
     }
     try:
         require_connectable(fields, input.type, source_id=input.id)
-    except (PrivateDestinationRefused, UnpinnableDestinationRefused) as refused:
+    except (PrivateDestinationRefused, UnpinnableDestinationRefused, LocalPathRefused) as refused:
         return MutationResult(
             success=False,
             message=f"Source {input.id!r}: {refused}",

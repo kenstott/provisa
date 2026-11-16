@@ -468,7 +468,6 @@
       "logs_invalid": "Logs 源 {{source}}：{{error}}",
       "logs_path_refused": "Logs 源 {{source}}：{{reason}}",
       "file_path_leaves_org": "数据源 {{source}}：{{path}} 超出了组织的文件夹。",
-      "file_path_local_refused": "数据源 {{source}}：承载多个组织的服务器不读取其自身磁盘上的文件；请上传文件，或以 {files}/… 或远程地址指定它。",
       "relationship_alias_taken": "别名 '{{alias}}' 已是来自 '{{table}}' 的关系 '{{relationship}}' 的别名",
       "relationship_ambiguous_table": "表名 '{{table}}'（{{end}}）指向多个数据源中的表（{{sources}}）",
       "relationship_unknown_source": "源表 '{{table}}' 未注册",
@@ -720,7 +719,8 @@
       "not_a_file_source": "{{type}} 数据源不通过上传获得文件。"
     },
     "sources": {
-      "private_destination": "此组织的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。"
+      "private_destination": "此组织的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。",
+      "local_path_refused": "此组织的数据源不读取服务器自身磁盘上位于其自有文件夹之外的文件；{{path}} 即是这样的文件。请上传文件，或以 {files}/… 或远程地址指定它。"
     },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；请从它自己的地址打开。",
