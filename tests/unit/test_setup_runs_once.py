@@ -135,9 +135,9 @@ def deployment(tmp_path, monkeypatch):
     monkeypatch.delenv("PROVISA_IDP", raising=False)
     monkeypatch.delenv("PROVISA_MULTITENANCY", raising=False)
     monkeypatch.delenv("PROVISA_MCP_BRIDGE_COMMAND", raising=False)
-    monkeypatch.setattr(
-        "provisa.api.app.state", types.SimpleNamespace(admin_db=pool, org_id="root"), raising=False
-    )
+    from provisa.api import app as app_mod
+
+    monkeypatch.setattr(app_mod.state, "admin_db", pool, raising=False)
     return types.SimpleNamespace(
         cfg=cfg, pool=pool, writes=writes, seated=seated, stored=stored, verifiers=verifiers
     )
