@@ -252,13 +252,13 @@ def _unlanded_code_tables(state, table_ids: Iterable[int], exec_sql: str) -> dic
 def _given_in_statement(exec_sql: str, table: dict) -> dict[str, object]:
     """REQ-2100: the parameters of an attached code table the statement gives a value in its own
     conditions (``_nf_{name} = value``, a literal or a bound parameter), by name."""
-    from provisa.compiler.nf_extractor import extract_nf_args
+    from provisa.compiler.nf_extractor import bind_parameters
     from provisa.core.parameters import is_parameter
 
     names = {c["column_name"] for c in table["columns"] if is_parameter(c)}
-    _sql, _params, given = extract_nf_args(exec_sql, [], names)
+    # Its conditions stay in the statement and are its host's to read: none is refused here.
     # A value bound when the statement runs ($N) is given, though not known here.
-    return {name: "$bound" if value is None else value for name, value in given.items()}
+    return dict.fromkeys(bind_parameters(exec_sql, [], names, real=names).assigned, "$bound")
 
 
 def _registrations(state, table_ids: Iterable[int]) -> dict[str, dict]:
@@ -1644,10 +1644,10 @@ async def _mat_api_ep_table(
     if not rows:
         missing = _missing_path_params(ep, args)
         if missing:
-            # Required path param(s) absent from this query — cannot call the endpoint
-            # generically (mirrors the graphql_remote required_args branch above).
-            log.warning("[MAT] %s requires path param(s) %s — skipping", tn, missing)
-            return
+            # REQ-1986: never called without it, and never answered as if it held no row.
+            from provisa.core.parameters import ParameterRequired, missing_reason
+
+            raise ParameterRequired(tn, missing_reason(missing))
         # REQ-1661 (amended 2026-09-30): a failed live fetch fails the query -- it is never
         # logged and skipped, which left the engine answering from whatever cache it held.
         rows = await _mat_fetch_rows_from_rest(
@@ -1736,7 +1736,7 @@ def would_materialize_optimize(exec_sql: str, state, *, table_ids: Iterable[int]
     """
     from provisa.compiler.nf_extractor import find_api_table_names, read_base
 
-    # A read named for itself (nf_extractor.separate_parameter_reads) is its table's.
+    # A read named for itself (nf_extractor.bind_parameters) is its table's.
     table_names = [read_base(tn) for tn in find_api_table_names(exec_sql)]
     if not table_names:
         return False
@@ -1794,8 +1794,8 @@ async def _materialize_api_to_engine_cache(
     ``role_id``: the role the statement is governed for, as which a relationship that feeds a
     code table's parameters reads its source (REQ-2099).
 
-    ``read_args``: each read the statement names for itself (nf_extractor.separate_parameter_reads
-    -- one table read under several sets of arguments), as (the table it reads, its arguments).
+    ``read_args``: each call the statement names for itself (nf_extractor.bind_parameters -- one
+    table read under several sets of arguments), as (the table it reads, its arguments).
     Such a read is answered under its own arguments and put in for itself alone.
       dropped_tables: {physical_table_name: reason} whose UNION branches should be dropped -- a
         table the query cannot address because it gives none of the table's required filter /

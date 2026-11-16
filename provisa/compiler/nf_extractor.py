@@ -244,7 +244,7 @@ def _form(cond: exp.Expr) -> str:  # pyright: ignore[reportPrivateImportUsage]  
     if isinstance(cond, exp.NEQ):
         return "<>"
     if isinstance(cond, exp.Is):
-        return "IS NOT NULL" if isinstance(cond.expression, exp.Not) else "IS NULL"
+        return "IS NOT NULL" if cond.args.get("negate") else "IS NULL"
     for kind, name in (
         (exp.GTE, ">="),
         (exp.GT, ">"),
@@ -521,11 +521,11 @@ class _Binder:
                 if c.name.lower() in self.known and c.table in ("", alias)
             )
         )
-        if not table.alias:
-            # Its columns are qualified by its name: it keeps that name as its alias.
-            table.set("alias", exp.TableAlias(this=exp.to_identifier(alias)))
         if not asked and len(arms) == 1:
             if arms[0][0] is not None:
+                if not table.alias:
+                    # Its columns are qualified by its name: it keeps that name as its alias.
+                    table.set("alias", exp.TableAlias(this=exp.to_identifier(alias)))
                 table.set("this", exp.to_identifier(arms[0][0], quoted=table.this.quoted))
             return
         assert body is not None
@@ -744,6 +744,13 @@ class _Binding:
     @property
     def joins(self) -> set[JoinKey]:
         return set() if self._binder is None else self._binder.joins
+
+    @property
+    def assigned(self) -> set[str]:
+        """The parameters the statement assigns, by bare name: by a value or by a join."""
+        if self._binder is None:
+            return set()
+        return {_bare(name) for read in self._binder.reads for one in read.sets for name in one}
 
     def bound(self, keys: Mapping[JoinKey, list[Any]] | None = None) -> Bound:
         binder = self._binder

@@ -143,7 +143,7 @@ async def test_an_endpoint_with_no_parameter_keeps_its_sources_ttl(statement):
     assert route.call_count == 1  # kept for the source's 600 s
 
 
-# -- a join's parent keys, batched, at TTL 0 ----------------------------------------------------
+# -- a join's keys, one call each, at TTL 0 ------------------------------------------------------
 
 
 def _toys():
@@ -187,11 +187,14 @@ def _api(toy_calls: list):
 
 
 @respx.mock
-async def test_a_joins_parent_keys_are_one_call_per_statement_and_the_next_statement_calls_again(
+async def test_each_key_of_a_join_is_one_call_per_statement_and_the_next_statement_calls_again(
     statement,
 ):
-    """Three pets feed ``toys``: one call carries all three keys, not three calls. The next
-    statement calls again -- ``toys`` has no TTL of its own -- and is answered by its own call."""
+    """REQ-1986: three pets joined on ``toys``' parameter are three calls, one per key, each a
+    read the statement's binding names for itself. The keys are never sent as one list the
+    endpoint is presumed to take (the call hydration once made for the parent's keys), and
+    hydration calls nothing for them. The next statement calls again -- ``toys`` has no TTL of its
+    own -- and is answered by its own call."""
     toy_calls: list = []
     respx.route(host="api.test").mock(side_effect=_api(toy_calls))
     state, read = statement
@@ -199,13 +202,16 @@ async def test_a_joins_parent_keys_are_one_call_per_statement_and_the_next_state
     state.api_endpoints = {("api", "pets"): pets, ("api", "toys"): toys}
     state.tables = [_registered(pets), _registered(toys, cache_ttl=None)]
     ctx = _pets_feeding_toys()
+    registration = _registered(toys, cache_ttl=None)
 
-    first = await read(toys, _registered(toys, cache_ttl=None), None, ctx, hydrate=True)
-    assert toy_calls == [["1", "2", "3"]]
-    assert first == [(11, "toy of call 1")]
-    second = await read(toys, _registered(toys, cache_ttl=None), None, ctx, hydrate=True)
-    assert toy_calls == [["1", "2", "3"], ["1", "2", "3"]]
-    assert second == [(21, "toy of call 2")]
+    answers = [
+        await read(toys, registration, {"petId": key}, ctx, hydrate=True) for key in ("1", "2", "3")
+    ]
+    assert toy_calls == [["1"], ["2"], ["3"]]
+    assert answers == [[(11, "toy of call 1")], [(21, "toy of call 2")], [(31, "toy of call 3")]]
+    again = await read(toys, registration, {"petId": "1"}, ctx, hydrate=True)
+    assert toy_calls == [["1"], ["2"], ["3"], ["1"]]
+    assert again == [(41, "toy of call 4")]
 
 
 @respx.mock
