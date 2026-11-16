@@ -15260,9 +15260,9 @@ pgwire negotiates SCRAM-SHA-256 (RFC 5802) when auth.scram is enabled under the 
 
 ### REQ-1395 · Org AI Model Configuration {#REQ-1395}
 
-**Status:** ✅ complete · **Priority:** SHOULD · **Type:** structural
+**Status:** ⚙ in-progress · **Priority:** SHOULD · **Type:** structural
 
-In a multi-tenant SaaS deployment, org admins can select the AI model their org uses via an API-driven configuration (provider + model + API key per org), rather than using a shared platform-wide model.
+In a multi-tenant SaaS deployment, org admins can select the AI model their org uses via an API-driven configuration (provider + model + API key per org), rather than using a shared platform-wide model. (Amended 2026-11-16, ON A SERVER OF MANY ORGANIZATIONS NO AI KEY COMES FROM THE SERVER'S ENVIRONMENT:) Maintainer 2026-11-16: "in the multitenant env - the AI model keys should not be sourced from the environment". On a server of many organizations an AI key is only the one the organization stored: a model vendor's key (Anthropic, OpenAI and every other vendor) and the Jev key alike, for every use (listing a vendor's models, relationship discovery, chat, table search, the MCP tools, any other call). An organization that stored none has no AI: the vendor is shown as having no key and a call is refused with a catalogued message that says where to add one; the server's environment variables are not read for it. An install of one organization keeps reading the deployment's environment variable when the organization stored no key.
 
 **Use case:** Organizations with distinct governance or compliance needs can use different LLM providers or models, enabling flexible multi-tenant deployments where each org controls its own AI surface.
 
