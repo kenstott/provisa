@@ -745,9 +745,92 @@ async def test_a_run_whose_model_fails_every_request_reports_each_and_finishes(
     world.on_call = boom
     run = await _run(world, _scope())
     assert run["status"] == "done"
-    assert run["report"]["semantics"]["failed"] == [
-        {"group": "whole_number", "error": "vendor unavailable"}
+    semantics = run["report"]["semantics"]
+    assert semantics["failed"] == [
+        {
+            "group": "whole_number",
+            "code": "llm.request_failed",
+            "params": {"reason": "vendor unavailable"},
+            "message": "The request to the model failed: vendor unavailable",
+        }
     ]
+    # Every request failed: that is not the model proposing no relationships.
+    assert semantics["empty_reason"] == "requests_failed"
+    assert semantics["requests_done"] == len(semantics["failed"]) == 1
+
+
+_SMALL_WINDOWS = {
+    **_ASSIGNED,
+    "ai_models": {
+        **_ASSIGNED["ai_models"],
+        "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+    },
+}
+
+
+async def test_a_run_with_some_requests_failed_counts_them_of_the_requests_made(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "stores", [("id", "integer", True), ("region_id", "integer", False)]
+    )
+    world = _World(monkeypatch, db, config=_SMALL_WINDOWS, api_keys={"openai": "k"})
+
+    def first_fails(calls: int) -> None:
+        if calls == 1:
+            raise RuntimeError("vendor unavailable")
+
+    world.on_call = first_fails
+    run = await _run(world, _scope())
+    semantics = run["report"]["semantics"]
+    assert semantics["requests_done"] > 1
+    assert len(semantics["failed"]) == 1
+    # The requests that were answered proposed none; the one that failed is counted beside it.
+    assert semantics["empty_reason"] == "none_proposed"
+
+
+async def test_a_run_whose_every_answer_is_unreadable_says_unreadable(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.answers = ["no list here"]
+    run = await _run(world, _scope())
+    assert run["report"]["semantics"]["empty_reason"] == "unreadable"
+
+
+async def test_a_request_longer_than_the_stall_window_keeps_the_run_moving(monkeypatch, tmp_path):
+    """While a request is in flight the run's row is written again, so a long streamed request
+    is not taken for a run that has stopped moving."""
+    import time
+
+    from provisa.discovery import run as discovery_run
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    monkeypatch.setattr(discovery_run, "STILL_GOING_EVERY_S", 0.02)
+    written = 0
+    record = discovery.runs_repo.record_progress
+
+    async def counted(conn, run_id, report):
+        nonlocal written
+        written += 1
+        return await record(conn, run_id, report)
+
+    monkeypatch.setattr(discovery.runs_repo, "record_progress", counted)
+    during: list[int] = []
+
+    def slow(calls: int) -> None:
+        before = written
+        time.sleep(0.3)
+        during.append(written - before)
+
+    world.on_call = slow
+    run = await _run(world, _scope())
+    assert run["status"] == "done"
+    assert during and during[0] >= 2
 
 
 async def test_a_run_left_by_an_earlier_launch_is_reported_failed(monkeypatch, tmp_path):

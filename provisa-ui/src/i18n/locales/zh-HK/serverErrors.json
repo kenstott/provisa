@@ -162,7 +162,13 @@
       "table_unreadable": "探索無法讀取資料表 {{table}}：{{reason}}。請將其從所選資料表中排除，或修正後重試。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
       "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
+    },
+    "llm": {
+      "request_failed": "對模型的請求失敗：{{reason}}",
+      "no_answer_in_time": "模型未在 {{seconds}} 秒內作出回答。",
+      "empty_answer": "模型未傳回任何文字。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"

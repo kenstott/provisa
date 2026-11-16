@@ -10627,7 +10627,7 @@
   "es/discoverResult.json::discoverResult.split_other": "{{count}} requests were split in half and asked again.",
   "es/discoverResult.json::discoverResult.cutShort": "{{count}} answer stopped at its length limit; the suggestions it finished are kept.",
   "es/discoverResult.json::discoverResult.cutShort_other": "{{count}} answers stopped at their length limit; the suggestions they finished are kept.",
-  "es/discoverResult.json::discoverResult.failedRequest": "A request for {{group}} columns failed: {{error}}",
+  "es/discoverResult.json::discoverResult.failedRequest": "For {{group}} columns: {{message}}",
   "es/discoverResult.json::discoverResult.leftOut": "Left out: {{list}}.",
   "es/discoverResult.json::discoverResult.leftOutItem": "{{label}} ({{count}})",
   "es/discoverResult.json::discoverResult.removed.below_threshold": "below the {{threshold}}% confidence threshold",
@@ -10678,5 +10678,13 @@
   "es/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
   "es/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
   "es/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
-  "es/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
+  "es/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone.",
+  "es/discoverResult.json::discoverResult.semanticsRequestsFailed": "Semantics failed: the request to the model failed.",
+  "es/discoverResult.json::discoverResult.semanticsRequestsFailed_other": "Semantics failed: all {{count}} requests to the model failed.",
+  "es/discoverResult.json::discoverResult.partial": "{{failed}} of {{count}} request failed, so the result is partial.",
+  "es/discoverResult.json::discoverResult.partial_other": "{{failed}} of {{count}} requests failed, so the result is partial.",
+  "es/serverErrors.json::serverErrors.discovery.answer_unreadable": "The model's answer held no readable list.",
+  "es/serverErrors.json::serverErrors.llm.request_failed": "The request to the model failed: {{reason}}",
+  "es/serverErrors.json::serverErrors.llm.no_answer_in_time": "The model gave no answer within {{seconds}} seconds.",
+  "es/serverErrors.json::serverErrors.llm.empty_answer": "The model returned no text."
 }

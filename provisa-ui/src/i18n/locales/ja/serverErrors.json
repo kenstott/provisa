@@ -162,7 +162,13 @@
       "table_unreadable": "検出はテーブル {{table}} を読み取れません: {{reason}}。選択したテーブルから外すか、修正してからもう一度お試しください。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_has_no_key": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
-      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
+      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。",
+      "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。"
+    },
+    "llm": {
+      "request_failed": "モデルへのリクエストが失敗しました: {{reason}}",
+      "no_answer_in_time": "モデルは {{seconds}} 秒以内に回答しませんでした。",
+      "empty_answer": "モデルはテキストを返しませんでした。"
     },
     "environments": {
       "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"

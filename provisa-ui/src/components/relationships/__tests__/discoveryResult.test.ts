@@ -34,6 +34,15 @@ const SEMANTICS: SemanticsReport = {
   failed: [],
   stopped: false,
 };
+const failedRequest = (
+  group: SemanticsReport["failed"][number]["group"],
+  reason: string,
+): SemanticsReport["failed"][number] => ({
+  group,
+  code: "llm.request_failed",
+  params: { reason },
+  message: `The request to the model failed: ${reason}`,
+});
 const report = (over: Partial<DiscoveryReport>): DiscoveryReport => ({
   suggestions: 0,
   stored_ids: [],
@@ -52,6 +61,7 @@ describe("discoveryResultLines", () => {
     const why = (empty_reason: SemanticsReport["empty_reason"]) =>
       discoveryResultLines(report({ semantics: { ...SEMANTICS, empty_reason } }), t)[0];
     expect(why("unreadable")).toBe("Semantics: none. The model's answer could not be read.");
+    expect(why("requests_failed")).not.toContain("proposed no relationships");
     expect(why("none_proposed")).toBe("Semantics: none. The model proposed no relationships.");
     expect(why("below_threshold")).toBe(
       "Semantics: none. Every suggestion was below the 70% confidence threshold.",
@@ -69,17 +79,109 @@ describe("discoveryResultLines", () => {
           suggested: 4,
           split: 2,
           cut_short: 1,
-          failed: [{ group: "text", error: "429 rate limited" }],
+          failed: [failedRequest("text", "429 rate limited")],
         },
       }),
       t,
     );
     expect(lines).toEqual([
       "Semantics: 4 suggestions.",
+      "1 of 2 requests failed, so the result is partial.",
       "2 requests were split in half and asked again.",
       "1 answer stopped at its length limit; the suggestions it finished are kept.",
-      "A request for text columns failed: 429 rate limited",
+      "For text columns: The request to the model failed: 429 rate limited",
     ]);
+  });
+
+  it("says the semantic pass failed, and why, when every request failed", () => {
+    const lines = discoveryResultLines(
+      report({
+        foreign_keys: { found: 6, suggested: 6 },
+        semantics: {
+          ...SEMANTICS,
+          requests_total: 3,
+          requests_done: 3,
+          empty_reason: "requests_failed",
+          failed: [
+            failedRequest("whole_number", "overloaded"),
+            failedRequest("date", "overloaded"),
+            {
+              group: "timestamp",
+              code: "llm.no_answer_in_time",
+              params: { seconds: 3600 },
+              message: "The model gave no answer within 3600 seconds.",
+            },
+          ],
+        },
+      }),
+      t,
+    );
+    expect(lines).toEqual([
+      "Foreign keys: 6 found, 6 suggested.",
+      "Semantics failed: all 3 requests to the model failed.",
+      "For whole numbers columns: The request to the model failed: overloaded",
+      "For dates columns: The request to the model failed: overloaded",
+      "For timestamps columns: The model gave no answer within 3600 seconds.",
+    ]);
+    expect(lines.join(" ")).not.toContain("proposed no relationships");
+  });
+
+  it("says one request failed when the only request failed", () => {
+    const lines = discoveryResultLines(
+      report({
+        semantics: {
+          ...SEMANTICS,
+          requests_total: 1,
+          requests_done: 1,
+          empty_reason: "requests_failed",
+          failed: [failedRequest("text", "overloaded")],
+        },
+      }),
+      t,
+    );
+    expect(lines[0]).toBe("Semantics failed: the request to the model failed.");
+  });
+
+  it("says how many of the requests failed when the answered ones proposed none", () => {
+    const lines = discoveryResultLines(
+      report({
+        semantics: {
+          ...SEMANTICS,
+          requests_total: 3,
+          requests_done: 3,
+          empty_reason: "none_proposed",
+          failed: [failedRequest("text", "overloaded")],
+        },
+      }),
+      t,
+    );
+    expect(lines.slice(0, 2)).toEqual([
+      "Semantics: none. The model proposed no relationships.",
+      "1 of 3 requests failed, so the result is partial.",
+    ]);
+  });
+
+  it("words a failed request from the catalog, or from the server's message for a new code", () => {
+    const lines = discoveryResultLines(
+      report({
+        semantics: {
+          ...SEMANTICS,
+          suggested: 1,
+          failed: [
+            {
+              group: "text",
+              code: "discovery.answer_unreadable",
+              params: {},
+              message: "server wording",
+            },
+            { group: "text", code: "llm.newer_code", params: {}, message: "A newer refusal." },
+          ],
+        },
+      }),
+      t,
+    );
+    expect(lines).toContain("For text columns: The model's answer held no readable list.");
+    expect(lines).toContain("For text columns: A newer refusal.");
   });
 
   it("counts what was left out, by kind", () => {

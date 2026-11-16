@@ -22,10 +22,11 @@ request returns, so they appear while the run goes on.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import gather
@@ -52,6 +53,29 @@ if TYPE_CHECKING:
 #: The operation whose assigned model a run uses unless it names another.
 OPERATION = "relationship_inference"
 SYSTEM_PROMPT = "You are a data analyst."
+
+#: While a request is in flight the run says this often that it is still going: a request may take
+#: longer (provisa.llm.client, ``call_timeout_s``) than a run may go without moving on
+#: (provisa.discovery.runs.STALLED_AFTER).
+STILL_GOING_EVERY_S = 60.0
+
+_T = TypeVar("_T")
+
+
+async def while_saying_still_going(
+    work: Awaitable[_T], still_going: Callable[[], Awaitable[None]]
+) -> _T:
+    """``work``'s result; ``still_going`` is told every :data:`STILL_GOING_EVERY_S` until it ends.
+    When ``still_going`` raises (the run has ended), ``work`` is left and the error is raised."""
+    task = asyncio.ensure_future(work)
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=STILL_GOING_EVERY_S)
+            if done:
+                return task.result()
+            await still_going()
+    finally:
+        task.cancel()
 
 
 @dataclass(frozen=True)
@@ -262,9 +286,13 @@ def _caching(read: Callable[[TableFacts, str], Awaitable[Sampled]]):
 
 
 def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
+    """What semantics did, and when it suggests none, why. Every request failing is not the model
+    proposing none: it is ``requests_failed`` (``unreadable`` when each answer was unreadable)."""
     shown = sum(1 for p in outcome.kept if p.kind == "semantics")
     if shown:
         empty = None
+    elif tally.done and len(tally.failed) == tally.done and tally.unreadable < tally.done:
+        empty = "requests_failed"
     elif tally.proposed == 0 and tally.unreadable:
         empty = "unreadable"
     elif tally.proposed == 0:
@@ -360,7 +388,8 @@ async def perform(
         return out
 
     outcome = await settled([])
-    await progress(report(Tally(total=len(prepared.requests)) if model else None, outcome))
+    latest = report(Tally(total=len(prepared.requests)) if model else None, outcome)
+    await progress(latest)
     if model is None:
         return report(None, outcome)
 
@@ -369,12 +398,18 @@ async def perform(
             return await stop_asked()
 
         async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
-            nonlocal outcome
+            nonlocal outcome, latest
             outcome = await settled(proposals)
-            await progress(report(tally, outcome))
+            latest = report(tally, outcome)
+            await progress(latest)
 
     def ask(prompt: str, max_tokens: int) -> Any:
         return model.client.complete_sync_detailed(prompt, SYSTEM_PROMPT, max_tokens)
+
+    async def in_flight(call: Callable[..., Any], *args: Any) -> Any:
+        return await while_saying_still_going(
+            asyncio.to_thread(call, *args), lambda: progress(latest)
+        )
 
     tally, proposals = await execute(
         prepared.requests,
@@ -383,6 +418,7 @@ async def perform(
         ask,
         _Control(),
         refine=await _refiner(state),
+        to_thread=in_flight,
     )
     outcome = await settled(proposals)
     return report(tally, outcome)

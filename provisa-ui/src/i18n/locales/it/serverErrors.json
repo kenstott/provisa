@@ -162,7 +162,13 @@
       "table_unreadable": "Il rilevamento non può leggere la tabella {{table}}: {{reason}}. Escludila dalle tabelle scelte, oppure correggila e riprova.",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}",
       "vendor_has_no_key": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
-      "vendor_unknown": "{{vendor}} non elenca modelli qui; inserisci il nome del modello."
+      "vendor_unknown": "{{vendor}} non elenca modelli qui; inserisci il nome del modello.",
+      "answer_unreadable": "La risposta del modello non conteneva un elenco leggibile."
+    },
+    "llm": {
+      "request_failed": "La richiesta al modello non è riuscita: {{reason}}",
+      "no_answer_in_time": "Il modello non ha risposto entro {{seconds}} secondi.",
+      "empty_answer": "Il modello non ha restituito alcun testo."
     },
     "environments": {
       "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo."

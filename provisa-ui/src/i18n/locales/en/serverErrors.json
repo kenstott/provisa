@@ -162,7 +162,13 @@
       "table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
       "unknown_source_type": "Unknown source type: {{type}}",
       "vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
-      "vendor_unknown": "{{vendor}} lists no models here; enter the model name."
+      "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+      "answer_unreadable": "The model's answer held no readable list."
+    },
+    "llm": {
+      "request_failed": "The request to the model failed: {{reason}}",
+      "no_answer_in_time": "The model gave no answer within {{seconds}} seconds.",
+      "empty_answer": "The model returned no text."
     },
     "environments": {
       "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."

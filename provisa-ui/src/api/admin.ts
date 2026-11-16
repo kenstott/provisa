@@ -746,7 +746,13 @@ export interface DiscoveryCount {
 /** What semantic inference did in a run, and when it found none, why. */
 export interface SemanticsReport {
   suggested: number;
-  empty_reason: "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
+  empty_reason:
+    | "requests_failed"
+    | "unreadable"
+    | "none_proposed"
+    | "below_threshold"
+    | "filtered"
+    | null;
   requests_total: number;
   requests_done: number;
   split: number;
@@ -756,7 +762,9 @@ export interface SemanticsReport {
   threshold: number;
   cut_short: number;
   unreadable: number;
-  failed: { group: TypeGroup; error: string }[];
+  /** Each failed request: its group and the server's catalogued message (code and params; the
+   * English `message` is used where this build has no wording for the code). */
+  failed: { group: TypeGroup; code: string; params: Record<string, unknown>; message: string }[];
   stopped: boolean;
 }
 

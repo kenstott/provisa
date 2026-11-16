@@ -469,6 +469,50 @@ describe("Discovery dialog: the run in progress", () => {
     );
   });
 
+  it("a run whose every request failed says so, in the dialog and in the page's banner", async () => {
+    const failed = (group: "whole_number" | "date") => ({
+      group,
+      code: "llm.request_failed",
+      params: { reason: "overloaded" },
+      message: "The request to the model failed: overloaded",
+    });
+    const report = {
+      ...REPORT,
+      suggestions: 1,
+      removed: {},
+      semantics: {
+        ...REPORT.semantics,
+        suggested: 0,
+        empty_reason: "requests_failed" as const,
+        requests_total: 2,
+        requests_done: 2,
+        proposed: 0,
+        below_threshold: 0,
+        failed: [failed("whole_number"), failed("date")],
+      },
+    };
+    runMock.mockResolvedValue(
+      runOf({ status: "done", requests_total: 2, requests_done: 2, suggestions: 1, report }),
+    );
+    await openDialog();
+    fireEvent.click(runButton());
+    const progress = await screen.findByTestId("discover-progress");
+    await waitFor(() => expect(progress).toHaveTextContent("Finished."), SLOW);
+    for (const shown of [
+      screen.getByTestId("discover-result"),
+      screen.getByTestId("rels-discover-result"),
+    ]) {
+      expect(shown).toHaveTextContent("Semantics failed: all 2 requests to the model failed.");
+      expect(shown).toHaveTextContent(
+        "For whole numbers columns: The request to the model failed: overloaded",
+      );
+      expect(shown).toHaveTextContent(
+        "For dates columns: The request to the model failed: overloaded",
+      );
+      expect(shown).not.toHaveTextContent("proposed no relationships");
+    }
+  });
+
   it("Stop asks the server to stop and keeps what was found", async () => {
     candidatesMock.mockResolvedValue([
       suggestion(101, "customer_id", "run:7"),
