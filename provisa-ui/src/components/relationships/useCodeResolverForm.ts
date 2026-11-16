@@ -14,6 +14,7 @@ import { useCallback, useState } from "react";
 import { useCodeResolvers } from "../../hooks/useAdminQueries";
 import { serverMessage } from "../../i18n/serverMessage";
 import type { MutationResult } from "../../types/admin";
+import { NEEDS_REBUILD_EVERY, rebuildEverySeconds } from "./incrementalOption";
 import { EMPTY_FORM, type RelForm } from "./relationship-types";
 
 interface CodeResolverFormPage {
@@ -43,6 +44,12 @@ export function useCodeResolverForm(page: CodeResolverFormPage) {
     if (!form.id || !form.sourceTableId || !form.sourceColumn) return;
     if (!form.targetTableId || !form.targetColumn) return;
     if (!form.resolver || !form.sourceMatch || !form.targetMatch) return;
+    const rebuildEvery = form.incremental ? rebuildEverySeconds(form.rebuildEvery) : null;
+    // Matches kept incrementally are rebuilt whole on a clock: said here as the server says it.
+    if (form.incremental && rebuildEvery === null) {
+      setSaveProblem(serverMessage({ code: NEEDS_REBUILD_EVERY, params: { table: form.id } }, ""));
+      return;
+    }
     setSaving(true);
     setSaveProblem("");
     let result: MutationResult;
@@ -58,6 +65,8 @@ export function useCodeResolverForm(page: CodeResolverFormPage) {
           targetColumn: form.targetColumn,
           targetMatch: form.targetMatch,
           refreshInterval: parseInt(form.refreshInterval) || 300,
+          incremental: form.incremental,
+          rebuildEvery,
         },
         !changing,
       );
@@ -106,6 +115,8 @@ export function useCodeResolverForm(page: CodeResolverFormPage) {
         sourceMatch: set.sourceMatch,
         targetMatch: set.targetMatch,
         refreshInterval: String(set.refreshInterval),
+        incremental: set.incremental,
+        rebuildEvery: set.rebuildEvery === null ? "" : String(set.rebuildEvery),
       });
       setShowForm(true);
     },

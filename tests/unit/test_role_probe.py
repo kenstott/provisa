@@ -152,13 +152,16 @@ def test_the_shared_authorizer_records_the_event_and_says_nothing(monkeypatch):
         raise RoleNotHeld("admin", {"analyst"})
 
     async def _held(*_a):
-        return []  # the identity's assignments, as every transport reads them
+        # the identity's assignments, as every transport reads them
+        return [SimpleNamespace(role_id="analyst", domain_id="*")]
 
     monkeypatch.setattr(role_probe, "record", _record)
     monkeypatch.setattr(role_probe, "suspended", _not_suspended)
     monkeypatch.setattr("provisa.auth.held_assignments.held_assignments", _held)
     monkeypatch.setattr(bearer, "authorize_role", _refuse)
-    identity = SimpleNamespace(user_id="ada", credential="pat", credential_id="h1")
+    identity = SimpleNamespace(
+        user_id="ada", credential="pat", credential_id="h1", raw_claims={"scopes": ["analyst"]}
+    )
     import asyncio
 
     from provisa.core.request_context import reset_current_org, set_current_org
@@ -167,7 +170,9 @@ def test_the_shared_authorizer_records_the_event_and_says_nothing(monkeypatch):
     try:
         with pytest.raises(PermissionError, match=f"^{NOT_PERMITTED}$"):
             bearer.authorize_role_or_probe(
-                SimpleNamespace(multitenancy=True, org_id="root"),
+                SimpleNamespace(
+                    multitenancy=True, org_id="root", auth_config={"default_role": "analyst"}
+                ),
                 identity,
                 "admin",
                 transport="flight",
@@ -222,7 +227,9 @@ async def admin_db() -> Database:
 @pytest.mark.asyncio
 async def test_a_suspended_token_is_refused_until_an_admin_lifts_it(admin_db):
     pats = PersonalAccessTokenStore(admin_db)
-    secret, _ = await pats.issue(user_id="ada", org_id="acme", env_name="prod", name="ci")
+    secret, _ = await pats.issue(
+        user_id="ada", org_id="acme", env_name="prod", name="ci", scopes=["analyst"]
+    )
     identity = await pats.validate(secret)
     assert (identity.credential, identity.credential_id is not None) == ("pat", True)
     assert await pats.suspend(token_hash=identity.credential_id, reason="named 'admin'")

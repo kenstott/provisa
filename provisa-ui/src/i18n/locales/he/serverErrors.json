@@ -41,7 +41,9 @@
       "role_not_assigned": "התפקיד '{{role_id}}' אינו מוקצה למשתמש זה",
       "simple_provider_not_configured": "ספק האימות הפשוט אינו מוגדר",
       "username_exists": "שם המשתמש כבר קיים",
-      "not_permitted": "אין הרשאה"
+      "not_permitted": "אין הרשאה",
+      "token_scopes_required": "בחרו לפחות תפקיד אחד עבור האסימון.",
+      "token_scope_not_held": "אסימון יכול להשתמש רק בתפקידים שברשותכם."
     },
     "authz": {
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"
@@ -504,7 +506,9 @@
       "code_resolver_not_found": "מפענח הקוד '{{resolver}}' לא נמצא",
       "code_resolver_saved": "מפענח הקוד '{{resolver}}' נשמר",
       "code_resolver_retired": "מפענח הקוד '{{resolver}}' הוצא משימוש",
-      "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו"
+      "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו",
+      "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
+      "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\"."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -762,6 +766,9 @@
       "impact_action": "אין תצוגה מקדימה לפעולה זו.",
       "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה."
     },
+    "table": {
+      "requires_parameters": "לא ניתן לספור או ליצור פרופיל לטבלה {{table}}: היא דורשת את {{parameters}}. תנו ערך לכל אחד מהם כדי לקרוא את השורות שלה."
+    },
     "tag": {
       "not_on_terms": "התג '{{tag}}' אינו מוצמד למונח; רק pii.",
       "term_not_live": "הגדירו את '{{term}}' כדי לסמן אותו.",
@@ -825,6 +832,11 @@
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
       "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} החזירה שורה ללא עמודת המפתח שלה {{column}}",
+      "change_key_repeated": "{{function}} החזירה את המפתח {{key}} פעמיים בתוצאה אחת",
+      "change_cursor_backwards": "הסמן של {{function}} נע לאחור: הוחזר {{returned}}, לפני הערך השמור {{stored}}"
     }
   }
 }

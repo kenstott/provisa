@@ -43,6 +43,10 @@
     "resolverHelp": "Une requête d'une source de code qui reçoit la table source et la table cible et renvoie une ligne par correspondance.",
     "resolverNone": "Aucune requête de source de code ne reçoit deux tables",
     "sourceMatchLabel": "Colonne de correspondance portant la clé source",
-    "targetMatchLabel": "Colonne de correspondance portant la clé cible"
+    "targetMatchLabel": "Colonne de correspondance portant la clé cible",
+    "incrementalLabel": "Maintenir les correspondances de façon incrémentale",
+    "incrementalHelp": "À chaque actualisation, la fonction @change du resolver est interrogée sur les correspondances modifiées depuis la dernière exécution, et celles-ci sont appliquées par clé. Désactivé, chaque actualisation recalcule toutes les correspondances.",
+    "rebuildEveryLabel": "Reconstruction complète toutes les (secondes)",
+    "rebuildEveryHelp": "Fréquence à laquelle toutes les correspondances sont recalculées, pour corriger ce que les modifications ont manqué. Obligatoire tant que les correspondances sont maintenues de façon incrémentale."
   }
 }

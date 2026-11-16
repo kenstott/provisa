@@ -14,6 +14,7 @@ import type { ListedTable } from "../../types/admin";
 import type { TrackedFunction } from "../../api/actions";
 import { isCodeResolver, tableRef, type RelForm } from "./relationship-types";
 import { FormField, FormFooter, FormIdentifiers, FormLayout } from "../form/FormLayout";
+import { ResolverIncrementalFields } from "./ResolverIncrementalFields";
 
 interface AddRelationshipFormProps {
   form: RelForm;
@@ -179,6 +180,7 @@ export function AddRelationshipForm({
                 data-testid="rel-form-target-match"
               />
             </FormField>
+            <ResolverIncrementalFields form={form} setForm={setForm} />
           </>
         ) : form.targetType === "table" ? (
           <>

@@ -32,7 +32,9 @@ Each overload gets one outcome per engine:
                 can see (``NOT_TESTABLE``), a refusal by name a decision makes
                 (``DECIDED_REFUSALS``), or a function a decision skips whatever it answers
                 (``decided_function``: PostgreSQL's own server state, the types no SQL value can
-                have, and the others amended 2026-11-03 and 2026-11-04 name)
+                have, and the others amended 2026-11-03 and 2026-11-04 name), or a function the
+                validator refuses for reading or acting on its server (``not_served``), which
+                it does on every engine
   wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
                 or the side effect it had; or an edge call answers otherwise than PostgreSQL
                 (``wrong_at_edge``)
@@ -184,6 +186,8 @@ from function_report import (
     ZONE_PACKAGING,
 )
 from pgwire_function_probe import Function
+
+from provisa.transpiler import server_functions
 
 #: The session settings both servers compare under.
 SETTINGS = (
@@ -2473,6 +2477,7 @@ SERVER_EXTENSIONS_GROUP = "The server's installed extensions"
 SINGLE_BYTE_DATABASE_GROUP = "One-argument to_ascii needs a single-byte database"
 NO_SQL_VALUE_GROUP = "Types no SQL value can have"
 INTERNAL_TYPE_GROUP = "Types that exist only inside PostgreSQL"
+SERVER_FUNCTION_GROUP = "A function that reads or acts on its server is not served"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2555,10 +2560,20 @@ GROUPS = {
     "types, record, aclitem, xid and xid8), a type's input by oid and an aggregate's transition "
     "state are refused by name: no engine holds such a value. A function that merely takes or "
     "returns one, such as row_to_json(record) or a record comparison, is a gap and stays refused.",
+    # REQ-001: the validator's V007, whose list is provisa.transpiler.server_functions.
+    SERVER_FUNCTION_GROUP: "A call of a function that reads or acts on its server, outside the "
+    "tables a statement is governed by, is refused on every engine, PostgreSQL included: one "
+    "that runs SQL it is given as text, or reads a file, a large object, a "
+    "setting or another session, in a statement that reaches an engine or a source as written. "
+    "A statement naming no table may still call one that reads the engine's own state.",
 }
 
 #: The requirement each group's decision is of, where it is not REQ-2167.
-GROUP_REQUIREMENTS = {SERVER_VERSION_GROUP: "REQ-579", TABLE_XML_GROUP: "REQ-1965, REQ-588"}
+GROUP_REQUIREMENTS = {
+    SERVER_VERSION_GROUP: "REQ-579",
+    TABLE_XML_GROUP: "REQ-1965, REQ-588",
+    SERVER_FUNCTION_GROUP: "REQ-001",
+}
 
 #: The functions a decision skips by design whatever they answer, by name or ``_key``.
 DECIDED_FUNCTIONS = {
@@ -2899,8 +2914,28 @@ _FIXTURE_ANSWERS = frozenset(
 _NODE_TREES = frozenset({"pg_node_tree_out", "pg_node_tree_send"})
 
 
+#: The validator's refusal of a function that reads or acts on its server (V007 of
+#: compiler.sql_validator), as a client reads it, and the function it names.
+_NOT_SERVED = re.compile(
+    r"\[V007\] Function '([^']+)' is not served: it reads or acts on its server"
+)
+
+
+def not_served(name: str, error: str) -> bool:
+    """Whether ``error`` is the validator's refusal of ``name`` itself as a function that reads or
+    acts on its server. The list is the validator's own (transpiler.server_functions): a refusal
+    naming another function, or one that is not on it, is no decision about ``name``, and stays
+    the error it is."""
+    listed = server_functions.refused_in_a_governed_statement(name, names_a_table=True)
+    return listed == "server" and any(
+        said[1] == name.lower() for said in _NOT_SERVED.finditer(error)
+    )
+
+
 def decided_error(name: str, error: str) -> str | None:
     """The group of the decision ``name``'s ``error`` is, None if it is no decision's."""
+    if not_served(name, error):
+        return SERVER_FUNCTION_GROUP
     for function, wording, group in _DECIDED_ERRORS:
         if function.search(name) and wording.search(error):
             return group
@@ -3263,7 +3298,8 @@ def measure_overload(
     """``fn`` on ``engine``, as one outcome. A side-effect function is tested by its side effect on
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
     see its effect; a refusal a decision makes is skipped by design under it, as is a refusal of an
-    internal type's own function (``internal_types_own``). An overload raising at an edge is held
+    internal type's own function (``internal_types_own``) and the validator's refusal of a function
+    that reads or acts on its server (``not_served``), on every engine. An overload raising at an edge is held
     to its grid row (``bounds``) by ``_held_to_its_bound``."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
     group = decided_function(fn)
@@ -3274,6 +3310,8 @@ def measure_overload(
         _held_to_its_bound(entry, bounds(statement, engine), engine)
     if entry["outcome"] == "not_callable" or "refused_for" in entry:
         return entry
+    if entry.get("group") == SERVER_FUNCTION_GROUP:
+        return entry  # refused on every engine alike, a side-effect function among them
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
     if decided is not None and entry["outcome"] == "refused":
         return _by_design(entry, decided)
@@ -3511,7 +3549,9 @@ def _measure_calls(
             got = _answer(provisa, call_)
             lost = lost or got.get("lost", False)
             found = _refusal_answer(call_, want, got)
-            if found is not None:
+            if found is not None and not got["ok"] and not_served(fn.name, got["error"]):
+                decided.append(SERVER_FUNCTION_GROUP)
+            elif found is not None:
                 kind, said = found
                 {"wrong": wrong, "error": errors, "named": named}[kind].append(said)
             continue

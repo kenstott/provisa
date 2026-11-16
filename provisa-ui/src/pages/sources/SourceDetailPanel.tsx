@@ -214,9 +214,14 @@ export function SourceDetailPanel({
             ? t("sourceDetailPanel.profilerNoMembers")
             : profileOutcomes.map((o) => (
                 <Text key={o.table} size="sm">
-                  {o.error == null
-                    ? t("sourceDetailPanel.profilerRan", { table: o.table })
-                    : t("sourceDetailPanel.profilerFailed", { table: o.table, error: o.error })}
+                  {o.not_read != null
+                    ? t("sourceDetailPanel.profilerNotRead", {
+                        table: o.table,
+                        parameters: (o.requires ?? []).join(", "),
+                      })
+                    : o.error == null
+                      ? t("sourceDetailPanel.profilerRan", { table: o.table })
+                      : t("sourceDetailPanel.profilerFailed", { table: o.table, error: o.error })}
                 </Text>
               ))}
         </Alert>
