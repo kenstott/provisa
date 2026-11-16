@@ -501,6 +501,8 @@
       "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。"
     },
     "secrets": {
+      "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
+      "env_reference_refused": "{{name}} 是服务器自身环境的变量，不属于本组织。请将该值存储为组织密钥，并改为引用该密钥。",
       "name_refused": "{{name}} 不是 {{service}} 中本组织密钥范围内的名称：名称相对于组织，不能超出组织范围",
       "name_too_long": "{{name}} 名称过长：加上本组织的前缀后为 {{length}} 个字符，而 {{service}} 最多接受 {{limit}} 个",
       "org_not_found": "未找到组织 '{{org_id}}'",

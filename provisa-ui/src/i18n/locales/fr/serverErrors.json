@@ -501,6 +501,8 @@
       "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les »."
     },
     "secrets": {
+      "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
+      "env_reference_refused": "{{name}} est une variable de l'environnement propre du serveur, dont cette organisation ne dispose pas. Stockez la valeur comme secret de l'organisation et référencez plutôt ce secret.",
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
       "name_too_long": "{{name}} est un nom trop long : avec le préfixe de cette organisation il compte {{length}} caractères, et {{service}} en accepte au plus {{limit}}",
       "org_not_found": "Organisation « {{org_id}} » introuvable",

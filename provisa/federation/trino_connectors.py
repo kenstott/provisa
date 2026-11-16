@@ -117,7 +117,7 @@ class _TrinoJdbcConnector(_TrinoConnector):
         props = {
             "connection-url": jdbc_url,
             "connection-user": resolve_secrets(source.username or ""),
-            "connection-password": resolve_secrets(source.password or ""),
+            "connection-password": resolve_secrets(source.password or "", credential=True),
         }
         if self.trino_connector in _STATISTICS_CONNECTORS:
             props["statistics.enabled"] = "false"
@@ -162,7 +162,7 @@ class TrinoPostgresConnector(_TrinoJdbcConnector):
         return {
             "connection-url": jdbc_url,
             "connection-user": resolve_secrets(source.username or ""),
-            "connection-password": resolve_secrets(source.password or ""),
+            "connection-password": resolve_secrets(source.password or "", credential=True),
             "statistics.enabled": "false",
         }
 
@@ -203,7 +203,7 @@ class TrinoSnowflakeConnector(_TrinoConnector):
         props = {
             "connection-url": f"jdbc:snowflake://{host_with_domain}",
             "connection-user": resolve_secrets(source.username or ""),
-            "connection-password": resolve_secrets(source.password or ""),
+            "connection-password": resolve_secrets(source.password or "", credential=True),
             "snowflake.account": account,
             "snowflake.database": resolve_secrets(source.database or ""),
         }
@@ -428,7 +428,7 @@ class TrinoDruidConnector(_TrinoConnector):
             return {}
         props: dict = {"connection-url": jdbc_url}
         user = resolve_secrets(source.username or "")
-        pw = resolve_secrets(source.password or "")
+        pw = resolve_secrets(source.password or "", credential=True)
         if user:
             props["connection-user"] = user
         if pw:
@@ -840,7 +840,7 @@ class TrinoSharepointConnector(_TrinoConnector):
         }
         if source.username:
             props["client-id"] = resolve_secrets(source.username)
-        pw = resolve_secrets(source.password or "")
+        pw = resolve_secrets(source.password or "", credential=True)
         if pw:
             props["client-secret"] = pw
         if source.database:
@@ -980,7 +980,7 @@ class TrinoSalesforceConnector(_TrinoConnector):
             props["instance-url"] = mapping.get("instance_url", "")
         else:
             props["client-id"] = resolve_secrets(source.username or "")
-            props["client-secret"] = resolve_secrets(source.password or "")
+            props["client-secret"] = resolve_secrets(source.password or "", credential=True)
             if auth_type == "USERNAME_PASSWORD":
                 props["username"] = mapping.get("sf_username", "")
                 props["password"] = mapping.get("sf_password", "")
@@ -1054,7 +1054,7 @@ class TrinoSplunkConnector(_TrinoConnector):
         }
         host = resolve_secrets(source.host or "")
         port = source.port or 8089
-        pw = resolve_secrets(source.password or "")
+        pw = resolve_secrets(source.password or "", credential=True)
         props: dict = {
             "url": resolve_secrets(source.base_url or f"https://{host}:{port}"),
             # Same sql-normalization pgwire_replica.schema_name() applies — inlined rather than
@@ -1093,7 +1093,9 @@ class _TrinoMappingDslConnector(_TrinoConnector):
         from provisa.core.secrets import resolve_secrets
         from provisa.core.trino_catalog_files import catalog_properties_for
 
-        props = catalog_properties_for(source, resolve_secrets(source.password or ""))
+        props = catalog_properties_for(
+            source, resolve_secrets(source.password or "", credential=True)
+        )
         return props or {}
 
 
@@ -1150,7 +1152,7 @@ class TrinoGsheetsConnector(_TrinoConnector):
             )
         return {
             "gsheets.metadata-sheet-id": resolve_secrets(source.database),
-            "gsheets.credentials-path": resolve_secrets(credentials),
+            "gsheets.credentials-path": resolve_secrets(credentials, credential=True),
             "case-insensitive-name-matching": "true",
         }
 

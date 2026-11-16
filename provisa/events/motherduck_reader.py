@@ -63,7 +63,7 @@ def connection_settings(source: Any) -> dict[str, Any]:
         "port": source.port or PG_PORT,
         "dbname": resolve_secrets(source.database),
         "user": PG_USER,
-        "password": resolve_secrets(source.password),
+        "password": resolve_secrets(source.password, credential=True),
         "sslmode": "verify-full",
         "sslrootcert": "system",
         "options": "--attach_mode=single",

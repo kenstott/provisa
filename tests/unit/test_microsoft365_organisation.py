@@ -570,7 +570,7 @@ def organisation(plane, monkeypatch):
     from provisa.core import request_context, secrets, settings_registry
 
     monkeypatch.setattr(request_context, "require_current_org", lambda: "acme")
-    monkeypatch.setattr(secrets, "resolve_secrets", lambda value: "the-secret")
+    monkeypatch.setattr(secrets, "resolve_secrets", lambda value, **_marked: "the-secret")
     monkeypatch.setattr(
         settings_registry,
         "value",
