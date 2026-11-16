@@ -26,6 +26,13 @@ is known from its registration (:func:`provisa.core.parameters.required_paramete
 registered columns), before any read, and is never read: no profile is looked up for it, it is
 not classified and not sampled. It takes part on what is registered of it: its names and
 descriptions, its columns and their types, its tags, and its required parameters and their types.
+A parameterized table kept for good (REQ-2031) is the exception: its rows are stored, the asked
+value an ordinary stored column (REQ-1986), and a read of it is answered from them whole. The
+model says so (:func:`provisa.api.data.materialization.frozen_parameter_filters`, the pipeline's
+own rule), and discovery reads it as it reads any stored table.
+
+:func:`registered_facts` is what the model store alone says of the tables, nothing read: the
+request count before Run is computed from it. :func:`table_facts` adds what a run reads.
 """
 
 # Requirements: REQ-413, REQ-1986, REQ-2147
@@ -33,6 +40,7 @@ descriptions, its columns and their types, its tags, and its required parameters
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
+from dataclasses import replace
 from typing import TYPE_CHECKING, Any, TypeVar
 
 from sqlalchemy import select
@@ -40,11 +48,13 @@ from sqlalchemy import select
 from provisa.core.parameters import is_parameter, is_required, parameter_name, required_parameters
 from provisa.discovery.columns import (
     NOT_READ,
+    UNKNOWN,
     ColumnFacts,
     TableFacts,
     classes_of,
     type_groups,
 )
+from provisa.discovery.context import SAMPLE_VALUES, sample_text
 from provisa.discovery.direction import Edge, Known, Sampled
 
 if TYPE_CHECKING:
@@ -61,7 +71,7 @@ SAMPLE_ABOVE_CELLS: int | None = None
 #: Rows read for a column's sample values, and the distinct values sent of them: what discovery
 #: has read and sent per table since REQ-018 (collect_metadata samples 20 rows, the prompt sent 5).
 CONTEXT_SAMPLE_ROWS = 20
-CONTEXT_SAMPLE_VALUES = 5
+CONTEXT_SAMPLE_VALUES = SAMPLE_VALUES
 #: The bounded sample of a column read for repeated values when only it can choose a direction.
 UNIQUENESS_SAMPLE_ROWS = 500
 
@@ -161,9 +171,19 @@ async def _terms(conn: "Connection", ids: list[int]) -> dict[tuple[int, str], st
     return {(int(r.table_id), str(r.column_name)): str(r.name) for r in rows}
 
 
-async def tables_requiring_a_parameter(conn: "Connection", ids: Sequence[int]) -> set[int]:
-    """Those of ``ids`` that require a parameter (REQ-1986), from their registered columns: the
-    tables discovery never reads, and whose suggestions were found on reduced information."""
+def _read_from_stored_rows(state: Any, ids: Sequence[int]) -> set[int]:
+    """Those of ``ids`` that are parameterized and kept for good (REQ-2031): their rows are
+    stored and a read of one is answered from them whole, its parameters ordinary stored columns
+    (REQ-1986). Said by the model, as the pipeline reads it; no read is tried."""
+    from provisa.api.data.materialization import frozen_parameter_filters
+
+    return {i for i in ids if frozen_parameter_filters(state, [i])}
+
+
+async def tables_never_read(state: Any, conn: "Connection", ids: Sequence[int]) -> set[int]:
+    """Those of ``ids`` discovery never reads (REQ-1986): each requires a parameter, from its
+    registered columns, and its rows are not kept for good. Their suggestions were found on
+    reduced information."""
     from provisa.core.schema_org import table_columns as tc
 
     rows = (
@@ -177,7 +197,8 @@ async def tables_requiring_a_parameter(conn: "Connection", ids: Sequence[int]) -
             ).where(tc.c.table_id.in_(sorted(set(ids))))
         )
     ).fetchall()
-    return {int(r.table_id) for r in rows if required_parameters([dict(r._mapping)])}
+    requiring = {int(r.table_id) for r in rows if required_parameters([dict(r._mapping)])}
+    return requiring - _read_from_stored_rows(state, sorted(requiring))
 
 
 async def _decided(conn: "Connection", ids: list[int]) -> dict[tuple[int, str], set[str]]:
@@ -267,7 +288,7 @@ async def _samples(
     out: dict[str, list[str]] = {c: [] for c in columns}
     for row in rows:
         for name, value in zip(columns, row, strict=True):
-            text = None if value is None else str(value)
+            text = None if value is None else sample_text(value)
             held = out[name]
             if text is not None and text not in held and len(held) < CONTEXT_SAMPLE_VALUES:
                 held.append(text)
@@ -280,14 +301,11 @@ def _sensitive(classes: tuple[str, ...]) -> bool:
     return any(kind_of(c).sensitive for c in classes if c != "unknown")
 
 
-async def table_facts(
-    state: Any,
-    conn: "Connection",
-    ids: Sequence[int],
-    on_table: Callable[[int, int], Awaitable[None]] | None = None,
-) -> list[TableFacts]:
-    """Every table of ``ids`` with its context and its columns' facts; ``on_table(read, total)``
-    is told after each table is read."""
+async def registered_facts(state: Any, conn: "Connection", ids: Sequence[int]) -> list[TableFacts]:
+    """Every table of ``ids`` as the model store gives it, and nothing else: no table is read, no
+    profile looked up, no source asked. A table that is never read (it requires a parameter and
+    is not kept for good) is whole here, its columns of the class :data:`NOT_READ`. Any other
+    table's columns have the class unknown and no sample values: a run reads those."""
     from provisa.core.schema_org import registered_tables as rt
     from provisa.core.schema_org import table_columns as tc
     from provisa.core.term_tags import effective_column_tags
@@ -333,54 +351,39 @@ async def table_facts(
         columns.setdefault(int(r.table_id), []).append(dict(r._mapping))
     table_tags = await _table_tags(conn, id_list)
     column_tags = await effective_column_tags(conn, id_list)
-    decided = await _decided(conn, id_list)
     terms = await _terms(conn, id_list)
+    # REQ-1986: a table that requires a parameter gives no row count and no profile; it is known
+    # from its registration, here. One kept for good is read from its stored rows (REQ-2031).
+    requiring = [t for t in id_list if required_parameters(columns.get(t, []))]
+    never_read = set(requiring) - _read_from_stored_rows(state, requiring)
 
     out: list[TableFacts] = []
     for t in tables:
         tid = int(t["id"])
-        registered = columns.get(tid, [])
-        # REQ-1986: a table that requires a parameter gives no row count and no profile. It is
-        # known from its registration, here, and nothing below reads it.
-        reduced = bool(required_parameters(registered))
-        if reduced or not registered:
-            # A table with no registered column has nothing to classify or sample either.
-            matched: dict[str, set[str]] | None = {}
-        else:
-            matched = await _profiled_classes(conn, tid, t["table_name"])
-        if matched is None:
-            matched = await _classified_now(state, tid, t["table_name"])
-        prepared = []
-        for c in registered:
-            name = str(c["column_name"])
-            groups = type_groups(
-                str(c["data_type"] or ""), subtype=c["subtype"], array_depth=int(c["array_depth"])
-            )
-            if reduced:
-                classes, sensitive = (NOT_READ,), False
-            else:
-                classes = classes_of(matched.get(name, set()), decided.get((tid, name), set()))
-                sensitive = _sensitive(classes)
-            prepared.append((c, name, groups, classes, sensitive))
-        sampled = [name for _, name, groups, _, sensitive in prepared if groups and not sensitive]
-        samples = {} if reduced else await _samples(state, tid, str(t["table_name"]), sampled)
+        reduced = tid in never_read
         facts = tuple(
             ColumnFacts(
-                name=name,
+                name=str(c["column_name"]),
                 data_type=str(c["data_type"] or ""),
                 description=c["description"],
-                tags=tuple(sorted({tag["tag_id"] for tag in column_tags.get((tid, name), [])})),
-                classes=classes,
-                sensitive=sensitive,
-                samples=samples.get(name, ()),
-                is_primary_key=bool(c["is_primary_key"]),
-                groups=groups,
-                required_parameter=(
-                    parameter_name(c) if is_parameter(c) and is_required(c) else None
+                tags=tuple(
+                    sorted({tag["tag_id"] for tag in column_tags.get((tid, c["column_name"]), [])})
                 ),
-                term=terms.get((tid, name)),
+                classes=(NOT_READ,) if reduced else (UNKNOWN,),
+                sensitive=False,
+                samples=(),
+                is_primary_key=bool(c["is_primary_key"]),
+                groups=type_groups(
+                    str(c["data_type"] or ""),
+                    subtype=c["subtype"],
+                    array_depth=int(c["array_depth"]),
+                ),
+                required_parameter=(
+                    parameter_name(c) if reduced and is_parameter(c) and is_required(c) else None
+                ),
+                term=terms.get((tid, str(c["column_name"]))),
             )
-            for c, name, groups, classes, sensitive in prepared
+            for c in columns.get(tid, [])
         )
         out.append(
             TableFacts(
@@ -394,8 +397,41 @@ async def table_facts(
                 columns=facts,
             )
         )
+    return out
+
+
+async def table_facts(
+    state: Any,
+    conn: "Connection",
+    ids: Sequence[int],
+    on_table: Callable[[int, int], Awaitable[None]] | None = None,
+) -> list[TableFacts]:
+    """Every table of ``ids`` with its context and its columns' facts, as a run reads them: what
+    is registered (:func:`registered_facts`), and for each table that is read, its columns'
+    classes and sample values. ``on_table(read, total)`` is told after each table is read."""
+    registered = await registered_facts(state, conn, ids)
+    decided = await _decided(conn, [t.table_id for t in registered])
+    out: list[TableFacts] = []
+    for table in registered:
+        # A table never read, and one with no registered column, has nothing to classify or
+        # sample.
+        if not table.reduced and table.columns:
+            tid = table.table_id
+            matched = await _profiled_classes(conn, tid, table.table_name)
+            if matched is None:
+                matched = await _classified_now(state, tid, table.table_name)
+            classed = []
+            for c in table.columns:
+                classes = classes_of(matched.get(c.name, set()), decided.get((tid, c.name), set()))
+                classed.append(replace(c, classes=classes, sensitive=_sensitive(classes)))
+            sampled = [c.name for c in classed if c.groups and not c.sensitive]
+            samples = await _samples(state, tid, table.table_name, sampled)
+            table = replace(
+                table, columns=tuple(replace(c, samples=samples.get(c.name, ())) for c in classed)
+            )
+        out.append(table)
         if on_table is not None:
-            await on_table(len(out), len(tables))
+            await on_table(len(out), len(registered))
     return out
 
 
