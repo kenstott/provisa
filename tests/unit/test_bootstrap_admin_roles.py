@@ -86,6 +86,10 @@ def setup(tmp_path, monkeypatch):
     monkeypatch.setattr(mod, "write_verifier", _noop)
     monkeypatch.setattr("provisa.api.admin._config_io.config_path", lambda: tmp_path / "p.yaml")
     monkeypatch.setattr("provisa.api.admin._config_io.read_config_for_setup", lambda: {})
+    # A first-run install: no auth section yet, and no PROVISA_IDP naming one, so setup is needed.
+    monkeypatch.setattr("provisa.api.admin._config_io.read_config", lambda: {})
+    monkeypatch.setattr(mod, "_is_demo", lambda: False)
+    monkeypatch.delenv("PROVISA_IDP", raising=False)
     monkeypatch.setattr(
         "provisa.api.admin._config_io.write_config", lambda _p, cfg: written.update(cfg)
     )
