@@ -110,7 +110,7 @@ async def reconcile_sources(rows: dict[str, dict]) -> None:
 async def _reconcile_sources(rows: dict[str, dict]) -> None:
     from provisa.api.admin.schema_common import _drop_source_on_engine
     from provisa.api.app import state
-    from provisa.api.app_loaders import _build_source_pools_and_enums
+    from provisa.api.app_loaders import _build_source_pools_and_enums, forget_source_enums
     from provisa.core.env_classes import BINDING_COLUMN, SYNTHETIC, UNBOUND
     from provisa.core.models import BUILT_IN_SOURCE_IDS
     from provisa.core.repositories.source import source_from_row
@@ -142,18 +142,20 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
         for name in _SOURCE_MAPS:
             getattr(rt, name).pop(sid, None)
         state.graphql_remote_sources.pop(sid, None)
+        forget_source_enums(rt, sid)
     if added or changed:
         # REQ-1919: each source as the store holds it — an admin's edit governs, and the file's
         # declaration of the same id is never read.
         # REQ-1491, REQ-1942: a source reached through no connection gets no pool.
+        # Only the added and changed sources: the others keep their pools and the enums they
+        # declared when last read (SourcePool.add returns for a source it already holds), and are
+        # not contacted, so a registered source whose server is down neither slows nor fails the
+        # build of the one just added.
         models = [
             source_from_row(rows[sid])
-            for sid in seen
+            for sid in (*added, *changed)
             if rows[sid][BINDING_COLUMN] not in (UNBOUND, SYNTHETIC)
         ]
-        # Every registered source is passed, not only the new ones: the builder also derives the
-        # process's enum-type registry from the sources it is given. Pools that exist are kept
-        # (SourcePool.add returns for a source it already holds).
         shim = SimpleNamespace(
             sources=[],
             # A first-run install has no config file, so no domain declares a write target yet.

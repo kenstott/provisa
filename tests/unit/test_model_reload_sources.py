@@ -99,7 +99,9 @@ def test_unchanged_rows_build_nothing(worker):
 def test_a_source_another_worker_registered_is_built_here(worker):
     _reconcile([_row("a")])
     _reconcile([_row("a"), _row("b")])
-    assert [[s.id for s in batch] for batch in worker.built] == [["a", "b"]]
+    # Only the new source: an unchanged one is not contacted, so a registered source whose
+    # server is down does not hold up (or fail) the build of the one just added.
+    assert [[s.id for s in batch] for batch in worker.built] == [["b"]]
     worker.runtime.source_pools.remove.assert_not_awaited()  # nothing existing is torn down
     assert set(worker.runtime.source_rows) == {"a", "b"}
 
@@ -122,8 +124,11 @@ def test_a_source_another_worker_deleted_loses_its_pool_and_entries(worker):
     worker.runtime.source_types.update(a="postgresql", b="postgresql")
     worker.runtime.source_catalogs.update(a="a", b="b")
     worker.state.graphql_remote_sources["b"] = object()
+    worker.runtime.pg_enums_by_source.update(a=({"mood": ["sad"]}, {}), b=({"size": ["s"]}, {}))
     _reconcile([_row("a")])
     worker.runtime.source_pools.remove.assert_awaited_once_with("b")
+    assert set(worker.runtime.pg_enums_by_source) == {"a"}
+    assert set(worker.runtime.pg_enum_types) == {"mood"}
     assert worker.runtime.source_types == {"a": "postgresql"}
     assert worker.runtime.source_catalogs == {"a": "a"}
     assert worker.state.graphql_remote_sources == {}
