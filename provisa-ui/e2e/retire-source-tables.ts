@@ -8,14 +8,15 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-/** A test's cleanup: retire what it registered, and leave its source in place.
+/** A test's cleanup: retire what it registered.
  *
- * REQ-2248: nothing in the model is hard-deleted. Deleting a table or a relationship retires it,
- * and a source that still holds a table, retired or not, is kept: `deleteSource` is refused. The
- * product can restore a retired object, never remove one. So a test does not delete the source it
- * added. It retires the relationships of the source's tables and then the tables (REQ-1918: a
- * table is refused while a relationship takes part in it), each through its own mutation, as an
- * operator would, and the source stays.
+ * REQ-2248: nothing in the model is hard-deleted. Deleting a table or a relationship retires it.
+ * Deleting a source is refused while it holds a live table; otherwise it retires the source with
+ * the retired tables it holds, and leaves the source's id free (amended 2026-11-15). A cleanup
+ * retires the relationships of the source's tables and then the tables (REQ-1918: a table is
+ * refused while a relationship takes part in it), each through its own mutation, as an operator
+ * would. `retireSourceTables` stops there and leaves the source in service; `retireSource` then
+ * deletes the source too, which retires it.
  *
  * A retired table keeps its name and its (source, schema, table) key, so a test that registers the
  * same table again on the same source is refused. Every source a test adds is therefore named for
@@ -99,14 +100,22 @@ export async function retireSourceTables(gql: AdminGql, sourceId: string): Promi
   }
 }
 
-/** Delete a source that never held a table. Only for a source that must not stay: AskAmerica,
- * of which one source is served (REQ-540), so a second is refused while the first is there.
- * A source that holds a table, retired or not, is kept (REQ-2248) and this throws, naming what
- * holds it. A source that is not there is left alone. */
+/** Delete a source that holds no live table, which retires it (REQ-2248) and leaves its id free.
+ * For a source that must not stay in service: AskAmerica, of which one source is served (REQ-540),
+ * so a second is refused while the first is live. A source still holding a live table is refused
+ * and this throws, naming what holds it. A source that is not there is left alone. */
 export async function deleteSourceHoldingNoTable(gql: AdminGql, sourceId: string): Promise<void> {
   const res = await gql(
     `mutation D($id: String!) { deleteSource(id: $id) { success code message } }`,
     { id: sourceId },
   );
-  requireDone(res, "deleteSource", "schema.source_not_found", `source ${sourceId} was not removed`);
+  requireDone(res, "deleteSource", "schema.source_not_found", `source ${sourceId} was not retired`);
+}
+
+/** Retire every table in service on `sourceId` (`retireSourceTables`), then the source with them
+ * (`deleteSourceHoldingNoTable`): out of service, and its id and its kind's place free (REQ-2248).
+ * Throws on any refusal, naming it. */
+export async function retireSource(gql: AdminGql, sourceId: string): Promise<void> {
+  await retireSourceTables(gql, sourceId);
+  await deleteSourceHoldingNoTable(gql, sourceId);
 }

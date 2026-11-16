@@ -21,6 +21,9 @@ Each overload gets one outcome per engine:
   pass          every call PostgreSQL answered, Provisa answered the same, or the same under a
                 written rule, which the overload's ``rules`` name (function_report.RULES), and
                 something was compared: an answer, a type and form, or a side effect
+  within_bound  a pass on its samples whose edge calls (below) answer nothing otherwise than
+                PostgreSQL, and raise where an edge differs, as its polyfill grid row on the engine
+                states (REQ-2236, amended 2026-11-15): served, as a pass is
   not_checked   every call PostgreSQL answered, Provisa answered with the same result type, and
                 nothing was compared: a call that ran proves nothing, so this is no pass, and it
                 counts as failed. ``unchecked`` says why
@@ -31,9 +34,11 @@ Each overload gets one outcome per engine:
                 (``decided_function``: PostgreSQL's own server state, the types no SQL value can
                 have, and the others amended 2026-11-03 and 2026-11-04 name)
   wrong_answer  a call compares unequal: its result type, its rows, their values, their form,
-                or the side effect it had
+                or the side effect it had; or an edge call answers otherwise than PostgreSQL
+                (``wrong_at_edge``)
   error         PostgreSQL answered a call and the engine failed with no named refusal (its
-                message is kept)
+                message is kept); or an edge call got no answer at all, or raised where the grid
+                row states no bound (``error_at_edge``)
   refused       PostgreSQL answered a call and Provisa refused it by name
   not_callable  PostgreSQL itself answers no call of it: every call was refused, or none answered
                 anything but NULL from NULL arguments and every call with a real value was refused
@@ -96,8 +101,18 @@ What a pass compared, exactly:
 The rest are not checked, and each says why (``unchecked``, which an overload whose type and form
 were compared keeps: its value is still not compared). One given real values for its form that
 still has none checked says too whether PostgreSQL refused them or answered NULL or no row. A NULL call where PostgreSQL answers NULL
-holds Provisa to NULL too, which can make a wrong answer and never a pass. Three literals, not a
-domain: a function that differs only on values no sample reaches passes here.
+holds Provisa to NULL too, which can make a wrong answer and never a pass.
+
+Three literals are not a domain, so an overload that passes them is called again with edge values
+(``edge_calls``, from the one table function_edges.EDGES): NULL in each argument, an empty value,
+the type's least and greatest, zero and negatives, multi-byte and combining text, and a value
+PostgreSQL itself raises on, at most function_edges.EDGE_CALLS_MAX calls per overload. Where
+PostgreSQL raises, the engine must raise an error of the same SQLSTATE class. An edge answered
+otherwise is a wrong answer; one raised where PostgreSQL answers (or of another class) leaves the
+overload within its bound if its grid row on the engine states a limitation, and an error if not;
+one with no answer at all (the connection lost, or the deadline) is an error. A row whose
+limitation says what its form raises is bounded, and an edge call must raise that SQLSTATE
+(``bound_raised``; polyfill_check.py fails a row whose stated raise no edge call made).
 
 Literals alone do not say a function works on a column: a form that folds a literal at transpile
 time passes while a column of the same type is refused. So an overload given values gets one more
@@ -142,6 +157,7 @@ import sys
 import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
+import dataclasses
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, LiteralString
@@ -151,6 +167,7 @@ import yaml
 from psycopg import pq
 from psycopg import sql as psql
 
+import function_edges
 import function_report
 import pgwire_catalog_types as catalog
 import pgwire_function_probe as function_probe
@@ -1506,7 +1523,8 @@ class Call:
     UTC; ``before``: what the session must have done first, run just before it
     (function_probe.BEFORE); ``setup`` and ``teardown``: statements around it on the same session,
     as an open cursor needs its transaction; ``refusal``: PostgreSQL's answer is its refusal,
-    which Provisa must answer with the same SQLSTATE and message."""
+    which Provisa must answer with the same SQLSTATE and message; ``edge``: an edge call
+    (``edge_calls``), naming its argument's type and edge, compared by ``_measure_edges``."""
 
     sql: str
     answers: bool = False
@@ -1516,6 +1534,7 @@ class Call:
     before: str | None = None
     setup: tuple[str, ...] = ()
     teardown: tuple[str, ...] = ()
+    edge: str = ""
 
     @property
     def form(self) -> bool:
@@ -1603,9 +1622,10 @@ def _columns(count: int) -> list[str]:
     return [f"c{i + 1}" for i in range(count)]
 
 
-def _aggregate(fn: Function) -> str:
-    """An aggregate over the rows of a VALUES list, which reads no table and so reaches the engine."""
-    rows = _rows(fn)
+def _aggregate(fn: Function, rows: list[list[str]] | None = None) -> str:
+    """An aggregate over the rows of a VALUES list, which reads no table and so reaches the engine:
+    ``rows``, or the sample rows."""
+    rows = _rows(fn) if rows is None else rows
     named = f'pg_catalog."{fn.name}"'
     if fn.aggkind == "h":
         relation = "(VALUES (1), (2), (3)) AS t(c1)"
@@ -1628,9 +1648,9 @@ def _aggregate(fn: Function) -> str:
     return f"SELECT {named}({', '.join(columns)}{order}) AS v FROM {relation}"
 
 
-def _window(fn: Function) -> str:
+def _window(fn: Function, rows: list[list[str]] | None = None) -> str:
     named = f'pg_catalog."{fn.name}"'
-    rows = _rows(fn)
+    rows = _rows(fn) if rows is None else rows
     numbered = [[str(i + 1), *row] for i, row in enumerate(rows)]
     columns = _columns(len(fn.argtypes) + 1)
     relation = f"({_values(numbered)}) AS t({', '.join(columns)})"
@@ -1682,6 +1702,49 @@ def value_calls(fn: Function, family: str) -> list[Call]:
             row = [*row[:-1], f"VARIADIC {row[-1]}"]
         calls.append(Call(function_probe.statement(fn, row), answers=True))
     return calls
+
+
+def edge_calls(fn: Function, family: str) -> list[Call]:
+    """``fn`` called with edge values (function_edges): an overload ``value_calls`` gives its
+    samples, each call its first sample row with one argument an edge value of its type, at most
+    ``function_edges.EDGE_CALLS_MAX``. An argument given literals of its own (``ARG_VALUES``: a
+    unit, a pattern, a format) keeps them; an aggregate or a window function reads the edge row
+    twice. None for an overload written whole (``VALUE_STATEMENTS``, domain_in), one of no
+    argument, and a hypothetical-set aggregate, whose one argument is direct and ordered both."""
+    if (
+        unchecked(fn, family) is not None
+        or _key(fn) in VALUE_STATEMENTS
+        or fn.name == "domain_in"
+        or not fn.argtypes
+        or fn.aggkind == "h"
+    ):
+        return []
+    given = _given(fn)
+    with_null = len(fn.argtypes) > 1 or fn.kind in ("a", "w")
+    per_position = [
+        (i, function_edges.edges_of(function_probe.CONCRETE.get(t, t), with_null=with_null))
+        for i, t in enumerate(fn.argtypes)
+        if i not in given
+    ]
+    first = _rows(fn)[0]
+    out = []
+    for position, edge in function_edges.chosen(per_position):
+        argtype = fn.argtypes[position]
+        row = list(first)
+        row[position] = _cast(edge.literal, argtype)
+        named = f"{function_probe.CONCRETE.get(argtype, argtype)} {edge.kind}"
+        if fn.kind == "a":
+            sql = _aggregate(fn, [row, row])
+        elif fn.kind == "w":
+            sql = _window(fn, [row, row])
+        else:
+            if fn.variadic:
+                row = [*row[:-1], f"VARIADIC {row[-1]}"]
+            sql = function_probe.statement(fn, row)
+        sql = function_edges.bounded(sql)
+        if all(c.sql != sql for c in out):
+            out.append(Call(sql, answers=True, edge=named))
+    return out
 
 
 #: A value breaking the fixture domain's CHECK (VALUE > 0).
@@ -1838,7 +1901,11 @@ class Session(catalog.Server):
                     left = deadline - time.monotonic()
                     if left <= 0 or not select.select([conn.socket], [], [], left)[0]:
                         self.conn.close()
-                        return {"ok": False, "error": f"no answer in {timeout:.0f}s"}
+                        return {
+                            "ok": False,
+                            "error": f"no answer in {timeout:.0f}s",
+                            "timed_out": True,
+                        }
                     continue
                 res = conn.get_result()
                 if res is None:
@@ -3191,15 +3258,20 @@ def measure_overload(
     enums: frozenset[int] = frozenset(),
     *,
     engine: str,
+    bounds: function_edges.Bounds = function_edges.grid_bounds,
 ) -> dict[str, Any]:
     """``fn`` on ``engine``, as one outcome. A side-effect function is tested by its side effect on
     ``SIDE_EFFECT_ENGINE`` and skipped by design elsewhere, and is not testable where no client can
     see its effect; a refusal a decision makes is skipped by design under it, as is a refusal of an
-    internal type's own function (``internal_types_own``)."""
+    internal type's own function (``internal_types_own``). An overload raising at an edge is held
+    to its grid row (``bounds``) by ``_held_to_its_bound``."""
     entry = _measure_calls(fn, family, pg, provisa, classify, enums)
     group = decided_function(fn)
     if group is not None:
         return _decided_function(entry, group)
+    if "edges" in entry:
+        statement = function_probe.statement(fn, _rows(fn)[0])
+        _held_to_its_bound(entry, bounds(statement, engine), engine)
     if entry["outcome"] == "not_callable" or "refused_for" in entry:
         return entry
     decided = DECIDED_REFUSALS.get(_key(fn)) or DECIDED_REFUSALS.get(fn.name)
@@ -3227,6 +3299,28 @@ def measure_overload(
     if entry["outcome"] in ("pass", "not_checked"):
         return _by_design(entry, NOT_TESTABLE)
     return entry
+
+
+def _held_to_its_bound(entry: dict[str, Any], limitations: tuple[str, ...], engine: str) -> None:
+    """An overload whose edge calls ran, held to what its grid row on ``engine`` states. One that
+    raised at an edge is within its bound only where the row states a limitation there; with none
+    it is an error, which the grid does not state. A row whose limitation says what its form raises
+    is bounded: its overload must raise that SQLSTATE on an edge call (``bound_raised``)."""
+    if limitations:
+        entry["bound_stated"] = list(limitations)
+    if entry["outcome"] == WITHIN_BOUND and not limitations:
+        entry["outcome"] = "error"
+        entry["error_at_edge"] = True
+        entry["detail"] = {
+            **entry["detail"],
+            "unstated": f"it raises at an edge value; its grid row on {engine} states no bound",
+        }
+    stated = function_edges.stated_raises(limitations)
+    if stated and entry["outcome"] in ("pass", WITHIN_BOUND):
+        entry["bound_sqlstates"] = stated
+        entry["bound_raised"] = any(
+            raised.get("sqlstate") in stated for raised in entry.get("edge_raised", ())
+        )
 
 
 def _nothing(want: dict[str, Any]) -> bool:
@@ -3278,6 +3372,94 @@ def _refusal_answer(
         difference = f"refused: {got['sqlstate']} {_primary(got)}, PostgreSQL {expected}"
         return "wrong", {"statement": call_.sql, "difference": difference}
     return "error", said
+
+
+@dataclass
+class EdgeResults:
+    """An overload's edge calls on both servers (``_measure_edges``). ``agreed``: answered as
+    PostgreSQL did, or raised where it raised with an error of the same SQLSTATE class; ``wrong``:
+    answered otherwise than PostgreSQL, or answered where it raised; ``raised``: raised where
+    PostgreSQL answered, or with an error of another class; ``errors``: no answer at all (the
+    connection lost, or no answer in time), which is no raise."""
+
+    calls: int = 0
+    uncompared: int = 0  # PostgreSQL answered more rows than an edge call compares
+    agreed: int = 0
+    postgres_raised: int = 0
+    wrong: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    raised: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    errors: list[dict[str, str]] = dataclasses.field(default_factory=list)
+
+    def summary(self) -> dict[str, int]:
+        return {
+            "calls": self.calls,
+            "uncompared": self.uncompared,
+            "agreed": self.agreed,
+            "postgres_raised": self.postgres_raised,
+            "wrong": len(self.wrong),
+            "raised": len(self.raised),
+            "errors": len(self.errors),
+        }
+
+
+def _expected_error(want: dict[str, Any]) -> str:
+    return f"{want.get('sqlstate') or '(no SQLSTATE)'} {_primary(want)}"
+
+
+def _measure_edges(
+    fn: Function,
+    family: str,
+    pg: Session,
+    provisa: Session,
+    enums: frozenset[int] = frozenset(),
+) -> EdgeResults:
+    """Every edge call of ``fn`` (``edge_calls``) on both servers. A difference a decision makes
+    (``decided_difference``, ``decided_answer``) agrees, as it does of a sample."""
+    found = EdgeResults()
+    for call_ in edge_calls(fn, family):
+        want = _answer(pg, call_)
+        if want["ok"] and (not want["fields"] or len(want["rows"]) > function_edges.EDGE_ROWS_MAX):
+            found.uncompared += want["ok"] and bool(want["fields"])
+            continue
+        found.calls += 1
+        got = _answer(provisa, call_)
+        said = {"statement": call_.sql, "edge": call_.edge}
+        if got.get("lost") or got.get("timed_out"):
+            found.errors.append({**said, "error": got["error"]})
+            continue
+        if not want["ok"]:
+            found.postgres_raised += 1
+            if got["ok"]:
+                difference = f"answered {got['rows']!r}, PostgreSQL raised {_expected_error(want)}"
+                found.wrong.append({**said, "difference": difference})
+            elif function_edges.sqlstate_class(
+                got.get("sqlstate", "")
+            ) == function_edges.sqlstate_class(want.get("sqlstate", "")):
+                found.agreed += 1
+            else:
+                found.raised.append(
+                    {
+                        **said,
+                        "error": got["error"],
+                        "sqlstate": got.get("sqlstate", ""),
+                        "postgres": _expected_error(want),
+                    }
+                )
+            continue
+        if not got["ok"]:
+            found.raised.append(
+                {**said, "error": got["error"], "sqlstate": got.get("sqlstate", "")}
+            )
+            continue
+        compared = compare(want, got, values=True, sql=call_.sql, function=fn.name, enums=enums)
+        if compared.difference is None or (
+            decided_difference(fn.name, call_.sql, compared.difference)
+            or decided_answer(fn.name, call_.sql, want, got)
+        ):
+            found.agreed += 1
+        else:
+            found.wrong.append({**said, "difference": compared.difference})
+    return found
 
 
 #: Why an overload given real values for its form still had none checked.
@@ -3429,6 +3611,7 @@ def _measure_calls(
     elif answered or checked:
         entry["outcome"] = "pass"
         entry["rules"] = sorted(rules)
+        _judge_edges(entry, _measure_edges(fn, family, pg, provisa, enums))
     else:
         entry["outcome"] = "not_checked"
         entry["rules"] = sorted(rules)
@@ -3436,6 +3619,30 @@ def _measure_calls(
     if column is not None:
         entry["column"] = column
     return entry
+
+
+def _judge_edges(entry: dict[str, Any], edges: EdgeResults) -> None:
+    """A passing overload held to its edge calls: one answering otherwise than PostgreSQL is a wrong
+    answer, one that does not answer at all an error, and one raising where PostgreSQL does not is
+    within its bound, which ``measure_overload`` holds to its grid row."""
+    if not edges.calls:
+        return
+    entry["edges"] = edges.summary()
+    if edges.wrong:
+        entry["outcome"] = "wrong_answer"
+        entry["detail"] = edges.wrong[0]
+        entry["wrong_calls"] = len(edges.wrong)
+        entry["wrong_at_edge"] = True
+    elif edges.errors:
+        entry["outcome"] = "error"
+        entry["detail"] = edges.errors[0]
+        entry["error_calls"] = len(edges.errors)
+        entry["error_at_edge"] = True
+    elif edges.raised:
+        entry["outcome"] = WITHIN_BOUND
+        entry["detail"] = edges.raised[0]
+    if edges.raised:
+        entry["edge_raised"] = edges.raised
 
 
 def seed_columns(pg_dsn: str, out: Path) -> None:
@@ -3655,8 +3862,12 @@ def measure(
 
 # --- counts and the merged data file ----------------------------------------------------------
 
+#: Served within a stated bound: its samples right, and every edge call that differs raises.
+WITHIN_BOUND = "within_bound"
+
 OUTCOMES = (
     "pass",
+    WITHIN_BOUND,
     "not_checked",
     "by_design",
     "wrong_answer",
@@ -3681,6 +3892,9 @@ def counts(overloads: list[dict[str, Any]]) -> dict[str, int]:
     out["pass_answers_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("answers_checked")
     )
+    out["wrong_at_edge"] = sum(1 for o in overloads if o.get("wrong_at_edge"))
+    out["error_at_edge"] = sum(1 for o in overloads if o.get("error_at_edge"))
+    out["bound_not_raised"] = sum(1 for o in overloads if o.get("bound_raised") is False)
     out["pass_side_effect_checked"] = sum(
         1 for o in overloads if o["outcome"] == "pass" and o.get("side_effect_checked")
     )
@@ -3713,20 +3927,23 @@ def not_checked_reasons(overloads: Iterable[dict[str, Any]]) -> dict[str, int]:
 
 def _row(label: str, c: dict[str, int]) -> str:
     return (
-        f"| {label} | {c['total']} | {c['passed']} | {c['skipped_by_design']} | {c['failed']} "
+        f"| {label} | {c['total']} | {c['passed']} | {c['within_bound']} "
+        f"| {c['skipped_by_design']} | {c['failed']} "
         f"| {c['not_tested']} | {c['pass_answers_checked']} "
         f"| {c['pass_type_and_form_checked']} | {c['pass_side_effect_checked']} "
         f"| {c['not_checked']} | {c['by_design']} | {c['refused']} "
-        f"| {c['wrong_answer']} | {c['error']} | {c['not_callable']} | {c['not_reached']} |"
+        f"| {c['wrong_answer']} | {c['wrong_at_edge']} | {c['error']} | {c['error_at_edge']} "
+        f"| {c['not_callable']} | {c['not_reached']} |"
     )
 
 
 _HEADER = (
-    "| | overloads | passed | skipped by design | failed | not tested "
+    "| | overloads | served | of which within bound | skipped by design | failed | not tested "
     "| pass, answers compared | pass, type and form compared "
     "| pass, side effect compared | not checked | skipped by design | refused by name "
-    "| wrong answer | engine error | not callable | not reached |",
-    "|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|",
+    "| wrong answer | of which at an edge | engine error | of which at an edge | not callable "
+    "| not reached |",
+    "|---|" + "---:|" * 18,
 )
 
 
@@ -3785,12 +4002,25 @@ def _outcome(entry: dict[str, Any] | None) -> dict[str, Any]:
         "outcome": entry["outcome"],
         "result": function_report.result_of(entry["outcome"], entry.get("rules", ())),
     }
-    for key in ("detail", "served_by", "column", "refused_for", "refusal_sqlstates"):
+    for key in (
+        "detail",
+        "served_by",
+        "column",
+        "refused_for",
+        "refusal_sqlstates",
+        "edges",
+        "wrong_at_edge",
+        "error_at_edge",
+        "edge_raised",
+        "bound_stated",
+        "bound_sqlstates",
+        "bound_raised",
+    ):
         if entry.get(key) is not None:
             kept[key] = entry[key]
     if entry.get("rules"):
         kept["rules"] = entry["rules"]
-    if entry["outcome"] == "pass":
+    if entry["outcome"] in ("pass", WITHIN_BOUND):
         kept["check"] = (
             "answers"
             if entry.get("answers_checked")

@@ -18,7 +18,7 @@ anything; ``tests/integration/test_domain_delete_guarded.py`` runs it on both pl
 served instance.
 """
 
-# Requirements: REQ-1917, REQ-1918, REQ-1919
+# Requirements: REQ-1917, REQ-1918, REQ-1919, REQ-2248
 
 from __future__ import annotations
 
@@ -90,7 +90,7 @@ async def _count(db: Database, table) -> int:
 
 async def _domain_ids(db: Database) -> set[str]:
     async with db.acquire() as conn:
-        return {r[0] for r in (await conn.execute_core(select(domains.c.id))).fetchall()}
+        return {r["id"] for r in await domain_repo.list_all(conn)}
 
 
 # --- the model store's delete --------------------------------------------------------------------
@@ -116,11 +116,14 @@ async def test_a_domain_something_refers_to_is_refused_naming_each_and_nothing_i
     }
 
 
-async def test_a_domain_nothing_refers_to_is_deleted(plane):
+async def test_a_domain_nothing_refers_to_is_retired(plane):
+    """REQ-2248 (amended 2026-11-15): the delete retires the domain; its row is kept."""
     async with plane.acquire() as conn:
         assert await domain_repo.delete(conn, "empty") is True
         assert await domain_repo.delete(conn, "empty") is False
+        [retired] = await domain_repo.list_all(conn, retired=True)
     assert await _domain_ids(plane) >= {"sales"} and "empty" not in await _domain_ids(plane)
+    assert retired["retired_id"] == "empty" and retired["retired"] is True
 
 
 async def test_the_domain_goes_once_everything_that_referred_to_it_has(plane):

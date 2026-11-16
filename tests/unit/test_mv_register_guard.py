@@ -203,6 +203,7 @@ def test_table_input_maps_consistency():
         mv_persist="replace",  # REQ-965
         mv_primary_key=[],  # REQ-970
         mv_incremental=False,  # REQ-969
+        mv_rebuild_every=None,  # REQ-2249
         mv_calendar=None,  # REQ-962
         mv_grain=None,  # REQ-962/1168
         mv_allowed_lateness=0.0,  # REQ-961

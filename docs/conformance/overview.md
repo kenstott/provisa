@@ -10,7 +10,9 @@ Provisa fixes failures or lists them. No failure is left unnamed.
 
 ## Function results by engine
 
-Each `pg_catalog` function overload has a result on each engine: exact, equivalent under a numbered rule, refused by name, or differs. An engine that refuses a function by name has given that engine's result. A wrong answer on any engine is a defect.
+Each `pg_catalog` function overload has a result on each engine: exact, equivalent under a numbered rule, within a bound, refused by name, or differs. An engine that refuses a function by name has given that engine's result. A wrong answer on any engine is a defect.
+
+Three samples show only that a function answers ordinary values. So each overload is also called with edge values of its argument types: NULL, an empty value, the least and greatest values the type holds, zero and negative values, multi-byte and combining text, and a value PostgreSQL itself raises an error for. An overload is served within its bound when every sample is right and, at an edge value it cannot answer, the engine raises an error instead of answering, as that engine's polyfill page states. Served counts exact, equivalent and within a bound together, and the within-bound count is also shown on its own.
 
 A literal alone does not show that a function works on a column, because a form can fold a literal at transpile time and still refuse a column of the same type. So each overload with a sample value is also called with that value read from a column of a registered table. An overload that passes on literals but not on the column is listed as literals only. The list does not change its result.
 

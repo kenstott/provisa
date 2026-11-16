@@ -55,7 +55,11 @@ from provisa.core.schema_org import registered_tables, relationships
 if TYPE_CHECKING:
     from strawberry.types.info import Info as StrawberryInfo
 
-    from provisa.api.admin.types import CodeResolverInput, MutationResult
+    from provisa.api.admin.types import (
+        CodeResolverInput,
+        IncrementalOptionType,
+        MutationResult,
+    )
     from provisa.core.database import Connection
 
 #: The set whose objects the running save or retirement may change (:func:`held_by_set`).
@@ -227,7 +231,12 @@ def _resolver(input: "CodeResolverInput") -> "tuple[MutationResult | None, dict]
 
 
 def _bridge_input(
-    input: "CodeResolverInput", command: dict, source: dict, target: dict, readers: list[str]
+    input: "CodeResolverInput",
+    command: dict,
+    source: dict,
+    target: dict,
+    readers: list[str],
+    schema_name: str = _VIEW_SCHEMA,
 ) -> Any:
     from provisa.api.admin.types import ColumnInput, TableInput
     from provisa.codesource.resolver import call_sql
@@ -236,7 +245,7 @@ def _bridge_input(
     return TableInput(
         source_id=DERIVED_SOURCE_ID,
         domain_id=source["domain_id"],
-        schema_name=_VIEW_SCHEMA,
+        schema_name=schema_name,
         table_name=names(input.id).bridge,
         description=(
             f"The matches of {input.source_table} to {input.target_table} that "
@@ -249,6 +258,8 @@ def _bridge_input(
         view_sql=call_sql(command, _statement_name(source), _statement_name(target)),
         materialize=True,
         mv_refresh_interval=input.refresh_interval,
+        mv_incremental=input.incremental,  # kept by the resolver's @change function
+        mv_rebuild_every=input.rebuild_every,
     )
 
 
@@ -369,7 +380,15 @@ async def save(
             "schema.code_resolver_not_found",
             resolver=input.id,
         )
-    view = _bridge_input(input, command, source, target, readers)
+    # A change is saved over the bridge as it is registered: under the schema it was stored in.
+    view = _bridge_input(
+        input,
+        command,
+        source,
+        target,
+        readers,
+        _VIEW_SCHEMA if bridge is None else bridge["schema_name"],
+    )
     with _changing(input.id):
         if creating:
             saved = await ops.register_table(info, view)
@@ -514,6 +533,27 @@ async def listed(conn: "Connection") -> list[dict]:
                 "target_column": to_target.target_column,
                 "target_match": to_target.source_column,
                 "refresh_interval": int(bridge.mv_refresh_interval),
+                "incremental": bool(bridge.mv_incremental),
+                "rebuild_every": bridge.mv_rebuild_every,
             }
         )
     return out
+
+
+async def incremental_option(resolver: str, set_id: str) -> "IncrementalOptionType":
+    """Whether the set ``set_id`` over ``resolver`` may keep its matches incrementally: only when
+    the resolver's source declares a @change function for its bridge (REQ-2249). Asked by the
+    form before the set exists, and of a set in service."""
+    from provisa.api.admin.types import IncrementalOptionType
+    from provisa.api.app import state
+    from provisa.mv.change_refresh import incremental_option as option_of
+
+    command = state.tracked_functions.get(resolver)
+    if command is None:
+        return IncrementalOptionType(
+            available=False,
+            code="schema.code_resolver_unknown",
+            reason=f"No command {resolver!r} is registered",
+        )
+    option = await option_of(state, command, names(set_id).bridge)
+    return IncrementalOptionType(available=option.available, code=option.code, reason=option.reason)

@@ -119,6 +119,14 @@ DO $$ BEGIN
 EXCEPTION WHEN OTHERS THEN NULL;
 END $$;
 ALTER TABLE sources ADD COLUMN IF NOT EXISTS synthetic JSONB;
+-- REQ-2248: deleting a source that holds no live table retires it, as a table is retired: why
+-- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
+-- and retired_id holds the id it had while live, so that id is free for reuse.
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE sources ADD COLUMN IF NOT EXISTS retired_id TEXT;
 
 CREATE TABLE IF NOT EXISTS domains (
     id            TEXT PRIMARY KEY,
@@ -133,6 +141,14 @@ ALTER TABLE domains ADD COLUMN IF NOT EXISTS parent_domain_id TEXT;
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS graphql_alias TEXT;
 -- REQ-609: designated steward; NULL = pending (the domain may not serve governed data).
 ALTER TABLE domains ADD COLUMN IF NOT EXISTS steward TEXT;
+-- REQ-2248: deleting a domain that holds no live table retires it, as a table is retired: why
+-- (status_reason), who (status_by) and when (status_at). Its row is kept under a key of its own
+-- and retired_id holds the id it had while live, so that id is free for reuse.
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
+ALTER TABLE domains ADD COLUMN IF NOT EXISTS retired_id TEXT;
 
 -- Seed default (no-domain) row so domain_id='' is always a valid FK target
 INSERT INTO domains (id, description) VALUES ('', 'No domain')
@@ -258,6 +274,7 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     mv_persist TEXT NOT NULL DEFAULT 'replace',  -- REQ-965: replace | append | upsert
     mv_primary_key JSONB,  -- REQ-970: row identity (required for upsert / incremental)
     mv_incremental BOOLEAN NOT NULL DEFAULT FALSE,  -- REQ-969: incremental maintenance
+    mv_rebuild_every INTEGER,  -- REQ-2249: seconds between whole rebuilds of a view kept by @change
     mv_calendar TEXT,  -- REQ-962: periodic-snapshot calendar name (NULL = not periodic)
     mv_grain TEXT,  -- REQ-962/1168: nesting grain ('daily'..'annual') or nth-weekday ('3WE'/'LFR')
     mv_allowed_lateness DOUBLE PRECISION NOT NULL DEFAULT 0,  -- REQ-961: seal-deadline slack (s)
@@ -1179,7 +1196,11 @@ CREATE TABLE IF NOT EXISTS mv_build_state (
     materialized_definition_version TEXT,
     materialized_input_version      TEXT,
     snapshot_id     TEXT,
-    index_state     JSONB   -- REQ-2015: the indexes its standing landing asked for, as a replica's
+    index_state     JSONB,  -- REQ-2015: the indexes its standing landing asked for, as a replica's
+    -- REQ-2249: a view kept by its code resolver's @change function: the cursor stored after its
+    -- last successful apply (JSON; NULL = none yet) and when it was last rebuilt whole.
+    change_cursor     TEXT,
+    change_rebuilt_at TIMESTAMPTZ
 );
 ALTER TABLE mv_build_state ADD COLUMN IF NOT EXISTS index_state JSONB;
 

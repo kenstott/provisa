@@ -55,10 +55,12 @@ from typing import Any
 from provisa.codesource.bundle import BundleRefused
 
 TABLE, COMMAND, QUERY, STREAM, COLUMNS = "table", "command", "query", "stream", "columns"
+#: REQ-2249: the function that keeps a landed code resolver's result fresh, called with a cursor.
+CHANGE = "change"
 #: REQ-2221: a connector's lifecycle tags, each on at most one function of its code.
 ON_START, ON_STOP, HEALTH = "on-start", "on-stop", "health"
 LIFECYCLE_TAGS = frozenset({ON_START, ON_STOP, HEALTH})
-PROVISA_TAGS = frozenset({TABLE, COMMAND, QUERY, STREAM, COLUMNS}) | LIFECYCLE_TAGS
+PROVISA_TAGS = frozenset({TABLE, COMMAND, QUERY, STREAM, COLUMNS, CHANGE}) | LIFECYCLE_TAGS
 #: REQ-2226: what is called as a command. A @query differs from a @command only in its kind.
 COMMANDS = frozenset({COMMAND, QUERY})
 
@@ -205,6 +207,26 @@ class Export:
     #: table)``: which of two commands that fit a code table's operation it is
     #: (provisa/codesource/mutations.py).
     binds: tuple[tuple[str, str], ...] = ()
+    #: REQ-2249: a ``@change`` function's declaration: the table it keeps fresh, and its rows' key,
+    #: removal and cursor columns.
+    change: "Change | None" = None
+
+
+@dataclass(frozen=True)
+class Change:
+    """REQ-2249: what a ``@change`` function states that only its author knows. Each is one
+    ``@change name=value`` tag line: ``table`` the landed table it keeps fresh (it is found by that
+    name), ``key`` the columns identifying a match (comma-separated), ``removed`` the column marking
+    a returned match as removed, ``cursor`` the column carrying each change's cursor value."""
+
+    table: str
+    key: tuple[str, ...]
+    removed: str
+    cursor: str
+
+
+#: REQ-2249: the names a ``@change`` tag line gives a value to, each once.
+CHANGE_PARTS = ("table", "key", "removed", "cursor")
 
 
 #: REQ-2100: the tag a table declares it takes a join's keys with (``@loader``, ``@loader N``).
@@ -331,6 +353,7 @@ def manifest_json(manifest: Manifest) -> dict:
                 "loader_batch": e.loader_batch,
                 "takes": list(e.takes),
                 "binds": [list(b) for b in e.binds],
+                "change": None if e.change is None else _change_json(e.change),
             }
             for e in manifest.exports
         ],
@@ -340,6 +363,21 @@ def manifest_json(manifest: Manifest) -> dict:
         },
         "requires": [{"name": r.name, "secret": r.secret} for r in manifest.requires],
     }
+
+
+def _change_json(change: Change) -> dict:
+    return {
+        "table": change.table,
+        "key": list(change.key),
+        "removed": change.removed,
+        "cursor": change.cursor,
+    }
+
+
+def _change(raw: dict | None) -> Change | None:
+    if raw is None:
+        return None
+    return Change(raw["table"], tuple(raw["key"]), raw["removed"], raw["cursor"])
 
 
 def manifest_hash(raw: dict) -> str:
@@ -372,6 +410,7 @@ def manifest_from_json(raw: dict) -> Manifest:
                 e["loader_batch"],
                 tuple(e["takes"]),
                 tuple((op, table) for op, table in e["binds"]),
+                _change(e["change"]),
             )
         )
     types = {
@@ -686,6 +725,80 @@ def _lifecycle_export(
     return Export(name, kind, entry["description"], parameters, returns)
 
 
+def _change_declaration(name: str, entry: dict, problems: list[str]) -> Change | None:
+    """REQ-2249: what a ``@change`` function's tag lines state, each ``@change name=value``: the
+    table it keeps fresh, its key columns, its removal column and its cursor column, each once."""
+    given: dict[str, str] = {}
+    written = True
+    for text in (t["text"] for t in entry.get("tag_arguments", []) if t["tag"] == CHANGE):
+        if not text:
+            continue  # Node's reader lists a bare @change with no text beside its tag
+        part, sep, value = text.partition("=")
+        if not sep or part not in CHANGE_PARTS or not value:
+            problems.append(
+                f"{name}: @change {text}: write @change table=, key=, removed= or cursor= "
+                "followed by its value"
+            )
+            written = False
+        elif part in given:
+            problems.append(f"{name}: @change {part} is stated twice")
+            written = False
+        else:
+            given[part] = value
+    missing = [p for p in CHANGE_PARTS if p not in given]
+    if missing:
+        problems.append(
+            f"{name}: @change states {', '.join(missing)}: one line each, @change {missing[0]}=..."
+        )
+        return None
+    key = tuple(given["key"].split(","))
+    if not all(key):
+        problems.append(
+            f"{name}: @change key={given['key']}: name the key columns, comma-separated"
+        )
+        return None
+    if not written:
+        return None
+    return Change(given["table"], key, given["removed"], given["cursor"])
+
+
+def _change_export(mapper: _Mapper, name: str, entry: dict, signature: dict) -> Export | None:
+    """REQ-2249: a ``@change`` function: its resolver's input tables (REQ-2226) and one more
+    parameter, the cursor Provisa stored after its last successful run (none on a first run or a
+    whole rebuild); it returns the matches that changed since then, a collection of rows."""
+    declared = _change_declaration(name, entry, mapper.problems)
+    parameters: list[Parameter] = []
+    cursors: list[str] = []
+    for p in signature["parameters"]:
+        if p["rest"]:
+            mapper.problems.append(f"{name}: the rest parameter {p['name']} cannot be a parameter")
+            return None
+        if p["type"]["kind"] == "table_ref":
+            parameters.append(_table_parameter(mapper, name, p))
+            continue
+        shape, nullable = mapper.shape(p["type"], f"{name}({p['name']})")
+        cursors.append(p["name"])
+        parameters.append(Parameter(p["name"], shape, nullable, required=not p["optional"]))
+    if len(cursors) != 1:
+        mapper.problems.append(
+            f"{name}: a @change takes its resolver's tables and one more parameter, the cursor; "
+            f"it takes {len(cursors)} other parameter(s)"
+        )
+        return None
+    result = _unwrap_promise(signature["returns"])
+    if result["kind"] not in ("array", "iterable"):
+        mapper.problems.append(
+            f"{name}: a @change returns the changed matches, a collection of rows"
+        )
+        return None
+    row = _rows(mapper, name, result["element"])
+    if declared is None:
+        return None
+    return Export(
+        name, CHANGE, entry["description"], tuple(parameters), row, many=True, change=declared
+    )
+
+
 def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     """The bundle's tables, commands and streams, from the reader's output, under its language's
     ``rules``; refused with every problem when any rule is broken."""
@@ -696,6 +809,7 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
     exports: list[Export] = []
     requires: dict[str, Requirement] = {}
     lifecycle: dict[str, str] = {}  # REQ-2221: each lifecycle tag's function, seen so far
+    changes: dict[str, str] = {}  # REQ-2249: each kept table's @change function, seen so far
     for entry in raw["exports"]:
         name, tags = entry["name"], entry["tags"]
         binds = tuple(
@@ -710,7 +824,10 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
             known = PROVISA_TAGS | rules.standard_tags | {LOADER, REQUIRES, *WRITE_TAGS}
             if argued["text"] and argued["tag"] not in known:
                 problems.append(f"{name}: unknown tag @{argued['tag']}")
-        kinds = sorted(PROVISA_TAGS.intersection(tags))
+        # REQ-2249: a @change carries its arguments on its tag lines, which Python's, Go's and
+        # Rust's readers list under tag_arguments alone.
+        stated = {t["tag"] for t in entry.get("tag_arguments", []) if t["tag"] == CHANGE}
+        kinds = sorted(PROVISA_TAGS.intersection(tags) | stated)
         if not kinds:
             continue  # untagged: ignored
         if len(kinds) > 1:
@@ -746,6 +863,18 @@ def read_manifest(raw: dict, rules: Rules = NODE_RULES) -> Manifest:
                 continue
             found = _lifecycle_export(mapper, name, kind, entry, signature)
             if found is not None:
+                exports.append(found)
+            continue
+        if kind == CHANGE:
+            found = _change_export(mapper, name, entry, signature)
+            if found is not None and found.change is not None:
+                first = changes.setdefault(found.change.table, name)
+                if first != name:
+                    problems.append(
+                        f"{name}: @change table={found.change.table} is on {first} already; one "
+                        "function keeps a table fresh"
+                    )
+                    continue
                 exports.append(found)
             continue
         if kind in (TABLE, STREAM):

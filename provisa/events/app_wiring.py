@@ -788,6 +788,8 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
         def mv_columns(mv: Any) -> list[tuple[str, str]] | None:
             return _mv_cols.get(view_node(mv))
 
+        from provisa.mv.change_refresh import change_generate
+
         def mv_admit_deltas(mv: Any) -> Any:
             # REQ-1921/1922: the input an incremental view's deltas are rows of (an incremental
             # view reads one table), whose administrator's rule decides what this region keeps.
@@ -916,6 +918,7 @@ async def wire_event_loop(scheduler: Any, *, state: Any, log: Any, seed: bool = 
             expected_events_of=lambda mv: expected_event_nodes(mv, state, graph),
             mv_admit_deltas=mv_admit_deltas,  # REQ-1921/1922
             mv_refreshed=mv_refreshed,
+            mv_change=lambda mv: change_generate(state, engine, mv),  # REQ-2249
         )
         processors = build_processors(
             specs, db=db, dependents_of=dependents_of, on_event=node_event_triggers(state)

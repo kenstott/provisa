@@ -264,7 +264,9 @@ async def test_a_save_refused_part_way_leaves_nothing_of_the_set(model):
 
 
 async def test_a_change_saves_the_three_objects_through_their_updates(model):
-    model.tables["order_clips"] = _table(3, "order_clips", [], code_resolver="order_clips")
+    model.tables["order_clips"] = _table(
+        3, "order_clips", [], code_resolver="order_clips", schema_name="views"
+    )
     result = await code_resolver.save(_INFO, _input(refresh_interval=60), creating=False)
     assert result.success, result.message
     assert _kinds(model) == ["update", "edge", "edge", "edge", "mark", "mark"]

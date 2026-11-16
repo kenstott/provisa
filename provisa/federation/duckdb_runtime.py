@@ -38,6 +38,7 @@ from typing import Any, TypeVar
 import duckdb
 
 from provisa.federation.duckdb_extensions import install_and_load
+from provisa.federation.duckdb_quoting import ident, lit
 from provisa.federation.file_locks import ReadersWriterGate
 from provisa.executor.drivers.duckdb_arrow import LOSSLESS_ARROW, answered_batches, arrow_rows
 from provisa.executor.result import ArrowResult, ArrowStreamResult, QueryResult, ResultStream
@@ -92,22 +93,12 @@ def build_vss_index_connection(
     install_and_load(con, "vss", from_community=False)
     con.execute(
         f"CREATE TABLE chunks (level VARCHAR, schema VARCHAR, tbl VARCHAR, "
-        f"col VARCHAR, embedding FLOAT[{dim}])"
+        f"col VARCHAR, embedding FLOAT[{int(dim)}])"
     )
     con.executemany("INSERT INTO chunks VALUES (?, ?, ?, ?, ?)", rows)
     # Cosine HNSW: query with array_cosine_distance; smaller = more similar.
     con.execute("CREATE INDEX chunk_hnsw ON chunks USING HNSW (embedding) WITH (metric = 'cosine')")
     return con
-
-
-def _sql_text(value: str) -> str:
-    """``value`` for a single-quoted SQL literal."""
-    return value.replace("'", "''")
-
-
-def _quoted(name: str) -> str:
-    """``name`` as a double-quoted SQL identifier."""
-    return '"' + name.replace('"', '""') + '"'
 
 
 def _attach_url(url: Any) -> str:
@@ -148,7 +139,7 @@ _LOCAL_STORE_SCHEMA = "_mat_store_local"
 
 def _local_store_name(schema: str, table: str) -> str:
     """The local table a `mat_store.<schema>.<table>` read is served from on this connection."""
-    return f'"{_LOCAL_STORE_SCHEMA}"."{schema}__{table}"'
+    return ident(_LOCAL_STORE_SCHEMA, f"{schema}__{table}")
 
 
 class ReservedCatalog(ValueError):
@@ -218,11 +209,8 @@ def _typed_back(schema: Any) -> str:
     if not back:
         return "*"
 
-    def quoted(name: str) -> str:
-        return '"' + name.replace('"', '""') + '"'
-
     return (
-        "* REPLACE (" + ", ".join(f"CAST({quoted(n)} AS {k}) AS {quoted(n)}" for n, k in back) + ")"
+        "* REPLACE (" + ", ".join(f"CAST({ident(n)} AS {k}) AS {ident(n)}" for n, k in back) + ")"
     )
 
 
@@ -394,11 +382,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if catalog not in self._phys_catalogs:
             # A writable in-memory catalog so the 3-part physical name resolves (an ATTACHed remote
             # DB is read-only and cannot host the schema/view the compiler references).
-            self._on_instance(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._on_instance(f"ATTACH ':memory:' AS {ident(catalog)}")
             self._phys_catalogs.add(catalog)
             self._attach_source[catalog] = source.id
-        self._on_instance(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{source.schema_name}"')
-        return f'"{catalog}"."{source.schema_name}"."{source.table_name}"'
+        self._on_instance(f"CREATE SCHEMA IF NOT EXISTS {ident(catalog, source.schema_name)}")
+        return ident(catalog, source.schema_name, source.table_name)
 
     def attach_source(self, source: Any) -> None:
         """Expose an ATTACH source at its catalog-physical name via the engine's connector."""
@@ -436,7 +424,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         else:  # ATTACH postgres / sqlite / extension source once, then view the remote table
             raw_alias = self._attach_raw(source, details)
             remote_schema = details.get("remote_schema", source.schema_name)
-            remote = f'"{raw_alias}"."{remote_schema}"."{source.table_name}"'
+            remote = ident(raw_alias, remote_schema, source.table_name)
             # #266: a column named apart from the field it reads (a MongoDB column's path) is
             # exposed under its own name beside the source's.
             # An attach from no table model (the introspection seam's) carries none and keeps
@@ -446,7 +434,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 fields = self._column_fields.get(phys, [])
             else:
                 self._column_fields[phys] = fields
-            renamed = "".join(f", {_quoted(field)} AS {_quoted(name)}" for field, name in fields)
+            renamed = "".join(f", {ident(field)} AS {ident(name)}" for field, name in fields)
             self._on_instance(f"CREATE OR REPLACE VIEW {phys} AS SELECT *{renamed} FROM {remote}")
             view = (self._catalog_of(source), source.schema_name, source.table_name)
             self._remote_tables[view] = (raw_alias, remote_schema, source.table_name)
@@ -460,7 +448,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         with self._ch_lock:
             self._ch_relations.pop((parts[0].lower(), parts[1].lower(), parts[2].lower()), None)
         with self._dbx_lock:
-            self._dbx_relations.pop(f'"{parts[0]}"."{parts[1]}"."{parts[2]}"', None)
+            self._dbx_relations.pop(ident(*parts), None)
         if parts[0] not in self._phys_catalogs:
             return  # nothing of this source was ever exposed on this connection
 
@@ -480,7 +468,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         is_view = self._listing(view_row)
         if is_view is not None:
-            self._on_instance(f'DROP VIEW "{parts[0]}"."{parts[1]}"."{parts[2]}"')
+            self._on_instance(f"DROP VIEW {ident(*parts)}")
 
     def drop_source(self, source_id: str) -> None:
         """Let go of everything this connection attached for the deleted source ``source_id``:
@@ -491,7 +479,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         aliases = [a for a, sid in self._attach_source.items() if sid == source_id]
         with self._catalog_gate.write():
             for alias in aliases:
-                self._on_instance(f'DETACH "{alias}"')
+                self._on_instance(f"DETACH {ident(alias)}")
                 del self._attach_source[alias]
                 self._raw_attached.discard(alias)
                 self._raw_attach_ddl.pop(alias, None)
@@ -519,9 +507,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         with self._catalog_gate.write():
             for alias in sorted(self._raw_attached):
                 try:
-                    self._on_instance(f'SELECT 1 FROM "{alias}"."__provisa_probe__"."x" LIMIT 0')
+                    self._on_instance(
+                        f"SELECT 1 FROM {ident(alias, '__provisa_probe__', 'x')} LIMIT 0"
+                    )
                 except duckdb.IOException as exc:
-                    self._on_instance(f'DETACH "{alias}"')
+                    self._on_instance(f"DETACH {ident(alias)}")
                     self._raw_attached.discard(alias)
                     self._unreachable[alias] = self._raw_attach_ddl[alias]
                     gone.append(alias)
@@ -540,7 +530,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         for alias, attach in list(self._unreachable.items()):
             source_id = self._attach_source[alias]
             catalogs = [c for c, sid in self._attach_source.items() if sid == source_id]
-            if not any(f'"{c}"'.lower() in duck_sql.lower() for c in catalogs):
+            if not any(ident(c).lower() in duck_sql.lower() for c in catalogs):
                 continue
             try:
                 self._on_instance(attach)
@@ -575,15 +565,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
 
         table = resolve_databricks_iceberg_table(source)
         for i, credential in enumerate(table.credentials):
-            options = ", ".join(
-                f"{k} '{_sql_text(v)}'" for k, v in s3_secret_options(credential).items()
-            )
+            options = ", ".join(f"{k} {lit(v)}" for k, v in s3_secret_options(credential).items())
             self._on_instance(
-                f'CREATE OR REPLACE SECRET "_dbx_{source.id}_{i}" (TYPE s3, {options})'
+                f"CREATE OR REPLACE SECRET {ident(f'_dbx_{source.id}_{i}')} (TYPE s3, {options})"
             )
         self._on_instance(
             f"CREATE OR REPLACE VIEW {phys} AS SELECT * FROM "
-            f"iceberg_scan('{_sql_text(table.metadata_location)}'{scan_args})"
+            f"iceberg_scan({lit(table.metadata_location)}{scan_args})"
         )
 
     def _refresh_databricks_relations(self, duck_sql: str) -> None:
@@ -634,7 +622,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 close_cursor(cur)
             if len(catalogs) != 1:
                 return match[0]
-            return f'AS "{catalogs[0][0]}"."{schema}"."{name}"'
+            return f"AS {ident(catalogs[0][0], schema, name)}"
 
         return _CAST_TO_A_SCHEMAS_TYPE.sub(qualified, duck_sql)
 
@@ -663,7 +651,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         cur = self._open_cursor(live_http=True)
         try:
             with request_deadline.cancel_on_deadline(cur.interrupt):
-                rows = cur.execute(f"SELECT name, type FROM read_parquet('{url}')").fetchall()
+                rows = cur.execute(f"SELECT name, type FROM read_parquet({lit(url)})").fetchall()
         finally:
             close_cursor(cur)
         if not rows:
@@ -808,13 +796,13 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             # catalog it is read under; an environment inheriting the connection shares the one
             # already attached, the ATTACH being the same.
             catalog_alias = f"{raw_alias}__{self._catalog_of(source)}"
-            attach = attach.replace(f'"{raw_alias}"', f'"{catalog_alias}"')
+            attach = attach.replace(ident(raw_alias), ident(catalog_alias))
             if (
                 catalog_alias in self._raw_attached
                 and self._raw_attach_ddl[catalog_alias] != attach
             ):
                 # The environment's binding changed: its old connection is let go.
-                self._on_instance(f'DETACH "{catalog_alias}"')
+                self._on_instance(f"DETACH {ident(catalog_alias)}")
                 self._raw_attached.discard(catalog_alias)
                 self._let_file_go(catalog_alias)
             raw_alias = catalog_alias
@@ -825,8 +813,8 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # its catalog above, and so is the pool its statement configures.
                 self._on_instance(
                     details["configure_pool"].replace(
-                        f"catalog_name='{details.get('raw_alias', source.id)}'",
-                        f"catalog_name='{raw_alias}'",
+                        f"catalog_name={lit(details.get('raw_alias', source.id))}",
+                        f"catalog_name={lit(raw_alias)}",
                     )
                 )
             self._raw_attached.add(raw_alias)
@@ -853,7 +841,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         @contextmanager
         def paused() -> Iterator[None]:
             with self._catalog_gate.write():
-                self._on_instance(f'DETACH "{raw_alias}"')
+                self._on_instance(f"DETACH {ident(raw_alias)}")
                 try:
                     yield
                 finally:
@@ -999,7 +987,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 "plane: the control plane cannot be attached under its name"
             )
         self._ensure_postgres_loaded()
-        self._on_instance(f"ATTACH '{dsn}' AS \"{catalog}\" (TYPE postgres, READ_ONLY)")
+        self._on_instance(f"ATTACH {lit(dsn)} AS {ident(catalog)} (TYPE postgres, READ_ONLY)")
 
     def attach_region_ops(
         self, catalog: str, schema: str, stores: dict[str, str], views: dict[str, str]
@@ -1012,14 +1000,14 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         self._ensure_postgres_loaded()
         for alias, dsn in stores.items():
             if alias not in self._region_stores_attached:
-                self._on_instance(f"ATTACH '{dsn}' AS \"{alias}\" (TYPE postgres, READ_ONLY)")
+                self._on_instance(f"ATTACH {lit(dsn)} AS {ident(alias)} (TYPE postgres, READ_ONLY)")
                 self._region_stores_attached.add(alias)
         if catalog not in self._phys_catalogs:
-            self._on_instance(f"ATTACH ':memory:' AS \"{catalog}\"")
+            self._on_instance(f"ATTACH ':memory:' AS {ident(catalog)}")
             self._phys_catalogs.add(catalog)
-        self._on_instance(f'CREATE SCHEMA IF NOT EXISTS "{catalog}"."{schema}"')
+        self._on_instance(f"CREATE SCHEMA IF NOT EXISTS {ident(catalog, schema)}")
         for name, select in views.items():
-            self._on_instance(f'CREATE OR REPLACE VIEW "{catalog}"."{schema}"."{name}" AS {select}')
+            self._on_instance(f"CREATE OR REPLACE VIEW {ident(catalog, schema, name)} AS {select}")
 
     # The materialization store, attached under this backend-neutral alias. A store MUST exist (the
     # engine's invariant); its backend/dialect is taken from the store URL scheme, never assumed.
@@ -1133,7 +1121,9 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 if store_type not in self._NO_EXTENSION_TYPES:
                     # A Postgres store loads the extension with its settings too (#241).
                     self._install_and_load(store_type, from_community=False)
-                self._on_instance(f"ATTACH '{target}' AS {self._MAT_STORE} (TYPE {store_type})")
+                self._on_instance(
+                    f"ATTACH {lit(str(target))} AS {self._MAT_STORE} (TYPE {store_type})"
+                )
             self._store_attached = True
             self._attached_store_dsn = dsn
         return self._MAT_STORE
@@ -1142,7 +1132,6 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         """REQ-1999: the store is a MotherDuck database (``motherduck:///<db>?motherduck_token=``),
         ATTACHed on this connection as ``mat_store`` once the connection is signed in with the
         store's token; its writes run on cursors of this connection (``EngineAttachedStore``)."""
-        from provisa.compiler.sql_literals import sql_literal
         from provisa.federation.materialize_broker import EngineAttachedStore
 
         from provisa.core.secrets import resolve_secrets
@@ -1157,8 +1146,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._install_and_load("motherduck", from_community=False)
             self._ext_loaded.add("motherduck")
         self._sign_in_motherduck_as(token, "The materialize store")
-        md = sql_literal("md:" + url.database, "duckdb")
-        self._on_instance(f"ATTACH {md} AS {self._MAT_STORE}")
+        self._on_instance(f"ATTACH {lit('md:' + url.database)} AS {self._MAT_STORE}")
         self._store_broker = EngineAttachedStore(self._con, self._listing)
 
     def region_table_address(self, name: str, schema: str, table: str) -> tuple[str, str, str]:
@@ -1198,7 +1186,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
                 # A Postgres store loads the extension with its settings too (#241).
                 self._install_and_load(store_type, from_community=False)
             self._on_instance(
-                f"ATTACH '{_attach_url(url)}' AS \"{alias}\" (TYPE {store_type}, READ_ONLY)"
+                f"ATTACH {lit(_attach_url(url))} AS {ident(alias)} (TYPE {store_type}, READ_ONLY)"
             )
             self._region_stores.add(alias)
         return alias
@@ -1442,7 +1430,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         if not refs:
             return duck_sql
         with self._store_relation_lock:
-            self._on_instance(f'CREATE SCHEMA IF NOT EXISTS "{_LOCAL_STORE_SCHEMA}"')
+            self._on_instance(f"CREATE SCHEMA IF NOT EXISTS {ident(_LOCAL_STORE_SCHEMA)}")
             for schema, table in refs:
                 self._copy_store_table(schema, table, _local_store_name(schema, table))
         return _MAT_STORE_REF.sub(lambda m: _local_store_name(*_store_ref(m)), duck_sql)
@@ -1470,7 +1458,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             try:
                 cur.execute(
                     f"CREATE OR REPLACE TABLE {target} AS SELECT {_typed_back(arrow_tbl.schema)} "
-                    f'FROM "{reg_name}"'
+                    f"FROM {ident(reg_name)}"
                 )
             finally:
                 cur.unregister(reg_name)
@@ -1497,7 +1485,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             install_and_load(cur, "vss", from_community=False)
             self._ext_loaded.add("vss")
         for column in columns:
-            quoted = '"' + column.replace('"', '""') + '"'
+            quoted = ident(column)
             found = engine_memory.first_row(
                 cur.execute(
                     f"SELECT len({quoted}) FROM {target} WHERE {quoted} IS NOT NULL LIMIT 1"
@@ -1508,7 +1496,7 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             cur.execute(f"ALTER TABLE {target} ALTER {quoted} TYPE FLOAT[{int(found[0])}]")
             index = "hnsw__" + hashlib.sha256(f"{name}.{column}".encode()).hexdigest()[:24]
             cur.execute(
-                f'CREATE INDEX "{index}" ON {target} USING HNSW ({quoted}) '
+                f"CREATE INDEX {ident(index)} ON {target} USING HNSW ({quoted}) "
                 "WITH (metric = 'cosine')"
             )
 

@@ -27,6 +27,8 @@ import asyncio
 import subprocess
 from typing import Any
 
+from provisa.core.host_code import refuse_producer_command
+
 # File-based source types (REQ-861). A producer command only applies to these — a non-file source
 # has no file to refresh in place.
 _FILE_SOURCE_TYPES: frozenset[str] = frozenset({"sqlite", "csv", "parquet", "files"})
@@ -59,11 +61,15 @@ async def run_producer(source: Any) -> None:
 
     Preconditions: :func:`has_producer` is True. Runs the argv list with ``shell=False`` off the
     event loop (subprocess is blocking). A non-zero return code raises :class:`ProducerCommandError`
-    with the captured stderr — the caller must NOT proceed to read the still-stale file.
+    with the captured stderr — the caller must NOT proceed to read the still-stale file. While
+    ``commands.allow_host_code`` is off the command is not run and the refusal is raised (REQ-2134).
     """
     cmd = source.producer_command
     if not cmd:
         raise ValueError(f"source {source.id!r}: run_producer called with no producer_command")
+    # REQ-2134: the argv runs on the server's host, so a stored one is not run while the operator
+    # has host code off. Raised to the caller as a failed producer is: the file is not read.
+    refuse_producer_command(source.id, list(cmd))
     await asyncio.to_thread(_run, list(cmd), source.id)
 
 

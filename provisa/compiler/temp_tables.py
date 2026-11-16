@@ -134,15 +134,18 @@ class Action:
 
     ``select``: the governed SELECT whose rows it takes -- a CREATE ... AS SELECT's, an INSERT's
     source -- run through the pipeline as any read; a statement that takes none reads nothing.
-    ``rewrite``: for an UPDATE or a DELETE, the SELECT over the table itself giving its rows
-    afterwards, the table named ``{table}``.
+    For an UPDATE or a DELETE (``rewrite``) it is the SELECT over the table itself giving every
+    row of it as the statement leaves it, the table's columns in their order: the statement's own
+    WHERE and SET expressions are in it, so whatever they read is read as the session's role,
+    never with the platform's authority. ``marks_gone``: a DELETE's SELECT ends with one more
+    column, whether the row is deleted.
     """
 
     kind: str  # create | insert | rewrite | drop
     name: str
     select: str
     columns: list[tuple[str, str]] | None = None  # declared (create) or named (insert)
-    rewrite: str | None = None
+    marks_gone: bool = False
 
 
 #: A statement that takes no rows of its own still passes the pipeline as a read of nothing.
@@ -253,8 +256,15 @@ def action_of(sql: str) -> Action | None:
         assert session is not None
         where = tree.args.get("where")
         condition = where.this.sql(dialect="postgres") if where is not None else "TRUE"
+        columns = [c for c, _ in session.tables[name].columns]
+        # The table as the statement names it, its alias with it: its expressions name it so.
+        table = target.sql(dialect="postgres")
         if isinstance(tree, exp.Delete):
-            rewrite = f"SELECT * FROM {{table}} WHERE NOT COALESCE(({condition}), FALSE)"
+            gone = "__gone"
+            while gone in columns:
+                gone += "_"
+            kept = ", ".join(f'"{c}"' for c in columns)
+            select = f'SELECT {kept}, COALESCE(({condition}), FALSE) AS "{gone}" FROM {table}'
         else:
             assigned = {
                 e.this.name: e.expression.sql(dialect="postgres")
@@ -263,7 +273,6 @@ def action_of(sql: str) -> Action | None:
             }
             if len(assigned) != len(tree.expressions):
                 raise NotAvailableHere(f"UPDATE {name}: each assignment is column = expression")
-            columns = [c for c, _ in session.tables[name].columns]
             unknown = [c for c in assigned if c not in columns]
             if unknown:
                 raise ValueError(f"temporary table {name!r} has no column {unknown[0]!r}")
@@ -274,6 +283,6 @@ def action_of(sql: str) -> Action | None:
                 else f'"{c}"'
                 for c in columns
             ]
-            rewrite = f"SELECT {', '.join(parts)} FROM {{table}}"
-        return Action("rewrite", name, _NOTHING, rewrite=rewrite)
+            select = f"SELECT {', '.join(parts)} FROM {table}"
+        return Action("rewrite", name, select, marks_gone=isinstance(tree, exp.Delete))
     return None
