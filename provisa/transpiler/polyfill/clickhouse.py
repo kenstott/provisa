@@ -277,7 +277,9 @@ NULL_ARRAY = Feature(
     FAMILY,
     "A call PostgreSQL answers NULL for its NULL array argument, as that NULL.",
     read=Side(
-        rules=(Rule(None, {"clickhouse": Rewrite(null_of_a_null_array, first=True)}),),
+        rules=(
+            Rule(None, {"clickhouse": Rewrite(null_of_a_null_array, mentions=r"\[\]", first=True)}),
+        ),
         limitations={
             "clickhouse": (
                 Limitation(
