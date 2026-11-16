@@ -522,3 +522,31 @@ async def test_each_stage_refuses_a_statement_past_the_operators_cap(monkeypatch
             await _pipeline._govern_and_route(sql, "analyst")
         else:
             await _compiled(sql, state)
+
+
+# --- each refusal is a coded error with its catalog entry in every locale -----------------------
+
+
+@pytest.mark.parametrize(
+    "refusal",
+    [
+        ParameterByEqualityOnly("_nf_petId", "<>"),
+        ParameterUnbound("_nf_petId"),
+        ParameterConflict("_nf_petId", 5, 6),
+        ParameterCallsOverCap("pet_by_id", 3, 2),
+    ],
+    ids=lambda r: r.code,
+)
+def test_each_refusal_has_its_message_in_every_locale_over_its_own_params(refusal):
+    import json
+    import re
+    from pathlib import Path
+
+    locales = Path(__file__).resolve().parents[2] / "provisa-ui/src/i18n/locales"
+    group, key = refusal.code.split(".")
+    catalogs = sorted(locales.glob("*/serverErrors.json"))
+    assert len(catalogs) >= 13
+    for catalog in catalogs:
+        message = json.loads(catalog.read_text())["serverErrors"][group][key]
+        assert set(re.findall(r"\{\{(\w+)\}\}", message)) == set(refusal.params), catalog
+    assert "REQ-" not in str(refusal)

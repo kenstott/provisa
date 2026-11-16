@@ -43,7 +43,7 @@ class ParameterBindingRefused(ValueError):
     identifier of the refusal and ``params`` what it is about."""
 
     code: str = "data.parameter_binding_refused"
-    params: dict[str, str]
+    params: dict[str, Any]
 
 
 class ParameterByEqualityOnly(ParameterBindingRefused):
