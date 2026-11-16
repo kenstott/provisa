@@ -96419,7 +96419,16 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     pull retire what the incoming tree lacks and keep each row''s id, so returning to a commit that has
     it restores the same row. Retirement covers the kinds that have a retired state; roles, row filters,
     regions, stores, triggers, connectors, naming rules, calendars, data products, commands and webhooks
-    are deleted as before.'
+    are deleted as before. (Amended 2026-11-15, DELETING A SOURCE OR A DOMAIN RETIRES IT:) Maintainer 2026-11-15.
+    This replaces A DOMAIN HOLDING A RETIRED TABLE IS KEPT and A SOURCE HOLDING A RETIRED TABLE IS KEPT
+    [both SUPERSEDED by this amendment; kept for history, do not implement against them]. A source and a
+    domain have a retired state. Deleting one is refused only while it holds a live table (or another live
+    object that names it); otherwise the delete retires it together with the retired tables it holds. A
+    retired source or domain is hidden, is not counted against a one-per-kind limit, and leaves its name
+    free for reuse. It is listed with the other retired objects and restored from there with its tables;
+    a restore is refused while a live object holds its name. Nothing is removed. Reason: with the keep rule
+    a source that had ever held a table could never be deleted, so a kind that allows one source could never
+    be added again.'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
