@@ -151,14 +151,22 @@
       "elasticsearch_index_hint_required": "Elasticsearch-detectie vereist een 'index'-hint.",
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
+      "endpoint_has_no_key": "{{vendor}} heeft geen sleutel: stel de omgevingsvariabele {{env}} in.",
       "model_failed": "Het model {{model}} is mislukt: {{error}}",
+      "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
+      "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
       "no_adapter_for_source_type": "Geen adapter geregistreerd voor brontype '{{source_type}}'",
       "no_live_connection": "Geen actieve verbinding voor bron '{{source_id}}'. MongoDB-schemadetectie vereist een actieve verbinding in de bronpool. Controleer of de bron is verbonden en de server bereikbaar is.",
+      "run_ended": "Detectierun {{run_id}} is al beëindigd: {{status}}",
+      "run_not_found": "Detectierun {{run_id}} niet gevonden",
       "schema_discovery_unsupported": "Brontype '{{source_type}}' ondersteunt geen schemadetectie. Definieer de kolommen handmatig.",
       "semantics_unavailable": "Semantiek kan niet worden uitgevoerd: {{model}}, het model dat aan relatie-inferentie is toegewezen, heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "table_id_required": "table_id vereist voor tabelbereik",
-      "unknown_source_type": "Onbekend brontype: {{type}}"
+      "table_unreadable": "Detectie kan de tabel {{table}} niet lezen: {{reason}}. Laat deze uit de gekozen tabellen weg, of corrigeer de tabel en probeer het opnieuw.",
+      "unknown_source_type": "Onbekend brontype: {{type}}",
+      "vendor_has_no_key": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
     },
     "environments": {
       "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."

@@ -151,14 +151,22 @@
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
+      "endpoint_has_no_key": "{{vendor}} não tem chave: defina a variável de ambiente {{env}}.",
       "model_failed": "O modelo {{model}} falhou: {{error}}",
+      "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",
+      "model_incomplete": "Um modelo escolhido indica tanto o fornecedor quanto o modelo.",
       "no_adapter_for_source_type": "Nenhum adaptador registrado para o tipo de fonte '{{source_type}}'",
       "no_live_connection": "Nenhuma conexão ativa para a fonte '{{source_id}}'. A descoberta de esquema do MongoDB requer uma conexão ativa no pool da fonte. Verifique se a fonte está conectada e se o servidor está acessível.",
+      "run_ended": "A execução de descoberta {{run_id}} já terminou: {{status}}",
+      "run_not_found": "Execução de descoberta {{run_id}} não encontrada",
       "schema_discovery_unsupported": "O tipo de fonte '{{source_type}}' não oferece suporte à descoberta de esquema. Defina as colunas manualmente.",
       "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "table_id_required": "table_id obrigatório para escopo de tabela",
-      "unknown_source_type": "Tipo de fonte desconhecido: {{type}}"
+      "table_unreadable": "A descoberta não consegue ler a tabela {{table}}: {{reason}}. Deixe-a fora das tabelas escolhidas, ou corrija-a e tente novamente.",
+      "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
+      "vendor_has_no_key": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
     },
     "environments": {
       "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
