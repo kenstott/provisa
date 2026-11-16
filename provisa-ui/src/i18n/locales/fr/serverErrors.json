@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} a renvoyé une ligne sans sa colonne de clé {{column}}",
       "change_key_repeated": "{{function}} a renvoyé la clé {{key}} deux fois dans un même résultat",
       "change_cursor_backwards": "Le curseur de {{function}} a reculé : il a renvoyé {{returned}}, antérieur à la valeur stockée {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "Le contrôle préalable de {{subject}} n'a pas été exécuté : dans cette organisation, il ne s'exécute que dans un processus confiné, et aucun n'a pu être démarré ({{reason}}).",
+      "confined_failed": "Le contrôle préalable de {{subject}} n'a rendu aucun verdict : son processus confiné s'est terminé avant ({{reason}})."
     }
   }
 }

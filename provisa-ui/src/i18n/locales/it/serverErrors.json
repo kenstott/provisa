@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} ha restituito una riga senza la sua colonna chiave {{column}}",
       "change_key_repeated": "{{function}} ha restituito la chiave {{key}} due volte in un unico risultato",
       "change_cursor_backwards": "Il cursore di {{function}} è tornato indietro: ha restituito {{returned}}, precedente al valore memorizzato {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "Il controllo preliminare di {{subject}} non è stato eseguito: in questa organizzazione viene eseguito solo in un processo confinato, e non è stato possibile avviarne uno ({{reason}}).",
+      "confined_failed": "Il controllo preliminare di {{subject}} non ha restituito alcun verdetto: il suo processo confinato è terminato prima ({{reason}})."
     }
   }
 }

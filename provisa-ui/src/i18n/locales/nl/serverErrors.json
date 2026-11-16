@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} gaf een rij terug zonder de sleutelkolom {{column}}",
       "change_key_repeated": "{{function}} gaf de sleutel {{key}} tweemaal terug in één resultaat",
       "change_cursor_backwards": "De cursor van {{function}} ging achteruit: {{returned}} werd teruggegeven, vóór de opgeslagen {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
+      "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
     }
   }
 }

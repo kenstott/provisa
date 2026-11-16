@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} returned a row without its key column {{column}}",
       "change_key_repeated": "{{function}} returned the key {{key}} twice in one result",
       "change_cursor_backwards": "{{function}}'s cursor went backwards: it returned {{returned}}, before the stored {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
+      "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
     }
   }
 }

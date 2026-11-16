@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",
       "change_key_repeated": "{{function}} hat den Schlüssel {{key}} in einem Ergebnis zweimal zurückgegeben",
       "change_cursor_backwards": "Der Cursor von {{function}} ist rückwärts gelaufen: Zurückgegeben wurde {{returned}}, vor dem gespeicherten {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
+      "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
     }
   }
 }

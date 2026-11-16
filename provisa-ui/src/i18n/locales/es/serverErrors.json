@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} devolvió una fila sin su columna de clave {{column}}",
       "change_key_repeated": "{{function}} devolvió la clave {{key}} dos veces en un mismo resultado",
       "change_cursor_backwards": "El cursor de {{function}} retrocedió: devolvió {{returned}}, anterior al almacenado {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "La comprobación previa de {{subject}} no se ejecutó: en esta organización solo se ejecuta en un proceso confinado, y no se pudo iniciar ninguno ({{reason}}).",
+      "confined_failed": "La comprobación previa de {{subject}} no devolvió ningún veredicto: su proceso confinado terminó antes ({{reason}})."
     }
   }
 }

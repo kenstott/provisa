@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} 返回了缺少键列 {{column}} 的行",
       "change_key_repeated": "{{function}} 在一个结果中两次返回了键 {{key}}",
       "change_cursor_backwards": "{{function}} 的游标发生倒退：返回了 {{returned}}，早于已存储的 {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} 的预检未运行：在此组织中它只在受限进程中运行，而该进程无法启动（{{reason}}）。",
+      "confined_failed": "{{subject}} 的预检未返回结论：其受限进程已先行结束（{{reason}}）。"
     }
   }
 }

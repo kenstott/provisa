@@ -836,6 +836,10 @@
       "change_key_missing": "{{function}} devolveu uma linha sem a sua coluna de chave {{column}}",
       "change_key_repeated": "{{function}} devolveu a chave {{key}} duas vezes num mesmo resultado",
       "change_cursor_backwards": "O cursor de {{function}} retrocedeu: devolveu {{returned}}, anterior ao armazenado {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
+      "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
     }
   }
 }
