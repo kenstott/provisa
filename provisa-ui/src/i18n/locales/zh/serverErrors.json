@@ -41,7 +41,9 @@
       "role_not_assigned": "角色 '{{role_id}}' 未分配给此用户",
       "simple_provider_not_configured": "未配置 Simple 身份验证提供程序",
       "username_exists": "用户名已存在",
-      "not_permitted": "不允许"
+      "not_permitted": "不允许",
+      "token_scopes_required": "请至少为令牌选择一个角色。",
+      "token_scope_not_held": "令牌只能使用您拥有的角色。"
     },
     "authz": {
       "mutation_not_permitted": "不允许执行变更 '{{field_name}}'：{{reason}}"

@@ -41,7 +41,9 @@
       "role_not_assigned": "Il ruolo '{{role_id}}' non è assegnato a questo utente",
       "simple_provider_not_configured": "Provider di autenticazione simple non configurato",
       "username_exists": "Nome utente già esistente",
-      "not_permitted": "Non consentito"
+      "not_permitted": "Non consentito",
+      "token_scopes_required": "Scegli almeno un ruolo per il token.",
+      "token_scope_not_held": "Un token può usare solo ruoli che detieni."
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' non consentita: {{reason}}"

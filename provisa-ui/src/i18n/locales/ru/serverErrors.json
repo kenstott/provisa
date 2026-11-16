@@ -41,7 +41,9 @@
       "role_not_assigned": "Роль '{{role_id}}' не назначена этому пользователю",
       "simple_provider_not_configured": "Простой провайдер аутентификации не настроен",
       "username_exists": "Имя пользователя уже существует",
-      "not_permitted": "Не разрешено"
+      "not_permitted": "Не разрешено",
+      "token_scopes_required": "Выберите хотя бы одну роль для токена.",
+      "token_scope_not_held": "Токен может использовать только роли, которые у вас есть."
     },
     "authz": {
       "mutation_not_permitted": "Мутация '{{field_name}}' не разрешена: {{reason}}"

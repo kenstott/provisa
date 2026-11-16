@@ -41,7 +41,9 @@
       "role_not_assigned": "התפקיד '{{role_id}}' אינו מוקצה למשתמש זה",
       "simple_provider_not_configured": "ספק האימות הפשוט אינו מוגדר",
       "username_exists": "שם המשתמש כבר קיים",
-      "not_permitted": "אין הרשאה"
+      "not_permitted": "אין הרשאה",
+      "token_scopes_required": "בחרו לפחות תפקיד אחד עבור האסימון.",
+      "token_scope_not_held": "אסימון יכול להשתמש רק בתפקידים שברשותכם."
     },
     "authz": {
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"

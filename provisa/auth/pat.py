@@ -10,9 +10,11 @@
 
 """Personal access tokens — the one long-lived credential every protocol accepts (REQ-1263).
 
-A PAT is a bearer secret carrying its own org and role. Every surface resolves it through
+A PAT is a bearer secret carrying its own org and its scopes: the roles it may act as. Every
+surface resolves it through
 ``AuthProvider.validate_credential``, so pgwire, Bolt, Flight, gRPC, MCP and HTTP all reach the
-same store without any of them knowing what a PAT is.
+same store without any of them knowing what a PAT is. What it may act as is settled where every
+sign-in's roles are read (``provisa.auth.held_assignments``): a scope its owner still holds.
 
 The wire form is ``provisa_pat_<43 url-safe base64 chars>``. The prefix is what lets a surface
 route a presented secret to this store instead of the configured identity provider, and it is
@@ -101,14 +103,17 @@ class PersonalAccessTokenStore:  # REQ-1263
         org_id: str,
         name: str,
         env_name: str,
-        role_id: str | None = None,
-        scopes: list[str] | None = None,
+        scopes: list[str],
         expires_at: datetime.datetime | None = None,
     ) -> tuple[str, dict]:
-        """Mint a token into the environment ``env_name`` (REQ-1503). Returns ``(secret, row)``;
-        the secret is never recoverable afterwards."""
+        """Mint a token into the environment ``env_name`` (REQ-1503) that may act as the roles
+        ``scopes`` names. Returns ``(secret, row)``; the secret is never recoverable afterwards.
+        That its issuer holds each scope is checked where the issuer is known (the router)."""
         if not name.strip():
             raise ValueError("A token name is required")
+        scopes = list(dict.fromkeys(scopes))
+        if not scopes or not all(isinstance(s, str) and s.strip() for s in scopes):
+            raise ValueError("A token names at least one role it may act as")
         if expires_at is not None and _as_aware(expires_at) <= _utcnow():
             raise ValueError("Token expiry must be in the future")
 
@@ -133,8 +138,7 @@ class PersonalAccessTokenStore:  # REQ-1263
             "name": name.strip(),
             "user_id": user_id,
             "org_id": org_id,
-            "role_id": role_id,
-            "scopes": scopes or [],
+            "scopes": scopes,
             "expires_at": expires_at,
             # REQ-1503: issued INTO one environment, which the token then addresses and no other.
             "env_name": env_name,
@@ -161,7 +165,6 @@ class PersonalAccessTokenStore:  # REQ-1263
                 select(
                     personal_access_tokens.c.user_id,
                     personal_access_tokens.c.org_id,
-                    personal_access_tokens.c.role_id,
                     personal_access_tokens.c.scopes,
                     personal_access_tokens.c.expires_at,
                     personal_access_tokens.c.revoked_at,
@@ -198,12 +201,13 @@ class PersonalAccessTokenStore:  # REQ-1263
             user_id=row["user_id"],
             email=row["email"],
             display_name=row["display_name"],
-            # A token with no role_id grants whatever its owner resolves to; one with a role_id
-            # is narrowed to it. The role claim carries no domain, so it applies org-wide.
-            roles=[row["role_id"]] if row["role_id"] else [],
+            # A token carries no role claim of its own: the roles it acts as are its scopes that
+            # its owner holds when it is used, read where every sign-in's roles are
+            # (provisa.auth.held_assignments).
+            roles=[],
             raw_claims={
                 "pat": True,
-                "scopes": list(row["scopes"] or []),
+                "scopes": list(row["scopes"]),
                 "token_name": row["name"],
             },
             active_org_id=row["org_id"],
@@ -224,7 +228,6 @@ class PersonalAccessTokenStore:  # REQ-1263
                     personal_access_tokens.c.token_hash,
                     personal_access_tokens.c.prefix,
                     personal_access_tokens.c.name,
-                    personal_access_tokens.c.role_id,
                     personal_access_tokens.c.scopes,
                     personal_access_tokens.c.created_at,
                     personal_access_tokens.c.expires_at,

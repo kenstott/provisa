@@ -44,6 +44,9 @@
     "deleteAccountConfirmLabel": "Typ {{userId}} ter bevestiging",
     "deleteAccountButton": "Mijn account verwijderen",
     "patEnvironment": "Omgeving",
-    "patEnvironmentHelp": "Een token werkt in één omgeving: de omgeving die u bekeek toen u het uitgaf. Een nieuw token werkt in {{env}}."
+    "patEnvironmentHelp": "Een token werkt in één omgeving: de omgeving die u bekeek toen u het uitgaf. Een nieuw token werkt in {{env}}.",
+    "patRoles": "Rollen",
+    "patRolesHelp": "Het token kan alleen handelen met de rollen die u hier kiest, en alleen zolang u ze hebt.",
+    "patRolesPlaceholder": "Kies rollen"
   }
 }
