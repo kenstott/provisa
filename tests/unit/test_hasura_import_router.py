@@ -309,7 +309,8 @@ async def test_an_import_offers_no_replace(monkeypatch):
 
 
 async def test_apply_rejects_an_invalid_config(monkeypatch):
-    _grant(monkeypatch, {"org_settings"})
+    # REQ-1557: the rights of what the document declares are asked before it is read further.
+    _grant(monkeypatch, {"source_registration"})
     _wire_apply(monkeypatch)
     with pytest.raises(ApiError) as exc:
         await ir.apply_import(ir.ImportApplyRequest(config_yaml="sources: [{}]"), _request())
@@ -320,7 +321,7 @@ async def test_apply_rejects_an_invalid_config(monkeypatch):
 async def test_apply_refuses_a_variable_the_deployment_has_not_set_by_its_name(monkeypatch):
     """A converted handler URL reads a variable the report names to set before applying (REQ-417);
     applied unset, the import is refused naming it, not answered with a server error."""
-    _grant(monkeypatch, {"org_settings"})
+    _grant(monkeypatch, CONFIG_RIGHTS)  # REQ-1557: asked before anything is resolved
     _wire_apply(monkeypatch)
     monkeypatch.delenv("PROVISA_TEST_UNSET_HANDLER", raising=False)
     config = yaml.safe_load(CONFIG_YAML)

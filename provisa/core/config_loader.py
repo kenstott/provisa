@@ -338,6 +338,15 @@ def parse_config_dict(data: dict, *, stored: bool = False) -> ProvisaConfig:  # 
     return config
 
 
+def sections_as_written(data: dict) -> dict:  # REQ-1557
+    """``data`` with its sections as :func:`parse_config_dict` reads them (views and Kafka
+    topics as tables), and nothing resolved: what a caller's rights are asked of before a
+    reference in the document is read."""
+    import copy
+
+    return kafka_topics_as_tables(commit_time_columns(views_as_tables(copy.deepcopy(data))))
+
+
 def invalid_text(refusal: ValueError, data: dict) -> str:  # REQ-1557
     """What to tell the caller whose config ``data`` was refused by ``refusal``, carrying no
     value a ``${env:...}`` in it resolved to: a validation's errors without the input each

@@ -54,6 +54,10 @@ def server(monkeypatch):
     from provisa.core import secrets, secrets_providers
     from provisa.security import sandbox_egress
 
+    # The API layer says what the deployment is when it is imported; it is imported first, so
+    # what this test says after it is what holds.
+    import provisa.api.app  # noqa: F401
+
     monkeypatch.setenv(_VARIABLE, _VALUE)
     read: list[str] = []
     resolve = secrets.EnvSecretsProvider.resolve

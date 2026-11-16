@@ -108,7 +108,30 @@ def _require_an_import_right(request: Request) -> None:
 
 def _require_section_rights(request: Request, config: ProvisaConfig) -> None:
     """Refuse an apply declaring an object whose own right the caller lacks, naming each."""
-    declared = _declared_sections(config)
+    _require_rights_of(request, _declared_sections(config))
+
+
+def _require_section_rights_as_written(request: Request, raw: dict) -> None:
+    """REQ-1557: the same refusal, asked of the document as written, before anything in it is
+    resolved: its sections as the loader will read them (``config_loader.sections_as_written``)."""
+    from provisa.core.config_loader import sections_as_written
+
+    written = sections_as_written(raw)
+    _require_rights_of(
+        request,
+        [
+            section
+            for section in SECTION_RIGHTS
+            if (
+                (written.get("naming") or {}).get("rules")
+                if section == "naming"
+                else written.get(section)
+            )
+        ],
+    )
+
+
+def _require_rights_of(request: Request, declared: list[str]) -> None:
     missing = sorted(
         {r for s in declared for r in SECTION_RIGHTS[s] if not has_capability_request(request, r)}
     )
@@ -438,13 +461,14 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
         raise ApiError(400, "import.bad_yaml", f"config is not valid YAML: {exc}") from exc
     if not isinstance(raw, dict):
         raise ApiError(400, "import.bad_yaml", "config must be a YAML mapping")
-    # REQ-1557: checked before anything in the document is resolved; the right to import was
-    # asked above.
+    # REQ-1557: the caller's rights, then the document's references, before anything in it is
+    # resolved.
     from provisa.core.config_loader import invalid_text
     from provisa.core.env_reference_guard import refuse_entered
 
-    refuse_entered(raw)
     try:
+        _require_section_rights_as_written(request, raw)
+        refuse_entered(raw)
         config = parse_config_dict(raw)
     except ValueError as exc:
         raise ApiError(

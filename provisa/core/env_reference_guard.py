@@ -44,7 +44,7 @@ import re
 from collections.abc import Iterator
 from typing import Any
 
-from provisa.core.env_classes import NEVER_RUNTIME, NEVER_SENSITIVE
+from provisa.core.env_classes import CLASSIFIED, NEVER_RUNTIME, NEVER_SENSITIVE
 
 _ENV_REFERENCE = re.compile(r"\$\{env:([^}]+)\}")
 
@@ -54,9 +54,19 @@ _ENV_REFERENCE = re.compile(r"\$\{env:([^}]+)\}")
 NAMED_OUTRIGHT: frozenset[str] = frozenset({"api_key_env"})
 
 #: Tables whose rows are not text anyone resolves: runtime state and evidence (a query's own text
-#: in the audit log may hold ``${env:`` as a literal), and identities. Every other table is held,
-#: so a table added later is held until someone lists it there.
+#: in the audit log may hold ``${env:`` as a literal), and identities.
 _NOT_RESOLVED: frozenset[str] = NEVER_RUNTIME | NEVER_SENSITIVE
+
+
+def _held_tables() -> frozenset[str]:
+    """The control plane's tables whose text may be resolved: every table of an organization's
+    schema (``env_classes.CLASSIFIED``, which a test holds equal to the schema, so a table added
+    later is held until someone lists it as runtime state) and of the admin schema (an
+    organization's registries, mail platform and repository remote), less :data:`_NOT_RESOLVED`.
+    A table that is neither is not the control plane's: a source's or a store's own rows."""
+    from provisa.core import schema_admin
+
+    return (CLASSIFIED | frozenset(schema_admin.metadata.tables)) - _NOT_RESOLVED
 
 
 class EnvReferenceRefused(PermissionError):
@@ -144,8 +154,7 @@ def refuse_entered(*values: Any) -> None:
 
 
 def _holds(table: Any) -> bool:
-    name = getattr(table, "name", None)
-    return name is not None and name not in _NOT_RESOLVED
+    return getattr(table, "name", None) in _held_tables()
 
 
 def check_values(table: Any, values: dict[Any, Any]) -> None:
@@ -181,7 +190,7 @@ def check_raw(sql: str, args: tuple[Any, ...]) -> None:
     from provisa.core.model_change import raw_target
 
     target = raw_target(sql)
-    if target is None or target[0] == "delete" or target[1] in _NOT_RESOLVED:
+    if target is None or target[0] == "delete" or target[1] not in _held_tables():
         return
     for value in args:
         for name in env_names(value):
