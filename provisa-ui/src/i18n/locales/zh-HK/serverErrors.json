@@ -161,7 +161,6 @@
       "semantics_unavailable": "無法執行語意推斷：指派給關係推斷的模型 {{model}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "table_id_required": "資料表範圍需要 table_id",
-      "table_unreadable": "探索無法讀取資料表 {{table}}：{{reason}}。請將其從所選資料表中排除，或修正後重試。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
       "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"

@@ -161,7 +161,6 @@
       "semantics_unavailable": "לא ניתן להריץ סמנטיקה: ל-{{model}}, המודל שהוקצה להסקת קשרים, אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "source_not_found": "המקור '{{source_id}}' לא נמצא",
       "table_id_required": "table_id נדרש עבור היקף table",
-      "table_unreadable": "הגילוי אינו יכול לקרוא את הטבלה {{table}}: {{reason}}. השאירו אותה מחוץ לטבלאות שנבחרו, או תקנו אותה ונסו שוב.",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
       "vendor_has_no_key": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל."
