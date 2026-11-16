@@ -172,6 +172,18 @@ def _deployment_org_bound(request: pytest.FixtureRequest, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _a_deployment_of_one_organization_unless_said(monkeypatch: pytest.MonkeyPatch):
+    """The API layer says at import whether the deployment holds many organizations
+    (provisa.api.app), and the secrets resolver asks it before reading ``${env:...}`` (REQ-1557).
+    A unit test that never imports the API layer is a single-organization install, said here; a
+    test of a server of many organizations says so itself."""
+    from provisa.core import secrets_providers
+
+    if secrets_providers._many_organisations is None:
+        monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
+
+
+@pytest.fixture(autouse=True)
 def _role_probe_events(request):
     """REQ-2076: a role named that the caller does not hold is recorded through the admin plane
     (security.role_probe.record), which a unit test's state does not have. Here the events are
