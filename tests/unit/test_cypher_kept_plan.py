@@ -66,6 +66,7 @@ def _ctx(table_id: int = 1) -> SimpleNamespace:
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name="orders",
         display_name="",
+        original_table_name="",
     )
     return SimpleNamespace(
         tables={"sales__orders": table},

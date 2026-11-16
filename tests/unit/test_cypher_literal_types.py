@@ -49,6 +49,7 @@ def _table(table_id: int, name: str) -> SimpleNamespace:
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name=name,
         display_name="",
+        original_table_name="",
     )
 
 
