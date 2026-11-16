@@ -81842,7 +81842,18 @@
     Maintainer 2026-11-03: Register Table''s table picker shows which tables take required parameters (a
     single-record lookup such as a GraphQL root field with a required id) apart from those that list rows
     with none: the parameterized ones carry an icon naming their required parameters, or are listed in a
-    group of their own, so a steward is not surprised by a required filter after picking.'
+    group of their own, so a steward is not surprised by a required filter after picking. (Amended 2026-11-16,
+    A PARAMETERIZED TABLE STAYS A TABLE; ITS LIMITS ARE STATED IN ITS METADATA:) Maintainer 2026-11-16 (''keep
+    as parameterized tables but strengthen metadata and discovery functions to account for limitations''),
+    after weighing a function form. A table that requires a parameter stays a table: the parameter is a
+    WHERE condition or a join condition in SQL and an argument in GraphQL, and relationships, row rules
+    and masks apply to it as to any table. What it cannot do is stated in its metadata, where every client
+    and every part of the product reads it before reading the table: that it requires parameters, which
+    ones and of what type, and that it therefore gives no row count, no profile and no sample without them.
+    The meta schema, the catalogs the SQL and graph clients read, and the table''s page show it. Every function
+    of the product that counts, profiles, samples or scans a table (discovery, the profiler, data quality
+    checks, statistics, previews) asks that metadata first and takes its stated reduced path for such a
+    table; none finds out by trying the read (REQ-413 for discovery).'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
