@@ -75,6 +75,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         role_build_inputs,
         whole_model_context,
     )
+    from provisa.api.model_reload import registered_source_rows
     from provisa.api.app_schema_build import (
         _assert_domain_table_unique,
         _build_gql_object_columns,
@@ -90,7 +91,6 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     from provisa.core.repositories import metric as metric_repo
     from provisa.core.schema_org import domains as domains_t
     from provisa.core.schema_org import naming_rules as naming_rules_t
-    from provisa.core.schema_org import sources as sources_t
     from provisa.security import domain_tree
     from provisa.synthetic.datasets import as_generated, synthetic_sources
 
@@ -130,10 +130,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
         ).fetchall()
     ]
     domains = await _load_build_domains(conn)
-    sources = {
-        r._mapping["id"]: dict(r._mapping)
-        for r in (await conn.execute_core(select(sources_t))).fetchall()
-    }
+    sources = await registered_source_rows(conn)
     source_types = {sid: row["type"] for sid, row in sources.items() if row.get("type")}
     source_catalogs = {
         **state.source_catalogs,

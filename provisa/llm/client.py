@@ -38,8 +38,15 @@ _DEFAULTS: dict[str, dict] = {
 
 
 #: How long one model call may take, in seconds. A vendor's own client gives up after anything from
-#: 30 seconds to half an hour, depending on the vendor, or never; this holds for all of them.
+#: 30 seconds to half an hour, depending on the vendor, or never; this holds for all of them. A
+#: streamed request is given the time its answer may take (:meth:`ProvisaLLMClient.call_timeout_s`).
 CALL_TIMEOUT_S = 300.0
+
+#: The Anthropic SDK's own measure of a request's time (anthropic._base_client,
+#: ``_calculate_nonstreaming_timeout``): an answer of 128,000 tokens is expected to take an hour,
+#: and a request expected to take over ten minutes is refused unless it is streamed.
+_ANTHROPIC_SECONDS_PER_TOKEN = 3600 / 128_000
+_ANTHROPIC_WHOLE_REQUEST_S = 600.0
 
 #: The environment variable aisuite reads each key-taking vendor's key from, when the caller
 #: resolved none (provisa.core.org_secrets.LLM_VENDORS).
@@ -99,7 +106,45 @@ class LLMEmptyResponseError(RuntimeError):
 
 
 class LLMTimeoutError(TimeoutError):
-    """The vendor gave no answer within :data:`CALL_TIMEOUT_S`; the message names the model."""
+    """The vendor gave no answer within the call's bound, ``seconds``
+    (:meth:`ProvisaLLMClient.call_timeout_s`); the message names the model."""
+
+    def __init__(self, message: str, seconds: float) -> None:
+        super().__init__(message)
+        self.seconds = seconds
+
+
+def failure(exc: BaseException) -> dict[str, Any]:
+    """A failed model call as the product says it: a catalogued ``code`` with its ``params`` (the
+    UI's ``serverErrors`` catalog words it in the reader's language) and the English ``message``.
+    The vendor's own reason is carried as a param, never as the message."""
+    if isinstance(exc, LLMTimeoutError):
+        seconds = round(exc.seconds)
+        return {
+            "code": "llm.no_answer_in_time",
+            "params": {"seconds": seconds},
+            "message": f"The model gave no answer within {seconds} seconds.",
+        }
+    if isinstance(exc, LLMEmptyResponseError):
+        return {"code": "llm.empty_answer", "params": {}, "message": "The model returned no text."}
+    reason = str(exc) or type(exc).__name__
+    return {
+        "code": "llm.request_failed",
+        "params": {"reason": reason},
+        "message": f"The request to the model failed: {reason}",
+    }
+
+
+def anthropic_requires_stream(model: str, max_tokens: int) -> bool:
+    """Whether the Anthropic SDK sends a request for ``max_tokens`` only as a stream: one it
+    expects to take over ten minutes (above 21,333 tokens), or one above the model's own unstreamed
+    limit. Sent whole, the SDK refuses it before anything is sent."""
+    from anthropic._constants import MODEL_NONSTREAMING_TOKENS
+
+    if max_tokens * _ANTHROPIC_SECONDS_PER_TOKEN > _ANTHROPIC_WHOLE_REQUEST_S:
+        return True
+    whole_limit = MODEL_NONSTREAMING_TOKENS.get(model)
+    return whole_limit is not None and max_tokens > whole_limit
 
 
 def _stopped_at_limit(finish_reason: Any, usage: Any, max_tokens: int) -> bool:
@@ -230,6 +275,25 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             return None
         return f"{vendor} has no API key"
 
+    def _wire(self, vendor: str) -> str:
+        """The wire ``vendor`` is spoken to on: an endpoint's ``style``, else the vendor itself."""
+        endpoint = self._endpoints.get(vendor)
+        return endpoint["style"] if endpoint is not None else vendor
+
+    def streams(self, vendor: str, model: str, max_tokens: int) -> bool:
+        """Whether a request to ``vendor``'s model for ``max_tokens`` is streamed and collected:
+        on Anthropic's wire, when its SDK requires it (:func:`anthropic_requires_stream`). The
+        OpenAI SDK, and aisuite's other providers, have no such rule and are sent whole."""
+        return self._wire(vendor) == "anthropic" and anthropic_requires_stream(model, max_tokens)
+
+    def call_timeout_s(self, vendor: str, model: str, max_tokens: int) -> float:
+        """How long one call to ``vendor``'s model may take: :data:`CALL_TIMEOUT_S`, and for a
+        streamed request the time the vendor's SDK expects an answer of ``max_tokens`` to take
+        (an hour for 128,000 tokens)."""
+        if self.streams(vendor, model, max_tokens):
+            return max(CALL_TIMEOUT_S, max_tokens * _ANTHROPIC_SECONDS_PER_TOKEN)
+        return CALL_TIMEOUT_S
+
     def _complete_sync(
         self, vendor: str, model: str, prompt: str, system: str, max_tokens: int
     ) -> str:
@@ -241,7 +305,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         ``extra_body``), or Anthropic's ``thinking`` of type ``disabled`` (natively or through an
         Anthropic-style endpoint). Any other wire gets no setting (``{}``)."""
         endpoint = self._endpoints.get(vendor)
-        wire = endpoint["style"] if endpoint is not None else vendor
+        wire = self._wire(vendor)
         if wire == "anthropic":
             return {"thinking": {"type": "disabled"}}
         if wire == "openai" and endpoint is not None:
@@ -261,7 +325,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         ``json_schema``, strict, for OpenAI itself and OpenRouter. Any other wire gets no setting
         (``{}``) and is asked in the prompt alone."""
         endpoint = self._endpoints.get(vendor)
-        wire = endpoint["style"] if endpoint is not None else vendor
+        wire = self._wire(vendor)
         if wire == "anthropic":
             return {"output_config": {"format": {"type": "json_schema", "schema": schema}}}
         if wire == "openai" and (
@@ -316,22 +380,22 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             provider_cfg: dict = {"base_url": endpoint["base_url"]}
             if key:
                 provider_cfg["api_key"] = key
-            client = ai.Client({provider_vendor: provider_cfg})
-            model_id = self._make_aisuite_model_id(provider_vendor, model)
         else:
             key = (self._api_keys or {}).get(vendor)
-            if key:
-                client = ai.Client({vendor: {"api_key": key}})
-            else:
-                client = ai.Client()
-            model_id = self._make_aisuite_model_id(vendor, model)
+            provider_vendor = vendor
+            provider_cfg = {"api_key": key} if key else {}
+        model_id = self._make_aisuite_model_id(provider_vendor, model)
         messages = self._build_messages(prompt, system)
-        response = client.chat.completions.create(
-            model=model_id,
-            messages=messages,
-            max_tokens=max_tokens,
-            **asked,
-        )
+        if self.streams(vendor, model, max_tokens):
+            response = self._streamed(provider_cfg, model, messages, max_tokens, asked)
+        else:
+            client = ai.Client({provider_vendor: provider_cfg}) if provider_cfg else ai.Client()
+            response = client.chat.completions.create(
+                model=model_id,
+                messages=messages,
+                max_tokens=max_tokens,
+                **asked,
+            )
         choice = response.choices[0]
         content = choice.message.content
         finish_reason = getattr(choice, "finish_reason", None)
@@ -347,8 +411,33 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             )
         return Completion(content.strip(), vendor, model, usage, cut_off)
 
-    def _bounded(self, call: Callable[[str, str], _T], vendor: str, model: str) -> _T:
-        """``call(vendor, model)``, given up after :data:`CALL_TIMEOUT_S`. On a thread of its own,
+    def _streamed(
+        self,
+        provider_cfg: dict[str, Any],
+        model: str,
+        messages: list[dict],
+        max_tokens: int,
+        asked: dict[str, Any],
+    ) -> Any:
+        """The answer to a request the Anthropic SDK sends only as a stream, as aisuite answers
+        one sent whole. aisuite's Anthropic provider cannot stream (it reads a stream as a whole
+        message), so its own SDK client streams the request the SDK's documented way for a long
+        request (``messages.stream(...)`` then ``get_final_message()``), and its own converter
+        turns the collected message into the same response: text, finish reason and usage."""
+        from aisuite.provider import ProviderFactory
+
+        provider = ProviderFactory.create_provider("anthropic", provider_cfg)
+        system, converted = provider.converter.convert_request(messages)
+        with provider.client.messages.stream(
+            model=model, system=system, messages=converted, max_tokens=max_tokens, **asked
+        ) as stream:
+            message = stream.get_final_message()
+        return provider.converter.convert_response(message)
+
+    def _bounded(
+        self, call: Callable[[str, str], _T], vendor: str, model: str, timeout_s: float
+    ) -> _T:
+        """``call(vendor, model)``, given up after ``timeout_s``. On a thread of its own,
         the one way to hold a blocking call in a vendor's client whatever that client does: a
         stalled call's thread ends when its client gives up, and nothing waits for it."""
         answered: concurrent.futures.Future[_T] = concurrent.futures.Future()
@@ -361,18 +450,24 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
                 answered.set_exception(exc)
 
         threading.Thread(target=run, name=f"llm-call:{vendor}", daemon=True).start()
-        finished, _ = concurrent.futures.wait([answered], timeout=CALL_TIMEOUT_S)
+        finished, _ = concurrent.futures.wait([answered], timeout=timeout_s)
         if not finished:
             raise LLMTimeoutError(
-                f"{vendor}:{model} gave no answer within {CALL_TIMEOUT_S:g} seconds"
+                f"{vendor}:{model} gave no answer within {timeout_s:g} seconds", timeout_s
             )
         return answered.result()
 
-    def _with_fallback(self, call: Callable[[str, str], _T]) -> _T:
+    def _with_fallback(self, call: Callable[[str, str], _T], max_tokens: int) -> _T:
         """``call(vendor, model)`` on the primary vendor/model, and on its failure on the
-        fallback when one is configured. Each is held to :data:`CALL_TIMEOUT_S`."""
+        fallback when one is configured. Each is held to its bound for an answer of
+        ``max_tokens`` (:meth:`call_timeout_s`)."""
         try:
-            return self._bounded(call, self._vendor, self._model)
+            return self._bounded(
+                call,
+                self._vendor,
+                self._model,
+                self.call_timeout_s(self._vendor, self._model, max_tokens),
+            )
         except Exception as primary_exc:
             log.warning(
                 "LLM primary vendor=%s model=%s failed: %s",
@@ -382,7 +477,14 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             )
             if self._fallback_vendor and self._fallback_model:
                 try:
-                    return self._bounded(call, self._fallback_vendor, self._fallback_model)
+                    return self._bounded(
+                        call,
+                        self._fallback_vendor,
+                        self._fallback_model,
+                        self.call_timeout_s(
+                            self._fallback_vendor, self._fallback_model, max_tokens
+                        ),
+                    )
                 except Exception as fallback_exc:
                     log.warning(
                         "LLM fallback vendor=%s model=%s failed: %s",
@@ -402,7 +504,8 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         Returns plain text response.
         """
         return self._with_fallback(
-            lambda vendor, model: self._complete_sync(vendor, model, prompt, system, max_tokens)
+            lambda vendor, model: self._complete_sync(vendor, model, prompt, system, max_tokens),
+            max_tokens,
         )
 
     def complete_sync_detailed(
@@ -412,7 +515,8 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         (:class:`Completion`): a caller that reads a structured answer learns whether it stopped
         at ``max_tokens``."""
         return self._with_fallback(
-            lambda vendor, model: self._respond(vendor, model, prompt, system, max_tokens)
+            lambda vendor, model: self._respond(vendor, model, prompt, system, max_tokens),
+            max_tokens,
         )
 
     async def complete_detailed(
@@ -445,7 +549,8 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
                     reasoning_off,
                     json_schema,
                     json_name,
-                )
+                ),
+                max_tokens,
             ),
         )
 
