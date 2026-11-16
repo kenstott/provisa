@@ -39,6 +39,7 @@ _PG_HOST = os.environ.get("PG_HOST", "localhost")
 _PG_PORT = int(os.environ.get("PG_PORT", "5432"))
 _ROLE = "org_admin"
 _LARGE_OBJECT = 424243
+_META_REFUSAL = "has no form over the meta domain"
 _ADVANCES = "SELECT nextval(''public.h7_seq'')::text::tsvector"
 
 
@@ -130,7 +131,10 @@ def test_a_function_that_reads_or_acts_on_the_source_is_refused(server, surface,
     name, statement = _REFUSED[case]
     accepted, said = _SURFACES[surface](server, statement)
     assert not accepted, said
-    assert "V007" in said and name in said, said
+    assert name in said, said
+    # pgwire addresses a statement naming pg_catalog to its catalog route, whose own refusal by
+    # name comes first (metadata_functions.MetadataFunctionRefused); every other is the validator's.
+    assert "V007" in said or _META_REFUSAL in said, said
 
 
 @pytest.mark.parametrize("surface", list(_SURFACES))
