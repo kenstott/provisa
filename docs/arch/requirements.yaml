@@ -25104,7 +25104,10 @@
     SINKS ARE CAPPED:) Maintainer 2026-11-16. A client-started sink ends when its owner no longer holds
     the role it was started under, and so does an open subscription stream: neither outlives the right that
     started it. The number of running sinks one principal may hold is capped by an operator setting, with
-    its field in the settings UI; a request past the cap is refused. The cap''s default value is not settled.'
+    its field in the settings UI; a request past the cap is refused. The cap''s default value is not settled.
+    (Amended 2026-11-16, THE SINK CAP DEFAULTS TO 5:) Maintainer 2026-11-16. The cap on running sinks per
+    principal defaults to 5; this settles the default left open in A SINK OR STREAM ENDS WITH ITS OWNER''S
+    ROLE; SINKS ARE CAPPED.'
   use_case: An X-Provisa-Sink header lets a client wire a live subscription directly into a Kafka topic
     for downstream stream processing without holding an SSE connection.
   code:
@@ -41528,7 +41531,13 @@
     that names a role acts only as that role, on every transport and in both assignment modes; it never
     reaches another role its owner holds. A token may name only a role its issuer holds when it is issued
     (REQ-2076). Whether a token's scopes are enforced or removed, and what each scope would allow, is not
-    settled.
+    settled. (Amended 2026-11-16, A TOKEN'S SCOPES ARE THE ROLES IT MAY USE:) Maintainer 2026-11-16 ('scope
+    is always a role name'; 'the PAT creator must assign specific roles'). This completes A TOKEN'S ROLE
+    NARROWS IT, whose last sentence (scopes not settled) and whose single named role are [SUPERSEDED by
+    this amendment]. A token carries one non-empty list of role names, its scopes; the separate single-role
+    field is gone. The token acts only as a role in its scopes. Each scope must be a role the issuer holds
+    when the token is issued and still holds when it is used; a token with no scopes is not issued. The
+    token form picks the roles with the standard multi-select.
   use_case: Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate
     against all Provisa protocols using the same role/scope model as browser auth, eliminating the need
     for separate credential management per client type.
