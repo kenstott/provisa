@@ -36,6 +36,23 @@ is that day, written for toDate32; a day that does not exist is PostgreSQL's err
 NULL for a cast that answers NULL on failure (pg_input_is_valid's check, accurateCastOrNull by the
 time the grid reads it); any other text, and a year Date32 does not hold, is refused by name.
 
+Literals of a time, an integer and a numeric are read from their text here too, as PostgreSQL's
+input reads them (J1366's found-not-fixed 1 to 3). A time: ClickHouse's toTime64 reads '12:30' as
+00:12:30, so the text is written as time_out writes it (12:30:00), a field out of range raising
+22008, any text not of hours, minutes, seconds and a fraction refused by name. An integer:
+ClickHouse's cast wraps a number past the type (2147483648::integer as -2147483648), truncates a
+fraction (2.5 as 2) and answers NULL of a text past it; a number is rounded half away from zero, a
+text read by the integer input (0x, 0o and 0b prefixes, underscores), and past the type PostgreSQL's
+22003, a text the input does not read 22P02. A numeric: ClickHouse reads a number with a fraction as
+a Float64 (1.005 as 1.00499..., 0.1 at scale 30 as 0.1000000000000000090...) and truncates a text
+past the scale; the literal is cast from its text, rounded half away from zero to the scale,
+22003 past the precision, a value of no precision said held up to 38 digits (0A000 past them).
+
+A date and a number of days by their operator (date + integer, integer + date, date - integer):
+date_pli's, integer_pl_date's or date_mii's ClickHouse form (polyfill.dates.ch_moved), of operands
+whose types the statement says; the engine's own wrapped Date32 at int4's extremes, and the row
+then failed to decode.
+
 lag, lead, first_value, last_value and nth_value: ClickHouse answers the type's default (0, '')
 where PostgreSQL answers NULL, past the partition or of an empty frame, and its first_value and
 last_value skip a NULL. lag and lead are lagInFrame and leadInFrame over the whole partition (as
@@ -52,12 +69,14 @@ ClickHouse: refused by name there, as on Trino."""
 from __future__ import annotations
 
 import calendar
+import decimal
 import functools
 import re
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import instants, trino
+from provisa.pgwire import function_types
+from provisa.transpiler.polyfill import clocks, dates, instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.server import plain
 from provisa.transpiler.polyfill.matching import graft
@@ -470,6 +489,403 @@ DATE = Feature(
     ),
 )
 
+#: A time of day's text as PostgreSQL's time input reads it (DecodeTimeOnly): hours, minutes,
+#: seconds and a fraction of any digits. Any other text (AM or PM, a zone, a date, 'allballs') is
+#: refused by name.
+_CLOCK_TEXT = re.compile(r"\s*(\d+):(\d{1,2})(?::(\d{1,2})(?:(\.\d+))?)?\s*", re.ASCII)
+_SECOND_US = 1_000_000
+_DAY_US = 86_400 * _SECOND_US
+
+
+def _plain_cast(node: exp.Expr, *types: exp.DType) -> exp.Cast | None:
+    """``node``, a cast to one of ``types`` that raises on failure; None for any other node (a cast
+    that answers NULL on failure, pg_input_is_valid's check, is ClickHouse's accurateCastOrNull,
+    which already answers NULL past the type)."""
+    if isinstance(node, exp.Cast) and not isinstance(node, exp.TryCast) and node.to.is_type(*types):
+        return node
+    return None
+
+
+def clock_micros(text: str) -> int | None:
+    """The microseconds of the day of a time's text, as time_in reads it; None for a text not of
+    hours, minutes, seconds and a fraction. A field out of range is PostgreSQL's 22008."""
+    clock = _CLOCK_TEXT.fullmatch(text)
+    if clock is None:
+        return None
+    hour, minute, second = int(clock[1]), int(clock[2]), int(clock[3] or 0)
+    # ParseFractionalSecond: rint(strtod(fraction) * 1000000), as a double rounds to even.
+    fraction = round(float(clock[4]) * _SECOND_US) if clock[4] else 0
+    micros = ((hour * 60 + minute) * 60 + second) * _SECOND_US + fraction
+    if minute > 59 or second > 60 or hour > 24 or micros > _DAY_US:
+        raise Refused(Refusal("22008", f'date/time field value out of range: "{text}"'))
+    return micros
+
+
+def timed(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A text the statement writes cast to a time: its time of day as time_out writes it, which
+    ClickHouse reads exactly; PostgreSQL's error of a field out of range, or a refusal by name of
+    a text not of hours, minutes, seconds and a fraction."""
+    cast = _plain_cast(node, exp.DataType.Type.TIME)
+    text = None if cast is None else _text_of(cast.this)
+    if cast is None or text is None:
+        return None
+    micros = clock_micros(text)
+    if micros is None:
+        raise Refused(
+            Refusal(
+                "0A000",
+                f'time_in() of "{text}" has no form on {dialect}: only a time of hours, minutes, '
+                "seconds and a fraction is read",
+            )
+        )
+    written = clocks.text_of(micros)
+    if written == text:
+        return None  # ClickHouse reads it as it is (provisa.transpiler.transpile)
+    return exp.Cast(this=exp.Literal.string(written), to=cast.to.copy())
+
+
+TIME = Feature(
+    "time",
+    FAMILY,
+    "A text cast to a time of day.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {"clickhouse": Rewrite(timed, mentions=r"(?:::|\bas)\s*time\b|\btime\s+'")},
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A text the statement writes: hours, minutes, seconds and a fraction, each "
+                    "field read as PostgreSQL reads it (a seventh fractional digit rounded, 24:00:00 "
+                    "the last, a field out of range 22008); any other text (AM or PM, a zone, a "
+                    "date) is refused by name. ClickHouse's server has no Time64: a time is held as "
+                    "an Int64 of its microseconds of the day (0 to 86400000000), compared as "
+                    "integers, and the select list, or a cast to text, shows it as time_out's text. "
+                    "24:00:00 is held and compared; pgwire reads no time of 24:00:00 back, so a "
+                    "column that shows it raises. A value whose type the statement does not say "
+                    "(a table's column) is read from its text at run time: a date before the clock "
+                    "is read past, up to six fractional digits; any other text raises 22007, a "
+                    "field past its range 22008, each without the value in its message. A "
+                    "timestamp is read as its wall time's time of day."
+                ),
+            )
+        },
+    ),
+)
+
+#: Each integer type: PostgreSQL's name of it and its bits.
+_INTEGERS = {
+    exp.DataType.Type.SMALLINT: ("smallint", 16),
+    exp.DataType.Type.INT: ("integer", 32),
+    exp.DataType.Type.BIGINT: ("bigint", 64),
+}
+#: An integer's text as PostgreSQL 16's input reads it (pg_strtoint32 and its kin): a sign, then
+#: decimal digits or a 0x, 0o or 0b prefix and its digits, an underscore only between digits (or
+#: after a prefix), white space around.
+_INTEGER_TEXT = re.compile(
+    r"\s*([+-]?)(?:0[xX]((?:_?[0-9a-fA-F])+)|0[oO]((?:_?[0-7])+)|0[bB]((?:_?[01])+)|(\d(?:_?\d)*))\s*",
+    re.ASCII,
+)
+_BASES = (16, 8, 2, 10)
+
+
+def _integer_of_text(text: str) -> int | None:
+    """The integer of a text as PostgreSQL's integer input reads it; None for a text it refuses."""
+    read = _INTEGER_TEXT.fullmatch(text)
+    if read is None:
+        return None
+    digits, base = next((d, b) for d, b in zip(read.groups()[1:], _BASES) if d is not None)
+    value = int(digits.replace("_", ""), base)
+    return -value if read[1] == "-" else value
+
+
+def _signed_number(node: exp.Expr) -> tuple[exp.Literal, bool] | None:
+    """A number literal written with its signs or in parentheses, and whether it is negated."""
+    negative = False
+    while isinstance(node, (exp.Paren, exp.Neg)):
+        negative ^= isinstance(node, exp.Neg)
+        node = node.this
+    if isinstance(node, exp.Literal) and not node.is_string:
+        return node, negative
+    return None
+
+
+def _number(node: exp.Expr) -> decimal.Decimal | None:
+    """The exact value of a number literal (as PostgreSQL reads it: a numeric, never a double)."""
+    signed = _signed_number(node)
+    if signed is None:
+        return None
+    try:
+        value = decimal.Decimal(signed[0].this)
+    except decimal.InvalidOperation:
+        return None
+    return -value if signed[1] else value
+
+
+def _as_number(value: int | decimal.Decimal) -> exp.Expr:
+    """A number literal of ``value``, its sign a negation as PostgreSQL's SQL writes one."""
+    literal = exp.Literal.number(str(abs(value)))
+    return exp.Neg(this=literal) if value < 0 else literal
+
+
+def integer_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from
+    zero, a text by the integer input; PostgreSQL's 22003 past the type and 22P02 of a text it does
+    not read, where ClickHouse's cast wraps, truncates or answers NULL."""
+    cast = _plain_cast(node, *_INTEGERS)
+    if cast is None:
+        return None
+    name, bits = _INTEGERS[cast.to.this]
+    lowest, highest = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+    text = _text_of(cast.this)
+    if text is not None:
+        value = _integer_of_text(text)
+        if value is None:
+            raise Refused(Refusal("22P02", f'invalid input syntax for type {name}: "{text}"'))
+        if not lowest <= value <= highest:
+            raise Refused(Refusal("22003", f'value "{text}" is out of range for type {name}'))
+        return exp.Cast(this=_as_number(value), to=cast.to.copy())
+    number = _number(cast.this)
+    if number is None or not number.is_finite():
+        return None
+    rounded = int(number.to_integral_value(rounding=decimal.ROUND_HALF_UP))
+    if not lowest <= rounded <= highest:
+        raise Refused(Refusal("22003", f"{name} out of range"))
+    if rounded == number:
+        return None  # an integer ClickHouse casts as it is
+    return exp.Cast(this=_as_number(rounded), to=cast.to.copy())
+
+
+INTEGER = Feature(
+    "integer",
+    FAMILY,
+    "A literal cast to smallint, integer or bigint.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        integer_read,
+                        mentions=r"[\d'.]\s*\)?\s*(?:::|\bas)\s*\"?(?:smallint|integer|bigint|"
+                        r"int[248]?)\b|\b(?:smallint|integer|bigint|int[248])\s+'",
+                    )
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A number or a text the statement writes is read as PostgreSQL reads it: a "
+                    "number rounded half away from zero, a text by the integer input (a 0x, 0o or "
+                    "0b prefix, underscores); past the type it raises 22003, a text the input does "
+                    "not read 22P02. A column's cast keeps ClickHouse's own, which wraps past the "
+                    "type."
+                ),
+            )
+        },
+    ),
+)
+
+#: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision).
+_MOST_DIGITS = 38
+_NUMERIC_OUT_OF_BOUND = (
+    f"numeric_in() of a value of more than {_MOST_DIGITS} digits has no exact form on clickhouse"
+)
+
+
+def _numeric_of_text(text: str) -> decimal.Decimal | None:
+    """The value of a text as PostgreSQL's numeric input reads it (an integer of a 0x, 0o or 0b
+    prefix too); None for a text it refuses."""
+    if re.fullmatch(r"\s*[+-]?0[xXoObB].*", text, re.ASCII):
+        integer = _integer_of_text(text)
+        return None if integer is None else decimal.Decimal(integer)
+    if not re.fullmatch(
+        r"\s*[+-]?(?:\d(?:_?\d)*(?:\.(?:\d(?:_?\d)*)?)?|\.\d(?:_?\d)*)"
+        r"(?:[eE][+-]?\d+)?\s*|\s*[+-]?(?:nan|inf|infinity)\s*",
+        text,
+        re.ASCII | re.IGNORECASE,
+    ):
+        return None
+    return decimal.Decimal(text.strip().replace("_", ""))
+
+
+#: A numeric's text ClickHouse's cast reads exactly where its digits fit the scale.
+_EXACT_TEXT = re.compile(r"[+-]?\d+(?:\.\d+)?", re.ASCII)
+
+
+def _precision(to: exp.DataType) -> tuple[int, int] | None:
+    """The precision and scale a cast to numeric says; None where it says none."""
+    if not to.expressions:
+        return None
+    said = [int(param.this.this) for param in to.expressions]
+    return said[0], said[1] if len(said) > 1 else 0
+
+
+def numeric_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal cast to a numeric, cast from its text rounded as PostgreSQL rounds it: ClickHouse
+    reads a number with a fraction as a Float64 (1.005 as 1.00499...), and truncates a text past
+    the scale. Past the precision, PostgreSQL's 22003; a text the input does not read, 22P02."""
+    cast = _plain_cast(node, exp.DataType.Type.DECIMAL)
+    if cast is None:
+        return None
+    text = _text_of(cast.this)
+    if text is not None:
+        value = _numeric_of_text(text)
+        if value is None:
+            raise Refused(Refusal("22P02", f'invalid input syntax for type numeric: "{text}"'))
+    else:
+        value = _number(cast.this)
+    if value is None or not value.is_finite():
+        return None  # NaN and infinity: what reads them next answers or refuses them
+    said = _precision(cast.to)
+    to = cast.to.copy()
+    if said is None:
+        _, digits, exponent = value.as_tuple()
+        scale = max(0, -int(exponent))
+        if max(len(digits), scale) > _MOST_DIGITS:
+            raise Refused(Refusal("0A000", _NUMERIC_OUT_OF_BOUND))
+        to = exp.DataType.build(
+            f"DECIMAL({min(_MOST_DIGITS, max(len(digits), scale) + 18)}, {scale})"
+        )
+    else:
+        precision, scale = said
+        if not 0 <= scale <= precision:
+            return None
+        overflow = Refused(Refusal("22003", "numeric field overflow"))
+        if value and value.adjusted() > precision - scale:
+            raise overflow
+        quantum = decimal.Decimal(1).scaleb(-scale)
+        value = value.quantize(
+            quantum, rounding=decimal.ROUND_HALF_UP, context=decimal.Context(prec=precision + 2)
+        )
+        if value and value.adjusted() >= precision - scale:
+            raise overflow
+    if said is not None and text is not None and _EXACT_TEXT.fullmatch(text):
+        if decimal.Decimal(text) == value:
+            return None  # a text of the scale's digits or fewer, which ClickHouse reads exactly
+    return exp.Cast(this=exp.Literal.string(format(value, "f")), to=to)
+
+
+NUMERIC = Feature(
+    "numeric input",
+    FAMILY,
+    "A literal cast to a numeric.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        numeric_read,
+                        mentions=r"[\d'.]\s*\)?\s*(?:::|\bas)\s*\"?(?:numeric|decimal)\b"
+                        r"|\b(?:numeric|decimal)\s+'",
+                    )
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A number or a text the statement writes is cast from its text, rounded half "
+                    "away from zero to the scale, as PostgreSQL rounds it; past the precision it "
+                    "raises 22003, a text the input does not read 22P02. A value of no precision "
+                    f"said holds up to {_MOST_DIGITS} digits; one of more raises 0A000 "
+                    f"({_NUMERIC_OUT_OF_BOUND}). A column's cast keeps ClickHouse's own."
+                ),
+            )
+        },
+    ),
+)
+
+#: What a date's or a day count's operand may hold: a value the walk has nothing in to write.
+_PLAIN = (
+    exp.Cast,
+    exp.Column,
+    exp.Identifier,
+    exp.Literal,
+    exp.Null,
+    exp.Neg,
+    exp.Paren,
+    exp.DataType,
+    exp.DataTypeParam,
+)
+_DAY_COUNTS = frozenset({"integer", "smallint"})
+#: Each operator of a date and a day count: the row it is, by its operands' kinds.
+_DAY_OPERATORS: dict[type[exp.Expr], dict[str, str]] = {
+    exp.Add: {"dn": "date_pli", "nd": "integer_pl_date"},
+    exp.Sub: {"dn": "date_mii"},
+}
+
+
+def _day_kind(operand: exp.Expr) -> str | None:
+    said = function_types.argument_type(operand.unnest())
+    return "d" if said == "date" else "n" if said in _DAY_COUNTS else None
+
+
+def _day_operand(operand: exp.Expr, read, dialect: str) -> exp.Expr | None:
+    """An operand of a date and a day count, its literal read; None for one holding a call."""
+    written = read(operand.unnest(), dialect)
+    if written is not None:
+        return written
+    if not all(isinstance(n, _PLAIN) for n in operand.walk()):
+        return None
+    number = _number(operand)
+    if number is not None and not -(1 << 31) <= number < 1 << 31:
+        return None  # a bigint or a numeric: PostgreSQL has no operator of a date and one
+    return operand
+
+
+def days_moved(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A date plus or less a number of days, by its operator: date_pli, date_mii or
+    integer_pl_date, of operands whose types the statement says."""
+    rows = _DAY_OPERATORS.get(type(node))
+    if rows is None:
+        return None
+    left, right = node.this, node.expression
+    name = rows.get(f"{_day_kind(left)}{_day_kind(right)}")
+    if name is None:
+        return None
+    date, count = (right, left) if name == "integer_pl_date" else (left, right)
+    date = _day_operand(date, dated, dialect)
+    count = _day_operand(count, integer_read, dialect)
+    if date is None or count is None:
+        return None
+    sign = "-" if name == "date_mii" else "+"
+    form = dates.ch_moved(name, sign)
+    return graft(replacement(form, dialect, f"{name}($a, $b)"), {"a": date, "b": count})
+
+
+DATE_DAYS = Feature(
+    "date + integer",
+    FAMILY,
+    "A date plus or less a number of days, by its operator (date_pli, date_mii, integer_pl_date).",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        days_moved, mentions=r"::\s*date\b|\bas\s+date\b|\bdate\s+'"
+                    )
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    dates.ch_moved_stated("date_pli")
+                    + " Of operands whose types the statement says (a literal, a cast); a date "
+                    "column's keeps ClickHouse's own arithmetic, exact within Date32's range."
+                ),
+            )
+        },
+    ),
+)
+
 STAMP = Feature(
     "timestamp",
     FAMILY,
@@ -840,6 +1256,10 @@ FEATURES: tuple[Feature, ...] = (
     ARRAY_AGG,
     DATE_TRUNC,
     DATE,
+    TIME,
+    INTEGER,
+    NUMERIC,
+    DATE_DAYS,
     STAMP,
     *WINDOW_FEATURES,
     NTILE,

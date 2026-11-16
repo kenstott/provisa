@@ -15,7 +15,9 @@ embedded engine and compared with PostgreSQL's answer on its edge values.
 - a time of day and an interval: time_pl_interval, time_mi_interval, interval_pl_time,
   interval(time), time(interval), and overlaps with an end given as an interval (of timestamps,
   and of times of day). DuckDB's form adds an INTERVAL, which ClickHouse has none of; adapted,
-  the interval is ClickHouse's held tuple (polyfill.intervals) and the time a Time64(6);
+  the interval is ClickHouse's held tuple (polyfill.intervals) and the time an Int64 of its
+  microseconds of the day (polyfill.clocks: ClickHouse's server has no Time64), shown in the
+  select list as time_out's text;
 - int8inc_any and int8dec_any: DuckDB's form, its error() as ClickHouse's throwIf and its
   TRY_CAST as accurateCastOrNull (polyfill.ported).
 
@@ -33,6 +35,7 @@ import pytest
 
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
+from provisa.pgwire.cast_types import clock_of_text
 from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.polyfill import GRID
 from provisa.transpiler.transpile import transpile
@@ -335,6 +338,15 @@ ANSWERED = [
         datetime.time(3, 4, 5, 678000),
     ),
     ("SELECT pg_catalog.\"time\"('24 hours'::interval) AS v", datetime.time(0, 0)),
+    # time of a timestamp (polyfill.clocks), its wall time's time of day; was refused by name
+    (
+        "SELECT pg_catalog.\"time\"('2024-01-01 12:30:45'::timestamp) AS v",
+        datetime.time(12, 30, 45),
+    ),
+    (
+        "SELECT pg_catalog.\"time\"('1900-01-01 23:59:59.999999'::timestamp) AS v",
+        datetime.time(23, 59, 59, 999999),
+    ),
     ("SELECT pg_catalog.\"time\"('25 hours'::interval) AS v", datetime.time(1, 0)),
     (
         "SELECT pg_catalog.\"time\"('2562047788:00:54.775807'::interval) AS v",
@@ -458,7 +470,6 @@ REFUSED = [
     "SELECT pg_catalog.\"overlaps\"('2024-01-01'::timestamp, '0'::interval, "
     "'2024-01-01'::timestamp, '0'::interval) AS v",
     "SELECT pg_catalog.\"interval\"('1 day'::interval, 3) AS v",
-    "SELECT pg_catalog.\"time\"('2024-01-01 12:30:45'::timestamp) AS v",
 ]
 OUTSIDE = (
     "SELECT pg_catalog.\"overlaps\"('1900-01-01'::timestamp, '-1 day'::interval, "
@@ -476,18 +487,15 @@ def _rows(runtime: ClickHouseFederationRuntime, sql: str) -> list[object]:
 
 
 def _time(value: object) -> object:
-    """A Time64(6) as the engine hands it over (its microseconds, little-endian), as a time."""
-    if not isinstance(value, bytes):
-        return value
-    micros = int.from_bytes(value, "little", signed=True)
-    seconds, fraction = divmod(micros, 1_000_000)
-    return datetime.time(seconds // 3600, seconds // 60 % 60, seconds % 60, fraction)
+    """A time as the select list shows it, time_out's text, read back as pgwire reads it."""
+    return clock_of_text(value) if isinstance(value, str) else value
 
 
 def _same(want: object, got: object) -> bool:
-    """PostgreSQL's answer and the engine's: a boolean the engine holds as 0 or 1, a time as its
-    Time64, an interval as interval_out's text, any other value as it is."""
-    got = _time(got)
+    """PostgreSQL's answer and the engine's: a boolean the engine holds as 0 or 1, a time as
+    time_out's text, an interval as interval_out's text, any other value as it is."""
+    if isinstance(want, datetime.time):
+        got = _time(got)
     if want is None or got is None:
         return want is got
     if isinstance(want, bool):

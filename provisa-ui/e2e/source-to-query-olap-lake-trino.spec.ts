@@ -64,7 +64,7 @@ import {
   submitSourceAndExpectListed,
   FORM_FIELD,
 } from "./source-to-query-helpers";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { retireSourceTables } from "./retire-source-tables";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "../..");
 const PROVISION = path.join(ROOT, "demo", "sources", "provision.py");
@@ -208,8 +208,11 @@ async function trinoTableName(sourceId: string): Promise<string> {
   return mine!.dqDataset!.split("/").pop()!;
 }
 
+/** A test's cleanup: retire the table it registered and leave its source (REQ-2248: a source
+ * holding a table, retired or not, is kept). Each source id is stamped per attempt, so a retry
+ * never meets the source or the retired table an earlier attempt left. */
 async function cleanupTrinoSource(sourceId: string) {
-  await deleteSourceAndItsTables(trinoGql, sourceId);
+  await retireSourceTables(trinoGql, sourceId);
 }
 
 // ---------------------------------------------------------------------------------------------

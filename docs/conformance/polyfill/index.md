@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-320 of the grid's 320 features are native on PostgreSQL and left out.
+333 of the grid's 333 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-134 of the grid's 320 features are native on DuckDB and left out.
+146 of the grid's 333 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -254,6 +254,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -354,7 +357,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._duckdb_rewrite: A string cast to interval on DuckDB, wherever it stands. DuckDB&#x27;s own interval input reads</code></pre></td><td><ul><li>A string cast to interval is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock are sent as written, which DuckDB reads alike; any other text is sent as the text of its three fields, which DuckDB reads exactly. A bare whole number of seconds is DuckDB&#x27;s own reading, which is PostgreSQL&#x27;s; any other text not read here (ISO 8601, the SQL standard&#x27;s, infinity, a unit given twice) is refused by name: DuckDB fails on it or answers otherwise.</li></ul></td><td></td><td></td></tr>
@@ -640,7 +643,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-53 of the grid's 320 features are native on Trino and left out.
+65 of the grid's 333 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -963,6 +966,9 @@ CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DA
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
@@ -1086,7 +1092,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._trino_rewrite: A literal of interval on Trino where no call reads it. Trino has no type named interval,</code></pre></td><td><ul><li>A literal of interval where no call reads it is written only where a timestamp is moved by it (+, -), as Trino&#x27;s INTERVAL &#x27;n&#x27; UNIT: a value of months alone, or of days and whole seconds. Anywhere else, or of any other value, it is refused by name: Trino holds months and days in two interval types, and a day and its time as one count of milliseconds, which it writes otherwise than PostgreSQL.</li></ul></td><td></td><td></td></tr>
@@ -1372,7 +1378,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-53 of the grid's 320 features are native on Presto and left out.
+65 of the grid's 333 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1695,6 +1701,9 @@ CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DA
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
@@ -1818,7 +1827,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._trino_rewrite: A literal of interval on Trino where no call reads it. Trino has no type named interval,</code></pre></td><td><ul><li>A literal of interval where no call reads it is written only where a timestamp is moved by it (+, -), as Trino&#x27;s INTERVAL &#x27;n&#x27; UNIT: a value of months alone, or of days and whole seconds. Anywhere else, or of any other value, it is refused by name: Trino holds months and days in two interval types, and a day and its time as one count of milliseconds, which it writes otherwise than PostgreSQL.</li></ul></td><td></td><td></td></tr>
@@ -2104,7 +2113,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-53 of the grid's 320 features are native on Athena and left out.
+65 of the grid's 333 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2427,6 +2436,9 @@ CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DA
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 CASE WHEN (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &lt; -2451545 OR (date_diff(&#x27;day&#x27;, DATE &#x27;2000-01-01&#x27;, CAST($a AS DATE)) - CAST($b AS BIGINT)) &gt;= 2145031948 THEN fail(&#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) ELSE date_add(&#x27;day&#x27;, -CAST($b AS BIGINT), CAST($a AS DATE)) END</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>time_mi_time</strong><br>The interval from one time of day to another.</td><td><pre><code>function provisa.transpiler.polyfill.trino.refused_time_mi_time: time_mi_time: Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</code></pre></td><td><ul><li>Refused by name: the old table&#x27;s form adds a time to a date, which Trino does not.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
@@ -2550,7 +2562,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._trino_rewrite: A literal of interval on Trino where no call reads it. Trino has no type named interval,</code></pre></td><td><ul><li>A literal of interval where no call reads it is written only where a timestamp is moved by it (+, -), as Trino&#x27;s INTERVAL &#x27;n&#x27; UNIT: a value of months alone, or of days and whole seconds. Anywhere else, or of any other value, it is refused by name: Trino holds months and days in two interval types, and a day and its time as one count of milliseconds, which it writes otherwise than PostgreSQL.</li></ul></td><td></td><td></td></tr>
@@ -2836,7 +2848,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 320 features are native on ClickHouse and left out.
+36 of the grid's 333 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3122,10 +3134,13 @@ function provisa.transpiler.polyfill.numbers.random_between: random of two integ
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_pli</strong><br>A date moved forward by a number of days.</td><td><pre><code>date_pli($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+toDate32($a) + toInt32($b) + throwIf(ifNull(((toInt64(toInt32(toDate32($a))) + toInt64($b)) &lt; -2440588 OR (toInt64(toInt32(toDate32($a))) + toInt64($b)) &gt;= 2145042906), 0), &#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(NOT ((toInt64(toInt32(toDate32($a))) + toInt64($b)) &lt; -2440588 OR (toInt64(toInt32(toDate32($a))) + toInt64($b)) &gt;= 2145042906) AND ((toInt64(toInt32(toDate32($a))) + toInt64($b)) &lt; -25567 OR (toInt64(toInt32(toDate32($a))) + toInt64($b)) &gt; 120529), 0), &#x27;postgresql-error 0A000: date_pli() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse&lt;end of postgresql-error&gt;&#x27;)</code></pre></td><td><ul><li>A day moved past a date&#x27;s range raises 22008, as PostgreSQL does; a day within it but outside 1900-01-01 .. 2299-12-31 (ClickHouse&#x27;s Date32) raises 0A000 (date_pli() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+toDate32($a) - toInt32($b) + throwIf(ifNull(((toInt64(toInt32(toDate32($a))) - toInt64($b)) &lt; -2440588 OR (toInt64(toInt32(toDate32($a))) - toInt64($b)) &gt;= 2145042906), 0), &#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(NOT ((toInt64(toInt32(toDate32($a))) - toInt64($b)) &lt; -2440588 OR (toInt64(toInt32(toDate32($a))) - toInt64($b)) &gt;= 2145042906) AND ((toInt64(toInt32(toDate32($a))) - toInt64($b)) &lt; -25567 OR (toInt64(toInt32(toDate32($a))) - toInt64($b)) &gt; 120529), 0), &#x27;postgresql-error 0A000: date_mii() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse&lt;end of postgresql-error&gt;&#x27;)</code></pre></td><td><ul><li>A day moved past a date&#x27;s range raises 22008, as PostgreSQL does; a day within it but outside 1900-01-01 .. 2299-12-31 (ClickHouse&#x27;s Date32) raises 0A000 (date_mii() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+toDate32($d) + toInt32($n) + throwIf(ifNull(((toInt64(toInt32(toDate32($d))) + toInt64($n)) &lt; -2440588 OR (toInt64(toInt32(toDate32($d))) + toInt64($n)) &gt;= 2145042906), 0), &#x27;postgresql-error 22008: date out of range&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(NOT ((toInt64(toInt32(toDate32($d))) + toInt64($n)) &lt; -2440588 OR (toInt64(toInt32(toDate32($d))) + toInt64($n)) &gt;= 2145042906) AND ((toInt64(toInt32(toDate32($d))) + toInt64($n)) &lt; -25567 OR (toInt64(toInt32(toDate32($d))) + toInt64($n)) &gt; 120529), 0), &#x27;postgresql-error 0A000: integer_pl_date() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse&lt;end of postgresql-error&gt;&#x27;)</code></pre></td><td><ul><li>A day moved past a date&#x27;s range raises 22008, as PostgreSQL does; a day within it but outside 1900-01-01 .. 2299-12-31 (ClickHouse&#x27;s Date32) raises 0A000 (integer_pl_date() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 CASE WHEN $y IS NULL OR $m IS NULL OR $d IS NULL THEN CAST(NULL AS Nullable(Date32)) WHEN $y BETWEEN 1900 AND 2299 AND $m BETWEEN 1 AND 12 AND $d BETWEEN 1 AND toDayOfMonth(toLastDayOfMonth(makeDate32($y, $m, 1))) THEN makeDate32($y, $m, $d) ELSE CAST(throwIf(1, &#x27;postgresql-error 0A000: make_date does not read this value&lt;end of postgresql-error&gt;&#x27;) AS Nullable(Date32)) END</code></pre></td><td><ul><li>Only a year from 1900 to 2299 (ClickHouse&#x27;s Date32) and a day the month has: any other is refused with 0A000.</li></ul></td><td></td><td></td></tr>
@@ -3170,6 +3185,10 @@ function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timesta
 =&gt;
 function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timestamp: its start as DateTime64(6, &#x27;UTC&#x27;), whatever the unit. Of a</code></pre></td><td><ul><li>Of a timestamp with time zone: held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31; a literal outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_trunc() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). On a session off UTC it is refused by name (date_trunc() has no form on clickhouse): the start of a unit is the session zone&#x27;s. Of an interval, refused by name.</li><li>At a zone the call names: Of a literal instant, unit and zone (a region&#x27;s IANA name or UTC): the start is computed as the statement is translated, by PostgreSQL&#x27;s rules (its wall time at the zone truncated, a day or longer read back at the zone&#x27;s offset then, a gap&#x27;s before and an overlap&#x27;s after), with Python&#x27;s tzdata; held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31. An instant or a start outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC raises 0A000 (date_trunc() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse). A NULL of any answers NULL. An instant, unit or zone a row computes, a VALUES list, an abbreviation or a POSIX zone is refused by name; so is any literal on a session off UTC.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.dated: A text the statement writes cast to a date: its day, PostgreSQL&#x27;s error of one that does</code></pre></td><td><ul><li>A text the statement writes: an ISO date of 1900 to 2299, any other refused by name. A text column&#x27;s cast keeps ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>time</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.timed: A text the statement writes cast to a time: its time of day as time_out writes it, which</code></pre></td><td><ul><li>A text the statement writes: hours, minutes, seconds and a fraction, each field read as PostgreSQL reads it (a seventh fractional digit rounded, 24:00:00 the last, a field out of range 22008); any other text (AM or PM, a zone, a date) is refused by name. ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day (0 to 86400000000), compared as integers, and the select list, or a cast to text, shows it as time_out&#x27;s text. 24:00:00 is held and compared; pgwire reads no time of 24:00:00 back, so a column that shows it raises. A value whose type the statement does not say (a table&#x27;s column) is read from its text at run time: a date before the clock is read past, up to six fractional digits; any other text raises 22007, a field past its range 22008, each without the value in its message. A timestamp is read as its wall time&#x27;s time of day.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>integer</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input (a 0x, 0o or 0b prefix, underscores); past the type it raises 22003, a text the input does not read 22P02. A column&#x27;s cast keeps ClickHouse&#x27;s own, which wraps past the type.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric input</strong><br>A literal cast to a numeric.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.numeric_read: A literal cast to a numeric, cast from its text rounded as PostgreSQL rounds it: ClickHouse</code></pre></td><td><ul><li>A number or a text the statement writes is cast from its text, rounded half away from zero to the scale, as PostgreSQL rounds it; past the precision it raises 22003, a text the input does not read 22P02. A value of no precision said holds up to 38 digits; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on clickhouse). A column&#x27;s cast keeps ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date + integer</strong><br>A date plus or less a number of days, by its operator (date_pli, date_mii, integer_pl_date).</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.days_moved: A date plus or less a number of days, by its operator: date_pli, date_mii or</code></pre></td><td><ul><li>A day moved past a date&#x27;s range raises 22008, as PostgreSQL does; a day within it but outside 1900-01-01 .. 2299-12-31 (ClickHouse&#x27;s Date32) raises 0A000 (date_pli() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse). Of operands whose types the statement says (a literal, a cast); a date column&#x27;s keeps ClickHouse&#x27;s own arithmetic, exact within Date32&#x27;s range.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp</strong><br>A text cast to a timestamp, or to a timestamp with time zone.</td><td></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;). A text the statement writes is read where the statement is transpiled (provisa.transpiler.transpile): an infinity, a year BC or past 9999, and a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 (a timestamp&#x27;s) or 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC (a timestamptz&#x27;s, its offset read) raise 0A000 (timestamptz_in() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse), where ClickHouse would hold it at its type&#x27;s end. A timestamp&#x27;s offset is dropped, as PostgreSQL&#x27;s input drops it (ClickHouse&#x27;s cast reads it). A text in another form, and a text column&#x27;s cast, keep ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>first_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_first_value: first_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>last_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_last_value: last_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>
@@ -3182,6 +3201,13 @@ CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) WHEN $b =
 <tr><td><strong>spg_poly_quad_compress</strong><br>A polygon&#x27;s bounding box, as the SP-GiST quad tree&#x27;s compress function answers it.</td><td><pre><code>spg_poly_quad_compress($v)
 =&gt;
 CASE WHEN $v IS NULL THEN NULL ELSE arrayMap(_n -&gt; concat(&#x27;(&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMax(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))[1], &#x27;,&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMax(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))[1], &#x27;),(&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMin(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 1, _n, arrayEnumerate(_n)))[1], &#x27;,&#x27;, arrayFilter(_y -&gt; toFloat64(_y) = arrayMin(arrayMap(_z -&gt; toFloat64(_z), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))), arrayFilter((_t, _i) -&gt; _i % 2 = 0, _n, arrayEnumerate(_n)))[1], &#x27;)&#x27;, repeat(&#x27;&#x27;, throwIf(ifNull(arrayExists(_y -&gt; NOT match(_y, &#x27;^-?(0|[1-9][0-9]*)([.][0-9]*[1-9])?$&#x27;), _n), 0), &#x27;postgresql-error 0A000: spg_poly_quad_compress does not read this value&lt;end of postgresql-error&gt;&#x27;))), [extractAll(toString($v), &#x27;-?[0-9.]+(?:e[-+]?[0-9]+)?&#x27;)])[1] END</code></pre></td><td><ul><li>A polygon with a number PostgreSQL writes otherwise than as it was written (an exponent, a trailing zero) is refused by name when the statement runs.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>extract(text, time)</strong><br>A unit of a time of day, as numeric.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.extract_of_a_clock: extract of a unit and a time of day, of its held microseconds.</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). Each unit is computed of the microseconds as time_part_common computes it, a numeric of PostgreSQL&#x27;s scale (second 6, milliseconds 3, epoch 6). The unit is read as a literal or a NULL (microseconds, milliseconds, second, minute, hour, epoch, and their other spellings); any other unit, and one the statement computes, keeps the function&#x27;s refusal by name. Called by its name only: extract(unit FROM time), which the translator reads as the same node as date_part&#x27;s, keeps its refusal.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>date_part(text, time)</strong><br>A unit of a time of day, as double precision.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.date_part_of_a_clock: date_part of a unit and a time of day, of its held microseconds.</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). Each unit is computed of the microseconds in double precision as timestamp.c computes it, so it is the same double. The unit is read as a literal or a NULL (microseconds, milliseconds, second, minute, hour, epoch, and their other spellings); any other unit, and one the statement computes, keeps the function&#x27;s refusal by name. Called by its name only: extract(unit FROM time), which the translator reads as the same node as date_part&#x27;s, keeps its refusal.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>datetime_pl(date, time)</strong><br>A date plus a time of day, a timestamp (+).</td><td><pre><code>function provisa.transpiler.polyfill.clocks.datetime_pl_of_a_clock: datetime_pl of a date and a time: their sum, a timestamp held as DateTime64(6, &#x27;UTC&#x27;).</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The answer is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31: a date there plus 24:00:00 past its last day raises 0A000. The same sum answers the operators date + time and time + date.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timestamp(date, time)</strong><br>The timestamp of a date and a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.timestamp_of_a_clock: timestamp of a date and a time: their sum, a timestamp held as DateTime64(6, &#x27;UTC&#x27;).</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The answer is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31: a date there plus 24:00:00 past its last day raises 0A000. The same sum answers the operators date + time and time + date.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>timedate_pl(time, date)</strong><br>A time of day plus a date, a timestamp (+).</td><td><pre><code>function provisa.transpiler.polyfill.clocks.timedate_pl_of_a_clock: timedate_pl of a time and a date: their sum, a timestamp held as DateTime64(6, &#x27;UTC&#x27;).</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The answer is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31: a date there plus 24:00:00 past its last day raises 0A000. The same sum answers the operators date + time and time + date.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>time(timestamp)</strong><br>The time of day of a timestamp.</td><td><pre><code>function provisa.transpiler.polyfill.clocks.time_of_stamp: time of a timestamp: a cast of it to time, its wall time&#x27;s microseconds of the day.</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The timestamp is held as DateTime64(6, &#x27;UTC&#x27;), exact from 1900-01-01 to 2299-12-31; its wall time&#x27;s time of day is read.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>time(time, integer)</strong><br>A time of day rounded to a precision (time_scale).</td><td><pre><code>function provisa.transpiler.polyfill.clocks.time_scaled: time of a time and a precision (time_scale): its microseconds rounded half up to the</code></pre></td><td><ul><li>ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day, and shown in the select list as time_out&#x27;s text (polyfill.clocks). The microseconds are rounded half up to the precision&#x27;s digits, as AdjustTimeForTypmod rounds them (23:59:59.9999995 to 24:00:00 at six); a precision outside 0 to 6 leaves the time. The precision is read as a literal or a NULL; any other is refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>avg</strong><br>The mean of a group&#x27;s values.</td><td><pre><code>avg($v)
 =&gt;
 function provisa.transpiler.polyfill.aggregates.exact_of_integers: avg, variance or stddev of an integer, at PostgreSQL&#x27;s numeric digits.</code></pre></td><td><ul><li>Of an integer: PostgreSQL&#x27;s numeric digits, exact, from the integers&#x27; sums in Int256, rounded only where PostgreSQL&#x27;s numeric_div rounds. A group of more than 1099511627776 (2^40) values raises 0A000 (avg of more than 1099511627776 values has no exact form on clickhouse): ClickHouse&#x27;s Int256, which holds the sums, holds every step of up to that many. Over a window or under a FILTER, refused by name.</li></ul></td><td></td><td></td></tr>
@@ -3289,14 +3315,15 @@ function provisa.transpiler.polyfill.intervals.isfinite_of_intervals: isfinite o
 <tr><td><strong>date_pl_interval(date, interval)</strong><br>A date plus an interval, a timestamp (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.date_pl_interval_of_intervals: date_pl_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The date is read as a literal in ISO form or a NULL; any other is refused by name. The answer is held as DateTime64(6, &#x27;UTC&#x27;): an answer, or the step of it after the months or after the days, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (date_pl_interval() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_mi_interval(date, interval)</strong><br>A date less an interval, a timestamp (-).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.date_mi_interval_of_intervals: date_mi_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The date is read as a literal in ISO form or a NULL; any other is refused by name. The answer is held as DateTime64(6, &#x27;UTC&#x27;): an answer, or the step of it after the months or after the days, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (date_mi_interval() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>interval_pl_date(interval, date)</strong><br>An interval plus a date, a timestamp (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_pl_date_of_intervals: interval_pl_date of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The date is read as a literal in ISO form or a NULL; any other is refused by name. The answer is held as DateTime64(6, &#x27;UTC&#x27;): an answer, or the step of it after the months or after the days, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000 (interval_pl_date() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 has no exact form on clickhouse).</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>time_pl_interval(time, interval)</strong><br>A time of day plus an interval (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_pl_interval_of_intervals: time_pl_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as Time64(6), exact. The interval&#x27;s microseconds are added in int64 as PostgreSQL&#x27;s C adds them, then brought into the day; its months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>time_mi_interval(time, interval)</strong><br>A time of day less an interval (-).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_mi_interval_of_intervals: time_mi_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as Time64(6), exact. The interval&#x27;s microseconds are added in int64 as PostgreSQL&#x27;s C adds them, then brought into the day; its months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval_pl_time(interval, time)</strong><br>An interval plus a time of day (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_pl_time_of_intervals: interval_pl_time of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as Time64(6), exact. The interval&#x27;s microseconds are added in int64 as PostgreSQL&#x27;s C adds them, then brought into the day; its months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>time_pl_interval(time, interval)</strong><br>A time of day plus an interval (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_pl_interval_of_intervals: time_pl_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the select list as time_out&#x27;s text. The interval&#x27;s microseconds are added in int64 as PostgreSQL&#x27;s C adds them, then brought into the day; its months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>time_mi_interval(time, interval)</strong><br>A time of day less an interval (-).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_mi_interval_of_intervals: time_mi_interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the select list as time_out&#x27;s text. The interval&#x27;s microseconds are added in int64 as PostgreSQL&#x27;s C adds them, then brought into the day; its months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval_pl_time(interval, time)</strong><br>An interval plus a time of day (+).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_pl_time_of_intervals: interval_pl_time of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the select list as time_out&#x27;s text. The interval&#x27;s microseconds are added in int64 as PostgreSQL&#x27;s C adds them, then brought into the day; its months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
-function provisa.transpiler.polyfill.intervals.overlaps_timestamp_of_intervals: overlaps_timestamp of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. Each end given as an interval is its start plus the interval, as PostgreSQL&#x27;s SQL function computes it: a timestamp&#x27;s as timestamp_pl_interval&#x27;s row writes it (a literal in ISO form or a NULL; the answer, or a step of it, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000), a time&#x27;s as time_pl_interval&#x27;s. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as Time64(6), exact. Then timestamp.c&#x27;s comparisons, with its NULLs.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>interval(time)</strong><br>The interval of a time of day: its microseconds, no months and no days.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_of_intervals: interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as Time64(6), exact.</li></ul></td><td></td><td></td></tr>
-<tr><td><strong>time(interval)</strong><br>The time of day of an interval: its microseconds brought into the day.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_of_intervals: time of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as Time64(6), exact. The interval&#x27;s months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
+function provisa.transpiler.polyfill.intervals.overlaps_timestamp_of_intervals: overlaps_timestamp of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. Each end given as an interval is its start plus the interval, as PostgreSQL&#x27;s SQL function computes it: a timestamp&#x27;s as timestamp_pl_interval&#x27;s row writes it (a literal in ISO form or a NULL; the answer, or a step of it, outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 raises 0A000), a time&#x27;s as time_pl_interval&#x27;s. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the select list as time_out&#x27;s text. Then timestamp.c&#x27;s comparisons, with its NULLs.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>interval(time)</strong><br>The interval of a time of day: its microseconds, no months and no days.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.interval_of_intervals: interval of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. An interval answer in the select list is interval_out&#x27;s text (IntervalStyle postgres); one anywhere else but another interval call is refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the select list as time_out&#x27;s text.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>time_mi_time(time, time)</strong><br>A time of day less a time of day, an interval (-).</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_mi_time_of_intervals: time_mi_time of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. Each time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. The answer is the difference of their microseconds, no months and no days.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>time(interval)</strong><br>The time of day of an interval: its microseconds brought into the day.</td><td><pre><code>function provisa.transpiler.polyfill.intervals.time_of_intervals: time of intervals held as Tuple(months, days, microseconds).</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, 24:00:00 the last) or a NULL; any other, and a time of a table&#x27;s column, is refused by name. A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the select list as time_out&#x27;s text. The interval&#x27;s months and days are not read, as PostgreSQL does not read them.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._literal_rewrite: A literal of interval where no call reads it, on ClickHouse: its text (interval_out,</code></pre></td><td><ul><li>Held as Tuple(months Int32, days Int32, microseconds Int64), PostgreSQL&#x27;s own fields: exact. A literal is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres): amounts and their units, a clock, signs, fractions, &#x27;@&#x27; and &#x27;ago&#x27;. ISO 8601 and SQL standard input, a bare number, infinity, and a value whose type no statement says (a table&#x27;s column) are refused by name. A literal of interval where no call reads it (`&#x27;1 day 02:03&#x27;::interval`, `interval &#x27;1 day 02:03&#x27;`) is its text (interval_out, IntervalStyle postgres) in the select list, or in a VALUES column read only there; anywhere else it is refused by name, as is an input form not read here.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
 =&gt;
@@ -3587,7 +3614,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-134 of the grid's 320 features are native on Snowflake and left out.
+146 of the grid's 333 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3839,6 +3866,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3939,7 +3969,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -4224,7 +4254,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-134 of the grid's 320 features are native on Databricks and left out.
+146 of the grid's 333 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4476,6 +4506,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4576,7 +4609,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -4861,7 +4894,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-134 of the grid's 320 features are native on BigQuery and left out.
+146 of the grid's 333 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5113,6 +5146,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -5213,7 +5249,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -5498,7 +5534,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-134 of the grid's 320 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+146 of the grid's 333 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5750,6 +5786,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -5850,7 +5889,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -6135,7 +6174,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-134 of the grid's 320 features are native on Redshift and left out.
+146 of the grid's 333 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6387,6 +6426,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -6487,7 +6529,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -6772,7 +6814,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-134 of the grid's 320 features are native on MySQL and left out.
+146 of the grid's 333 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7024,6 +7066,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7124,7 +7169,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -7409,7 +7454,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-134 of the grid's 320 features are native on SingleStore and left out.
+146 of the grid's 333 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7661,6 +7706,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7761,7 +7809,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -8046,7 +8094,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-134 of the grid's 320 features are native on SQLite and left out.
+146 of the grid's 333 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8298,6 +8346,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -8398,7 +8449,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -8683,7 +8734,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-134 of the grid's 320 features are native on Oracle and left out.
+146 of the grid's 333 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8935,6 +8986,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9035,7 +9089,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -9320,7 +9374,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-134 of the grid's 320 features are native on Hive and left out.
+146 of the grid's 333 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9572,6 +9626,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9672,7 +9729,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -9957,7 +10014,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-134 of the grid's 320 features are native on Exasol and left out.
+146 of the grid's 333 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10209,6 +10266,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10309,7 +10369,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)
@@ -10594,7 +10654,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-134 of the grid's 320 features are native on Druid and left out.
+146 of the grid's 333 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10846,6 +10906,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10946,7 +11009,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>timestamptz_eq</strong><br>Whether an instant equals an instant.</td><td><pre><code>timestamptz_eq($a, $b)

@@ -19,6 +19,11 @@ ClickHouse (run 43410717058): make_date is its makeDate32 of a year Date32 holds
 a day the month has, any other refused by name; transaction_timestamp is the statement's now64, as
 current_timestamp is there.
 
+date_pli, date_mii and integer_pl_date on ClickHouse: the old table's form moved the day in a Date
+(1970 to 2149), which wrapped any other day (date_pli('2299-12-31', 1) answered 2120-07-27), and
+integer_pl_date's was DuckDB's, refused by name there. Each moves the day in Date32: past a date's
+range PostgreSQL's 22008, within it but outside Date32's 1900-01-01 .. 2299-12-31 0A000.
+
 to_char of a timestamp on ClickHouse and Trino, and of an instant on ClickHouse on a session on
 UTC, is written from PostgreSQL's own tokens (provisa.transpiler.to_char,
 instants.to_char_written)."""
@@ -30,7 +35,7 @@ from __future__ import annotations
 from provisa.transpiler.polyfill import instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Rewrite
-from provisa.transpiler.polyfill.numbers import fail, refused
+from provisa.transpiler.polyfill.numbers import ch_fail, fail, refused
 
 FAMILY = "dates"
 
@@ -64,17 +69,86 @@ DATE_MI = Feature(
         )
     ),
 )
+#: The days from 1970-01-01 a date holds (IS_VALID_DATE): from 4714-11-24 BC to 5874897-12-31.
+_EPOCH_DAYS = (-2440588, 2145042906)
+#: ClickHouse's Date32, the days from 1970-01-01 it holds exactly: 1900-01-01 to 2299-12-31.
+DATE32_DAYS = (-25567, 120529)
+DATE32_BOUND = "1900-01-01 .. 2299-12-31"
+
+
+def ch_moved(name: str, sign: str, date: str = "$a", days: str = "$b") -> str:
+    """date_pli, date_mii or integer_pl_date on ClickHouse: the day moved in Date32, exact; a day
+    past a date's range raises PostgreSQL's 22008, and one within it that Date32 does not hold
+    exactly raises 0A000. The old table's form moved the day in a Date (1970 to 2149), which wrapped
+    a day outside it."""
+    moved = f"(toInt64(toInt32(toDate32({date}))) {sign} toInt64({days}))"
+    past = f"({moved} < {_EPOCH_DAYS[0]} OR {moved} >= {_EPOCH_DAYS[1]})"
+    unheld = f"({moved} < {DATE32_DAYS[0]} OR {moved} > {DATE32_DAYS[1]})"
+    return (
+        f"toDate32({date}) {sign} toInt32({days}) + "
+        + ch_fail("22008", "date out of range").format(condition=past)
+        + " + "
+        + ch_fail("0A000", instants.out_of_bound(name, DATE32_BOUND)).format(
+            condition=f"NOT {past} AND {unheld}"
+        )
+    )
+
+
+def ch_moved_stated(name: str) -> str:
+    """The limitation of a row whose ClickHouse form is :func:`ch_moved`."""
+    return (
+        f"A day moved past a date's range raises 22008, as PostgreSQL does; a day within it but "
+        f"outside {DATE32_BOUND} (ClickHouse's Date32) raises 0A000 "
+        f"({instants.out_of_bound(name, DATE32_BOUND)})."
+    )
+
+
 DATE_PLI = Feature(
     "date_pli",
     FAMILY,
     "A date moved forward by a number of days.",
-    read=Side(rules=(Rule("date_pli($a, $b)", trino.trino_only(_moved("+"))),)),
+    read=Side(
+        rules=(
+            Rule(
+                "date_pli($a, $b)",
+                trino.trino_only(_moved("+")) | {"clickhouse": ch_moved("date_pli", "+")},
+            ),
+        ),
+        limitations={"clickhouse": (Limitation(ch_moved_stated("date_pli")),)},
+    ),
 )
 DATE_MII = Feature(
     "date_mii",
     FAMILY,
     "A date moved back by a number of days.",
-    read=Side(rules=(Rule("date_mii($a, $b)", trino.trino_only(_moved("-"))),)),
+    read=Side(
+        rules=(
+            Rule(
+                "date_mii($a, $b)",
+                trino.trino_only(_moved("-")) | {"clickhouse": ch_moved("date_mii", "-")},
+            ),
+        ),
+        limitations={"clickhouse": (Limitation(ch_moved_stated("date_mii")),)},
+    ),
+)
+#: integer_pl_date: PostgreSQL's SQL function of date_pli, its arguments the other way round. On
+#: ClickHouse the old table's form is DuckDB's (isfinite), so the call was refused by name there.
+INTEGER_PL_DATE = Feature(
+    "integer_pl_date",
+    FAMILY,
+    "A number of days plus a date (+).",
+    read=Side(
+        rules=(
+            Rule(
+                "integer_pl_date($n, $d)",
+                {
+                    **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                    "clickhouse": ch_moved("integer_pl_date", "+", date="$d", days="$n"),
+                },
+            ),
+        ),
+        limitations={"clickhouse": (Limitation(ch_moved_stated("integer_pl_date")),)},
+    ),
 )
 TIME_MI_TIME = trino.by_name(
     "time_mi_time",
@@ -178,6 +252,7 @@ FEATURES: tuple[Feature, ...] = (
     DATE_MI,
     DATE_PLI,
     DATE_MII,
+    INTEGER_PL_DATE,
     TIME_MI_TIME,
     MAKE_DATE,
     TRANSACTION_TIMESTAMP,

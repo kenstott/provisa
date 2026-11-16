@@ -25,7 +25,7 @@
 // of source-to-query-special-cases.spec.ts (FREE_ASKAMERICA_KEY in the root .env).
 
 import { test, expect } from "./coverage";
-import { deleteSourceAndItsTables } from "./delete-source";
+import { deleteSourceHoldingNoTable } from "./retire-source-tables";
 import {
   discoveredColumnCount,
   openRegisterForm,
@@ -44,15 +44,16 @@ const PICKER_FILLS_MS = 90_000;
 test.describe("AskAmerica: the Register Table pickers", () => {
   const apiKey = process.env.FREE_ASKAMERICA_KEY ?? "";
 
-  // The instance serves ONE AskAmerica source: a spec that fails before its own cleanup would leave
-  // its source behind and refuse every later one ("already exists"), so it is removed whatever the
-  // outcome.
+  // The instance serves ONE AskAmerica source (REQ-540): a spec that fails before its own cleanup
+  // would leave its source behind and refuse every later one ("already exists"), so it is removed
+  // whatever the outcome. It may be: this spec registers no table on it, and only a source that
+  // holds a table, retired or not, is kept (REQ-2248).
   let created: string | undefined;
   test.afterEach(async ({ page }) => {
     if (created === undefined) return;
     const id = created;
     created = undefined;
-    await deleteSourceAndItsTables(async (query, variables) => {
+    await deleteSourceHoldingNoTable(async (query, variables) => {
       const res = await page.request.post("/admin/graphql", { data: { query, variables } });
       return res.json();
     }, id);

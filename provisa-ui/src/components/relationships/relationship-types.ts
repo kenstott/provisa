@@ -27,6 +27,8 @@ export interface Candidate {
   confidence: number;
   reasoning: string;
   suggested_name?: string;
+  /** Where it came from: a run's suggestions are `run:<id>`. */
+  scope?: string | null;
 }
 
 /** The name a suggestion's relationship takes when accepted: the one suggested, else one made from

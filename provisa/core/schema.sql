@@ -2758,6 +2758,29 @@ ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS launch TEXT;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS progress_at TIMESTAMPTZ;
 ALTER TABLE glossary_term_scans ADD COLUMN IF NOT EXISTS source_table TEXT;
 
+-- REQ-413: a relationship discovery run in the background and its progress; Stop is asked on the
+-- row. Mirrors schema_org.discovery_runs.
+CREATE TABLE IF NOT EXISTS discovery_runs (
+    id              SERIAL PRIMARY KEY,
+    status          TEXT NOT NULL CONSTRAINT discovery_runs_status_check
+                        CHECK (status IN ('running', 'done', 'stopped', 'failed')),
+    scope           TEXT NOT NULL,
+    model           TEXT,
+    requests_total  INTEGER NOT NULL DEFAULT 0,
+    requests_done   INTEGER NOT NULL DEFAULT 0,
+    suggestions     INTEGER NOT NULL DEFAULT 0,
+    report          TEXT,
+    error           TEXT,
+    stop_requested  BOOLEAN NOT NULL DEFAULT false,
+    stopped_by      TEXT,
+    started_by      TEXT,
+    started_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
+    finished_at     TIMESTAMPTZ,
+    launch          TEXT,
+    progress_at     TIMESTAMPTZ,
+    tenant_id       UUID
+);
+
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,
     scan_id         INTEGER NOT NULL REFERENCES glossary_term_scans(id) ON DELETE CASCADE,

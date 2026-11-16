@@ -13,7 +13,7 @@
 
 import type { Locator } from "@playwright/test";
 import { BACKEND_URL, expect, type Page } from "./coverage";
-import { deleteSourceAndItsTables, type AdminGql } from "./delete-source";
+import { retireSourceTables, type AdminGql } from "./retire-source-tables";
 
 export const DOMAIN = "pet-store"; // shipped by both lanes' configs; its SQL schema is pet_store
 
@@ -51,17 +51,18 @@ export async function setSourceCacheTtl(page: Page, seconds: number) {
   await page.getByTestId("cache-ttl-input").fill(String(seconds));
 }
 
-/** Remove every source the tests registered on this worker's backend, with its tables.
+/** Retire every table in service on the sources the tests registered on this worker's backend.
+ * The sources themselves stay (REQ-2248: a source holding a table, retired or not, is kept).
  *
- * For a spec's teardown, BEFORE it takes its stack down. A source left registered against a
- * server that is gone is not inert: the backend goes on building its tables' replicas for as
- * long as the registration exists -- the hiveserver2 case's table was retried 29 times over the
- * remaining 83 minutes of the core lane, each with a refused connection and a traceback (run
- * 37918605161) -- and every read of the whole model meets it.
+ * For a spec's teardown, BEFORE it takes its stack down. A table left in service against a
+ * server that is gone is not inert: the backend goes on building its replica for as long as it
+ * is served -- the hiveserver2 case's table was retried 29 times over the remaining 83 minutes
+ * of the core lane, each with a refused connection and a traceback (run 37918605161) -- and
+ * every read of the whole model meets it. A retired table is no longer served.
  *
  * The tests' sources are told from the model's own by their ids: `e2e_<kind>_<13-digit stamp>`,
  * which no source of the demo model has. */
-export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<string[]> {
+export async function retireTestSourcesTables(baseUrl: string = BACKEND_URL): Promise<string[]> {
   const gql = adminGql(baseUrl);
   const listed = await gql("{ sources { id } }");
   if (listed.errors)
@@ -69,7 +70,7 @@ export async function removeTestSources(baseUrl: string = BACKEND_URL): Promise<
   const mine = ((listed.data?.sources ?? []) as Array<{ id: string }>)
     .map((s) => s.id)
     .filter((id) => /^e2e_[a-z0-9_]+_\d{13}$/.test(id));
-  for (const id of mine) await deleteSourceAndItsTables(gql, id);
+  for (const id of mine) await retireSourceTables(gql, id);
   return mine;
 }
 
@@ -86,13 +87,13 @@ function adminGql(baseUrl: string): AdminGql {
   };
 }
 
-/** Remove one source a test created, with its tables (deleteSourceAndItsTables), on the backend at
- * `baseUrl`. For a test's own cleanup of what it registered. */
-export async function removeTestSource(
+/** Retire the tables of one source a test created (retireSourceTables), on the backend at
+ * `baseUrl`, leaving the source. For a test's own cleanup of what it registered. */
+export async function retireTestSourceTables(
   sourceId: string,
   baseUrl: string = BACKEND_URL,
 ): Promise<void> {
-  await deleteSourceAndItsTables(adminGql(baseUrl), sourceId);
+  await retireSourceTables(adminGql(baseUrl), sourceId);
 }
 
 // A source form field, by its label. The sources list behind the form has sortable column headers

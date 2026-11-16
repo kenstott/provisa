@@ -197,7 +197,7 @@ def _modules_outside_the_model_store() -> list[Path]:
 
 #: REQ-2248: kinds whose delete retires the row (an update) and that no path removes: no delete
 #: of them is anywhere, the model store included.
-NEVER_REMOVED = {"tags"}
+NEVER_REMOVED = {"tags", "metrics"}  # metrics: metric.remove_where became retire_where
 
 
 def _inside(table: str) -> list[tuple[str, int]]:

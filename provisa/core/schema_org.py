@@ -2668,6 +2668,35 @@ glossary_term_scans = Table(
     ),
 )
 
+# REQ-413: a relationship discovery run in the background -- running, then done, stopped (a person
+# pressed Stop: the request in flight finished and what was found is kept) or failed with why. Its
+# row is what every worker reads: progress is written after each request, Stop is asked on it, and
+# the worker running the run checks it before each request (provisa/discovery/runs.py).
+discovery_runs = Table(
+    "discovery_runs",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("status", Text, nullable=False),  # running | done | stopped | failed
+    Column("scope", Text, nullable=False),  # JSON: the kinds, model and sets asked for
+    Column("model", Text, nullable=True),  # vendor:model when semantics was asked
+    Column("requests_total", Integer, nullable=False, server_default="0"),
+    Column("requests_done", Integer, nullable=False, server_default="0"),
+    Column("suggestions", Integer, nullable=False, server_default="0"),
+    Column("report", Text, nullable=True),  # JSON: what each kind found so far
+    Column("error", Text, nullable=True),
+    Column("stop_requested", Boolean, nullable=False, server_default=false()),
+    Column("stopped_by", Text, nullable=True),
+    Column("started_by", Text, nullable=True),
+    Column("started_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column("finished_at", DateTime(timezone=True), nullable=True),
+    Column("launch", Text, nullable=True),
+    Column("progress_at", DateTime(timezone=True), nullable=True),
+    Column("tenant_id", Uuid),
+    CheckConstraint(
+        "status IN ('running', 'done', 'stopped', 'failed')", name="discovery_runs_status_check"
+    ),
+)
+
 # REQ-2179: the review queue -- each candidate term a scan proposes, as a draft until the steward
 # accepts, merges or rejects it. ``proposal`` is what the scan proposes: a new term, or a merge into
 # the glossary term it duplicates or names again (match_term_id, match_kind). ``payload`` is a JSON

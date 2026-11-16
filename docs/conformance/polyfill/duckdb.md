@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on DuckDB. A f
 
 When DuckDB is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 225, of which 156 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 226, of which 157 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-134 of the grid's 320 features are native on DuckDB and left out.
+146 of the grid's 333 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -251,6 +251,9 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>date_mii</strong><br>A date moved back by a number of days.</td><td><pre><code>date_mii($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>integer_pl_date</strong><br>A number of days plus a date (+).</td><td><pre><code>integer_pl_date($n, $d)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>make_date</strong><br>A date of a year, a month and a day.</td><td><pre><code>make_date($y, $m, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -351,7 +354,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>isfinite(interval)</strong><br>Whether an interval is finite.</td><td><pre><code>isfinite($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), and the same of times of day.</td><td><pre><code>overlaps($a, $b, $c, $d)
+<tr><td><strong>overlaps(timestamp, interval, timestamp, interval)</strong><br>Whether two periods overlap, an end of either given as an interval from its start: overlaps(timestamp, interval, timestamp, interval), (timestamp, interval, timestamp, timestamp), (timestamp, timestamp, timestamp, interval), the same of times of day, and overlaps of four times of day (overlaps_time).</td><td><pre><code>overlaps($a, $b, $c, $d)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>interval literal</strong><br>A literal of interval where no call reads it.</td><td><pre><code>function provisa.transpiler.polyfill.intervals._duckdb_rewrite: A string cast to interval on DuckDB, wherever it stands. DuckDB&#x27;s own interval input reads</code></pre></td><td><ul><li>A string cast to interval is read as PostgreSQL&#x27;s interval input reads it (IntervalStyle postgres). Whole amounts of year, month, week, day, hour, minute and second and one clock are sent as written, which DuckDB reads alike; any other text is sent as the text of its three fields, which DuckDB reads exactly. A bare whole number of seconds is DuckDB&#x27;s own reading, which is PostgreSQL&#x27;s; any other text not read here (ISO 8601, the SQL standard&#x27;s, infinity, a unit given twice) is refused by name: DuckDB fails on it or answers otherwise.</li></ul></td><td></td><td></td></tr>
