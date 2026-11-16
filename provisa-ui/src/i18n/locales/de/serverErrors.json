@@ -147,14 +147,22 @@
       "elasticsearch_index_hint_required": "Die Elasticsearch-Erkennung erfordert einen 'index'-Hinweis.",
       "elasticsearch_mapping_failed": "Elasticsearch-Mapping für Index '{{index}}' konnte nicht gelesen werden: {{error}}",
       "endpoint_already_registered": "Endpunkt bereits registriert: {{error}}",
+      "endpoint_has_no_key": "{{vendor}} hat keinen Schlüssel: Setzen Sie die Umgebungsvariable {{env}}.",
       "model_failed": "Das Modell {{model}} ist fehlgeschlagen: {{error}}",
+      "model_has_no_room": "Das Modell {{model}} kann keine Anfrage aufnehmen: {{reason}}",
+      "model_incomplete": "Ein gewähltes Modell nennt sowohl seinen Anbieter als auch sein Modell.",
       "no_adapter_for_source_type": "Kein Adapter für Quellentyp '{{source_type}}' registriert",
       "no_live_connection": "Keine aktive Verbindung für Quelle '{{source_id}}'. Die MongoDB-Schemaerkennung erfordert eine aktive Verbindung im Quellen-Pool. Prüfen Sie, ob die Quelle verbunden und der Server erreichbar ist.",
+      "run_ended": "Der Erkennungslauf {{run_id}} ist bereits beendet: {{status}}",
+      "run_not_found": "Erkennungslauf {{run_id}} nicht gefunden",
       "schema_discovery_unsupported": "Quellentyp '{{source_type}}' unterstützt keine Schemaerkennung. Definieren Sie die Spalten manuell.",
       "semantics_unavailable": "Semantik kann nicht ausgeführt werden: {{model}}, das der Beziehungsableitung zugewiesene Modell, hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
-      "unknown_source_type": "Unbekannter Quellentyp: {{type}}"
+      "table_unreadable": "Die Erkennung kann die Tabelle {{table}} nicht lesen: {{reason}}. Nehmen Sie sie aus den gewählten Tabellen heraus, oder korrigieren Sie sie und versuchen Sie es erneut.",
+      "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
+      "vendor_has_no_key": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
     },
     "environments": {
       "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
@@ -499,6 +507,8 @@
       "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt"
     },
     "secrets": {
+      "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
+      "env_reference_refused": "{{name}} ist eine Variable der eigenen Umgebung des Servers, über die diese Organisation nicht verfügt. Speichern Sie den Wert als Secret der Organisation und verweisen Sie stattdessen auf das Secret.",
       "name_refused": "{{name}} ist kein Name innerhalb der Secrets dieser Organisation in {{service}}: Ein Name ist relativ zur Organisation und kann sie nicht verlassen",
       "name_too_long": "{{name}} ist als Name zu lang: Mit dem Präfix dieser Organisation sind es {{length}} Zeichen, und {{service}} lässt höchstens {{limit}} zu",
       "org_not_found": "Organisation '{{org_id}}' nicht gefunden",

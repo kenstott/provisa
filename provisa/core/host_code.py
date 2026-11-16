@@ -17,9 +17,12 @@ credentials, files and network -- and its model entry holds only a reference to 
 does not travel with the model when it is promoted. They are allowed only where the operator
 turns ``commands.allow_host_code`` on; off, as it is by default, registering, updating or calling
 one is refused, here, by the one check. Code resolvers are the governed alternative.
+
+A file source's producer command (REQ-861) is an argv run as a subprocess on the same host, so it
+is held to the same setting: saving a source that carries one, and running a stored one.
 """
 
-# Requirements: REQ-2134
+# Requirements: REQ-2134, REQ-861
 
 from __future__ import annotations
 
@@ -43,7 +46,29 @@ class HostCodeRefused(ValueError):
         self.params = {"name": name, "impl_kind": impl_kind}
 
 
+class ProducerCommandRefused(HostCodeRefused):
+    """A source's producer command (REQ-861) saved or run while host code is off."""
+
+    code = "sources.host_code_refused"
+
+    def __init__(self, source_id: str) -> None:
+        ValueError.__init__(
+            self,
+            f"source {source_id!r} carries a producer command, which runs on the server's host "
+            "with the server's own access; host code is off on this deployment "
+            "(commands.allow_host_code).",
+        )
+        self.params = {"source_id": source_id}
+
+
 def refuse_host_code(name: str, impl_kind: str) -> None:
     """Refuse a command of a host-code kind unless the deployment allows host code."""
     if impl_kind in HOST_CODE_KINDS and not settings_registry.value("commands.allow_host_code"):
         raise HostCodeRefused(name, impl_kind)
+
+
+def refuse_producer_command(source_id: str, producer_command: list[str] | None) -> None:
+    """Refuse a source's producer command (REQ-861), an argv run as a subprocess on the server's
+    host, unless the deployment allows host code: the same setting, read the same way."""
+    if producer_command and not settings_registry.value("commands.allow_host_code"):
+        raise ProducerCommandRefused(source_id)

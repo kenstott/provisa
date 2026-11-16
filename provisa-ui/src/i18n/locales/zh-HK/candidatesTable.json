@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} 項建議無法接受：",
     "rejectFailed": "{{count}} 項建議無法拒絕：",
     "rejectFailed_other": "{{count}} 項建議無法拒絕：",
-    "failedOne": "{{name}}：{{error}}"
+    "failedOne": "{{name}}：{{error}}",
+    "reducedInformation": "資訊有限：未比較任何值",
+    "reducedInformationHelp": "其中一個資料表需要參數，因此從不讀取。此建議僅依據名稱、描述、類型和必需參數得出。"
   }
 }

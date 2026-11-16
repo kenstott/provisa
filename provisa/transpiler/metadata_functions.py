@@ -75,6 +75,7 @@ from provisa.transpiler.metadata_server_forms import (
 )
 from provisa.transpiler.metadata_settings import setting
 from provisa.transpiler.pg_forms_system import SERVER_STATE
+from provisa.transpiler.server_functions import READS_THE_SERVER
 
 #: The search path a definition names a table against (catalog_data's search_path).
 _ON_THE_PATH = "('public', 'pg_catalog')"
@@ -941,81 +942,6 @@ RELATION_FORMS: dict[tuple[str, int], Form] = {
     for (name, arity), (params, sql) in TABLE_FORMS.items()
 }
 
-#: A function that would read the server, with no form: refused by name, never run on the control
-#: plane. These run SQL they are given, or read what a server keeps, on the connection that calls
-#: them: the role a client's SQL runs as (metadata_settings.CLIENT_ROLE) would otherwise take a
-#: statement past governance. Beside a view of meta they would answer about the control plane
-#: (REQ-2190, ONLY NAMED METADATA READS THE CONTROL PLANE): the list is PostgreSQL's non-immutable
-#: functions that read or change a server's own state and have no form here.
-READS_THE_SERVER = frozenset(
-    {
-        "binary_upgrade_create_empty_extension",
-        "currval",
-        "current_query",
-        "cursor_to_xml",
-        "cursor_to_xmlschema",
-        "database_to_xml",
-        "database_to_xml_and_xmlschema",
-        "database_to_xmlschema",
-        "dblink",
-        "inet_client_addr",
-        "inet_client_port",
-        "inet_server_addr",
-        "inet_server_port",
-        "lastval",
-        "nextval",
-        "pg_advisory_lock",
-        "pg_advisory_lock_shared",
-        "pg_advisory_unlock",
-        "pg_advisory_unlock_all",
-        "pg_advisory_unlock_shared",
-        "pg_advisory_xact_lock",
-        "pg_advisory_xact_lock_shared",
-        "pg_cancel_backend",
-        "pg_column_compression",
-        "pg_event_trigger_ddl_commands",
-        "pg_event_trigger_dropped_objects",
-        "pg_event_trigger_table_rewrite_oid",
-        "pg_event_trigger_table_rewrite_reason",
-        "pg_get_publication_tables",
-        "pg_get_wal_replay_pause_state",
-        "pg_is_wal_replay_paused",
-        "pg_last_committed_xact",
-        "pg_logical_slot_get_binary_changes",
-        "pg_logical_slot_get_changes",
-        "pg_logical_slot_peek_binary_changes",
-        "pg_logical_slot_peek_changes",
-        "pg_ls_logdir",
-        "pg_my_temp_schema",
-        "pg_notify",
-        "pg_read_file_old",
-        "pg_replication_origin_session_reset",
-        "pg_rotate_logfile_old",
-        "pg_sleep",
-        "pg_sleep_for",
-        "pg_sleep_until",
-        "pg_stop_making_pinned_objects",
-        "pg_terminate_backend",
-        "pg_try_advisory_lock",
-        "pg_try_advisory_lock_shared",
-        "pg_try_advisory_xact_lock",
-        "pg_try_advisory_xact_lock_shared",
-        "pg_wal_replay_pause",
-        "pg_wal_replay_resume",
-        "query_to_xml",
-        "query_to_xml_and_xmlschema",
-        "query_to_xmlschema",
-        "schema_to_xml",
-        "schema_to_xml_and_xmlschema",
-        "schema_to_xmlschema",
-        "setval",
-        "table_to_xml",
-        "table_to_xml_and_xmlschema",
-        "table_to_xmlschema",
-        "ts_rewrite",
-        "ts_stat",
-    }
-)
 #: The statistics of a server: a count is 0 and anything else NULL, as where nothing has happened.
 #: Answered by prefix, which covers each function PostgreSQL adds under it.
 STATISTICS_PREFIXES = ("pg_stat_get_", "pg_statio_")

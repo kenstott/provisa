@@ -147,14 +147,22 @@
       "elasticsearch_index_hint_required": "גילוי Elasticsearch דורש רמז 'index'.",
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
+      "endpoint_has_no_key": "ל-{{vendor}} אין מפתח: הגדירו את משתנה הסביבה {{env}}.",
       "model_failed": "המודל {{model}} נכשל: {{error}}",
+      "model_has_no_room": "המודל {{model}} אינו יכול להכיל בקשה: {{reason}}",
+      "model_incomplete": "מודל שנבחר מציין גם את הספק שלו וגם את המודל שלו.",
       "no_adapter_for_source_type": "לא רשום מתאם עבור סוג המקור '{{source_type}}'",
       "no_live_connection": "אין חיבור פעיל עבור המקור '{{source_id}}'. גילוי סכמה של MongoDB דורש חיבור פעיל במאגר המקורות. ודאו שהמקור מחובר ושהשרת נגיש.",
+      "run_ended": "ריצת הגילוי {{run_id}} כבר הסתיימה: {{status}}",
+      "run_not_found": "ריצת הגילוי {{run_id}} לא נמצאה",
       "schema_discovery_unsupported": "סוג המקור '{{source_type}}' אינו תומך בגילוי סכמה. הגדירו עמודות ידנית.",
       "semantics_unavailable": "לא ניתן להריץ סמנטיקה: ל-{{model}}, המודל שהוקצה להסקת קשרים, אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "source_not_found": "המקור '{{source_id}}' לא נמצא",
       "table_id_required": "table_id נדרש עבור היקף table",
-      "unknown_source_type": "סוג מקור לא מוכר: {{type}}"
+      "table_unreadable": "הגילוי אינו יכול לקרוא את הטבלה {{table}}: {{reason}}. השאירו אותה מחוץ לטבלאות שנבחרו, או תקנו אותה ונסו שוב.",
+      "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
+      "vendor_has_no_key": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל."
     },
     "environments": {
       "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
@@ -499,6 +507,8 @@
       "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו"
     },
     "secrets": {
+      "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
+      "env_reference_refused": "{{name}} הוא משתנה של סביבת השרת עצמו, שאינה ברשות ארגון זה. יש לשמור את הערך כסוד של הארגון ולהפנות אל הסוד במקומו.",
       "name_refused": "{{name}} אינו שם בתוך הסודות של הארגון הזה ב-{{service}}: שם הוא יחסי לארגון ואינו יכול לצאת ממנו",
       "name_too_long": "{{name}} הוא שם ארוך מדי: עם הקידומת של הארגון הזה אורכו {{length}} תווים, ו-{{service}} מקבל לכל היותר {{limit}}",
       "org_not_found": "הארגון '{{org_id}}' לא נמצא",

@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} suggerimenti non sono stati accettati:",
     "rejectFailed": "{{count}} suggerimento non è stato rifiutato:",
     "rejectFailed_other": "{{count}} suggerimenti non sono stati rifiutati:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "Informazioni ridotte: nessun valore è stato confrontato",
+    "reducedInformationHelp": "Una di queste tabelle richiede un parametro, quindi non viene mai letta. Questo suggerimento si basa solo su nomi, descrizioni, tipi e parametri obbligatori."
   }
 }

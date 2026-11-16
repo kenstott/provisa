@@ -147,14 +147,22 @@
       "elasticsearch_index_hint_required": "La découverte Elasticsearch requiert un indice « index ».",
       "elasticsearch_mapping_failed": "Échec de lecture du mapping Elasticsearch pour l'index « {{index}} » : {{error}}",
       "endpoint_already_registered": "Endpoint déjà enregistré : {{error}}",
+      "endpoint_has_no_key": "{{vendor}} n'a pas de clé : définissez la variable d'environnement {{env}}.",
       "model_failed": "Le modèle {{model}} a échoué : {{error}}",
+      "model_has_no_room": "Le modèle {{model}} ne peut pas contenir une requête : {{reason}}",
+      "model_incomplete": "Un modèle choisi indique à la fois son fournisseur et son modèle.",
       "no_adapter_for_source_type": "Aucun adaptateur enregistré pour le type de source « {{source_type}} »",
       "no_live_connection": "Aucune connexion active pour la source « {{source_id}} ». La découverte de schéma MongoDB requiert une connexion active dans le pool de la source. Vérifiez que la source est connectée et que le serveur est joignable.",
+      "run_ended": "L'exécution de découverte {{run_id}} est déjà terminée : {{status}}",
+      "run_not_found": "Exécution de découverte {{run_id}} introuvable",
       "schema_discovery_unsupported": "Le type de source « {{source_type}} » ne prend pas en charge la découverte de schéma. Définissez les colonnes manuellement.",
       "semantics_unavailable": "La sémantique ne peut pas s'exécuter : {{model}}, le modèle affecté à l'inférence des relations, n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "source_not_found": "Source « {{source_id}} » introuvable",
       "table_id_required": "table_id requis pour la portée table",
-      "unknown_source_type": "Type de source inconnu : {{type}}"
+      "table_unreadable": "La découverte ne peut pas lire la table {{table}} : {{reason}}. Retirez-la des tables choisies, ou corrigez-la et réessayez.",
+      "unknown_source_type": "Type de source inconnu : {{type}}",
+      "vendor_has_no_key": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle."
     },
     "environments": {
       "in_use": "{{env}} est encore référencé par {{count}} élément(s). Retirez ou modifiez chacun, puis supprimez de nouveau."
@@ -499,6 +507,8 @@
       "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend"
     },
     "secrets": {
+      "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
+      "env_reference_refused": "{{name}} est une variable de l'environnement propre du serveur, dont cette organisation ne dispose pas. Stockez la valeur comme secret de l'organisation et référencez plutôt ce secret.",
       "name_refused": "{{name}} n'est pas un nom situé dans les secrets de cette organisation dans {{service}} : un nom est relatif à l'organisation et ne peut pas en sortir",
       "name_too_long": "{{name}} est un nom trop long : avec le préfixe de cette organisation il compte {{length}} caractères, et {{service}} en accepte au plus {{limit}}",
       "org_not_found": "Organisation « {{org_id}} » introuvable",

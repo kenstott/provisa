@@ -861,7 +861,9 @@ def _es_connection_for(row: dict, state) -> "ESConnection":  # REQ-1672
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return ESConnection.build(
         resolve_secrets(row.get("host") or "localhost"),
         int(row.get("port") or 9200),
@@ -986,7 +988,9 @@ def _redis_connection_for(row: dict, state) -> "RedisConnection":  # REQ-1675
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return RedisConnection(
         host=resolve_secrets(row.get("host") or "localhost"),
         port=int(row.get("port") or 6379),
@@ -1032,7 +1036,9 @@ def _cassandra_connection_for(row: dict, state) -> "CassandraConnection":  # REQ
         ),
         None,
     )
-    password = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    password = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return CassandraConnection.build(
         resolve_secrets(row.get("host") or "localhost"),
         int(row.get("port") or 9042),
@@ -1088,7 +1094,9 @@ def _prometheus_connection_for(row: dict, state) -> "PrometheusConnection":  # R
         ),
         None,
     )
-    token = resolve_secrets(getattr(cfg_src, "password", "") or "") if cfg_src else ""
+    token = (
+        resolve_secrets(getattr(cfg_src, "password", "") or "", credential=True) if cfg_src else ""
+    )
     return PrometheusConnection.build(
         resolve_secrets(endpoint_url(row.get("host"), row.get("port"), mapping)),
         token=token or None,

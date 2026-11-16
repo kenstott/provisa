@@ -35,7 +35,6 @@ from provisa.core.repositories import relationship as rel_repo
 from provisa.core.repositories import source as source_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.repositories import tag as tag_repo
-from provisa.core.repositories.domain import DomainDeleteRefused
 from provisa.core.repositories.retirement import RetiredNameTaken
 from provisa.core.schema_org import (
     domains,
@@ -178,36 +177,27 @@ async def _retired_in_own_domain(conn, *columns: str) -> int:
     return table_id
 
 
-async def _delete_holder(
-    conn, holder: str
-) -> DomainDeleteRefused | source_repo.SourceDeleteRefused:
-    """Delete the domain or the source holding the retired table; the refusal it raises."""
-    if holder == "domain":
-        with pytest.raises(DomainDeleteRefused) as refused:
-            await domain_repo.delete(conn, "archive")
-        assert await domain_repo.get(conn, "archive") is not None
-    else:
-        with pytest.raises(source_repo.SourceDeleteRefused) as refused:
-            await source_repo.delete(conn, "archive-pg")
-        assert await source_repo.get(conn, "archive-pg") is not None
-    return refused.value
-
-
 @pytest.mark.parametrize("holder", ["domain", "source"])
 @pytest.mark.parametrize("columns", [("id", "amount"), ()], ids=["with columns", "no columns"])
-async def test_a_domain_or_source_holding_only_a_retired_table_is_kept(plane, holder, columns):
-    """Maintainer 2026-11-15 (REQ-2248): a retired table still holds its domain and its source --
-    a domain has no retired state, and a domain that still holds a table, retired or not, is kept;
-    a source the same. The delete is refused naming the retired table, and nothing is removed:
-    the table and its columns are not cascaded away."""
+async def test_a_domain_or_source_holding_only_a_retired_table_is_retired_with_it(
+    plane, holder, columns
+):
+    """REQ-2248 (amended 2026-11-15, DELETING A SOURCE OR A DOMAIN RETIRES IT): a retired table
+    -- its columns included, which are not marked themselves -- blocks nothing, so the delete
+    retires the domain or source together with it, and nothing is removed: the table and its
+    columns are kept, retired, under the retired holder."""
+    repo = domain_repo if holder == "domain" else source_repo
+    held_by = "domain_id" if holder == "domain" else "source_id"
     async with model_change.scope("delete", actor=lambda: "ada"), plane.acquire() as conn:
         ledger = await _retired_in_own_domain(conn, *columns)
-        refused = await _delete_holder(conn, holder)
-        assert refused.reason == "dependents"
-        assert [(d.ref.kind, d.ref.id, d.retired) for d in refused.dependents] == [
-            ("table", ledger, True)
-        ]
-        _assert_retired(await _row(conn, registered_tables, registered_tables.c.id == ledger))
+        held_id = "archive" if holder == "domain" else "archive-pg"
+        assert await repo.delete(conn, held_id, reason=WHY) is True
+        [retired] = await repo.list_all(conn, retired=True)
+        _assert_retired(retired)
+        assert retired["retired_id"] == held_id
+        table = await _row(conn, registered_tables, registered_tables.c.id == ledger)
+        _assert_retired(table)
+        assert table[held_by] == retired["id"]
         kept = await conn.execute_core(
             select(table_columns.c.column_name).where(table_columns.c.table_id == ledger)
         )

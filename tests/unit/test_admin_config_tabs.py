@@ -85,7 +85,10 @@ def org_overrides(monkeypatch):
     monkeypatch.setattr(org_secrets_mod, "write_org_secret", _write_secret)
     monkeypatch.setattr(
         "provisa.api.app.state",
-        types.SimpleNamespace(model_db=(_one_db := object()), tenant_db=_one_db),
+        # multitenancy: what a key variable's read asks of the deployment (REQ-1557).
+        types.SimpleNamespace(
+            model_db=(_one_db := object()), tenant_db=_one_db, multitenancy=False
+        ),
         raising=False,
     )
     return store

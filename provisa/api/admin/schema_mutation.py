@@ -3226,7 +3226,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
 
         # The token as typed: a value, or a reference resolved in the org's vault.
         async with bound_to_request_org():
-            resolved = resolve_secrets(token)
+            resolved = resolve_secrets(token, credential=True)
         try:
             staged_root = await stage_dataset(resolved, owner, ref)
         except UnsupportedKaggleDataset as exc:
@@ -3305,7 +3305,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 params={"owner": owner, "ref": ref},
             )
         async with bound_to_request_org():
-            token = resolve_secrets(row["password_ref"])
+            token = resolve_secrets(row["password_ref"], credential=True)
         # REQ-1787: skip the re-download (and the pgwire endpoint teardown it would otherwise
         # force) when Kaggle has nothing newer than what's already on disk -- the staged files'
         # own mtime IS the "last refreshed at" record; no separate timestamp needs to be stored.
@@ -3543,7 +3543,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         port=input.port,
                         database=input.database,
                         user=input.username,
-                        password=resolve_secrets(password_ref),
+                        password=resolve_secrets(password_ref, credential=True),
                         # The connection extras the standard arguments cannot carry (an Exasol
                         # certificate pin, a warehouse's account/http_path), as create_source's
                         # pool and the boot pool pass them: without them an edited source dialled
@@ -3934,8 +3934,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
     async def restore_model_object(
         self, info: StrawberryInfo, kind: str, key: str
     ) -> MutationResult:  # REQ-2248
-        """Restore a retired table, column, relationship, tag or metric (``kind``) named by
-        ``key`` as the retired listing names it: the same object, served again."""
+        """Restore a retired source, domain, table, column, relationship, tag or metric
+        (``kind``) named by ``key`` as the retired listing names it: the same object, served
+        again; a source or domain at the id it had, with its tables."""
         pool = await _get_pool()
         async with pool.acquire() as conn:
             _conn = cast("Connection", conn)

@@ -6215,6 +6215,7 @@
   "fr/serverErrors.json::serverErrors.discovery.schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
   "fr/serverErrors.json::serverErrors.discovery.source_not_found": "Source '{{source_id}}' not found",
   "fr/serverErrors.json::serverErrors.discovery.table_id_required": "table_id required for table scope",
+  "fr/serverErrors.json::serverErrors.discovery.table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
   "fr/serverErrors.json::serverErrors.discovery.unknown_source_type": "Unknown source type: {{type}}",
   "fr/serverErrors.json::serverErrors.engine.write_conflict": "Another change to the same data was written at the same time. Try again.",
   "fr/serverErrors.json::serverErrors.entitlements.blank_identifier": "An entry cannot be blank.",
@@ -6605,6 +6606,8 @@
   "fr/serverErrors.json::serverErrors.schema.webhook_not_found": "Webhook '{{webhook}}' not found",
   "fr/serverErrors.json::serverErrors.schema.write_grant_invalid": "This grant does not fit the table: {{reason}}",
   "fr/serverErrors.json::serverErrors.schema.write_grants_saved": "Write grants of table {{id}} saved",
+  "fr/serverErrors.json::serverErrors.secrets.env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
+  "fr/serverErrors.json::serverErrors.secrets.env_reference_refused": "{{name}} is a variable of the server's own environment, which this organization does not hold. Store the value as an organization secret and reference the secret instead.",
   "fr/serverErrors.json::serverErrors.secrets.name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
   "fr/serverErrors.json::serverErrors.secrets.name_too_long": "{{name}} is too long a name: with this organization's prefix it is {{length}} characters, and {{service}} takes at most {{limit}}",
   "fr/serverErrors.json::serverErrors.secrets.org_not_found": "Organization '{{org_id}}' not found",
@@ -10665,5 +10668,14 @@
   "fr/serverErrors.json::serverErrors.schema.code_resolver_not_found": "Code resolver '{{resolver}}' not found",
   "fr/serverErrors.json::serverErrors.schema.code_resolver_saved": "Code resolver '{{resolver}}' saved",
   "fr/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
-  "fr/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+  "fr/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+  "fr/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
+  "fr/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
+  "fr/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
+  "fr/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+  "fr/serverErrors.json::serverErrors.discovery.run_not_found": "Discovery run {{run_id}} not found",
+  "fr/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
+  "fr/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+  "fr/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
+  "fr/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
 }

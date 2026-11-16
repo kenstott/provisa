@@ -244,7 +244,7 @@ async def superuser_login(body: SuperuserLoginRequest):
     if su_config is None:
         raise ApiError(404, "auth.superuser_not_configured", "No superuser is configured")
     raw_secret = auth_cfg.get("jwt_secret")
-    secret = resolve_secrets(raw_secret) if raw_secret else None
+    secret = resolve_secrets(raw_secret, credential=True) if raw_secret else None
     try:
         with login_attempt(body.username, body.password):
             token = issue_superuser_session(body.username, body.password, su_config, secret)

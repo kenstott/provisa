@@ -108,7 +108,30 @@ def _require_an_import_right(request: Request) -> None:
 
 def _require_section_rights(request: Request, config: ProvisaConfig) -> None:
     """Refuse an apply declaring an object whose own right the caller lacks, naming each."""
-    declared = _declared_sections(config)
+    _require_rights_of(request, _declared_sections(config))
+
+
+def _require_section_rights_as_written(request: Request, raw: dict) -> None:
+    """REQ-1557: the same refusal, asked of the document as written, before anything in it is
+    resolved: its sections as the loader will read them (``config_loader.sections_as_written``)."""
+    from provisa.core.config_loader import sections_as_written
+
+    written = sections_as_written(raw)
+    _require_rights_of(
+        request,
+        [
+            section
+            for section in SECTION_RIGHTS
+            if (
+                (written.get("naming") or {}).get("rules")
+                if section == "naming"
+                else written.get(section)
+            )
+        ],
+    )
+
+
+def _require_rights_of(request: Request, declared: list[str]) -> None:
     missing = sorted(
         {r for s in declared for r in SECTION_RIGHTS[s] if not has_capability_request(request, r)}
     )
@@ -363,7 +386,10 @@ async def _require_residency_of_import(request: Request, conn, config: ProvisaCo
     from provisa.security.residency import CREATED, ResidencyRefused
 
     held_sources = {
-        r.id: r.region for r in (await conn.execute_core(select(sources.c.id, sources.c.region)))
+        r.id: r.region
+        for r in await conn.execute_core(
+            select(sources.c.id, sources.c.region).where(sources.c.retired.is_(False))  # REQ-2248
+        )
     }
     t = registered_tables
     held_tables = {
@@ -438,10 +464,19 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
         raise ApiError(400, "import.bad_yaml", f"config is not valid YAML: {exc}") from exc
     if not isinstance(raw, dict):
         raise ApiError(400, "import.bad_yaml", "config must be a YAML mapping")
+    # REQ-1557: the caller's rights, then the document's references, before anything in it is
+    # resolved.
+    from provisa.core.config_loader import invalid_text
+    from provisa.core.env_reference_guard import refuse_entered
+
     try:
+        _require_section_rights_as_written(request, raw)
+        refuse_entered(raw)
         config = parse_config_dict(raw)
     except ValueError as exc:
-        raise ApiError(400, "import.invalid_config", f"config is not valid: {exc}") from exc
+        raise ApiError(
+            400, "import.invalid_config", f"config is not valid: {invalid_text(exc, raw)}"
+        ) from exc
     except KeyError as exc:
         # A reference the deployment cannot resolve, such as a handler URL's environment variable
         # the report named to set before applying (REQ-417): the administrator's to supply.

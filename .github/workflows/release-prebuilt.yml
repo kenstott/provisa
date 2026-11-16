@@ -165,6 +165,10 @@ jobs:
           ( cd provisa-ui && npm run build )
           cp -r provisa-ui/dist/. static/
 
+      # The app image takes Pyodide from this directory, not from its CDN mid-build.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Pull core images and build zaychik
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
@@ -202,7 +206,9 @@ jobs:
           docker save --platform linux/arm64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
           # App image in the core-images tarball so the Docker tier can docker load it
           # on demand (macOS/arm64) — no in-VM/host build needed.
-          docker build --platform linux/arm64 -t provisa/provisa:local .
+          docker build --platform linux/arm64 \
+            --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS" \
+            -t provisa/provisa:local .
           docker save --platform linux/arm64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       # REQ-2071: provisa depends on provisa-notebook, which PyPI does not have until the release
@@ -219,6 +225,8 @@ jobs:
             -v "$PWD:/src:ro" \
             -v "$PWD/provisa-wheel:/provisa-wheel:ro" \
             -v "$PWD/provisa-wheels:/wheels" \
+            -v "$PROVISA_NOTEBOOK_DOWNLOADS:/pyodide-downloads" \
+            -e PROVISA_NOTEBOOK_DOWNLOADS=/pyodide-downloads \
             python:3.12-slim \
             bash -c "cp -r /src /tmp/build && cd /tmp/build && pip install -q build \
               && (cd provisa-notebook && python -m provisa_notebook.build > /dev/null) \
@@ -295,6 +303,10 @@ jobs:
           ( cd provisa-ui && npm run build )
           cp -r provisa-ui/dist/. static/
 
+      # The app image takes Pyodide from this directory, not from its CDN mid-build.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       - name: Pull core images (amd64), build zaychik and provisa
         run: |
           # pipefail: a failed `docker save` piped into gzip otherwise ships a truncated image.
@@ -329,7 +341,9 @@ jobs:
           tar -czf "trino-image/${{ needs.metadata.outputs.trino_image_amd64_name }}" -C trino-inner trino-481.tar.gz
           docker build --platform linux/amd64 -t provisa/zaychik:local ./zaychik
           docker save --platform linux/amd64 provisa/zaychik:local | gzip -9 > images/zaychik-local.tar.gz
-          docker build --platform linux/amd64 -t provisa/provisa:local .
+          docker build --platform linux/amd64 \
+            --build-context pyodide-downloads="$PROVISA_NOTEBOOK_DOWNLOADS" \
+            -t provisa/provisa:local .
           docker save --platform linux/amd64 provisa/provisa:local | gzip -9 > images/provisa-local.tar.gz
 
       - name: Upload amd64 core image tarballs

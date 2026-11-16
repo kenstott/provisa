@@ -873,7 +873,7 @@ def make_connect(state: Any) -> Connect:
             if settings.refresh_token is None:
                 return None
             async with secrets_store.bound(state.admin_db, org_id):
-                return resolve_secrets(settings.refresh_token)
+                return resolve_secrets(settings.refresh_token, credential=True)
 
         def signed_in() -> str:
             # Called from the thread that reads Graph; the store is the loop's.

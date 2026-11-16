@@ -65,7 +65,7 @@ def test_delta_connector_identity():
 def test_details_emits_delta_scan_view_over_source_path():
     details = DuckDBDeltaConnector().details(_src("orders", path="s3://bucket/orders"))
     assert details == {
-        "view_ddl": "CREATE VIEW orders AS SELECT * FROM delta_scan('s3://bucket/orders')"
+        "view_ddl": "CREATE VIEW \"orders\" AS SELECT * FROM delta_scan('s3://bucket/orders')"
     }
 
 
