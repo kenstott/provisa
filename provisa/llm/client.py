@@ -48,23 +48,6 @@ CALL_TIMEOUT_S = 300.0
 _ANTHROPIC_SECONDS_PER_TOKEN = 3600 / 128_000
 _ANTHROPIC_WHOLE_REQUEST_S = 600.0
 
-#: The environment variable aisuite reads each key-taking vendor's key from, when the caller
-#: resolved none (provisa.core.org_secrets.LLM_VENDORS).
-_KEY_ENV = {
-    "anthropic": "ANTHROPIC_API_KEY",
-    "openai": "OPENAI_API_KEY",
-    "cohere": "CO_API_KEY",
-    "groq": "GROQ_API_KEY",
-    "mistral": "MISTRAL_API_KEY",
-    "xai": "XAI_API_KEY",
-    "deepseek": "DEEPSEEK_API_KEY",
-    "together": "TOGETHER_API_KEY",
-    "fireworks": "FIREWORKS_API_KEY",
-    "nebius": "NEBIUS_API_KEY",
-    "sambanova": "SAMBANOVA_API_KEY",
-    "inception": "INCEPTION_API_KEY",
-}
-
 #: What a vendor's ``finish_reason`` says of an answer that stopped at ``max_tokens``.
 _CUT_OFF_REASONS = frozenset({"length", "max_tokens"})
 #: The host of an OpenAI-wire endpoint that takes OpenRouter's ``reasoning`` request object.
@@ -127,6 +110,10 @@ def failure(exc: BaseException) -> dict[str, Any]:
         }
     if isinstance(exc, LLMEmptyResponseError):
         return {"code": "llm.empty_answer", "params": {}, "message": "The model returned no text."}
+    from provisa.core.org_secrets import AiKeyRequired
+
+    if isinstance(exc, AiKeyRequired):
+        return {"code": exc.code, "params": exc.params, "message": str(exc)}
     reason = str(exc) or type(exc).__name__
     return {
         "code": "llm.request_failed",
@@ -187,11 +174,10 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
 
             cfg = merge_org_overrides(cfg, defaults_for(current_org.get()))
 
-        # REQ-1395, REQ-1398: an org's own per-vendor API keys (provisa.core.org_secrets),
-        # keyed by vendor name, when the caller resolved them for the acting org. Vendors with
-        # no key configured here (e.g. a local ollama/lmstudio endpoint) fall through to
-        # aisuite's own env/config resolution.
-        self._api_keys = api_keys
+        # REQ-1395, REQ-1398: the org's own per-vendor API keys (provisa.core.org_secrets), keyed
+        # by vendor name, as the caller read them for the acting org; a path with no org bound
+        # passes none. The key a call is made with is org_secrets.provider_key's answer.
+        self._api_keys: dict[str, str] = api_keys or {}
         # REQ-464: kept to answer the model's limits (provisa.llm.limits), the org's overrides
         # being in this same resolved config.
         self._config = cfg
@@ -265,12 +251,19 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         return None if self._vendor_key_problem(self._fallback_vendor) is None else primary
 
     def _vendor_key_problem(self, vendor: str) -> str | None:
-        if (self._api_keys or {}).get(vendor):
+        if self._api_keys.get(vendor):
             return None
         endpoint = self._endpoints.get(vendor)
-        env = endpoint.get("api_key_env") if endpoint is not None else _KEY_ENV.get(vendor)
-        if endpoint is not None:
-            _refuse_key_variable_of_held_org(env)  # REQ-1557
+        if endpoint is None:
+            from provisa.core.org_secrets import AiKeyRequired, provider_key
+
+            try:
+                provider_key(self._api_keys, vendor)
+            except AiKeyRequired:
+                return f"{vendor} has no API key"
+            return None
+        env = endpoint.get("api_key_env")
+        _refuse_key_variable_of_held_org(env)  # REQ-1557
         if not env or os.environ.get(env):
             return None
         return f"{vendor} has no API key"
@@ -367,7 +360,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             # reason to try the call unauthenticated.
             # The key the caller resolved for this endpoint, by its id (the org's vendor keys carry a
             # sandbox's tier endpoint's, REQ-2006); else its api_key_env, an env-var name.
-            key = (self._api_keys or {}).get(vendor)
+            key = self._api_keys.get(vendor)
             if key is None and endpoint.get("api_key_env"):
                 _refuse_key_variable_of_held_org(endpoint["api_key_env"])  # REQ-1557
                 key = os.environ.get(endpoint["api_key_env"])
@@ -377,11 +370,18 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
                         "is not set"
                     )
             provider_vendor = endpoint["style"]
+            from provisa.core.org_secrets import endpoint_provider_key
+
             provider_cfg: dict = {"base_url": endpoint["base_url"]}
+            key = endpoint_provider_key(key)
             if key:
                 provider_cfg["api_key"] = key
         else:
-            key = (self._api_keys or {}).get(vendor)
+            from provisa.core.org_secrets import provider_key
+
+            # REQ-1395: the org's stored key, or on an install of one organization the
+            # deployment's; refused before anything is sent when there is none.
+            key = provider_key(self._api_keys, vendor)
             provider_vendor = vendor
             provider_cfg = {"api_key": key} if key else {}
         model_id = self._make_aisuite_model_id(provider_vendor, model)

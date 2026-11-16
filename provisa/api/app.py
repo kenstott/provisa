@@ -4872,6 +4872,17 @@ def create_app() -> FastAPI:
 
         return secret_name_refused_response(exc)
 
+    from provisa.core.org_secrets import AiKeyRequired as _AiKeyRequired
+
+    @app.exception_handler(_AiKeyRequired)
+    async def _ai_key_required_handler(_req: _Request, exc: _AiKeyRequired):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1395: an AI call with no key to make it with (on a server of many organizations,
+        # none the organization stored). 409: nothing was sent; the answer says where to add one.
+        return _JSONResponse(
+            status_code=409,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
 
     from provisa.compiler.complexity import ComplexityLimitExceeded as _ComplexityLimitExceeded

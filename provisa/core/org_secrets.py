@@ -30,6 +30,8 @@ copy of its vendor key here, and rotating the vault entry rotates what the LLM c
 
 from __future__ import annotations
 
+import os
+from collections.abc import Mapping
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -176,17 +178,131 @@ async def write_org_secret(
         )
 
 
-async def resolve_jev_api_key(model_db: "Database | None") -> str | None:
-    """The Jev (TypeSafe AI) API key: the acting org's own key if it set one, else the
-    deployment's ``TYPESAFEAI_API_KEY`` env var, else ``None`` (Jev unavailable).
+#: The name the Jev key is resolved by, beside the model vendors' (it is no chat vendor).
+JEV = "jev"
 
-    No silent invention of a key: callers that get ``None`` back must skip the Jev-assisted
-    path entirely rather than guessing a credential.
-    """
-    import os
+#: The environment variable an install of one organization reads each AI key from when the
+#: organization stored none: aisuite's own name for each key-taking vendor, and Jev's. Read
+#: here and nowhere else (:func:`ai_key_or_none`).
+AI_KEY_ENV: dict[str, str] = {
+    "anthropic": "ANTHROPIC_API_KEY",
+    "openai": "OPENAI_API_KEY",
+    "cohere": "CO_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "mistral": "MISTRAL_API_KEY",
+    "xai": "XAI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY",
+    "together": "TOGETHER_API_KEY",
+    "fireworks": "FIREWORKS_API_KEY",
+    "nebius": "NEBIUS_API_KEY",
+    "sambanova": "SAMBANOVA_API_KEY",
+    "inception": "INCEPTION_API_KEY",
+    JEV: "TYPESAFEAI_API_KEY",
+}
 
-    if model_db is not None:
-        org_key = await read_org_secret(model_db, JEV_SECRET_KEY)
-        if org_key:
-            return org_key
-    return os.environ.get("TYPESAFEAI_API_KEY") or None
+#: aisuite's vendors that take no credential at all: a local server.
+KEYLESS_VENDORS: frozenset[str] = frozenset({"ollama", "lmstudio"})
+
+#: Where an organization adds an AI key, as the refusals say it.
+WHERE_TO_ADD_AI_KEY = "Admin, AI Models"
+
+
+class AiKeyRequired(Exception):
+    """An AI call was asked with no key to make it with. ``code`` and ``params`` are what the
+    caller is answered with (HTTP 409, ``provisa.api.app``); nothing was sent to the vendor."""
+
+    def __init__(self, vendor: str, code: str, message: str) -> None:
+        super().__init__(message)
+        self.vendor = vendor
+        self.code = code
+        self.params = {"vendor": vendor, "where": WHERE_TO_ADD_AI_KEY}
+
+
+def _no_key(vendor: str) -> AiKeyRequired:
+    return AiKeyRequired(
+        vendor,
+        "ai.key_required",
+        f"{vendor} has no API key. Add one under {WHERE_TO_ADD_AI_KEY}.",
+    )
+
+
+def ai_key_or_none(stored: Mapping[str, str], vendor: str) -> str | None:
+    """The key ``vendor`` (a model vendor, or :data:`JEV`) is called with, given the keys the
+    organization stored (:func:`read_org_api_keys`): the stored one; None when there is none to
+    use. Whether a vendor is shown as having a key and whether a call to it is made are both
+    this answer, so the two never differ."""
+    key = stored.get(vendor)
+    if key:
+        return key
+    from provisa.core.secrets_providers import many_organisations
+
+    if many_organisations():
+        return None
+    # REQ-1395 as amended 2026-11-16 requires this read: an install of one organization keeps
+    # using the deployment's environment variable when the organization stored no key. On a
+    # server of many organizations it is never read.
+    variable = AI_KEY_ENV.get(vendor)
+    return (os.environ.get(variable) or None) if variable else None
+
+
+def ai_key(stored: Mapping[str, str], vendor: str) -> str:
+    """The key ``vendor`` is called with (:func:`ai_key_or_none`); refused when there is none."""
+    key = ai_key_or_none(stored, vendor)
+    if key is None:
+        raise _no_key(vendor)
+    return key
+
+
+def provider_key(stored: Mapping[str, str], vendor: str) -> str | None:
+    """The ``api_key`` one of aisuite's named vendors is constructed with. None for a vendor
+    that takes none from here: a local server (:data:`KEYLESS_VENDORS`), and on an install of
+    one organization a vendor reached with the deployment's own credentials (Vertex AI, Bedrock
+    and the like), which aisuite reads itself. On a server of many organizations those
+    credentials are the server's, so such a vendor is refused."""
+    if vendor in AI_KEY_ENV:
+        return ai_key(stored, vendor)
+    key = stored.get(vendor)
+    if key:
+        return key
+    from provisa.core.secrets_providers import many_organisations
+
+    if vendor in KEYLESS_VENDORS or not many_organisations():
+        return None
+    raise AiKeyRequired(
+        vendor,
+        "ai.vendor_uses_server_credentials",
+        f"{vendor} is reached with the server's own credentials, which an organization on this "
+        f"server does not use. Choose a vendor that takes a key, or an AI endpoint, under "
+        f"{WHERE_TO_ADD_AI_KEY}.",
+    )
+
+
+#: What an endpoint that checks no key is constructed with: no credential, and it keeps the
+#: vendor's SDK from reading one out of the environment.
+NO_KEY = "not-required"
+
+
+def endpoint_provider_key(key: str | None) -> str | None:
+    """The ``api_key`` an AI endpoint's provider is constructed with: its own key. With none, on
+    a server of many organizations, :data:`NO_KEY`: a vendor's SDK constructed with no key reads
+    the vendor's from the environment, and would send the server's to the endpoint's address."""
+    from provisa.core.secrets_providers import many_organisations
+
+    if key or not many_organisations():
+        return key
+    return NO_KEY
+
+
+async def _stored_ai_keys(model_db: "Database | None") -> dict[str, str]:
+    """The organization's stored AI keys; none where no model store is bound."""
+    return await read_org_api_keys(model_db) if model_db is not None else {}
+
+
+async def org_ai_key_or_none(model_db: "Database | None", vendor: str) -> str | None:
+    """:func:`ai_key_or_none` for the organization whose model store this is."""
+    return ai_key_or_none(await _stored_ai_keys(model_db), vendor)
+
+
+async def org_ai_key(model_db: "Database | None", vendor: str) -> str:
+    """:func:`ai_key` for the organization whose model store this is."""
+    return ai_key(await _stored_ai_keys(model_db), vendor)
