@@ -37,11 +37,6 @@ _UTC = datetime.timezone.utc
 _TZ = "timestamp with time zone"
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _one(runtime: ClickHouseFederationRuntime, sql: str) -> Any:
     ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     return value

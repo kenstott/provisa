@@ -111,11 +111,6 @@ def pgwire() -> Iterator[int]:
     server.shutdown()
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 @pytest.fixture
 def conn(pgwire: int, runtime: ClickHouseFederationRuntime) -> Iterator[psycopg.Connection]:
     """A pgwire session served by the embedded ClickHouse, each statement transpiled for it."""

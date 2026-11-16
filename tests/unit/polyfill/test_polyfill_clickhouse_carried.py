@@ -181,11 +181,6 @@ RAISED = [
 ]
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
     ((value,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     return value

@@ -608,16 +608,15 @@ export function SourcesPage() {
     setShowForm(false);
   };
 
-  // The source the short create step just made is selected and its detail opens in edit, with
-  // everything the step did not ask for at its default: read from the list as it is now.
-  // REQ-2234: the panel opens first on registering its tables; the edit is there once that
-  // step closes.
+  // The source the short create step just made is selected. It is saved, so its detail is the
+  // read view, seeded from the list as it is now; its edit form opens on Edit alone.
+  // REQ-2234: the panel opens first on registering its tables, then on Your data, shown over
+  // the read view: skipping or closing either leaves the source read.
   const [afterSave, setAfterSave] = useState<string | null>(null);
   const openCreated = async (id: string) => {
     const fresh = await refetchSources();
-    const made = fresh.data?.sources.find((x) => x.id === id);
-    if (made) {
-      handleEdit(made);
+    if (fresh.data?.sources.some((x) => x.id === id)) {
+      updateExpanded(id);
       setAfterSave(id);
     }
   };
@@ -1780,6 +1779,7 @@ export function SourcesPage() {
                 }
                 // eslint-disable-next-line react-hooks/refs -- called on a press: the seed's generation ref is read then, and in the seed's promise, never while rendering
                 onEdit={() => handleEdit(s)}
+                // eslint-disable-next-line react-hooks/refs -- called on a press, as Edit is: the seed's generation ref is read then, never while rendering
                 onDuplicate={() => handleDuplicate(s)}
                 onNavigate={() => navigate(`/tables?source=${encodeURIComponent(s.id)}`)}
                 // REQ-2198: resolves once the list is read again without the source; the

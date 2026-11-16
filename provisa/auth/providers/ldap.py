@@ -226,6 +226,8 @@ class LdapAuthProvider(AuthProvider):  # REQ-1265
         return AuthIdentity(
             user_id=user_id,
             email=email,
+            # REQ-1261: the address is the directory's attribute, not the person's own entry.
+            email_verified=bool(email),
             display_name=display_name,
             roles=groups,
             raw_claims={"username": username, "dn": user.dn, "email": email, "groups": groups},

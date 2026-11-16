@@ -23,7 +23,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 
 const BATCH = 1000;
 // The protocol this host speaks (provisa/codesource/worker.py PROTOCOL).
-export const PROTOCOL = 4;
+export const PROTOCOL = 5;
 const IR_KEY = "provisa.ir";
 // REQ-2100: the field a loader call's row carries its key in.
 const KEY = "$key";

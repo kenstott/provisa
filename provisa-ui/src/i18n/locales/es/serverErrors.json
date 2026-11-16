@@ -163,7 +163,13 @@
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
       "vendor_has_no_key": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
-      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo."
+      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo.",
+      "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible."
+    },
+    "llm": {
+      "request_failed": "La solicitud al modelo falló: {{reason}}",
+      "no_answer_in_time": "El modelo no respondió en {{seconds}} segundos.",
+      "empty_answer": "El modelo no devolvió ningún texto."
     },
     "environments": {
       "in_use": "{{env}} sigue siendo referido por {{count}} elemento(s). Quite o cambie cada uno y vuelva a eliminarlo."
@@ -836,6 +842,10 @@
       "change_key_missing": "{{function}} devolvió una fila sin su columna de clave {{column}}",
       "change_key_repeated": "{{function}} devolvió la clave {{key}} dos veces en un mismo resultado",
       "change_cursor_backwards": "El cursor de {{function}} retrocedió: devolvió {{returned}}, anterior al almacenado {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "La comprobación previa de {{subject}} no se ejecutó: en esta organización solo se ejecuta en un proceso confinado, y no se pudo iniciar ninguno ({{reason}}).",
+      "confined_failed": "La comprobación previa de {{subject}} no devolvió ningún veredicto: su proceso confinado terminó antes ({{reason}})."
     }
   }
 }
