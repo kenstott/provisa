@@ -18,6 +18,7 @@ is returned as its text, which pgwire sends as the numeric PostgreSQL declares (
 
 from __future__ import annotations
 
+import decimal
 import functools
 import json
 import math
@@ -715,12 +716,26 @@ def numeric_lcm(a: str, b: str) -> str:
 _LARGEST_FACTORIAL = 32177
 
 
+def _product(low: int, high: int) -> Decimal:
+    """low * (low + 1) * ... * (high - 1), exactly, halves multiplied: libmpdec's fast product."""
+    if high - low < 8:  # noqa: PLR2004 -- a short run is multiplied in order
+        out = Decimal(1)
+        for i in range(low, high):
+            out *= i
+        return out
+    middle = (low + high) // 2
+    return _product(low, middle) * _product(middle, high)
+
+
 def numeric_factorial(n: int) -> str:
+    """numeric_fac's digits, as a Decimal: a Python int's text stops at 4300 digits (1754!)."""
     if n < 0:
         raise _error("22003", "factorial of a negative number is undefined")
     if n > _LARGEST_FACTORIAL:
         raise _error("22003", "value overflows numeric format")
-    return str(math.factorial(n))
+    with decimal.localcontext() as exact:
+        exact.prec, exact.Emax = decimal.MAX_PREC, decimal.MAX_EMAX
+        return str(_product(1, n + 1))
 
 
 def numeric_series(start: str, stop: str, step: str | None) -> list[str]:

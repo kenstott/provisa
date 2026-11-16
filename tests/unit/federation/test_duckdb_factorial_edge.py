@@ -17,6 +17,9 @@ maximum held the DuckDB server's GIL for good (J1367, D0)."""
 
 from __future__ import annotations
 
+import math
+import sys
+
 import duckdb
 import pytest
 
@@ -64,3 +67,19 @@ def test_negative_still_raises_postgresqls_error(con: duckdb.DuckDBPyConnection)
     sqlstate, message = _raised(con, -1)
     assert sqlstate == "22003"
     assert "factorial of a negative number is undefined" in message
+
+
+@pytest.mark.parametrize("n", [1755, 3249, 32177])
+def test_past_4300_digits_numerics_reach_is_answered(
+    con: duckdb.DuckDBPyConnection, n: int
+) -> None:
+    """Between 1755 and 32177 PostgreSQL answers every digit; a Python int's text stops at 4300."""
+    row = con.execute(f"SELECT provisa_factorial({n}::BIGINT)").fetchone()
+    assert row is not None
+    got, want = row[0], math.factorial(n)
+    limit = sys.get_int_max_str_digits()
+    sys.set_int_max_str_digits(0)
+    try:
+        assert got == str(want)
+    finally:
+        sys.set_int_max_str_digits(limit)

@@ -665,15 +665,20 @@ def _integer_bits(value: exp.Expr, typmod: exp.Expr) -> exp.Expr:
     return exp.Cast(this=padded, to=exp.DataType.build("BIT"))
 
 
+#: varbit.h's greatest bit string length: a longer typmod leaves the value as it is.
+VARBITMAXLEN = 2147483640
+
+
 def _bit_resized(value: exp.Expr, length: exp.Expr, explicit: exp.Expr) -> exp.Expr:
     """bit(bit, length, explicit), the cast to bit(n) as varbit.c's bit() makes it: unchanged for a
-    length of 0 or below or its own; an explicit cast truncates or pads with zeros on the right;
-    an implicit one of another length is PostgreSQL's 22026."""
+    length of 0 or below, past VARBITMAXLEN (INT_MAX - 7) or its own; an explicit cast truncates or
+    pads with zeros on the right; an implicit one of another length is PostgreSQL's 22026."""
     text = exp.Cast(this=value.copy(), to=exp.DataType.build("TEXT"))
     own = exp.Length(this=text.copy())
-    unchanged = exp.Or(
-        this=exp.LTE(this=length.copy(), expression=_number(0)),
-        expression=exp.EQ(this=own.copy(), expression=length.copy()),
+    unchanged = exp.or_(
+        exp.LTE(this=length.copy(), expression=_number(0)),
+        exp.GT(this=length.copy(), expression=_number(VARBITMAXLEN)),
+        exp.EQ(this=own.copy(), expression=length.copy()),
     )
     refused = sqlglot.parse_one(
         raising(
@@ -694,11 +699,22 @@ def _bit_resized(value: exp.Expr, length: exp.Expr, explicit: exp.Expr) -> exp.E
         ),
         read="postgres",
     )
+    # The padded length is 0 wherever the cast does not resize: an engine folds a constant RPAD
+    # whether or not its branch is taken, and RPAD to 2^31 bits takes the machine.
+    resized = exp.Case(
+        ifs=[
+            exp.If(
+                this=exp.and_(explicit.copy(), exp.Not(this=exp.Paren(this=unchanged.copy()))),
+                true=length.copy(),
+            )
+        ],
+        default=_number(0),
+    )
     cut = exp.Anonymous(
         this="RPAD",
         expressions=[
-            exp.Left(this=text.copy(), expression=length.copy()),
-            length.copy(),
+            exp.Left(this=text.copy(), expression=resized.copy()),
+            resized,
             exp.Literal.string("0"),
         ],
     )
