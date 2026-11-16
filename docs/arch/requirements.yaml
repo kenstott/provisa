@@ -81804,7 +81804,7 @@
   - tests/unit/test_mongodb_connection_string.py
   - provisa-ui/src/pages/sources/__tests__/mongoConnectionString.test.tsx
 - id: REQ-1986
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 3. Source Registration & Data Modeling
   category: Table Registration
@@ -81868,7 +81868,18 @@
     The parameter''s column in the result repeats the value that was asked; it is never assumed to be an
     attribute of the rows returned. The table''s metadata says, for each parameter, whether it is opaque
     or a real column of the table that the source requires a value for (a partition key, a column value),
-    whose meaning is known.'
+    whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION; A TABLE
+    ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This narrows A PARAMETERIZED TABLE STAYS A
+    TABLE: its first sentence, that such a table always stays a table, is [SUPERSEDED by this amendment];
+    the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold for every parameterized table
+    that exists. Every operation of a source that requires a parameter is a function: its parameters are
+    its arguments, it returns its rows, and it is always kept. A parameterized table is added for it, as
+    a view of that function, only as a help to clients that read tables and cannot call a function (BI tools
+    above all): when the operation returns objects of a type that no operation without a required parameter
+    returns. Where a plain list of the same type exists, that list is the table, it is the one counted,
+    profiled and discovered, and no parameterized table is created beside it. Whether two operations return
+    the same type is read from the source''s own schema, never guessed from column names. A steward may
+    add the parameterized table for an operation that did not get one.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
