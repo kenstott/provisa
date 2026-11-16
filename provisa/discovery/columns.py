@@ -14,6 +14,10 @@ Columns are compared, not tables, and only within a type group (:func:`type_grou
 group only where their classes intersect (:func:`classes_meet`). A column's classes are every kind
 the classifier matched, or only the steward's decided class where one is decided; a column with
 none has the class :data:`UNKNOWN`.
+
+A table that requires a parameter (REQ-1986) is never read: it takes part on what its registration
+says of it (:attr:`TableFacts.parameters`). Its columns have the class :data:`NOT_READ`, which
+meets every class, since no value was read to tell them apart.
 """
 
 # Requirements: REQ-413, REQ-2147
@@ -25,6 +29,9 @@ from dataclasses import dataclass, field
 
 #: The class of a column the classifier matched no kind for (REQ-413): two such columns meet.
 UNKNOWN = "unknown"
+#: The class of every column of a table that is never read (it requires a parameter): no value
+#: was read, so nothing is known of its classes and it is compared with every class.
+NOT_READ = "not_read"
 
 #: The type groups, each compared only with itself. A timestamp type is a group of its own.
 WHOLE = "whole_number"
@@ -82,6 +89,8 @@ class ColumnFacts:
     samples: tuple[str, ...]
     is_primary_key: bool
     groups: frozenset[str]
+    #: The parameter this column is, as a caller names it, when a read must give it a value.
+    required_parameter: str | None = None
 
 
 @dataclass(frozen=True)
@@ -97,6 +106,22 @@ class TableFacts:
     #: The recorded modeling role, ``fact`` or ``dimension``; None where none is recorded.
     role: str | None
     columns: tuple[ColumnFacts, ...] = field(default_factory=tuple)
+
+    @property
+    def parameters(self) -> tuple[tuple[str, str], ...]:
+        """The parameters a read of the table must give, each with its type. A table with any is
+        never read by discovery: no row count, no profile, no value of it is known."""
+        return tuple(
+            (c.required_parameter, c.data_type)
+            for c in self.columns
+            if c.required_parameter is not None
+        )
+
+    @property
+    def reduced(self) -> bool:
+        """Whether discovery works on reduced information for this table: it requires a
+        parameter, so only what its registration says is known."""
+        return bool(self.parameters)
 
     def column(self, name: str) -> ColumnFacts | None:
         return next((c for c in self.columns if c.name == name), None)
@@ -118,7 +143,10 @@ def classes_of(matched: set[str], decided: set[str]) -> tuple[str, ...]:
 
 
 def classes_meet(a: ColumnFacts, b: ColumnFacts) -> bool:
-    """Whether two columns' classes intersect: unknown meets unknown."""
+    """Whether two columns' classes intersect: unknown meets unknown. A column never read
+    (:data:`NOT_READ`) meets every column: no value was read that could tell them apart."""
+    if NOT_READ in a.classes or NOT_READ in b.classes:
+        return True
     return bool(set(a.classes) & set(b.classes))
 
 

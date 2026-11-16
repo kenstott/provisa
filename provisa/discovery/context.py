@@ -15,9 +15,13 @@ A table's context is its name, description, tags, role of fact or dimension, and
 its columns, those not compared included. A compared column's context is its name, description,
 classes, tags and sample values, never its type; a column with a sensitive class sends its class
 and no sample values. The prompt states that a shared pii tag alone is weak evidence.
+
+A table that requires a parameter is never read (REQ-1986): its context names its required
+parameters with their types and says its values were not read, and its columns send the class
+``not_read`` and no sample values.
 """
 
-# Requirements: REQ-413
+# Requirements: REQ-413, REQ-1986
 
 from __future__ import annotations
 
@@ -25,12 +29,12 @@ import json
 from collections.abc import Sequence
 from typing import Any
 
-from provisa.discovery.columns import ColumnFacts, TableFacts
+from provisa.discovery.columns import NOT_READ, ColumnFacts, TableFacts
 
 
 def table_context(table: TableFacts) -> dict[str, Any]:
     """A table's context. ``id`` is how an answer names the table."""
-    return {
+    out: dict[str, Any] = {
         "id": table.table_id,
         "name": table.table_name,
         "description": table.description,
@@ -38,6 +42,14 @@ def table_context(table: TableFacts) -> dict[str, Any]:
         "role": table.role,
         "columns": [c.name for c in table.columns],
     }
+    if table.reduced:
+        out["required_parameters"] = [
+            {"column": c.name, "parameter": c.required_parameter, "type": c.data_type}
+            for c in table.columns
+            if c.required_parameter is not None
+        ]
+        out["values"] = NOT_READ
+    return out
 
 
 def column_context(column: ColumnFacts) -> dict[str, Any]:
@@ -48,7 +60,7 @@ def column_context(column: ColumnFacts) -> dict[str, Any]:
         "classes": list(column.classes),
         "tags": list(column.tags),
     }
-    if not column.sensitive:
+    if not column.sensitive and NOT_READ not in column.classes:
         out["sample_values"] = list(column.samples)
     return out
 
@@ -87,9 +99,20 @@ _SHAPE = (
 )
 
 
-def instructions(group: str, at_most: int, *, either_direction: bool) -> str:
+_NOT_READ = (
+    "A table with required_parameters is read only when each is given a value, so none of "
+    "its values was read: its columns have the class 'not_read' and no sample values, and "
+    "are judged on their names, descriptions and tags alone. A required parameter is a "
+    "value a caller passes to read the table, and often names another table's key.\n"
+)
+
+
+def instructions(
+    group: str, at_most: int, *, either_direction: bool, not_read: bool = False
+) -> str:
     """The text around the windows. ``either_direction``: the two windows are drawn from one set
-    of tables, so a relationship may start in either."""
+    of tables, so a relationship may start in either. ``not_read``: a table of the windows
+    requires a parameter and was never read, and the text says how to judge it."""
     if either_direction:
         direction = (
             "Source and target are the same set of tables: a relationship may start in either "
@@ -108,6 +131,7 @@ def instructions(group: str, at_most: int, *, either_direction: bool) -> str:
         "names of all its columns; only its compared_columns may be proposed. A column's classes "
         "say what its values were recognised as; 'unknown' is a column none was recognised for. "
         "A column with a sensitive class shows its class and no sample values.\n"
+        f"{_NOT_READ if not_read else ''}"
         "A shared pii tag alone is weak evidence of a relationship.\n"
         f"{direction}\n"
         f"Propose at most {at_most} relationships, the strongest first.\n"
@@ -128,7 +152,8 @@ def prompt(
     """One request: the instructions, the source window and the target window. ``target`` None:
     the request compares one window with itself. ``either_direction``: source and target are one
     set of tables (the target is the same as the source)."""
-    parts = [instructions(group, at_most, either_direction=either_direction)]
+    not_read = any(b["table"].get("values") == NOT_READ for b in [*source, *(target or [])])
+    parts = [instructions(group, at_most, either_direction=either_direction, not_read=not_read)]
     if target is None:
         parts.append("## SOURCE and TARGET window\n" + render_window(source))
     else:

@@ -199,6 +199,11 @@ async def decide(
     if best.get(a, 0.0) != best.get(b, 0.0):
         return Decision(a if best.get(a, 0.0) > best.get(b, 0.0) else b, "confidence")
 
+    if tables[a[0]].reduced or tables[b[0]].reduced:
+        # REQ-1986: a table that requires a parameter is never read, so no sample of either
+        # column decides; the pair goes to the last rule.
+        return _fixed_order(tables, a, b)
+
     sa = await read_sample(tables[a[0]], a[1])
     sb = await read_sample(tables[b[0]], b[1])
     if sa.repeats and sb.repeats:
@@ -209,9 +214,36 @@ async def decide(
         evidence = f"{one[1]} unique in a sample of {sample.rows} rows"
         return Decision(start, "uniqueness_sample", evidence)
 
+    return _fixed_order(tables, a, b)
+
+
+def _fixed_order(tables: dict[int, TableFacts], a: ColumnRef, b: ColumnRef) -> Decision:
     ta, tb = tables[a[0]], tables[b[0]]
     first = a if (ta.domain_id, ta.table_name, a[1]) <= (tb.domain_id, tb.table_name, b[1]) else b
     return Decision(first, "fixed_order")
+
+
+def reduced_tables(p: Proposal, tables: dict[int, TableFacts]) -> list[str]:
+    """The tables of a semantic suggestion that were never read (each requires a parameter): the
+    suggestion was found on their registration alone, no value of theirs compared. A foreign key
+    is a declared constraint, found on no value, and has none."""
+    if p.kind != "semantics":
+        return []
+    ids = dict.fromkeys((p.start[0], p.end[0]))
+    return [tables[i].table_name for i in ids if tables[i].reduced]
+
+
+def _marked(p: Proposal, tables: dict[int, TableFacts]) -> Proposal:
+    """``p`` saying so when it was found on reduced information, for whoever reviews it."""
+    unread = reduced_tables(p, tables)
+    if not unread:
+        return p
+    note = (
+        f"no values were compared: {', '.join(unread)} "
+        f"{'requires a parameter and is' if len(unread) == 1 else 'require parameters and are'} "
+        "never read"
+    )
+    return replace(p, reasoning=f"{p.reasoning}; {note}" if p.reasoning else note)
 
 
 def _kept(proposals: Sequence[Proposal], decision: Decision) -> Proposal:
@@ -294,5 +326,5 @@ async def settle(
         elif p.edge in known.rejected:
             removed.rejected += 1
         else:
-            shown.append(p)
+            shown.append(_marked(p, tables))
     return Outcome(shown, removed, decided_by)

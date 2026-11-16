@@ -13,11 +13,12 @@
 The ``test`` instance: the smoke check's isolated instance of the default demo (native DuckDB
 engine, its own embedded PostgreSQL control plane, its own home and leased ports). The dialog asks
 for the request count as soon as it opens; for the demo's pet-store and shelter domains (API
-tables that need an argument, views, data-quality tables, SQLite tables) the count is answered
-with a count, never an unhandled server error.
+tables that require a parameter, views, data-quality tables, SQLite tables) the count is answered
+with a count, never an unhandled server error. A table that requires a parameter (REQ-1986) is
+counted and never read.
 """
 
-# Requirements: REQ-413
+# Requirements: REQ-413, REQ-1986
 
 from __future__ import annotations
 
@@ -91,7 +92,11 @@ def test_the_count_before_run_is_answered_for_the_demos_domains(instance: Instan
     resp = _count(instance, scope)
     assert resp.status_code == 200, f"{resp.status_code} {resp.text}\n{_log(instance)}"
     counted = resp.json()
+    print(f"count {scope['source_domains']} {scope['kinds']}: {counted}")
     assert counted["source_tables"] > 0
+    # Both domains hold API tables that require a parameter (get_order_by_id, animal_breed).
+    assert 0 < counted["tables_not_read"] < counted["source_tables"]
+    assert "ParameterRequired" not in _log(instance)
     assert counted["target_tables"] == counted["source_tables"]
     if "semantics" in scope["kinds"]:
         assert counted["requests"] >= 1

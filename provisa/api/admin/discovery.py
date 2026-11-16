@@ -493,10 +493,7 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
             "by_group": {},
             "suggestions_per_request": 0,
             "model": None,
-            "source_tables": len(prepared.source),
-            "target_tables": len(
-                prepared.target if prepared.target is not None else prepared.source
-            ),
+            **prepared.sizes(),
         }
     return count(prepared, model)
 

@@ -147,10 +147,16 @@ def at_most(output_tokens: int) -> int:
     return k
 
 
-def window_chars(input_tokens: int, group: str, k: int, *, either_direction: bool) -> int:
+def window_chars(
+    input_tokens: int, group: str, k: int, *, either_direction: bool, not_read: bool = False
+) -> int:
     """The characters one window may hold: the input limit in characters, less the instructions
-    and headers, shared by the two windows of a request."""
-    fixed = len(context.instructions(group, k, either_direction=either_direction)) + _HEADERS
+    and headers, shared by the two windows of a request. ``not_read``: a table of the run is
+    never read, so a request's instructions may carry the text saying so."""
+    fixed = (
+        len(context.instructions(group, k, either_direction=either_direction, not_read=not_read))
+        + _HEADERS
+    )
     room = (input_tokens * CHARS_PER_TOKEN - fixed) // 2
     if room < 1:
         raise NoRoomError(
@@ -206,9 +212,10 @@ def plan(
     either = target is None
     src = _ordered(source)
     tgt = src if target is None else _ordered(target)
+    not_read = any(t.reduced for t in [*src, *tgt])
     requests: list[Request] = []
     for group in GROUPS:
-        room = window_chars(input_tokens, group, k, either_direction=either)
+        room = window_chars(input_tokens, group, k, either_direction=either, not_read=not_read)
         s_windows = pack(src, group, room)
         if either:
             for i, a in enumerate(s_windows):
