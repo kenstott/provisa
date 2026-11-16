@@ -60,7 +60,7 @@ from provisa.transpiler.interval_input import (
     interval_read,
     rejected,
 )
-from provisa.transpiler.polyfill import instants, trino
+from provisa.transpiler.polyfill import clocks, instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.numbers import ch_fail
@@ -815,8 +815,8 @@ def _shifted(function: str, negate: bool) -> Callable[[_Sql, str, str], str]:
 
 # --- an interval and a time of day ---------------------------------------------------------------
 
-#: A time of day, held as ClickHouse's Time64(6): a NULL of it.
-_NULL_TIME = "accurateCastOrNull(NULL, 'Time64(6)')"
+#: A time of day, held as an Int64 of its microseconds of the day (polyfill.clocks): a NULL of it.
+_NULL_TIME = clocks.NULL_HELD
 #: A day's microseconds, signed: ClickHouse's remainder of an Int64 by a UInt64 is unsigned. Its
 #: remainder takes the dividend's sign, as C's does (r -= r / D * D in timestamp.c).
 _DAY = f"toInt64({_DAY_US})"
@@ -860,8 +860,9 @@ def _clock(argument: exp.Expr, untyped: bool) -> str | None:
 
 
 def _time_of(micros: str) -> str:
-    """A time of day of its microseconds, an Int64 in [0, a day): Time64(6), exact."""
-    return f"toTime64(toDecimal64({micros}, 6) / {_SECOND_US}, 6)"
+    """A time of day of its microseconds, an Int64 in [0, a day): held as that Int64
+    (polyfill.clocks), exact."""
+    return f"toInt64({micros})"
 
 
 def _time_moved(negate: bool) -> Callable[[_Sql, str, str], str]:
@@ -1228,6 +1229,8 @@ def _rows() -> dict[str, _Row]:
 
 _ROWS = _rows()
 _NAMES = frozenset(_ROWS)
+#: The rows whose answer is a time of day (held as polyfill.clocks holds one).
+_TIME_ANSWERS = frozenset({"time_pl_interval", "time_mi_interval", "interval_pl_time", "time"})
 
 #: PostgreSQL's operators of intervals, by sqlglot's node: the row each is, by its operands'
 #: kinds (unary minus has one).
@@ -1545,6 +1548,8 @@ def _rewrite(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
         tree = sql.parsed(sql.text(text) if shown else text)
         if found[1].interval and not shown:
             tree.meta[HELD] = True
+        if found[0] in _TIME_ANSWERS:
+            tree.meta[clocks.HELD] = True  # shown as its text where it reaches the client
         return tree
 
     rewrite.__doc__ = f"{name} of intervals held as Tuple(months, days, microseconds)."
@@ -1702,7 +1707,8 @@ for _name, _what, _summary in (
 _CLOCK_STATED = (
     " The time is read as a literal (hours and minutes, seconds, a fraction of up to six digits, "
     "24:00:00 the last) or a NULL; any other, and a time of a table's column, is refused by name. "
-    "A time answer is held as Time64(6), exact."
+    "A time answer is held as an Int64 of its microseconds of the day, exact, and shown in the "
+    "select list as time_out's text."
 )
 _MOVED_STATED = (
     _CLOCK_STATED + " The interval's microseconds are added in int64 as PostgreSQL's C adds them, "

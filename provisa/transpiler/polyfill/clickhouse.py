@@ -76,7 +76,7 @@ import re
 import sqlglot.expressions as exp
 
 from provisa.pgwire import function_types
-from provisa.transpiler.polyfill import dates, instants, trino
+from provisa.transpiler.polyfill import clocks, dates, instants, trino
 from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.server import plain
 from provisa.transpiler.polyfill.matching import graft
@@ -502,7 +502,7 @@ def _plain_cast(node: exp.Expr, *types: exp.DType) -> exp.Cast | None:
     return None
 
 
-def _clock_micros(text: str) -> int | None:
+def clock_micros(text: str) -> int | None:
     """The microseconds of the day of a time's text, as time_in reads it; None for a text not of
     hours, minutes, seconds and a fraction. A field out of range is PostgreSQL's 22008."""
     clock = _CLOCK_TEXT.fullmatch(text)
@@ -517,13 +517,6 @@ def _clock_micros(text: str) -> int | None:
     return micros
 
 
-def _clock_text(micros: int) -> str:
-    """A time of day's microseconds as time_out writes them: 24:00:00 the last."""
-    seconds, fraction = divmod(micros, _SECOND_US)
-    clock = f"{seconds // 3600:02d}:{seconds // 60 % 60:02d}:{seconds % 60:02d}"
-    return f"{clock}.{fraction:06d}" if fraction else clock
-
-
 def timed(node: exp.Expr, dialect: str) -> exp.Expr | None:
     """A text the statement writes cast to a time: its time of day as time_out writes it, which
     ClickHouse reads exactly; PostgreSQL's error of a field out of range, or a refusal by name of
@@ -532,7 +525,7 @@ def timed(node: exp.Expr, dialect: str) -> exp.Expr | None:
     text = None if cast is None else _text_of(cast.this)
     if cast is None or text is None:
         return None
-    micros = _clock_micros(text)
+    micros = clock_micros(text)
     if micros is None:
         raise Refused(
             Refusal(
@@ -541,7 +534,7 @@ def timed(node: exp.Expr, dialect: str) -> exp.Expr | None:
                 "seconds and a fraction is read",
             )
         )
-    written = _clock_text(micros)
+    written = clocks.text_of(micros)
     if written == text:
         return None  # ClickHouse reads it as it is (provisa.transpiler.transpile)
     return exp.Cast(this=exp.Literal.string(written), to=cast.to.copy())
@@ -564,8 +557,15 @@ TIME = Feature(
                     "A text the statement writes: hours, minutes, seconds and a fraction, each "
                     "field read as PostgreSQL reads it (a seventh fractional digit rounded, 24:00:00 "
                     "the last, a field out of range 22008); any other text (AM or PM, a zone, a "
-                    "date) is refused by name. Held as Time64(6). A text column's cast keeps "
-                    "ClickHouse's own read."
+                    "date) is refused by name. ClickHouse's server has no Time64: a time is held as "
+                    "an Int64 of its microseconds of the day (0 to 86400000000), compared as "
+                    "integers, and the select list, or a cast to text, shows it as time_out's text. "
+                    "24:00:00 is held and compared; pgwire reads no time of 24:00:00 back, so a "
+                    "column that shows it raises. A value whose type the statement does not say "
+                    "(a table's column) is read from its text at run time: a date before the clock "
+                    "is read past, up to six fractional digits; any other text raises 22007, a "
+                    "field past its range 22008, each without the value in its message. A "
+                    "timestamp is read as its wall time's time of day."
                 ),
             )
         },
