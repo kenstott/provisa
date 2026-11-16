@@ -13,6 +13,7 @@ import { LIVE_MODEL_YAML } from "./liveModel";
 import { startNeo4jContainer } from "./neo4j-container";
 import { startDemoSources } from "./demo-source-containers";
 import { resolveNeededSources } from "./resolve-needed-sources";
+import { warmViteModuleGraph } from "./warm-vite";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONFIG_PATH = path.resolve(__dirname, "../../config/provisa-install.yaml");
@@ -246,17 +247,14 @@ export default async function globalSetup() {
     }
   }
 
-  // Pre-warm the Vite dev server: fetch the root so Node compiles the full React bundle once
-  // before 6 workers all navigate concurrently. Without this, all 6 parallel worker processes
-  // trigger simultaneous heavy compilation of Monaco + Cytoscape + Istanbul-instrumented sources,
-  // spiking memory and potentially OOM-crashing the dev server even with the 4 GB heap cap.
-  // global-setup runs serially before any worker starts, so this single fetch amortises the
-  // compile cost across the whole suite rather than concentrating it at suite start.
-  try {
-    await fetch(UI_URL, { signal: AbortSignal.timeout(60000) });
-  } catch (err) {
-    // A connection error here means the Vite server is not up yet — Playwright's webServer
-    // waits for the port before calling globalSetup, so this should not happen.
-    throw new Error(`Vite dev server pre-warm fetch to ${UI_URL} failed`, { cause: err });
-  }
+  // Pre-warm the Vite dev server: every module of the app is fetched once, here, before any
+  // worker starts (warm-vite.ts). Fetching the page alone transforms nothing -- index.html only
+  // names /src/main.tsx -- and left the whole graph to the first test of each worker: run
+  // 43860857546, 42 s of a 120 s test before its first click, beside the same on the other worker.
+  const warmStart = Date.now();
+  const warmed = await warmViteModuleGraph(UI_URL, ["/@vite/client", "/src/main.tsx"]);
+  console.log(
+    `[global-setup] Vite dev server warmed: ${warmed} modules in ` +
+      `${((Date.now() - warmStart) / 1000).toFixed(1)} s`,
+  );
 }
