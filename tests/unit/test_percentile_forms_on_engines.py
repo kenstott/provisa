@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime
 import math
+from contextlib import closing
 
 import duckdb
 import pytest
@@ -112,8 +113,8 @@ def test_a_null_fraction_on_clickhouse_is_one_row_of_the_group(function: str, ro
         f"SELECT {function}(NULL::double precision) WITHIN GROUP (ORDER BY c) AS v "
         f"FROM (VALUES {rows}) AS t(c){where}"
     )
-    runtime = ClickHouseFederationRuntime.embedded()
-    assert list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()) == [(None,)]
+    with closing(ClickHouseFederationRuntime.embedded()) as runtime:
+        assert list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows()) == [(None,)]
 
 
 def test_trino_still_answers_a_null_fraction_array():

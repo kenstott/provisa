@@ -161,10 +161,15 @@
       "semantics_unavailable": "Semantiek kan niet worden uitgevoerd: {{model}}, het model dat aan relatie-inferentie is toegewezen, heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "table_id_required": "table_id vereist voor tabelbereik",
-      "table_unreadable": "Detectie kan de tabel {{table}} niet lezen: {{reason}}. Laat deze uit de gekozen tabellen weg, of corrigeer de tabel en probeer het opnieuw.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
       "vendor_has_no_key": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
-      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
+      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst."
+    },
+    "llm": {
+      "request_failed": "Het verzoek aan het model is mislukt: {{reason}}",
+      "no_answer_in_time": "Het model gaf binnen {{seconds}} seconden geen antwoord.",
+      "empty_answer": "Het model gaf geen tekst terug."
     },
     "environments": {
       "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
@@ -837,6 +842,10 @@
       "change_key_missing": "{{function}} gaf een rij terug zonder de sleutelkolom {{column}}",
       "change_key_repeated": "{{function}} gaf de sleutel {{key}} tweemaal terug in één resultaat",
       "change_cursor_backwards": "De cursor van {{function}} ging achteruit: {{returned}} werd teruggegeven, vóór de opgeslagen {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
+      "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
     }
   }
 }

@@ -161,10 +161,15 @@
       "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "table_id_required": "table_id obrigatório para escopo de tabela",
-      "table_unreadable": "A descoberta não consegue ler a tabela {{table}}: {{reason}}. Deixe-a fora das tabelas escolhidas, ou corrija-a e tente novamente.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_has_no_key": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
-      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível."
+    },
+    "llm": {
+      "request_failed": "A solicitação ao modelo falhou: {{reason}}",
+      "no_answer_in_time": "O modelo não respondeu em {{seconds}} segundos.",
+      "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
       "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
@@ -837,6 +842,10 @@
       "change_key_missing": "{{function}} devolveu uma linha sem a sua coluna de chave {{column}}",
       "change_key_repeated": "{{function}} devolveu a chave {{key}} duas vezes num mesmo resultado",
       "change_cursor_backwards": "O cursor de {{function}} retrocedeu: devolveu {{returned}}, anterior ao armazenado {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
+      "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
     }
   }
 }

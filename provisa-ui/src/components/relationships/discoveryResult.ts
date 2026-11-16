@@ -9,11 +9,13 @@
 // permission from the copyright holder.
 
 // REQ-413: what a discovery run found, in plain words: one line per kind it ran, and when
-// semantics found none, why; the requests split, the answers cut short and the requests that
-// failed; then what was left out, counted by kind.
+// semantics found none, why (every request failing is said as that, never as the model proposing
+// none); how many requests failed of those made, the requests split, the answers cut short and
+// each failed request in the product's own words; then what was left out, counted by kind.
 
 import type { TFunction } from "i18next";
 import type { DiscoveryReport, RemovedKind, SemanticsReport, TypeGroup } from "../../api/admin";
+import { serverMessage } from "../../i18n/serverMessage";
 
 /** The order the kinds left out are listed in. */
 const REMOVED_ORDER: RemovedKind[] = [
@@ -31,25 +33,39 @@ export function typeGroupLabel(group: TypeGroup, t: TFunction): string {
   return t(`discoverDialog.group.${group}`);
 }
 
+function emptyLine(s: SemanticsReport, t: TFunction): string {
+  switch (s.empty_reason) {
+    case "requests_failed":
+      return t("discoverResult.semanticsRequestsFailed", { count: s.failed.length });
+    case "unreadable":
+      return t("discoverResult.semanticsUnreadable");
+    case "none_proposed":
+      return t("discoverResult.semanticsNoneProposed");
+    case "below_threshold":
+      return t("discoverResult.semanticsBelowThreshold", {
+        threshold: Math.round(s.threshold * 100),
+      });
+    default:
+      return t("discoverResult.semanticsFiltered");
+  }
+}
+
 function semanticsLines(s: SemanticsReport, t: TFunction): string[] {
+  const failed = s.failed.length;
   const found =
-    s.suggested > 0
-      ? t("discoverResult.semanticsFound", { count: s.suggested })
-      : s.empty_reason === "unreadable"
-        ? t("discoverResult.semanticsUnreadable")
-        : s.empty_reason === "none_proposed"
-          ? t("discoverResult.semanticsNoneProposed")
-          : s.empty_reason === "below_threshold"
-            ? t("discoverResult.semanticsBelowThreshold", {
-                threshold: Math.round(s.threshold * 100),
-              })
-            : t("discoverResult.semanticsFiltered");
+    s.suggested > 0 ? t("discoverResult.semanticsFound", { count: s.suggested }) : emptyLine(s, t);
   return [
     found,
+    ...(failed > 0 && failed < s.requests_done
+      ? [t("discoverResult.partial", { failed, count: s.requests_done })]
+      : []),
     ...(s.split > 0 ? [t("discoverResult.split", { count: s.split })] : []),
     ...(s.cut_short > 0 ? [t("discoverResult.cutShort", { count: s.cut_short })] : []),
     ...s.failed.map((f) =>
-      t("discoverResult.failedRequest", { group: typeGroupLabel(f.group, t), error: f.error }),
+      t("discoverResult.failedRequest", {
+        group: typeGroupLabel(f.group, t),
+        message: serverMessage(f, f.message),
+      }),
     ),
   ];
 }

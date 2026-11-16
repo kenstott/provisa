@@ -108,7 +108,12 @@ def answered(monkeypatch):
         return 200, "application/json", json.dumps(replies[rest]).encode()
 
     monkeypatch.setattr(services_mod, "answer", answer)
-    monkeypatch.setattr("provisa.api.app.state", SimpleNamespace(admin_db=object()), raising=False)
+    # The state stood in for says what the deployment is: one organization, so a check runs here.
+    monkeypatch.setattr(
+        "provisa.api.app.state",
+        SimpleNamespace(admin_db=object(), multitenancy=False),
+        raising=False,
+    )
     token = set_current_org("acme")
     yield SimpleNamespace(seen=seen, replies=replies)
     reset_current_org(token)

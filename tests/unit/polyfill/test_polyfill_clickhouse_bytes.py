@@ -33,11 +33,6 @@ from provisa.transpiler.polyfill import GRID, bytea, trino
 from provisa.transpiler.transpile import transpile
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _held(value: Any) -> Any:
     """A bytea's answer as its bytes: the runtime reads a String that is valid UTF-8 as text."""
     return value.encode() if isinstance(value, str) else value

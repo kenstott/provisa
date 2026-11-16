@@ -17,6 +17,8 @@ direction rules in order, the removals, and Stop."""
 from __future__ import annotations
 
 import json
+from collections import Counter
+
 import pytest
 
 from provisa.discovery import context
@@ -49,7 +51,7 @@ from provisa.discovery.runner import Tally, execute
 from provisa.discovery.windows import (
     TOKENS_PER_SUGGESTION,
     at_most,
-    count_by_group,
+    bound,
     pack,
     plan,
     window_chars,
@@ -134,6 +136,32 @@ def test_a_zero_scale_decimal_is_compared_with_integers_and_with_decimals():
 def test_character_columns_are_text_and_a_text_based_subtype_is_not():
     assert type_groups("text", subtype=None, array_depth=0) == {TEXT}
     assert type_groups("text", subtype="inet", array_depth=0) == frozenset()
+
+
+@pytest.mark.parametrize(
+    ("spelled", "groups"),
+    [
+        ("varchar", {TEXT}),
+        ('varchar collate "default"', {TEXT}),
+        ('text collate "c"', {TEXT}),
+        ("VARCHAR(255)", {TEXT}),
+        ("character varying", {TEXT}),
+        ("int4", {WHOLE}),
+        ("decimal(10,2)", {DECIMAL}),
+        ("timestamp with time zone", {TIMESTAMPTZ}),
+        ("timestamp without time zone", {TIMESTAMP}),
+        ("double precision", frozenset()),
+        ("real", frozenset()),
+        ("inet", frozenset()),
+        ("oid", frozenset()),
+        ("", frozenset()),
+    ],
+)
+def test_a_column_is_grouped_by_the_type_its_sources_spelling_names(spelled, groups):
+    """A live source's column keeps the spelling its source reports: the default demo's string
+    columns are registered ``varchar`` and ``varchar collate "default"``, and took part in no
+    group while only the spelling ``text`` was a character type."""
+    assert type_groups(spelled, subtype=None, array_depth=0) == groups
 
 
 @pytest.mark.parametrize(
@@ -327,7 +355,9 @@ def test_the_request_count_is_given_by_group():
     t1 = tbl(1, "orders", col("id", pk=True), col("customer_ref", "uuid"), col("day", "date"))
     t2 = tbl(2, "customers", col("id", pk=True), col("ref", "uuid"))
     _, requests = plan([t1, t2], None, *DEFAULT_LIMITS)
-    assert count_by_group(requests) == {WHOLE: 1, UUID: 1}
+    assert Counter(r.group for r in requests) == {WHOLE: 1, UUID: 1}
+    # The count before Run: the one date column has nothing to be compared with.
+    assert bound([t1, t2], None, *DEFAULT_LIMITS)[1] == {WHOLE: 1, UUID: 1}
 
 
 # --- split and retry, request count, stop ----------------------------------------------------------
@@ -384,7 +414,7 @@ async def test_the_request_count_equals_the_requests_the_run_then_makes():
         return _answer([])
 
     tally, _ = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
-    assert len(asked) == len(requests) == sum(count_by_group(requests).values())
+    assert len(asked) == len(requests)
     assert tally.done == tally.total == len(requests)
 
 
@@ -477,7 +507,72 @@ async def test_one_failed_request_is_reported_and_the_rest_continue():
 
     tally, _ = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
     assert calls == len(requests)
-    assert tally.failed == [{"group": requests[0].group, "error": "vendor unavailable"}]
+    assert tally.failed == [
+        {
+            "group": requests[0].group,
+            "code": "llm.request_failed",
+            "params": {"reason": "vendor unavailable"},
+            "message": "The request to the model failed: vendor unavailable",
+        }
+    ]
+
+
+async def test_an_unreadable_answer_is_a_failed_request_with_its_own_message():
+    orders, customers = _pair_tables()
+    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+
+    tally, _ = await execute(
+        requests,
+        k,
+        4_096,
+        lambda p, m: Completion("no list here", "v", "m", None, False),
+        _Watcher(),
+        to_thread=_direct,
+    )
+    assert tally.unreadable == len(requests)
+    assert tally.failed[0] == {
+        "group": requests[0].group,
+        "code": "discovery.answer_unreadable",
+        "params": {},
+        "message": "The model's answer held no readable list.",
+    }
+
+
+async def test_a_request_in_flight_says_it_is_still_going_until_it_ends(monkeypatch):
+    import asyncio
+
+    from provisa.discovery import run as discovery_run
+
+    monkeypatch.setattr(discovery_run, "STILL_GOING_EVERY_S", 0.01)
+    said = 0
+
+    async def still_going() -> None:
+        nonlocal said
+        said += 1
+
+    async def work() -> str:
+        await asyncio.sleep(0.1)
+        return "answer"
+
+    assert await discovery_run.while_saying_still_going(work(), still_going) == "answer"
+    assert said >= 2
+
+
+async def test_a_run_that_has_ended_leaves_the_request_in_flight(monkeypatch):
+    import asyncio
+
+    from provisa.discovery import run as discovery_run
+
+    monkeypatch.setattr(discovery_run, "STILL_GOING_EVERY_S", 0.01)
+
+    class Ended(Exception):
+        pass
+
+    async def ended() -> None:
+        raise Ended
+
+    with pytest.raises(Ended):
+        await discovery_run.while_saying_still_going(asyncio.sleep(5), ended)
 
 
 async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_found():

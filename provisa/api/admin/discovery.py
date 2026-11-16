@@ -27,12 +27,10 @@ from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
 from provisa.discovery.collector import collect_fk_candidates, collect_metadata
-from provisa.discovery.gather import TableUnreadable
 from provisa.discovery.prompt import build_prompt
 from provisa.discovery import runs as runs_repo
 from provisa.discovery.run import (
     ChosenModel,
-    Prepared,
     RunSpec,
     choose_model,
     count,
@@ -358,30 +356,6 @@ async def _run_model(spec: RunSpec) -> ChosenModel | None:  # REQ-413, REQ-464
     return chosen
 
 
-async def _prepared(spec: RunSpec) -> tuple[ChosenModel | None, Prepared]:
-    model = await _run_model(spec)
-    try:
-        prepared = await prepare(state, spec, model)
-    except NoRoomError as exc:
-        raise ApiError(
-            422,
-            "discovery.model_has_no_room",
-            f"The model cannot hold a request: {exc}",
-            model=None if model is None else model.label,
-            reason=str(exc),
-        ) from exc
-    except TableUnreadable as exc:
-        raise ApiError(
-            422,
-            "discovery.table_unreadable",
-            f"Discovery cannot read the table {exc.table}: {exc.reason}. Leave it out of the "
-            "tables chosen, or correct it and try again.",
-            table=exc.table,
-            reason=exc.reason,
-        ) from exc
-    return model, prepared
-
-
 @router.get("/models")
 async def discovery_models(request: Request):  # REQ-413, REQ-464
     """The run's Model select: the model assigned to relationship inference with its limits, and
@@ -487,20 +461,23 @@ async def discovery_model_limits(request: Request, vendor: str, model: str):  # 
 
 @router.post("/runs/count")
 async def count_run(request: Request, body: RunScope):  # REQ-413
-    """Before any model call: how many requests the run would make, by type group, for the
-    chosen kinds, model and sets."""
+    """Before Run: at most how many requests the run would make, by type group, for the chosen
+    kinds, model and sets. Computed from the model store alone: no table is read, no source is
+    asked and no model is called, so it can be asked again on every change of the scope. It is
+    an upper bound (``requests_are``): the run reads the tables and may make fewer."""
     require_capability_request(request, "create_relationship")
     spec = body.spec()
-    model, prepared = await _prepared(spec)
-    if model is None:
-        return {
-            "requests": 0,
-            "by_group": {},
-            "suggestions_per_request": 0,
-            "model": None,
-            **prepared.sizes(),
-        }
-    return count(prepared, model)
+    model = await _run_model(spec)
+    try:
+        return await count(state, spec, model)
+    except NoRoomError as exc:
+        raise ApiError(
+            422,
+            "discovery.model_has_no_room",
+            f"The model cannot hold a request: {exc}",
+            model=None if model is None else model.label,
+            reason=str(exc),
+        ) from exc
 
 
 def _caller(request: Request) -> str | None:
@@ -648,7 +625,7 @@ async def list_candidates(request: Request):  # REQ-612
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return await candidates_repo.list_pending(cast("Connection", _conn))
+        return await candidates_repo.list_pending(cast("Connection", _conn), state)
 
 
 @router.post("/candidates/{candidate_id}/accept")
