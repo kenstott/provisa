@@ -105,6 +105,9 @@
                 <button class="proto-tab" role="tab" id="tab-odata" aria-controls="panel-odata" aria-selected="false" tabindex="-1">
                   <span class="proto-lang">OData</span><span class="proto-wire">v4</span>
                 </button>
+                <button class="proto-tab" role="tab" id="tab-mcp" aria-controls="panel-mcp" aria-selected="false" tabindex="-1">
+                  <span class="proto-lang">MCP</span><span class="proto-wire">tools</span>
+                </button>
               </div>
             </div>
 
@@ -200,6 +203,22 @@ df = provisa_client.query(<span class="c-str">"""
 
 <span class="c-comment"># The role's entity sets and types, generated from the model</span>
 <span class="c-cmd">GET</span> https://provisa.internal<span class="c-flag">/data/odata/$metadata</span></code></pre>
+            </div>
+
+            <div class="proto-panel" role="tabpanel" id="panel-mcp" aria-labelledby="tab-mcp" hidden>
+              <pre><code><span class="c-comment"># Claude, Cursor or your own agent, over stdio or Streamable HTTP</span>
+<span class="c-cmd">tools</span>  list_schemas  list_tables  describe_table  search_terms  run_sql
+
+<span class="c-comment"># The same question, as the agent's tool call</span>
+<span class="c-flag">run_sql</span>({ <span class="c-str">"sql"</span>: <span class="c-str">"SELECT c.name, o.total, t.trace_id
+                   FROM customers c
+                   JOIN orders o   ON o.customer_id = c.id
+                   JOIN queries t  ON t.actor = c.email
+                   WHERE o.total &gt; 1000"</span> })
+
+<span class="c-comment"># The token maps to a role, so the agent gets that role's rows, a page at a time</span>
+{ <span class="c-str">"rows"</span>: [ { <span class="c-str">"name"</span>: <span class="c-str">"Acme"</span>, <span class="c-str">"total"</span>: 1420, <span class="c-str">"trace_id"</span>: <span class="c-str">"7f3a"</span> } ],
+  <span class="c-str">"total_rows"</span>: 1, <span class="c-str">"truncated"</span>: false }</code></pre>
             </div>
           </div>
 
