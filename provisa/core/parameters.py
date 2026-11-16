@@ -143,6 +143,37 @@ def parameter_facts(columns: Iterable[Any]) -> list[ParameterFact]:
     return list(facts.values())
 
 
+# The words a catalog comment states a table's limits in (:func:`limits_statement`); the meta
+# schema's views write the same sentence in SQL from these (api/_meta_views.py).
+LIMITS_OPENING = "Requires parameters: "
+LIMITS_CLOSING = ". Gives no row count, profile or sample without them."
+OPAQUE_WORD = "opaque"
+REAL_COLUMN_WORD = "real column"
+
+
+def limits_statement(facts: Iterable[ParameterFact]) -> str:
+    """What a table that requires parameters cannot do, as one sentence of its catalog comment:
+    the parameters it requires, each with its type and whether it is opaque or a real column, and
+    that it gives no row count, profile or sample without them. Empty for a table that requires
+    none."""
+    required = [
+        f"{f.name} ({', '.join(x for x in (f.type, OPAQUE_WORD if f.opaque else REAL_COLUMN_WORD) if x)})"
+        for f in facts
+        if f.required
+    ]
+    return f"{LIMITS_OPENING}{', '.join(required)}{LIMITS_CLOSING}" if required else ""
+
+
+def describe_limits(description: str | None, columns: Iterable[Any]) -> str | None:
+    """A table's ``description`` followed by its limits (:func:`limits_statement` over its
+    ``columns``): what every catalog shows as the table's comment. Unchanged for a table that
+    requires no parameter."""
+    statement = limits_statement(parameter_facts(columns))
+    if not statement:
+        return description
+    return f"{description} {statement}" if description else statement
+
+
 def required_of(facts: Iterable[ParameterFact]) -> list[str]:
     """The parameters among ``facts`` a read must give, by the name a caller gives each."""
     return [f.name for f in facts if f.required]
