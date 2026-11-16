@@ -284,6 +284,11 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     status_at     TIMESTAMPTZ,
     UNIQUE (source_id, schema_name, table_name)
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS replicate INTEGER;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS region TEXT;
@@ -338,6 +343,11 @@ CREATE TABLE IF NOT EXISTS table_columns (
     status_at     TIMESTAMPTZ,
     UNIQUE (table_id, column_name)
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS masks JSONB NOT NULL DEFAULT '[]';
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS not_null BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE table_columns ADD COLUMN IF NOT EXISTS epoch_unit TEXT;
@@ -504,6 +514,11 @@ CREATE TABLE IF NOT EXISTS relationships (
         OR (via_type_column IS NOT NULL AND via_type_value IS NOT NULL AND via_table_id IS NOT NULL)
     )
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE relationships ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS hide_target_meta BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE relationships ADD COLUMN IF NOT EXISTS parameters JSONB NOT NULL DEFAULT '{}';
 
@@ -784,6 +799,11 @@ CREATE TABLE IF NOT EXISTS tags (
     status_by     TEXT,
     status_at     TIMESTAMPTZ
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE tags ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS sensitive BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS requires_citation BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE tags ADD COLUMN IF NOT EXISTS required BOOLEAN NOT NULL DEFAULT FALSE;
@@ -1180,6 +1200,11 @@ CREATE TABLE IF NOT EXISTS metrics (
     status_by     TEXT,
     status_at     TIMESTAMPTZ
 );
+-- REQ-2248: the retirement columns, for a table created before them.
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS retired BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_reason TEXT;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_by TEXT;
+ALTER TABLE metrics ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 -- REQ-2243: the glossary term a metric names, as a table names its class term: its definition and
 -- calculation method are read beside the metric. The term's deletion leaves the metric unnamed.
 ALTER TABLE metrics ADD COLUMN IF NOT EXISTS term_id INTEGER
