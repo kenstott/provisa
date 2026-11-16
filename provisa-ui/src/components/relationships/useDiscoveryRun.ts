@@ -59,8 +59,13 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
       const [latest] = await fetchDiscoveryRuns(1);
       setError("");
       // An ended run is shown only while it is the one being watched; a run still going always.
+      // The server lists no run: what is shown stays (nothing, before any run).
       setRun((shown) =>
-        latest?.status === "running" ? latest : shown?.id === latest?.id ? latest : shown,
+        latest === undefined
+          ? shown
+          : latest.status === "running" || shown?.id === latest.id
+            ? latest
+            : shown,
       );
     } catch (e) {
       setError(errorText(e));

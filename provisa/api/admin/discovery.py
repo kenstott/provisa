@@ -634,7 +634,10 @@ async def list_left_out(request: Request, run_id: int):  # REQ-413
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         await _held(conn, run_id)
-        return {"left_out": await proposals_repo.left_out(conn, run_id)}
+        return {
+            "left_out": await proposals_repo.left_out(conn, run_id),
+            "threshold": MIN_CONFIDENCE,
+        }
 
 
 @router.post("/left-out/{proposal_id}/accept")

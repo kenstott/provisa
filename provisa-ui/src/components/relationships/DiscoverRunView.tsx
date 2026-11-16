@@ -10,7 +10,8 @@
 
 // REQ-413: a discovery run in the dialog. While it runs: how far it has got, the suggestions so
 // far and a Stop that keeps what was found. Once it has ended: how it ended, what each kind found,
-// the model that ran, and the run's suggestions with Accept / Reject, Accept all and Reject all.
+// the model that ran, the run's suggestions with Accept / Reject, Accept all and Reject all, and
+// under them what the run read and left out, with why.
 
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Progress, Stack, Text } from "@mantine/core";
@@ -19,8 +20,10 @@ import { FormFooter, FormLayout } from "../form/FormLayout";
 import { CandidatesBulkFailures } from "./CandidatesBulkFailures";
 import { CandidatesTable } from "./CandidatesTable";
 import { discoveryResultLines } from "./discoveryResult";
+import { LeftOutTable } from "./LeftOutTable";
 import type { Candidate } from "./relationship-types";
 import type { BulkFailures } from "./useCandidatesAtOnce";
+import type { LeftOutState } from "./useLeftOut";
 
 export interface SuggestionActions {
   candidates: Candidate[];
@@ -30,6 +33,8 @@ export interface SuggestionActions {
   onReject: (id: number) => void;
   onAcceptAll: (candidates: { id: number; name: string }[]) => Promise<void>;
   onRejectAll: (ids: number[]) => Promise<void>;
+  /** Accept a proposal the run left out; a refusal is thrown with the server's words. */
+  onAcceptLeftOut: (id: number, name: string) => Promise<void>;
   failures: BulkFailures | null;
   message: string;
   error: string;
@@ -41,12 +46,15 @@ export function DiscoverRunView({
   onStop,
   onNewRun,
   suggestions,
+  leftOut,
 }: {
   run: DiscoveryRun;
   readError: string;
   onStop: () => void;
   onNewRun: () => void;
   suggestions: SuggestionActions;
+  /** What the ended run left out. */
+  leftOut: LeftOutState;
 }) {
   const { t } = useTranslation();
   const running = run.status === "running";
@@ -134,6 +142,16 @@ export function DiscoverRunView({
             {t("discoverDialog.noSuggestions")}
           </Text>
         )
+      )}
+      {leftOut.leftOut && (
+        <LeftOutTable
+          proposals={leftOut.leftOut.left_out}
+          threshold={leftOut.leftOut.threshold}
+          tableDomainById={suggestions.tableDomainById}
+          tableNameById={suggestions.tableNameById}
+          onAccept={(id, name) => void leftOut.accept(id, name)}
+          error={leftOut.error}
+        />
       )}
       <FormLayout style={{ marginTop: "var(--mantine-spacing-md)" }}>
         <FormFooter

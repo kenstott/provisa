@@ -754,15 +754,27 @@ export interface SemanticsReport {
     | "unreadable"
     | "none_proposed"
     | "below_threshold"
+    | "scored_below_threshold"
     | "filtered"
     | null;
   requests_total: number;
   requests_done: number;
   split: number;
   proposed: number;
+  /** Elements of an answer that named no two compared columns. */
   invalid: number;
+  /** Proposals the model itself gave less than the threshold. */
   below_threshold: number;
   threshold: number;
+  // The four below are absent from a run recorded before a run kept what it left out.
+  /** Proposals whose two columns are not compared: their classes do not meet. */
+  not_comparable?: number;
+  /** Proposals Jev was asked to score, and those it scored under the threshold though the model
+   *  had not. */
+  scored?: number;
+  scored_below_threshold?: number;
+  /** Requests whose proposals Jev could not score: they kept the model's confidence. */
+  scoring_failed?: number;
   cut_short: number;
   unreadable: number;
   /** Each failed request: its group and the server's catalogued message (code and params; the
@@ -779,7 +791,40 @@ export type RemovedKind =
   | "pending"
   | "rejected"
   | "matches_foreign_key"
-  | "out_of_scope";
+  | "out_of_scope"
+  | "weaker";
+
+/** Why a run left a proposal out of its suggestions: a reason of an answer's reading, or a
+ *  removal. */
+export type LeftOutReason =
+  | "invalid_shape"
+  | "unknown_column"
+  | "not_comparable"
+  | "below_threshold"
+  | "scored_below_threshold"
+  | RemovedKind;
+
+/** REQ-413: a proposal a run read and does not suggest. One that named no two compared columns has
+ *  no tables or confidence, and `answer` is the element as the model wrote it. `scored` is Jev's
+ *  confidence where Jev scored it. */
+export interface LeftOutProposal {
+  id: number;
+  run_id: number;
+  kind: DiscoveryKind;
+  source_table_id: number | null;
+  source_column: string | null;
+  target_table_id: number | null;
+  target_column: string | null;
+  cardinality: string;
+  confidence: number | null;
+  scored: number | null;
+  reasoning: string | null;
+  suggested_name: string | null;
+  reason: LeftOutReason;
+  answer: string | null;
+  /** Whether a reviewer may accept it, as a suggestion is accepted. */
+  acceptable: boolean;
+}
 
 /** A run's report once semantics is under way or the run has ended. */
 export interface DiscoveryReport {
@@ -790,6 +835,11 @@ export interface DiscoveryReport {
   foreign_keys?: { found: number; suggested: number };
   semantics?: SemanticsReport;
   model?: DiscoveryModel;
+  // What the run compared; absent from a run recorded before a run said so.
+  domains?: string[];
+  source_tables?: number;
+  target_tables?: number;
+  target_same_as_source?: boolean;
 }
 
 /** A run's report while it still reads its tables. */
@@ -866,6 +916,22 @@ export async function stopDiscoveryRun(id: number): Promise<DiscoveryRun> {
       method: "POST",
     })
   ).run;
+}
+
+/** A run's left-out proposals, the most confident first, and the confidence a suggestion needs. */
+export interface LeftOut {
+  left_out: LeftOutProposal[];
+  threshold: number;
+}
+
+/** REQ-413: what a run read and does not suggest. */
+export function fetchLeftOut(runId: number): Promise<LeftOut> {
+  return discoveryRequest(`/runs/${runId}/left-out`, "Left-out proposals");
+}
+
+/** Accept a proposal a run left out, as a suggestion is accepted. */
+export function acceptLeftOut(id: number, name: string): Promise<unknown> {
+  return discoveryRequest(`/left-out/${id}/accept`, "Accept", postJson({ name }));
 }
 
 export async function fetchCandidates(): Promise<unknown[]> {

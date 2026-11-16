@@ -193,8 +193,73 @@ describe("discoveryResultLines", () => {
       t,
     );
     expect(lines[lines.length - 1]).toBe(
-      "Left out: naming a table or column that does not exist (1), from a column to itself (1), " +
+      "Left out: not naming two compared columns (1), from a column to itself (1), " +
         "matching a foreign key found in this run (2).",
+    );
+  });
+
+  it("says first what the run compared, so a table outside it is plain", () => {
+    const same = report({
+      foreign_keys: { found: 6, suggested: 6 },
+      domains: ["pet-store", "shelter"],
+      source_tables: 29,
+      target_tables: 29,
+      target_same_as_source: true,
+    });
+    expect(discoveryResultLines(same, t)).toEqual([
+      "Compared 29 tables of pet-store, shelter.",
+      "Foreign keys: 6 found, 6 suggested.",
+    ]);
+    expect(discoveryResultLines({ ...same, source_tables: 1, domains: ["shop"] }, t)[0]).toBe(
+      "Compared 1 table of shop.",
+    );
+    const two = { ...same, target_same_as_source: false, source_tables: 5, target_tables: 24 };
+    expect(discoveryResultLines(two, t)[0]).toBe(
+      "Compared 5 source tables with 24 target tables, of pet-store, shelter.",
+    );
+  });
+
+  it("says when Jev, not the model, put every proposal under the threshold", () => {
+    const lines = discoveryResultLines(
+      report({
+        semantics: {
+          ...SEMANTICS,
+          proposed: 30,
+          empty_reason: "scored_below_threshold",
+          scored: 30,
+          scored_below_threshold: 30,
+        },
+      }),
+      t,
+    );
+    expect(lines).toEqual([
+      "Semantics: none. The model gave every proposal 70% or more, and Jev scored each below that.",
+      "Left out: scored below 70% by Jev (30).",
+    ]);
+  });
+
+  it("tells the model's own low confidence from Jev's, and counts the other reasons", () => {
+    const lines = discoveryResultLines(
+      report({
+        removed: { weaker: 2 },
+        semantics: {
+          ...SEMANTICS,
+          suggested: 3,
+          below_threshold: 4,
+          scored_below_threshold: 1,
+          not_comparable: 5,
+          scoring_failed: 1,
+        },
+      }),
+      t,
+    );
+    expect(lines).toContain(
+      "Jev could not score the proposals of 1 request, so they kept the model's confidence.",
+    );
+    expect(lines[lines.length - 1]).toBe(
+      "Left out: given less than 70% confidence by the model (4), scored below 70% by Jev (1), " +
+        "between columns of different classes (5), " +
+        "repeating a pair of columns a stronger proposal was kept for (2).",
     );
   });
 });

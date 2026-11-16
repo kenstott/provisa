@@ -11,7 +11,8 @@
 // REQ-413: what a discovery run found, in plain words: one line per kind it ran, and when
 // semantics found none, why (every request failing is said as that, never as the model proposing
 // none); how many requests failed of those made, the requests split, the answers cut short and
-// each failed request in the product's own words; then what was left out, counted by kind.
+// each failed request in the product's own words; then what was left out, counted by kind. First of
+// all, what the run compared: how many tables, of which domains, so a table outside it is plain.
 
 import type { TFunction } from "i18next";
 import type { DiscoveryReport, RemovedKind, SemanticsReport, TypeGroup } from "../../api/admin";
@@ -27,6 +28,7 @@ const REMOVED_ORDER: RemovedKind[] = [
   "rejected",
   "matches_foreign_key",
   "out_of_scope",
+  "weaker",
 ];
 
 export function typeGroupLabel(group: TypeGroup, t: TFunction): string {
@@ -45,6 +47,10 @@ function emptyLine(s: SemanticsReport, t: TFunction): string {
       return t("discoverResult.semanticsBelowThreshold", {
         threshold: Math.round(s.threshold * 100),
       });
+    case "scored_below_threshold":
+      return t("discoverResult.semanticsScoredBelowThreshold", {
+        threshold: Math.round(s.threshold * 100),
+      });
     default:
       return t("discoverResult.semanticsFiltered");
   }
@@ -61,6 +67,9 @@ function semanticsLines(s: SemanticsReport, t: TFunction): string[] {
       : []),
     ...(s.split > 0 ? [t("discoverResult.split", { count: s.split })] : []),
     ...(s.cut_short > 0 ? [t("discoverResult.cutShort", { count: s.cut_short })] : []),
+    ...(s.scoring_failed !== undefined && s.scoring_failed > 0
+      ? [t("discoverResult.scoringFailed", { count: s.scoring_failed })]
+      : []),
     ...s.failed.map((f) =>
       t("discoverResult.failedRequest", {
         group: typeGroupLabel(f.group, t),
@@ -84,7 +93,20 @@ function leftOut(report: DiscoveryReport, t: TFunction): string | null {
           ),
         ]
       : []),
+    ...(s && s.scored_below_threshold !== undefined && s.scored_below_threshold > 0
+      ? [
+          item(
+            t("discoverResult.removed.scored_below_threshold", {
+              threshold: Math.round(s.threshold * 100),
+            }),
+            s.scored_below_threshold,
+          ),
+        ]
+      : []),
     ...(s && s.invalid > 0 ? [item(t("discoverResult.removed.invalid"), s.invalid)] : []),
+    ...(s && s.not_comparable !== undefined && s.not_comparable > 0
+      ? [item(t("discoverResult.removed.not_comparable"), s.not_comparable)]
+      : []),
     ...REMOVED_ORDER.flatMap((kind) => {
       const count = report.removed[kind] ?? 0;
       return count > 0 ? [item(t(`discoverResult.removed.${kind}`), count)] : [];
@@ -93,8 +115,20 @@ function leftOut(report: DiscoveryReport, t: TFunction): string | null {
   return parts.length === 0 ? null : t("discoverResult.leftOut", { list: parts.join(", ") });
 }
 
+/** What the run compared; null for a run recorded before a run said so. */
+function comparedLine(report: DiscoveryReport, t: TFunction): string | null {
+  const { domains, source_tables: source, target_tables: target } = report;
+  if (domains === undefined || source === undefined || target === undefined) return null;
+  const named = domains.join(", ");
+  return report.target_same_as_source
+    ? t("discoverResult.compared", { count: source, domains: named })
+    : t("discoverResult.comparedTwoSets", { source, target, domains: named });
+}
+
 export function discoveryResultLines(report: DiscoveryReport, t: TFunction): string[] {
   const lines: string[] = [];
+  const compared = comparedLine(report, t);
+  if (compared) lines.push(compared);
   if (report.foreign_keys) {
     lines.push(
       t("discoverResult.foreignKeys", {

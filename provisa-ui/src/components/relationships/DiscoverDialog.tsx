@@ -18,6 +18,7 @@ import type { DiscoveryScope } from "../../api/admin";
 import { DiscoverRunView, type SuggestionActions } from "./DiscoverRunView";
 import { DiscoverScopeForm, type ScopeTable } from "./DiscoverScopeForm";
 import type { DiscoveryRunState } from "./useDiscoveryRun";
+import { useLeftOut } from "./useLeftOut";
 
 interface DiscoverDialogProps {
   opened: boolean;
@@ -41,6 +42,7 @@ export function DiscoverDialog({
   const { t } = useTranslation();
   const { run } = discovery;
   const runScope = run ? `run:${run.id}` : null;
+  const leftOut = useLeftOut(run, suggestions.onAcceptLeftOut);
   const runSuggestions = {
     ...suggestions,
     candidates: suggestions.candidates.filter((c) => c.scope === runScope),
@@ -65,6 +67,7 @@ export function DiscoverDialog({
             onStop={() => void discovery.stop()}
             onNewRun={discovery.dismiss}
             suggestions={runSuggestions}
+            leftOut={leftOut}
           />
         ) : (
           <DiscoverScopeForm

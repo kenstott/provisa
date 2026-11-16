@@ -405,6 +405,7 @@ async def perform(
             "removed": outcome.removed.as_dict(),
             # The run's sets: what it compared, so what it did not is plain.
             **prepared.sizes(),
+            "target_same_as_source": prepared.target is None,
             "domains": sorted({t.domain_id for t in tables.values()}),
             "decided_by": dict(outcome.decided_by),
             "stored_ids": sorted(publisher.stored.values()),

@@ -34,6 +34,7 @@ import {
   fetchCandidates,
   fetchRejectedCount,
   acceptCandidate,
+  acceptLeftOut,
   rejectCandidate,
   clearRejectedCandidates,
   fetchSettings,
@@ -409,6 +410,16 @@ export function RelationshipsPage() {
   const handleAccept = useCallback(
     async (id: number, name: string) => {
       await acceptCandidate(id, name);
+      await refetchRels();
+      load();
+    },
+    [load, refetchRels],
+  );
+
+  // REQ-413: a proposal a run left out, accepted as a suggestion is.
+  const handleAcceptLeftOut = useCallback(
+    async (id: number, name: string) => {
+      await acceptLeftOut(id, name);
       await refetchRels();
       load();
     },
@@ -848,6 +859,7 @@ export function RelationshipsPage() {
           onReject: (id) => void handleReject(id),
           onAcceptAll: atOnce.acceptAll,
           onRejectAll: atOnce.rejectAll,
+          onAcceptLeftOut: handleAcceptLeftOut,
           failures: atOnce.failures,
           message: discoverMsg,
           error: discoverError,

@@ -20,11 +20,13 @@ import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
 import {
   acceptCandidates,
+  acceptLeftOut,
   countDiscoveryRun,
   fetchCandidates,
   fetchDiscoveryModels,
   fetchDiscoveryRun,
   fetchDiscoveryRuns,
+  fetchLeftOut,
   fetchModelLimits,
   fetchVendorModels,
   startDiscoveryRun,
@@ -33,6 +35,7 @@ import {
   type DiscoveryModels,
   type DiscoveryRun,
   type DiscoveryScope,
+  type LeftOutProposal,
 } from "../../api/admin";
 
 const RELS = { relationships: [], loading: false, refetch: vi.fn() };
@@ -96,6 +99,8 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   fetchDiscoveryRuns: vi.fn(),
   stopDiscoveryRun: vi.fn(),
   acceptCandidates: vi.fn(),
+  fetchLeftOut: vi.fn(),
+  acceptLeftOut: vi.fn(),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
@@ -197,6 +202,26 @@ const runsMock = vi.mocked(fetchDiscoveryRuns);
 const stopMock = vi.mocked(stopDiscoveryRun);
 const candidatesMock = vi.mocked(fetchCandidates);
 const acceptAllMock = vi.mocked(acceptCandidates);
+const leftOutMock = vi.mocked(fetchLeftOut);
+const acceptLeftOutMock = vi.mocked(acceptLeftOut);
+const leftOut = (over: Partial<LeftOutProposal>): LeftOutProposal => ({
+  id: 501,
+  run_id: 7,
+  kind: "semantics",
+  source_table_id: 1,
+  source_column: "payer_id",
+  target_table_id: 2,
+  target_column: "id",
+  cardinality: "many-to-one",
+  confidence: 0.55,
+  scored: null,
+  reasoning: "The payer is a customer",
+  suggested_name: "order-payer",
+  reason: "below_threshold",
+  answer: null,
+  acceptable: true,
+  ...over,
+});
 
 const discoverButton = () => screen.getByTestId("rels-discover");
 const dialog = () => screen.getByTestId("discover-dialog");
@@ -230,6 +255,8 @@ async function pick(selectName: string, optionName: string) {
 const lastScope = () => countMock.mock.calls[countMock.mock.calls.length - 1][0];
 
 beforeEach(() => {
+  // A panel opens as this viewer left it: each test starts with nothing remembered.
+  window.localStorage.clear();
   modelsMock.mockReset().mockResolvedValue(MODELS);
   vendorModelsMock
     .mockReset()
@@ -250,6 +277,8 @@ beforeEach(() => {
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
   candidatesMock.mockReset().mockResolvedValue([]);
   acceptAllMock.mockReset();
+  leftOutMock.mockReset().mockResolvedValue({ left_out: [], threshold: 0.7 });
+  acceptLeftOutMock.mockReset().mockResolvedValue({ relationship_id: "order-payer" });
 });
 
 describe("Discovery dialog: the run's scope", () => {
@@ -522,7 +551,7 @@ describe("Discovery dialog: the run in progress", () => {
     expect(result).toHaveTextContent("Foreign keys: 3 found, 1 suggested.");
     expect(result).toHaveTextContent("Semantics: 1 suggestion.");
     expect(result).toHaveTextContent(
-      "Left out: below the 70% confidence threshold (1), already registered (2), rejected before (1).",
+      "Left out: given less than 70% confidence by the model (1), already registered (2), rejected before (1).",
     );
   });
 
@@ -706,6 +735,110 @@ describe("Discovery dialog: the run's suggestions", () => {
         { id: 101, name: "orders-customer_id" },
         { id: 102, name: "orders-payer_id" },
       ]),
+    );
+  });
+
+  it("lists what the run left out under its suggestions, closed, each with why", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    leftOutMock.mockResolvedValue({
+      left_out: [
+        leftOut({}),
+        leftOut({
+          id: 502,
+          source_column: "customer_id",
+          confidence: 0.95,
+          scored: 0.31,
+          reason: "scored_below_threshold",
+          reasoning: "Each order names its customer",
+          suggested_name: "customer-orders",
+        }),
+        leftOut({
+          id: 503,
+          source_table_id: null,
+          source_column: null,
+          target_table_id: null,
+          target_column: null,
+          confidence: null,
+          reasoning: null,
+          suggested_name: null,
+          reason: "unknown_column",
+          answer: '{"source_table_id": 1, "target_table_id": 9}',
+          acceptable: false,
+        }),
+      ],
+      threshold: 0.7,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    const toggle = await within(dialog()).findByTestId("discover-left-out-toggle", {}, SLOW);
+    expect(leftOutMock).toHaveBeenCalledWith(7);
+    expect(toggle).toHaveTextContent("Left out (3)");
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+
+    const below = within(dialog()).getByTestId("left-out-501");
+    expect(below).toHaveTextContent("shop.orders.payer_id");
+    expect(below).toHaveTextContent("shop.customers.id");
+    expect(below).toHaveTextContent("55%");
+    expect(below).toHaveTextContent("The model's confidence is below the 70% threshold");
+    expect(within(dialog()).getByText("The payer is a customer")).toBeInTheDocument();
+
+    const scored = within(dialog()).getByTestId("left-out-502");
+    expect(scored).toHaveTextContent("95% by the model, 31% by Jev");
+    expect(scored).toHaveTextContent("Jev scored it below the 70% threshold");
+
+    // One that named no two compared columns: as the model wrote it, and nothing to accept.
+    const unknown = within(dialog()).getByTestId("left-out-503");
+    expect(unknown).toHaveTextContent("Names a table or column the request did not compare");
+    expect(within(unknown).queryByRole("button")).toBeNull();
+    expect(
+      within(dialog()).getByText(
+        'As the model wrote it: {"source_table_id": 1, "target_table_id": 9}',
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("accepts a left-out proposal as a suggestion is accepted, and reads the list again", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    leftOutMock
+      .mockResolvedValueOnce({ left_out: [leftOut({})], threshold: 0.7 })
+      .mockResolvedValue({ left_out: [], threshold: 0.7 });
+    await openDialog();
+    fireEvent.click(runButton());
+    fireEvent.click(await within(dialog()).findByTestId("discover-left-out-toggle", {}, SLOW));
+    fireEvent.click(
+      await within(dialog()).findByRole(
+        "button",
+        { name: "Accept left-out relationship order-payer" },
+        SLOW,
+      ),
+    );
+    await waitFor(() => expect(acceptLeftOutMock).toHaveBeenCalledWith(501, "order-payer"));
+    await waitFor(() => expect(leftOutMock).toHaveBeenCalledTimes(2));
+    await waitFor(() =>
+      expect(within(dialog()).queryByTestId("discover-left-out-toggle")).toBeNull(),
+    );
+  });
+
+  it("shows a refused accept of a left-out proposal in its list", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    leftOutMock.mockResolvedValue({ left_out: [leftOut({})], threshold: 0.7 });
+    acceptLeftOutMock.mockRejectedValue(
+      new Error("A relationship named 'order-payer' already exists"),
+    );
+    await openDialog();
+    fireEvent.click(runButton());
+    fireEvent.click(await within(dialog()).findByTestId("discover-left-out-toggle", {}, SLOW));
+    fireEvent.click(
+      await within(dialog()).findByRole(
+        "button",
+        { name: "Accept left-out relationship order-payer" },
+        SLOW,
+      ),
+    );
+    expect(await within(dialog()).findByTestId("discover-left-out-error")).toHaveTextContent(
+      "A relationship named 'order-payer' already exists",
     );
   });
 

@@ -1,5 +1,8 @@
 {
   "discoverResult": {
+    "compared": "Compared {{count}} table of {{domains}}.",
+    "compared_other": "Compared {{count}} tables of {{domains}}.",
+    "comparedTwoSets": "Compared {{source}} source tables with {{target}} target tables, of {{domains}}.",
     "foreignKeys": "Foreign keys: {{found}} found, {{count}} suggested.",
     "foreignKeys_other": "Foreign keys: {{found}} found, {{count}} suggested.",
     "semanticsFound": "Semantics: {{count}} suggestion.",
@@ -11,17 +14,22 @@
     "partial_other": "{{failed}} of {{count}} requests failed, so the result is partial.",
     "semanticsNoneProposed": "Semantics: none. The model proposed no relationships.",
     "semanticsBelowThreshold": "Semantics: none. Every suggestion was below the {{threshold}}% confidence threshold.",
+    "semanticsScoredBelowThreshold": "Semantics: none. The model gave every proposal {{threshold}}% or more, and Jev scored each below that.",
     "semanticsFiltered": "Semantics: none. Every suggestion was left out, for the reasons below.",
     "split": "{{count}} request was split in half and asked again.",
     "split_other": "{{count}} requests were split in half and asked again.",
     "cutShort": "{{count}} answer stopped at its length limit; the suggestions it finished are kept.",
     "cutShort_other": "{{count}} answers stopped at their length limit; the suggestions they finished are kept.",
+    "scoringFailed": "Jev could not score the proposals of {{count}} request, so they kept the model's confidence.",
+    "scoringFailed_other": "Jev could not score the proposals of {{count}} requests, so they kept the model's confidence.",
     "failedRequest": "For {{group}} columns: {{message}}",
     "leftOut": "Left out: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "below the {{threshold}}% confidence threshold",
-      "invalid": "naming a table or column that does not exist",
+      "below_threshold": "given less than {{threshold}}% confidence by the model",
+      "scored_below_threshold": "scored below {{threshold}}% by Jev",
+      "invalid": "not naming two compared columns",
+      "not_comparable": "between columns of different classes",
       "same_column": "from a column to itself",
       "primary_key_to_primary_key": "primary key to primary key",
       "both_repeating": "values repeated on both sides",
@@ -29,7 +37,8 @@
       "pending": "already waiting",
       "rejected": "rejected before",
       "matches_foreign_key": "matching a foreign key found in this run",
-      "out_of_scope": "outside the chosen tables"
+      "out_of_scope": "outside the chosen tables",
+      "weaker": "repeating a pair of columns a stronger proposal was kept for"
     }
   }
 }
