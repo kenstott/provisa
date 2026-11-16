@@ -71,7 +71,7 @@ jobs:
       CONFORMANCE_PG_PORT: "15432"
       CONFORMANCE_PG_DATABASE: conformance
       CONFORMANCE_PG_USER: postgres
-      CONFORMANCE_PG_PASSWORD: conformance
+      CONFORMANCE_PG_PASSWORD: conformance-pg-password
       # pgwire's password auth (basic provider, SCRAM-SHA-256): the break-glass account the
       # instance boots with, the job user it creates, and the session signing key. Ephemeral, on
       # a throwaway instance: not secrets.
@@ -85,7 +85,7 @@ jobs:
         # The PostgreSQL the catalog is generated from (scripts/gen_pgwire_pg17_catalog.py).
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
           - 15432:5432

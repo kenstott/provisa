@@ -58,7 +58,7 @@ env:
   CONFORMANCE_PG_PORT: "15432"
   CONFORMANCE_PG_DATABASE: conformance
   CONFORMANCE_PG_USER: postgres
-  CONFORMANCE_PG_PASSWORD: conformance
+  CONFORMANCE_PG_PASSWORD: conformance-pg-password
   # pgwire's password auth: the break-glass account, the job user and the session signing key.
   # Ephemeral, on a throwaway instance: not secrets.
   PROVISA_SUPERUSER_USERNAME: conformance-su
@@ -81,7 +81,7 @@ jobs:
       postgres:
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
           - 15432:5432
@@ -203,7 +203,7 @@ jobs:
       postgres:
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
           - 15432:5432

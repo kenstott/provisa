@@ -63,7 +63,7 @@ jobs:
           - engine: duckdb
           # The PostgreSQL service below, as the engine.
           - engine: pg
-            engine-url: postgresql://postgres:conformance@127.0.0.1:15432/conformance
+            engine-url: postgresql://postgres:conformance-pg-password@127.0.0.1:15432/conformance
           # chdb, in-process.
           - engine: clickhouse
           # The compose stack the Trino UI lane runs: the engine, its object store, its Arrow
@@ -80,7 +80,7 @@ jobs:
       CONFORMANCE_PG_PORT: "15432"
       CONFORMANCE_PG_DATABASE: conformance
       CONFORMANCE_PG_USER: postgres
-      CONFORMANCE_PG_PASSWORD: conformance
+      CONFORMANCE_PG_PASSWORD: conformance-pg-password
       # Ephemeral, on a throwaway instance: not secrets (conformance-pgwire.yml).
       PROVISA_SUPERUSER_USERNAME: conformance-su
       PROVISA_SUPERUSER_PASSWORD: conformance-su-password
@@ -95,7 +95,7 @@ jobs:
         # The PostgreSQL the catalog is generated from (scripts/gen_pgwire_pg17_catalog.py).
         image: postgres:17.11
         env:
-          POSTGRES_PASSWORD: conformance
+          POSTGRES_PASSWORD: conformance-pg-password
           POSTGRES_DB: conformance
         ports:
           - 15432:5432
