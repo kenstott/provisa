@@ -6608,6 +6608,8 @@
   "ja/serverErrors.json::serverErrors.schema.webhook_not_found": "Webhook '{{webhook}}' not found",
   "ja/serverErrors.json::serverErrors.schema.write_grant_invalid": "This grant does not fit the table: {{reason}}",
   "ja/serverErrors.json::serverErrors.schema.write_grants_saved": "Write grants of table {{id}} saved",
+  "ja/serverErrors.json::serverErrors.secrets.env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
+  "ja/serverErrors.json::serverErrors.secrets.env_reference_refused": "{{name}} is a variable of the server's own environment, which this organization does not hold. Store the value as an organization secret and reference the secret instead.",
   "ja/serverErrors.json::serverErrors.secrets.name_refused": "{{name}} is not a name inside this organization's secrets in {{service}}: a name is relative to the organization and cannot leave it",
   "ja/serverErrors.json::serverErrors.secrets.name_too_long": "{{name}} is too long a name: with this organization's prefix it is {{length}} characters, and {{service}} takes at most {{limit}}",
   "ja/serverErrors.json::serverErrors.secrets.org_not_found": "Organization '{{org_id}}' not found",
