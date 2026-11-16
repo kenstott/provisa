@@ -16,7 +16,8 @@ length in characters of what is sent, sized from the chosen model's input limit 
 source window and one target window of one group, and asks for at most as many suggestions as the
 model's output limit holds at :data:`TOKENS_PER_SUGGESTION` tokens each. A pair of windows holding
 no two columns that are compared (:func:`provisa.discovery.columns.comparable`) is not asked.
-:func:`plan` is both the run's work list and the count shown before Run.
+:func:`plan` is the run's work list. :func:`bound` is the count shown before Run: the most
+requests :func:`plan` can give for the same tables, computed from their registration alone.
 """
 
 # Requirements: REQ-413, REQ-464
@@ -24,7 +25,7 @@ no two columns that are compared (:func:`provisa.discovery.columns.comparable`) 
 from __future__ import annotations
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 from provisa.discovery import context
 from provisa.discovery.columns import GROUPS, ColumnFacts, TableFacts, comparable
@@ -232,9 +233,40 @@ def plan(
     return k, requests
 
 
-def count_by_group(requests: Sequence[Request]) -> dict[str, int]:
-    """The request count by group (REQ-413): the line shown before Run."""
+def _widest(tables: Sequence[TableFacts]) -> list[TableFacts]:
+    return [replace(t, columns=tuple(context.widest(c) for c in t.columns)) for t in tables]
+
+
+def bound(
+    source: Sequence[TableFacts],
+    target: Sequence[TableFacts] | None,
+    input_tokens: int,
+    output_tokens: int,
+) -> tuple[int, dict[str, int]]:
+    """``(k, requests by group)``: the suggestions each request asks for, and an upper bound on
+    the requests :func:`plan` gives for these tables whatever their values and classes turn out
+    to be, from their registration alone (REQ-413: the count before Run reads no table).
+
+    Each column is weighed at the most it can send (:func:`provisa.discovery.context.widest`).
+    Packing in order never gives fewer windows for heavier columns, so a group has at least as
+    many windows here as in the run; and every pair of windows is counted, as if some two of
+    their columns were always compared. A group with no two different columns to compare has no
+    request."""
+    k = at_most(output_tokens)
+    either = target is None
+    src = _ordered(_widest(source))
+    tgt = src if target is None else _ordered(_widest(target))
+    not_read = any(t.reduced for t in [*src, *tgt])
     out: dict[str, int] = {}
-    for r in requests:
-        out[r.group] = out.get(r.group, 0) + 1
-    return out
+    for group in GROUPS:
+        s_columns = {(t.table_id, c.name) for t in src for c in t.columns if group in c.groups}
+        t_columns = {(t.table_id, c.name) for t in tgt for c in t.columns if group in c.groups}
+        if not s_columns or not t_columns or len(s_columns | t_columns) < 2:
+            continue
+        room = window_chars(input_tokens, group, k, either_direction=either, not_read=not_read)
+        s_windows = len(pack(src, group, room))
+        if either:
+            out[group] = s_windows * (s_windows + 1) // 2
+        else:
+            out[group] = s_windows * len(pack(tgt, group, room))
+    return k, out

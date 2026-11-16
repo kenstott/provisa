@@ -161,7 +161,6 @@
       "semantics_unavailable": "无法运行语义推断：分配给关系推断的模型 {{model}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "table_id_required": "表范围需要 table_id",
-      "table_unreadable": "发现无法读取表 {{table}}：{{reason}}。请将其从所选表中排除，或修正后重试。",
       "unknown_source_type": "未知数据源类型：{{type}}",
       "vendor_has_no_key": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",

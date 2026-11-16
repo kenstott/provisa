@@ -11,6 +11,10 @@
 """A relationship discovery run (REQ-413): the kinds asked, the model chosen, a source set and a
 target set; its request count before it runs; its work, reported as each request returns.
 
+The count before Run (:func:`count`) reads no table and asks no source: it is computed from the
+model store alone and is an upper bound on the requests the run makes
+(:func:`provisa.discovery.windows.bound`).
+
 The run's model defaults to the model assigned to relationship inference and may be any model of a
 vendor with a key, for that run only (the assignment is never changed). Its limits (REQ-464) size
 the windows. Foreign keys are read from the source tables' own constraints; semantics are asked of
@@ -45,7 +49,7 @@ from provisa.discovery.direction import (
     settle,
 )
 from provisa.discovery.runner import MIN_CONFIDENCE, Control, Tally, execute
-from provisa.discovery.windows import Request, count_by_group, plan
+from provisa.discovery.windows import Request, bound, plan
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -165,14 +169,19 @@ class Prepared:
         return self.source_ids if self.target is None else {t.table_id for t in self.target}
 
     def sizes(self) -> dict[str, int]:
-        """The run's sets as the count and the result give them: the tables of each, and how
-        many of the run's tables are never read (REQ-1986: each requires a parameter, so it
-        takes part on its registration alone)."""
-        return {
-            "source_tables": len(self.source),
-            "target_tables": len(self.source if self.target is None else self.target),
-            "tables_not_read": sum(1 for t in self.tables.values() if t.reduced),
-        }
+        return sizes(self.source, self.target)
+
+
+def sizes(source: list[TableFacts], target: list[TableFacts] | None) -> dict[str, int]:
+    """A run's sets as the count and the result give them: the tables of each, and how many of
+    the run's tables are never read (REQ-1986: each requires a parameter and is not kept for
+    good, so it takes part on its registration alone)."""
+    tables = {t.table_id: t for t in [*source, *(target or [])]}
+    return {
+        "source_tables": len(source),
+        "target_tables": len(source if target is None else target),
+        "tables_not_read": sum(1 for t in tables.values() if t.reduced),
+    }
 
 
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
@@ -207,14 +216,32 @@ async def prepare(
     return Prepared(source, target, k, requests)
 
 
-def count(prepared: Prepared, model: ChosenModel) -> dict[str, Any]:
-    """The request count before Run (REQ-413), by group, for the chosen model."""
+#: What the count's ``requests`` are (REQ-413): the most a run of the scope makes, never fewer
+#: than it makes. The count reads no table, so what a run reads can only take requests away.
+UPPER_BOUND = "upper_bound"
+
+
+async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[str, Any]:
+    """The request count before Run (REQ-413), by group, for the chosen model: an upper bound,
+    from the model store alone. No table is read, classified or sampled and no source is asked;
+    with no model (foreign keys alone) there is no request to count."""
+    async with state.model_db.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        source_ids, target_ids = await table_sets(conn, spec)
+        ids = set(source_ids) | set(target_ids or [])
+        facts = {t.table_id: t for t in await gather.registered_facts(state, conn, sorted(ids))}
+    source = [facts[i] for i in source_ids]
+    target = None if target_ids is None else [facts[i] for i in target_ids]
+    k, by_group = (
+        (0, {}) if model is None else bound(source, target, model.input_tokens, model.output_tokens)
+    )
     return {
-        "requests": len(prepared.requests),
-        "by_group": count_by_group(prepared.requests),
-        "suggestions_per_request": prepared.k,
-        "model": model.describe(),
-        **prepared.sizes(),
+        "requests": sum(by_group.values()),
+        "requests_are": UPPER_BOUND,
+        "by_group": by_group,
+        "suggestions_per_request": k,
+        "model": None if model is None else model.describe(),
+        **sizes(source, target),
     }
 
 

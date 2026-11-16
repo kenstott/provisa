@@ -161,7 +161,6 @@
       "semantics_unavailable": "セマンティクスを実行できません: リレーションシップ推論に割り当てられたモデル {{model}} にキーがありません。管理 > AIモデルで設定してください。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "table_id_required": "table スコープには table_id が必要です",
-      "table_unreadable": "検出はテーブル {{table}} を読み取れません: {{reason}}。選択したテーブルから外すか、修正してからもう一度お試しください。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_has_no_key": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
       "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。",

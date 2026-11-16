@@ -117,11 +117,13 @@ const MODELS: DiscoveryModels = {
 const NO_VENDOR: DiscoveryModels = { assigned: null, vendors: [], semantics_available: false };
 const COUNT: DiscoveryCount = {
   requests: 3,
+  requests_are: "upper_bound",
   by_group: { whole_number: 2, text: 1 },
   suggestions_per_request: 27,
   model: HAIKU,
   source_tables: 2,
   target_tables: 2,
+  tables_not_read: 0,
 };
 const SCOPE: DiscoveryScope = {
   kinds: ["foreign_keys", "semantics"],
@@ -343,19 +345,74 @@ describe("Discovery dialog: the run's scope", () => {
 });
 
 describe("Discovery dialog: the request count before Run", () => {
-  it("shows about how many requests the run makes, by type group", async () => {
+  it("shows at most how many requests the run makes, by type group, and that it is a bound", async () => {
     await openDialog();
     await waitFor(
       () =>
         expect(screen.getByTestId("discover-count")).toHaveTextContent(
-          "About 3 requests to the model: whole numbers 2, text 1.",
+          "At most 3 requests to the model: whole numbers 2, text 1.",
         ),
       SLOW,
     );
     expect(screen.getByTestId("discover-count")).toHaveTextContent(
       "Source tables: 2. Target tables: 2.",
     );
+    expect(screen.getByTestId("discover-count-bound")).toHaveTextContent(
+      "Counted from what is registered, without reading any table. The run may make fewer.",
+    );
+    // Every table of the scope is read by the run: nothing to say of tables not read.
+    expect(screen.queryByTestId("discover-not-read")).not.toBeInTheDocument();
     expect(lastScope()).toEqual(SCOPE);
+  });
+
+  it("says how many tables are not read, and why", async () => {
+    countMock.mockResolvedValue({
+      ...COUNT,
+      source_tables: 29,
+      target_tables: 29,
+      tables_not_read: 8,
+    });
+    await openDialog();
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("discover-not-read")).toHaveTextContent(
+          "8 tables require a parameter and are not read: they are compared on their names and descriptions alone.",
+        ),
+      SLOW,
+    );
+  });
+
+  it("says one table is not read in the singular", async () => {
+    countMock.mockResolvedValue({ ...COUNT, tables_not_read: 1 });
+    await openDialog();
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("discover-not-read")).toHaveTextContent(
+          "1 table requires a parameter and is not read: it is compared on its names and descriptions alone.",
+        ),
+      SLOW,
+    );
+  });
+
+  it("shows the tables not read for foreign keys alone, with no bound to explain", async () => {
+    countMock.mockResolvedValue({
+      ...COUNT,
+      requests: 0,
+      by_group: {},
+      model: null,
+      tables_not_read: 2,
+    });
+    await openDialog();
+    fireEvent.click(screen.getByTestId("discover-kind-semantics"));
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("discover-count")).toHaveTextContent("No requests to the model."),
+      SLOW,
+    );
+    expect(screen.queryByTestId("discover-count-bound")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discover-not-read")).toHaveTextContent(
+      "2 tables require a parameter",
+    );
   });
 
   it("counts again when the scope changes", async () => {
@@ -366,7 +423,7 @@ describe("Discovery dialog: the request count before Run", () => {
     await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
-        "About 5 requests to the model: text 5.",
+        "At most 5 requests to the model: text 5.",
       ),
     );
   });

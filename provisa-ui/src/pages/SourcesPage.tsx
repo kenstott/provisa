@@ -610,8 +610,9 @@ export function SourcesPage() {
 
   // The source the short create step just made is selected and its detail opens in edit, with
   // everything the step did not ask for at its default: read from the list as it is now.
-  // REQ-2234: the panel opens first on registering its tables; the edit is there once that
-  // step closes.
+  // REQ-2234: the panel opens first on registering its tables. Skipping that step leaves the
+  // edit there; registering tables ends the create (the form is left as Cancel leaves it), so Your data closes on
+  // the source as it was saved, read.
   const [afterSave, setAfterSave] = useState<string | null>(null);
   const openCreated = async (id: string) => {
     const fresh = await refetchSources();
@@ -1580,7 +1581,11 @@ export function SourcesPage() {
   );
   const working =
     afterSave !== null && afterSave === expanded ? (
-      <AfterSaveSteps sourceId={afterSave} onClose={() => setAfterSave(null)} />
+      <AfterSaveSteps
+        sourceId={afterSave}
+        onRegistered={handleCancelForm}
+        onClose={() => setAfterSave(null)}
+      />
     ) : discoverSourceId && discoverSourceType ? (
       <PanelWorking
         back={t("sourcesPage.backToSource")}
