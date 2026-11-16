@@ -1,0 +1,27 @@
+{
+  "leftOutTable": {
+    "heading": "Écartées ({{count}})",
+    "intro": "Tout ce que cette exécution a lu et ne suggère pas, avec la confiance donnée et la raison de la mise à l'écart. Acceptez-en une pour l'enregistrer comme relation.",
+    "colReason": "Raison de la mise à l'écart",
+    "acceptAria": "Accepter la relation écartée {{name}}",
+    "byModel": "{{confidence}} % selon le modèle",
+    "byJev": "{{confidence}} % selon Jev",
+    "asWritten": "Tel que le modèle l'a écrit : {{answer}}",
+    "reason": {
+      "invalid_shape": "Pas une relation sous la forme demandée : un champ manque ou a une forme incorrecte",
+      "unknown_column": "Nomme une table ou une colonne que la requête n'a pas comparée",
+      "not_comparable": "Les deux colonnes ont des classes différentes, elles ne sont donc pas comparées",
+      "below_threshold": "La confiance du modèle est sous le seuil de {{threshold}} %",
+      "scored_below_threshold": "Jev l'a notée sous le seuil de {{threshold}} %",
+      "same_column": "D'une colonne vers elle-même",
+      "primary_key_to_primary_key": "Clé primaire vers clé primaire",
+      "both_repeating": "Les valeurs se répètent des deux côtés, aucun n'est donc le côté un",
+      "existing": "Déjà enregistrée",
+      "pending": "Déjà en attente parmi les suggestions",
+      "rejected": "Rejetée auparavant",
+      "matches_foreign_key": "Correspond à une clé étrangère trouvée dans cette exécution",
+      "out_of_scope": "Hors des tables source et cible choisies",
+      "weaker": "Une proposition plus forte des deux mêmes colonnes a été gardée"
+    }
+  }
+}

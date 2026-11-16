@@ -18,7 +18,11 @@ neighborhood is shared by the budget, the permits and both complaints files.
 
 The model is an OpenAI-compatible endpoint served by this test on the loopback: it records every
 request and answers with the relationships a reader of those files would name, each only when its
-two columns are compared in the request.
+two columns are compared in the request, one of them at a confidence under the threshold.
+
+A run over the five tables suggests the key relationship and keeps what it left out, which a
+reviewer accepts; a run over the demo's own domains compares none of the five and says which
+domains it compared; a run over every domain reads the key relationship among the other tables.
 """
 
 # Requirements: REQ-413
@@ -231,8 +235,8 @@ def files(instance: Instance, tmp_path_factory) -> dict[str, int]:
     schemas = _listed(instance, f'{{ availableSchemas(sourceId: "{_SOURCE}") }}')[
         "availableSchemas"
     ]
-    print("schemas of the files source:", schemas)
     ids: dict[str, int] = {}
+    reported: dict[str, dict[str, str]] = {}
     for schema in schemas:
         tables = _listed(
             instance,
@@ -245,7 +249,7 @@ def files(instance: Instance, tmp_path_factory) -> dict[str, int]:
                 f'{{ availableColumnsMetadata(sourceId: "{_SOURCE}", schemaName: "{schema}", '
                 f'tableName: "{name}") {{ name dataType }} }}',
             )["availableColumnsMetadata"]
-            print(f"source reports {schema}.{name}:", [(c["name"], c["dataType"]) for c in columns])
+            reported[name] = {c["name"]: c["dataType"] for c in columns}
             cols = ", ".join(f'{{name: "{c["name"]}", visibleTo: ["org_admin"]}}' for c in columns)
             registered = _gql(
                 instance,
@@ -257,6 +261,12 @@ def files(instance: Instance, tmp_path_factory) -> dict[str, int]:
             ids[name] = registered_id(registered["message"])
             _gql(instance, release_mutation(ids[name]))
     _gql(instance, "mutation { rebuildSchemas { success message } }")
+    print("the files source reports:", json.dumps(reported, sort_keys=True))
+    # The key the files share is text in both: the JSON file's and the Parquet file's.
+    assert reported["inspections"]["permit_id"] == reported["building_permits"]["permit_id"]
+    assert reported["inspections"]["permit_id"] == "varchar"
+    for table in ("budget_2026__budget", "building_permits", "complaints_2026_08"):
+        assert reported[table]["neighborhood"] == "varchar"
     return ids
 
 
@@ -279,28 +289,33 @@ def _candidates(inst: Instance) -> list[dict]:
     return httpx.get(f"{inst.url}/admin/discover/candidates", headers=_HEADERS, timeout=60).json()
 
 
-def _describe(prompts: list[str]) -> None:
-    for i, prompt in enumerate(prompts):
-        print(f"--- request {i + 1} ({len(prompt)} characters) ---")
-        print(prompt if len(prompt) < 20_000 else prompt[:3000] + "\n...")
-        for (table, column), (tid, context) in sorted(_compared(prompt).items()):
-            print(f"  compared {table}({tid}).{column}: {context}")
+def _left_out(inst: Instance, run_id: int) -> list[dict]:
+    listed = _ok(
+        httpx.get(f"{inst.url}/admin/discover/runs/{run_id}/left-out", headers=_HEADERS, timeout=60)
+    )
+    assert listed["threshold"] == 0.7
+    return listed["left_out"]
 
 
-@pytest.mark.parametrize(
-    "scope_of",
-    [
-        pytest.param(lambda ids: {"source_tables": sorted(ids.values())}, id="the-files-tables"),
-        pytest.param(lambda ids: {"source_domains": [_DOMAIN]}, id="the-files-domain"),
-        pytest.param(
-            lambda ids: {"source_domains": ["pet-store", "shelter"]}, id="pet-store-and-shelter"
-        ),
-        pytest.param(
-            lambda ids: {"source_domains": ["pet-store", "shelter", _DOMAIN]}, id="every-domain"
-        ),
-    ],
-)
-def test_what_each_scope_asks(instance: Instance, endpoint: _Endpoint, files, scope_of):
+def _scope(**sets: Any) -> dict:
+    return {"kinds": ["foreign_keys", "semantics"], "vendor": _VENDOR, "model": _MODEL, **sets}
+
+
+def _edge(ids: dict[str, int], row: dict) -> tuple:
+    names = {v: k for k, v in ids.items()}
+    return (
+        names.get(row["source_table_id"]),
+        row["source_column"],
+        names.get(row["target_table_id"]),
+        row["target_column"],
+    )
+
+
+_PERMIT = ("inspections", "permit_id", "building_permits", "permit_id")
+_ADDRESS = ("complaints_2026_08", "address", "building_permits", "address")
+
+
+def test_the_files_register_with_the_types_their_source_reports(files):
     assert sorted(files) == [
         "budget_2026__budget",
         "building_permits",
@@ -308,18 +323,119 @@ def test_what_each_scope_asks(instance: Instance, endpoint: _Endpoint, files, sc
         "complaints_2026_09",
         "inspections",
     ]
-    scope = {
-        "kinds": ["foreign_keys", "semantics"],
-        "vendor": _VENDOR,
-        "model": _MODEL,
-        **scope_of(files),
-    }
+
+
+def test_a_run_over_the_files_suggests_their_key_and_keeps_what_it_left_out(
+    instance: Instance, endpoint: _Endpoint, files
+):
+    """The five tables alone: the JSON file's permit_id and the Parquet file's are text columns
+    of one request, the key relationship is suggested, and what the model rated low is kept."""
     before = len(endpoint.prompts)
-    run = _run(instance, scope)
+    run = _run(instance, _scope(source_tables=sorted(files.values())))
     prompts = endpoint.prompts[before:]
-    print("scope:", scope)
-    print("report:", json.dumps(run["report"], indent=1, sort_keys=True))
-    _describe(prompts)
+    report = run["report"]
+    print("report:", json.dumps(report, sort_keys=True))
+    for prompt in prompts:
+        print(prompt)
+
+    # What the run compared is said: five tables of one domain.
+    assert report["domains"] == [_DOMAIN]
+    assert (report["source_tables"], report["target_tables"]) == (5, 5)
+    assert report["target_same_as_source"] is True and report["tables_not_read"] == 0
+
+    # One request per type group; the text one holds both permit columns and every neighborhood.
+    groups = [p.split("type group '", 1)[1].split("'", 1)[0] for p in prompts]
+    assert sorted(groups) == ["date", "text", "timestamp", "whole_number"]
+    (text,) = [p for p in prompts if "type group 'text'" in p]
+    compared = _compared(text)
+    for table, column in (
+        ("inspections", "permit_id"),
+        ("building_permits", "permit_id"),
+        ("budget_2026__budget", "neighborhood"),
+        ("building_permits", "neighborhood"),
+        ("complaints_2026_08", "neighborhood"),
+        ("complaints_2026_09", "neighborhood"),
+    ):
+        assert compared[(table, column)][1]["classes"] == ["unknown"], (table, column)
+    assert compared[("inspections", "permit_id")][1]["sample_values"][0].startswith("BP-")
+    assert compared[("building_permits", "permit_id")][1]["sample_values"][0].startswith("BP-")
+    # The request says what a confidence states and where a suggestion is kept.
+    assert "A relationship is suggested at 0.7 or more" in text
+
+    semantics = report["semantics"]
+    assert (semantics["proposed"], semantics["suggested"]) == (5, 4)
+    assert semantics["below_threshold"] == 1 and semantics["invalid"] == 0
+    assert semantics["scored"] == 0 and semantics["scored_below_threshold"] == 0
     mine = [c for c in _candidates(instance) if c["scope"] == f"run:{run['id']}"]
-    for c in mine:
-        print("suggested:", {k: c[k] for k in c if k not in ("created_at",)})
+    suggested = {_edge(files, c): c["confidence"] for c in mine}
+    assert suggested[_PERMIT] == 0.95
+    assert len(suggested) == 4
+
+    # Nothing read is dropped: the one the model rated 0.4 is listed, with why, and can be accepted.
+    (left,) = _left_out(instance, run["id"])
+    assert _edge(files, left) == _ADDRESS
+    assert (left["reason"], left["confidence"], left["acceptable"]) == (
+        "below_threshold",
+        0.4,
+        True,
+    )
+    assert left["reasoning"] == "complaints_2026_08.address names building_permits.address"
+    accepted = _ok(
+        httpx.post(
+            f"{instance.url}/admin/discover/left-out/{left['id']}/accept",
+            json={"name": "complaint-at-a-permit-address"},
+            headers=_HEADERS,
+            timeout=120,
+        )
+    )
+    assert accepted["relationship_id"] == "complaint-at-a-permit-address"
+    registered = _gql(instance, "{ relationships { id sourceColumn targetColumn } }")
+    assert {
+        "id": "complaint-at-a-permit-address",
+        "sourceColumn": "address",
+        "targetColumn": "address",
+    } in (registered["relationships"])
+    assert _left_out(instance, run["id"]) == []
+
+
+def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
+    instance: Instance, endpoint: _Endpoint, files
+):
+    """The demo's own two domains: none of the five tables is in any request, and the result
+    names the domains it compared, so a table outside them is plain."""
+    before = len(endpoint.prompts)
+    run = _run(instance, _scope(source_domains=["pet-store", "shelter"]))
+    prompts = endpoint.prompts[before:]
+    assert prompts
+    for prompt in prompts:
+        named = {table for table, _ in _compared(prompt)}
+        assert not named & set(files), named & set(files)
+    report = run["report"]
+    assert report["domains"] == ["pet-store", "shelter"]
+    assert report["source_tables"] > 5
+    assert report["semantics"]["proposed"] == 0
+    assert report["semantics"]["empty_reason"] == "none_proposed"
+    assert [r for r in _left_out(instance, run["id"]) if r["kind"] == "semantics"] == []
+
+
+def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
+    instance: Instance, endpoint: _Endpoint, files
+):
+    """All three domains, with the limits of a model that holds a whole type group in one request:
+    the permit columns share the text request with every other text column, the key relationship
+    is read again, and it is left out only because it is already waiting from the first run."""
+    before = len(endpoint.prompts)
+    run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
+    prompts = endpoint.prompts[before:]
+    (text,) = [p for p in prompts if "type group 'text'" in p]
+    compared = _compared(text)
+    assert ("inspections", "permit_id") in compared and (
+        "building_permits",
+        "permit_id",
+    ) in compared
+    assert len({table for table, _ in compared}) > 5
+    report = run["report"]
+    assert report["domains"] == [_DOMAIN, "pet-store", "shelter"]
+    left = {_edge(files, r): r for r in _left_out(instance, run["id"]) if r["kind"] == "semantics"}
+    assert left[_PERMIT]["reason"] == "pending" and left[_PERMIT]["confidence"] == 0.95
+    assert left[_PERMIT]["acceptable"] is False

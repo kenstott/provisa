@@ -1,0 +1,27 @@
+{
+  "leftOutTable": {
+    "heading": "已排除（{{count}}）",
+    "intro": "本次运行读取但未建议的全部内容，附带给出的置信度和排除原因。接受其中一条即可将其注册为关系。",
+    "colReason": "排除原因",
+    "acceptAria": "接受已排除的关系 {{name}}",
+    "byModel": "模型：{{confidence}}%",
+    "byJev": "Jev：{{confidence}}%",
+    "asWritten": "模型的原文：{{answer}}",
+    "reason": {
+      "invalid_shape": "不是所要求形式的关系：缺少字段或字段形式有误",
+      "unknown_column": "引用了请求未比较的表或列",
+      "not_comparable": "两列的类别不同，因此不作比较",
+      "below_threshold": "模型的置信度低于 {{threshold}}% 的阈值",
+      "scored_below_threshold": "Jev 的评分低于 {{threshold}}% 的阈值",
+      "same_column": "从某列指向其自身",
+      "primary_key_to_primary_key": "主键到主键",
+      "both_repeating": "两侧均有重复值，因此任何一侧都不是“一”的一方",
+      "existing": "已注册",
+      "pending": "已在建议中等待",
+      "rejected": "之前已拒绝",
+      "matches_foreign_key": "与本次运行中找到的外键相同",
+      "out_of_scope": "不在所选的源表和目标表之内",
+      "weaker": "同样两列已保留了更强的提议"
+    }
+  }
+}

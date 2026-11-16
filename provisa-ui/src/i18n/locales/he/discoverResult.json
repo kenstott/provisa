@@ -1,5 +1,8 @@
 {
   "discoverResult": {
+    "compared": "הושוותה טבלה {{count}} מתוך {{domains}}.",
+    "compared_other": "הושוו {{count}} טבלאות מתוך {{domains}}.",
+    "comparedTwoSets": "הושוו {{source}} טבלאות מקור עם {{target}} טבלאות יעד, מתוך {{domains}}.",
     "foreignKeys": "מפתחות זרים: {{found}} נמצאו, {{count}} הוצע.",
     "foreignKeys_other": "מפתחות זרים: {{found}} נמצאו, {{count}} הוצעו.",
     "semanticsFound": "סמנטיקה: הצעה {{count}}.",
@@ -11,17 +14,22 @@
     "partial_other": "{{failed}} מתוך {{count}} בקשות נכשלו, ולכן התוצאה חלקית.",
     "semanticsNoneProposed": "סמנטיקה: אין. המודל לא הציע קשרים.",
     "semanticsBelowThreshold": "סמנטיקה: אין. כל הצעה הייתה מתחת לסף הביטחון של {{threshold}}%.",
+    "semanticsScoredBelowThreshold": "סמנטיקה: אין. המודל נתן לכל הצעה {{threshold}}% או יותר, ו-Jev דירג כל אחת מתחת לכך.",
     "semanticsFiltered": "סמנטיקה: אין. כל הצעה הושמטה, מהסיבות שלהלן.",
     "split": "בקשה {{count}} פוצלה לשניים ונשלחה שוב.",
     "split_other": "{{count}} בקשות פוצלו לשניים ונשלחו שוב.",
     "cutShort": "תשובה {{count}} נעצרה במגבלת האורך שלה; ההצעות שהושלמו בה נשמרות.",
     "cutShort_other": "{{count}} תשובות נעצרו במגבלת האורך שלהן; ההצעות שהושלמו בהן נשמרות.",
+    "scoringFailed": "Jev לא הצליח לדרג את ההצעות של בקשה {{count}}, ולכן נשמר להן הביטחון של המודל.",
+    "scoringFailed_other": "Jev לא הצליח לדרג את ההצעות של {{count}} בקשות, ולכן נשמר להן הביטחון של המודל.",
     "failedRequest": "עבור עמודות מסוג {{group}}: {{message}}",
     "leftOut": "הושמטו: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "מתחת לסף הביטחון של {{threshold}}%",
-      "invalid": "מציינות טבלה או עמודה שאינה קיימת",
+      "below_threshold": "קיבלו מהמודל ביטחון נמוך מ-{{threshold}}%",
+      "scored_below_threshold": "דורגו מתחת ל-{{threshold}}% על ידי Jev",
+      "invalid": "אינן מציינות שתי עמודות שהושוו",
+      "not_comparable": "בין עמודות ממחלקות שונות",
       "same_column": "מעמודה לעצמה",
       "primary_key_to_primary_key": "ממפתח ראשי למפתח ראשי",
       "both_repeating": "ערכים חוזרים בשני הצדדים",
@@ -29,7 +37,8 @@
       "pending": "כבר ממתינות",
       "rejected": "נדחו בעבר",
       "matches_foreign_key": "תואמות מפתח זר שנמצא בהרצה זו",
-      "out_of_scope": "מחוץ לטבלאות שנבחרו"
+      "out_of_scope": "מחוץ לטבלאות שנבחרו",
+      "weaker": "חוזרות על זוג עמודות שעבורו נשמרה הצעה חזקה יותר"
     }
   }
 }

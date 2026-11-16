@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
       "endpoint_has_no_key": "{{vendor}} にキーがありません: 環境変数 {{env}} を設定してください。",
+      "left_out_not_acceptable": "候補 {{proposal_id}} は承認できません。",
       "model_failed": "モデル {{model}} が失敗しました: {{error}}",
       "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
       "model_incomplete": "選択したモデルには、ベンダーとモデルの両方を指定します。",

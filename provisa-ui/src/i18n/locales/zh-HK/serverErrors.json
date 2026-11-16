@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
       "endpoint_has_no_key": "{{vendor}} 沒有金鑰：請設定環境變數 {{env}}。",
+      "left_out_not_acceptable": "無法接受提議 {{proposal_id}}。",
       "model_failed": "模型 {{model}} 失敗：{{error}}",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
       "model_incomplete": "所選模型需同時指明其供應商和模型。",

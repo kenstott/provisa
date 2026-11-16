@@ -1,0 +1,27 @@
+{
+  "leftOutTable": {
+    "heading": "Esclusi ({{count}})",
+    "intro": "Tutto ciò che questa esecuzione ha letto e non suggerisce, con la confidenza indicata e il motivo dell'esclusione. Accettane uno per registrarlo come relazione.",
+    "colReason": "Motivo dell'esclusione",
+    "acceptAria": "Accetta la relazione esclusa {{name}}",
+    "byModel": "{{confidence}}% secondo il modello",
+    "byJev": "{{confidence}}% secondo Jev",
+    "asWritten": "Come l'ha scritto il modello: {{answer}}",
+    "reason": {
+      "invalid_shape": "Non è una relazione nella forma richiesta: un campo manca o ha una forma errata",
+      "unknown_column": "Nomina una tabella o una colonna che la richiesta non ha confrontato",
+      "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
+      "below_threshold": "La confidenza del modello è sotto la soglia del {{threshold}}%",
+      "scored_below_threshold": "Jev l'ha valutata sotto la soglia del {{threshold}}%",
+      "same_column": "Da una colonna a se stessa",
+      "primary_key_to_primary_key": "Da chiave primaria a chiave primaria",
+      "both_repeating": "I valori si ripetono su entrambi i lati, quindi nessuno è il lato uno",
+      "existing": "Già registrata",
+      "pending": "Già in attesa tra i suggerimenti",
+      "rejected": "Rifiutata in precedenza",
+      "matches_foreign_key": "Corrisponde a una chiave esterna trovata in questa esecuzione",
+      "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte",
+      "weaker": "È stata mantenuta una proposta più forte delle stesse due colonne"
+    }
+  }
+}

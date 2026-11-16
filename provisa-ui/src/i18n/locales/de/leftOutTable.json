@@ -1,0 +1,27 @@
+{
+  "leftOutTable": {
+    "heading": "Ausgelassen ({{count}})",
+    "intro": "Alles, was dieser Lauf gelesen hat und nicht vorschlägt, mit der angegebenen Konfidenz und dem Grund für das Auslassen. Akzeptieren Sie einen Eintrag, um ihn als Beziehung zu registrieren.",
+    "colReason": "Warum ausgelassen",
+    "acceptAria": "Ausgelassene Beziehung {{name}} akzeptieren",
+    "byModel": "{{confidence}} % laut Modell",
+    "byJev": "{{confidence}} % laut Jev",
+    "asWritten": "Wie das Modell es schrieb: {{answer}}",
+    "reason": {
+      "invalid_shape": "Keine Beziehung in der verlangten Form: Ein Feld fehlt oder hat die falsche Form",
+      "unknown_column": "Nennt eine Tabelle oder Spalte, die die Anfrage nicht verglichen hat",
+      "not_comparable": "Die beiden Spalten haben unterschiedliche Klassen und werden daher nicht verglichen",
+      "below_threshold": "Die Konfidenz des Modells liegt unter der Schwelle von {{threshold}} %",
+      "scored_below_threshold": "Jev bewertete ihn unter der Schwelle von {{threshold}} %",
+      "same_column": "Von einer Spalte zu sich selbst",
+      "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
+      "both_repeating": "Werte wiederholen sich auf beiden Seiten, daher ist keine die Eins-Seite",
+      "existing": "Bereits registriert",
+      "pending": "Wartet bereits unter den Vorschlägen",
+      "rejected": "Zuvor abgelehnt",
+      "matches_foreign_key": "Entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
+      "out_of_scope": "Außerhalb der gewählten Quell- und Zieltabellen",
+      "weaker": "Ein stärkerer Vorschlag für dieselben zwei Spalten wurde behalten"
+    }
+  }
+}

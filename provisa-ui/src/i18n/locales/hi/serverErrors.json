@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "इंडेक्स '{{index}}' के लिए Elasticsearch मैपिंग पढ़ने में विफलता: {{error}}",
       "endpoint_already_registered": "एंडपॉइंट पहले से पंजीकृत है: {{error}}",
       "endpoint_has_no_key": "{{vendor}} की कोई कुंजी नहीं है: {{env}} एनवायरनमेंट वेरिएबल सेट करें।",
+      "left_out_not_acceptable": "प्रस्ताव {{proposal_id}} स्वीकार नहीं किया जा सकता।",
       "model_failed": "मॉडल {{model}} विफल रहा: {{error}}",
       "model_has_no_room": "मॉडल {{model}} में कोई अनुरोध नहीं समा सकता: {{reason}}",
       "model_incomplete": "चुना गया मॉडल अपने विक्रेता और अपने मॉडल दोनों का नाम देता है।",

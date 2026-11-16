@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "Échec de lecture du mapping Elasticsearch pour l'index « {{index}} » : {{error}}",
       "endpoint_already_registered": "Endpoint déjà enregistré : {{error}}",
       "endpoint_has_no_key": "{{vendor}} n'a pas de clé : définissez la variable d'environnement {{env}}.",
+      "left_out_not_acceptable": "La proposition {{proposal_id}} ne peut pas être acceptée.",
       "model_failed": "Le modèle {{model}} a échoué : {{error}}",
       "model_has_no_room": "Le modèle {{model}} ne peut pas contenir une requête : {{reason}}",
       "model_incomplete": "Un modèle choisi indique à la fois son fournisseur et son modèle.",

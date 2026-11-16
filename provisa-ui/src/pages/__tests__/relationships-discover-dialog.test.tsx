@@ -785,7 +785,8 @@ describe("Discovery dialog: the run's suggestions", () => {
     expect(within(dialog()).getByText("The payer is a customer")).toBeInTheDocument();
 
     const scored = within(dialog()).getByTestId("left-out-502");
-    expect(scored).toHaveTextContent("95% by the model, 31% by Jev");
+    expect(scored).toHaveTextContent("95% by the model");
+    expect(scored).toHaveTextContent("31% by Jev");
     expect(scored).toHaveTextContent("Jev scored it below the 70% threshold");
 
     // One that named no two compared columns: as the model wrote it, and nothing to accept.

@@ -1,5 +1,8 @@
 {
   "discoverResult": {
+    "compared": "{{count}} tabel van {{domains}} vergeleken.",
+    "compared_other": "{{count}} tabellen van {{domains}} vergeleken.",
+    "comparedTwoSets": "{{source}} brontabellen vergeleken met {{target}} doeltabellen, van {{domains}}.",
     "foreignKeys": "Refererende sleutels: {{found}} gevonden, {{count}} voorgesteld.",
     "foreignKeys_other": "Refererende sleutels: {{found}} gevonden, {{count}} voorgesteld.",
     "semanticsFound": "Semantiek: {{count}} voorstel.",
@@ -11,17 +14,22 @@
     "partial_other": "{{failed}} van {{count}} verzoeken zijn mislukt, dus het resultaat is onvolledig.",
     "semanticsNoneProposed": "Semantiek: geen. Het model stelde geen relaties voor.",
     "semanticsBelowThreshold": "Semantiek: geen. Elk voorstel lag onder de betrouwbaarheidsdrempel van {{threshold}}%.",
+    "semanticsScoredBelowThreshold": "Semantiek: geen. Het model gaf elk voorstel {{threshold}}% of meer, en Jev beoordeelde elk daaronder.",
     "semanticsFiltered": "Semantiek: geen. Elk voorstel is weggelaten, om de redenen hieronder.",
     "split": "{{count}} verzoek is gehalveerd en opnieuw gesteld.",
     "split_other": "{{count}} verzoeken zijn gehalveerd en opnieuw gesteld.",
     "cutShort": "{{count}} antwoord stopte bij zijn lengtelimiet; de voorstellen die het afmaakte, blijven bewaard.",
     "cutShort_other": "{{count}} antwoorden stopten bij hun lengtelimiet; de voorstellen die ze afmaakten, blijven bewaard.",
+    "scoringFailed": "Jev kon de voorstellen van {{count}} verzoek niet beoordelen; ze hielden de betrouwbaarheid van het model.",
+    "scoringFailed_other": "Jev kon de voorstellen van {{count}} verzoeken niet beoordelen; ze hielden de betrouwbaarheid van het model.",
     "failedRequest": "Voor kolommen van het type {{group}}: {{message}}",
     "leftOut": "Weggelaten: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "onder de betrouwbaarheidsdrempel van {{threshold}}%",
-      "invalid": "noemt een tabel of kolom die niet bestaat",
+      "below_threshold": "door het model minder dan {{threshold}}% betrouwbaarheid gegeven",
+      "scored_below_threshold": "door Jev onder {{threshold}}% beoordeeld",
+      "invalid": "noemt geen twee vergeleken kolommen",
+      "not_comparable": "tussen kolommen van verschillende klassen",
       "same_column": "van een kolom naar zichzelf",
       "primary_key_to_primary_key": "primaire sleutel naar primaire sleutel",
       "both_repeating": "herhaalde waarden aan beide kanten",
@@ -29,7 +37,8 @@
       "pending": "wacht al",
       "rejected": "eerder afgewezen",
       "matches_foreign_key": "komt overeen met een refererende sleutel uit deze run",
-      "out_of_scope": "buiten de gekozen tabellen"
+      "out_of_scope": "buiten de gekozen tabellen",
+      "weaker": "herhaalt een kolompaar waarvoor een sterker voorstel is behouden"
     }
   }
 }

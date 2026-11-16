@@ -1,0 +1,27 @@
+{
+  "leftOutTable": {
+    "heading": "Omitidas ({{count}})",
+    "intro": "Todo lo que esta ejecución leyó y no sugiere, con la confianza indicada y el motivo de la omisión. Acepte una para registrarla como relación.",
+    "colReason": "Motivo de la omisión",
+    "acceptAria": "Aceptar la relación omitida {{name}}",
+    "byModel": "{{confidence}} % según el modelo",
+    "byJev": "{{confidence}} % según Jev",
+    "asWritten": "Tal como lo escribió el modelo: {{answer}}",
+    "reason": {
+      "invalid_shape": "No es una relación como la solicitada: falta un campo o tiene una forma incorrecta",
+      "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
+      "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
+      "below_threshold": "La confianza del modelo está por debajo del umbral del {{threshold}} %",
+      "scored_below_threshold": "Jev la puntuó por debajo del umbral del {{threshold}} %",
+      "same_column": "De una columna a sí misma",
+      "primary_key_to_primary_key": "Clave primaria a clave primaria",
+      "both_repeating": "Los valores se repiten en ambos lados, así que ninguno es el lado uno",
+      "existing": "Ya registrada",
+      "pending": "Ya pendiente entre las sugerencias",
+      "rejected": "Rechazada antes",
+      "matches_foreign_key": "Coincide con una clave foránea encontrada en esta ejecución",
+      "out_of_scope": "Fuera de las tablas de origen y destino elegidas",
+      "weaker": "Se conservó una propuesta más fuerte de las mismas dos columnas"
+    }
+  }
+}

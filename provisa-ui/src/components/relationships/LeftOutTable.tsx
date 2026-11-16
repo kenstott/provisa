@@ -109,15 +109,21 @@ export function LeftOutTable({
                     <Table.Tr data-testid={`left-out-${p.id}`}>
                       <Table.Td>{c ? label(c.source_table_id, c.source_column) : "—"}</Table.Td>
                       <Table.Td>{c ? label(c.target_table_id, c.target_column) : "—"}</Table.Td>
-                      <Table.Td>
-                        {c === null
-                          ? "—"
-                          : p.scored === null
-                            ? `${percent(c.confidence)}%`
-                            : `${t("leftOutTable.byModel", { confidence: percent(c.confidence) })}, ${t(
-                                "leftOutTable.byJev",
-                                { confidence: percent(p.scored) },
-                              )}`}
+                      <Table.Td style={{ whiteSpace: "nowrap" }}>
+                        {c === null ? (
+                          "—"
+                        ) : p.scored === null ? (
+                          `${percent(c.confidence)}%`
+                        ) : (
+                          <>
+                            <Text inherit>
+                              {t("leftOutTable.byModel", { confidence: percent(c.confidence) })}
+                            </Text>
+                            <Text inherit>
+                              {t("leftOutTable.byJev", { confidence: percent(p.scored) })}
+                            </Text>
+                          </>
+                        )}
                       </Table.Td>
                       <Table.Td>
                         {t(`leftOutTable.reason.${p.reason}`, {

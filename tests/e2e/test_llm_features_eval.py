@@ -185,3 +185,119 @@ def test_relationship_inference_does_not_invent_edges_on_unrelated_tables():
     cands = analyze(build_prompt(di), {}, di, min_confidence=0.7)
     # At a 0.7 confidence bar there is no real FK to find; allow at most one low-signal guess.
     assert len(cands) <= 1, f"hallucinated relationships between unrelated tables: {cands}"
+
+
+# ── discovery over a folder of files: the key the files share ───────────────────────────────────
+
+
+def _drop_tables():
+    """The five tables of the files demo's drop folder as a discovery run reads them (REQ-413):
+    the types its files source reports and, for each text column, the sample values a run sent
+    for it on a test instance (tests/integration/test_discovery_files_e2e.py)."""
+    from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
+
+    def col(name: str, data_type: str, *samples: str) -> ColumnFacts:
+        return ColumnFacts(
+            name=name,
+            data_type=data_type,
+            description=None,
+            tags=(),
+            classes=(UNKNOWN,),
+            sensitive=False,
+            samples=samples,
+            is_primary_key=False,
+            groups=type_groups(data_type, subtype=None, array_depth=0),
+        )
+
+    def tbl(table_id: int, name: str, *columns: ColumnFacts) -> TableFacts:
+        return TableFacts(table_id, "city-files", "drop", name, None, (), None, columns)
+
+    neighborhoods = ("Harbor Point", "Old Town", "Eastgate", "Riverside", "Millbrook")
+    return [
+        tbl(
+            309,
+            "budget_2026__budget",
+            col("neighborhood", "varchar", "Riverside", "Old Town", "Millbrook", "Harbor Point"),
+            col("department", "varchar", "Public Works", "Parks", "Planning", "Sanitation"),
+            col("amount", "integer"),
+        ),
+        tbl(
+            310,
+            "building_permits",
+            col("permit_id", "varchar", "BP-0001", "BP-0002", "BP-0003", "BP-0004", "BP-0005"),
+            col("address", "varchar", "149 Bank St", "59 River Rd", "168 Willow Ln"),
+            col("neighborhood", "varchar", "Riverside"),
+            col("permit_type", "varchar", "Renovation", "Addition", "New building", "Demolition"),
+            col("issued_on", "date"),
+            col("expires_on", "date"),
+            col("status", "varchar", "active", "expired"),
+            col("valuation", "bigint"),
+        ),
+        *(
+            tbl(
+                table_id,
+                name,
+                col("complaint_id", "integer"),
+                col("opened_at", "timestamp"),
+                col("status", "varchar", "open", "closed"),
+                col("closed_at", "timestamp"),
+                col("category", "varchar", "Blocked sidewalk", "Dust", "Noise", "Trash"),
+                col("neighborhood", "varchar", *neighborhoods),
+                col("address", "varchar", *addresses),
+            )
+            for table_id, name, addresses in (
+                (311, "complaints_2026_08", ("238 Pier Ave", "33 Mill Ln", "86 Gate St")),
+                (312, "complaints_2026_09", ("13 Pier Ave", "1 Willow Ln", "230 Bank St")),
+            )
+        ),
+        tbl(
+            313,
+            "inspections",
+            col("inspection_id", "integer"),
+            col("permit_id", "varchar", "BP-0096", "BP-0081", "BP-0016", "BP-0093", "BP-0076"),
+            col("inspected_on", "date"),
+            col("result", "varchar", "passed", "failed", "corrections needed"),
+        ),
+    ]
+
+
+def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_property):
+    """One request, with a short answer: the text columns of the five files, as a run sends them.
+    inspections.permit_id names building_permits.permit_id, and the model is to say so at the
+    confidence a suggestion is kept at, by the rubric the request states. Everything it answered
+    is recorded with the test's result (``discovery_answer``)."""
+    import json
+
+    from provisa.discovery.analyzer import read_answer_list
+    from provisa.discovery.columns import TEXT
+    from provisa.discovery.run import SYSTEM_PROMPT
+    from provisa.discovery.runner import MIN_CONFIDENCE, Tally, read_items
+    from provisa.discovery.windows import plan
+    from provisa.llm.client import ProvisaLLMClient
+
+    max_tokens = 1_950  # thirteen suggestions at most
+    k, requests = plan(_drop_tables(), None, 32_000, max_tokens)
+    (request,) = [r for r in requests if r.group == TEXT]
+    client = ProvisaLLMClient("relationship_inference", config=_OPENROUTER_CONFIG, api_keys={})
+    answer = client.complete_sync_detailed(request.prompt(k), SYSTEM_PROMPT, max_tokens)
+    read = read_answer_list(answer.text, answer.cut_off)
+    assert read.items is not None, f"no list in the answer: {answer.text!r}"
+    tally = Tally(total=1)
+    kept = read_items(request, read.items, tally)
+    said = [
+        {"edge": p.edge, "confidence": p.confidence, "left_out": None, "reasoning": p.reasoning}
+        for p in kept
+    ] + [
+        {
+            "edge": None if r.proposal is None else r.proposal.edge,
+            "confidence": None if r.proposal is None else r.proposal.confidence,
+            "left_out": r.left_out,
+            "reasoning": r.answer if r.proposal is None else r.proposal.reasoning,
+        }
+        for r in tally.left_out
+    ]
+    record_property("discovery_model", f"{answer.vendor}:{answer.model}")
+    record_property("discovery_answer", json.dumps(said))
+    permit = [p for p in kept if p.pair == frozenset({(313, "permit_id"), (310, "permit_id")})]
+    assert permit, f"the permit key was not kept at {MIN_CONFIDENCE} or more; answered: {said}"
+    assert permit[0].start == (313, "permit_id"), f"the wrong way round: {said}"

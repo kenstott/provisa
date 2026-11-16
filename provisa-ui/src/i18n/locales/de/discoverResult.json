@@ -1,5 +1,8 @@
 {
   "discoverResult": {
+    "compared": "{{count}} Tabelle aus {{domains}} verglichen.",
+    "compared_other": "{{count}} Tabellen aus {{domains}} verglichen.",
+    "comparedTwoSets": "{{source}} Quelltabellen mit {{target}} Zieltabellen verglichen, aus {{domains}}.",
     "foreignKeys": "Fremdschlüssel: {{found}} gefunden, {{count}} vorgeschlagen.",
     "foreignKeys_other": "Fremdschlüssel: {{found}} gefunden, {{count}} vorgeschlagen.",
     "semanticsFound": "Semantik: {{count}} Vorschlag.",
@@ -11,17 +14,22 @@
     "partial_other": "{{failed}} von {{count}} Anfragen sind fehlgeschlagen, das Ergebnis ist daher unvollständig.",
     "semanticsNoneProposed": "Semantik: keine. Das Modell hat keine Beziehungen vorgeschlagen.",
     "semanticsBelowThreshold": "Semantik: keine. Jeder Vorschlag lag unter der Konfidenzschwelle von {{threshold}} %.",
+    "semanticsScoredBelowThreshold": "Semantik: keine. Das Modell gab jedem Vorschlag {{threshold}} % oder mehr, und Jev bewertete jeden darunter.",
     "semanticsFiltered": "Semantik: keine. Jeder Vorschlag wurde ausgelassen, aus den unten genannten Gründen.",
     "split": "{{count}} Anfrage wurde halbiert und erneut gestellt.",
     "split_other": "{{count}} Anfragen wurden halbiert und erneut gestellt.",
     "cutShort": "{{count}} Antwort endete an ihrem Längenlimit; die darin abgeschlossenen Vorschläge bleiben erhalten.",
     "cutShort_other": "{{count}} Antworten endeten an ihrem Längenlimit; die darin abgeschlossenen Vorschläge bleiben erhalten.",
+    "scoringFailed": "Jev konnte die Vorschläge von {{count}} Anfrage nicht bewerten; sie behielten die Konfidenz des Modells.",
+    "scoringFailed_other": "Jev konnte die Vorschläge von {{count}} Anfragen nicht bewerten; sie behielten die Konfidenz des Modells.",
     "failedRequest": "Für Spalten vom Typ {{group}}: {{message}}",
     "leftOut": "Ausgelassen: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "unter der Konfidenzschwelle von {{threshold}} %",
-      "invalid": "nennt eine Tabelle oder Spalte, die nicht existiert",
+      "below_threshold": "vom Modell mit weniger als {{threshold}} % Konfidenz bewertet",
+      "scored_below_threshold": "von Jev unter {{threshold}} % bewertet",
+      "invalid": "nennt keine zwei verglichenen Spalten",
+      "not_comparable": "zwischen Spalten unterschiedlicher Klassen",
       "same_column": "von einer Spalte zu sich selbst",
       "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
       "both_repeating": "Werte auf beiden Seiten wiederholt",
@@ -29,7 +37,8 @@
       "pending": "wartet bereits",
       "rejected": "zuvor abgelehnt",
       "matches_foreign_key": "entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
-      "out_of_scope": "außerhalb der gewählten Tabellen"
+      "out_of_scope": "außerhalb der gewählten Tabellen",
+      "weaker": "wiederholt ein Spaltenpaar, für das ein stärkerer Vorschlag behalten wurde"
     }
   }
 }

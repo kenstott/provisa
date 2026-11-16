@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
       "endpoint_has_no_key": "ל-{{vendor}} אין מפתח: הגדירו את משתנה הסביבה {{env}}.",
+      "left_out_not_acceptable": "לא ניתן לקבל את ההצעה {{proposal_id}}.",
       "model_failed": "המודל {{model}} נכשל: {{error}}",
       "model_has_no_room": "המודל {{model}} אינו יכול להכיל בקשה: {{reason}}",
       "model_incomplete": "מודל שנבחר מציין גם את הספק שלו וגם את המודל שלו.",

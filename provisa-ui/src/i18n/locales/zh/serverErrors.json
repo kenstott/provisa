@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "读取索引 '{{index}}' 的 Elasticsearch 映射失败：{{error}}",
       "endpoint_already_registered": "终结点已注册：{{error}}",
       "endpoint_has_no_key": "{{vendor}} 没有密钥：请设置环境变量 {{env}}。",
+      "left_out_not_acceptable": "无法接受提议 {{proposal_id}}。",
       "model_failed": "模型 {{model}} 失败：{{error}}",
       "model_has_no_room": "模型 {{model}} 无法容纳一个请求：{{reason}}",
       "model_incomplete": "所选模型需同时指明其供应商和模型。",

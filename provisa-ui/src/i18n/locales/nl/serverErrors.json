@@ -150,6 +150,7 @@
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
       "endpoint_has_no_key": "{{vendor}} heeft geen sleutel: stel de omgevingsvariabele {{env}} in.",
+      "left_out_not_acceptable": "Voorstel {{proposal_id}} kan niet worden geaccepteerd.",
       "model_failed": "Het model {{model}} is mislukt: {{error}}",
       "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
       "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
