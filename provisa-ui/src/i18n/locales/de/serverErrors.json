@@ -154,6 +154,7 @@
       "semantics_unavailable": "Semantik kann nicht ausgeführt werden: {{model}}, das der Beziehungsableitung zugewiesene Modell, hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
+      "table_unreadable": "Die Erkennung kann die Tabelle {{table}} nicht lesen: {{reason}}. Nehmen Sie sie aus den gewählten Tabellen heraus, oder korrigieren Sie sie und versuchen Sie es erneut.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}"
     },
     "environments": {

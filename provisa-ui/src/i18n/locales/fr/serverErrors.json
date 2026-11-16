@@ -154,6 +154,7 @@
       "semantics_unavailable": "La sémantique ne peut pas s'exécuter : {{model}}, le modèle affecté à l'inférence des relations, n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "source_not_found": "Source « {{source_id}} » introuvable",
       "table_id_required": "table_id requis pour la portée table",
+      "table_unreadable": "La découverte ne peut pas lire la table {{table}} : {{reason}}. Retirez-la des tables choisies, ou corrigez-la et réessayez.",
       "unknown_source_type": "Type de source inconnu : {{type}}"
     },
     "environments": {

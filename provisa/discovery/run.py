@@ -311,7 +311,6 @@ async def perform(
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         known: Known = await gather.known(conn)
-        rows = await gather.registered_rows(conn, sorted(prepared.tables))
         fk_found: list[RelationshipCandidate] = []
         if "foreign_keys" in spec.kinds:
             fk_found = await collect_fk_for_tables(
@@ -319,7 +318,7 @@ async def perform(
             )
     fk = _fk_proposals(fk_found)
     publisher = Publisher(pool, scope)
-    read_sample = _caching(gather.uniqueness_reader(state, rows))
+    read_sample = _caching(gather.uniqueness_reader(state))
     tables = prepared.tables
 
     async def settled(semantic: list[Proposal]) -> Outcome:

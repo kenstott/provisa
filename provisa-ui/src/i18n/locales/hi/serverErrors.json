@@ -154,6 +154,7 @@
       "semantics_unavailable": "सिमेंटिक्स नहीं चल सकता: संबंध अनुमान के लिए निर्धारित मॉडल {{model}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
+      "table_unreadable": "डिस्कवरी तालिका {{table}} को नहीं पढ़ सकती: {{reason}}। इसे चुनी गई तालिकाओं से बाहर रखें, या इसे ठीक करके फिर से प्रयास करें।",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}"
     },
     "environments": {

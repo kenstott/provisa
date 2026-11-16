@@ -154,6 +154,7 @@
       "semantics_unavailable": "La semantica non può essere eseguita: {{model}}, il modello assegnato all'inferenza delle relazioni, non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "source_not_found": "Origine '{{source_id}}' non trovata",
       "table_id_required": "table_id richiesto per l'ambito tabella",
+      "table_unreadable": "Il rilevamento non può leggere la tabella {{table}}: {{reason}}. Escludila dalle tabelle scelte, oppure correggila e riprova.",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}"
     },
     "environments": {

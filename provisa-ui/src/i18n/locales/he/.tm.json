@@ -6217,6 +6217,7 @@
   "he/serverErrors.json::serverErrors.discovery.schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
   "he/serverErrors.json::serverErrors.discovery.source_not_found": "Source '{{source_id}}' not found",
   "he/serverErrors.json::serverErrors.discovery.table_id_required": "table_id required for table scope",
+  "he/serverErrors.json::serverErrors.discovery.table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
   "he/serverErrors.json::serverErrors.discovery.unknown_source_type": "Unknown source type: {{type}}",
   "he/serverErrors.json::serverErrors.engine.write_conflict": "Another change to the same data was written at the same time. Try again.",
   "he/serverErrors.json::serverErrors.entitlements.blank_identifier": "An entry cannot be blank.",
