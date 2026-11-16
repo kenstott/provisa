@@ -145,6 +145,7 @@ def _make_ctx(owned_table_id: int = 1):
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name="sa_orders",
         display_name="",
+        original_table_name="",
     )
     ctx = SimpleNamespace(
         tables={"sales__orders": table},
@@ -340,6 +341,7 @@ def test_from_schema_no_cross_domain_rel_when_target_already_owned():
         domain_id="sales",
         field_name="sa_products",
         display_name="",
+        original_table_name="",
     )
     ctx.tables["sales__products"] = table2
     ctx.aggregate_columns[2] = [("id", "integer"), ("name", "varchar")]
