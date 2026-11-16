@@ -147,14 +147,22 @@
       "elasticsearch_index_hint_required": "Elasticsearch の検出には「index」ヒントが必要です。",
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
+      "endpoint_has_no_key": "{{vendor}} にキーがありません: 環境変数 {{env}} を設定してください。",
       "model_failed": "モデル {{model}} が失敗しました: {{error}}",
+      "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
+      "model_incomplete": "選択したモデルには、ベンダーとモデルの両方を指定します。",
       "no_adapter_for_source_type": "ソースタイプ「{{source_type}}」に登録されたアダプターがありません",
       "no_live_connection": "ソース「{{source_id}}」へのライブ接続がありません。MongoDB のスキーマ検出にはソースプール内のアクティブな接続が必要です。ソースが接続されており、サーバーに到達可能であることを確認してください。",
+      "run_ended": "検出の実行 {{run_id}} はすでに終了しています: {{status}}",
+      "run_not_found": "検出の実行 {{run_id}} が見つかりません",
       "schema_discovery_unsupported": "ソースタイプ「{{source_type}}」はスキーマ検出をサポートしていません。列を手動で定義してください。",
       "semantics_unavailable": "セマンティクスを実行できません: リレーションシップ推論に割り当てられたモデル {{model}} にキーがありません。管理 > AIモデルで設定してください。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "table_id_required": "table スコープには table_id が必要です",
-      "unknown_source_type": "不明なソースタイプ：{{type}}"
+      "table_unreadable": "検出はテーブル {{table}} を読み取れません: {{reason}}。選択したテーブルから外すか、修正してからもう一度お試しください。",
+      "unknown_source_type": "不明なソースタイプ：{{type}}",
+      "vendor_has_no_key": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
     },
     "environments": {
       "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"

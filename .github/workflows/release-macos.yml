@@ -93,6 +93,10 @@ jobs:
           node-version: "20"
           install: "false"
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
       - name: Install the Rust toolchain
         shell: bash
@@ -153,6 +157,10 @@ jobs:
         with:
           node-version: "20"
           install: "false"
+
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
 
       # REQ-2194: installing provisa compiles provisa._encoders, with the toolchain every recipe names.
       - name: Install the Rust toolchain

@@ -27,6 +27,8 @@
     "acceptFailed_other": "{{count}} 件の提案を承認できませんでした:",
     "rejectFailed": "{{count}} 件の提案を却下できませんでした:",
     "rejectFailed_other": "{{count}} 件の提案を却下できませんでした:",
-    "failedOne": "{{name}}: {{error}}"
+    "failedOne": "{{name}}: {{error}}",
+    "reducedInformation": "限定情報: 値は比較されていません",
+    "reducedInformationHelp": "これらのテーブルの 1 つはパラメーターを必要とするため、読み取られることはありません。この提案は、名前、説明、型、必須パラメーターのみに基づいています。"
   }
 }

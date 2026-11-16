@@ -10669,5 +10669,15 @@
   "he/serverErrors.json::serverErrors.schema.code_resolver_retired": "Code resolver '{{resolver}}' retired",
   "he/serverErrors.json::serverErrors.schema.code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
   "he/serverErrors.json::serverErrors.preflight.confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
-  "he/serverErrors.json::serverErrors.preflight.confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
+  "he/serverErrors.json::serverErrors.preflight.confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}}).",
+  "he/serverErrors.json::serverErrors.discovery.table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
+  "he/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
+  "he/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
+  "he/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
+  "he/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+  "he/serverErrors.json::serverErrors.discovery.run_not_found": "Discovery run {{run_id}} not found",
+  "he/serverErrors.json::serverErrors.discovery.vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
+  "he/serverErrors.json::serverErrors.discovery.vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+  "he/candidatesTable.json::candidatesTable.reducedInformation": "Reduced information: no values were compared",
+  "he/candidatesTable.json::candidatesTable.reducedInformationHelp": "One of these tables requires a parameter, so it is never read. This suggestion comes from names, descriptions, types and required parameters alone."
 }

@@ -147,14 +147,22 @@
       "elasticsearch_index_hint_required": "Elasticsearch खोज के लिए एक 'index' संकेत आवश्यक है।",
       "elasticsearch_mapping_failed": "इंडेक्स '{{index}}' के लिए Elasticsearch मैपिंग पढ़ने में विफलता: {{error}}",
       "endpoint_already_registered": "एंडपॉइंट पहले से पंजीकृत है: {{error}}",
+      "endpoint_has_no_key": "{{vendor}} की कोई कुंजी नहीं है: {{env}} एनवायरनमेंट वेरिएबल सेट करें।",
       "model_failed": "मॉडल {{model}} विफल रहा: {{error}}",
+      "model_has_no_room": "मॉडल {{model}} में कोई अनुरोध नहीं समा सकता: {{reason}}",
+      "model_incomplete": "चुना गया मॉडल अपने विक्रेता और अपने मॉडल दोनों का नाम देता है।",
       "no_adapter_for_source_type": "स्रोत प्रकार '{{source_type}}' के लिए कोई अडैप्टर पंजीकृत नहीं है",
       "no_live_connection": "स्रोत '{{source_id}}' के लिए कोई सक्रिय कनेक्शन नहीं है। MongoDB स्कीमा खोज के लिए स्रोत पूल में एक सक्रिय कनेक्शन आवश्यक है। सत्यापित करें कि स्रोत कनेक्टेड है और सर्वर पहुँच योग्य है।",
+      "run_ended": "डिस्कवरी रन {{run_id}} पहले ही समाप्त हो चुका है: {{status}}",
+      "run_not_found": "डिस्कवरी रन {{run_id}} नहीं मिला",
       "schema_discovery_unsupported": "स्रोत प्रकार '{{source_type}}' स्कीमा खोज का समर्थन नहीं करता। कॉलम मैन्युअल रूप से परिभाषित करें।",
       "semantics_unavailable": "सिमेंटिक्स नहीं चल सकता: संबंध अनुमान के लिए निर्धारित मॉडल {{model}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
-      "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}"
+      "table_unreadable": "डिस्कवरी तालिका {{table}} को नहीं पढ़ सकती: {{reason}}। इसे चुनी गई तालिकाओं से बाहर रखें, या इसे ठीक करके फिर से प्रयास करें।",
+      "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}",
+      "vendor_has_no_key": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
+      "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।"
     },
     "environments": {
       "in_use": "{{env}} को अब भी {{count}} आइटम संदर्भित करते हैं। हर एक को हटाएँ या बदलें, फिर दोबारा हटाएँ।"
