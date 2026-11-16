@@ -163,7 +163,13 @@
       "table_id_required": "資料表範圍需要 table_id",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
       "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
+    },
+    "llm": {
+      "request_failed": "對模型的請求失敗：{{reason}}",
+      "no_answer_in_time": "模型未在 {{seconds}} 秒內作出回答。",
+      "empty_answer": "模型未傳回任何文字。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"
@@ -836,6 +842,10 @@
       "change_key_missing": "{{function}} 傳回了缺少鍵欄 {{column}} 的資料列",
       "change_key_repeated": "{{function}} 在一個結果中兩次傳回了鍵 {{key}}",
       "change_cursor_backwards": "{{function}} 的游標出現倒退：傳回了 {{returned}}，早於已儲存的 {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
+      "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
     }
   }
 }

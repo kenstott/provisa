@@ -12,7 +12,7 @@
 // as the Tables page does: a row selects, another row swaps, the row or the panel's close
 // closes. A source's actions are in the panel's head. "+ Source" asks only what a source needs
 // in order to exist; once saved, the new source is selected and its panel opens on registering
-// its tables (REQ-2234), then on its detail in edit.
+// its tables (REQ-2234), then on its detail, read: its edit form opens on Edit.
 
 import { beforeEach, describe, it, expect, vi } from "vitest";
 import { fireEvent, render, screen, waitFor, within } from "../../test-utils/render";
@@ -255,7 +255,7 @@ describe("+ Source asks only what a source needs in order to exist", () => {
     expect(step.queryByTestId("source-load-management-panel")).toBeNull();
   });
 
-  it("selects the source it created and opens its detail in edit, the rest at defaults", async () => {
+  it("selects the source it created and opens its detail read, the rest at defaults in its edit form", async () => {
     render(<SourcesPage />);
     await openCreate();
     await userEvent.type(screen.getByTestId("sources-id-input"), "crm");
@@ -272,9 +272,14 @@ describe("+ Source asks only what a source needs in order to exist", () => {
     expect(createSource.mock.calls[0][0]).toMatchObject({ id: "crm", type: "postgresql" });
     // REQ-2234: the panel opens first on registering its tables; skipping that step closes it.
     await userEvent.click(await screen.findByTestId("register-tables-skip"));
-    // Its detail, in edit: the whole form, with what the short step did not ask.
-    await screen.findByTestId("sources-edit-submit");
+    // Its detail, read: the source is saved, so nothing is offered to save.
+    const read = await within(panel()!).findByTestId("source-read");
     expect(screen.getByTestId("sources-split-title")).toHaveTextContent("crm");
+    expect(screen.queryByTestId("sources-edit-submit")).toBeNull();
+    expect(read.querySelectorAll("input, select, textarea")).toHaveLength(0);
+    // Edit, asked for: the whole form, with what the short step did not ask.
+    await userEvent.click(within(panel()!).getByTestId("source-detail-edit"));
+    await screen.findByTestId("sources-edit-submit");
     expect(within(panel()!).getByLabelText("Description")).toHaveValue("");
     await userEvent.click(screen.getByTestId("source-section-load"));
     expect(within(panel()!).getByTestId("source-load-management-panel")).toBeInTheDocument();

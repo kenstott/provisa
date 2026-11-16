@@ -602,12 +602,16 @@ class TestRoleMapping:
 
 
 class _FirebaseLikeProvider(AuthProvider):
-    """Provider that maps opaque tokens → user_ids, standing in for Firebase."""
+    """Provider that maps opaque tokens → user_ids, standing in for Firebase.
+
+    ``email_verified``: what the token says of the address (REQ-1261). A Firebase account's is
+    verified unless a test says otherwise."""
 
     provider_name = "firebase"
 
-    def __init__(self, token_to_user: dict[str, str]) -> None:
+    def __init__(self, token_to_user: dict[str, str], *, email_verified: bool = True) -> None:
         self._map = token_to_user
+        self._email_verified = email_verified
 
     async def validate_token(self, token: str) -> AuthIdentity:
         user_id = self._map.get(token)
@@ -616,6 +620,7 @@ class _FirebaseLikeProvider(AuthProvider):
         return AuthIdentity(
             user_id=user_id,
             email=f"{user_id}@example.com",
+            email_verified=self._email_verified,
             display_name=user_id,
             roles=[],
             raw_claims={"sub": user_id},

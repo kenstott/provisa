@@ -163,7 +163,13 @@
       "table_id_required": "table_id נדרש עבור היקף table",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
       "vendor_has_no_key": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
-      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל."
+      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל.",
+      "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה."
+    },
+    "llm": {
+      "request_failed": "הבקשה למודל נכשלה: {{reason}}",
+      "no_answer_in_time": "המודל לא השיב בתוך {{seconds}} שניות.",
+      "empty_answer": "המודל לא החזיר טקסט."
     },
     "environments": {
       "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
@@ -836,6 +842,10 @@
       "change_key_missing": "{{function}} החזירה שורה ללא עמודת המפתח שלה {{column}}",
       "change_key_repeated": "{{function}} החזירה את המפתח {{key}} פעמיים בתוצאה אחת",
       "change_cursor_backwards": "הסמן של {{function}} נע לאחור: הוחזר {{returned}}, לפני הערך השמור {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "בדיקת הקדם של {{subject}} לא הורצה: בארגון הזה היא רצה רק בתהליך מבודד, ולא ניתן היה להפעיל תהליך כזה ({{reason}}).",
+      "confined_failed": "בדיקת הקדם של {{subject}} לא החזירה פסיקה: התהליך המבודד שלה הסתיים קודם לכן ({{reason}})."
     }
   }
 }

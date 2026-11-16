@@ -585,6 +585,8 @@ class SamlAuthProvider(AuthProvider):  # REQ-1265
         return AuthIdentity(
             user_id=claims["sub"],
             email=claims.get("email"),
+            # REQ-1261: the address is the directory's assertion, not the person's own entry.
+            email_verified=bool(claims.get("email")),
             display_name=claims.get("name"),
             roles=list(claims.get("groups", [])),
             raw_claims={

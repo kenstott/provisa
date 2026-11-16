@@ -144,7 +144,10 @@ def plane(monkeypatch):
 
 def _request(email: str, user_id: str = "bob"):
     return types.SimpleNamespace(
-        state=types.SimpleNamespace(identity=types.SimpleNamespace(user_id=user_id, email=email))
+        state=types.SimpleNamespace(
+            # An address the person's identity provider verified (REQ-1261).
+            identity=types.SimpleNamespace(user_id=user_id, email=email, email_verified=True)
+        )
     )
 
 

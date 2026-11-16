@@ -294,11 +294,6 @@ _A_AND_B = [
 ]
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _stamp(value: datetime.datetime) -> str:
     text = value.strftime("%Y-%m-%d %H:%M:%S")
     return text + (f".{value.microsecond:06d}".rstrip("0") if value.microsecond else "")

@@ -88,6 +88,19 @@ def _connection(row: dict) -> tuple:
     return tuple(json.dumps(row[c], sort_keys=True, default=str) for c in _CONNECTION_COLUMNS)
 
 
+async def registered_source_rows(conn: Any) -> dict[str, dict]:
+    """The ``sources`` rows a schema build reads, by id: the sources in service.
+
+    A retired source is not one (REQ-2248): its row is kept under a key of its own
+    (:func:`provisa.core.repositories.retirement.retired_key`), which is no source id, and it has
+    no pool, catalog or attach. Read through the one reader of the sources in service, so a build
+    and the admin reads cannot disagree about which those are. A restored source is back among
+    them at its id, and :func:`reconcile_sources` builds it as added."""
+    from provisa.core.repositories import source as source_repo
+
+    return {row["id"]: row for row in await source_repo.list_all(conn)}
+
+
 async def reconcile_sources(rows: dict[str, dict]) -> None:
     """Bring this worker's per-source state (direct pool, dialect, catalog name) in line with the
     ``sources`` rows just read by the schema build.
