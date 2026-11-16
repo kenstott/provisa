@@ -519,6 +519,7 @@
   "tests/integration/test_secret_delete_guarded_pg.py": 87.6,
   "tests/integration/test_secrets_store.py": 4.4,
   "tests/integration/test_security_integration_extra.py": 0.0,
+  "tests/integration/test_server_functions_refused_e2e.py": 88.0,
   "tests/integration/test_server_log_e2e.py": 21.9,
   "tests/integration/test_servicenow_pipeline_e2e.py": 0.0,
   "tests/integration/test_servicenow_source_e2e.py": 0.0,

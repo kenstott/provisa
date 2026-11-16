@@ -14,6 +14,8 @@ Rules:
   V006 – Every relation must be a registered table (or a CTE, or a pure row generator), for every
           role including domain_access ["*"]: a table function or unregistered name reaches the
           engine's internals or its host filesystem, not governed data.
+  V007 – No call of a function that reads or acts on its server outside the governed tables, or
+          of one of the product's own (transpiler.server_functions).
 
 Security model / layer responsibilities:
   Layer 0 – Introspection filtering (schema_gen): the GraphQL schema, SQL catalog, and
@@ -67,6 +69,7 @@ from provisa.security.rights import (
     missing_capability_message,
     reaches_domain,
 )
+from provisa.transpiler.server_functions import refused_in_a_governed_statement
 from provisa.transpiler.xml_syntax import MAPPINGS
 
 
@@ -251,6 +254,7 @@ def _violations(
     violations += _check_masked_in_predicate(tree, gov_ctx, cte_names_set)
     violations += _check_masked_in_xmltable(tree, gov_ctx, cte_names_set)
     violations += _check_xml_mappings(tree)
+    violations += _check_server_functions(tree)
 
     return violations
 
@@ -1317,6 +1321,38 @@ def _check_xml_mappings(tree: exp.Expr) -> list[ValidationViolation]:  # REQ-216
         ValidationViolation("V006", f"{call.name.lower()} is not a governed relation")
         for call in tree.find_all(exp.Anonymous)
         if call.name.lower() in MAPPINGS
+    ]
+
+
+#: What V007 says of a function, by why it is refused (server_functions).
+_NOT_SERVED = {
+    "server": "it reads or acts on its server, outside the tables a statement is governed by",
+    "own": "it is the product's own",
+}
+
+
+def _check_server_functions(tree: exp.Expr) -> list[ValidationViolation]:  # REQ-001
+    """V007 for each function the statement calls that reads or acts on its server, or is the
+    product's own (transpiler.server_functions): what it does is governed by no table rule, and it
+    would run as the login of the source or the engine the statement is routed to. By the name a
+    call is written with, in any case, quoted or schema-qualified, wherever the statement calls
+    it; a function that runs SQL it is given as text is refused whatever the text. A statement
+    naming no table is the engine's, which answers a function of its own state as every Provisa
+    server does (server_functions.RUNS_SQL_AS_TEXT says which are refused there too). The XML
+    mappings are refused by their own rule (:func:`_check_xml_mappings`)."""
+    names_a_table = any(
+        isinstance(tbl.this, exp.Identifier) and not names_a_cte_in_scope(tbl)
+        for tbl in tree.find_all(exp.Table)
+    )
+    refused: dict[str, str] = {}
+    for call in tree.find_all(exp.Anonymous):
+        name = call.name.lower()
+        why = refused_in_a_governed_statement(name, names_a_table)
+        if why is not None and name not in MAPPINGS:
+            refused[name] = why
+    return [
+        ValidationViolation("V007", f"Function {name!r} is not served: {_NOT_SERVED[why]}")
+        for name, why in sorted(refused.items())
     ]
 
 
