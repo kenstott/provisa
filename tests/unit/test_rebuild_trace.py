@@ -229,7 +229,6 @@ def test_the_causes_that_are_not_a_writer_are_named_where_the_build_is_called() 
             if keyword.arg == "cause":
                 given.setdefault(rel, []).append(ast.unparse(keyword.value))
     assert given == {
-        "provisa/api/admin/schema_helpers.py": ["calling_function()"],
         "provisa/api/app.py": [
             "rebuild_trace.BOOT",
             "rebuild_trace.ORG_BUILD",
@@ -485,3 +484,29 @@ async def test_a_warm_up_a_newer_build_superseded_says_so(warm_up) -> None:
 
     assert record.warmed is not None
     assert (record.warmed.roles, record.warmed.superseded) == (0, True)
+
+
+def test_a_pass_through_must_be_a_plain_function() -> None:
+    """Its caller's frame is read under it when the build is called; a coroutine's is gone."""
+
+    async def later() -> None:
+        return None
+
+    with pytest.raises(TypeError, match="coroutine function"):
+        rebuild_trace.passes_on(later)
+
+
+async def test_the_admin_helper_calls_the_build_with_nothing(monkeypatch) -> None:
+    """Tests of the mutations stand in for the build with a function taking nothing; the helper
+    hands it no cause to refuse."""
+    import provisa.api.app as app
+    from provisa.api.admin import schema_helpers
+
+    ran: list[str] = []
+
+    async def _rebuild() -> None:
+        ran.append("built")
+
+    monkeypatch.setattr(app, "_rebuild_schemas", _rebuild)
+    await schema_helpers._rebuild_schemas()
+    assert ran == ["built"]

@@ -28,6 +28,7 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.api.rebuild_trace import passes_on
 from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
     registered_tables,
@@ -156,14 +157,14 @@ async def _ensure_openapi_spec(source_id: str) -> bool:
     return True
 
 
+@passes_on
 def _rebuild_schemas() -> Coroutine[Any, Any, bool]:
     """The schema build (``app._rebuild_schemas``), for the mutations that import it from here.
     The build's recorded cause is the mutation calling this, not this pass-through (REQ-1914): a
-    plain function, so the caller's frame is the one read."""
+    plain function, so the caller's frame is under it when the build is called."""
     from provisa.api.app import _rebuild_schemas as rebuild
-    from provisa.api.rebuild_trace import calling_function
 
-    return rebuild(cause=calling_function())
+    return rebuild()
 
 
 def _compute_can_deploy_to_db(

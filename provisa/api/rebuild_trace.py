@@ -38,6 +38,7 @@ import time
 from collections.abc import Callable, Generator
 from contextvars import ContextVar
 from dataclasses import dataclass, field
+from types import CodeType
 
 log = logging.getLogger(__name__)
 
@@ -108,14 +109,33 @@ CURRENT = "current"  # the watcher's reload found the runtime built at the store
 FAILED = "failed"
 
 
-def calling_function(above: int = 1) -> str:
-    """The function that called the caller of this, as ``module:qualified name``; ``above`` more
-    frames up for a caller that only passes a call through.
+# The functions that only pass a call for a build on: their caller is the cause, not they.
+_passes_on: set[CodeType] = set()
+
+
+def passes_on[F: Callable[..., object]](function: F) -> F:
+    """``function`` only hands a call for a build to the build: the cause recorded is its caller.
+    It must be a plain function, so that its caller's frame is under it when the build is called."""
+    if inspect.iscoroutinefunction(function):
+        raise TypeError(
+            f"{function.__qualname__} is a coroutine function: its caller's frame is "
+            "gone by the time it runs"
+        )
+    _passes_on.add(function.__code__)
+    return function
+
+
+def calling_function() -> str:
+    """The function that called the caller of this, as ``module:qualified name``, looking past
+    any function that only passes the call on (:func:`passes_on`).
 
     Exact because it is read from the interpreter's own frame at the moment of the call, in a
     plain function: the caller's frame is on the stack whether or not the coroutine it gets back
     is awaited there, wrapped in a task or run on another thread."""
-    frame = sys._getframe(above + 1)
+    frame = sys._getframe(2)
+    while frame.f_code in _passes_on:
+        assert frame.f_back is not None, "a function is called from a frame"
+        frame = frame.f_back
     return f"{frame.f_globals['__name__']}:{frame.f_code.co_qualname}"
 
 
