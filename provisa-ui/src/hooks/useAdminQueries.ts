@@ -33,6 +33,7 @@ import type {
   Relationship,
   MutationResult,
   CodeResolver,
+  CodeResolverInput,
   ColumnDependentsResult,
   UserSummary,
 } from "../types/admin";
@@ -592,7 +593,7 @@ export function useCodeResolvers() {
   return {
     codeResolvers: data?.codeResolvers ?? [],
     loading,
-    saveCodeResolver: async (input: CodeResolver, isNew: boolean): Promise<MutationResult> => {
+    saveCodeResolver: async (input: CodeResolverInput, isNew: boolean): Promise<MutationResult> => {
       if (isNew) {
         const result = await create({ variables: { input } });
         return result.data?.createCodeResolver ?? failed;
