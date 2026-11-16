@@ -407,13 +407,13 @@ async def test_relationship_assistant_steers_to_grounding_types(control_plane, m
         assert operation == "glossary_relationships"
         return reply
 
-    async def _no_jev(_pool):
+    async def _no_jev(_pool, _vendor):
         return None
 
     from provisa.core import org_secrets
 
     monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
-    monkeypatch.setattr(org_secrets, "resolve_jev_api_key", _no_jev)
+    monkeypatch.setattr(org_secrets, "org_ai_key_or_none", _no_jev)
     async with _surface(control_plane, monkeypatch) as (_db, notified):
         result = await glossary_router.generate_relationships(_request())
         prompt = prompts[0]
