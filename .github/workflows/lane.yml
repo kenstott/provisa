@@ -60,6 +60,12 @@ on:
         description: Restore and save the pinned Trino plugin jars (a lane that collects pytest).
         type: boolean
         default: false
+      pyodide-downloads:
+        description: >-
+          Put Pyodide's files in PROVISA_NOTEBOOK_DOWNLOADS (a lane with a test that builds the app
+          image, which takes them from there).
+        type: boolean
+        default: false
       image-cache:
         description: Keep the lane's pulled images between runs.
         type: boolean
@@ -286,6 +292,10 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
+
+      - name: Pyodide downloads
+        if: inputs.pyodide-downloads
+        uses: ./.github/actions/pyodide-downloads
 
       # Images this lane pulled last time, so a run is not dominated by pulls. Keyed on the compose
       # files: a changed image tag is a new key.

@@ -76,6 +76,12 @@ jobs:
         shell: bash
         run: rustup toolchain install 1.95.0 --profile minimal
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+        with:
+          python: python
+
       - name: Build installer (native tier, Inno Setup)
         shell: pwsh
         env:

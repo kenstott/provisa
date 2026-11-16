@@ -65,8 +65,15 @@ build_provisa_image() {
   info "Building provisa/provisa:local for linux/amd64 (source stays on build host)..."
   local retries=3
   local attempt=0
+  # Pyodide from the directory a release leg downloaded it into (.github/actions/pyodide-downloads),
+  # when the environment names one; a build on a packaging host that names none downloads it.
+  local pyodide=()
+  if [ -n "${PROVISA_NOTEBOOK_DOWNLOADS:-}" ]; then
+    pyodide=(--build-context "pyodide-downloads=${PROVISA_NOTEBOOK_DOWNLOADS}")
+  fi
   until docker build \
     --platform linux/amd64 \
+    ${pyodide[@]+"${pyodide[@]}"} \
     --tag provisa/provisa:local \
     "${REPO_ROOT}"; do
     attempt=$((attempt + 1))
