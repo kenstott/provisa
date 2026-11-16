@@ -66,6 +66,14 @@ _OPENROUTER_HOST = "openrouter.ai"
 _T = TypeVar("_T")
 
 
+def _refuse_key_variable_of_held_org(variable: str | None) -> None:
+    """REQ-1557: an endpoint's key variable a held organization's own settings name is not read
+    (``core.env_reference_guard.refuse_named_by_org``); the operator's endpoints are."""
+    from provisa.core.env_reference_guard import refuse_named_by_org
+
+    refuse_named_by_org(variable)
+
+
 @dataclass(frozen=True)
 class Completion:
     """A completion with what produced it: the vendor and model that answered (the fallback's,
@@ -216,6 +224,8 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             return None
         endpoint = self._endpoints.get(vendor)
         env = endpoint.get("api_key_env") if endpoint is not None else _KEY_ENV.get(vendor)
+        if endpoint is not None:
+            _refuse_key_variable_of_held_org(env)  # REQ-1557
         if not env or os.environ.get(env):
             return None
         return f"{vendor} has no API key"
@@ -295,6 +305,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             # sandbox's tier endpoint's, REQ-2006); else its api_key_env, an env-var name.
             key = (self._api_keys or {}).get(vendor)
             if key is None and endpoint.get("api_key_env"):
+                _refuse_key_variable_of_held_org(endpoint["api_key_env"])  # REQ-1557
                 key = os.environ.get(endpoint["api_key_env"])
                 if not key:
                     raise ValueError(

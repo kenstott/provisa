@@ -59,7 +59,7 @@ class QdrantConnection:  # REQ-1983
         url = resolve_secrets(getattr(source, "host", "") or "")
         if not url.startswith(("https://", "http://")):
             raise QdrantSourceInvalid(source.id, "the host is the instance's URL")
-        api_key = resolve_secrets(getattr(source, "password", "") or "") or None
+        api_key = resolve_secrets(getattr(source, "password", "") or "", credential=True) or None
         # A hint is text: the boot resolves each one as a secret reference.
         grpc = str(hints.get("prefer_grpc", "")).lower() == "true"
         return cls(url=url, api_key=api_key, prefer_grpc=grpc)

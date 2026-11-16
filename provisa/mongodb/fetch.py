@@ -78,7 +78,7 @@ class MongoConnection:  # REQ-1730, REQ-1985
 
         host = resolve_secrets(getattr(source, "host", "") or "")
         username = resolve_secrets(getattr(source, "username", "") or "") or None
-        password = resolve_secrets(getattr(source, "password", "") or "") or None
+        password = resolve_secrets(getattr(source, "password", "") or "", credential=True) or None
         port = int(getattr(source, "port", 0) or 0)
         if is_connection_string(host):
             if port:

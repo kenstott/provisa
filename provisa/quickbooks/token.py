@@ -62,7 +62,7 @@ def exchange(auth: ApiAuthOAuth2RefreshToken, refresh_token: str) -> Grant:
     resp = httpx.post(
         auth.token_url,
         data={"grant_type": "refresh_token", "refresh_token": refresh_token},
-        auth=(client_id, resolve_secrets(auth.client_secret or "")),
+        auth=(client_id, resolve_secrets(auth.client_secret or "", credential=True)),
         headers={"Accept": "application/json"},
         timeout=_TIMEOUT,
     )
@@ -99,7 +99,7 @@ async def access_token(source_id: str, realm_id: str, auth: ApiAuthOAuth2Refresh
     from provisa.api_source import oauth_store
 
     async def entered() -> str | None:
-        return resolve_secrets(auth.refresh_token) if auth.refresh_token else None
+        return resolve_secrets(auth.refresh_token, credential=True) if auth.refresh_token else None
 
     return await oauth_store.stored_access_token(
         *_store(),

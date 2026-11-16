@@ -112,10 +112,6 @@ class Reference:
     owner: str | None = None
     path: str | None = None
     ends: tuple[str, ...] = ()
-    # REQ-2248 (maintainer 2026-11-15): a retired referring row still holds the object. A
-    # retired object otherwise blocks nothing, but a retired table still holds its domain and its
-    # source: a domain or source that still holds a table, retired or not, is kept.
-    retired_holds: bool = False
 
 
 @dataclass(frozen=True)
@@ -130,13 +126,9 @@ class Dependent:
     # REQ-2240: what its own page shows it as, so it is found where its link leads: a
     # relationship as its two tables, a table or view by its table name.
     label: str = ""
-    # REQ-2248: the dependent is retired -- a retired table that still holds its domain or source.
-    # It is in no ordinary list; it is found, and restored, among the retired objects.
-    retired: bool = False
 
     def as_dict(self) -> dict[str, Any]:
-        """The dependent as a refusal reports it, with its ``owner`` keys when it has any, and
-        ``retired`` when it is retired."""
+        """The dependent as a refusal reports it, with its ``owner`` keys when it has any."""
         return {
             "kind": self.ref.kind,
             "id": self.ref.id,
@@ -144,7 +136,6 @@ class Dependent:
             "label": self.label,
             "via": list(self.via),
             **dict(self.owner),
-            **({"retired": True} if self.retired else {}),
         }
 
 
@@ -200,9 +191,8 @@ def _link(table: str, column: str, to: str) -> Reference:
 
 REFERENCES: tuple[Reference, ...] = (
     # --- to a domain: it removes only itself (REQ-1917), so everything in it blocks -------------
-    # REQ-2248: a domain that still holds a table, retired or not, is kept.
-    _dep("registered_tables", "domain_id", "domain", "table", "id", retired_holds=True),
-    _dep("table_columns", "domain_id", "domain", "table", "table_id", retired_holds=True),
+    _dep("registered_tables", "domain_id", "domain", "table", "id"),
+    _dep("table_columns", "domain_id", "domain", "table", "table_id"),
     _dep("data_products", "domain_id", "domain", "data_product", "id"),
     _dep("rls_rules", "domain_id", "domain", "row_filter", "id"),
     _dep("roles", "domain_access", "domain", "role", "id", match=Match.MEMBER),
@@ -217,8 +207,7 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-2189: a domain's place in a saved ERD layout goes with it.
     _part("erd_layout_domains", "domain_id", "domain"),
     # --- to a source ---------------------------------------------------------------------------
-    # REQ-2248: a source that still holds a table, retired or not, is kept.
-    _dep("registered_tables", "source_id", "source", "table", "id", retired_holds=True),
+    _dep("registered_tables", "source_id", "source", "table", "id"),
     # REQ-1934: a table's Data Profiler membership.
     _dep("registered_tables", "profiler_source_id", "source", "table", "id"),
     _dep("tracked_functions", "source_id", "source", "command", "name"),
@@ -502,7 +491,7 @@ async def _referring_rows(
     statement = select(*(table.c[name] for name in sorted(names)))
     if reference.match is Match.EQUALS:
         statement = statement.where(table.c[reference.column] == wanted)
-    if "retired" in table.c and not reference.retired_holds:
+    if "retired" in table.c:
         # REQ-2248: a retired object is out of service and blocks nothing.
         statement = statement.where(table.c.retired.is_(False))
     rows = (await conn.execute_core(statement)).fetchall()
@@ -630,7 +619,6 @@ async def _dependents(conn: "Connection", blocking: dict[ObjectRef, set[str]]) -
                 name,
                 await _owner_of(conn, referrer),
                 await _label_of(conn, referrer, name),
-                await _is_retired(conn, referrer),
             )
         )
     return sorted(named, key=lambda d: (d.ref.kind, str(d.ref.id)))
@@ -660,6 +648,10 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
             if _is_its_own(reference, row, ref):
                 continue
             referrer = ObjectRef(reference.of, row[reference.owner])
+            if await _is_retired(conn, referrer):
+                # REQ-2248: a retired object blocks nothing -- nor does a row of it that is not
+                # itself marked (a retired table's columns).
+                continue
             blocking.setdefault(referrer, set()).add(f"{reference.table}.{reference.column}")
     if ref.kind == "relationship":
         for view_id in await _views_published_over(conn, ref.id):
@@ -808,6 +800,48 @@ async def remove_parts(conn: "Connection", ref: ObjectRef) -> None:
         # the org's other regions remove theirs when they next reload the model (prune_state_parts).
         async with _reaching(conn, reference.table) as there:
             await there.execute_core(table.delete().where(where))
+
+
+async def rekey(conn: "Connection", kind: str, old: Any, new: Any) -> None:  # REQ-2248
+    """Move object ``old`` of ``kind`` to key ``new``, with every row that refers to it by its
+    key: its row is copied to ``new``, each referring column re-pointed (a part that is itself an
+    object, keyed by this one's key, moved the same way), and the row at ``old`` removed. Nothing
+    else changes, so ``old`` is free afterwards. The caller holds the transaction.
+
+    A retired source or domain is kept under a key of its own this way, which leaves its id free
+    for reuse; its restore moves it back."""
+    table = metadata.tables[KINDS[kind].table]
+    key = table.c[KINDS[kind].key]
+    row = (await conn.execute_core(select(table).where(key == old))).one()._mapping
+    await conn.execute_core(table.insert().values({**row, key.name: new}))
+    for reference in REFERENCES:
+        if reference.to != kind or reference.by != "key":
+            continue
+        referring = metadata.tables[reference.table]
+        column = referring.c[reference.column]
+        if reference.of is not None and reference.owner == reference.column:
+            # A part keyed by this object's own key (an API source's registration row).
+            held = await conn.execute_core(select(column).where(column == old))
+            if held.fetchone() is not None:
+                await rekey(conn, reference.of, old, new)
+            continue
+        async with _reaching(conn, reference.table) as there:
+            if reference.match is Match.EQUALS:
+                await there.execute_core(
+                    referring.update().where(column == old).values({column.name: new})
+                )
+                continue
+            assert reference.match is Match.MEMBER and reference.path is None, reference
+            pk = list(referring.primary_key.columns)
+            for found in (await there.execute_core(select(*pk, column))).fetchall():
+                members = found._mapping[column.name]
+                if members and old in members:
+                    await there.execute_core(
+                        referring.update()
+                        .where(*(c == found._mapping[c.name] for c in pk))
+                        .values({column.name: [new if m == old else m for m in members]})
+                    )
+    await conn.execute_core(table.delete().where(key == old))
 
 
 def _names_column(sql: str, table_name: str, column: str) -> bool:

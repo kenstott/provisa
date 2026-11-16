@@ -93,11 +93,17 @@ def _request(roles: list[str] | None, user_id: str = "u1", active_org: str | Non
 
 class TestMemberRights:
     async def test_a_developer_passes(self, wired):
-        assert await er._member_rights(_request(["developer"]), "acme", MANAGE) == "u1"
+        assert (
+            await er._member_rights(_request(["developer"], active_org="acme"), "acme", MANAGE)
+            == "u1"
+        )
         assert wired == [True]  # membership still checked, on top of the right
 
     async def test_an_org_admin_passes(self, wired):
-        assert await er._member_rights(_request(["org_admin"]), "acme", MANAGE) == "u1"
+        assert (
+            await er._member_rights(_request(["org_admin"], active_org="acme"), "acme", MANAGE)
+            == "u1"
+        )
 
     async def test_an_analyst_is_refused_before_the_membership_lookup(self, wired):
         # The analyst IS a member; that is the point. Membership was the whole of the old guard,
@@ -113,7 +119,10 @@ class TestMemberRights:
         holder = SimpleNamespace(user_id="u2", roles=["developer"], acting_roles=["developer"])
         assert (
             await er._member_rights(
-                SimpleNamespace(state=SimpleNamespace(identity=holder)), "acme", MANAGE, SWITCH
+                SimpleNamespace(state=SimpleNamespace(identity=holder, active_org_id="acme")),
+                "acme",
+                MANAGE,
+                SWITCH,
             )
             == "u2"
         )
@@ -135,6 +144,22 @@ class TestMemberRights:
     async def test_dev_no_auth_is_exempt(self, wired):
         assert await er._member_rights(_request(None), "acme", MANAGE) is None
         assert wired == []
+
+    async def test_a_right_held_in_another_org_is_refused(self, wired):
+        """REQ-1327: the request's rights are those of the org it is bound to, so a member of
+        acme bound to beta holds nothing in acme by them."""
+        with pytest.raises(ApiError) as exc:
+            await er._member_rights(
+                _request(["org_admin"], active_org="beta"), "acme", MANAGE, SWITCH
+            )
+        assert exc.value.status_code == 403
+        assert exc.value.code == "environments.capability_required_in_org"
+        assert MANAGE in exc.value.detail and SWITCH in exc.value.detail
+
+    async def test_a_request_bound_to_no_org_is_refused(self, wired):
+        with pytest.raises(ApiError) as exc:
+            await er._member_rights(_request(["org_admin"]), "acme", MANAGE)
+        assert exc.value.code == "environments.capability_required_in_org"
 
 
 class TestReadsParent:

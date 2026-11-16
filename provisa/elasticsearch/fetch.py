@@ -70,7 +70,8 @@ class ESConnection:  # REQ-1672
             int(getattr(source, "port", 0) or 9200),
             tls=bool(mapping.get("tls", False)),
             username=getattr(source, "username", None) or None,
-            password=resolve_secrets(getattr(source, "password", "") or "") or None,
+            password=resolve_secrets(getattr(source, "password", "") or "", credential=True)
+            or None,
         )
 
     def _client(self) -> httpx.Client:

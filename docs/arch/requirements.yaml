@@ -3638,7 +3638,15 @@
     direction; one pending or rejected; a semantic suggestion matching a foreign key of the same run. (7)
     Accepting a suggestion marks the referring column as a foreign key through the existing derivation;
     no column is marked as an alternate key from a sample or an accepted suggestion. (8) The request line
-    before Run gives the count by group.'
+    before Run gives the count by group. (Amended 2026-11-16, A TABLE THAT REQUIRES A PARAMETER IS DISCOVERED
+    ON REDUCED INFORMATION:) Maintainer 2026-11-16, after the Discover relationships dialog failed on a
+    table that cannot be read without its parameter. A table that requires a parameter cannot give a row
+    count and cannot be profiled, so discovery neither counts nor profiles it and never reads it. It is
+    still included, as a special case working from what is known without reading it: its declared columns
+    and types, its names and descriptions, the glossary terms bound to it, and its required parameters.
+    A relationship proposed for it is marked as found on reduced information, since no values were compared.
+    A test of relationship generation for such a table works from that reduced information only and fails
+    if the table is read.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -81796,7 +81804,7 @@
   - tests/unit/test_mongodb_connection_string.py
   - provisa-ui/src/pages/sources/__tests__/mongoConnectionString.test.tsx
 - id: REQ-1986
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 3. Source Registration & Data Modeling
   category: Table Registration
@@ -81834,7 +81842,75 @@
     Maintainer 2026-11-03: Register Table''s table picker shows which tables take required parameters (a
     single-record lookup such as a GraphQL root field with a required id) apart from those that list rows
     with none: the parameterized ones carry an icon naming their required parameters, or are listed in a
-    group of their own, so a steward is not surprised by a required filter after picking.'
+    group of their own, so a steward is not surprised by a required filter after picking. (Amended 2026-11-16,
+    A PARAMETERIZED TABLE STAYS A TABLE; ITS LIMITS ARE STATED IN ITS METADATA:) Maintainer 2026-11-16 (''keep
+    as parameterized tables but strengthen metadata and discovery functions to account for limitations''),
+    after weighing a function form. A table that requires a parameter stays a table: the parameter is a
+    WHERE condition or a join condition in SQL and an argument in GraphQL, and relationships, row rules
+    and masks apply to it as to any table. What it cannot do is stated in its metadata, where every client
+    and every part of the product reads it before reading the table: that it requires parameters, which
+    ones and of what type, and that it therefore gives no row count, no profile and no sample without them.
+    The meta schema, the catalogs the SQL and graph clients read, and the table''s page show it. Every function
+    of the product that counts, profiles, samples or scans a table (discovery, the profiler, data quality
+    checks, statistics, previews) asks that metadata first and takes its stated reduced path for such a
+    table; none finds out by trying the read (REQ-413 for discovery). (Amended 2026-11-16, AN OPAQUE PARAMETER
+    IS BOUND BY EQUALITY ONLY:) Maintainer 2026-11-16 (''parameterized tables exist because they represent
+    what seems to be an opaque filter (we don''t really know the logic behind it)''; ''the where clause
+    should only accept an eq''; ''agree'' to the points here). A parameter that is an input to the source''s
+    call (a path, query, GraphQL or gRPC argument) is opaque: the product does not know what the source
+    does with it. A statement can only bind it to a value: by equality with one value, by a finite list
+    of values, or by a join''s equality with another table''s column, each value being one call to the source
+    and the results unioned, up to a cap on calls per statement that is an operator setting with its settings
+    field (its default is not settled). Any other condition on it (a range, a pattern, an inequality, a
+    test for null) is refused naming the parameter and saying it takes a value by equality. It must be bound
+    on every branch of the condition: a statement that leaves it unbound on one branch of an OR is refused.
+    Every other column of the table is a result column and takes any condition, applied after the call.
+    The parameter''s column in the result repeats the value that was asked; it is never assumed to be an
+    attribute of the rows returned. The table''s metadata says, for each parameter, whether it is opaque
+    or a real column of the table that the source requires a value for (a partition key, a column value),
+    whose meaning is known. (Amended 2026-11-16, A PARAMETERIZED OPERATION IS ALWAYS A FUNCTION; A TABLE
+    ONLY WHERE NO PLAIN LIST EXISTS:) Maintainer 2026-11-16. This narrows A PARAMETERIZED TABLE STAYS A
+    TABLE: its first sentence, that such a table always stays a table, is [SUPERSEDED by this amendment];
+    the rest of it and AN OPAQUE PARAMETER IS BOUND BY EQUALITY ONLY hold for every parameterized table
+    that exists. Every operation of a source that requires a parameter is a function: its parameters are
+    its arguments, it returns its rows, and it is always kept. A parameterized table is added for it, as
+    a view of that function, only as a help to clients that read tables and cannot call a function (BI tools
+    above all): when the operation returns objects of a type that no operation without a required parameter
+    returns. Where a plain list of the same type exists, that list is the table, it is the one counted,
+    profiled and discovered, and no parameterized table is created beside it. Whether two operations return
+    the same type is read from the source''s own schema, never guessed from column names. A steward may
+    add the parameterized table for an operation that did not get one. (Amended 2026-11-16, THE PARAMETERIZED
+    TABLE IS AN ATTRIBUTE OF ITS FUNCTION:) Maintainer 2026-11-16. Whether a function is also exposed as
+    a parameterized table is an attribute of the function, changed where the function is edited; the table
+    is derived from the function while the attribute is on and is never registered on its own, so it cannot
+    differ from the function''s parameters or columns. This replaces the last sentence of A PARAMETERIZED
+    OPERATION IS ALWAYS A FUNCTION (a steward may add the table) [SUPERSEDED by this amendment]. The attribute''s
+    value when the function is registered follows that amendment''s rule: on when no operation without a
+    required parameter returns the same type, off otherwise. It is set once: a plain list of the same type
+    registered later does not change it, since that would remove a table in use. Turning it off is refused
+    while a relationship, a row rule, a data product or another live object refers to the derived table,
+    naming what refers to it, as deleting a table is. (Amended 2026-11-16, EQUALITY ON A PARAMETER ASSIGNS
+    ITS VALUE:) Maintainer 2026-11-16 (''EQ means the value is assigned to the param''). An equality on
+    an opaque parameter is not a comparison made against rows: it assigns the value to the parameter for
+    the call. The returned rows are not filtered by it again. Two different values assigned to the same
+    parameter on one branch are a conflict and are refused naming the parameter; they are not an empty result.
+    (Amended 2026-11-16, A NEGATED ASSIGNMENT IS AN ERROR:) Maintainer 2026-11-16. IN on an opaque parameter
+    assigns as equality does, one call for each value. NOT IN, not-equal, and any negation of an equality
+    or of an IN on a parameter assign nothing and are an error: the statement is refused naming the parameter,
+    never answered as if the condition were absent and never answered empty. (Amended 2026-11-16, POINTS
+    SETTLED BEFORE BUILDING:) Maintainer 2026-11-16: the cap on calls per statement defaults to 1000; and
+    two operations without a required parameter that return the same type both stay tables, the rule deciding
+    only whether a parameterized operation also gets a table. Lead 2026-11-16, each following from the rules
+    above: (1) the derived table has a table row of its own, since every reference is keyed on one, but
+    the function''s attribute alone creates and removes it and its parameters and columns are not editable
+    on the table; (2) turning the attribute off is refused while a relationship, a row rule, a data product
+    or another live object refers to the table, the function''s own reference to what it returns not counting;
+    (3) a function whose table is off returns the plain list''s type in GraphQL, so its field is unchanged;
+    (4) a join assigns a parameter only when it is on the parameter itself, never on a result column presumed
+    to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment)
+    hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary
+    filters; (6) a source whose operations have no named return type cannot be compared, so each of its
+    parameterized operations gets its table.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
@@ -89026,17 +89102,21 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
   feature: commands-and-functions-tracked-functions
   priority: MUST
   type: behavioral
-  description: >-
-    A deployment setting, commands.allow_host_code (off by default), governs host code: the python
-    command kind (an in-process module:attr callable) and the script command kind (a subprocess on
-    the server's host). Both run with the server's full access to its memory, credentials, files and
-    network, so code that is malicious, buggy or greedy can read anything the server can, starve it
-    or take it down. A model entry holds only a reference to the code (module:attr or a path), so the
-    code does not travel with the model when it is promoted. While the setting is off, registering or
-    updating a command of either kind is refused, from the admin API and from a config file alike, and
-    calling an existing one is refused; one check makes both refusals. The setting is the operator's,
-    never an organization's, and has its field in Deployment settings. Code resolvers are the governed
-    alternative: sandboxed, pinned, and promoted with the model.
+  description: 'A deployment setting, commands.allow_host_code (off by default), governs host code: the
+    python command kind (an in-process module:attr callable) and the script command kind (a subprocess on
+    the server''s host). Both run with the server''s full access to its memory, credentials, files and network,
+    so code that is malicious, buggy or greedy can read anything the server can, starve it or take it down.
+    A model entry holds only a reference to the code (module:attr or a path), so the code does not travel
+    with the model when it is promoted. While the setting is off, registering or updating a command of either
+    kind is refused, from the admin API and from a config file alike, and calling an existing one is refused;
+    one check makes both refusals. The setting is the operator''s, never an organization''s, and has its
+    field in Deployment settings. Code resolvers are the governed alternative: sandboxed, pinned, and promoted
+    with the model. (Amended 2026-11-16, A FILE SOURCE''S PRODUCER COMMAND IS HOST CODE:) Lead 2026-11-16,
+    following the security audit (item C4) and this requirement''s own rule that the setting is the operator''s,
+    never an organization''s. A source''s producer command (REQ-861) is a subprocess on the server''s host,
+    so it is held to commands.allow_host_code like the script command kind: with the setting off, a source
+    carrying one is refused when it is saved, through the form, a configuration import or a configuration
+    file at start, and a stored one is not run.'
   use_case: >-
     An operator runs a server of many organizations without any of them, or a model promoted into
     it, being able to run code with the server's own access.
@@ -96802,3 +96882,29 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     And an underwriter of another region sees none of these policies
 
     '
+- id: REQ-2251
+  status: proposed
+  target: 2026-Q3
+  group: 4. Source Connectors
+  category: Connector Abstraction
+  feature: federation-and-routing-engines
+  priority: SHOULD
+  type: structural
+  description: 'Maintainer 2026-11-16 (''i approve the arch suggestions''), on a review that found the
+    facts about a source type spread over hand-kept sets that core code consults by name. Each source
+    type has one descriptor, declared by the source''s own package, and core code asks the descriptor
+    and never names a type, so adding a source type needs no edit to core code. The descriptor declares:
+    the dialect; how the type is reached (its own driver, an API call, the engine only, landed); its driver,
+    adapter and loader; how it lands (a replica, materialize only, served tables); what it can write (the
+    path, the operations, whether rows are returned, the forms refused); whether it is a lake and whether
+    it travels in time; and the connection fields it takes. Behaviour that depends on the table or the
+    statement is a hook on the descriptor: the write operations a table allows, whether the type''s own
+    driver can answer a statement, whether a table is read once per statement, and introspection (schemas,
+    tables, columns). The descriptors are served from an endpoint and the UI reads its list of source
+    types, their fields and their sign-in from it, not from constants of its own. Two checks hold it:
+    every source type has a descriptor, and the compiler, the transpiler and the query pipeline contain
+    no comparison against a source type''s name. A connector stays per engine: a new type still needs
+    one connector for each engine that reaches it. It is reached in steps that each leave behaviour unchanged:
+    the descriptor as data, with every existing set generated from it and a test that the generated set
+    equals the hand-kept one; the hand-kept sets removed; the type branches moved into hooks one at a
+    time, each with its existing tests; the endpoint and the UI; the two checks.'

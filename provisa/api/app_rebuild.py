@@ -413,7 +413,7 @@ async def serve_registered_tables(state) -> None:
         await restart_source_server(source)
         state.federation_engine.register_source(
             source,
-            resolve_secrets(source.password) if source.password else "",
+            resolve_secrets(source.password, credential=True) if source.password else "",
             catalog_name=state.source_catalogs[source.id],
         )
 

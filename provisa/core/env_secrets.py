@@ -154,6 +154,11 @@ def guard_statement(stmt: Any) -> Any:
     if not isinstance(stmt, (Insert, Update)):
         return stmt
     _check_secret_references(stmt)
+    # REQ-1557: a member of a held organization does not write a reference to the server's
+    # environment, in any table whose text is resolved.
+    from provisa.core.env_reference_guard import check_written
+
+    check_written(stmt)
     table = stmt.table
     name = getattr(table, "name", None)
     if name is None or name not in CARRIED:
@@ -178,6 +183,9 @@ def guard_statement(stmt: Any) -> Any:
 def guard_rows(target: Any, rows: list[dict[str, Any]]) -> None:
     """The seam for values that travel BESIDE the statement: an executemany's parameter sets and a
     bulk load's rows (REQ-1525). ``target`` is the statement or the table being written."""
+    from provisa.core.env_reference_guard import check_values
+
     table = getattr(target, "table", target)
     for row in rows:
         check_row(table.name, row)
+        check_values(table, row)  # REQ-1557
