@@ -34,14 +34,14 @@ export async function addSourceOfType(page: Page, type: string) {
 }
 
 // The cache TTL a spec asked for while filling the short create step, by page: the step asks
-// only what a source needs in order to exist, so the TTL is set in the edit form the new source
-// opens in (submitSourceAndExpectListed), unless the step itself shows the field.
+// only what a source needs in order to exist, so the TTL is set in the new source's edit form,
+// opened from its read view (submitSourceAndExpectListed), unless the step itself shows the field.
 const askedCacheTtl = new WeakMap<Page, number>();
 
 /** Give a new source the cache TTL its tables need (REQ-1907): a source the engine serves from a
  *  replica must have a landing clock before a table is registered. A kind that cannot exist
  *  without one shows the field in the create step, and it is filled there; for any other kind
- *  it is set, right after the source is created, in the edit form it opens in. */
+ *  it is set, right after the source is created, in its edit form. */
 export async function setSourceCacheTtl(page: Page, seconds: number) {
   // The panel is open with no toggle wherever it is shown.
   if ((await page.getByTestId("source-load-management-panel").count()) === 0) {
@@ -125,50 +125,49 @@ export async function submitSourceAndExpectListed(page: Page, sourceId: string) 
   });
   // The row is listed as soon as the create returns, before the settings saved with it (cache,
   // Replicate, region...) -- each of which rebuilds the model. The create is done when the new
-  // source opens in edit; a step that navigates before then waits behind those rebuilds (run
+  // source's panel opens; a step that navigates before then waits behind those rebuilds (run
   // 40227062159: the next page's tables query outlasted its 15 s).
-  // REQ-2234: the panel opens first on the "Register tables" step, the edit behind it; skipping
-  // the step reveals the edit.
-  const save = page.getByTestId("sources-edit-submit");
-  const skipRegister = page.getByTestId("register-tables-skip");
-  await expect(skipRegister.or(save)).toBeVisible({ timeout: 60000 });
-  if (await skipRegister.isVisible()) await skipRegister.click();
-  await expect(save).toBeVisible({ timeout: 60000 });
+  // REQ-2234: the panel opens first on the "Register tables" step; skipping the step shows the
+  // source, saved, in its read view (REQ-1974).
+  await page.getByTestId("register-tables-skip").click({ timeout: 60000 });
+  const edit = page.getByTestId("source-detail-edit");
+  await expect(edit).toBeVisible({ timeout: 60000 });
   const seconds = askedCacheTtl.get(page);
   if (seconds === undefined) return;
   askedCacheTtl.delete(page);
-  // The new source is selected and its detail is open in edit, everything else at defaults.
+  // The new source is selected and read, everything else at defaults: Edit opens its form.
   // The edit form is in sections; the cache TTL is on the Load and timeliness one.
+  await edit.click();
+  const save = page.getByTestId("sources-edit-submit");
+  await expect(save).toBeVisible({ timeout: 60000 });
   await page.getByTestId("source-section-load").click();
   await page.getByTestId("cache-ttl-input").fill(String(seconds));
   await save.click();
   // Saved: the panel shows the source's detail again.
-  await expect(page.getByTestId("source-detail-edit")).toBeVisible({ timeout: 60000 });
+  await expect(edit).toBeVisible({ timeout: 60000 });
 }
 
 /**
- * Open the schema discovery of a source whose detail panel is open. Its Discover button is in the
- * panel's head, which shows no actions in edit, and a just-created source opens in edit: the edit
- * is left first.
+ * Open the schema discovery of a source whose detail panel is open in its read view, as a
+ * just-created source's is: its Discover button is in the panel's head.
  */
 export async function openSourceDiscovery(page: Page, sourceId: string) {
-  const discover = page.getByTestId(`sources-discover-${sourceId}`);
-  const cancelEdit = page.getByTestId("sources-edit-cancel");
-  // A just-created source's edit opens once the list has it again; a source left in its read
-  // view shows Discover. The head never shows both.
-  await expect(cancelEdit.or(discover)).toBeVisible({ timeout: 60000 });
-  if (await cancelEdit.isVisible()) await cancelEdit.click();
-  await discover.click();
+  await page.getByTestId(`sources-discover-${sourceId}`).click({ timeout: 60000 });
   await expect(page.getByTestId("schema-discovery")).toBeVisible({ timeout: 10000 });
 }
 
-export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
+/** Opens the Tables page's Register Table form, nothing chosen in it. */
+export async function openTablesAddForm(page: Page) {
   await page.goto("/tables");
   // The header renders once the first TablesQuery answers (TablesPage's initial-load gate), measured
   // at 7-16s on a shared CI runner while schema rebuilds run: the same 60s openSourcesForm gives it.
   await page.waitForSelector(".page-header", { timeout: 60000 });
   await page.getByRole("button", { name: /\+ Table/i }).click();
   await page.waitForSelector(".form-card", { timeout: 5000 });
+}
+
+export async function openRegisterForm(page: Page, sourceId: string, domain: string = DOMAIN) {
+  await openTablesAddForm(page);
   // Apollo may serve the sources list from cache first; the new source arrives with the refetch.
   await expect(
     page.getByTestId("register-table-source-select").locator(`option[value='${sourceId}']`),

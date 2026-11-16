@@ -36,6 +36,7 @@ if TYPE_CHECKING:
     from provisa.pgwire._pipeline import StatementOutcome
 
 from provisa.core.read_refusal import ReadRefused
+from provisa.core.parameter_binding import ParameterBindingRefused
 from provisa.transpiler.function_macros import FunctionRefused
 from provisa.transpiler.metadata_functions import MetadataFunctionRefused
 from provisa.transpiler.metadata_settings import CatalogViewRefused
@@ -333,6 +334,7 @@ def _sql_error(exc: Exception) -> Exception:
         | MetadataFunctionRefused  # REQ-2190
         | FunctionRefused  # REQ-2167
         | GovernanceRefused  # REQ-2222: the app answers it under its code
+        | ParameterBindingRefused  # REQ-1986: the app answers it under its code
         | HTTPException,
     ):
         return exc
@@ -630,6 +632,8 @@ async def sql_explain_endpoint(  # REQ-1519
         raise  # REQ-1174: answered as 413 by the app's handler
     except ReadRefused:
         raise  # refused by name; the app answers it (core/read_refusal.py)
+    except ParameterBindingRefused:
+        raise  # REQ-1986: a condition that binds no parameter; the app answers it (400)
     except SourceStillStartingError:
         raise  # a source still starting: the app answers 503 data.source_starting (REQ-1824)
     except PermissionError as exc:

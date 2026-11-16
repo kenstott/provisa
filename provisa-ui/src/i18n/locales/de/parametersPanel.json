@@ -2,9 +2,13 @@
   "parametersPanel": {
     "title": "Parameter",
     "summary": "{{required}} von {{count}} erforderlich",
+    "limits": "Diese Tabelle verlangt {{parameters}}. Ohne einen Wert für jeden liefert sie keine Zeilenanzahl, kein Profil und keine Stichprobe.",
     "name": "Parameter",
     "type": "Typ",
     "reaches": "Erreicht die Quelle als",
+    "meaning": "Bedeutung",
+    "opaque": "Undurchsichtige Eingabe für die Quelle",
+    "realColumn": "Echte Spalte der Tabelle",
     "required": "Erforderlich",
     "requiredBySource": "Von der Quelle verlangt",
     "requiredAria": "{{name}} ist erforderlich",
@@ -14,6 +18,7 @@
       "graphql_arg": "GraphQL-Argument",
       "grpc_input": "Feld der gRPC-Anfrage",
       "query_arg": "Argument der nativen Abfrage",
+      "partition_key": "Partitionsschlüssel",
       "column_value": "Spaltenwert"
     }
   }

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt."
+    },
     "api": {
       "answer_cut": "Die Antwort für {{table}} wurde bei max_pages={{max_pages}} abgeschnitten ({{rows}} Zeilen): Die API hat weitere Daten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts, um alles zu lesen.",
       "answer_row_cut": "Die Antwort für {{table}} wurde bei max_rows={{max_rows}} abgeschnitten: Die Gegenstelle hat weitere Daten. Erhöhen Sie graphql_remote.max_rows, um alles zu lesen."
@@ -41,7 +45,9 @@
       "role_not_assigned": "Rolle '{{role_id}}' ist diesem Benutzer nicht zugewiesen",
       "simple_provider_not_configured": "Simple-Auth-Anbieter nicht konfiguriert",
       "username_exists": "Benutzername existiert bereits",
-      "not_permitted": "Nicht erlaubt"
+      "not_permitted": "Nicht erlaubt",
+      "token_scopes_required": "Wählen Sie mindestens eine Rolle für das Token aus.",
+      "token_scope_not_held": "Ein Token kann nur Rollen verwenden, die Sie innehaben."
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
       "graphql_parameter_type": "Der Parameter {{parameter}} der GraphQL-Anfrage muss {{expected}} sein.",
       "graphql_mutation_over_get": "Eine Mutation wird mit POST gesendet, nie mit GET.",
-      "listed_only": "Rolle {{role}} kann {{table}} nur auflisten: Die Metadaten sind lesbar, die Daten nicht"
+      "listed_only": "Rolle {{role}} kann {{table}} nur auflisten: Die Metadaten sind lesbar, die Daten nicht",
+      "parameter_by_equality_only": "Der Parameter {{parameter}} erhält seinen Wert durch Gleichheit: {{parameter}} = ein Wert, {{parameter}} IN (Werte) oder ein Join auf {{parameter}}. {{form}} gibt ihm keinen Wert.",
+      "parameter_unbound_on_branch": "Der Parameter {{parameter}} erhält in einem Zweig eines OR einen Wert und in einem anderen keinen. Geben Sie {{parameter}} in jedem Zweig einen Wert.",
+      "parameter_conflict": "Der Parameter {{parameter}} erhält gleichzeitig zwei verschiedene Werte ({{first}} und {{second}}). Geben Sie ihm einen Wert oder führen Sie die Werte mit IN oder OR auf.",
+      "parameter_calls_over_cap": "Die Anweisung benötigt {{calls}} Aufrufe an {{table}}, einen für jeden Wert ihrer Parameter, und für eine Anweisung werden höchstens {{cap}} ausgeführt (Einstellung {{setting}}). Geben Sie weniger Werte an."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "Semantik kann nicht ausgeführt werden: {{model}}, das der Beziehungsableitung zugewiesene Modell, hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
-      "table_unreadable": "Die Erkennung kann die Tabelle {{table}} nicht lesen: {{reason}}. Nehmen Sie sie aus den gewählten Tabellen heraus, oder korrigieren Sie sie und versuchen Sie es erneut.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
-      "vendor_has_no_key": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
-      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
+      "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
+      "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste."
+    },
+    "llm": {
+      "request_failed": "Die Anfrage an das Modell ist fehlgeschlagen: {{reason}}",
+      "no_answer_in_time": "Das Modell hat innerhalb von {{seconds}} Sekunden nicht geantwortet.",
+      "empty_answer": "Das Modell hat keinen Text zurückgegeben."
     },
     "environments": {
       "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs-Quelle {{source}}: {{error}}",
       "logs_path_refused": "Logs-Quelle {{source}}: {{reason}}",
       "file_path_leaves_org": "Quelle {{source}}: {{path}} verlässt den Ordner der Organisation.",
-      "file_path_local_refused": "Quelle {{source}}: Ein Server mit vielen Organisationen liest keine Datei auf seinem eigenen Datenträger; laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an.",
       "relationship_alias_taken": "Der Alias '{{alias}}' ist bereits der Alias der Beziehung '{{relationship}}' von '{{table}}'",
       "relationship_ambiguous_table": "Der Tabellenname '{{table}}' ({{end}}) bezeichnet eine Tabelle in mehr als einer Quelle ({{sources}})",
       "relationship_unknown_source": "Die Quelltabelle '{{table}}' ist nicht registriert",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "Code-Resolver „{{resolver}}“ nicht gefunden",
       "code_resolver_saved": "Code-Resolver „{{resolver}}“ gespeichert",
       "code_resolver_retired": "Code-Resolver „{{resolver}}“ stillgelegt",
-      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt"
+      "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt",
+      "incremental_no_change": "Die Codequelle hat keine @change-Funktion für {{table}}. Deklarieren Sie eine mit @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden)."
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",
@@ -710,7 +725,8 @@
       "not_a_file_source": "Einer {{type}}-Quelle wird keine Datei per Upload gegeben."
     },
     "sources": {
-      "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine."
+      "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine.",
+      "local_path_refused": "Die Quellen dieser Organisation lesen keine Datei auf dem eigenen Datenträger des Servers außerhalb ihres eigenen Ordners; {{path}} ist eine solche. Laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an."
     },
     "sandbox": {
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",
@@ -767,6 +783,9 @@
       "term_ids_required": "Nennen Sie die freizugebenden Begriffe.",
       "impact_action": "Für diese Aktion gibt es keine Vorschau.",
       "impact_table_required": "Eine Bindung nennt eine Tabelle oder eine ihrer Spalten."
+    },
+    "table": {
+      "requires_parameters": "Die Tabelle {{table}} kann nicht gezählt oder profiliert werden: Sie verlangt {{parameters}}. Geben Sie jedem einen Wert, um ihre Zeilen zu lesen."
     },
     "tag": {
       "not_on_terms": "Das Tag '{{tag}}' kommt an keinen Begriff; nur pii.",
@@ -831,6 +850,15 @@
       "expiry_in_past": "Ein Enddatum muss in der Zukunft liegen.",
       "expiry_removes_nothing": "Ein Enddatum für diese Liste {{kind}} würde nichts entfernen.",
       "pending_not_found": "Keine Gewährung wartet auf {{email}} für Rolle {{role_id}} und {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} hat eine Zeile ohne ihre Schlüsselspalte {{column}} zurückgegeben",
+      "change_key_repeated": "{{function}} hat den Schlüssel {{key}} in einem Ergebnis zweimal zurückgegeben",
+      "change_cursor_backwards": "Der Cursor von {{function}} ist rückwärts gelaufen: Zurückgegeben wurde {{returned}}, vor dem gespeicherten {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
+      "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
     }
   }
 }

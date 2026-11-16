@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
     },
+    "ai": {
+      "key_required": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
+      "vendor_uses_server_credentials": "{{vendor}} तक सर्वर के अपने क्रेडेंशियल से पहुँचा जाता है, जिनका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में कुंजी लेने वाला वेंडर या कोई AI एंडपॉइंट चुनें।"
+    },
     "api": {
       "answer_cut": "{{table}} का उत्तर max_pages={{max_pages}} पर काट दिया गया ({{rows}} पंक्तियाँ): API में और डेटा है। सब पढ़ने के लिए एंडपॉइंट का max_pages या पृष्ठ आकार बढ़ाएँ।",
       "answer_row_cut": "{{table}} का उत्तर max_rows={{max_rows}} पर काट दिया गया: रिमोट में और डेटा है। सब पढ़ने के लिए graphql_remote.max_rows बढ़ाएँ।"
@@ -41,7 +45,9 @@
       "role_not_assigned": "भूमिका '{{role_id}}' इस उपयोगकर्ता को असाइन नहीं है",
       "simple_provider_not_configured": "Simple ऑथ प्रोवाइडर कॉन्फ़िगर नहीं है",
       "username_exists": "यूज़रनेम पहले से मौजूद है",
-      "not_permitted": "अनुमति नहीं"
+      "not_permitted": "अनुमति नहीं",
+      "token_scopes_required": "टोकन के लिए कम से कम एक भूमिका चुनें।",
+      "token_scope_not_held": "टोकन केवल उन्हीं भूमिकाओं का उपयोग कर सकता है जो आपके पास हैं।"
     },
     "authz": {
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "GraphQL अनुरोध एक क्वेरी वाला JSON ऑब्जेक्ट होता है।",
       "graphql_parameter_type": "GraphQL अनुरोध का {{parameter}} {{expected}} होना चाहिए।",
       "graphql_mutation_over_get": "म्यूटेशन POST से भेजा जाता है, कभी GET से नहीं।",
-      "listed_only": "भूमिका {{role}} केवल {{table}} को सूचीबद्ध कर सकती है: उसका मेटाडेटा पढ़ा जा सकता है, डेटा नहीं"
+      "listed_only": "भूमिका {{role}} केवल {{table}} को सूचीबद्ध कर सकती है: उसका मेटाडेटा पढ़ा जा सकता है, डेटा नहीं",
+      "parameter_by_equality_only": "पैरामीटर {{parameter}} समानता से मान लेता है: {{parameter}} = कोई मान, {{parameter}} IN (मान), या {{parameter}} पर join। {{form}} उसे कोई मान नहीं देता।",
+      "parameter_unbound_on_branch": "पैरामीटर {{parameter}} को OR की एक शाखा में मान दिया गया है और दूसरी में नहीं। हर शाखा में {{parameter}} को मान दें।",
+      "parameter_conflict": "पैरामीटर {{parameter}} को एक साथ दो अलग मान दिए गए हैं ({{first}} और {{second}})। उसे एक मान दें, या IN या OR से मानों की सूची दें।",
+      "parameter_calls_over_cap": "स्टेटमेंट को {{table}} के लिए {{calls}} कॉल चाहिए, उसके पैरामीटरों को दिए गए हर मान के लिए एक, और एक स्टेटमेंट के लिए अधिकतम {{cap}} किए जाते हैं (सेटिंग {{setting}})। कम मान दें।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "सिमेंटिक्स नहीं चल सकता: संबंध अनुमान के लिए निर्धारित मॉडल {{model}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
-      "table_unreadable": "डिस्कवरी तालिका {{table}} को नहीं पढ़ सकती: {{reason}}। इसे चुनी गई तालिकाओं से बाहर रखें, या इसे ठीक करके फिर से प्रयास करें।",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}",
-      "vendor_has_no_key": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
-      "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।"
+      "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।",
+      "answer_unreadable": "मॉडल के उत्तर में कोई पढ़ने योग्य सूची नहीं थी।"
+    },
+    "llm": {
+      "request_failed": "मॉडल को भेजा गया अनुरोध विफल रहा: {{reason}}",
+      "no_answer_in_time": "मॉडल ने {{seconds}} सेकंड के भीतर कोई उत्तर नहीं दिया।",
+      "empty_answer": "मॉडल ने कोई टेक्स्ट नहीं लौटाया।"
     },
     "environments": {
       "in_use": "{{env}} को अब भी {{count}} आइटम संदर्भित करते हैं। हर एक को हटाएँ या बदलें, फिर दोबारा हटाएँ।"
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs स्रोत {{source}}: {{error}}",
       "logs_path_refused": "Logs स्रोत {{source}}: {{reason}}",
       "file_path_leaves_org": "स्रोत {{source}}: {{path}} संगठन के फ़ोल्डर से बाहर जाता है।",
-      "file_path_local_refused": "स्रोत {{source}}: कई संगठनों वाला सर्वर अपनी डिस्क की कोई फ़ाइल नहीं पढ़ता; फ़ाइल अपलोड करें, या उसे {files}/… या किसी दूरस्थ पते से बताएँ।",
       "relationship_alias_taken": "उपनाम '{{alias}}' पहले से '{{table}}' से संबंध '{{relationship}}' का उपनाम है",
       "relationship_ambiguous_table": "तालिका नाम '{{table}}' ({{end}}) एक से अधिक स्रोतों ({{sources}}) में तालिका दर्शाता है",
       "relationship_unknown_source": "स्रोत तालिका '{{table}}' पंजीकृत नहीं है",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "कोड रिज़ॉल्वर '{{resolver}}' नहीं मिला",
       "code_resolver_saved": "कोड रिज़ॉल्वर '{{resolver}}' सहेजा गया",
       "code_resolver_retired": "कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त किया गया",
-      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता"
+      "code_resolver_has_dependents": "जब तक कुछ इस पर निर्भर है, कोड रिज़ॉल्वर '{{resolver}}' सेवानिवृत्त नहीं किया जा सकता",
+      "incremental_no_change": "कोड स्रोत में {{table}} के लिए कोई @change फ़ंक्शन नहीं है। @change table={{table}} के साथ एक घोषित करें।",
+      "incremental_needs_rebuild_every": "{{table}} इंक्रीमेंटल रूप से बनाए रखा जाता है, इसलिए इसे घड़ी के अनुसार पूरा फिर से बनाया जाता है। \"पूरा पुनर्निर्माण हर\" में बताएँ कि कितनी बार (सेकंड में)।"
     },
     "secrets": {
       "env_reference_object_locked": "यह ऑब्जेक्ट ऑपरेटर का है: यह सर्वर के अपने एनवायरनमेंट को पढ़ता है और इसे यहाँ बदला नहीं जा सकता। इसके बजाय अपना ऑब्जेक्ट जोड़ें।",
@@ -710,7 +725,8 @@
       "not_a_file_source": "{{type}} स्रोत को अपलोड से फ़ाइल नहीं दी जाती।"
     },
     "sources": {
-      "private_destination": "इस संगठन के स्रोत केवल सार्वजनिक पतों तक पहुँच सकते हैं; {{host}} {{address}} है, जो सार्वजनिक नहीं है।"
+      "private_destination": "इस संगठन के स्रोत केवल सार्वजनिक पतों तक पहुँच सकते हैं; {{host}} {{address}} है, जो सार्वजनिक नहीं है।",
+      "local_path_refused": "इस संगठन के स्रोत सर्वर की अपनी डिस्क पर संगठन के फ़ोल्डर के बाहर की कोई फ़ाइल नहीं पढ़ते; {{path}} ऐसी ही एक फ़ाइल है। फ़ाइल अपलोड करें, या उसे {files}/… या किसी दूरस्थ पते से बताएँ।"
     },
     "sandbox": {
       "wrong_tier": "यह सैंडबॉक्स कहीं और से परोसा जाता है; इसे इसके अपने पते से खोलें।",
@@ -767,6 +783,9 @@
       "term_ids_required": "स्वीकृत करने के लिए शब्दों के नाम दें।",
       "impact_action": "उस क्रिया के लिए कोई पूर्वावलोकन नहीं है।",
       "impact_table_required": "बाँधना एक तालिका, या उसके किसी कॉलम का नाम देता है।"
+    },
+    "table": {
+      "requires_parameters": "तालिका {{table}} की गिनती या प्रोफ़ाइलिंग नहीं की जा सकती: इसे {{parameters}} चाहिए। इसकी पंक्तियाँ पढ़ने के लिए प्रत्येक को मान दें।"
     },
     "tag": {
       "not_on_terms": "टैग '{{tag}}' किसी शब्द पर नहीं लगता; केवल pii लगता है।",
@@ -831,6 +850,15 @@
       "expiry_in_past": "समाप्ति तिथि भविष्य में होनी चाहिए।",
       "expiry_removes_nothing": "इस {{kind}} सूची पर समाप्ति तिथि कुछ नहीं हटाएगी।",
       "pending_not_found": "भूमिका {{role_id}} और {{kind}} के लिए {{email}} पर कोई अनुदान प्रतीक्षा में नहीं है।"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} ने अपनी कुंजी कॉलम {{column}} के बिना एक पंक्ति लौटाई",
+      "change_key_repeated": "{{function}} ने एक ही परिणाम में कुंजी {{key}} दो बार लौटाई",
+      "change_cursor_backwards": "{{function}} का कर्सर पीछे चला गया: उसने {{returned}} लौटाया, जो संग्रहीत {{stored}} से पहले है"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} की प्रीफ़्लाइट जाँच नहीं चलाई गई: इस संगठन में यह केवल एक सीमित प्रक्रिया में चलती है, और ऐसी प्रक्रिया शुरू नहीं की जा सकी ({{reason}})।",
+      "confined_failed": "{{subject}} की प्रीफ़्लाइट जाँच ने कोई निर्णय नहीं लौटाया: उसकी सीमित प्रक्रिया पहले ही समाप्त हो गई ({{reason}})।"
     }
   }
 }

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requiere id, provider y dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} se alcanza con las credenciales propias del servidor, que una organización de este servidor no usa. Elija un proveedor que acepte una clave, o un punto de conexión de IA, en Administración, Modelos de IA."
+    },
     "api": {
       "answer_cut": "La respuesta para {{table}} se cortó en max_pages={{max_pages}} ({{rows}} filas): la API tiene más. Aumente max_pages o el tamaño de página del endpoint para leerla completa.",
       "answer_row_cut": "La respuesta para {{table}} se cortó en max_rows={{max_rows}}: el remoto tiene más. Aumente graphql_remote.max_rows para leerla completa."
@@ -41,7 +45,9 @@
       "role_not_assigned": "El rol '{{role_id}}' no está asignado a este usuario",
       "simple_provider_not_configured": "El proveedor de autenticación simple no está configurado",
       "username_exists": "El nombre de usuario ya existe",
-      "not_permitted": "No permitido"
+      "not_permitted": "No permitido",
+      "token_scopes_required": "Elija al menos un rol para el token.",
+      "token_scope_not_held": "Un token solo puede usar roles que usted tiene."
     },
     "authz": {
       "mutation_not_permitted": "Mutación '{{field_name}}' no permitida: {{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_parameter_type": "El parámetro {{parameter}} de la solicitud GraphQL debe ser {{expected}}.",
       "graphql_mutation_over_get": "Una mutación se envía con POST, nunca con GET.",
-      "listed_only": "El rol {{role}} solo puede listar {{table}}: se pueden leer sus metadatos, no sus datos"
+      "listed_only": "El rol {{role}} solo puede listar {{table}}: se pueden leer sus metadatos, no sus datos",
+      "parameter_by_equality_only": "El parámetro {{parameter}} recibe su valor por igualdad: {{parameter}} = un valor, {{parameter}} IN (valores) o un join sobre {{parameter}}. {{form}} no le da ningún valor.",
+      "parameter_unbound_on_branch": "El parámetro {{parameter}} recibe un valor en una rama de un OR y ninguno en otra. Dé un valor a {{parameter}} en cada rama.",
+      "parameter_conflict": "El parámetro {{parameter}} recibe dos valores distintos a la vez ({{first}} y {{second}}). Dele un solo valor o enumere los valores con IN u OR.",
+      "parameter_calls_over_cap": "La sentencia necesita {{calls}} llamadas a {{table}}, una por cada valor dado a sus parámetros, y se hacen como máximo {{cap}} por sentencia (ajuste {{setting}}). Indique menos valores."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "La semántica no puede ejecutarse: {{model}}, el modelo asignado a la inferencia de relaciones, no tiene clave. Configure una en Administración, Modelos de IA.",
       "source_not_found": "No se encontró el origen '{{source_id}}'",
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
-      "table_unreadable": "El descubrimiento no puede leer la tabla {{table}}: {{reason}}. Exclúyala de las tablas elegidas, o corríjala e inténtelo de nuevo.",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
-      "vendor_has_no_key": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
-      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo."
+      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo.",
+      "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible."
+    },
+    "llm": {
+      "request_failed": "La solicitud al modelo falló: {{reason}}",
+      "no_answer_in_time": "El modelo no respondió en {{seconds}} segundos.",
+      "empty_answer": "El modelo no devolvió ningún texto."
     },
     "environments": {
       "in_use": "{{env}} sigue siendo referido por {{count}} elemento(s). Quite o cambie cada uno y vuelva a eliminarlo."
@@ -460,7 +474,6 @@
       "logs_invalid": "Origen Logs {{source}}: {{error}}",
       "logs_path_refused": "Origen Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "Origen {{source}}: {{path}} sale de la carpeta de la organización.",
-      "file_path_local_refused": "Origen {{source}}: un servidor de muchas organizaciones no lee archivos de su propio disco; suba el archivo o indíquelo como {files}/… o con una dirección remota.",
       "relationship_alias_taken": "El alias '{{alias}}' ya es el alias de la relación '{{relationship}}' desde '{{table}}'",
       "relationship_ambiguous_table": "El nombre de tabla '{{table}}' ({{end}}) designa una tabla en más de un origen ({{sources}})",
       "relationship_unknown_source": "La tabla de origen '{{table}}' no está registrada",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "No se encontró el resolver de código '{{resolver}}'",
       "code_resolver_saved": "Resolver de código '{{resolver}}' guardado",
       "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
-      "code_resolver_has_dependents": "El resolver de código '{{resolver}}' no puede retirarse mientras algo dependa de él"
+      "code_resolver_has_dependents": "El resolver de código '{{resolver}}' no puede retirarse mientras algo dependa de él",
+      "incremental_no_change": "El origen de código no tiene ninguna función @change para {{table}}. Declare una con @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada»."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",
@@ -710,7 +725,8 @@
       "not_a_file_source": "A un origen {{type}} no se le da un archivo por subida."
     },
     "sources": {
-      "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es."
+      "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es.",
+      "local_path_refused": "Las fuentes de esta organización no leen archivos del propio disco del servidor fuera de su carpeta; {{path}} es uno de ellos. Suba el archivo o indíquelo como {files}/… o con una dirección remota."
     },
     "sandbox": {
       "wrong_tier": "Este sandbox se sirve en otro lugar; ábralo desde su propia dirección.",
@@ -767,6 +783,9 @@
       "term_ids_required": "Indique los términos que se van a aprobar.",
       "impact_action": "No hay vista previa para esa acción.",
       "impact_table_required": "Una vinculación nombra una tabla o una de sus columnas."
+    },
+    "table": {
+      "requires_parameters": "La tabla {{table}} no se puede contar ni perfilar: exige {{parameters}}. Dé un valor a cada uno para leer sus filas."
     },
     "tag": {
       "not_on_terms": "La etiqueta '{{tag}}' no va en un término; solo pii.",
@@ -831,6 +850,15 @@
       "expiry_in_past": "La fecha de fin debe ser futura.",
       "expiry_removes_nothing": "Una fecha de fin en esta lista de {{kind}} no quitaría nada.",
       "pending_not_found": "Ninguna concesión espera a {{email}} para el rol {{role_id}} y {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} devolvió una fila sin su columna de clave {{column}}",
+      "change_key_repeated": "{{function}} devolvió la clave {{key}} dos veces en un mismo resultado",
+      "change_cursor_backwards": "El cursor de {{function}} retrocedió: devolvió {{returned}}, anterior al almacenado {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "La comprobación previa de {{subject}} no se ejecutó: en esta organización solo se ejecuta en un proceso confinado, y no se pudo iniciar ninguno ({{reason}}).",
+      "confined_failed": "La comprobación previa de {{subject}} no devolvió ningún veredicto: su proceso confinado terminó antes ({{reason}})."
     }
   }
 }

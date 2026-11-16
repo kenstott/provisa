@@ -157,8 +157,8 @@ code { font-family: var(--mono); font-size: .87rem; line-height: 1.7; color: #cb
 .term-dots { display: flex; gap: 8px; padding-bottom: 13px; flex: none; }
 .proto-tabs { display: flex; align-items: flex-end; gap: 3px; margin-bottom: -1px; overflow-x: auto; }
 .proto-tab {
-  display: flex; align-items: baseline; gap: 8px; white-space: nowrap;
-  padding: 9px 15px 10px; cursor: pointer; font-family: var(--font);
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; white-space: nowrap;
+  padding: 7px 13px 8px; cursor: pointer; font-family: var(--font);
   color: var(--text-muted); background: transparent;
   border: 1px solid transparent; border-bottom-color: var(--border-soft);
   border-radius: 9px 9px 0 0;

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
+    },
     "api": {
       "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
       "answer_row_cut": "{{table}} 的回應在 max_rows={{max_rows}} 處被截斷：遠端還有更多資料。請提高 graphql_remote.max_rows 以讀取全部資料。"
@@ -41,7 +45,9 @@
       "role_not_assigned": "角色「{{role_id}}」未指派予此使用者",
       "simple_provider_not_configured": "未設定 Simple 驗證提供者",
       "username_exists": "使用者名稱已存在",
-      "not_permitted": "不允許"
+      "not_permitted": "不允許",
+      "token_scopes_required": "請至少為權杖選擇一個角色。",
+      "token_scope_not_held": "權杖只能使用您擁有的角色。"
     },
     "authz": {
       "mutation_not_permitted": "不允許執行變更「{{field_name}}」：{{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_parameter_type": "GraphQL 請求的 {{parameter}} 必須是 {{expected}}。",
       "graphql_mutation_over_get": "變更操作以 POST 發送,絕不用 GET。",
-      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料"
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以讀取其中繼資料，不能讀取其資料",
+      "parameter_by_equality_only": "參數 {{parameter}} 透過等值取值:{{parameter}} = 值、{{parameter}} IN (值清單),或在 {{parameter}} 上聯結。{{form}} 不會給它任何值。",
+      "parameter_unbound_on_branch": "參數 {{parameter}} 在 OR 的一個分支中有值,在另一個分支中沒有。請在每個分支中為 {{parameter}} 指定值。",
+      "parameter_conflict": "參數 {{parameter}} 同時被賦予兩個不同的值({{first}} 和 {{second}})。請只給它一個值,或用 IN 或 OR 列出這些值。",
+      "parameter_calls_over_cap": "該語句需要對 {{table}} 發出 {{calls}} 次呼叫(其參數的每個值一次),而一條語句最多發出 {{cap}} 次(設定 {{setting}})。請減少值的數量。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "無法執行語意推斷：指派給關係推斷的模型 {{model}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "table_id_required": "資料表範圍需要 table_id",
-      "table_unreadable": "探索無法讀取資料表 {{table}}：{{reason}}。請將其從所選資料表中排除，或修正後重試。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
+    },
+    "llm": {
+      "request_failed": "對模型的請求失敗：{{reason}}",
+      "no_answer_in_time": "模型未在 {{seconds}} 秒內作出回答。",
+      "empty_answer": "模型未傳回任何文字。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs 來源 {{source}}：{{error}}",
       "logs_path_refused": "Logs 來源 {{source}}：{{reason}}",
       "file_path_leaves_org": "資料來源 {{source}}：{{path}} 超出了機構的資料夾。",
-      "file_path_local_refused": "資料來源 {{source}}：承載多個機構的伺服器不讀取其本身磁碟上的檔案；請上載檔案，或以 {files}/… 或遠端地址指定它。",
       "relationship_alias_taken": "別名 '{{alias}}' 已是來自 '{{table}}' 的關係 '{{relationship}}' 的別名",
       "relationship_ambiguous_table": "表名 '{{table}}'（{{end}}）指向多於一個資料來源中的表（{{sources}}）",
       "relationship_unknown_source": "來源表 '{{table}}' 未註冊",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "找不到代碼解析器 '{{resolver}}'",
       "code_resolver_saved": "已儲存代碼解析器 '{{resolver}}'",
       "code_resolver_retired": "已停用代碼解析器 '{{resolver}}'",
-      "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用"
+      "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用",
+      "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
+      "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",
@@ -710,7 +725,8 @@
       "not_a_file_source": "{{type}} 資料來源不經上載取得檔案。"
     },
     "sources": {
-      "private_destination": "此組織的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。"
+      "private_destination": "此組織的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。",
+      "local_path_refused": "此組織的資料來源不讀取伺服器本身磁碟上位於其自有資料夾以外的檔案；{{path}} 正是這樣的檔案。請上載檔案，或以 {files}/… 或遠端地址指定它。"
     },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；請從它自己的地址開啟。",
@@ -767,6 +783,9 @@
       "term_ids_required": "請指定要批准的術語。",
       "impact_action": "此操作沒有預覽。",
       "impact_table_required": "綁定指定一張表或其中的一欄。"
+    },
+    "table": {
+      "requires_parameters": "無法對資料表 {{table}} 計數或產生概要：它需要 {{parameters}}。請為每個參數提供值以讀取其資料列。"
     },
     "tag": {
       "not_on_terms": "標籤「{{tag}}」不能加在詞彙上；只有 pii 可以。",
@@ -831,6 +850,15 @@
       "expiry_in_past": "結束日期必須是將來的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 清單設定結束日期不會移除任何內容。",
       "pending_not_found": "沒有等待 {{email}} 的角色 {{role_id}} 及 {{kind}} 授予。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} 傳回了缺少鍵欄 {{column}} 的資料列",
+      "change_key_repeated": "{{function}} 在一個結果中兩次傳回了鍵 {{key}}",
+      "change_cursor_backwards": "{{function}} 的游標出現倒退：傳回了 {{returned}}，早於已儲存的 {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
+      "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
     }
   }
 }

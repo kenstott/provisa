@@ -11,7 +11,8 @@
 // REQ-2234: from connecting a source to querying it, in the source's own detail panel. Once a
 // source is saved, the panel opens on Register tables: Register Table with the source already
 // chosen, the same form as the Tables page's, its tables that need no input already picked, so
-// one action registers them all. Once they are registered, the panel shows Your data. Skipping a step closes it.
+// one action registers them all. Once they are registered, the panel shows Your data. Skipping a
+// step closes it, on the source read: the steps are shown over the saved source's read view.
 
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";

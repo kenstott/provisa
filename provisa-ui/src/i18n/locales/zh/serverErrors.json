@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。"
+    },
     "api": {
       "answer_cut": "{{table}} 的响应在 max_pages={{max_pages}} 处被截断（{{rows}} 行）：API 还有更多数据。请提高端点的 max_pages 或页面大小以读取全部数据。",
       "answer_row_cut": "{{table}} 的响应在 max_rows={{max_rows}} 处被截断：远程端还有更多数据。请提高 graphql_remote.max_rows 以读取全部数据。"
@@ -41,7 +45,9 @@
       "role_not_assigned": "角色 '{{role_id}}' 未分配给此用户",
       "simple_provider_not_configured": "未配置 Simple 身份验证提供程序",
       "username_exists": "用户名已存在",
-      "not_permitted": "不允许"
+      "not_permitted": "不允许",
+      "token_scopes_required": "请至少为令牌选择一个角色。",
+      "token_scope_not_held": "令牌只能使用您拥有的角色。"
     },
     "authz": {
       "mutation_not_permitted": "不允许执行变更 '{{field_name}}'：{{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "GraphQL 请求是包含查询的 JSON 对象。",
       "graphql_parameter_type": "GraphQL 请求的 {{parameter}} 必须是 {{expected}}。",
       "graphql_mutation_over_get": "变更操作用 POST 发送,绝不用 GET。",
-      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以读取其元数据，不能读取其数据"
+      "listed_only": "角色 {{role}} 只能列出 {{table}}：可以读取其元数据，不能读取其数据",
+      "parameter_by_equality_only": "参数 {{parameter}} 通过等值取值:{{parameter}} = 值、{{parameter}} IN (值列表),或在 {{parameter}} 上联接。{{form}} 不会给它任何值。",
+      "parameter_unbound_on_branch": "参数 {{parameter}} 在 OR 的一个分支中有值,在另一个分支中没有。请在每个分支中为 {{parameter}} 指定值。",
+      "parameter_conflict": "参数 {{parameter}} 同时被赋予两个不同的值({{first}} 和 {{second}})。请只给它一个值,或用 IN 或 OR 列出这些值。",
+      "parameter_calls_over_cap": "该语句需要对 {{table}} 发起 {{calls}} 次调用(其参数的每个值一次),而一条语句最多发起 {{cap}} 次(设置 {{setting}})。请减少值的数量。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "无法运行语义推断：分配给关系推断的模型 {{model}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "table_id_required": "表范围需要 table_id",
-      "table_unreadable": "发现无法读取表 {{table}}：{{reason}}。请将其从所选表中排除，或修正后重试。",
       "unknown_source_type": "未知数据源类型：{{type}}",
-      "vendor_has_no_key": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
+      "answer_unreadable": "模型的回答中没有可读取的列表。"
+    },
+    "llm": {
+      "request_failed": "对模型的请求失败：{{reason}}",
+      "no_answer_in_time": "模型未在 {{seconds}} 秒内作出回答。",
+      "empty_answer": "模型未返回任何文本。"
     },
     "environments": {
       "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs 源 {{source}}：{{error}}",
       "logs_path_refused": "Logs 源 {{source}}：{{reason}}",
       "file_path_leaves_org": "数据源 {{source}}：{{path}} 超出了组织的文件夹。",
-      "file_path_local_refused": "数据源 {{source}}：承载多个组织的服务器不读取其自身磁盘上的文件；请上传文件，或以 {files}/… 或远程地址指定它。",
       "relationship_alias_taken": "别名 '{{alias}}' 已是来自 '{{table}}' 的关系 '{{relationship}}' 的别名",
       "relationship_ambiguous_table": "表名 '{{table}}'（{{end}}）指向多个数据源中的表（{{sources}}）",
       "relationship_unknown_source": "源表 '{{table}}' 未注册",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "未找到代码解析器 '{{resolver}}'",
       "code_resolver_saved": "已保存代码解析器 '{{resolver}}'",
       "code_resolver_retired": "已停用代码解析器 '{{resolver}}'",
-      "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用"
+      "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用",
+      "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
+      "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -710,7 +725,8 @@
       "not_a_file_source": "{{type}} 数据源不通过上传获得文件。"
     },
     "sources": {
-      "private_destination": "此组织的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。"
+      "private_destination": "此组织的数据源只能访问公共地址；{{host}} 是 {{address}}，不是公共地址。",
+      "local_path_refused": "此组织的数据源不读取服务器自身磁盘上位于其自有文件夹之外的文件；{{path}} 即是这样的文件。请上传文件，或以 {files}/… 或远程地址指定它。"
     },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；请从它自己的地址打开。",
@@ -767,6 +783,9 @@
       "term_ids_required": "请指定要批准的术语。",
       "impact_action": "该操作没有预览。",
       "impact_table_required": "绑定指定一张表或其中的一列。"
+    },
+    "table": {
+      "requires_parameters": "无法对表 {{table}} 计数或生成概要：它需要 {{parameters}}。请为每个参数提供值以读取其行。"
     },
     "tag": {
       "not_on_terms": "标签“{{tag}}”不能加在术语上；只有 pii 可以。",
@@ -831,6 +850,15 @@
       "expiry_in_past": "结束日期必须是将来的日期。",
       "expiry_removes_nothing": "在此 {{kind}} 列表上设置结束日期不会移除任何内容。",
       "pending_not_found": "没有等待 {{email}} 的角色 {{role_id}} 和 {{kind}} 授予。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} 返回了缺少键列 {{column}} 的行",
+      "change_key_repeated": "{{function}} 在一个结果中两次返回了键 {{key}}",
+      "change_cursor_backwards": "{{function}} 的游标发生倒退：返回了 {{returned}}，早于已存储的 {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} 的预检未运行：在此组织中它只在受限进程中运行，而该进程无法启动（{{reason}}）。",
+      "confined_failed": "{{subject}} 的预检未返回结论：其受限进程已先行结束（{{reason}}）。"
     }
   }
 }

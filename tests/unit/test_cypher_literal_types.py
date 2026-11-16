@@ -49,6 +49,7 @@ def _table(table_id: int, name: str) -> SimpleNamespace:
         # A TableMeta carries the names it is queried by (label_map reads its _name_ from them).
         field_name=name,
         display_name="",
+        original_table_name="",
     )
 
 
@@ -66,6 +67,8 @@ def _label_map(text_keyed: bool = False) -> CypherLabelMap:
         aggregate_columns=columns,
         pk_columns={},
         native_filter_columns={},
+        # The per-table parameter facts of a compiled context (label_map reads them).
+        parameters={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),

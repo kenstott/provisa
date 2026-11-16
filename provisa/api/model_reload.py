@@ -35,6 +35,7 @@ import logging
 from types import SimpleNamespace
 from typing import TYPE_CHECKING, Any, cast
 
+from provisa.api import rebuild_trace
 from provisa.core import config_stamp, deployment_settings, domain_policy, model_change
 from provisa.core.config_watch import NOT_RELOADED, Target
 from provisa.core.environments import PROD
@@ -85,6 +86,19 @@ _SOURCE_MAPS = (
 
 def _connection(row: dict) -> tuple:
     return tuple(json.dumps(row[c], sort_keys=True, default=str) for c in _CONNECTION_COLUMNS)
+
+
+async def registered_source_rows(conn: Any) -> dict[str, dict]:
+    """The ``sources`` rows a schema build reads, by id: the sources in service.
+
+    A retired source is not one (REQ-2248): its row is kept under a key of its own
+    (:func:`provisa.core.repositories.retirement.retired_key`), which is no source id, and it has
+    no pool, catalog or attach. Read through the one reader of the sources in service, so a build
+    and the admin reads cannot disagree about which those are. A restored source is back among
+    them at its id, and :func:`reconcile_sources` builds it as added."""
+    from provisa.core.repositories import source as source_repo
+
+    return {row["id"]: row for row in await source_repo.list_all(conn)}
 
 
 async def reconcile_sources(rows: dict[str, dict]) -> None:
@@ -204,7 +218,7 @@ async def reload_model(rt: "OrgRuntime") -> object:
         # The worker that made the change announced it (REQ-1072); a reload is not another change.
         # Built at the stored stamp by the time its turn comes (this worker's own change), it is
         # not built again.
-        if await _rebuild_schemas(announce=False, if_stale=True):
+        if await _rebuild_schemas(announce=False, if_stale=True, cause=rebuild_trace.WATCHER):
             return  # only the stamp moved: the model these steps follow has not changed
         # REQ-1922: this region's state rows whose model owner the change removed.
         await prune_region_state(rt)
@@ -373,7 +387,7 @@ async def reload_org_settings(rt: "OrgRuntime") -> None:
             else deployment.get("default_domain", "default")
         )
         domain_policy.configure(use_domains, default_domain)
-        await _rebuild_schemas(announce=False)
+        await _rebuild_schemas(announce=False, cause=rebuild_trace.SETTINGS_WATCHER)
 
     await _bound(rt, _apply_domain_mode)
 

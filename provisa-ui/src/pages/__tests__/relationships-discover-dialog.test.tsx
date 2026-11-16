@@ -117,11 +117,13 @@ const MODELS: DiscoveryModels = {
 const NO_VENDOR: DiscoveryModels = { assigned: null, vendors: [], semantics_available: false };
 const COUNT: DiscoveryCount = {
   requests: 3,
+  requests_are: "upper_bound",
   by_group: { whole_number: 2, text: 1 },
   suggestions_per_request: 27,
   model: HAIKU,
   source_tables: 2,
   target_tables: 2,
+  tables_not_read: 0,
 };
 const SCOPE: DiscoveryScope = {
   kinds: ["foreign_keys", "semantics"],
@@ -343,19 +345,74 @@ describe("Discovery dialog: the run's scope", () => {
 });
 
 describe("Discovery dialog: the request count before Run", () => {
-  it("shows about how many requests the run makes, by type group", async () => {
+  it("shows at most how many requests the run makes, by type group, and that it is a bound", async () => {
     await openDialog();
     await waitFor(
       () =>
         expect(screen.getByTestId("discover-count")).toHaveTextContent(
-          "About 3 requests to the model: whole numbers 2, text 1.",
+          "At most 3 requests to the model: whole numbers 2, text 1.",
         ),
       SLOW,
     );
     expect(screen.getByTestId("discover-count")).toHaveTextContent(
       "Source tables: 2. Target tables: 2.",
     );
+    expect(screen.getByTestId("discover-count-bound")).toHaveTextContent(
+      "Counted from what is registered, without reading any table. The run may make fewer.",
+    );
+    // Every table of the scope is read by the run: nothing to say of tables not read.
+    expect(screen.queryByTestId("discover-not-read")).not.toBeInTheDocument();
     expect(lastScope()).toEqual(SCOPE);
+  });
+
+  it("says how many tables are not read, and why", async () => {
+    countMock.mockResolvedValue({
+      ...COUNT,
+      source_tables: 29,
+      target_tables: 29,
+      tables_not_read: 8,
+    });
+    await openDialog();
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("discover-not-read")).toHaveTextContent(
+          "8 tables require a parameter and are not read: they are compared on their names and descriptions alone.",
+        ),
+      SLOW,
+    );
+  });
+
+  it("says one table is not read in the singular", async () => {
+    countMock.mockResolvedValue({ ...COUNT, tables_not_read: 1 });
+    await openDialog();
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("discover-not-read")).toHaveTextContent(
+          "1 table requires a parameter and is not read: it is compared on its names and descriptions alone.",
+        ),
+      SLOW,
+    );
+  });
+
+  it("shows the tables not read for foreign keys alone, with no bound to explain", async () => {
+    countMock.mockResolvedValue({
+      ...COUNT,
+      requests: 0,
+      by_group: {},
+      model: null,
+      tables_not_read: 2,
+    });
+    await openDialog();
+    fireEvent.click(screen.getByTestId("discover-kind-semantics"));
+    await waitFor(
+      () =>
+        expect(screen.getByTestId("discover-count")).toHaveTextContent("No requests to the model."),
+      SLOW,
+    );
+    expect(screen.queryByTestId("discover-count-bound")).not.toBeInTheDocument();
+    expect(screen.getByTestId("discover-not-read")).toHaveTextContent(
+      "2 tables require a parameter",
+    );
   });
 
   it("counts again when the scope changes", async () => {
@@ -366,7 +423,7 @@ describe("Discovery dialog: the request count before Run", () => {
     await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
-        "About 5 requests to the model: text 5.",
+        "At most 5 requests to the model: text 5.",
       ),
     );
   });
@@ -467,6 +524,50 @@ describe("Discovery dialog: the run in progress", () => {
     expect(result).toHaveTextContent(
       "Left out: below the 70% confidence threshold (1), already registered (2), rejected before (1).",
     );
+  });
+
+  it("a run whose every request failed says so, in the dialog and in the page's banner", async () => {
+    const failed = (group: "whole_number" | "date") => ({
+      group,
+      code: "llm.request_failed",
+      params: { reason: "overloaded" },
+      message: "The request to the model failed: overloaded",
+    });
+    const report = {
+      ...REPORT,
+      suggestions: 1,
+      removed: {},
+      semantics: {
+        ...REPORT.semantics,
+        suggested: 0,
+        empty_reason: "requests_failed" as const,
+        requests_total: 2,
+        requests_done: 2,
+        proposed: 0,
+        below_threshold: 0,
+        failed: [failed("whole_number"), failed("date")],
+      },
+    };
+    runMock.mockResolvedValue(
+      runOf({ status: "done", requests_total: 2, requests_done: 2, suggestions: 1, report }),
+    );
+    await openDialog();
+    fireEvent.click(runButton());
+    const progress = await screen.findByTestId("discover-progress");
+    await waitFor(() => expect(progress).toHaveTextContent("Finished."), SLOW);
+    for (const shown of [
+      screen.getByTestId("discover-result"),
+      screen.getByTestId("rels-discover-result"),
+    ]) {
+      expect(shown).toHaveTextContent("Semantics failed: all 2 requests to the model failed.");
+      expect(shown).toHaveTextContent(
+        "For whole numbers columns: The request to the model failed: overloaded",
+      );
+      expect(shown).toHaveTextContent(
+        "For dates columns: The request to the model failed: overloaded",
+      );
+      expect(shown).not.toHaveTextContent("proposed no relationships");
+    }
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {

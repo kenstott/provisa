@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
+      "vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+    },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
       "answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all."
@@ -41,7 +45,9 @@
       "role_not_assigned": "Role '{{role_id}}' is not assigned to this user",
       "simple_provider_not_configured": "Simple auth provider not configured",
       "username_exists": "Username already exists",
-      "not_permitted": "Not permitted"
+      "not_permitted": "Not permitted",
+      "token_scopes_required": "Pick at least one role for the token.",
+      "token_scope_not_held": "A token can use only roles you hold."
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' not permitted: {{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
       "graphql_parameter_type": "The GraphQL request's {{parameter}} must be {{expected}}.",
       "graphql_mutation_over_get": "A mutation is sent with POST, never GET.",
-      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot"
+      "listed_only": "Role {{role}} can only list {{table}}: its metadata can be read, its data cannot",
+      "parameter_by_equality_only": "The parameter {{parameter}} takes a value by equality: {{parameter}} = a value, {{parameter}} IN (values), or a join on {{parameter}}. {{form}} gives it no value.",
+      "parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
+      "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
+      "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
-      "table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
       "unknown_source_type": "Unknown source type: {{type}}",
-      "vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
-      "vendor_unknown": "{{vendor}} lists no models here; enter the model name."
+      "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
+      "answer_unreadable": "The model's answer held no readable list."
+    },
+    "llm": {
+      "request_failed": "The request to the model failed: {{reason}}",
+      "no_answer_in_time": "The model gave no answer within {{seconds}} seconds.",
+      "empty_answer": "The model returned no text."
     },
     "environments": {
       "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs source {{source}}: {{error}}",
       "logs_path_refused": "Logs source {{source}}: {{reason}}",
       "file_path_leaves_org": "Source {{source}}: {{path}} leaves the organization's folder.",
-      "file_path_local_refused": "Source {{source}}: a server of many organizations reads no file on its own disk; upload the file, or name it as {files}/… or by a remote address.",
       "relationship_alias_taken": "Alias '{{alias}}' is already the alias of relationship '{{relationship}}' from '{{table}}'",
       "relationship_ambiguous_table": "The {{end}} table name '{{table}}' names a table in more than one source ({{sources}})",
       "relationship_unknown_source": "Source table '{{table}}' is not registered",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "Code resolver '{{resolver}}' not found",
       "code_resolver_saved": "Code resolver '{{resolver}}' saved",
       "code_resolver_retired": "Code resolver '{{resolver}}' retired",
-      "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it"
+      "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
+      "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\"."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -710,7 +725,8 @@
       "not_a_file_source": "A {{type}} source is not given a file by upload."
     },
     "sources": {
-      "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one."
+      "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one.",
+      "local_path_refused": "This organization's sources read no file on the server's own disk outside its own folder; {{path}} is one. Upload the file, or name it as {files}/… or by a remote address."
     },
     "sandbox": {
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",
@@ -767,6 +783,9 @@
       "term_ids_required": "Name the terms to approve.",
       "impact_action": "There is no preview for that action.",
       "impact_table_required": "Binding names a table, or one of its columns."
+    },
+    "table": {
+      "requires_parameters": "The table {{table}} cannot be counted or profiled: it requires {{parameters}}. Give each a value to read its rows."
     },
     "tag": {
       "not_on_terms": "Tag '{{tag}}' does not go on a term; only pii does.",
@@ -831,6 +850,15 @@
       "expiry_in_past": "An end date must be in the future.",
       "expiry_removes_nothing": "An end date on this {{kind}} list would remove nothing.",
       "pending_not_found": "No grant waits on {{email}} for role {{role_id}} and {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} returned a row without its key column {{column}}",
+      "change_key_repeated": "{{function}} returned the key {{key}} twice in one result",
+      "change_cursor_backwards": "{{function}}'s cursor went backwards: it returned {{returned}}, before the stored {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
+      "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
     }
   }
 }

@@ -2,9 +2,13 @@
   "parametersPanel": {
     "title": "Parametri",
     "summary": "{{required}} di {{count}} obbligatori",
+    "limits": "Questa tabella richiede {{parameters}}. Senza un valore per ciascuno non fornisce conteggio delle righe, profilo né campione.",
     "name": "Parametro",
     "type": "Tipo",
     "reaches": "Raggiunge l'origine come",
+    "meaning": "Significato",
+    "opaque": "Input opaco per l'origine",
+    "realColumn": "Colonna reale della tabella",
     "required": "Obbligatorio",
     "requiredBySource": "Richiesto dall'origine",
     "requiredAria": "{{name}} è obbligatorio",
@@ -14,6 +18,7 @@
       "graphql_arg": "Argomento GraphQL",
       "grpc_input": "Campo della richiesta gRPC",
       "query_arg": "Argomento della query nativa",
+      "partition_key": "Chiave di partizione",
       "column_value": "Valore di colonna"
     }
   }

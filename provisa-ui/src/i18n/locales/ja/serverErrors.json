@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
     },
+    "ai": {
+      "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
+    },
     "api": {
       "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。",
       "answer_row_cut": "{{table}} の応答は max_rows={{max_rows}} で切り詰められました。リモートにはまだデータがあります。すべて読み取るには graphql_remote.max_rows を増やしてください。"
@@ -41,7 +45,9 @@
       "role_not_assigned": "ロール「{{role_id}}」はこのユーザーに割り当てられていません",
       "simple_provider_not_configured": "Simple 認証プロバイダーが設定されていません",
       "username_exists": "ユーザー名は既に存在します",
-      "not_permitted": "許可されていません"
+      "not_permitted": "許可されていません",
+      "token_scopes_required": "トークンのロールを 1 つ以上選択してください。",
+      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。"
     },
     "authz": {
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_parameter_type": "GraphQL リクエストの {{parameter}} は {{expected}} でなければなりません。",
       "graphql_mutation_over_get": "ミューテーションは GET ではなく、常に POST で送信します。",
-      "listed_only": "ロール {{role}} は {{table}} を一覧表示することしかできません: メタデータは読み取れますが、データは読み取れません"
+      "listed_only": "ロール {{role}} は {{table}} を一覧表示することしかできません: メタデータは読み取れますが、データは読み取れません",
+      "parameter_by_equality_only": "パラメータ {{parameter}} は等値で値を受け取ります: {{parameter}} = 値、{{parameter}} IN (値のリスト)、または {{parameter}} での結合。{{form}} では値が与えられません。",
+      "parameter_unbound_on_branch": "パラメータ {{parameter}} は OR の一方の分岐で値が与えられ、もう一方では与えられていません。すべての分岐で {{parameter}} に値を与えてください。",
+      "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
+      "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "セマンティクスを実行できません: リレーションシップ推論に割り当てられたモデル {{model}} にキーがありません。管理 > AIモデルで設定してください。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "table_id_required": "table スコープには table_id が必要です",
-      "table_unreadable": "検出はテーブル {{table}} を読み取れません: {{reason}}。選択したテーブルから外すか、修正してからもう一度お試しください。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
-      "vendor_has_no_key": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
-      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
+      "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。",
+      "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。"
+    },
+    "llm": {
+      "request_failed": "モデルへのリクエストが失敗しました: {{reason}}",
+      "no_answer_in_time": "モデルは {{seconds}} 秒以内に回答しませんでした。",
+      "empty_answer": "モデルはテキストを返しませんでした。"
     },
     "environments": {
       "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs ソース {{source}}: {{error}}",
       "logs_path_refused": "Logs ソース {{source}}: {{reason}}",
       "file_path_leaves_org": "ソース {{source}}: {{path}} は組織のフォルダーの外を指しています。",
-      "file_path_local_refused": "ソース {{source}}: 多数の組織を抱えるサーバーは自身のディスク上のファイルを読み取りません。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。",
       "relationship_alias_taken": "エイリアス '{{alias}}' は、すでに '{{table}}' からのリレーションシップ '{{relationship}}' のエイリアスです",
       "relationship_ambiguous_table": "テーブル名 '{{table}}' ({{end}}) は複数のソース ({{sources}}) のテーブルを指しています",
       "relationship_unknown_source": "ソーステーブル '{{table}}' は登録されていません",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "コードリゾルバー '{{resolver}}' が見つかりません",
       "code_resolver_saved": "コードリゾルバー '{{resolver}}' を保存しました",
       "code_resolver_retired": "コードリゾルバー '{{resolver}}' を廃止しました",
-      "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません"
+      "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません",
+      "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
+      "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -710,7 +725,8 @@
       "not_a_file_source": "{{type}} ソースにはアップロードでファイルを渡せません。"
     },
     "sources": {
-      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
+      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。",
+      "local_path_refused": "この組織のソースは、組織自身のフォルダー外にあるサーバーのディスク上のファイルを読み取りません。{{path}} はそのようなファイルです。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。"
     },
     "sandbox": {
       "wrong_tier": "このサンドボックスは別の場所で提供されています。サンドボックス自身のアドレスから開いてください。",
@@ -767,6 +783,9 @@
       "term_ids_required": "承認する用語を指定してください。",
       "impact_action": "この操作にはプレビューがありません。",
       "impact_table_required": "バインドはテーブル、またはその列の1つを指定します。"
+    },
+    "table": {
+      "requires_parameters": "テーブル {{table}} は件数の取得もプロファイルもできません: {{parameters}} が必要です。行を読み取るには、それぞれに値を指定してください。"
     },
     "tag": {
       "not_on_terms": "タグ「{{tag}}」は用語には付けられません。付けられるのは pii だけです。",
@@ -831,6 +850,15 @@
       "expiry_in_past": "終了日は将来の日付にする必要があります。",
       "expiry_removes_nothing": "この {{kind}} リストに終了日を設定しても何も削除されません。",
       "pending_not_found": "ロール {{role_id}} と {{kind}} について {{email}} を待っている付与はありません。"
+    },
+    "mv": {
+      "change_key_missing": "{{function}} がキー列 {{column}} のない行を返しました",
+      "change_key_repeated": "{{function}} が 1 つの結果の中でキー {{key}} を 2 回返しました",
+      "change_cursor_backwards": "{{function}} のカーソルが逆行しました: 保存済みの {{stored}} より前の {{returned}} を返しました"
+    },
+    "preflight": {
+      "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
+      "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
     }
   }
 }

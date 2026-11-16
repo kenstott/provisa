@@ -45,7 +45,13 @@ the order ``args`` gives them, for a host whose language passes arguments by nam
                       traceparent}  -- REQ-2099: a table called once per argument set, in
                                        order, in the host, its rows sent under the one call id
                      {op: "cancel", id}      {op: "ping", id}
+                     {op: "call", id, export: "preflight", kind: "preflight", source, ctx, inputs,
+                      whole, traceparent}  -- REQ-2133: a view's or a table's preflight check, its
+                                              text, its ctx's fields and its inputs' names
+                     rows (an Arrow frame)   {op: "drained", id, input}  -- a preflight's pull
+                                                                           answered
     host -> Provisa  {op: "hello", protocol, code_hash, exports}
+                     {op: "pull", id, input}  -- a preflight asks for the next batch of an input
                      rows (an Arrow frame)   {op: "value", id, value}
                      {op: "end", id, cpu_ms}  {op: "error", id, message, stack}  {op: "pong", id}
     Provisa -> host  {op: "refused", message}, in place of any call, before the socket closes
@@ -61,6 +67,13 @@ The hello names the protocol the host speaks (:data:`PROTOCOL`) and the content 
 it runs (``PROVISA_CODE_HASH`` in its environment: the worker gives it, an image built for a
 remote host carries it). A host that speaks another protocol, or runs other code than the source
 registered, is refused by name (REQ-2098).
+
+A PREFLIGHT (REQ-2133) is the one call whose rows go to the host. The check reads an input only
+as it iterates it: each ``pull`` is answered with one Arrow frame of that input's rows (the call's
+id and an IPC stream, as rows travel the other way) or ``drained`` when it has ended. Its answer
+is a ``value``: the verdict (``decision``, ``reason``) or what the check raised (``raised``,
+``message``), and the warnings its ``ctx`` took. Python's host serves it; a host with no
+preflight answers the call with an error.
 
 A call blocks its request's thread, as every driver call does (REQ-1882), and is cancelled through
 the request's deadline (:func:`provisa.core.request_deadline.cancel_on_deadline`): the host is
@@ -98,7 +111,7 @@ if TYPE_CHECKING:
     from provisa.codesource.services import ServiceGrant
 
 #: The protocol the hosts speak; a host built for another one is refused by name (REQ-2098).
-PROTOCOL = 4
+PROTOCOL = 5
 
 #: REQ-2100: how many connections a worker has, each serving one call at a time.
 CONNECTIONS = 8
@@ -153,6 +166,9 @@ _scopes: dict[tuple[str, int], CarriedScope] = {}
 #: REQ-2133: the role the request a call serves acts as, beside its scope: the dq service answers
 #: what the meta domain shows that role.
 _roles: dict[tuple[str, int], str | None] = {}
+#: REQ-2133: what a preflight call checks and the products of its view, beside its scope: the
+#: services answer the call's requests for that view, under its worker's one grant.
+_preflights: dict[tuple[str, int], tuple[str, tuple[str, ...]]] = {}
 _scopes_lock = threading.Lock()
 
 
@@ -167,6 +183,13 @@ def call_role(token: str, call_id: int) -> str | None:
     while the call runs; None when it names none or is not running."""
     with _scopes_lock:
         return _roles.get((token, call_id))
+
+
+def call_preflight(token: str, call_id: int) -> tuple[str, tuple[str, ...]] | None:
+    """What the preflight call ``call_id`` of the worker holding ``token`` checks (its subject) and
+    its view's products, while it runs; None for any other call."""
+    with _scopes_lock:
+        return _preflights.get((token, call_id))
 
 
 _HEAD = struct.Struct(">I")
@@ -358,6 +381,12 @@ class _Lane:
     def send(self, message: dict) -> None:
         with self._send_lock:
             self.conn.sendall(_frame(message))
+
+    def send_rows(self, call_id: int, ipc: bytes) -> None:
+        """One Arrow frame of the call's rows, to the host (a preflight's input, REQ-2133)."""
+        body = ARROW_FRAME + _ID.pack(call_id) + ipc
+        with self._send_lock:
+            self.conn.sendall(_HEAD.pack(len(body)) + body)
 
     def deliver(self, message: dict) -> None:
         """A frame the host sent: to the leasing call's thread, waiting while its queue is full."""
@@ -672,6 +701,7 @@ class Worker:
             with _scopes_lock:
                 _scopes.pop((self._services_token, call_id), None)
                 _roles.pop((self._services_token, call_id), None)
+                _preflights.pop((self._services_token, call_id), None)
 
     def _cancel(self, lane: _Lane, call_id: int) -> None:
         """Tell the host to stop the call, and release the thread waiting for it. Called from the
@@ -904,6 +934,68 @@ class Worker:
                 span.set_attribute("codesource.rows", len(results))
                 return results
             finally:
+                self._close(lane, call_id)
+
+    def preflight(
+        self,
+        source: str,
+        ctx: dict,
+        inputs: dict[str, Iterator[bytes]],
+        *,
+        whole: Sequence[str] = (),
+        subject: str,
+        product_ids: Sequence[str] = (),
+    ) -> dict:
+        """REQ-2133: the answer of the preflight check ``source`` run in the host: its verdict or
+        what it raised, and the warnings it took. ``ctx`` is the fields of the check's ctx.
+        ``inputs`` gives each input's rows as Arrow IPC streams, drawn from only as the check
+        pulls them; an input in ``whole`` is one the server holds whole. ``subject`` and
+        ``product_ids`` are what the services answer the call's requests for."""
+        export = "preflight"
+        with stage(_tracer, "codesource.call") as span:
+            self._describe(span, export, "preflight", ())
+            lane, call_id = self._open()
+            finished = False
+            batches = 0
+            try:
+                frame = self._call_frame(call_id, export, "preflight", (), (), None)
+                del frame["args"], frame["names"], frame["schema"]
+                frame.update(source=source, ctx=encode(ctx), inputs=list(inputs), whole=list(whole))
+                if self._services_token is not None:
+                    with _scopes_lock:
+                        _preflights[(self._services_token, call_id)] = (
+                            subject,
+                            tuple(product_ids),
+                        )
+                self._send(lane, frame)
+                value: Any = None
+                while (message := self._next(lane, call_id, export))["op"] != "end":
+                    if message["op"] == "pull":
+                        ipc = next(inputs[message["input"]], None)
+                        if self._ended is not None:
+                            raise WorkerFailed(self.source_id, self._ended, export=export)
+                        if ipc is None:
+                            lane.send({"op": "drained", "id": call_id, "input": message["input"]})
+                        else:
+                            lane.send_rows(call_id, ipc)
+                            batches += 1
+                    elif message["op"] == "value":
+                        value = decode(message["value"])
+                finished = True
+                span.set_attribute("codesource.worker_cpu_ms", message.get("cpu_ms") or 0)
+                return value
+            except OSError as exc:
+                # The socket closed under a send: the worker has ended, named as its reader says.
+                raise WorkerFailed(
+                    self.source_id, self._ended or f"its host ended ({exc})", export=export
+                ) from exc
+            finally:
+                span.set_attribute("codesource.batches", batches)
+                if not finished:
+                    try:
+                        self._send(lane, {"op": "cancel", "id": call_id})
+                    except (OSError, WorkerFailed):
+                        pass  # the worker has ended: there is no call left to stop
                 self._close(lane, call_id)
 
     def _describe(self, span: Any, export: str, kind: str, args: Sequence[Any]) -> None:

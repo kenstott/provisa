@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
     },
+    "ai": {
+      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
+    },
     "api": {
       "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול.",
       "answer_row_cut": "התשובה עבור {{table}} נחתכה ב-max_rows={{max_rows}}: למקור המרוחק יש עוד. הגדילו את graphql_remote.max_rows כדי לקרוא הכול."
@@ -41,7 +45,9 @@
       "role_not_assigned": "התפקיד '{{role_id}}' אינו מוקצה למשתמש זה",
       "simple_provider_not_configured": "ספק האימות הפשוט אינו מוגדר",
       "username_exists": "שם המשתמש כבר קיים",
-      "not_permitted": "אין הרשאה"
+      "not_permitted": "אין הרשאה",
+      "token_scopes_required": "בחרו לפחות תפקיד אחד עבור האסימון.",
+      "token_scope_not_held": "אסימון יכול להשתמש רק בתפקידים שברשותכם."
     },
     "authz": {
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_parameter_type": "הפרמטר {{parameter}} של בקשת ה-GraphQL חייב להיות {{expected}}.",
       "graphql_mutation_over_get": "מוטציה נשלחת ב-POST, אף פעם לא ב-GET.",
-      "listed_only": "התפקיד {{role}} יכול רק לרשום את {{table}}: ניתן לקרוא את המטא-נתונים שלה, לא את הנתונים"
+      "listed_only": "התפקיד {{role}} יכול רק לרשום את {{table}}: ניתן לקרוא את המטא-נתונים שלה, לא את הנתונים",
+      "parameter_by_equality_only": "הפרמטר {{parameter}} מקבל ערך בשוויון: {{parameter}} = ערך, {{parameter}} IN (ערכים), או join על {{parameter}}. {{form}} אינו נותן לו ערך.",
+      "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
+      "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
+      "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "לא ניתן להריץ סמנטיקה: ל-{{model}}, המודל שהוקצה להסקת קשרים, אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "source_not_found": "המקור '{{source_id}}' לא נמצא",
       "table_id_required": "table_id נדרש עבור היקף table",
-      "table_unreadable": "הגילוי אינו יכול לקרוא את הטבלה {{table}}: {{reason}}. השאירו אותה מחוץ לטבלאות שנבחרו, או תקנו אותה ונסו שוב.",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
-      "vendor_has_no_key": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
-      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל."
+      "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל.",
+      "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה."
+    },
+    "llm": {
+      "request_failed": "הבקשה למודל נכשלה: {{reason}}",
+      "no_answer_in_time": "המודל לא השיב בתוך {{seconds}} שניות.",
+      "empty_answer": "המודל לא החזיר טקסט."
     },
     "environments": {
       "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
@@ -460,7 +474,6 @@
       "logs_invalid": "מקור Logs {{source}}: {{error}}",
       "logs_path_refused": "מקור Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "מקור {{source}}: {{path}} יוצא מתיקיית הארגון.",
-      "file_path_local_refused": "מקור {{source}}: שרת של ארגונים רבים אינו קורא קבצים מהדיסק שלו; העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת.",
       "relationship_alias_taken": "הכינוי '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "relationship_ambiguous_table": "שם הטבלה '{{table}}' ({{end}}) מציין טבלה ביותר ממקור אחד ({{sources}})",
       "relationship_unknown_source": "טבלת המקור '{{table}}' אינה רשומה",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "מפענח הקוד '{{resolver}}' לא נמצא",
       "code_resolver_saved": "מפענח הקוד '{{resolver}}' נשמר",
       "code_resolver_retired": "מפענח הקוד '{{resolver}}' הוצא משימוש",
-      "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו"
+      "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו",
+      "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
+      "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\"."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -710,7 +725,8 @@
       "not_a_file_source": "למקור {{type}} לא ניתן קובץ בהעלאה."
     },
     "sources": {
-      "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו."
+      "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו.",
+      "local_path_refused": "המקורות של הארגון הזה אינם קוראים קבצים מהדיסק של השרת מחוץ לתיקייה של הארגון; {{path}} הוא קובץ כזה. העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת."
     },
     "sandbox": {
       "wrong_tier": "ארגז החול הזה מוגש ממקום אחר; פתחו אותו מהכתובת שלו.",
@@ -767,6 +783,9 @@
       "term_ids_required": "ציינו את המונחים לאישור.",
       "impact_action": "אין תצוגה מקדימה לפעולה זו.",
       "impact_table_required": "קישור מציין טבלה או אחת מעמודותיה."
+    },
+    "table": {
+      "requires_parameters": "לא ניתן לספור או ליצור פרופיל לטבלה {{table}}: היא דורשת את {{parameters}}. תנו ערך לכל אחד מהם כדי לקרוא את השורות שלה."
     },
     "tag": {
       "not_on_terms": "התג '{{tag}}' אינו מוצמד למונח; רק pii.",
@@ -831,6 +850,15 @@
       "expiry_in_past": "תאריך סיום חייב להיות בעתיד.",
       "expiry_removes_nothing": "תאריך סיום ברשימת {{kind}} זו לא היה מסיר דבר.",
       "pending_not_found": "אין הענקה הממתינה ל-{{email}} עבור התפקיד {{role_id}} ו-{{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} החזירה שורה ללא עמודת המפתח שלה {{column}}",
+      "change_key_repeated": "{{function}} החזירה את המפתח {{key}} פעמיים בתוצאה אחת",
+      "change_cursor_backwards": "הסמן של {{function}} נע לאחור: הוחזר {{returned}}, לפני הערך השמור {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "בדיקת הקדם של {{subject}} לא הורצה: בארגון הזה היא רצה רק בתהליך מבודד, ולא ניתן היה להפעיל תהליך כזה ({{reason}}).",
+      "confined_failed": "בדיקת הקדם של {{subject}} לא החזירה פסיקה: התהליך המבודד שלה הסתיים קודם לכן ({{reason}})."
     }
   }
 }

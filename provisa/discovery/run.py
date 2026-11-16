@@ -11,6 +11,10 @@
 """A relationship discovery run (REQ-413): the kinds asked, the model chosen, a source set and a
 target set; its request count before it runs; its work, reported as each request returns.
 
+The count before Run (:func:`count`) reads no table and asks no source: it is computed from the
+model store alone and is an upper bound on the requests the run makes
+(:func:`provisa.discovery.windows.bound`).
+
 The run's model defaults to the model assigned to relationship inference and may be any model of a
 vendor with a key, for that run only (the assignment is never changed). Its limits (REQ-464) size
 the windows. Foreign keys are read from the source tables' own constraints; semantics are asked of
@@ -22,10 +26,11 @@ request returns, so they appear while the run goes on.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import gather
@@ -44,7 +49,7 @@ from provisa.discovery.direction import (
     settle,
 )
 from provisa.discovery.runner import MIN_CONFIDENCE, Control, Tally, execute
-from provisa.discovery.windows import Request, count_by_group, plan
+from provisa.discovery.windows import Request, bound, plan
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -52,6 +57,29 @@ if TYPE_CHECKING:
 #: The operation whose assigned model a run uses unless it names another.
 OPERATION = "relationship_inference"
 SYSTEM_PROMPT = "You are a data analyst."
+
+#: While a request is in flight the run says this often that it is still going: a request may take
+#: longer (provisa.llm.client, ``call_timeout_s``) than a run may go without moving on
+#: (provisa.discovery.runs.STALLED_AFTER).
+STILL_GOING_EVERY_S = 60.0
+
+_T = TypeVar("_T")
+
+
+async def while_saying_still_going(
+    work: Awaitable[_T], still_going: Callable[[], Awaitable[None]]
+) -> _T:
+    """``work``'s result; ``still_going`` is told every :data:`STILL_GOING_EVERY_S` until it ends.
+    When ``still_going`` raises (the run has ended), ``work`` is left and the error is raised."""
+    task = asyncio.ensure_future(work)
+    try:
+        while True:
+            done, _ = await asyncio.wait({task}, timeout=STILL_GOING_EVERY_S)
+            if done:
+                return task.result()
+            await still_going()
+    finally:
+        task.cancel()
 
 
 @dataclass(frozen=True)
@@ -141,14 +169,19 @@ class Prepared:
         return self.source_ids if self.target is None else {t.table_id for t in self.target}
 
     def sizes(self) -> dict[str, int]:
-        """The run's sets as the count and the result give them: the tables of each, and how
-        many of the run's tables are never read (REQ-1986: each requires a parameter, so it
-        takes part on its registration alone)."""
-        return {
-            "source_tables": len(self.source),
-            "target_tables": len(self.source if self.target is None else self.target),
-            "tables_not_read": sum(1 for t in self.tables.values() if t.reduced),
-        }
+        return sizes(self.source, self.target)
+
+
+def sizes(source: list[TableFacts], target: list[TableFacts] | None) -> dict[str, int]:
+    """A run's sets as the count and the result give them: the tables of each, and how many of
+    the run's tables are never read (REQ-1986: each requires a parameter and is not kept for
+    good, so it takes part on its registration alone)."""
+    tables = {t.table_id: t for t in [*source, *(target or [])]}
+    return {
+        "source_tables": len(source),
+        "target_tables": len(source if target is None else target),
+        "tables_not_read": sum(1 for t in tables.values() if t.reduced),
+    }
 
 
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
@@ -183,14 +216,32 @@ async def prepare(
     return Prepared(source, target, k, requests)
 
 
-def count(prepared: Prepared, model: ChosenModel) -> dict[str, Any]:
-    """The request count before Run (REQ-413), by group, for the chosen model."""
+#: What the count's ``requests`` are (REQ-413): the most a run of the scope makes, never fewer
+#: than it makes. The count reads no table, so what a run reads can only take requests away.
+UPPER_BOUND = "upper_bound"
+
+
+async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[str, Any]:
+    """The request count before Run (REQ-413), by group, for the chosen model: an upper bound,
+    from the model store alone. No table is read, classified or sampled and no source is asked;
+    with no model (foreign keys alone) there is no request to count."""
+    async with state.model_db.acquire() as _conn:
+        conn = cast("Connection", _conn)
+        source_ids, target_ids = await table_sets(conn, spec)
+        ids = set(source_ids) | set(target_ids or [])
+        facts = {t.table_id: t for t in await gather.registered_facts(state, conn, sorted(ids))}
+    source = [facts[i] for i in source_ids]
+    target = None if target_ids is None else [facts[i] for i in target_ids]
+    k, by_group = (
+        (0, {}) if model is None else bound(source, target, model.input_tokens, model.output_tokens)
+    )
     return {
-        "requests": len(prepared.requests),
-        "by_group": count_by_group(prepared.requests),
-        "suggestions_per_request": prepared.k,
-        "model": model.describe(),
-        **prepared.sizes(),
+        "requests": sum(by_group.values()),
+        "requests_are": UPPER_BOUND,
+        "by_group": by_group,
+        "suggestions_per_request": k,
+        "model": None if model is None else model.describe(),
+        **sizes(source, target),
     }
 
 
@@ -262,9 +313,13 @@ def _caching(read: Callable[[TableFacts, str], Awaitable[Sampled]]):
 
 
 def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
+    """What semantics did, and when it suggests none, why. Every request failing is not the model
+    proposing none: it is ``requests_failed`` (``unreadable`` when each answer was unreadable)."""
     shown = sum(1 for p in outcome.kept if p.kind == "semantics")
     if shown:
         empty = None
+    elif tally.done and len(tally.failed) == tally.done and tally.unreadable < tally.done:
+        empty = "requests_failed"
     elif tally.proposed == 0 and tally.unreadable:
         empty = "unreadable"
     elif tally.proposed == 0:
@@ -279,9 +334,9 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
 async def _refiner(state: Any) -> Callable[[list[Proposal]], Awaitable[list[Proposal]]] | None:
     """REQ-1789: with a Jev key configured, each suggestion's confidence is Jev's calibrated score;
     those it drops fell below the threshold."""
-    from provisa.core.org_secrets import resolve_jev_api_key
+    from provisa.core.org_secrets import JEV, org_ai_key_or_none
 
-    jev_key = await resolve_jev_api_key(state.model_db)
+    jev_key = await org_ai_key_or_none(state.model_db, JEV)
     if not jev_key:
         return None
     from provisa.jev.decisions import refine_relationship_confidence
@@ -360,7 +415,8 @@ async def perform(
         return out
 
     outcome = await settled([])
-    await progress(report(Tally(total=len(prepared.requests)) if model else None, outcome))
+    latest = report(Tally(total=len(prepared.requests)) if model else None, outcome)
+    await progress(latest)
     if model is None:
         return report(None, outcome)
 
@@ -369,12 +425,18 @@ async def perform(
             return await stop_asked()
 
         async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
-            nonlocal outcome
+            nonlocal outcome, latest
             outcome = await settled(proposals)
-            await progress(report(tally, outcome))
+            latest = report(tally, outcome)
+            await progress(latest)
 
     def ask(prompt: str, max_tokens: int) -> Any:
         return model.client.complete_sync_detailed(prompt, SYSTEM_PROMPT, max_tokens)
+
+    async def in_flight(call: Callable[..., Any], *args: Any) -> Any:
+        return await while_saying_still_going(
+            asyncio.to_thread(call, *args), lambda: progress(latest)
+        )
 
     tally, proposals = await execute(
         prepared.requests,
@@ -383,6 +445,7 @@ async def perform(
         ask,
         _Control(),
         refine=await _refiner(state),
+        to_thread=in_flight,
     )
     outcome = await settled(proposals)
     return report(tally, outcome)

@@ -836,9 +836,9 @@ async def generate_relationships(request: Request) -> dict:
         # Optional: when a Jev key is configured, drop proposals Jev scores as implausible
         # instead of relying only on the generating model's "only propose relationships
         # you are confident in" instruction, which carries no actual score (REQ-1789).
-        from provisa.core.org_secrets import resolve_jev_api_key
+        from provisa.core.org_secrets import JEV, org_ai_key_or_none
 
-        jev_key = await resolve_jev_api_key(pool)
+        jev_key = await org_ai_key_or_none(pool, JEV)
         if jev_key:
             from provisa.jev.decisions import refine_glossary_edges
 

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
+    },
     "api": {
       "answer_cut": "Het antwoord voor {{table}} is afgekapt bij max_pages={{max_pages}} ({{rows}} rijen): de API heeft meer. Verhoog max_pages of de paginagrootte van het endpoint om alles te lezen.",
       "answer_row_cut": "Het antwoord voor {{table}} is afgekapt bij max_rows={{max_rows}}: de remote heeft meer. Verhoog graphql_remote.max_rows om alles te lezen."
@@ -41,7 +45,9 @@
       "role_not_assigned": "Rol '{{role_id}}' is niet aan deze gebruiker toegewezen",
       "simple_provider_not_configured": "Simple-authenticatieprovider niet geconfigureerd",
       "username_exists": "Gebruikersnaam bestaat al",
-      "not_permitted": "Niet toegestaan"
+      "not_permitted": "Niet toegestaan",
+      "token_scopes_required": "Kies ten minste één rol voor het token.",
+      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt."
     },
     "authz": {
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"
@@ -143,7 +149,11 @@
       "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_parameter_type": "De parameter {{parameter}} van het GraphQL-verzoek moet {{expected}} zijn.",
       "graphql_mutation_over_get": "Een mutatie wordt met POST verstuurd, nooit met GET.",
-      "listed_only": "Rol {{role}} kan {{table}} alleen weergeven: de metadata is leesbaar, de gegevens niet"
+      "listed_only": "Rol {{role}} kan {{table}} alleen weergeven: de metadata is leesbaar, de gegevens niet",
+      "parameter_by_equality_only": "De parameter {{parameter}} krijgt een waarde door gelijkheid: {{parameter}} = een waarde, {{parameter}} IN (waarden) of een join op {{parameter}}. {{form}} geeft hem geen waarde.",
+      "parameter_unbound_on_branch": "De parameter {{parameter}} krijgt in één tak van een OR een waarde en in een andere niet. Geef {{parameter}} in elke tak een waarde.",
+      "parameter_conflict": "De parameter {{parameter}} krijgt tegelijk twee verschillende waarden ({{first}} en {{second}}). Geef hem één waarde, of som de waarden op met IN of OR.",
+      "parameter_calls_over_cap": "Het statement heeft {{calls}} aanroepen naar {{table}} nodig, één voor elke waarde van zijn parameters, en per statement worden er hoogstens {{cap}} gedaan (instelling {{setting}}). Geef minder waarden op."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -165,10 +175,14 @@
       "semantics_unavailable": "Semantiek kan niet worden uitgevoerd: {{model}}, het model dat aan relatie-inferentie is toegewezen, heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
       "table_id_required": "table_id vereist voor tabelbereik",
-      "table_unreadable": "Detectie kan de tabel {{table}} niet lezen: {{reason}}. Laat deze uit de gekozen tabellen weg, of corrigeer de tabel en probeer het opnieuw.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
-      "vendor_has_no_key": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
-      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
+      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst."
+    },
+    "llm": {
+      "request_failed": "Het verzoek aan het model is mislukt: {{reason}}",
+      "no_answer_in_time": "Het model gaf binnen {{seconds}} seconden geen antwoord.",
+      "empty_answer": "Het model gaf geen tekst terug."
     },
     "environments": {
       "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
@@ -460,7 +474,6 @@
       "logs_invalid": "Logs-bron {{source}}: {{error}}",
       "logs_path_refused": "Logs-bron {{source}}: {{reason}}",
       "file_path_leaves_org": "Bron {{source}}: {{path}} gaat buiten de map van de organisatie.",
-      "file_path_local_refused": "Bron {{source}}: een server met veel organisaties leest geen bestand van zijn eigen schijf; upload het bestand of geef het op als {files}/… of met een extern adres.",
       "relationship_alias_taken": "De alias '{{alias}}' is al de alias van relatie '{{relationship}}' vanuit '{{table}}'",
       "relationship_ambiguous_table": "De tabelnaam '{{table}}' ({{end}}) wijst een tabel aan in meer dan één bron ({{sources}})",
       "relationship_unknown_source": "Brontabel '{{table}}' is niet geregistreerd",
@@ -510,7 +523,9 @@
       "code_resolver_not_found": "Coderesolver '{{resolver}}' niet gevonden",
       "code_resolver_saved": "Coderesolver '{{resolver}}' opgeslagen",
       "code_resolver_retired": "Coderesolver '{{resolver}}' buiten gebruik gesteld",
-      "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt"
+      "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt",
+      "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
+      "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden)."
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -710,7 +725,8 @@
       "not_a_file_source": "Een {{type}}-bron krijgt geen bestand via upload."
     },
     "sources": {
-      "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen."
+      "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen.",
+      "local_path_refused": "De bronnen van deze organisatie lezen geen bestand van de eigen schijf van de server buiten de eigen map; {{path}} is er zo een. Upload het bestand of geef het op als {files}/… of met een extern adres."
     },
     "sandbox": {
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",
@@ -767,6 +783,9 @@
       "term_ids_required": "Noem de goed te keuren termen.",
       "impact_action": "Voor die actie bestaat geen voorbeeld.",
       "impact_table_required": "Een koppeling noemt een tabel, of een van zijn kolommen."
+    },
+    "table": {
+      "requires_parameters": "De tabel {{table}} kan niet worden geteld of geprofileerd: ze vereist {{parameters}}. Geef elk een waarde om de rijen te lezen."
     },
     "tag": {
       "not_on_terms": "De tag '{{tag}}' gaat niet op een term; alleen pii.",
@@ -831,6 +850,15 @@
       "expiry_in_past": "Een einddatum moet in de toekomst liggen.",
       "expiry_removes_nothing": "Een einddatum op deze lijst {{kind}} zou niets verwijderen.",
       "pending_not_found": "Er wacht geen verlening op {{email}} voor rol {{role_id}} en {{kind}}."
+    },
+    "mv": {
+      "change_key_missing": "{{function}} gaf een rij terug zonder de sleutelkolom {{column}}",
+      "change_key_repeated": "{{function}} gaf de sleutel {{key}} tweemaal terug in één resultaat",
+      "change_cursor_backwards": "De cursor van {{function}} ging achteruit: {{returned}} werd teruggegeven, vóór de opgeslagen {{stored}}"
+    },
+    "preflight": {
+      "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
+      "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
     }
   }
 }

@@ -155,10 +155,18 @@ async def _people(api_, q: str) -> list[dict]:
     return response.json()
 
 
-async def _sign_in(api_, user: str, email: str, claims: dict | None = None) -> None:
-    """The sign-in hook, as the auth middleware runs it for a token carrying ``email``."""
+async def _sign_in(
+    api_, user: str, email: str, claims: dict | None = None, *, email_verified: bool = True
+) -> None:
+    """The sign-in hook, as the auth middleware runs it for a token carrying ``email``, which
+    the token's issuer verified unless the test says not (REQ-1261)."""
     identity = AuthIdentity(
-        user_id=user, email=email, display_name=None, roles=["viewer"], raw_claims=claims or {}
+        user_id=user,
+        email=email,
+        email_verified=email_verified,
+        display_name=None,
+        roles=["viewer"],
+        raw_claims=claims or {},
     )
     await middleware._record_idp_entitlements(api_.db, identity)  # pyright: ignore[reportPrivateUsage]
 
@@ -280,6 +288,24 @@ async def test_ending_a_pending_grant_leaves_nothing_to_attach(api):
 
 
 # -- attach on sign-in -----------------------------------------------------------------------
+
+
+async def test_a_pending_grant_waits_for_a_sign_in_that_verifies_the_address(api):
+    """REQ-1261: a grant made to an address goes to whoever proves it is theirs. A sign-in whose
+    address is unverified (typed by its holder, or not yet verified by the IdP) takes nothing and
+    leaves the grant waiting; the verified sign-in then receives it."""
+    await api.client.put("/admin/entitlements/lists", json=_by_email("dave@new.test"))
+    await _sign_in(api, "typed-it", "dave@new.test", email_verified=False)
+    assert _as(api, "typed-it") is None
+    assert "typed-it" not in api.state.held_entitlements
+    assert [g["email"] for g in (await api.client.get("/admin/entitlements/pending")).json()] == [
+        "dave@new.test"
+    ]
+    assert await _rows(api, admin_audit_log, action="entitlements.pending_attached") == []
+
+    await _sign_in(api, "kc-dave", "dave@new.test")
+    assert _as(api, "kc-dave") is not None
+    assert (await api.client.get("/admin/entitlements/pending")).json() == []
 
 
 async def test_a_pending_grant_attaches_on_that_emails_first_sign_in(api):

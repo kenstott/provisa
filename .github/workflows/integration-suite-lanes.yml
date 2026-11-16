@@ -312,6 +312,8 @@ jobs:
       # with Maven against the server it starts; the driver is built for Java 21.
       java: ${{ matrix.lane == 'core' }}
       trino-plugins: true
+      # tests/integration/test_master_key_survives_recreate_compose.py builds the app image.
+      pyodide-downloads: true
       image-cache: true
       splunk-cim-cache: true
       env: |
@@ -364,6 +366,10 @@ jobs:
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
+
+      # The image the test builds takes Pyodide from this directory (tests/pyodide_downloads.py).
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
 
       - name: Install minikube and helm
         run: |

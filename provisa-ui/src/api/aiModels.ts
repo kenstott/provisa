@@ -108,6 +108,9 @@ export interface AiModelsState {
   // REQ-1395, REQ-1398: which vendors the org has set its own key for. Keys themselves are
   // never returned.
   api_keys_set: Record<string, boolean>;
+  // REQ-1395: whether a vendor with no key set is called with the deployment's own. False on a
+  // server of many organizations, where such a vendor is not called.
+  deployment_keys: boolean;
   restart_required_note: string;
 }
 

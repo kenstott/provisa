@@ -63,6 +63,12 @@ _request_role: ContextVar[str | None] = ContextVar("provisa_mcp_request_role", d
 # through its own bearer-token path (below), never the HTTP app's AuthMiddleware/_OrgRoutingMiddleware,
 # so those admin-gate functions need a request-shaped shim built from these instead of a real Request.
 _request_identity: ContextVar[Any | None] = ContextVar("provisa_mcp_request_identity", default=None)
+# REQ-2076: the roles the request's principal may name in a tool call -- what it holds in the
+# request's org, read when the request was authenticated (``_roles_for_identity``). Set with
+# ``_request_identity``.
+_request_may_name: ContextVar[list[str] | None] = ContextVar(
+    "provisa_mcp_request_may_name", default=None
+)
 _request_org_id: ContextVar[str | None] = ContextVar("provisa_mcp_request_org_id", default=None)
 # REQ-1105: the principal a local call (stdio, or the loopback with no bearer) acts for, the one
 # the operator named (``local_principal``), resolved by the tool wrapper for each call.
@@ -141,10 +147,13 @@ async def _validate_mcp_token(token: str, state: Any):
 async def _resolve_token_role_async(token: str, state: Any) -> str:
     """Async core of :func:`resolve_token_role` — safe to await inside a running event loop.
 
-    Reuses the exact provider + claim->role mapping pgwire uses. No admin default: if auth is not
-    configured or the token yields no role, this raises so the MCP call fails rather than escalating.
+    The role the token's principal acts as in the org it binds, read as the transport reads it
+    (:func:`_roles_for_identity`). No admin default: if auth is not configured or the token yields
+    no role, this raises so the MCP call fails rather than escalating.
     """
-    return _role_for_identity(await _validate_mcp_token(token, state), state)
+    identity = await _validate_mcp_token(token, state)
+    org_id = await _org_for_identity(identity, state)
+    return (await _roles_for_identity(identity, state, org_id))[0]
 
 
 def _with_warnings(result: Any, found: list) -> Any:
@@ -158,17 +167,16 @@ def _with_warnings(result: Any, found: list) -> Any:
     return {"result": result, "warnings": entries}
 
 
-def _role_for_identity(identity: Any, state: Any) -> str:
-    """The provisa role a validated MCP identity acts as (REQ-1105)."""
-    from provisa.auth.role_mapping import resolve_role
+async def _roles_for_identity(identity: Any, state: Any, org_id: str) -> tuple[str, list[str]]:
+    """The provisa role a validated MCP identity acts as in ``org_id``, and the roles its tool
+    calls may name (REQ-1105, REQ-2076): the identity's assignments in that org, read now as every
+    transport reads them (provisa.auth.held_assignments.sign_in_roles) -- never the roles the
+    credential itself carries, which outlive a role's removal. A personal access token's are its
+    scopes its owner still holds (REQ-1263)."""
+    from provisa.auth.held_assignments import sign_in_roles
 
-    auth_config = state.auth_config
-    default_role = auth_config.get("default_role")
-    if not default_role:
-        # No admin fallback: a token that matches no mapping rule and has no
-        # configured default_role is rejected rather than escalated.
-        raise PermissionError("token matched no role and no default_role is configured")
-    return resolve_role(identity, auth_config.get("role_mapping", []), default_role)
+    # A tool call may name a role, so what the identity holds is read for every request.
+    return await sign_in_roles(state, identity, org_id, naming=True)
 
 
 async def _resolve_token_org_async(token: str, state: Any) -> str:
@@ -236,8 +244,8 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
     PermissionError when the caller does not hold one. A set acts as its meta-role.
 
     Remote HTTP: naming a role in a tool call is the same act as naming one in the role header,
-    and follows the same rule — the token's principal must hold it. The role the token itself
-    maps to always qualifies. stdio (and a loopback HTTP call with no bearer) carries no token:
+    and follows the same rule — the token's principal must hold it now, as its assignments are
+    read for the request (:func:`_roles_for_identity`). stdio (and a loopback HTTP call with no bearer) carries no token:
     the operator pinned the roles the process may act as (PROVISA_MCP_ROLE, a role or a set), and
     a local client names only roles within that pin; any other is refused by name. Within it the
     set is resolved as every unsecured transport resolves one (``unsecured_principal``, REQ-1952):
@@ -249,14 +257,7 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
 
     identity = _request_identity.get()
     if identity is not None:
-        from provisa.security.rights import role_ids_from_claims
-
-        held = role_ids_from_claims(getattr(identity, "roles", None) or ())
-        mapped = _request_role.get()
-        if mapped is None:
-            # The transport sets the identity and the role it maps to together.
-            raise RuntimeError("a remote MCP call carries an identity but no role")
-        held.add(mapped)
+        held = _may_name()
         from provisa.auth.derived_roles import principal_of
 
         # REQ-2057: a derived role the principal holds is named like any role.
@@ -302,19 +303,23 @@ def named_role(named: str, state: Any) -> str:  # REQ-273, REQ-1105, REQ-1620
 
 def switchable_roles(state: Any) -> set[str]:  # REQ-2082
     """The roles a tool call may name -- what :func:`named_role` checks a named role against: over
-    remote HTTP the token's held roles, the role it maps to and the derived roles its principal
-    holds; over stdio, the roles the operator pinned."""
+    remote HTTP the roles the token's principal holds now, the one it acts as first, and the
+    derived roles its principal holds; over stdio, the roles the operator pinned."""
     identity = _request_identity.get()
     if identity is None:
         return {r.strip() for r in _pinned_stdio_role().split(",") if r.strip()}
     from provisa.auth.derived_roles import principal_of
-    from provisa.security.rights import role_ids_from_claims
 
-    held = role_ids_from_claims(getattr(identity, "roles", None) or ())
-    mapped = _request_role.get()
-    if mapped is None:
-        raise RuntimeError("a remote MCP call carries an identity but no role")
-    return {*held, mapped, *principal_of(state, identity)[1]}
+    return {*_may_name(), *principal_of(state, identity)[1]}
+
+
+def _may_name() -> set[str]:
+    """The roles a remote call's principal may name: what the transport read for the request."""
+    named = _request_may_name.get()
+    if named is None:
+        # The transport sets the identity and the roles it may name together.
+        raise RuntimeError("a remote MCP call carries an identity but not the roles it may name")
+    return set(named)
 
 
 def _pinned_stdio_role() -> str:
@@ -1189,23 +1194,34 @@ def build_mcp_server(state: Any):
 
     model_tool_server.register(_tool, _role, _capability_request, state)
 
-    # Optional: only registered when a Jev credential is configured, so an agent never sees
-    # a tool it cannot use — no fallback, the tool simply does not exist without the key.
-    if os.environ.get("TYPESAFEAI_API_KEY", "").strip():
+    # Jev's tool is listed to an organization that has a Jev key and to no other (REQ-1395), so
+    # an agent never sees a tool it cannot use. The key is the acting organization's, so this
+    # is decided at each listing, by the same resolver the call takes its key from.
+    @_tool
+    async def jev_evaluate(
+        questions: list[dict],
+        jev_state: Any = None,
+        role: str | None = None,
+    ) -> dict:
+        """Calibrated typed decisions (not text) via TypeSafe's Jev API, all judged against
+        jev_state (any JSON: the context). Each question is {id, type, instructions,
+        criteria}: noul (yes/no; criteria {true, false}; returns P(yes)), choice (up to 255
+        options; criteria {option: description}) or score (2-10 levels; criteria [level
+        description, ...]). Each answer has a distribution and a confidence: send
+        low-confidence ones to a person or further reasoning."""
+        return await tools.jev_evaluate(state, _role(role), jev_state, questions)
 
-        @_tool
-        async def jev_evaluate(
-            questions: list[dict],
-            jev_state: Any = None,
-            role: str | None = None,
-        ) -> dict:
-            """Calibrated typed decisions (not text) via TypeSafe's Jev API, all judged against
-            jev_state (any JSON: the context). Each question is {id, type, instructions,
-            criteria}: noul (yes/no; criteria {true, false}; returns P(yes)), choice (up to 255
-            options; criteria {option: description}) or score (2-10 levels; criteria [level
-            description, ...]). Each answer has a distribution and a confidence: send
-            low-confidence ones to a person or further reasoning."""
-            return await tools.jev_evaluate(state, _role(role), jev_state, questions)
+    every_tool = mcp.list_tools
+
+    async def usable_tools() -> list:
+        from provisa.core.org_secrets import JEV, org_ai_key_or_none
+
+        listed = await every_tool()
+        if await org_ai_key_or_none(getattr(state, "model_db", None), JEV) is None:
+            return [t for t in listed if t.name != "jev_evaluate"]
+        return listed
+
+    mcp.list_tools = usable_tools  # pyright: ignore[reportAttributeAccessIssue]
 
     _install_tool_groups(mcp)  # REQ-2246: sip mode; before the titles go, so its tool loses its own
     # A client is sent every tool's schemas on every model call. Pydantic titles each schema and
@@ -1391,19 +1407,21 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
                 reset_current_org(loopback_token)
             return
 
-        async def _resolve_principal() -> tuple[Any, str, str]:
+        async def _resolve_principal() -> tuple[Any, str, list[str], str]:
             identity = await _validate_mcp_token(token, state)
-            role = _role_for_identity(identity, state)
             org_id = await _org_for_identity(identity, state, requested_org_from_scope(scope))
             from provisa.api.app import ensure_serving_runtime
 
             await ensure_serving_runtime(org_id)
-            return identity, role, org_id
+            # REQ-2076: read in the org's own runtime, once it is built.
+            role, may_name = await _roles_for_identity(identity, state, org_id)
+            return identity, role, may_name, org_id
 
         try:
-            # REQ-1882: credential validation, org resolution and the org runtime build run on
-            # this request's own thread; the MCP loop only receives and relays.
-            identity, role, org_id = await run_on_request_thread(_resolve_principal)
+            # REQ-1882: credential validation, org resolution, the org runtime build and the read
+            # of the principal's roles run on this request's own thread; the MCP loop only
+            # receives and relays.
+            identity, role, may_name, org_id = await run_on_request_thread(_resolve_principal)
         except (PermissionError, ValueError) as exc:
             # Token present but rejected (bad/expired token, or no mapped role) — fail closed.
             await _send_401(send, str(exc))
@@ -1421,6 +1439,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
         reset = _request_role.set(role)
         # REQ-1857: see the ContextVar's own docstring — needed by the capability-gated tools.
         identity_reset = _request_identity.set(identity)
+        may_name_reset = _request_may_name.set(may_name)
         org_id_reset = _request_org_id.set(org_id)
         # REQ-1266: bind the org's data-plane runtime for the request so the tools' state.X reads
         # route to it.
@@ -1446,6 +1465,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             current_acting_role.reset(acting_reset)
             _request_role.reset(reset)
             _request_identity.reset(identity_reset)
+            _request_may_name.reset(may_name_reset)
             _request_org_id.reset(org_id_reset)
             reset_current_org(org_token)
 

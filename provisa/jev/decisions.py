@@ -17,7 +17,7 @@ candidates; these functions run a second Jev pass to SCORE what was proposed wit
 calibrated confidence, replacing (relationships) or gating (glossary edges) the
 generating model's own self-reported confidence.
 
-Only called when a Jev key resolves (provisa.core.org_secrets.resolve_jev_api_key) — the
+Only called when a Jev key resolves (provisa.core.org_secrets.org_ai_key_or_none) — the
 caller decides whether to invoke this module at all, so its absence is never a silent
 fallback here. A Jev call that itself fails (network, HTTP error) IS handled inside these
 functions: this is a refinement layered on an already-succeeded generative pass, not a

@@ -94,11 +94,6 @@ EDGES = [
 ]
 
 
-@pytest.fixture(scope="module")
-def runtime() -> ClickHouseFederationRuntime:
-    return ClickHouseFederationRuntime.embedded()
-
-
 def _answer(runtime: ClickHouseFederationRuntime, sql: str) -> object:
     (row,) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     return row[0]

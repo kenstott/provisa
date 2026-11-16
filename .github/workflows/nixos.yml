@@ -244,6 +244,10 @@ jobs:
         working-directory: provisa-ui
         run: npm run build
 
+      # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
+      - name: Pyodide downloads
+        uses: ./.github/actions/pyodide-downloads
+
       # Fails if the packed runtime names a loader (require_static_runtime): such a file does not
       # start on NixOS at all.
       - name: Build the AppImage

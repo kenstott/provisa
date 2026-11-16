@@ -54,22 +54,34 @@ def type_groups(data_type: str, *, subtype: str | None, array_depth: int) -> fro
     and decimals with no decimal places); decimals (exact decimals, those with no decimal places
     included, so such a column is in both); text (the character types: the IR's ``text`` with no
     subtype); uuid; date; each timestamp type alone. Every other column -- boolean, floating point,
-    JSON, binary, array, geometry, vector, and a subtype held as text -- is in none."""
-    if array_depth > 0:
-        return frozenset()
+    JSON, binary, array, geometry, vector, and a subtype held as text -- is in none.
+
+    A column's ``data_type`` is read as the IR reads it (:func:`provisa.core.ir_types.to_ir`): a
+    live source's column keeps the spelling its source reports (``varchar``, ``varchar collate
+    "default"``, ``int4``, ``timestamp with time zone``), which names the same IR type as the
+    canonical spelling and is grouped with it."""
+    from provisa.core.ir_types import subtype_named, to_ir
+
     spelled = data_type.strip().lower()
-    if spelled in _WHOLE_TYPES:
-        return frozenset({WHOLE})
+    if array_depth > 0 or not spelled:
+        return frozenset()
     numeric = _NUMERIC.match(spelled)
     if numeric is not None:
         precision, scale = numeric.group(1), numeric.group(2)
         # numeric(p) has scale 0 in SQL; an unsized numeric's scale is not known to be 0.
         zero_scale = precision is not None and (scale is None or int(scale) == 0)
         return frozenset({WHOLE, DECIMAL}) if zero_scale else frozenset({DECIMAL})
-    if spelled == "text":
+    if subtype is not None or subtype_named(spelled) is not None:
         # A subtype on a text base (inet, xml, a range, a geometry) is not a character type.
-        return frozenset({TEXT}) if subtype is None else frozenset()
-    group = _ALONE.get(spelled)
+        return frozenset()
+    named = to_ir(spelled)
+    if named in _WHOLE_TYPES:
+        return frozenset({WHOLE})
+    if named == "numeric":
+        return frozenset({DECIMAL})  # a decimal in a source's spelling, its scale not known
+    if named == "text":
+        return frozenset({TEXT})
+    group = _ALONE.get(named)
     return frozenset() if group is None else frozenset({group})
 
 

@@ -140,7 +140,7 @@ async def search_source_tables(
 
     Reads from the background-populated catalog cache when warm.
     Falls back to live the engine introspection on a cold cache.
-    Two-pass ranking: token overlap pre-filter, then haiku LLM (if ANTHROPIC_API_KEY set).
+    Two-pass ranking: token overlap pre-filter, then the table selection model (when its vendor has a key).
 
     The answer says what was searched: ``table_names`` is always ``complete``; ``column_names``
     is ``loading`` while the schema's column names are still being loaded (a table that

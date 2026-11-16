@@ -223,6 +223,16 @@ _SQLSTATE_BY_CLASS: dict[str, str] = {
 }
 
 
+def _coded(exc: BaseException) -> str | None:
+    """REQ-1986: a parameter-binding refusal's stable code and params, for the ErrorResponse's
+    Detail field -- the form a warning's are sent in. None for any other failure."""
+    from provisa.core.parameter_binding import ParameterBindingRefused
+
+    if not isinstance(exc, ParameterBindingRefused):
+        return None
+    return json.dumps({"code": exc.code, "params": exc.params}, ensure_ascii=True)
+
+
 def _sqlstate_of(exception: BaseException) -> str:
     """The SQLSTATE an error is reported with: the one a source reported (psycopg, asyncpg), else
     the one PostgreSQL's own error raised on the engine carries (pg_error.raising), else
@@ -586,15 +596,6 @@ def sign_in_validator(auth_provider, provider_name: str, username: str, password
 
     scheme, token = credential_presentation(provider_name, username, password)
     return scheme, token, validator_for_scheme(auth_provider, scheme)
-
-
-def _held_roles(state: Any, identity: Any, mapped: str, org_id: str | None, *, run) -> set[str]:
-    """The roles a pgwire sign-in may name: its mapped role and its assignments, as every
-    transport reads them (provisa.auth.held_assignments), read in the session's org. ``run`` runs
-    the read on the connection's loop."""
-    from provisa.auth.held_assignments import held_assignments
-
-    return {a.role_id for a in run(held_assignments(state, identity, org_id))} | {mapped}
 
 
 def _write_tag(sql: str, result: Any) -> str:
@@ -3186,7 +3187,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
             # as PostgreSQL sends every error.
             org_id = cast(ProvisaSession, ctx.session).org_id if ctx is not None else None
             said = str(_Said(str(exception), org_id))
-            self._send_pg_error("ERROR", _sqlstate_of(exception), said)
+            self._send_pg_error("ERROR", _sqlstate_of(exception), said, _coded(exception))
         else:
             self._send_pg_error("ERROR", "0A000", str(refusal))
         if ctx:
@@ -3344,18 +3345,25 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         # end of the connection (the server closes the socket it accepted, not the TLS one).
         self.rfile = _FlushingReader(self.rfile, self._meter.flush)  # type: ignore[assignment]
 
-    def _send_pg_error(self, severity: str, sqlstate: str, message: str) -> None:
+    def _send_pg_error(
+        self, severity: str, sqlstate: str, message: str, detail: str | None = None
+    ) -> None:
+        """``detail`` goes in the Detail field: a coded refusal's code and params, as a
+        warning's are sent (``_send_warning``)."""
         from provisa.api.engine_error_names import client_text
 
         # REQ-2087, REQ-2152: every message a client is sent, redacted and in the model's names.
         message = client_text(message)
         buf = BVBuffer()
-        for field, value in (
+        fields = [
             (b"S", severity),
             (b"V", severity),
             (b"C", sqlstate),
             (b"M", message),
-        ):
+        ]
+        if detail is not None:
+            fields.append((b"D", detail))
+        for field, value in fields:
             buf.write_bytes(field)
             buf.write_string(value)
         buf.write_bytes(b"\x00")
@@ -3803,14 +3811,10 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         self, ctx: BVContext, identity, auth_config: dict
     ) -> None:
         """Map the validated identity to a role, bind its org, and admit the connection."""
-        from provisa.auth.role_mapping import resolve_role
-
-        default_role = auth_config.get("default_role")
-        if not default_role:
+        if not auth_config.get("default_role"):
             # No admin default: an identity matching no mapping rule is refused, not escalated
             # onto whatever role the deployment happens to have named first.
             raise RuntimeError("pgwire auth requires auth.default_role to be configured")
-        role = resolve_role(identity, auth_config.get("role_mapping", []), default_role)
         # REQ-1266: bind the session to the identity's org (multitenant) so its queries route to that
         # org's data-plane runtime. Resolution + build run on this connection's loop (REQ-1882); an
         # unresolvable principal fails the connection rather than silently landing on the default.
@@ -3847,13 +3851,30 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
         ):
             self._send_pg_error("FATAL", "42501", role_probe.NOT_PERMITTED)
             return
-        members: tuple[str, ...] = (role,)
-        qualifiers: tuple[str, ...] = ()
         try:
             requested = requested_role(ctx.params)
         except PermissionError as exc:
             self._send_pg_error("FATAL", "28000", str(exc))
             return
+        from provisa.auth.held_assignments import sign_in_roles
+
+        try:
+            # The role the sign-in acts as and the roles it may name, as every transport reads
+            # them, in the session's org. REQ-1263: a personal access token's are its scopes its
+            # owner still holds; with none it is refused.
+            role, may_name = run_on_connection_loop(
+                sign_in_roles(
+                    _state,
+                    identity,
+                    getattr(ctx.session, "org_id", None),
+                    naming=bool(requested),
+                )
+            )
+        except PermissionError as exc:
+            self._send_pg_error("FATAL", "42501", str(exc))
+            return
+        members: tuple[str, ...] = (role,)
+        qualifiers: tuple[str, ...] = ()
         if requested:
             # REQ-1620: the connection may name any role, or set of roles, its identity holds; a
             # set acts as its meta-role, built in this session's org.
@@ -3865,7 +3886,7 @@ class ProvisaHandler(BuenaVistaHandler):  # REQ-120, REQ-124, REQ-125, REQ-273
 
             org_token = None
             org_id = getattr(ctx.session, "org_id", None)
-            permitted = _held_roles(_state, identity, role, org_id, run=run_on_connection_loop)
+            permitted = set(may_name)
             if org_id is not None:
                 from provisa.core.request_context import set_current_org
 
