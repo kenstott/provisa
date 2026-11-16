@@ -493,6 +493,7 @@
   "tests/integration/test_rest_endpoints.py": 0.0,
   "tests/integration/test_retail_demo.py": 57.5,
   "tests/integration/test_retail_regions_tier_e2e.py": 196.5,
+  "tests/integration/test_retired_source_workers.py": 120.0,
   "tests/integration/test_reviews_bundle_e2e.py": 284.6,
   "tests/integration/test_reviews_demo.py": 136.3,
   "tests/integration/test_revoke_role_grants_pg.py": 10.2,
