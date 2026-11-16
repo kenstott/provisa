@@ -96411,7 +96411,15 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     merge or a delete that would remove it leaves it in place, together with whatever the retired table
     needs (its terms and the targets of its relationships). (Amended 2026-11-15, A SOURCE HOLDING A RETIRED
     TABLE IS KEPT:) 2026-11-15. The same rule as a domain: a source that still holds a table, retired or
-    not, is not deleted; the delete is refused. Deleting it would hard-delete its retired tables.'
+    not, is not deleted; the delete is refused. Deleting it would hard-delete its retired tables. (Amended
+    2026-11-15, A DEMO REBUILD IS A SEED; A SWEPT DERIVED TERM IS REMOVED:) Maintainer 2026-11-15. A demo
+    organisation''s rebuild from its config is a built-in seed, like the startup seeds: it deletes and recreates
+    its own rows. A glossary term derived from columns that nothing names any more is removed by the sweep
+    and derived again if its columns return; a term a person deletes is retired. Deploy, undo, redo and
+    pull retire what the incoming tree lacks and keep each row''s id, so returning to a commit that has
+    it restores the same row. Retirement covers the kinds that have a retired state; roles, row filters,
+    regions, stores, triggers, connectors, naming rules, calendars, data products, commands and webhooks
+    are deleted as before.'
   scenario: 'Given a table with a grounded term and a tag
 
     When a steward deletes the table
