@@ -2708,7 +2708,9 @@ discovery_runs = Table(
 # not among the run's suggestions (provisa/discovery/proposals.py REASONS); null: it is one of
 # them. A proposal that named no two compared columns has no table ids, and ``answer`` holds the
 # element as the model wrote it. ``scored`` is the confidence a second scorer gave it, when one
-# re-scored it. ``accepted_as`` is the relationship a reviewer accepted a left-out proposal as.
+# re-scored it. ``decision`` is what a reviewer decided of it in the run's result: ``accepted``
+# (``accepted_as`` the relationship it became) or ``rejected`` (not to be recommended again);
+# null: undecided, and nothing is recorded against it.
 discovery_run_proposals = Table(
     "discovery_run_proposals",
     metadata,
@@ -2725,6 +2727,7 @@ discovery_run_proposals = Table(
     Column("suggested_name", Text, nullable=True),
     Column("left_out", Text, nullable=True),
     Column("answer", Text, nullable=True),
+    Column("decision", Text, nullable=True),
     Column("accepted_as", Text, nullable=True),
     Column("tenant_id", Uuid),
 )

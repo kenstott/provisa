@@ -10,11 +10,13 @@
 
 """Every proposal a discovery run read, kept with the run (REQ-413).
 
-A run shows its suggestions; everything else it read is left out, each for one reason
-(:data:`REASONS`), and none is dropped: the run's rows hold every foreign key it found and every
-element of every answer, with the confidence and reasoning given and why it is not shown. A
-reviewer reads the left-out proposals under the run's suggestions and may accept one that names two
-compared columns (:data:`ACCEPTABLE`), as he accepts a suggestion.
+A run discards nothing: its rows hold every foreign key it found and every element of every
+answer, with the confidence and reasoning given. A proposal that is not among the run's
+suggestions carries why (:data:`REASONS`). The run's result lists them all in one table; a
+reviewer accepts those he ticks and marks those he does not want recommended again
+(:func:`apply`), and what he leaves alone stays undecided: nothing is recorded against it.
+One that names no two compared columns, or that repeats what is already there
+(:data:`ACCEPTABLE`), is listed with its reason and cannot be decided.
 """
 
 # Requirements: REQ-413
@@ -27,7 +29,6 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete, insert, select, update
 
 from provisa.core.schema_org import discovery_run_proposals as rows_t
-from provisa.core.schema_org import discovery_runs as runs_t
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.direction import Kind, Proposal
@@ -67,21 +68,23 @@ REASONS: tuple[str, ...] = (
     "weaker",
 )
 
-#: The reasons a reviewer may overrule by accepting the proposal. Not these: one that names no two
-#: compared columns; a column to itself; one already registered, already waiting among the
-#: suggestions, or matching a foreign key that is itself suggested.
+#: The reasons a proposal left out for can still be decided by a reviewer. Not these: one that
+#: names no two compared columns; two columns that are not compared; a column to itself; one
+#: already registered; one repeating a foreign key or a stronger proposal listed beside it.
 ACCEPTABLE: frozenset[str] = frozenset(
     {
-        NOT_COMPARABLE,
         BELOW_THRESHOLD,
         SCORED_BELOW_THRESHOLD,
         "primary_key_to_primary_key",
         "both_repeating",
+        "pending",
         "rejected",
         "out_of_scope",
-        "weaker",
     }
 )
+
+#: The reason a proposal marked not to be recommended again is rejected with.
+NOT_AGAIN = "Not to be recommended again"
 
 
 @dataclass(frozen=True)
@@ -117,15 +120,21 @@ def _values(run_id: int, r: Recorded) -> dict[str, Any]:
 
 async def record(conn: "Connection", run_id: int, read: list[Recorded]) -> None:
     """The run's rows made equal to ``read``: every proposal it has read so far. A row a reviewer
-    accepted is kept as it is."""
+    decided is kept as it is."""
     async with conn.transaction():
         await conn.execute_core(
-            delete(rows_t).where(rows_t.c.run_id == run_id, rows_t.c.accepted_as.is_(None))
+            delete(rows_t).where(rows_t.c.run_id == run_id, rows_t.c.decision.is_(None))
         )
         await conn.execute_core_many(insert(rows_t), [_values(run_id, r) for r in read])
 
 
-def _view(row: Any) -> dict[str, Any]:
+def decidable(left_out: str | None) -> bool:
+    """Whether a reviewer may accept the proposal or mark it not to be recommended again."""
+    return left_out is None or left_out in ACCEPTABLE
+
+
+def _view(row: Any, never_read: set[int]) -> dict[str, Any]:
+    ends = {row.source_table_id, row.target_table_id} - {None}
     return {
         "id": int(row.id),
         "run_id": int(row.run_id),
@@ -134,78 +143,97 @@ def _view(row: Any) -> dict[str, Any]:
         "source_column": row.source_column,
         "target_table_id": row.target_table_id,
         "target_column": row.target_column,
-        "cardinality": "many-to-one",
+        "cardinality": None if row.source_table_id is None else "many-to-one",
         "confidence": row.confidence,
         "scored": row.scored,
         "reasoning": row.reasoning,
         "suggested_name": row.suggested_name,
         "reason": row.left_out,
         "answer": row.answer,
-        "acceptable": row.left_out in ACCEPTABLE,
+        "decidable": decidable(row.left_out),
+        # REQ-1986: one of its tables is never read, so no values were compared.
+        "reduced_information": bool(ends & never_read),
     }
 
 
-async def left_out(conn: "Connection", run_id: int) -> list[dict[str, Any]]:
-    """The run's proposals that are not among its suggestions and that no reviewer has accepted,
-    the most confident first, those with no confidence last."""
+async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, Any]]:
+    """Every proposal of the run no reviewer has decided, the highest score first (a second
+    scorer's where it gave one, else the model's), those with none last."""
+    from provisa.discovery.gather import tables_never_read
+
     found = (
         await conn.execute_core(
             select(rows_t)
-            .where(
-                rows_t.c.run_id == run_id,
-                rows_t.c.left_out.is_not(None),
-                rows_t.c.accepted_as.is_(None),
-            )
+            .where(rows_t.c.run_id == run_id, rows_t.c.decision.is_(None))
             .order_by(rows_t.c.id)
         )
     ).fetchall()
-    listed = [_view(r) for r in found]
-    return sorted(listed, key=lambda r: (r["confidence"] is None, -(r["confidence"] or 0.0)))
+    ends = {r.source_table_id for r in found} | {r.target_table_id for r in found}
+    ends.discard(None)
+    never_read = await tables_never_read(state, conn, sorted(ends)) if ends else set()
+
+    def score(r: dict[str, Any]) -> float | None:
+        return r["confidence"] if r["scored"] is None else r["scored"]
+
+    rows = [_view(r, never_read) for r in found]
+    return sorted(rows, key=lambda r: (score(r) is None, -(score(r) or 0.0)))
 
 
-class NotAcceptable(ValueError):
-    """A left-out proposal that cannot be accepted, and why."""
+class NotDecidable(ValueError):
+    """A proposal that cannot be accepted or marked, and why."""
 
 
-async def accept(conn: "Connection", proposal_id: int, name: str | None) -> dict[str, Any]:
-    """Accept a left-out proposal: it becomes a suggestion of its run and is accepted as one
-    (:func:`provisa.discovery.candidates.accept`), in one transaction."""
-    async with conn.transaction():
-        row = (await conn.execute_core(select(rows_t).where(rows_t.c.id == proposal_id))).fetchone()
-        if row is None or row.left_out is None or row.accepted_as is not None:
-            raise NotAcceptable(f"Proposal {proposal_id} not found among the left-out proposals")
-        status = (
-            await conn.execute_core(select(runs_t.c.status).where(runs_t.c.id == row.run_id))
-        ).scalar_one()
-        if status == "running":
-            # A run still going writes its rows again as each request returns.
-            raise NotAcceptable(
-                f"Proposal {proposal_id} cannot be accepted yet: its run is still going"
-            )
-        if row.left_out not in ACCEPTABLE:
-            raise NotAcceptable(
-                f"Proposal {proposal_id} cannot be accepted: it was left out as {row.left_out}"
-            )
-        (candidate_id,) = await candidates_repo.store_candidates(
-            conn,
-            [
-                RelationshipCandidate(
-                    source_table_id=int(row.source_table_id),
-                    source_column=str(row.source_column),
-                    target_table_id=int(row.target_table_id),
-                    target_column=str(row.target_column),
-                    cardinality="many-to-one",
-                    confidence=float(row.confidence),
-                    reasoning=row.reasoning or "",
-                    suggested_name=row.suggested_name or "",
-                )
-            ],
-            f"run:{int(row.run_id)}",
+async def _candidate_of(conn: "Connection", run_id: int, proposal_id: int) -> int:
+    """The proposal as a suggestion of its run: the stored suggestion it already is, or one
+    stored now."""
+    row = (
+        await conn.execute_core(
+            select(rows_t).where(rows_t.c.id == proposal_id, rows_t.c.run_id == run_id)
         )
+    ).fetchone()
+    if row is None or row.decision is not None:
+        raise NotDecidable(f"Proposal {proposal_id} is not among the run's undecided proposals")
+    if not decidable(row.left_out):
+        raise NotDecidable(f"Proposal {proposal_id} cannot be decided: it is {row.left_out}")
+    (candidate_id,) = await candidates_repo.store_candidates(
+        conn,
+        [
+            RelationshipCandidate(
+                source_table_id=int(row.source_table_id),
+                source_column=str(row.source_column),
+                target_table_id=int(row.target_table_id),
+                target_column=str(row.target_column),
+                cardinality="many-to-one",
+                confidence=float(row.confidence if row.scored is None else row.scored),
+                reasoning=row.reasoning or "",
+                suggested_name=row.suggested_name or "",
+            )
+        ],
+        f"run:{run_id}",
+    )
+    return candidate_id
+
+
+async def accept(conn: "Connection", run_id: int, proposal_id: int, name: str | None) -> str:
+    """Accept one proposal of the run as a suggestion is accepted
+    (:func:`provisa.discovery.candidates.accept`); the relationship it became."""
+    async with conn.transaction():
+        candidate_id = await _candidate_of(conn, run_id, proposal_id)
         accepted = await candidates_repo.accept(conn, candidate_id, name)
         await conn.execute_core(
             update(rows_t)
             .where(rows_t.c.id == proposal_id)
-            .values(accepted_as=accepted["relationship_id"])
+            .values(decision="accepted", accepted_as=accepted["relationship_id"])
         )
-    return accepted
+    return str(accepted["relationship_id"])
+
+
+async def not_again(conn: "Connection", run_id: int, proposal_id: int) -> None:
+    """Mark one proposal of the run not to be recommended again: it is rejected, as a suggestion
+    is (:func:`provisa.discovery.candidates.reject`), so later runs leave it out."""
+    async with conn.transaction():
+        candidate_id = await _candidate_of(conn, run_id, proposal_id)
+        await candidates_repo.reject(conn, candidate_id, NOT_AGAIN)
+        await conn.execute_core(
+            update(rows_t).where(rows_t.c.id == proposal_id).values(decision="rejected")
+        )

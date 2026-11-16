@@ -579,15 +579,18 @@ async def _held(conn: "Connection", run_id: int) -> runs_repo.RunRow:
 
 
 @router.get("/runs")
-async def list_runs(request: Request, limit: int = 10):  # REQ-413
-    """The latest runs, newest first: the dialog finds a run still going when it opens."""
+async def list_runs(request: Request, limit: int = 10, mine: bool = False):  # REQ-413
+    """The latest runs, newest first: the dialog finds a run still going when it opens. ``mine``:
+    only the runs the caller started, whose latest a new run's fields start from."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         await runs_repo.give_up_on_left_behind(conn, runs_repo.this_launch())
-        found = await runs_repo.recent(conn, max(1, min(limit, 100)))
+        found = await runs_repo.recent(
+            conn, max(1, min(limit, 100)), _caller(request) if mine else runs_repo.ANYONE
+        )
     return {"runs": [r.view() for r in found]}
 
 
@@ -624,10 +627,11 @@ async def stop_run(request: Request, run_id: int):  # REQ-413
     return {"run": asked.view()}
 
 
-@router.get("/runs/{run_id}/left-out")
-async def list_left_out(request: Request, run_id: int):  # REQ-413
-    """What a run read and does not suggest: each proposal with the confidence and reasoning
-    given, why it was left out, and whether it can be accepted."""
+@router.get("/runs/{run_id}/proposals")
+async def list_proposals(request: Request, run_id: int):  # REQ-413
+    """Every proposal a run read and no reviewer has decided, the highest score first: its
+    confidence and reasoning, why it is not among the run's suggestions where it is not, and
+    whether it can be decided. ``threshold``: the score from which a row starts ticked."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
@@ -635,31 +639,65 @@ async def list_left_out(request: Request, run_id: int):  # REQ-413
         conn = cast("Connection", _conn)
         await _held(conn, run_id)
         return {
-            "left_out": await proposals_repo.left_out(conn, run_id),
+            "proposals": await proposals_repo.listed(conn, state, run_id),
             "threshold": MIN_CONFIDENCE,
         }
 
 
-@router.post("/left-out/{proposal_id}/accept")
-async def accept_left_out(
-    request: Request, proposal_id: int, body: AcceptRequest | None = None
-):  # REQ-413, REQ-612
-    """Accept a proposal a run left out, as a suggestion is accepted."""
+class ApplyRequest(BaseModel):
+    """What a reviewer decided in a run's result: the proposals to accept, each with the name its
+    relationship takes, and those not to recommend again. A proposal in neither stays undecided."""
+
+    accept: list[AcceptEach] = Field(default_factory=list)
+    not_again: list[int] = Field(default_factory=list)
+
+
+@router.post("/runs/{run_id}/apply")
+async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  # REQ-413, REQ-612
+    """Accept the proposals listed and mark the others listed not to be recommended again, each
+    in a transaction of its own: one that fails is reported with its reason and leaves the
+    others decided. Refused while the run is still going (it writes its rows as it goes)."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
+    results: list[dict[str, Any]] = []
     async with pool.acquire() as _conn:
-        try:
-            return await proposals_repo.accept(
-                cast("Connection", _conn), proposal_id, body.name if body else None
-            )
-        except proposals_repo.NotAcceptable as exc:
+        conn = cast("Connection", _conn)
+        found = await _held(conn, run_id)
+        if found.status == runs_repo.RUNNING:
             raise ApiError(
                 409,
-                "discovery.left_out_not_acceptable",
-                str(exc),
-                proposal_id=proposal_id,
-            ) from exc
+                "discovery.run_still_going",
+                f"Discovery run {run_id} is still going; decide its proposals once it has ended",
+                run_id=run_id,
+            )
+        if set(e.id for e in body.accept) & set(body.not_again):
+            raise ApiError(
+                400,
+                "discovery.decided_both_ways",
+                "A proposal is accepted or not recommended again, not both",
+            )
+        for each in body.accept:
+            try:
+                relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
+            except Exception as exc:  # reported per proposal, the rest go on
+                _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
+                results.append({"id": each.id, "action": "accept", "ok": False, "error": str(exc)})
+                continue
+            results.append(
+                {"id": each.id, "action": "accept", "ok": True, "relationship_id": relationship_id}
+            )
+        for proposal_id in body.not_again:
+            try:
+                await proposals_repo.not_again(conn, run_id, proposal_id)
+            except Exception as exc:  # reported per proposal, the rest go on
+                _log.warning("Apply: marking proposal %s failed: %s", proposal_id, exc)
+                results.append(
+                    {"id": proposal_id, "action": "not_again", "ok": False, "error": str(exc)}
+                )
+                continue
+            results.append({"id": proposal_id, "action": "not_again", "ok": True})
+    return {"results": results}
 
 
 @router.get("/candidates")

@@ -1544,7 +1544,8 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     assert semantics["not_comparable"] == 0 and semantics["scored"] == 0
     assert report["removed"]["matches_foreign_key"] == 1
     # What the run compared is said, so what it did not is plain.
-    assert report["domains"] == ["crm", "sales"]
+    assert report["source_domains"] == report["target_domains"] == ["crm", "sales"]
+    assert report["target_same_as_source"] is True
     assert (report["source_tables"], report["target_tables"]) == (3, 3)
 
     kept = await _proposals(db, run["id"])
@@ -1560,74 +1561,178 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     assert json.loads(kept[3]["answer"])["target_table_id"] == 9
     assert json.loads(kept[4]["answer"]) == {"source_table_id": 1}
 
-    listed = (await discovery.list_left_out(_REQUEST, run["id"]))["left_out"]
-    assert [(r["reason"], r["acceptable"], r["confidence"]) for r in listed] == [
-        ("matches_foreign_key", False, 0.9),
-        ("below_threshold", True, 0.55),
-        ("unknown_column", False, None),
-        ("invalid_shape", False, None),
+    answered = await discovery.list_proposals(_REQUEST, run["id"])
+    assert answered["threshold"] == 0.7
+    listed = answered["proposals"]
+    # One table: the foreign key and the suggestion with what was left out, the highest score first.
+    assert [(r["kind"], r["reason"], r["decidable"], r["confidence"]) for r in listed] == [
+        ("foreign_keys", None, True, 1.0),
+        ("semantics", None, True, 0.95),
+        ("semantics", "matches_foreign_key", False, 0.9),
+        ("semantics", "below_threshold", True, 0.55),
+        ("semantics", "unknown_column", False, None),
+        ("semantics", "invalid_shape", False, None),
     ]
-    assert listed[1]["source_table_id"] == 1 and listed[1]["target_column"] == "id"
-    assert listed[1]["suggested_name"] == "purchase-history"
+    assert listed[3]["source_table_id"] == 1 and listed[3]["target_column"] == "id"
+    assert listed[3]["suggested_name"] == "purchase-history"
+    assert listed[3]["cardinality"] == "many-to-one" and listed[4]["cardinality"] is None
+    assert not any(r["reduced_information"] for r in listed)
 
 
-async def test_a_left_out_proposal_is_accepted_as_a_suggestion_is(monkeypatch, tmp_path):
+async def _answered(world: _World, answers: list[dict], **scope: Any) -> tuple[dict, list[dict]]:
+    world.answers = [json.dumps(answers)]
+    run = await _run(world, _scope(**scope))
+    return run, (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+
+
+def _apply(accept: list[tuple[int, str]] = (), not_again: list[int] = ()) -> Any:
+    return discovery.ApplyRequest(
+        accept=[discovery.AcceptEach(id=i, name=n) for i, n in accept], not_again=list(not_again)
+    )
+
+
+async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leaves_the_rest(
+    monkeypatch, tmp_path
+):
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _three_tables(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
-    world.answers = [
-        json.dumps(
-            [
-                _suggestion((1, "customer_id"), (2, "id"), 0.55),
-                _suggestion((1, "customer_id"), (9, "id"), 0.9),
-            ]
-        )
+    run, listed = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.95),
+            _suggestion((3, "region_id"), (2, "id"), 0.8),
+            _suggestion((1, "customer_id"), (3, "id"), 0.55),
+            _suggestion((3, "region_id"), (1, "id"), 0.3),
+        ],
+    )
+    kept, undecided, below, low = listed
+    assert [r["reason"] for r in listed] == [None, None, "below_threshold", "below_threshold"]
+
+    done = await discovery.apply_decisions(
+        _REQUEST,
+        run["id"],
+        _apply([(kept["id"], "customer-orders"), (below["id"], "orders-by-store")], [low["id"]]),
+    )
+    assert done["results"] == [
+        {"id": kept["id"], "action": "accept", "ok": True, "relationship_id": "customer-orders"},
+        {"id": below["id"], "action": "accept", "ok": True, "relationship_id": "orders-by-store"},
+        {"id": low["id"], "action": "not_again", "ok": True},
     ]
-    run = await _run(world, _scope())
-    assert run["suggestions"] == 0 and await _candidates(db) == []
-    below, unknown = (await discovery.list_left_out(_REQUEST, run["id"]))["left_out"]
-    assert (below["reason"], unknown["reason"]) == ("below_threshold", "unknown_column")
+    by_edge = {
+        (c["source_table_id"], c["source_column"], c["target_table_id"]): c
+        for c in await _candidates(db)
+    }
+    assert by_edge[(1, "customer_id", 2)]["status"] == "accepted"
+    assert by_edge[(1, "customer_id", 3)]["status"] == "accepted"
+    assert by_edge[(1, "customer_id", 3)]["confidence"] == 0.55
+    assert by_edge[(3, "region_id", 1)]["status"] == "rejected"
+    assert by_edge[(3, "region_id", 1)]["rejection_reason"] == "Not to be recommended again"
+    # Left alone, it is undecided: still waiting as the run's suggestion, nothing recorded against it.
+    assert by_edge[(3, "region_id", 2)]["status"] == "suggested"
+    async with db.acquire() as conn:
+        registered = (
+            await conn.execute_core(select(so.relationships.c.id).order_by(so.relationships.c.id))
+        ).fetchall()
+    assert [r[0] for r in registered] == ["customer-orders", "orders-by-store"]
+    # What was decided leaves the run's table; what was not stays.
+    remaining = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    assert [r["id"] for r in remaining] == [undecided["id"]]
 
-    with pytest.raises(ApiError) as refused:
-        await discovery.accept_left_out(_REQUEST, unknown["id"])
-    assert refused.value.status_code == 409
-    assert refused.value.code == "discovery.left_out_not_acceptable"
+    # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
+    # registered, the one marked as rejected before.
+    _, again = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.95),
+            _suggestion((3, "region_id"), (2, "id"), 0.8),
+            _suggestion((3, "region_id"), (1, "id"), 0.9),
+        ],
+    )
+    assert [
+        (r["source_table_id"], r["target_table_id"], r["reason"], r["decidable"]) for r in again
+    ] == [
+        (1, 2, "existing", False),
+        (3, 1, "rejected", True),
+        (3, 2, "pending", True),
+    ]
 
-    # Not while its run is still going: the run writes its rows again as each request returns.
+
+async def test_a_proposal_that_cannot_be_decided_is_refused_and_the_rest_are_applied(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, (below, unknown) = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.55),
+            _suggestion((1, "customer_id"), (9, "id"), 0.9),
+        ],
+    )
+    assert (below["decidable"], unknown["decidable"]) == (True, False)
+    done = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply([(unknown["id"], "x"), (below["id"], "orders-of-a-customer")])
+    )
+    refused, accepted = done["results"]
+    assert refused["ok"] is False and "unknown_column" in refused["error"]
+    assert accepted == {
+        "id": below["id"],
+        "action": "accept",
+        "ok": True,
+        "relationship_id": "orders-of-a-customer",
+    }
+    # Decided, it cannot be decided again.
+    twice = await discovery.apply_decisions(_REQUEST, run["id"], _apply([], [below["id"]]))
+    assert twice["results"][0]["ok"] is False
+
+    with pytest.raises(ApiError) as both:
+        await discovery.apply_decisions(
+            _REQUEST, run["id"], _apply([(unknown["id"], "x")], [unknown["id"]])
+        )
+    assert both.value.status_code == 400
+
+
+async def test_a_runs_proposals_are_decided_once_it_has_ended(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, (below,) = await _answered(world, [_suggestion((1, "customer_id"), (2, "id"), 0.55)])
     async with db.acquire() as conn:
         await conn.execute_core(so.discovery_runs.update().values(status="running"))
     with pytest.raises(ApiError) as early:
-        await discovery.accept_left_out(_REQUEST, below["id"])
-    assert early.value.status_code == 409 and "still going" in str(early.value)
-    async with db.acquire() as conn:
-        await conn.execute_core(so.discovery_runs.update().values(status="done"))
-
-    accepted = await discovery.accept_left_out(
-        _REQUEST, below["id"], discovery.AcceptRequest(name="orders-of-a-customer")
-    )
-    assert accepted["relationship_id"] == "orders-of-a-customer"
-    assert (accepted["source_table_id"], accepted["source_column"]) == (1, "customer_id")
-    (candidate,) = await _candidates(db)
-    assert candidate["status"] == "accepted" and candidate["scope"] == f"run:{run['id']}"
-    assert candidate["confidence"] == 0.55
-    async with db.acquire() as conn:
-        registered = (
-            await conn.execute_core(select(so.relationships.c.id, so.relationships.c.source_column))
-        ).fetchall()
-    assert [tuple(r) for r in registered] == [("orders-of-a-customer", "customer_id")]
-    # Accepted, it is no longer among the left out, and it cannot be accepted twice.
-    remaining = (await discovery.list_left_out(_REQUEST, run["id"]))["left_out"]
-    assert [r["reason"] for r in remaining] == ["unknown_column"]
-    with pytest.raises(ApiError):
-        await discovery.accept_left_out(_REQUEST, below["id"])
-
-
-async def test_what_was_left_out_of_an_unknown_run_is_not_found(monkeypatch, tmp_path):
-    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
-    _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+        await discovery.apply_decisions(_REQUEST, run["id"], _apply([(below["id"], "x")]))
+    assert early.value.status_code == 409 and early.value.code == "discovery.run_still_going"
     with pytest.raises(ApiError) as missing:
-        await discovery.list_left_out(_REQUEST, 41)
+        await discovery.list_proposals(_REQUEST, 41)
     assert missing.value.status_code == 404
+
+
+async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    other = cast(
+        Any, SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-2")))
+    )
+    mine = await _run(world, _scope(kinds=["foreign_keys"], source_domains=["sales"]))
+    theirs = (await discovery.start_run(other, _scope(source_domains=["crm"])))["run"]
+    everyone = (await discovery.list_runs(_REQUEST, limit=1))["runs"]
+    assert [r["id"] for r in everyone] == [theirs["id"]]
+    own = (await discovery.list_runs(_REQUEST, limit=1, mine=True))["runs"]
+    assert [r["id"] for r in own] == [mine["id"]]
+    # The run keeps every field the dialog sent, so a new run can start from them.
+    assert own[0]["scope"] == {
+        "kinds": ["foreign_keys"],
+        "source_domains": ["sales"],
+        "source_tables": None,
+        "target_same_as_source": True,
+        "target_domains": [],
+        "target_tables": None,
+        "vendor": None,
+        "model": None,
+    }
 
 
 async def test_proposals_jev_scores_under_the_threshold_are_left_out_as_jevs_with_both_scores(
@@ -1663,8 +1768,8 @@ async def test_proposals_jev_scores_under_the_threshold_are_left_out_as_jevs_wit
     assert semantics["below_threshold"] == 0
     assert (semantics["scored"], semantics["scored_below_threshold"]) == (2, 2)
     assert semantics["empty_reason"] == "scored_below_threshold"
-    listed = (await discovery.list_left_out(_REQUEST, run["id"]))["left_out"]
-    assert [(r["reason"], r["confidence"], r["scored"], r["acceptable"]) for r in listed] == [
+    listed = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    assert [(r["reason"], r["confidence"], r["scored"], r["decidable"]) for r in listed] == [
         ("scored_below_threshold", 0.95, 0.31, True),
         ("scored_below_threshold", 0.9, 0.31, True),
     ]

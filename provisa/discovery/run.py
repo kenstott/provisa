@@ -406,7 +406,8 @@ async def perform(
             # The run's sets: what it compared, so what it did not is plain.
             **prepared.sizes(),
             "target_same_as_source": prepared.target is None,
-            "domains": sorted({t.domain_id for t in tables.values()}),
+            "source_domains": sorted({t.domain_id for t in prepared.source}),
+            "target_domains": sorted({t.domain_id for t in prepared.target or prepared.source}),
             "decided_by": dict(outcome.decided_by),
             "stored_ids": sorted(publisher.stored.values()),
             # REQ-1986: suggestions with a table that is never read, so no values were compared.
