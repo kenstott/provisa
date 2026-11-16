@@ -161,7 +161,6 @@
       "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "table_id_required": "table_id obrigatório para escopo de tabela",
-      "table_unreadable": "A descoberta não consegue ler a tabela {{table}}: {{reason}}. Deixe-a fora das tabelas escolhidas, ou corrija-a e tente novamente.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_has_no_key": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
       "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."

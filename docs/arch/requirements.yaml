@@ -81403,7 +81403,13 @@
   feature: admin-console-design
   priority: SHOULD
   type: ui
-  description: Creating an object is short. The page's + button asks only for what the object needs in order to exist; the object is then created, selected in the list, and its detail opens in edit. The create form is a subset of the edit form. For a table, creating registers every column.
+  description: 'Creating an object is short. The page''s + button asks only for what the object needs in
+    order to exist; the object is then created, selected in the list, and its detail opens in edit. The
+    create form is a subset of the edit form. For a table, creating registers every column. (Amended 2026-11-16,
+    A SAVED SOURCE OPENS IN ITS READ VIEW:) Maintainer 2026-11-16. For a source, the rule that a new object''s
+    detail opens in edit is [SUPERSEDED by this amendment]. A source that has been created is saved, so
+    its detail opens in the read view: after its tables are registered and the data view is closed, and
+    equally when registering is skipped. Edit opens only when the user asks for it.'
   use_case: An operator adds a source by giving its identity, sees it in the list at once, and completes the rest in the same editor used for any later change.
   related_reqs:
   - REQ-1968
@@ -86705,7 +86711,7 @@ And a constant naming a secret that does not exist fails the query, naming the c
   docs:
   - security.md
 - id: REQ-2087
-  status: complete
+  status: in-progress
   since: 2026-10
   group: 11. Platform, Infrastructure & Delivery
   category: Security
@@ -86730,7 +86736,13 @@ And a constant naming a secret that does not exist fails the query, naming the c
     only, never a value. Redaction is best effort: the org adds patterns for its own sensitive formats,
     and a source''s own logs are out of Provisa''s reach. docs/security.md and the page say so. (Amended
     2026-10-29, NO INTERNAL ADDRESSES:) The text a client is given never holds an internal host or URL;
-    a source that fails is named instead, and the detail is logged.'
+    a source that fails is named instead, and the detail is logged. (Amended 2026-11-16, THE MARKER SENT
+    TO A CLIENT NAMES NO SECRET:) Maintainer 2026-11-16. A registered credential is replaced wherever its
+    text appears, an ordinary word included: keeping a credential out of what is shown and logged outranks
+    readable text. In text sent to a client the replacement is a bare marker that names no rule and no variable,
+    so a client cannot learn which secret a word they typed matches. Logs, spans and the audit trail keep
+    the marker that names the rule. Redaction applies only to what is shown or logged, never to a statement,
+    an identifier, a bound value or a result row.'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
