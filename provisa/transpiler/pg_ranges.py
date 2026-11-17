@@ -41,6 +41,7 @@ from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES, Multirange, Ran
 from provisa.transpiler.pg_literals import array_input, values_cast
 from provisa.transpiler.polyfill import floats as number_rows
 from provisa.transpiler.polyfill import ranges as range_rows
+from provisa.transpiler.polyfill import texts as text_rows
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
     SubtypeOperationRefused,
@@ -340,7 +341,9 @@ def _length(text: exp.Expr) -> exp.Expr:
 
 
 def _substring(text: exp.Expr, start: exp.Expr, length: exp.Expr) -> exp.Expr:
-    return exp.Substring(this=text.copy(), start=start.copy(), length=length.copy())
+    node = exp.Substring(this=text.copy(), start=start.copy(), length=length.copy())
+    node.meta[text_rows.RANGE_TEXT] = True  # REQ-2236: no row reads it by characters
+    return node
 
 
 def _replace(text: exp.Expr, what: str, by: str) -> exp.Expr:

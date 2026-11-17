@@ -72,6 +72,7 @@ from provisa.transpiler import (
 )
 from provisa.transpiler.metadata_functions import VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
+from provisa.transpiler.polyfill import texts as polyfill_texts
 from provisa.transpiler.polyfill import trino as polyfill_trino
 from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
@@ -2942,17 +2943,20 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if first is not None and first.rewritten is not None:
             in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
             return first.rewritten if in_select else first.rewritten.unalias()
-        if (
-            isinstance(node, (exp.Substring, exp.Left, exp.Right))
-            and dialect in _FROM_THE_END
-            # REQ-2236: a grid row that reads the position as PostgreSQL does (ClickHouse's text
-            # by characters) comes before this form, which reads bytes there.
-            and not (dialect == "clickhouse" and _answered_by_a_row(node, dialect))
-        ):
+        # A substring of a range's own text (pg_ranges' mark): ASCII, which no row reads by
+        # characters, so the grid is not read of it (its arguments would be read twice).
+        tried = bool(node.meta.get(polyfill_texts.RANGE_TEXT))
+        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
+            if dialect == "clickhouse" and not tried:
+                # REQ-2236: a grid row that reads the position as PostgreSQL does (ClickHouse's
+                # text by characters) comes before this form, which reads bytes there.
+                polyfilled, tried = _polyfilled(target, node, dialect, rewrite), True
+                if polyfilled is not None:
+                    return polyfilled
             edged = _past_the_edge(node, dialect)
             if edged is not None:
                 return edged
-        polyfilled = _polyfilled(target, node, dialect, rewrite)
+        polyfilled = None if tried else _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled
         if type(node) in _ARRAY_OPERATOR_ROWS and dialect in _TRINO:

@@ -296,28 +296,48 @@ def _of_type(hole: str, held: str) -> str:
 
 
 #: abs: the least value of an integer type is its own negation, which has no value of the type.
+_ABS = "if($a < 0, -$a, $a)"
+_LEAST = {"smallint": -32768, "integer": -2147483648, "bigint": -9223372036854775808}
+#: A column of a type no statement says: its ClickHouse type, read at run time, says which least.
+_ABS_OF_A_COLUMN = ch_checked(
+    [
+        ch_fail("22003", f"{name} out of range").format(
+            condition=f"{_of_type('$a', held)} AND $a < 0 AND -$a < 0"
+        )
+        for held, name in _INTEGER_TYPES.items()
+    ],
+    _ABS,
+)
+
+
+def _abs(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """abs of an integer the statement says (22003 of its type's least value), or of a column of
+    a type no statement says; any other value keeps ClickHouse's own abs: a float's and a
+    numeric's are exact, and a form's own call (an offset of a zone) is of no integer's least."""
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1:
+        return None
+    argument = call[1][0]
+    said = function_types.argument_type(argument)
+    if said in _LEAST:
+        form = ch_once(
+            ch_checked(
+                [ch_fail("22003", f"{said} out of range").format(condition=f"$a = {_LEAST[said]}")],
+                _ABS,
+            )
+        )
+    elif said is None and isinstance(argument.unnest(), exp.Column):
+        form = _ABS_OF_A_COLUMN
+    else:
+        return None
+    return graft(replacement(form, dialect, "abs($a)"), {"a": argument})
+
+
 ABS = Feature(
     "abs",
     FAMILY,
     "The absolute value; of an integer type's least value, out of range.",
-    read=Side(
-        rules=(
-            Rule(
-                "abs($a)",
-                _ch(
-                    ch_checked(
-                        [
-                            ch_fail("22003", f"{name} out of range").format(
-                                condition=f"{_of_type('$a', held)} AND $a < 0 AND -$a < 0"
-                            )
-                            for held, name in _INTEGER_TYPES.items()
-                        ],
-                        "if($a < 0, -$a, $a)",
-                    )
-                ),
-            ),
-        )
-    ),
+    read=Side(rules=(Rule("abs($a)", ch_only(Rewrite(_abs))),)),
 )
 
 #: lcm of two integers (int.c's int4lcm and int8lcm): 0 where either is 0, else |a / gcd * b|,
@@ -392,11 +412,25 @@ _CHR = ch_checked(
     f"if({_OUTSIDE}, NULL, {_UTF8})",
 )
 
+_CHR_ONCE = ch_once(_CHR)
+
+
+def _chr(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """chr of a code point. sqlglot reads "char" (the one-byte type's cast) as its chr too: a call
+    written by that name keeps what it had."""
+    if isinstance(node, exp.Anonymous) and node.name.lower() != "chr":
+        return None
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1:
+        return None
+    return graft(replacement(_CHR_ONCE, dialect, "chr($x)"), {"x": call[1][0]})
+
+
 CHR = Feature(
     "chr",
     FAMILY,
     "The character of a code point, as its UTF-8 bytes.",
-    read=Side(rules=(Rule("chr($x)", _ch(_CHR)),)),
+    read=Side(rules=(Rule("chr($x)", ch_only(Rewrite(_chr))),)),
 )
 
 #: in_range of numbers (a window frame's bound, int8.c's and float.c's in_range): whether the

@@ -996,6 +996,55 @@ NUMERIC = Feature(
     ),
 )
 
+
+def _not_finite_numeric(value: exp.Expr) -> bool:
+    """Whether ``value`` is a literal NaN or infinity cast to a numeric."""
+    cast = _plain_cast(value.unnest(), exp.DataType.Type.DECIMAL)
+    text = None if cast is None else _text_of(cast.this)
+    if text is None:
+        return False
+    read = _numeric_of_text(text)
+    return read is not None and not read.is_finite()
+
+
+def _of_a_not_finite_numeric(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """scale, min_scale, hash_numeric and hash_numeric_extended of a literal NaN or infinity, as
+    numeric.c answers them (NULL; NULL; 0; the seed): the literal reader refuses the value itself,
+    which ClickHouse's Decimal does not hold."""
+    call = trino.called(node)
+    if call is None or not call[1] or not _not_finite_numeric(call[1][0]):
+        return None
+    names, args = call
+    if names & {"scale", "min_scale"} and len(args) == 1:
+        return exp.Null()
+    if "hash_numeric" in names and len(args) == 1:
+        return exp.Literal.number(0)
+    if "hash_numeric_extended" in names and len(args) == 2:  # noqa: PLR2004 -- value and seed
+        return exp.Cast(this=args[1].copy(), to=exp.DataType.build("BIGINT"))
+    return None
+
+
+NOT_FINITE_NUMERIC = Feature(
+    "numeric NaN's scale and hash",
+    FAMILY,
+    "The scale and the hash of a numeric NaN or infinity, which ClickHouse does not hold.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        _of_a_not_finite_numeric,
+                        mentions=r"\b(?:scale|min_scale|hash_numeric|hash_numeric_extended)\s*\(",
+                        # Before the literal's reader refuses the value it is read of.
+                        first=True,
+                    )
+                },
+            ),
+        )
+    ),
+)
+
 #: What a date's or a day count's operand may hold: a value the walk has nothing in to write.
 _PLAIN = (
     exp.Cast,
@@ -1457,6 +1506,7 @@ FEATURES: tuple[Feature, ...] = (
     OID_LITERAL,
     TID_EXTREMES,
     NUMERIC,
+    NOT_FINITE_NUMERIC,
     DATE_DAYS,
     STAMP,
     *WINDOW_FEATURES,

@@ -360,26 +360,31 @@ REVERSE = Feature(
 )
 
 #: substr and substring of a text by characters (text_substring): from max($s, 1) to $s + $l, none
-#: before 1; a negative length 22011. The sum is an Int64's, which holds two integers'. A NULL
-#: start or length passes through each if to ClickHouse's substringUTF8, which answers NULL of it.
-_FROM = "if(toInt64($s) < 1, 1, toInt64($s))"
-_COUNT = f"toInt64($s) + toInt64($l) - {_FROM}"
+#: before 1; a negative length 22011, raised beside the length (throwIf answers 0 where it does
+#: not raise). ClickHouse's max2 answers NULL of a NULL (its greatest passes over one), as a
+#: Float64, which holds every integer's sum here exactly.
+_FROM = "toInt64(max2($s, 1))"
+_LENGTH = (
+    "($l + "
+    + ch_fail("22011", "negative substring length not allowed").format(condition="$l < 0")
+    + ")"
+)
 _SUBSTR = f"substringUTF8($t, {_FROM})"
-_LENGTH_CHECKED = _checked(
-    [ch_fail("22011", "negative substring length not allowed").format(condition="$l < 0")],
-    "substringUTF8($t, $s, $l)",
-)
-_SUBSTR_FOR = _checked(
-    [ch_fail("22011", "negative substring length not allowed").format(condition="$l < 0")],
-    f"substringUTF8($t, {_FROM}, if({_COUNT} < 0, 0, {_COUNT}))",
-)
+_LENGTH_CHECKED = f"substringUTF8($t, $s, {_LENGTH})"
+_SUBSTR_FOR = f"substringUTF8($t, {_FROM}, toInt64(max2($s + {_LENGTH} - {_FROM}, 0)))"
+#: The same of a length that is a constant 0 or more: nothing to raise (a range's form writes many,
+#: and each raise costs ClickHouse's analysis of the statement).
+_SUBSTR_FOR_COUNTED = f"substringUTF8($t, {_FROM}, toInt64(max2($s + $l - {_FROM}, 0)))"
+#: The mark of a substring of a range's own text (its bounds' text and its brackets, ASCII), which
+#: provisa.transpiler.pg_ranges writes: its bytes are its characters, so no row reads it by
+#: characters.
+RANGE_TEXT = "range_text"
+#: The most nodes of an argument a form may name several times as it is.
+_SMALL = 24
 
 
-def _leaf(argument: exp.Expr) -> bool:
-    """A column, a NULL or a literal (cast or not): what a form may name several times."""
-    value = argument.unnest()
-    value = value.this.unnest() if isinstance(value, exp.Cast) else value
-    return isinstance(value, (exp.Column, exp.Null, exp.Literal))
+def _size(argument: exp.Expr) -> int:
+    return sum(1 for _ in argument.walk())
 
 
 #: A start of a constant 1 or more and a length of a constant 0 or more: ClickHouse's own reading of
@@ -393,8 +398,8 @@ def _substring_of(plain: str, checked: str, pattern: str):
         from provisa.transpiler.function_macros import _constant
 
         call = trino.called(node)
-        if call is None:
-            return None
+        if call is None or node.meta.get(RANGE_TEXT):
+            return None  # a range's own text, ASCII: the engine's substring of its bytes
         args = call[1]
         holes = "tsl"[: len(args)]
         start = _constant(args[1]) if len(args) > 1 else None
@@ -404,13 +409,16 @@ def _substring_of(plain: str, checked: str, pattern: str):
             form = plain
         elif from_one:
             form = _LENGTH_CHECKED  # only the length is read twice: whether it is negative
+        elif len(args) == 3 and length is not None and length >= 0:  # noqa: PLR2004
+            form = _SUBSTR_FOR_COUNTED
         else:
             form = checked
-        # An argument read several times is bound once (a lambda's) only where it is no leaf: a
-        # range's form nests many such calls, and ClickHouse bounds a statement's tree.
+        # An argument read several times is bound once (a lambda's) only where it is a large
+        # tree: a range's form nests many such calls, and ClickHouse's analysis of a lambda costs
+        # more than a few nodes named twice.
         bindings = dict(zip(holes, args, strict=True))
         heavy = frozenset(
-            h for h, a in bindings.items() if not _leaf(a) and form.count(f"${h}") > 1
+            h for h, a in bindings.items() if _size(a) > _SMALL and form.count(f"${h}") > 1
         )
         return graft(replacement(ch_once(form, heavy), dialect, pattern), bindings)
 

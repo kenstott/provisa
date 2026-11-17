@@ -1794,6 +1794,12 @@ ANSWERED = [
         "t",
     ),
     ("SELECT pg_catalog.in_range(5::integer, 2147483647::integer, 3::integer, false, false)", "f"),
+    ("SELECT pg_catalog.scale('NaN'::numeric)", None),
+    ("SELECT pg_catalog.min_scale('Infinity'::numeric)", None),
+    ("SELECT pg_catalog.hash_numeric('NaN'::numeric)", "0"),
+    ("SELECT pg_catalog.hash_numeric_extended('-Infinity'::numeric, 7::bigint)", "7"),
+    ("SELECT pg_catalog.abs(c1) AS v FROM (VALUES ((-5)::integer)) AS t(c1)", "5"),
+    ("SELECT pg_catalog.abs(c1) AS v FROM (VALUES ((-2.5)::double precision)) AS t(c1)", "2.5"),
 ]
 RAISED = [
     ("SELECT pg_catalog.\"abs\"('-9223372036854775808'::bigint) AS v", "22003"),
@@ -2142,10 +2148,29 @@ def test_a_numeric_call_stays_refused_by_name(sql):
 
 
 def test_a_row_reads_its_argument_once():
-    """abs inside a range's form, itself inside another: each row's argument is bound once, so
-    the statement grows with the nesting, not as its product (ClickHouse's AST bound)."""
-    written = transpile("SELECT abs(abs(abs(abs(x)))) AS v FROM t", "clickhouse")
+    """lcm inside lcm, inside another: each row's argument is bound once, so the statement grows
+    with the nesting, not as its product (ClickHouse's AST bound)."""
+    written = transpile("SELECT lcm(lcm(lcm(x, 2), 3), 4) AS v FROM t", "clickhouse")
     assert written.count("[x]") == 1
+
+
+def test_abs_of_a_call_of_no_said_type_keeps_clickhouse_s_own():
+    """A form's own call (a zone's offset) holds no integer's least value: ClickHouse's abs."""
+    written = transpile("SELECT abs(timeZoneOffset(x)) AS v FROM t", "clickhouse")
+    assert "throwIf" not in written
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."char"((-7)::integer) AS v',
+        "SELECT pg_catalog.\"char\"('abc'::text) AS v",
+    ],
+)
+def test_char_is_no_call_of_chr(sql):
+    """sqlglot reads "char" (the one-byte type's cast) as chr: it stays refused by name."""
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")
 
 
 @pytest.mark.parametrize(
