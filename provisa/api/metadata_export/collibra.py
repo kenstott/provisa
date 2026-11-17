@@ -113,6 +113,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import AssetKind, junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
@@ -704,7 +705,9 @@ class CollibraExport(MetadataExport):  # REQ-1069
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
         result = PublishResult(provider_name=self.provider_name)
         rows = to_rows(snapshot, self.community, self.domain)
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             # REQ-1387: terms ride the same import job, contained in Provisa's own glossary
             # domain — created first, since the import rejects rows naming an absent domain.
             if snapshot.glossary_terms and await self._ensure_glossary_domain(client, result):
@@ -905,6 +908,8 @@ class CollibraExport(MetadataExport):  # REQ-1069
             response.raise_for_status()
 
     async def health(self) -> None:
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()

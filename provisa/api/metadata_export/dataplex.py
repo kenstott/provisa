@@ -61,6 +61,7 @@ from provisa.api.metadata_export.provider import (
     PublishResult,
 )
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -220,6 +221,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
 
         info = json.loads(self._config.google_service_account_json.get_secret_value())
         credentials = service_account.Credentials.from_service_account_info(info, scopes=[SCOPE])
+        # REQ-2006: the key names the address it is exchanged at (from_service_account_info
+        # requires it); a held org's is a public destination.
+        sandbox_egress.require_url_allowed(info["token_uri"])
         await asyncio.to_thread(credentials.refresh, Request())
         return credentials.token
 
@@ -249,7 +253,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
         engine_project = bigquery_engine_project()
         headers = {"Authorization": f"Bearer {await self._token()}"}
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, headers=headers
+            timeout=self._config.timeout_seconds,
+            headers=headers,
+            event_hooks=sandbox_egress.http_event_hooks(),
         ) as client:
             if snapshot.glossary_terms:
                 try:
@@ -665,7 +671,9 @@ class DataplexExport(MetadataExport):  # REQ-2118
     async def health(self) -> None:
         headers = {"Authorization": f"Bearer {await self._token()}"}
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, headers=headers
+            timeout=self._config.timeout_seconds,
+            headers=headers,
+            event_hooks=sandbox_egress.http_event_hooks(),
         ) as client:
             response = await client.get(
                 self._url(f"{self._parent()}/dataProducts"), params={"pageSize": 1}

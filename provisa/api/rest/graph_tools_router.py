@@ -231,9 +231,12 @@ async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
 
     from provisa.core.limits import request_timeout_for
 
+    from provisa.security import sandbox_egress
+
     errors: list[str] = []
     try:
-        async with _httpx.AsyncClient() as client:
+        # REQ-2006: a held org exports to public destinations only, each request checked.
+        async with _httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks()) as client:
             if matched_labels:
                 # Schema changes are their own transaction: the lookups' index is made first, and
                 # said if it could not be (the export still runs, slower).

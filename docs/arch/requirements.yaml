@@ -3800,7 +3800,16 @@
   feature: hasura-migration-converters
   priority: MAY
   type: behavioral
-  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.'
+  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use
+    Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.
+    (Amended 2026-11-16, EVERY GENERATED RELATIONSHIP NAME IS DISAMBIGUATED AUTOMATICALLY:) Maintainer 2026-11-16.
+    When two generated relationships would carry the same name (the relationship''s name, its GraphQL field
+    or its Cypher type, wherever that name must be unique) but join different source and target columns,
+    the names are disambiguated automatically, as foreign-key aliases already are (_by_<column>, then the
+    table where the column alone does not separate them). This holds for every way a relationship is generated:
+    declared foreign keys, discovery''s semantic and measured suggestions, and accepting several suggestions
+    at once, judged against the relationships already registered and the others accepted with it. A name
+    a person typed is never changed; a clash with one is refused by name.'
   use_case: V2-compatible relationship naming enables teams to adopt Hasura conventions without schema
     migration.
   code:

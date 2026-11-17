@@ -1008,6 +1008,20 @@ def _heavy_db_service(request):  # pyright: ignore
             env=_itest_compose_env(),
             check=False,
         )
+        # `rm -v` leaves the named volumes, so the next test that brings this service up would
+        # boot on the last one's data directory and skip the image's first-boot setup. Observed:
+        # firebird keeps test.fdb on its named volume but its security database on the container
+        # filesystem, so a second firebird test in a session got a fresh security database, an
+        # existing test.fdb, and no FIREBIRD_USER login ("Your user name and password are not
+        # defined"). Each test provisions its own service, so it gets its own cold volumes.
+        volumes = _named_volumes(_with_companions(services))
+        if volumes:
+            subprocess.run(
+                ["docker", "volume", "rm", "-f", *volumes],
+                cwd=_REPO_ROOT,
+                env=_itest_compose_env(),
+                check=True,
+            )
         # After removing heavy services, ensure core services recover from any OOM pressure
         # (e.g. Druid/Cassandra OOM-killing Trino/Postgres). restart: unless-stopped restarts
         # them automatically; --wait blocks until healthy so the next test never races a

@@ -77,12 +77,20 @@ async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
     import httpx
     from provisa.openapi.register import _openapi_to_provisa_type
 
+    from provisa.security import sandbox_egress
+
     url = base_url.rstrip("/") + query.path
     params = {p["name"]: "" for p in query.query_params}
     try:
-        r = httpx.get(url, params=params, timeout=10, follow_redirects=True)
+        # REQ-2006: a held org's endpoint is a public destination, each redirect checked.
+        with httpx.Client(
+            timeout=10, follow_redirects=True, event_hooks=sandbox_egress.http_sync_event_hooks()
+        ) as client:
+            r = client.get(url, params=params)
         r.raise_for_status()
         data = r.json()
+    except sandbox_egress.PrivateDestinationRefused:
+        raise  # refused by name, never read as an endpoint with no columns
     except Exception:
         return []
     if isinstance(data, list):

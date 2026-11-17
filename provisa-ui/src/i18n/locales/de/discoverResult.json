@@ -24,7 +24,7 @@
     "partial": "{{failed}} von {{count}} Anfrage ist fehlgeschlagen, das Ergebnis ist daher unvollständig.",
     "partial_other": "{{failed}} von {{count}} Anfragen sind fehlgeschlagen, das Ergebnis ist daher unvollständig.",
     "semanticsNoneProposed": "Semantik: keine. Das Modell hat keine Beziehungen vorgeschlagen.",
-    "semanticsBelowThreshold": "Semantik: keine. Jeder Vorschlag lag unter der Konfidenzschwelle von {{threshold}} %.",
+    "semanticsBelowThreshold": "Semantik: keine. Jeder Vorschlag wurde unter den {{threshold}} % bewertet, ab denen ein Vorschlag behalten wird.",
     "semanticsFiltered": "Semantik: keine. Jeder Vorschlag wurde ausgelassen, aus den unten genannten Gründen.",
     "split": "{{count}} Anfrage wurde halbiert und erneut gestellt.",
     "split_other": "{{count}} Anfragen wurden halbiert und erneut gestellt.",
@@ -38,7 +38,7 @@
     "leftOut": "Nicht vorgeschlagen: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "vom Modell mit weniger als {{threshold}} % Konfidenz bewertet",
+      "below_threshold": "mit weniger als {{threshold}} % bewertet",
       "invalid": "nennt keine zwei verglichenen Spalten",
       "not_comparable": "zwischen Spalten unterschiedlicher Klassen",
       "same_column": "von einer Spalte zu sich selbst",
@@ -49,7 +49,8 @@
       "rejected": "zuvor abgelehnt",
       "matches_foreign_key": "entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
       "out_of_scope": "außerhalb der gewählten Tabellen",
-      "weaker": "wiederholt ein Spaltenpaar, für das ein stärkerer Vorschlag behalten wurde"
+      "weaker": "wiederholt ein Spaltenpaar, für das ein stärkerer Vorschlag behalten wurde",
+      "many_to_many": "ohne Schlüssel in einer der beiden Spalten"
     }
   }
 }
