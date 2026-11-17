@@ -3665,7 +3665,15 @@
     person''s last run, read from that run''s stored scope; a value that no longer holds is left out and
     named; Reset to defaults restores the defaults. A finished run states its scope: the kinds, the model,
     the source and target domains and their table counts. The request states what a confidence value means
-    by the evidence shown, and that a suggestion is kept at 0.7.'
+    by the evidence shown, and that a suggestion is kept at 0.7. (Amended 2026-11-16, ONLY NEW RUN REUSES
+    A RUN''S FIELDS; OPENING DISCOVER STARTS FROM THE DEFAULTS:) Maintainer 2026-11-16, amending the rule
+    of 2026-11-16 that a new run starts from the person''s last run. Opening Discover relationships always
+    starts from the defaults. Only New run, at the end of a run, opens the form with that run''s fields;
+    there a domain chosen with all its tables is restored as all its tables, tables registered since that
+    run outside its scope are named with one action to add them, and Reset to defaults restores the defaults.
+    The pickers offer no table a run would leave out (a draft, a system domain''s table); a run whose source
+    or target holds no table is refused before it starts, saying why, and a run that leaves out some of
+    the tables named says how many and why.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
