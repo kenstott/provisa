@@ -181,10 +181,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -193,7 +189,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 

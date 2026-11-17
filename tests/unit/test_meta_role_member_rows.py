@@ -152,6 +152,7 @@ def _state(*, fake_email: bool = False) -> RoleState:
             "role_chains": {"eu": ["eu"], "us": ["us"]},
             "tables": tables,
             "draft_tables": [],
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

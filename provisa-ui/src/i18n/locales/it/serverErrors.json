@@ -475,8 +475,6 @@
       "mask_unreachable": "Avete definito una maschera non raggiungibile: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' non trovato",
       "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll.",
-      "table_draft_set": "Tabella {{table}} impostata come bozza",
-      "table_released": "Tabella {{table}} rilasciata",
       "openapi_no_rows_field": "Tabella {{table}}: la risposta non ha alcuna proprietà {{rows_field}} da cui leggere le righe.",
       "paging_rows_field_fixed": "Tabella {{table}}: la posizione delle sue righe ({{rows_field}}) è impostata alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
       "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato.",
@@ -547,7 +545,13 @@
       "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso",
       "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\".",
-      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione"
+      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione",
+      "table_withdrawn": "Tabella {{table}} ritirata",
+      "table_put_back": "Tabella {{table}} ripristinata",
+      "source_withdrawn": "Origine {{source}} ritirata",
+      "source_put_back": "Origine {{source}} ripristinata",
+      "withdrawn_source_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: la sua origine {{source}} è ritirata e nessun motore legge un'origine ritirata.",
+      "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",

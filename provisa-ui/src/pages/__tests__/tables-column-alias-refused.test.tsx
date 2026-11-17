@@ -169,7 +169,6 @@ const updateTableRoleTtl = vi.fn();
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(async () => ok),
   useSetTableRegion: () => vi.fn(async () => ok),
 }));
 

@@ -475,8 +475,6 @@
       "mask_unreachable": "Ha definido una máscara que no es alcanzable: {{entries}}",
       "webhook_not_found": "No se encontró el webhook '{{webhook}}'",
       "change_streams_unavailable": "El origen '{{source}}' es un servidor MongoDB independiente, que no ofrece change streams: la señal de cambio native requiere un replica set o un clúster fragmentado. Ejecútelo como replica set o use la señal de cambio poll.",
-      "table_draft_set": "Tabla {{table}} marcada como borrador",
-      "table_released": "Tabla {{table}} liberada",
       "openapi_no_rows_field": "Tabla {{table}}: la respuesta no tiene ninguna propiedad {{rows_field}} de la que leer filas.",
       "paging_rows_field_fixed": "Tabla {{table}}: dónde están sus filas ({{rows_field}}) se establece al registrar la tabla. Registre la tabla de nuevo para leer sus filas de otro lugar.",
       "relationship_request_queued": "En cola como solicitud #{{id}}. Necesita aprobaciones de {{required}} usuarios distintos que puedan crear relaciones, y al menos uno debe alcanzar cada dominio que toca.",
@@ -547,7 +545,13 @@
       "code_resolver_has_dependents": "El resolver de código '{{resolver}}' no puede retirarse mientras algo dependa de él",
       "incremental_no_change": "El origen de código no tiene ninguna función @change para {{table}}. Declare una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada».",
-      "table_derived_from_function": "La tabla '{{name}}' se deriva de una función: se elimina desactivando la tabla de la función, y sus columnas y parámetros se editan en la función"
+      "table_derived_from_function": "La tabla '{{name}}' se deriva de una función: se elimina desactivando la tabla de la función, y sus columnas y parámetros se editan en la función",
+      "table_withdrawn": "Tabla {{table}} retirada",
+      "table_put_back": "Tabla {{table}} restablecida",
+      "source_withdrawn": "Origen {{source}} retirado",
+      "source_put_back": "Origen {{source}} restablecido",
+      "withdrawn_source_not_previewable": "No se puede previsualizar la tabla {{table}}: su origen {{source}} está retirado y ningún motor lee un origen retirado.",
+      "withdrawn_table_not_previewable": "No se puede previsualizar la tabla {{table}}: está retirada y no conserva réplica, y el motor solo lee su origen a través de una."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",

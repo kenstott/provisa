@@ -131,10 +131,6 @@ def model(monkeypatch) -> _Model:
         return MutationResult(success=ok, message="saved" if ok else "refused")
 
     class _Single:
-        async def set_table_draft(self, info, table_id, draft):
-            m.calls.append(("release", (table_id, draft)))
-            return MutationResult(success=True, message="released")
-
         async def update_table(self, info, view):
             m.calls.append(("update", view))
             return MutationResult(success=True, message="updated")
@@ -172,10 +168,11 @@ def _kinds(m: _Model) -> list[str]:
     return [kind for kind, _ in m.calls]
 
 
-async def test_a_new_set_saves_the_bridge_then_its_relationships_then_marks_and_releases(model):
+async def test_a_new_set_saves_the_bridge_then_its_relationships_then_marks_it(model):
+    """REQ-1921: the bridge is live on registration: nothing releases it afterwards."""
     result = await code_resolver.save(_INFO, _input(), creating=True)
     assert result.success, result.message
-    assert _kinds(model) == ["register", "edge", "edge", "edge", "mark", "mark", "release"]
+    assert _kinds(model) == ["register", "edge", "edge", "edge", "mark", "mark"]
     view = model.calls[0][1]
     assert view.table_name == "order_clips" and view.schema_name == "views"
     assert view.view_sql == "SELECT * FROM match_region('fx.orders', 'fx.clips') AS m"
@@ -223,7 +220,6 @@ async def test_a_new_set_saves_the_bridge_then_its_relationships_then_marks_and_
         "id",
         "many-to-one",
     )
-    assert model.calls[-1][1] == (3, False)
 
 
 async def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason_and_nothing_saved(

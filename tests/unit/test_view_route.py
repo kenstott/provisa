@@ -83,7 +83,7 @@ def _state(*, kept: bool) -> SimpleNamespace:
             )
         )
     state.mv_registry = registry
-    state.role_build_inputs = {"draft_tables": []}
+    state.role_build_inputs = {"draft_tables": [], "withdrawn_tables": []}
     state.source_dialects = {"pg": "postgres"}
     state.source_catalogs = {"pg": "pg"}
     state.source_pools = SimpleNamespace(source_ids=["pg"], has=lambda sid: sid == "pg")

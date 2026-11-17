@@ -76,7 +76,8 @@ def _state(
         view_sql_map={"clean_suppliers": READ},
         column_transforms={"clean_address": CLEAN_ADDRESS},
         role_build_inputs={
-            "draft_tables": [],  # no table is out of service
+            "draft_tables": [],
+            "withdrawn_tables": [],  # no table is out of service
             # Every role's row rules, as stored: what the build keeps the inputs of.
             "rls_rules": [
                 {"role_id": "east_reader", "table_id": table_id, "filter_expr": rule}

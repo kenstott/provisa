@@ -84,7 +84,11 @@ def test_a_draft_the_model_no_longer_holds_is_not_served_by_a_surface_built_befo
 
     surface = role_surface(state, "org_admin")
     assert surface is not None and _REFUNDS in surface.context.draft_ids.values()
-    state.role_build_inputs = {**state.role_build_inputs, "draft_tables": []}
+    state.role_build_inputs = {
+        **state.role_build_inputs,
+        "draft_tables": [],
+        "withdrawn_tables": [],
+    }
 
     assert drafts_a_document_reads(state, _QUERY, "org_admin") == []
     assert drafts_a_statement_names(state, "SELECT id FROM refunds", "org_admin") == []
