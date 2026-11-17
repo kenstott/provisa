@@ -25182,7 +25182,11 @@
     its field in the settings UI; a request past the cap is refused. The cap''s default value is not settled.
     (Amended 2026-11-16, THE SINK CAP DEFAULTS TO 5:) Maintainer 2026-11-16. The cap on running sinks per
     principal defaults to 5; this settles the default left open in A SINK OR STREAM ENDS WITH ITS OWNER''S
-    ROLE; SINKS ARE CAPPED.'
+    ROLE; SINKS ARE CAPPED. (Amended 2026-11-16, STARTING A SINK NEEDS THE WRITE CAPABILITY:) Maintainer
+    2026-11-16. Starting a Kafka sink writes query results into a topic on the operator''s cluster, which
+    Provisa may also read back as a source, so it is a write: it needs the write capability (REQ-868) of
+    the role the sink starts under, besides read access to what it subscribes to. A caller without it is
+    refused by name before anything is produced.'
   use_case: An X-Provisa-Sink header lets a client wire a live subscription directly into a Kafka topic
     for downstream stream processing without holding an SSE connection.
   code:
