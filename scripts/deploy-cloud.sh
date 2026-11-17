@@ -24,7 +24,7 @@
 #   scripts/deploy-cloud.sh cfg    # shipped configs -> /app/config (restarts both)
 #   scripts/deploy-cloud.sh all    # all three, one restart at the end
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
-#   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
+#   scripts/deploy-cloud.sh patch  # the same steps as all
 #   scripts/deploy-cloud.sh sandbox-reset  # the sandbox tier alone: its orgs -> none, no build
 #
 # Every arm that pushes first ensures the observability and demo overlays are installed on the
@@ -32,10 +32,13 @@
 # without a collector, and the demo config's OpenAPI/GraphQL/gRPC sources are unresolvable without
 # the mock backends (REQ-1468). Both are content-compared; already-current is a no-op.
 #
-# api/all/reset also wipe the control plane back to the first-start state (no
-# claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
-# the bootstrap org's demo data set from the deployment config. Use `patch` when
-# a sign-in session or a hand-built org under test has to survive the deploy.
+# Only `reset` wipes the control plane back to the first-start state (no claimed
+# super-admin, no accounts, no tenant orgs, no invites) and lets the restart re-seed
+# the bootstrap org's demo data set from the deployment config, and the sandbox org
+# with its public invite (provisa/api/sandbox_org.py). Every arm that deploys code
+# (ui, api, cfg, all, patch) keeps accounts and orgs: deploying code and returning
+# the deployment to its first start are two acts, and an `all` that did both wiped
+# cloud-dev on 2026-11-16.
 #
 # Every arm that pushes the python package to a sandbox VM also resets the sandbox tier there
 # (reset_sandbox_state: its sandboxes and every demo template not built under the pushed code's
@@ -1406,14 +1409,14 @@ case "$TARGET" in
   ui)
     { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
-    # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
-    # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
     { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
