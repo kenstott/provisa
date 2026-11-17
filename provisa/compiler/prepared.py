@@ -343,6 +343,12 @@ async def prepare_front_end(
 
     if expand(parsed_input, raw_sql, role_id, state):
         raw_sql = parsed_input.sql(dialect="postgres")
+    # REQ-1986: each source operation's function the role may call in FROM is, from here on, its
+    # table with the arguments assigned: the shape cached and the statement governed are that.
+    from provisa.compiler.operation_function import expand as expand_operation_functions
+
+    if expand_operation_functions(parsed_input, raw_sql, role_id, state):
+        raw_sql = parsed_input.sql(dialect="postgres")
     shape_digest = _shape_digest_from_tree(parsed_input)
     key = _cache_key(shape_digest, role_id, generation)
 
