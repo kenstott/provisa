@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Verzeichnisse, aus denen Logdateien gelesen werden dürfen",
-        "help": "Die Verzeichnisse, in denen die Dateien einer Logs-Quelle liegen dürfen, nachdem ihre Links aufgelöst sind; standardmäßig /var/log. Fügen Sie eines wie ~/Library/Logs hinzu, um die eigenen Dateien des Servers darunter in Tabellen zu lesen. Ein Server mit vielen Organisationen liest keine eigene Logdatei, was auch immer hier steht."
+        "help": "Die Verzeichnisse, in denen die Dateien einer Logs-Quelle liegen dürfen, nachdem ihre Links aufgelöst sind; standardmäßig /var/log. Fügen Sie eines wie ~/Library/Logs hinzu, um die eigenen Dateien des Servers darunter in Tabellen zu lesen. Eine Sandbox-Organisation und auf einem Server mit vielen Organisationen jede Organisation außer der eigenen des Deployments liest außerhalb ihres eigenen Ordners keine Datei des Servers außer denen, die die Quellen ihrer Demo nennen, was auch immer hier steht."
       },
       "preview_lines": {
         "label": "Gelesene Zeilen zur Ermittlung der Spalten eines Logs",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Verzeichnisse, aus denen Quelldateien heruntergeladen werden dürfen",
-        "help": "Die Verzeichnisse, aus denen die Datei einer CSV- oder Parquet-Quelle über ihren Pfad auf diesem Server heruntergeladen werden darf, nachdem ihre Links aufgelöst sind; standardmäßig keines. Fügen Sie eines hinzu, damit ein Steward eine Datei darunter in den Ordner der Organisation kopieren kann. Ein Server mit vielen Organisationen kopiert keine eigene Datei, was hier auch steht."
+        "help": "Die Verzeichnisse, aus denen die Datei einer CSV- oder Parquet-Quelle über ihren Pfad auf diesem Server heruntergeladen werden darf, nachdem ihre Links aufgelöst sind; standardmäßig keines. Fügen Sie eines hinzu, damit ein Steward eine Datei darunter in den Ordner der Organisation kopieren kann. Eine Sandbox-Organisation und auf einem Server mit vielen Organisationen jede Organisation außer der eigenen des Deployments kopiert außerhalb ihres eigenen Ordners keine Datei des Servers außer denen, die die Quellen ihrer Demo nennen, was auch immer hier steht."
       }
     },
     "polly": {

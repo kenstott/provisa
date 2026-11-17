@@ -21,12 +21,12 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 // Captured `onIdTokenChanged` listener, so a test can drive token states directly.
 let listener: ((user: unknown) => void) | null = null;
 
-vi.mock("firebase/app", () => ({
+vi.mock("@firebase/app", () => ({
   initializeApp: vi.fn(() => ({})),
   getApps: vi.fn(() => []),
 }));
 
-vi.mock("firebase/auth", () => ({
+vi.mock("@firebase/auth", () => ({
   getAuth: vi.fn(() => ({})),
   GoogleAuthProvider: class {
     addScope() {}
