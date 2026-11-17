@@ -59,6 +59,35 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
     from provisa.api.app import _load_and_build, create_app
     from provisa.core import model_change
 
+    # DIAGNOSTIC (R510-U, reverted before landing): the stack that opened, and last checked out,
+    # each pooled connection, by backend pid.
+    import threading
+    import traceback
+
+    from sqlalchemy import event
+    from sqlalchemy.pool import Pool
+
+    opened: dict = {}
+    checked: dict = {}
+
+    def _pid(dbapi_conn):
+        info = getattr(dbapi_conn, "info", None)
+        return getattr(info, "backend_pid", None)
+
+    def _on_connect(dbapi_conn, rec):
+        opened[_pid(dbapi_conn)] = (
+            threading.current_thread().name,
+            "".join(traceback.format_stack(limit=40)),
+        )
+
+    def _on_checkout(dbapi_conn, rec, proxy):
+        checked[_pid(dbapi_conn)] = (
+            threading.current_thread().name,
+            "".join(traceback.format_stack(limit=40)),
+        )
+
+    event.listen(Pool, "connect", _on_connect)
+    event.listen(Pool, "checkout", _on_checkout)
     server = _server()
     with server.connect() as conn:
         started = conn.execute(sa.text("SELECT now()")).scalar()
@@ -70,5 +99,12 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
         async with model_change.scope("PUT /admin/config", actor=lambda: "test"):
             await _load_and_build()
     left = _opened_since(server, started)
+    for pid, *_ in left:
+        print(f"=== DIAG leaked pid {pid}: opened by {opened.get(pid, ('not SQLAlchemy', ''))[0]}")
+        print(opened.get(pid, ("", ""))[1])
+        print(f"=== DIAG leaked pid {pid}: last checkout by {checked.get(pid, ('none', ''))[0]}")
+        print(checked.get(pid, ("", ""))[1])
+    if left:
+        print("=== DIAG threads alive:", sorted(t.name for t in threading.enumerate()))
     server.dispose()
     assert left == [], f"backends still connected after shutdown: {left}"
