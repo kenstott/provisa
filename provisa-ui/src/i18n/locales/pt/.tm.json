@@ -6164,7 +6164,6 @@
   "pt/serverErrors.json::serverErrors.data.sql_generation_failed": "Could not generate valid SQL after 3 attempts: {{error}}",
   "pt/serverErrors.json::serverErrors.data.sql_parameters_do_not_fit": "The parameter values do not fit the statement: {{reason}}",
   "pt/serverErrors.json::serverErrors.data.system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly.",
-  "pt/serverErrors.json::serverErrors.data.table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
   "pt/serverErrors.json::serverErrors.data.table_not_found": "Table '{{table}}' not found",
   "pt/serverErrors.json::serverErrors.data.unknown_action_field": "Unknown action field: '{{field}}'",
   "pt/serverErrors.json::serverErrors.data.unknown_command": "Unknown command '{{name}}'",
@@ -10849,5 +10848,10 @@
   "pt/serverErrors.json::serverErrors.ai.vector_model_address_from_server": "The embedding model {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "pt/serverErrors.json::serverErrors.ai.vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "pt/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
-  "pt/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
+  "pt/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
+  "pt/serverErrors.json::serverErrors.data.table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back",
+  "pt/serverErrors.json::serverErrors.schema.table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
+  "pt/serverErrors.json::serverErrors.schema.source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
+  "pt/serverErrors.json::serverErrors.schema.put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region.",
+  "pt/serverErrors.json::serverErrors.security.withdraw_residency_refused": "{{object}} cannot be withdrawn: no data_residency grant of the caller's covers {{value}}, where it is kept; a data_residency grant listing it allows it"
 }

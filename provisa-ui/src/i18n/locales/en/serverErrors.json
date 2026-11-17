@@ -136,7 +136,6 @@
       "unknown_command": "Unknown command '{{name}}'",
       "write_not_admitted": "Role '{{role}}' may not make this write: a write needs the write right, write access to every column it writes, and rows the role's row filter admits.",
       "write_not_supported": "'{{table}}' does not take {{operation}}: its source cannot carry it",
-      "table_is_draft": "{{table}} is a draft: out of service until its domain's owners release it",
       "source_unbound": "Source '{{source}}' has no connection in environment '{{env}}': bind it, or re-copy it from the parent",
       "system_catalog_unavailable": "The engine's '{{catalog}}' catalog is being registered. Try again shortly.",
       "domain_not_accessible": "Role '{{role_id}}' does not reach domain '{{domain}}'",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
       "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
       "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
-      "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}."
+      "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}.",
+      "table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back"
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -551,7 +551,10 @@
       "source_withdrawn": "Source {{source}} withdrawn",
       "source_put_back": "Source {{source}} put back",
       "withdrawn_source_not_previewable": "Table {{table}} cannot be previewed: its source {{source}} is withdrawn, and no engine reads a withdrawn source.",
-      "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one."
+      "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one.",
+      "table_not_withdrawn": "Table {{table}} is not withdrawn: only a withdrawn table is put back. To move a table in production to another region, set its region.",
+      "source_not_withdrawn": "Source {{source}} is not withdrawn: only a withdrawn source is put back. To change its region, set its region.",
+      "put_back_needs_region": "Putting back {{object}} names a region: give one, or none for no region."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "unknown security mode '{{mode}}'",
       "data_residency_refused": "The region of {{object}} cannot be set: the data_residency grant does not cover {{value}}; a data_residency grant listing it allows it",
-      "data_residency_missing": "The region of {{object}} cannot be set: no data_residency grant of the caller's covers {{value}}; a data_residency grant listing it allows it"
+      "data_residency_missing": "The region of {{object}} cannot be set: no data_residency grant of the caller's covers {{value}}; a data_residency grant listing it allows it",
+      "withdraw_residency_refused": "{{object}} cannot be withdrawn: no data_residency grant of the caller's covers {{value}}, where it is kept; a data_residency grant listing it allows it"
     },
     "settings": {
       "auth_required": "{{field}} cannot be changed until authentication is configured.",

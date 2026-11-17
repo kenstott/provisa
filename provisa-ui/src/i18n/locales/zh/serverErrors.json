@@ -136,7 +136,6 @@
       "unknown_command": "未知命令 '{{name}}'",
       "write_not_admitted": "角色 '{{role}}' 不能执行此写入：写入需要写入权限、对所写每一列的写入权限，以及该角色的行过滤器允许的行。",
       "write_not_supported": "'{{table}}' 不接受 {{operation}}：其数据源无法执行",
-      "table_is_draft": "{{table}} 是草稿：在其域的所有者发布之前停止服务",
       "source_unbound": "源 '{{source}}' 在环境 '{{env}}' 中没有连接：请绑定它，或从父环境重新复制",
       "system_catalog_unavailable": "引擎的目录 '{{catalog}}' 正在注册。请稍后重试。",
       "domain_not_accessible": "角色 '{{role_id}}' 无法访问域 '{{domain}}'",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "参数 {{parameter}} 在 OR 的一个分支中有值,在另一个分支中没有。请在每个分支中为 {{parameter}} 指定值。",
       "parameter_conflict": "参数 {{parameter}} 同时被赋予两个不同的值({{first}} 和 {{second}})。请只给它一个值,或用 IN 或 OR 列出这些值。",
       "parameter_calls_over_cap": "该语句需要对 {{table}} 发起 {{calls}} 次调用(其参数的每个值一次),而一条语句最多发起 {{cap}} 次(设置 {{setting}})。请减少值的数量。",
-      "parameter_not_written": "关系 {{relationship}} 通过参数 {{parameter}} 连接,语句将该参数绑定到一个值,从不写入它。写入操作不会创建 {{relationship}}。"
+      "parameter_not_written": "关系 {{relationship}} 通过参数 {{parameter}} 连接,语句将该参数绑定到一个值,从不写入它。写入操作不会创建 {{relationship}}。",
+      "table_is_withdrawn": "{{table}} 已撤下：在恢复之前不在生产中"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -551,7 +551,10 @@
       "source_withdrawn": "源 {{source}} 已撤下",
       "source_put_back": "源 {{source}} 已恢复",
       "withdrawn_source_not_previewable": "无法预览表 {{table}}：其源 {{source}} 已撤下，任何引擎都不会读取已撤下的源。",
-      "withdrawn_table_not_previewable": "无法预览表 {{table}}：它已撤下且不保留副本，而引擎只能通过副本读取其源。"
+      "withdrawn_table_not_previewable": "无法预览表 {{table}}：它已撤下且不保留副本，而引擎只能通过副本读取其源。",
+      "table_not_withdrawn": "表 {{table}} 未撤下：只有已撤下的表才能恢复。要将生产中的表移到另一个区域，请设置其区域。",
+      "source_not_withdrawn": "源 {{source}} 未撤下：只有已撤下的源才能恢复。要更改其区域，请设置其区域。",
+      "put_back_needs_region": "恢复 {{object}} 需指定一个区域：请给出一个区域，无区域则不给出。"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "未知的安全模式 '{{mode}}'",
       "data_residency_refused": "无法设置 {{object}} 的区域：data_residency 授权不覆盖 {{value}}；列出它的 data_residency 授权可允许此操作",
-      "data_residency_missing": "无法设置 {{object}} 的区域：调用者没有覆盖 {{value}} 的 data_residency 授权；列出它的 data_residency 授权可允许此操作"
+      "data_residency_missing": "无法设置 {{object}} 的区域：调用者没有覆盖 {{value}} 的 data_residency 授权；列出它的 data_residency 授权可允许此操作",
+      "withdraw_residency_refused": "无法撤下 {{object}}：调用者没有覆盖其所在 {{value}} 的 data_residency 授权；列出它的 data_residency 授权可允许此操作"
     },
     "settings": {
       "auth_required": "在配置身份验证之前，无法更改 {{field}}。",

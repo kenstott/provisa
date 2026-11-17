@@ -136,7 +136,6 @@
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
       "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
-      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です",
       "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください",
       "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。",
       "domain_not_accessible": "ロール「{{role_id}}」はドメイン「{{domain}}」にアクセスできません",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "パラメータ {{parameter}} は OR の一方の分岐で値が与えられ、もう一方では与えられていません。すべての分岐で {{parameter}} に値を与えてください。",
       "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
       "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。",
-      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。"
+      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。",
+      "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -551,7 +551,10 @@
       "source_withdrawn": "ソース {{source}} を取り下げました",
       "source_put_back": "ソース {{source}} を元に戻しました",
       "withdrawn_source_not_previewable": "テーブル {{table}} はプレビューできません: ソース {{source}} が取り下げられており、取り下げられたソースを読むエンジンはありません。",
-      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。"
+      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。",
+      "table_not_withdrawn": "テーブル {{table}} は取り下げられていません: 元に戻せるのは取り下げられたテーブルだけです。本番環境のテーブルを別のリージョンへ移すには、そのリージョンを設定してください。",
+      "source_not_withdrawn": "ソース {{source}} は取り下げられていません: 元に戻せるのは取り下げられたソースだけです。リージョンを変えるには、そのリージョンを設定してください。",
+      "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です",
       "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。それを含む data_residency 付与があれば可能です",
-      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です"
+      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です",
+      "withdraw_residency_refused": "{{object}} を取り下げられません: 保持されている {{value}} を含む data_residency 付与が呼び出し元にありません。それを含む data_residency 付与があれば可能です"
     },
     "settings": {
       "auth_required": "認証が設定されるまで {{field}} は変更できません。",
