@@ -68,13 +68,13 @@ class _Embedder:
 
 
 @pytest.fixture(autouse=True)
-def _grants_issued_here_are_withdrawn():
-    """Every grant a test here issues is withdrawn after it: the grants are the process's own
-    (provisa.codesource.services), and another file's test counts an organization's."""
-    held = dict(services._grants)
+def _revoke_issued():
+    """Each test revokes every grant it issued: the services' grants are the process's, and a
+    grant left behind is another test's."""
+    before = set(services._grants)
     yield
-    services._grants.clear()
-    services._grants.update(held)
+    for token in set(services._grants) - before:
+        services.revoke(token)
 
 
 @pytest.fixture

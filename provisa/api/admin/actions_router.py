@@ -85,6 +85,7 @@ def _row_to_function(row: dict) -> dict:
         "requiresApproval": bool(row.get("requires_approval", False)),  # REQ-1924
         "writesTable": row.get("writes_table"),  # REQ-1924, REQ-871
         "languageBindings": row.get("language_bindings") or {},  # REQ-2168
+        "sourceType": row.get("source_type"),  # REQ-1986
     }
 
 
@@ -184,6 +185,9 @@ class FunctionInput(BaseModel):  # REQ-205, REQ-206, REQ-304, REQ-305, REQ-306
     writesTable: str | None = None  # REQ-1924, REQ-871: "schema.table" of the table it writes
     # REQ-2168: the command's name per language {language: {name?, exclude?}}.
     languageBindings: dict[str, dict] = {}
+    # REQ-1986: the type of the rows a source operation returns as the source's schema names it;
+    # set from the operation the source offers, never from what the form sent.
+    sourceType: str | None = None
 
 
 class WebhookInput(BaseModel):  # REQ-209, REQ-210, REQ-211
@@ -212,6 +216,7 @@ async def _as_source_operation(body: FunctionInput) -> None:
         BINARY_ANSWER,
         OPERATION_SCHEMA,
         offered_operation,
+        operation_table,
     )
     from provisa.executor.snowflake_objects import SNOWFLAKE, names_operation
 
@@ -235,6 +240,27 @@ async def _as_source_operation(body: FunctionInput) -> None:
     body.binding = {}
     body.materialize = False
     body.arguments = [{"name": a, "type": "json"} for a in operation.arguments]
+    body.sourceType = None
+    if operation.table is not None:
+        # REQ-1986: an operation that reads rows and requires a parameter is a function returning
+        # the rows of its table, its arguments typed as the source types them.
+        table = operation_table(state, body.sourceId, operation)
+        if table is None:
+            raise ApiError(
+                422,
+                "functions.operation_table_unregistered",
+                f"Operation {body.functionName!r} of source {body.sourceId!r} returns the rows "
+                f"of its table {operation.table!r}, which is not registered",
+                source_id=body.sourceId,
+                operation=body.functionName,
+                table=operation.table,
+            )
+        body.returns = f"{table['schema_name']}.{table['table_name']}"
+        body.arguments = [
+            {"name": a, "type": t}
+            for a, t in zip(operation.arguments, operation.argument_types, strict=True)
+        ]
+        body.sourceType = operation.returns_type
     if operation.binary:
         body.outputColumns = [dict(c) for c in BINARY_ANSWER]
     if source_type == "dbt":  # REQ-2228: it runs wherever dbt already runs
@@ -243,6 +269,12 @@ async def _as_source_operation(body: FunctionInput) -> None:
         body.implKind, body.binding = await command_target(
             state.model_db, body.sourceId, body.functionName
         )
+
+
+def _source_type_of(body: FunctionInput) -> str | None:  # REQ-1986
+    """The returned rows' source type: a source operation's, as :func:`_as_source_operation`
+    read it from the source; no other command has one."""
+    return body.sourceType if body.implKind == "source_operation" else None
 
 
 async def _as_code_command(body: FunctionInput) -> None:  # REQ-2226
@@ -579,6 +611,7 @@ async def create_function(
         materialize=body.materialize,
         requires_approval=body.requiresApproval,  # REQ-1924
         writes_table=body.writesTable,  # REQ-1924, REQ-871
+        source_type=_source_type_of(body),  # REQ-1986
         language_bindings={  # REQ-2168
             k: CommandBinding(**v) for k, v in body.languageBindings.items()
         },
@@ -669,6 +702,7 @@ async def update_function(
                 requires_approval=body.requiresApproval,  # REQ-1924
                 writes_table=body.writesTable,  # REQ-1924, REQ-871
                 language_bindings=body.languageBindings,  # REQ-2168
+                source_type=_source_type_of(body),  # REQ-1986
                 updated_at=func.now(),
             )
         )

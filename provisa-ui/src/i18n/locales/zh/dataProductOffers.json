@@ -60,6 +60,16 @@
     "resultsNotIncluded": "不包含结果。",
     "seeQuality": "查看质量",
     "inReview": "审核中",
+    "reviewReason": {
+      "role_gone": "此方案的角色未定义。",
+      "not_built": "此方案的一个数据集不在模型构建中。",
+      "sample_not_a_view": "此方案的样本指定了一个不是模型视图的表。样本是基于产品数据集的一个或多个视图。",
+      "sample_outside_product": "此方案样本中的一个视图读取了产品数据集以外的内容，或未读取任何产品数据集。",
+      "sample_misses_dataset": "此方案样本中没有视图读取产品的某个数据集。方案涵盖产品的每个数据集。",
+      "not_public": "此开放方案的数据已不再公开。",
+      "profiler_gone": "此合成方案的一个数据集没有画像器。",
+      "fake_gone": "此合成方案某个数据集的一列没有虚构值。"
+    },
     "contracts_one": "{{count}} 份契约",
     "contracts_other": "{{count}} 份契约",
     "noContracts": "尚未派生契约。",

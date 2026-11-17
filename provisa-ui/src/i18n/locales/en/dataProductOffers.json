@@ -60,6 +60,16 @@
     "resultsNotIncluded": "results not included.",
     "seeQuality": "See Quality",
     "inReview": "In review",
+    "reviewReason": {
+      "role_gone": "This offer's role is not defined.",
+      "not_built": "A dataset of this offer is not in the model build.",
+      "sample_not_a_view": "A sample of this offer names a table that is not a view of the model. A sample is one or more views over the product's datasets.",
+      "sample_outside_product": "A view of this offer's sample reads more than the product's datasets, or none of them.",
+      "sample_misses_dataset": "No view of this offer's sample reads one of the product's datasets. An offer covers every dataset of the product.",
+      "not_public": "This open offer's data is no longer public.",
+      "profiler_gone": "A dataset of this synthetic offer has no profiler.",
+      "fake_gone": "A column of a dataset of this synthetic offer has no fake."
+    },
     "contracts_one": "{{count}} contract",
     "contracts_other": "{{count}} contracts",
     "noContracts": "No contracts derived yet.",

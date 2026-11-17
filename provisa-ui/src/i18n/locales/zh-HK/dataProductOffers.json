@@ -60,6 +60,16 @@
     "resultsNotIncluded": "不包括結果。",
     "seeQuality": "查看質素",
     "inReview": "審核中",
+    "reviewReason": {
+      "role_gone": "此方案的角色未有定義。",
+      "not_built": "此方案的一個數據集不在模型建置之中。",
+      "sample_not_a_view": "此方案的樣本指明了一個不是模型視圖的表。樣本是建基於產品數據集的一個或多個視圖。",
+      "sample_outside_product": "此方案樣本中的一個視圖讀取了產品數據集以外的內容，或沒有讀取任何產品數據集。",
+      "sample_misses_dataset": "此方案樣本中沒有視圖讀取產品的某個數據集。方案涵蓋產品的每個數據集。",
+      "not_public": "此開放方案的數據已不再公開。",
+      "profiler_gone": "此合成方案的一個數據集沒有剖析器。",
+      "fake_gone": "此合成方案某個數據集的一欄沒有虛構值。"
+    },
     "contracts_one": "{{count}} 份契約",
     "contracts_other": "{{count}} 份契約",
     "noContracts": "尚未衍生契約。",

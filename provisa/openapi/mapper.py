@@ -49,6 +49,11 @@ class OpenAPIQuery:  # REQ-316
     # the steward declares when registering it (``response_schema`` is None); it is offered as a
     # command that reads too.
     columns_declared: bool = False
+    # REQ-1986: the type of one row as the spec names it -- the component its row schema is a
+    # reference to (``Pet`` of ``#/components/schemas/Pet``); None where the spec writes the
+    # schema in place, which names no type. Two operations return the same type when this is
+    # the same name.
+    returns_type: str | None = None
 
 
 @dataclass
@@ -280,6 +285,32 @@ def _extract_response_schema(
     if rows is None:
         raise NoRowsField(field)
     return (*_row_schema(rows), field)
+
+
+def _reference_name(node: SchemaPath) -> str | None:
+    """The component ``node`` is written as a reference to, by its name; None when the spec
+    writes the schema in place. The spec reader follows a reference wherever it reads one, so
+    the reference is read from what holds the node."""
+    with node.parent.open() as held:
+        written = held.get(node.parts[-1]) if isinstance(held, dict) else None
+    reference = written.get("$ref") if isinstance(written, dict) else None
+    return reference.rsplit("/", 1)[-1] if isinstance(reference, str) else None
+
+
+def _row_type(operation: SchemaPath, rows_field: str | None) -> str | None:  # REQ-1986
+    """The named type of one row of the success response, its rows at ``rows_field`` as
+    :func:`_extract_response_schema` settled it: read from the spec's own references, never
+    from what the schema holds."""
+    response = _success_response(operation)
+    schema = None if response is None else _json_schema(response)
+    if schema is None:
+        return None
+    rows = schema if rows_field is None else _property(schema, rows_field)
+    if rows is None:
+        return None
+    if rows.read_value().get("type") == "array" and "items" in rows:
+        rows = rows / "items"
+    return _reference_name(rows)
 
 
 _FORM = "application/x-www-form-urlencoded"
@@ -533,6 +564,7 @@ def _map_operations(
                         response_schema=response_schema,
                         is_list=is_list,
                         rows_field=rows_field,
+                        returns_type=_row_type(operation, rows_field),
                         server=_own_server(path_item, operation),
                         pagination=propose_paging(
                             operation,

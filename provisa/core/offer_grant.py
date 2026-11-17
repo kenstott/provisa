@@ -55,13 +55,16 @@ if TYPE_CHECKING:
 TABLES = "tables"
 
 
-async def entries(conn: "Connection", product_id: str, offer: DataProductOffer) -> list[str]:
+async def entries(
+    conn: "Connection", product_id: str, offer: DataProductOffer, published: offers.Published
+) -> list[str]:
     """The entitlement entries accepting ``offer`` adds, as the list names them: the product's
     datasets, or a sample's views alone (never the tables beneath them); with the data quality
     results the product owns on them where the offer includes them, and their profiles where it
     includes those. A synthetic offer gives the datasets: its role reads every column of them
     through the column's fake (a role-wide fake mask, provisa.api.app_loaders), never a real
-    record, so each dataset needs its profiler and each column its fake."""
+    record, so each dataset needs its profiler and each column its fake. Names and checker
+    targets are the runtime's published build's (REQ-194, REQ-2125)."""
     datasets = await offers.dataset_ids(conn, product_id)
     if offer.data_level == "synthetic":
         await _require_profilers(conn, datasets)
@@ -69,10 +72,10 @@ async def entries(conn: "Connection", product_id: str, offer: DataProductOffer) 
     tables: list[int] = list(offer.sample_views if offer.data_level == "sample" else datasets)
     for dataset in datasets:
         if offer.dq_results:
-            tables += await offers.quality_tables(conn, product_id, dataset)
+            tables += await offers.quality_tables(conn, product_id, dataset, published)
         if offer.profiles:
             tables += await offers.profile_tables(conn, dataset)
-    names = await offers.sql_names(conn, tables)
+    names = await offers.sql_names(conn, tables, published)
     return list(dict.fromkeys(names[t] for t in tables))
 
 
