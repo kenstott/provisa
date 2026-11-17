@@ -106,5 +106,47 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
         print(checked.get(pid, ("", ""))[1])
     if left:
         print("=== DIAG threads alive:", sorted(t.name for t in threading.enumerate()))
+        print(
+            "=== DIAG pids SQLAlchemy opened:",
+            sorted(k for k in opened if k is not None)[:50],
+            len(opened),
+        )
+        import gc
+
+        import duckdb
+
+        def _owner_chain(obj, depth=0, seen=None):
+            seen = seen if seen is not None else set()
+            if depth > 3:
+                return
+            for ref in gc.get_referrers(obj):
+                if id(ref) in seen or ref is opened or ref is checked:
+                    continue
+                seen.add(id(ref))
+                if isinstance(ref, dict):
+                    for owner in gc.get_referrers(ref):
+                        if getattr(owner, "__dict__", None) is ref:
+                            keys = [k for k, v in ref.items() if v is obj]
+                            print(
+                                "  " * depth,
+                                "held by",
+                                type(owner).__module__,
+                                type(owner).__qualname__,
+                                keys,
+                            )
+                            _owner_chain(owner, depth + 1, seen)
+                elif type(ref).__name__ not in ("frame", "list", "tuple", "cell", "function"):
+                    print("  " * depth, "ref", type(ref).__module__, type(ref).__qualname__)
+
+        for obj in gc.get_objects():
+            if isinstance(obj, duckdb.DuckDBPyConnection):
+                try:
+                    dbs = obj.execute(
+                        "SELECT database_name, type, path FROM duckdb_databases() WHERE NOT internal"
+                    ).fetchall()
+                except Exception as exc:  # diagnostic only
+                    dbs = f"closed? {exc}"
+                print("=== DIAG duckdb connection", id(obj), dbs)
+                _owner_chain(obj)
     server.dispose()
     assert left == [], f"backends still connected after shutdown: {left}"
