@@ -196,8 +196,12 @@ def view(server):
         'createSource(input: {id: "suppliers-src", type: "python", host: "", port: 0, '
         f'database: "", cacheTtl: 300, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
-    id_mask = f'{{to: ["{_ID_MASKED}"], mask: {{type: "constant", value: 0}}}}'
-    address_mask = f'{{to: ["{_MASKED}"], mask: {{type: "constant", value: "***"}}}}'
+    # A column with a mask list masks every reader holding none of its entries (REQ-2059): the
+    # last entry, with no "to" and no mask, leaves every other reader unmasked.
+    id_mask = f'{{to: ["{_ID_MASKED}"], mask: {{type: "constant", value: 0}}}}, {{mask: null}}'
+    address_mask = (
+        f'{{to: ["{_MASKED}"], mask: {{type: "constant", value: "***"}}}}, {{mask: null}}'
+    )
     registered = _admin(
         server,
         'registerTable(input: {sourceId: "suppliers-src", domainId: "fx", schemaName: "default", '
