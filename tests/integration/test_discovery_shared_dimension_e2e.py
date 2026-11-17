@@ -148,6 +148,19 @@ def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_join(
         (files["budget_2026__budget"], "neighborhood", "many-to-one"),
     }
 
+    # DIAG-J1434b
+    for _sql in (
+        'SELECT t."neighborhood" AS "c0" FROM "city_files"."budget_2026__budget" t',
+        "SELECT * FROM city_files.neighborhood",
+    ):
+        _r = httpx.post(
+            f"{instance.url}/data/sql/explain", json={"sql": _sql}, headers=_HEADERS, timeout=300
+        )
+        print("DIAG explain", _sql, _r.status_code, _r.text[:4000])
+        _r = httpx.post(
+            f"{instance.url}/data/sql", json={"sql": _sql}, headers=_HEADERS, timeout=300
+        )
+        print("DIAG run", _sql, _r.status_code, _r.text[:2000])
     # A second pair on the same values reuses the dimension: the complaints join it too.
     run_id, complaints = _pair(instance, files, _COMPLAINTS)
     assert complaints["dimension"] == {"name": "neighborhood", "reused": True}
