@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "local_server_from_environment": "{{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Déclarez un point de terminaison IA à votre propre adresse dans Admin, Modèles IA.",
       "server_environment_sets": "{{vendor}} ne peut pas être appelé ici : l'environnement du serveur définit {{variable}}, que son client enverrait pour chaque organisation.",
+      "vector_model_address_from_server": "Le modèle d'embedding {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
+      "vector_model_key_from_server": "Le modèle d'embedding {{vendor}} prend sa clé dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une clé qui vous est propre dans Admin, Modèles IA.",
+      "vector_model_key_unset": "Le modèle d'embedding {{vendor}} n'a pas de clé : {{field}} n'est pas défini.",
+      "vector_model_local_server": "Le modèle d'embedding {{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
       "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
     },
     "api": {

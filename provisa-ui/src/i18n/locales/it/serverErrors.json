@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "local_server_from_environment": "{{vendor}} viene raggiunto all'indirizzo proprio del server, che un'organizzazione su questo server non usa. Dichiara un endpoint AI al tuo indirizzo in Amministrazione, Modelli AI.",
       "server_environment_sets": "{{vendor}} non può essere chiamato qui: l'ambiente del server imposta {{variable}}, che il suo client invierebbe per ogni organizzazione.",
+      "vector_model_address_from_server": "Il modello di embedding {{vendor}} prende il suo indirizzo dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
+      "vector_model_key_from_server": "Il modello di embedding {{vendor}} prende la sua chiave dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli una chiave tua in Amministrazione, Modelli AI.",
+      "vector_model_key_unset": "Il modello di embedding {{vendor}} non ha una chiave: {{field}} non è impostato.",
+      "vector_model_local_server": "Il modello di embedding {{vendor}} viene raggiunto all'indirizzo proprio del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
       "vendor_uses_server_credentials": "{{vendor}} viene raggiunto con le credenziali proprie del server, che un'organizzazione su questo server non usa. Scegli un fornitore che accetta una chiave, o un endpoint AI, in Amministrazione, Modelli AI."
     },
     "api": {
