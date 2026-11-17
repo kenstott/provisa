@@ -2225,6 +2225,8 @@ CREATE TABLE IF NOT EXISTS user_directory (
     display_name TEXT,
     email        TEXT,
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
+    -- REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
+    discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;
@@ -2820,6 +2822,9 @@ CREATE TABLE IF NOT EXISTS discovery_run_proposals (
     target_column   TEXT,
     confidence      DOUBLE PRECISION,
     scored          DOUBLE PRECISION,
+    score           DOUBLE PRECISION,
+    cardinality     TEXT,
+    measure         TEXT,
     reasoning       TEXT,
     suggested_name  TEXT,
     left_out        TEXT,
