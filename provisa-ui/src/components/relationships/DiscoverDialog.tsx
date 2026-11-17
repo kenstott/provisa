@@ -56,8 +56,10 @@ export function DiscoverDialog({
       opened={opened}
       onClose={close}
       title={t("discoverDialog.title")}
-      // A run lists its proposals in one table, whose columns need the room.
-      size={run ? "min(90rem, calc(100vw - 2rem))" : "lg"}
+      // A run lists its proposals in one table, whose columns need the room: the window's width
+      // less the page gutter the lists keep.
+      size={run ? "100%" : "lg"}
+      xOffset={run ? "var(--page-gutter)" : undefined}
       centered
       data-testid="discover-dialog"
     >

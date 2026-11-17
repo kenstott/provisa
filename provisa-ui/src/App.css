@@ -516,8 +516,12 @@ main {
 }
 
 /* Page layout */
+/* The page gutter: a page's padding, and the margin a dialog as wide as the window keeps. */
+:root {
+  --page-gutter: 1.5rem;
+}
 .page {
-  padding: 1.5rem;
+  padding: var(--page-gutter);
   width: 100%;
   box-sizing: border-box;
 }

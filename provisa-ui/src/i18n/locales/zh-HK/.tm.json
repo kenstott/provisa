@@ -10813,5 +10813,8 @@
   "zh-HK/dataProductOffers.json::dataProductOffers.reviewReason.sample_misses_dataset": "No view of this offer's sample reads one of the product's datasets. An offer covers every dataset of the product.",
   "zh-HK/dataProductOffers.json::dataProductOffers.reviewReason.not_public": "This open offer's data is no longer public.",
   "zh-HK/dataProductOffers.json::dataProductOffers.reviewReason.profiler_gone": "A dataset of this synthetic offer has no profiler.",
-  "zh-HK/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake."
+  "zh-HK/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake.",
+  "zh-HK/discoverDialog.json::discoverDialog.restore.newTables": "{{count}} table registered since your last run is in {{domains}}, which it did not look at.",
+  "zh-HK/discoverDialog.json::discoverDialog.restore.newTables_other": "{{count}} tables registered since your last run are in {{domains}}, which it did not look at.",
+  "zh-HK/discoverDialog.json::discoverDialog.restore.addNewTables": "Add to this run"
 }

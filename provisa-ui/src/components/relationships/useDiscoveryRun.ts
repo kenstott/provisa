@@ -23,6 +23,7 @@ import {
   type DiscoveryRun,
   type DiscoveryScope,
 } from "../../api/admin";
+import type { LastRun } from "./restoreScope";
 
 /** How long after one reading of a running run the next is made. */
 export const RUN_POLL_MS = 1000;
@@ -42,9 +43,9 @@ export interface DiscoveryRunState {
   stop: () => Promise<void>;
   /** Leave the ended run's result and set up a new run. */
   dismiss: () => void;
-  /** The fields a new run starts from: those of the run just left, else of the latest run the
-   *  signed-in person started; null where there is none (the defaults). */
-  previous: DiscoveryScope | null;
+  /** The run a new one starts from: the run just left, else the latest run the signed-in person
+   *  started; null where there is none (the defaults). */
+  previous: LastRun | null;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -52,7 +53,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
   const [run, setRun] = useState<DiscoveryRun | null>(null);
   const [error, setError] = useState("");
-  const [previous, setPrevious] = useState<DiscoveryScope | null>(null);
+  const [previous, setPrevious] = useState<LastRun | null>(null);
   const stored = useRef(onStored);
   useEffect(() => {
     stored.current = onStored;
@@ -65,7 +66,7 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
         fetchDiscoveryRuns(1, true),
       ]);
       setError("");
-      if (own !== undefined) setPrevious(own.scope);
+      if (own !== undefined) setPrevious({ scope: own.scope, startedAt: own.started_at });
       // An ended run is shown only while it is the one being watched; a run still going always.
       // The server lists no run: what is shown stays (nothing, before any run).
       setRun((shown) =>
@@ -119,7 +120,7 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
   const start = useCallback(async (scope: DiscoveryScope) => {
     const started = await startDiscoveryRun(scope);
     setError("");
-    setPrevious(started.scope);
+    setPrevious({ scope: started.scope, startedAt: started.started_at });
     setRun(started);
   }, []);
 

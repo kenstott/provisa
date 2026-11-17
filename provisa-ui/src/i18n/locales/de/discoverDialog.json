@@ -61,7 +61,10 @@
       "tablesGone": "{{count}} Tabelle ist dort nicht mehr registriert.",
       "tablesGone_other": "{{count}} Tabellen sind dort nicht mehr registriert.",
       "vendorNoKey": "{{vendor}} hat keinen Schlüssel, daher ist das Modell das zugewiesene.",
-      "modelGone": "{{vendor}} führt {{model}} nicht mehr auf, daher ist das Modell das zugewiesene."
+      "modelGone": "{{vendor}} führt {{model}} nicht mehr auf, daher ist das Modell das zugewiesene.",
+      "newTables": "{{count}} Tabelle, die seit Ihrem letzten Lauf registriert wurde, liegt in {{domains}}, das dieser Lauf nicht betrachtet hat.",
+      "newTables_other": "{{count}} Tabellen, die seit Ihrem letzten Lauf registriert wurden, liegen in {{domains}}, das dieser Lauf nicht betrachtet hat.",
+      "addNewTables": "Zu diesem Lauf hinzufügen"
     }
   }
 }

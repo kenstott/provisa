@@ -61,7 +61,10 @@
       "tablesGone": "{{count}} tabela não está mais registrada ali.",
       "tablesGone_other": "{{count}} tabelas não estão mais registradas ali.",
       "vendorNoKey": "{{vendor}} não tem chave, então o modelo é o atribuído.",
-      "modelGone": "{{vendor}} não lista mais {{model}}, então o modelo é o atribuído."
+      "modelGone": "{{vendor}} não lista mais {{model}}, então o modelo é o atribuído.",
+      "newTables": "{{count}} tabela registrada desde a sua última execução está em {{domains}}, que essa execução não examinou.",
+      "newTables_other": "{{count}} tabelas registradas desde a sua última execução estão em {{domains}}, que essa execução não examinou.",
+      "addNewTables": "Adicionar a esta execução"
     }
   }
 }

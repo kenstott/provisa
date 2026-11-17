@@ -14,339 +14,70 @@
 // ticked not to be recommended again, or left undecided, with one Apply. A run after the first
 // starts from the fields of the one before.
 // The run is the server's: the button animates while it runs, after the dialog is closed too.
-
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
 import {
-  applyRunDecisions,
-  countDiscoveryRun,
-  fetchCandidates,
-  fetchDiscoveryModels,
-  fetchDiscoveryRun,
-  fetchDiscoveryRuns,
-  fetchModelLimits,
-  fetchRunProposals,
-  fetchVendorModels,
-  startDiscoveryRun,
-  stopDiscoveryRun,
-  type DiscoveryCount,
-  type DiscoveryModels,
-  type DiscoveryRun,
-  type DiscoveryScope,
-  type RunProposal,
-} from "../../api/admin";
+  COUNT,
+  NO_VENDOR,
+  PROPOSALS,
+  REPORT,
+  SCOPE,
+  SLOW,
+  acceptBox,
+  applyButton,
+  applyMock,
+  candidatesMock,
+  countMock,
+  dialog,
+  discoverButton,
+  endedRun,
+  fkBox,
+  lastScope,
+  limitsMock,
+  modelsMock,
+  notAgainBox,
+  openDialog,
+  pick,
+  proposal,
+  proposalsMock,
+  resetDiscoveryMocks,
+  runButton,
+  runMock,
+  runOf,
+  runsMock,
+  sameBox,
+  semanticsBox,
+  startMock,
+  stopMock,
+  suggestion,
+  vendorModelsMock,
+} from "./discoverDialog.fixtures";
 
-const RELS = { relationships: [], loading: false, refetch: vi.fn() };
-const table = (id: number, domainId: string, tableName: string) => ({
-  id,
-  domainId,
-  sourceId: `${domainId}-db`,
-  schemaName: domainId,
-  tableName,
-  alias: null,
-  columns: [],
+vi.mock("../../hooks/useAdminQueries", async () =>
+  (await import("./discoverDialog.state")).adminQueries(),
+);
+vi.mock("../../context/AuthContext", async () => {
+  const { AUTH } = await import("./discoverDialog.state");
+  return { useAuth: () => AUTH };
 });
-const TABLES = {
-  tables: [
-    table(1, "shop", "orders"),
-    table(2, "shop", "customers"),
-    table(3, "crm", "accounts"),
-    table(4, "meta", "registered_tables"),
-  ],
-  loading: false,
-};
-const AUTH = { capabilities: ["create_relationship"] };
-// The Domains picker has shop ticked and crm not: the source domains start as shop.
-const FILTER = {
-  domainsEnabled: true,
-  domains: ["shop", "crm", "meta"],
-  checkedDomains: new Set<string>(["shop"]),
-};
-
-vi.mock("../../hooks/useAdminQueries", () => ({
-  // REQ-2249: no code resolver set is in service here.
-  useCodeResolvers: () => ({
-    codeResolvers: [],
-    loading: false,
-    saveCodeResolver: vi.fn(),
-    retireCodeResolver: vi.fn(),
-  }),
-  useRelationships: () => RELS,
-  useAllRelationships: () => RELS,
-  useTables: () => TABLES,
-  useDomains: () => ({ domains: [] }),
-  useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
-  useDeleteRelationship: () => ({ deleteRelationship: vi.fn() }),
-  useDeleteRelationships: () => vi.fn(),
-}));
-vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
-vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
-vi.mock("../../api/admin", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn(),
-  fetchRejectedCount: vi.fn().mockResolvedValue(0),
-  fetchSettings: vi.fn().mockResolvedValue({
-    naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
-  }),
-  fetchDiscoveryModels: vi.fn(),
-  fetchVendorModels: vi.fn(),
-  fetchModelLimits: vi.fn(),
-  countDiscoveryRun: vi.fn(),
-  startDiscoveryRun: vi.fn(),
-  fetchDiscoveryRun: vi.fn(),
-  fetchDiscoveryRuns: vi.fn(),
-  stopDiscoveryRun: vi.fn(),
-  fetchRunProposals: vi.fn(),
-  applyRunDecisions: vi.fn(),
-}));
+vi.mock("../../context/DomainFilterContext", async () => {
+  const { FILTER } = await import("./discoverDialog.state");
+  return { useDomainFilter: () => FILTER };
+});
+vi.mock("../../api/admin", async (importOriginal) =>
+  (await import("./discoverDialog.state")).adminApi(
+    await importOriginal<typeof import("../../api/admin")>(),
+  ),
+);
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
 }));
 vi.mock("../../components/TagControl", () => ({ TagControl: () => null }));
 
-const HAIKU = {
-  vendor: "anthropic",
-  model: "claude-haiku-4-5",
-  input_tokens: 200000,
-  output_tokens: 64000,
-  limits_source: "known" as const,
-};
-const MODELS: DiscoveryModels = {
-  assigned: { ...HAIKU, has_key: true },
-  vendors: ["anthropic", "openai"],
-  semantics_available: true,
-};
-const NO_VENDOR: DiscoveryModels = { assigned: null, vendors: [], semantics_available: false };
-const COUNT: DiscoveryCount = {
-  requests: 3,
-  requests_are: "upper_bound",
-  by_group: { whole_number: 2, text: 1 },
-  suggestions_per_request: 27,
-  model: HAIKU,
-  source_tables: 2,
-  target_tables: 2,
-  tables_not_read: 0,
-};
-const SCOPE: DiscoveryScope = {
-  kinds: ["foreign_keys", "semantics"],
-  source_domains: ["shop"],
-  source_tables: null,
-  target_same_as_source: true,
-  target_domains: [],
-  target_tables: null,
-  vendor: null,
-  model: null,
-};
-const runOf = (over: Partial<DiscoveryRun>): DiscoveryRun => ({
-  id: 7,
-  status: "running",
-  scope: SCOPE,
-  model: "anthropic:claude-haiku-4-5",
-  requests_total: 0,
-  requests_done: 0,
-  suggestions: 0,
-  report: null,
-  error: null,
-  stop_requested: false,
-  stopped_by: null,
-  started_by: "user-1",
-  started_at: "2026-11-15T10:00:00+00:00",
-  finished_at: null,
-  ...over,
-});
-const REPORT = {
-  suggestions: 2,
-  stored_ids: [101, 102],
-  removed: { existing: 2, rejected: 1 },
-  foreign_keys: { found: 3, suggested: 1 },
-  semantics: {
-    suggested: 1,
-    empty_reason: null,
-    requests_total: 3,
-    requests_done: 1,
-    split: 0,
-    proposed: 2,
-    invalid: 0,
-    below_threshold: 1,
-    threshold: 0.7,
-    cut_short: 0,
-    unreadable: 0,
-    failed: [],
-    stopped: false,
-  },
-  model: HAIKU,
-};
-const suggestion = (id: number, column: string, scope: string) => ({
-  id,
-  source_table_id: 1,
-  source_column: column,
-  target_table_id: 2,
-  target_column: "id",
-  cardinality: "many-to-one",
-  confidence: 0.9,
-  reasoning: "Same customer key",
-  suggested_name: `orders-${column}`,
-  scope,
-});
-
-const modelsMock = vi.mocked(fetchDiscoveryModels);
-const vendorModelsMock = vi.mocked(fetchVendorModels);
-const limitsMock = vi.mocked(fetchModelLimits);
-const countMock = vi.mocked(countDiscoveryRun);
-const startMock = vi.mocked(startDiscoveryRun);
-const runMock = vi.mocked(fetchDiscoveryRun);
-const runsMock = vi.mocked(fetchDiscoveryRuns);
-const stopMock = vi.mocked(stopDiscoveryRun);
-const candidatesMock = vi.mocked(fetchCandidates);
-const proposalsMock = vi.mocked(fetchRunProposals);
-const applyMock = vi.mocked(applyRunDecisions);
-const proposal = (over: Partial<RunProposal>): RunProposal => ({
-  id: 501,
-  run_id: 7,
-  kind: "semantics",
-  source_table_id: 1,
-  source_column: "customer_id",
-  target_table_id: 2,
-  target_column: "id",
-  cardinality: "many-to-one",
-  confidence: 0.95,
-  scored: null,
-  reasoning: "Each order names its customer",
-  suggested_name: "customer-orders",
-  reason: null,
-  answer: null,
-  decidable: true,
-  reduced_information: false,
-  ...over,
-});
-/** A run's table: a constraint, a suggestion, one the model scored high and Jev low, one
- *  already waiting, one under the threshold, one repeating the constraint, and one that named no two compared columns. */
-const PROPOSALS: RunProposal[] = [
-  proposal({
-    id: 500,
-    kind: "foreign_keys",
-    source_column: "store_id",
-    confidence: 1,
-    reasoning: "Foreign key constraint",
-    suggested_name: "order-store",
-  }),
-  proposal({}),
-  // The model gave it 92% and Jev 31%: a suggestion, the model's score deciding.
-  proposal({
-    id: 504,
-    source_column: "ref",
-    confidence: 0.92,
-    scored: 0.31,
-    suggested_name: "order-ref",
-  }),
-  proposal({
-    id: 502,
-    source_column: "payer_id",
-    confidence: 0.9,
-    reason: "pending",
-    suggested_name: "order-payer",
-  }),
-  proposal({
-    id: 503,
-    source_column: "agent_id",
-    confidence: 0.55,
-    reason: "below_threshold",
-    reasoning: "Perhaps the agent is a customer",
-    suggested_name: "order-agent",
-  }),
-  proposal({
-    id: 505,
-    source_column: "store_id",
-    confidence: 0.9,
-    reason: "matches_foreign_key",
-    decidable: false,
-  }),
-  proposal({
-    id: 506,
-    source_table_id: null,
-    source_column: null,
-    target_table_id: null,
-    target_column: null,
-    cardinality: null,
-    confidence: null,
-    reasoning: null,
-    suggested_name: null,
-    reason: "unknown_column",
-    answer: '{"source_table_id": 1, "target_table_id": 9}',
-    decidable: false,
-  }),
-];
-const acceptBox = (id: number) => screen.getByTestId(`list-select-${id}`) as HTMLInputElement;
-const notAgainBox = (id: number) =>
-  screen.getByTestId(`proposal-not-again-${id}`) as HTMLInputElement;
-const applyButton = () => screen.getByTestId("discover-apply");
-async function endedRun() {
-  runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-  proposalsMock.mockResolvedValue({ proposals: PROPOSALS, threshold: 0.7 });
-  await openDialog();
-  fireEvent.click(runButton());
-  await screen.findByTestId("proposal-501", {}, SLOW);
-}
-
-const discoverButton = () => screen.getByTestId("rels-discover");
-const dialog = () => screen.getByTestId("discover-dialog");
-const fkBox = () => screen.getByTestId("discover-kind-foreign-keys") as HTMLInputElement;
-const semanticsBox = () => screen.getByTestId("discover-kind-semantics") as HTMLInputElement;
-const runButton = () => screen.getByTestId("discover-run");
-const sameBox = () => screen.getByTestId("discover-same-as-source") as HTMLInputElement;
-const SLOW = { timeout: 4000 };
-
-async function openDialog() {
-  render(<RelationshipsPage />);
-  await waitFor(() => expect(runsMock).toHaveBeenCalled());
-  fireEvent.click(discoverButton());
-  await waitFor(() => expect(modelsMock).toHaveBeenCalled());
-  await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
-}
-
-// Pick an option from the one select named: every select's options stay in the document, so an
-// option is looked for in the list its own textbox controls.
-async function pick(selectName: string, optionName: string) {
-  const box = screen.getByRole("textbox", { name: selectName });
-  await userEvent.click(box);
-  const list = await waitFor(() => {
-    const found = document.getElementById(box.getAttribute("aria-controls") ?? "");
-    expect(found).not.toBeNull();
-    return found as HTMLElement;
-  });
-  await userEvent.click(within(list).getByRole("option", { name: optionName, hidden: true }));
-}
-
-const lastScope = () => countMock.mock.calls[countMock.mock.calls.length - 1][0];
-
-beforeEach(() => {
-  // A panel opens as this viewer left it: each test starts with nothing remembered.
-  window.localStorage.clear();
-  modelsMock.mockReset().mockResolvedValue(MODELS);
-  vendorModelsMock
-    .mockReset()
-    .mockImplementation(async (vendor) =>
-      vendor === "openai" ? ["gpt-4.1", "gpt-4.1-mini"] : ["claude-haiku-4-5", "claude-sonnet-4-5"],
-    );
-  limitsMock.mockReset().mockImplementation(async (vendor, model) => ({
-    vendor,
-    model,
-    input_tokens: 1047576,
-    output_tokens: 32768,
-    source: "known",
-  }));
-  countMock.mockReset().mockResolvedValue(COUNT);
-  startMock.mockReset().mockResolvedValue(runOf({}));
-  runMock.mockReset().mockResolvedValue(runOf({}));
-  runsMock.mockReset().mockResolvedValue([]);
-  stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
-  candidatesMock.mockReset().mockResolvedValue([]);
-  proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7 });
-  applyMock.mockReset().mockResolvedValue([]);
-});
+beforeEach(resetDiscoveryMocks);
 
 describe("Discovery dialog: the run's scope", () => {
   it("opens with both kinds ticked, the ticked domains as source, and runs nothing yet", async () => {
@@ -944,108 +675,5 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     expect(result).toHaveTextContent("Model: anthropic:claude-haiku-4-5");
     expect(result).toHaveTextContent("Source: 2 tables of shop.");
     expect(result).toHaveTextContent("Target: the same as the source.");
-  });
-});
-
-const LAST: DiscoveryScope = {
-  kinds: ["semantics"],
-  source_domains: ["crm"],
-  source_tables: [3],
-  target_same_as_source: false,
-  target_domains: ["shop"],
-  target_tables: [2],
-  vendor: "openai",
-  model: "gpt-4.1-mini",
-};
-
-describe("Discovery dialog: a run starts from the fields of the one before", () => {
-  it("New run opens the form with the ended run's fields, not the defaults", async () => {
-    runMock.mockResolvedValue(runOf({ status: "done", scope: LAST, report: REPORT }));
-    startMock.mockResolvedValue(runOf({ scope: LAST }));
-    await openDialog();
-    fireEvent.click(runButton());
-    fireEvent.click(await screen.findByTestId("discover-new-run", {}, SLOW));
-    await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
-    expect(screen.getByTestId("discover-from-last-run")).toHaveTextContent(
-      "These are the fields of your last run.",
-    );
-    expect(fkBox().checked).toBe(false);
-    expect(semanticsBox().checked).toBe(true);
-    expect(sameBox().checked).toBe(false);
-    await waitFor(() => expect(lastScope()).toEqual(LAST), SLOW);
-    expect(screen.queryByTestId("discover-restore-notes")).toBeNull();
-  });
-
-  it("opening the dialog starts from the latest run the signed-in person started", async () => {
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
-    );
-    await openDialog();
-    expect(runsMock).toHaveBeenCalledWith(1, true);
-    expect(fkBox().checked).toBe(false);
-    expect(sameBox().checked).toBe(false);
-    await waitFor(() => expect(lastScope()).toEqual(LAST), SLOW);
-  });
-
-  it("starts from the defaults when the person has run none", async () => {
-    await openDialog();
-    expect(screen.queryByTestId("discover-from-last-run")).toBeNull();
-    expect(screen.queryByTestId("discover-reset-defaults")).toBeNull();
-    expect(fkBox().checked).toBe(true);
-    await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
-  });
-
-  it("leaves out what no longer holds, says which, and keeps the rest", async () => {
-    const stale: DiscoveryScope = {
-      ...LAST,
-      source_domains: ["crm", "legacy"],
-      source_tables: [3, 99],
-      target_tables: [2, 98],
-      vendor: "mistral",
-      model: "mistral-large",
-    };
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: stale })] : [],
-    );
-    await openDialog();
-    const notes = await screen.findByTestId("discover-restore-notes");
-    expect(notes).toHaveTextContent("Left out of them, because it no longer holds:");
-    expect(notes).toHaveTextContent("The domain legacy is no longer available.");
-    expect(notes).toHaveTextContent("2 tables are no longer registered there.");
-    expect(notes).toHaveTextContent("mistral has no key, so the model is the assigned one.");
-    // The rest is kept: the kinds, the domains and tables still there, and the target set.
-    await waitFor(() => expect(lastScope()).toEqual({ ...LAST, vendor: null, model: null }), SLOW);
-  });
-
-  it("leaves out a model its vendor no longer lists", async () => {
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: { ...LAST, model: "gpt-3" } })] : [],
-    );
-    await openDialog();
-    expect(await screen.findByTestId("discover-restore-notes")).toHaveTextContent(
-      "openai no longer lists gpt-3, so the model is the assigned one.",
-    );
-    await waitFor(() => expect(lastScope()).toEqual({ ...LAST, vendor: null, model: null }), SLOW);
-  });
-
-  it("Reset to defaults sets the form up as a first run", async () => {
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
-    );
-    await openDialog();
-    expect(fkBox().checked).toBe(false);
-    fireEvent.click(screen.getByTestId("discover-reset-defaults"));
-    await waitFor(() => expect(fkBox().checked).toBe(true));
-    expect(sameBox().checked).toBe(true);
-    expect(screen.queryByTestId("discover-from-last-run")).toBeNull();
-    await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
-  });
-
-  it("New run sets up another run after one has ended", async () => {
-    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-    await openDialog();
-    fireEvent.click(runButton());
-    fireEvent.click(await screen.findByTestId("discover-new-run", {}, SLOW));
-    expect(await screen.findByTestId("discover-run")).toBeInTheDocument();
   });
 });

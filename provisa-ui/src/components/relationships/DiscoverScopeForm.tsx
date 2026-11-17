@@ -17,8 +17,9 @@
 //
 // A run after the first starts from the fields of the one before (`initial`): its kinds, model and
 // sets. A value that no longer holds (a domain or table no longer offered, a vendor with no key, a
-// model its vendor no longer lists) is left out and said; the rest is kept. "Reset to defaults"
-// sets the form up as a first run.
+// model its vendor no longer lists) is left out and said; the rest is kept. Tables registered since
+// that run in domains outside the source are named, with one action adding their domains to the
+// source (and to a target of its own). "Reset to defaults" sets the form up as a first run.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,7 +38,7 @@ import { isInternalDomain } from "../../lib/internalDomains";
 import { MultiSelect, type MultiSelectOption } from "../MultiSelect";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { DiscoverModelField } from "./DiscoverModelField";
-import { restoreSets, type RestoreNote } from "./restoreScope";
+import { registeredSince, restoreSets, type LastRun, type RestoreNote } from "./restoreScope";
 import { typeGroupLabel } from "./discoveryResult";
 
 /** A registered table, as the scope offers it. */
@@ -45,6 +46,8 @@ export interface ScopeTable {
   id: number;
   domainId: string;
   tableName: string;
+  /** When it was registered (ISO 8601); null only for a draft not yet registered. */
+  registeredAt: string | null;
 }
 
 /** How long the scope stays unchanged before its requests are counted. */
@@ -79,8 +82,8 @@ export function DiscoverScopeForm({
   tables: ScopeTable[];
   /** The domains ticked in the Domains picker. */
   defaultDomains: string[];
-  /** The fields of the run before, which this one starts from; null: the defaults. */
-  initial: DiscoveryScope | null;
+  /** The run before, whose fields this one starts from; null: the defaults. */
+  initial: LastRun | null;
   /** Set the form up from the defaults. */
   onReset: () => void;
   onCancel: () => void;
@@ -91,10 +94,10 @@ export function DiscoverScopeForm({
   const [models, setModels] = useState<DiscoveryModels | null>(null);
   const [modelsError, setModelsError] = useState("");
   const [foreignKeys, setForeignKeys] = useState(
-    initial === null || initial.kinds.includes("foreign_keys"),
+    initial === null || initial.scope.kinds.includes("foreign_keys"),
   );
   const [semantics, setSemantics] = useState(
-    initial === null || initial.kinds.includes("semantics"),
+    initial === null || initial.scope.kinds.includes("semantics"),
   );
   const [vendor, setVendor] = useState("");
   const [model, setModel] = useState("");
@@ -140,8 +143,8 @@ export function DiscoverScopeForm({
         };
         // The run before named a model for itself (null: it ran the assigned one).
         const asked =
-          initial !== null && initial.vendor !== null && initial.model !== null
-            ? { vendor: initial.vendor, model: initial.model }
+          initial !== null && initial.scope.vendor !== null && initial.scope.model !== null
+            ? { vendor: initial.scope.vendor, model: initial.scope.model }
             : null;
         if (asked === null || !m.semantics_available) {
           assigned();
@@ -259,6 +262,39 @@ export function DiscoverScopeForm({
     );
   };
 
+  // Tables registered since the run before, in domains the source leaves out.
+  const newOutside =
+    initial === null
+      ? []
+      : tables.filter(
+          (tb) =>
+            domains.includes(tb.domainId) &&
+            !effective(sourceDomains).includes(tb.domainId) &&
+            registeredSince(tb, initial.startedAt),
+        );
+  const newDomains = [...new Set(newOutside.map((tb) => tb.domainId))].sort((a, b) =>
+    a.localeCompare(b),
+  );
+  // Their domains join the source, and a target of its own; a table list set by hand takes every
+  // table of them, since the list is what the run reads.
+  const addNew = () => {
+    const theirTables = tables
+      .filter((tb) => newDomains.includes(tb.domainId))
+      .map((tb) => String(tb.id));
+    const widen = (chosenDomains: string[], chosenTables: string[]) => ({
+      domains: [...chosenDomains, ...newDomains.filter((d) => !chosenDomains.includes(d))],
+      tables: chosenTables.length > 0 ? [...chosenTables, ...theirTables] : chosenTables,
+    });
+    const source = widen(sourceDomains, sourceTables);
+    setSourceDomains(source.domains);
+    setSourceTables(source.tables);
+    if (!sameAsSource && targetDomains.length > 0) {
+      const target = widen(targetDomains, targetTables);
+      setTargetDomains(target.domains);
+      setTargetTables(target.tables);
+    }
+  };
+
   const run = async () => {
     if (scope === null) return;
     setStarting(true);
@@ -298,6 +334,25 @@ export function DiscoverScopeForm({
             style={{ flexShrink: 0 }}
           >
             {t("discoverDialog.restore.reset")}
+          </Button>
+        </Group>
+      )}
+      {newOutside.length > 0 && (
+        <Group justify="space-between" align="center" mb="md" wrap="nowrap">
+          <Text fz="sm" data-testid="discover-new-tables">
+            {t("discoverDialog.restore.newTables", {
+              count: newOutside.length,
+              domains: newDomains.map((d) => d || t("discoverDialog.noDomain")).join(", "),
+            })}
+          </Text>
+          <Button
+            variant="default"
+            size="xs"
+            onClick={addNew}
+            data-testid="discover-add-new-tables"
+            style={{ flexShrink: 0 }}
+          >
+            {t("discoverDialog.restore.addNewTables")}
           </Button>
         </Group>
       )}

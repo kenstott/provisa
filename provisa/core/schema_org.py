@@ -318,6 +318,9 @@ registered_tables = Table(
     Column("class_term_derived", Boolean, nullable=False, server_default=false()),
     Column("materialize", Boolean, nullable=False, server_default=false()),
     Column("row_materialize", Boolean, nullable=False, server_default=false()),  # REQ-1865
+    # REQ-413: when the table was registered; a discovery form names the tables registered since
+    # the run it starts from. An upsert by identity keeps it.
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Column(
         "file_glob", Text
     ),  # REQ-788: one logical table over a glob of files; NULL = single file
