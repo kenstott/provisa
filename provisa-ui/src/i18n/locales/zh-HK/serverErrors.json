@@ -153,6 +153,7 @@
       "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。",
       "source_unavailable": "來源 {{source}} 無法回應。請稍後再試。",
       "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。",
+      "view_awaits_rule_rebuild": "由於其輸入的行規則有變更，檢視 {{view}} 正在重新建置。該建置發佈後，此角色即可讀取。",
       "graphql_body_missing": "請求沒有正文:GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_body_not_json": "請求正文不是 JSON:{{error}}",
       "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
@@ -201,7 +202,8 @@
       "empty_answer": "模型未傳回任何文字。"
     },
     "environments": {
-      "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"
+      "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。",
+      "owner_not_member": "{{user}} 建立了環境 {{env}}，但不是 {{org}} 的成員；以擁有者身分在其中操作需要成員資格。"
     },
     "front_door": {
       "coordinator_waking": "環境正在啟動，大約五分鐘後就緒。",
@@ -324,6 +326,13 @@
       "catalog_view_refused": "{{view}} 是 meta 網域的目錄檢視,不能與數據來源的表在同一條陳述式中讀取:請用兩條陳述式分別讀取。",
       "function_unsupported": "{{function}}() 在 {{dialect}} 上沒有對應形式。"
     },
+    "redaction": {
+      "rule_invalid": "遮蔽規則 {{rule}}：{{why}}",
+      "pattern_backtracks": "遮蔽規則 {{rule}}：此模式可能導致災難性回溯（無界重複中巢狀的重複，或其中可能以相同文字開頭的分支）。請改寫為不含此結構的形式。",
+      "pattern_unsupported": "遮蔽規則 {{rule}}：機構的規則不能使用反向參照、前瞻或後顧斷言、原子組、佔有型重複或條件組。",
+      "pattern_too_large": "遮蔽規則 {{rule}}：展開重複後模式過大。請使用較少的重複次數。",
+      "server_reference": "遮蔽規則 {{rule}}：此伺服器上的機構不能參照伺服器的環境。請使用機構自己保管庫中的 ${secret:NAME}。"
+    },
     "replication": {
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",
@@ -344,7 +353,9 @@
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
       "description_missing": "角色 '{{role}}' 需要說明其用途",
-      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它"
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它",
+      "platform_right_requires_platform_admin": "包含 {{rights}} 的角色由平台管理員定義",
+      "rights_not_held": "角色 {{role}} 包含 {{rights}}，而您不持有這些權限"
     },
     "schema": {
       "allowed_domains_updated": "已更新數據來源「{{source}}」的允許領域",
@@ -729,6 +740,10 @@
     "dbt_sources": {
       "unknown_role": "沒有名為 {{role}} 的角色。"
     },
+    "debug_logs": {
+      "pattern_refused": "日誌篩選模式被拒絕：{{why}}",
+      "pattern_exceeded": "日誌篩選模式被拒絕：在一行 {{length}} 個字元的日誌上超出了其步數上限（{{steps}} 步）。"
+    },
     "dbt": {
       "products": {
         "none_offered": "數據來源 {{source_id}} 沒有強制執行契約的公開模型。",
@@ -887,6 +902,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
       "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} 位於上傳的項目之外；項目只讀取自身的檔案。",
+      "filter_value_refused": "{{value}} 不能作為權限篩選器中的值：值是字串、數字、true、false、null、它們的列表或工作階段變數。",
+      "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
     }
   }
 }

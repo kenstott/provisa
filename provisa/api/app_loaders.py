@@ -1744,9 +1744,11 @@ async def read_tracked_commands(  # REQ-042, REQ-2222
         for r in wh_rows
     ]
     # REQ-2168: no two commands bound to one name in a language, none shadowing a built-in.
+    from provisa.api.mcp.tool_groups import check_command_names
     from provisa.core.command_bindings import check_names
 
     check_names([*tracked_functions, *tracked_webhooks])
+    check_command_names([*tracked_functions, *tracked_webhooks])  # REQ-2246
     return TrackedCommands(
         tracked_functions, tracked_webhooks, column_transforms, not_defined, undefined
     )

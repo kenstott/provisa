@@ -32,6 +32,7 @@ import pytest
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
 from provisa.discovery.direction import Proposal
 from provisa.discovery.runner import MIN_CONFIDENCE, Tally, execute, read_items
+from provisa.discovery.runner import kept as judged
 from provisa.discovery.windows import Request, plan
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
@@ -100,10 +101,20 @@ def _candidate_json(
     }
 
 
-def _read(items: list, tables: list[TableFacts] | None = None) -> tuple[list[Proposal], Tally]:
+async def _not_measured(found: list[Proposal]) -> list[Proposal]:
+    """No values to measure here: each proposal keeps the model's confidence, as one whose values
+    were not compared does (REQ-413). The measure itself: test_discovery_pair_measure."""
+    return found
+
+
+async def _read(
+    items: list, tables: list[TableFacts] | None = None
+) -> tuple[list[Proposal], Tally]:
+    """The proposals an answer's elements make, judged as the run judges them (measured, then
+    held to the threshold)."""
     _, request = _request(tables)
     tally = Tally(total=1)
-    return read_items(request, items, tally), tally
+    return await judged(*read_items(request, items, tally), _not_measured, tally), tally
 
 
 class _Watcher:
@@ -120,7 +131,9 @@ async def _direct(fn, *args):
 
 async def _run(ask) -> tuple[Tally, list[Proposal]]:
     k, request = _request()
-    return await execute([request], k, 4_096, ask, _Watcher(), to_thread=_direct)
+    return await execute(
+        [request], k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -132,9 +145,9 @@ class TestFKSuggestionRequestResponseShape:
     """A run reads each element of the model's answer into a proposal with the correct field
     types."""
 
-    def test_response_fields_are_correct_types(self):
+    async def test_response_fields_are_correct_types(self):
         """Each proposal must have correctly typed fields."""
-        kept, _ = _read([_candidate_json(confidence=0.85)])
+        kept, _ = await _read([_candidate_json(confidence=0.85)])
 
         assert len(kept) == 1
         p = kept[0]
@@ -147,7 +160,7 @@ class TestFKSuggestionRequestResponseShape:
         assert isinstance(p.confidence, float)
         assert isinstance(p.reasoning, str)
 
-    def test_response_field_values_match_llm_output(self):
+    async def test_response_field_values_match_llm_output(self):
         """All proposal fields must map to their LLM response counterparts."""
         raw = _candidate_json(
             src_table=1,
@@ -158,7 +171,7 @@ class TestFKSuggestionRequestResponseShape:
             confidence=0.92,
             reasoning="Name pattern match",
         )
-        (p,), _ = _read([raw])
+        (p,), _ = await _read([raw])
 
         assert p.edge == (1, "customer_id", 2, "id")
         assert p.written == ((1, "customer_id"), (2, "id"))
@@ -177,20 +190,20 @@ class TestConfidenceThresholdBoundary:
     def test_the_threshold_is_0_7(self):
         assert MIN_CONFIDENCE == 0.7
 
-    def test_exactly_at_threshold_is_included(self):
+    async def test_exactly_at_threshold_is_included(self):
         """confidence == the threshold is kept (inclusive lower bound)."""
-        kept, _ = _read([_candidate_json(confidence=0.7)])
+        kept, _ = await _read([_candidate_json(confidence=0.7)])
         assert len(kept) == 1
         assert kept[0].confidence == pytest.approx(0.7)
 
-    def test_just_below_threshold_is_excluded(self):
+    async def test_just_below_threshold_is_excluded(self):
         """confidence < the threshold is left out as below_threshold."""
-        kept, tally = _read([_candidate_json(confidence=0.699)])
+        kept, tally = await _read([_candidate_json(confidence=0.699)])
         assert kept == []
         assert tally.below_threshold == 1
         assert [r.left_out for r in tally.left_out] == ["below_threshold"]
 
-    def test_mixed_confidence_returns_only_passing(self):
+    async def test_mixed_confidence_returns_only_passing(self):
         """Three proposals: two pass, one does not."""
         tables = [
             _make_table(1, "orders", ["id", "customer_id", "product_id"]),
@@ -210,7 +223,7 @@ class TestConfidenceThresholdBoundary:
                 "reasoning": "reverse side",
             },
         ]
-        kept, _ = _read(payload, tables)
+        kept, _ = await _read(payload, tables)
         assert len(kept) == 2
         confidences = {p.confidence for p in kept}
         assert 0.5 not in confidences
@@ -261,39 +274,39 @@ class TestLLMUnavailableError:
 class TestCandidateValidation:
     """read_items leaves out an element that names no two compared columns of its request."""
 
-    def test_invalid_cardinality_filtered(self):
+    async def test_invalid_cardinality_filtered(self):
         """Only 'many-to-one' and 'one-to-many' are valid cardinalities."""
-        kept, tally = _read([_candidate_json(cardinality="many-to-many")])
+        kept, tally = await _read([_candidate_json(cardinality="many-to-many")])
         assert kept == []
         assert [r.left_out for r in tally.left_out] == ["invalid_shape"]
 
-    def test_missing_required_key_filtered(self):
+    async def test_missing_required_key_filtered(self):
         """An element missing 'cardinality' is left out."""
         raw = _candidate_json()
         del raw["cardinality"]
-        kept, tally = _read([raw])
+        kept, tally = await _read([raw])
         assert kept == []
         assert [r.left_out for r in tally.left_out] == ["invalid_shape"]
 
-    def test_source_table_not_in_input_filtered(self):
+    async def test_source_table_not_in_input_filtered(self):
         """Reference to an unknown source_table_id is left out."""
-        kept, tally = _read([_candidate_json(src_table=99)])
+        kept, tally = await _read([_candidate_json(src_table=99)])
         assert kept == []
         assert [r.left_out for r in tally.left_out] == ["unknown_column"]
 
-    def test_target_table_not_in_input_filtered(self):
+    async def test_target_table_not_in_input_filtered(self):
         """Reference to an unknown target_table_id is left out."""
-        kept, tally = _read([_candidate_json(tgt_table=99)])
+        kept, tally = await _read([_candidate_json(tgt_table=99)])
         assert kept == []
         assert [r.left_out for r in tally.left_out] == ["unknown_column"]
 
-    def test_unknown_column_filtered(self):
+    async def test_unknown_column_filtered(self):
         """Reference to a column its table does not have is left out."""
-        kept, tally = _read([_candidate_json(src_col="nonexistent_col")])
+        kept, tally = await _read([_candidate_json(src_col="nonexistent_col")])
         assert kept == []
         assert [r.left_out for r in tally.left_out] == ["unknown_column"]
 
-    def test_valid_candidate_passes_validation(self):
+    async def test_valid_candidate_passes_validation(self):
         """A well-formed element naming known tables and columns is kept."""
         raw = _candidate_json(
             src_table=1,
@@ -302,11 +315,11 @@ class TestCandidateValidation:
             tgt_col="id",
             cardinality="many-to-one",
         )
-        kept, tally = _read([raw])
+        kept, tally = await _read([raw])
         assert [p.edge for p in kept] == [(1, "customer_id", 2, "id")]
         assert tally.left_out == []
 
-    def test_one_to_many_cardinality_passes_validation(self):
+    async def test_one_to_many_cardinality_passes_validation(self):
         """one-to-many is a valid cardinality value, read the other way round."""
         tables = [
             _make_table(1, "customers", ["id"]),
@@ -321,7 +334,7 @@ class TestCandidateValidation:
             "confidence": 0.9,
             "reasoning": "PK to FK",
         }
-        kept, _ = _read([raw], tables)
+        kept, _ = await _read([raw], tables)
         assert [p.edge for p in kept] == [(2, "customer_id", 1, "id")]
 
 

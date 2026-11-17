@@ -342,6 +342,8 @@ def trail(monkeypatch) -> list[dict]:
             rows.append(dict(stmt.compile().params))
 
     class Db:
+        model = None
+
         @asynccontextmanager
         async def acquire(self):
             yield Conn()

@@ -35,9 +35,12 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable, Sequence
 from dataclasses import dataclass, field, replace
-from typing import Literal
+from typing import TYPE_CHECKING, Literal
 
 from provisa.discovery.columns import TableFacts
+
+if TYPE_CHECKING:
+    from provisa.discovery.measure import Measure
 
 Kind = Literal["foreign_keys", "semantics"]
 ColumnRef = tuple[int, str]  # (table id, column name)
@@ -68,8 +71,24 @@ class Proposal:
     confidence: float
     reasoning: str
     suggested_name: str = ""
-    #: The confidence a second scorer gave it (REQ-1789): shown beside the model's, which decides.
+    #: The confidence a second scorer gave it (REQ-1789): shown beside the model's.
     scored: float | None = None
+    #: Its values measured against each other (:mod:`provisa.discovery.measure`), and the score
+    #: that gives it; None where no values were compared, and the model's confidence stands.
+    measure: Measure | None = None
+    score: float | None = None
+
+    @property
+    def rank(self) -> float:
+        """The score it is judged by: the measure's where values were compared, else the
+        model's confidence."""
+        return self.confidence if self.score is None else self.score
+
+    @property
+    def cardinality(self) -> str:
+        """The measure's cardinality where it says one, else many-to-one as it was proposed."""
+        measured = None if self.measure is None else self.measure.cardinality()
+        return measured or "many-to-one"
 
     @property
     def edge(self) -> Edge:
@@ -108,6 +127,10 @@ class Removed:
     out_of_scope: int = 0
     #: Proposals of a pair of columns another proposal of that pair was kept for.
     weaker: int = 0
+    #: Proposals whose measure found neither column's values distinct: no relationship starts at
+    #: one and ends at the other's key, so none is a suggestion (a semantic one is scored under
+    #: the threshold by the measure; a foreign key constraint is not scored out).
+    many_to_many: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return dict(self.__dict__)
@@ -203,7 +226,7 @@ async def decide(
 
     best: dict[ColumnRef, float] = {}
     for p in proposals:
-        best[p.start] = max(best.get(p.start, 0.0), p.confidence)
+        best[p.start] = max(best.get(p.start, 0.0), p.rank)
     if best.get(a, 0.0) != best.get(b, 0.0):
         return Decision(a if best.get(a, 0.0) > best.get(b, 0.0) else b, "confidence")
 
@@ -251,14 +274,22 @@ def _marked(p: Proposal, tables: dict[int, TableFacts]) -> Proposal:
     return replace(p, reasoning=f"{p.reasoning}; {note}" if p.reasoning else note)
 
 
+def turned(p: Proposal) -> Proposal:
+    """``p`` read the other way round: its measure turned with it, and scored that way."""
+    if p.measure is None:
+        return replace(p, start=p.end, end=p.start)
+    measure = p.measure.turned()
+    return replace(p, start=p.end, end=p.start, measure=measure, score=measure.score())
+
+
 def _kept(proposals: Sequence[Proposal], decision: Decision) -> tuple[Proposal, Proposal]:
     """The proposal kept for a decided pair, and how it is shown: the most confident one in the
     decided direction, or the most confident one turned that way; the decision's evidence joins
     its reasoning."""
-    ranked = sorted(proposals, key=lambda p: (p.kind != "foreign_keys", -p.confidence))
+    ranked = sorted(proposals, key=lambda p: (p.kind != "foreign_keys", -p.rank))
     same = [p for p in ranked if p.start == decision.start]
     chosen = same[0] if same else ranked[0]
-    shown = chosen if same else replace(chosen, start=chosen.end, end=chosen.start)
+    shown = chosen if same else turned(chosen)
     if decision.evidence:
         reasoning = (
             f"{shown.reasoning}; {decision.evidence}" if shown.reasoning else decision.evidence
@@ -329,7 +360,7 @@ async def settle(
     kept: list[Proposal] = []
     for group in by_pair.values():
         if not _needs_decision(group):
-            chosen = max(group, key=lambda p: p.confidence)
+            chosen = max(group, key=lambda p: p.rank)
             kept.append(chosen)
         else:
             decision = await decide(group, tables, known, read_sample)
@@ -357,6 +388,8 @@ async def settle(
             leave_out(p, "pending")
         elif p.edge in known.rejected:
             leave_out(p, "rejected")
+        elif p.cardinality == "many-to-many":
+            leave_out(p, "many_to_many")
         else:
             shown.append(_marked(p, tables))
     return Outcome(shown, removed, decided_by, left_out)

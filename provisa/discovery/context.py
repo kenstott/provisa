@@ -178,6 +178,32 @@ RUBRIC = (
 )
 
 
+#: The measured score (REQ-413), the rule a proposed pair is scored by once its values are measured
+#: (:mod:`provisa.discovery.measure`); the model's confidence is kept beside it.
+#: ``contained`` is the share of the source column's distinct values found in the target column,
+#: ``back`` the reverse.
+#: - The target's values are distinct (a key): a source contained in it (CONTAINED_AT or more of
+#:   its values found) is a key relationship and scores KEY_SCORE, whatever the model rated it;
+#:   one less contained scores KEY_SCORE times ``contained``, each value with no row to refer to
+#:   taking its share off.
+#: - Neither side is a key: the columns share values and no relationship starts at one and ends
+#:   at the other's key; the pair scores SHARED_CEILING times the larger of the two shares, so it
+#:   never reaches the threshold a suggestion is kept at.
+#: So a pair whose values barely meet scores low however alike its names are. A pair whose values
+#: could not be compared (a side not read, or none read of the source) keeps the model's
+#: confidence, and says why.
+CONTAINED_AT = 0.95
+KEY_SCORE = 0.95
+SHARED_CEILING = 0.6
+
+
+def measured_score(contained: float, back: float, target_distinct: bool) -> float:
+    """A measured pair's score, by the rule above."""
+    if target_distinct:
+        return KEY_SCORE if contained >= CONTAINED_AT else round(KEY_SCORE * contained, 4)
+    return round(SHARED_CEILING * max(contained, back), 4)
+
+
 def instructions(
     group: str, at_most: int, *, either_direction: bool, not_read: bool = False
 ) -> str:

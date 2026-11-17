@@ -33,6 +33,7 @@ from provisa.ddn.models import (
     DDNTypeMapping,
     DDNTypePermission,
 )
+from provisa.import_shared.refused import confined_to_project
 from provisa.import_shared.warnings import WarningCollector
 
 _SKIP_KINDS = {"OrderByExpression"}
@@ -446,7 +447,8 @@ def parse_hml_dir(
         if subgraph != "globals":
             metadata.subgraphs.add(subgraph)
 
-        docs = _load_yaml_docs(fpath)
+        # rglob lists symbolic links too: each file is read at its real path, inside the project.
+        docs = _load_yaml_docs(confined_to_project(fpath, root, fpath.relative_to(root).as_posix()))
         for doc in docs:
             kind = doc.get("kind", "")
             _dispatch_doc(doc, kind, subgraph, fpath, metadata, collector)

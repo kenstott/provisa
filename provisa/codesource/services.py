@@ -378,6 +378,7 @@ async def _audit(grant: ServiceGrant, name: str, outcome: str) -> None:
 
     await record_admin_action(
         await _org_model_db(grant.org_id),
+        org_id=grant.org_id,
         action=SECRET_READ,
         actor_id=f"source:{grant.source_id}",
         subject_id=name,

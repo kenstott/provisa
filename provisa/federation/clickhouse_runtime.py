@@ -50,6 +50,7 @@ from urllib.parse import unquote, urlparse
 
 from provisa.core import request_deadline
 from provisa.core.session_time_zone import clickhouse_spelling, told_as
+from provisa.federation.clickhouse_quoting import bind_table, ch_ident, ch_lit
 from provisa.federation.land_guard import LandGuard
 from provisa.executor.drivers.clickhouse import result_names
 from provisa.executor.result import QueryResult, ResultStream
@@ -375,13 +376,13 @@ class _NativeBackend:
         # column as the Python values the driver's column types take.
         from provisa.federation.clickhouse_store import native_column
 
-        names = ", ".join(f'"{name}"' for name, _ in columns)
+        names = ", ".join(ch_ident(name) for name, _ in columns)
         data = [
             native_column(batch.column(i).to_pylist(), ir_type)
             for i, (_, ir_type) in enumerate(columns)
         ]
         self._client.execute(
-            f'INSERT INTO "{database}"."{table}" ({names}) VALUES', data, columnar=True
+            f"INSERT INTO {ch_ident(database, table)} ({names}) VALUES", data, columnar=True
         )
 
     def close(self) -> None:
@@ -481,10 +482,10 @@ class _EmbeddedBackend:
         import pyarrow as pa
 
         _replica_batch = pa.Table.from_batches([batch])
-        names = ", ".join(f'"{name}"' for name, _ in columns)
+        names = ", ".join(ch_ident(name) for name, _ in columns)
         with _engine_text():
             self._session.query(
-                f'INSERT INTO "{database}"."{table}" ({names}) '
+                f"INSERT INTO {ch_ident(database, table)} ({names}) "
                 f"SELECT {names} FROM Python(_replica_batch)"
             )
         del _replica_batch
@@ -498,7 +499,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         self._backend = backend
         self._engine = build_clickhouse_engine()
         self._staging = "_provisa_attach"  # database holding engine-backed tables before the view
-        self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{self._staging}"')
+        self._backend.command(f"CREATE DATABASE IF NOT EXISTS {ch_ident(self._staging)}")
         # One store connection, so one write on it at a time (two lands interleaving on it was a
         # confirmed regression). A lock serializes it, and each write runs on the thread that asked
         # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
@@ -604,24 +605,24 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         refuse_live_in_write_surface(schema, source.table_name)  # REQ-1912
         entry = self._engine.resolve(source)  # picks the (clickhouse, source_type) connector
         details = entry.details
-        self._backend.command(f'CREATE DATABASE IF NOT EXISTS "{schema}"')
-        phys = f'"{schema}"."{source.table_name}"'
+        self._backend.command(f"CREATE DATABASE IF NOT EXISTS {ch_ident(schema)}")
+        phys = ch_ident(schema, source.table_name)
         if "attach_ddl" in details:  # relational DATABASE engine (postgresql/mysql)
             for stmt in details["attach_ddl"]:
                 self._backend.command(stmt)
-            remote = f'"{details["local_schema"]}"."{source.table_name}"'
+            remote = ch_ident(details["local_schema"], source.table_name)
             self._backend.command(f"CREATE VIEW IF NOT EXISTS {phys} AS SELECT * FROM {remote}")
             return
         # per-table TABLE engine (file S3/URL/File, or MongoDB)
-        clause = details["engine_clause"].replace("{table}", source.table_name)
-        staged = f'"{self._staging}"."{schema}__{source.table_name}"'
+        clause = bind_table(details["engine_clause"], source.table_name)
+        staged = ch_ident(self._staging, f"{schema}__{source.table_name}")
         if details.get("requires_columns"):
             if not columns:
                 raise ValueError(
                     f"source {source.id!r} ({source.type.value}) needs a column list to attach; "
                     "MongoDB's ClickHouse engine cannot infer its schema"
                 )
-            col_ddl = ", ".join(f'"{n}" {t}' for n, t in columns)
+            col_ddl = ", ".join(f"{ch_ident(n)} {t}" for n, t in columns)
             self._backend.command(
                 f"CREATE TABLE IF NOT EXISTS {staged} ({col_ddl}) ENGINE = {clause}"
             )
@@ -633,15 +634,14 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         """Remove the live view of ``source``'s table. Called when the table's reads move to its
         replica (REQ-1912): no query can then read the source through this engine."""
         from provisa.compiler.naming import live_view_schema
-        from provisa.federation.clickhouse_store import _lit
 
         schema = live_view_schema(source.catalog, source.schema_name)
         rows, _ = self._backend.query(
             "SELECT engine FROM system.tables WHERE database = "
-            f"{_lit(schema)} AND name = {_lit(source.table_name)}"
+            f"{ch_lit(schema)} AND name = {ch_lit(source.table_name)}"
         )
         if rows and rows[0][0] == "View":  # only what a live attach created is dropped
-            self._backend.command(f'DROP VIEW "{schema}"."{source.table_name}"')
+            self._backend.command(f"DROP VIEW {ch_ident(schema, source.table_name)}")
 
     def drop_attached(self, prefixes: Iterable[str]) -> list[str]:
         """Drop what this engine keeps for the catalog names starting with any of ``prefixes``
@@ -649,20 +649,19 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         under (``naming.ATTACH_KINDS``), its live-view databases (``live_view_schema``) and its
         staged engine tables. Returns the names dropped."""
         from provisa.compiler.naming import ATTACH_KINDS
-        from provisa.federation.clickhouse_store import _lit
 
         catalogs = tuple(prefixes)
         owned = tuple(f"{kind}_{p}" for kind in ATTACH_KINDS for p in catalogs) + catalogs
         dropped: list[str] = []
         rows, _ = self._backend.query("SELECT name FROM system.databases")
         for name in sorted(r[0] for r in rows if r[0].startswith(owned)):
-            self._backend.command(f'DROP DATABASE IF EXISTS "{name}"')
+            self._backend.command(f"DROP DATABASE IF EXISTS {ch_ident(name)}")
             dropped.append(name)
         rows, _ = self._backend.query(
-            f"SELECT name FROM system.tables WHERE database = {_lit(self._staging)}"
+            f"SELECT name FROM system.tables WHERE database = {ch_lit(self._staging)}"
         )
         for name in sorted(r[0] for r in rows if r[0].startswith(catalogs)):
-            self._backend.command(f'DROP TABLE IF EXISTS "{self._staging}"."{name}"')
+            self._backend.command(f"DROP TABLE IF EXISTS {ch_ident(self._staging, name)}")
             dropped.append(f"{self._staging}.{name}")
         return dropped
 
@@ -693,12 +692,11 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
     async def landed_table_exists(self, *, schema: str, table: str) -> bool:
         """Whether ``schema.table`` (``schema`` is the database) exists, from ClickHouse's own
         listing (``system.tables``). Absent is False; a listing that cannot be read raises."""
-        from provisa.federation.clickhouse_store import _lit
 
         def _run() -> bool:
             rows, _ = self._backend.query(
-                f"SELECT 1 FROM system.tables WHERE database = {_lit(schema)} "
-                f"AND name = {_lit(table)}"
+                f"SELECT 1 FROM system.tables WHERE database = {ch_lit(schema)} "
+                f"AND name = {ch_lit(table)}"
             )
             return bool(rows)
 
@@ -754,7 +752,7 @@ class ClickHouseFederationRuntime:  # REQ-825, REQ-840, REQ-909, REQ-912
         from provisa.compiler.naming import live_view_schema
 
         self.attach_source(source)
-        phys = f'"{live_view_schema(source.catalog, source.schema_name)}"."{source.table_name}"'
+        phys = ch_ident(live_view_schema(source.catalog, source.schema_name), source.table_name)
         rows, _ = self._backend.query(f"DESCRIBE TABLE {phys}")
         # DESCRIBE columns: name, type, default_type, default_expression, ...
         return columns_from_describe(rows)
