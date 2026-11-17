@@ -24,7 +24,7 @@
     "partial": "{{failed}} van {{count}} verzoek is mislukt, dus het resultaat is onvolledig.",
     "partial_other": "{{failed}} van {{count}} verzoeken zijn mislukt, dus het resultaat is onvolledig.",
     "semanticsNoneProposed": "Semantiek: geen. Het model stelde geen relaties voor.",
-    "semanticsBelowThreshold": "Semantiek: geen. Elk voorstel lag onder de betrouwbaarheidsdrempel van {{threshold}}%.",
+    "semanticsBelowThreshold": "Semantiek: geen. Elk voorstel scoorde onder de {{threshold}}% waarop een suggestie wordt bewaard.",
     "semanticsFiltered": "Semantiek: geen. Elk voorstel is weggelaten, om de redenen hieronder.",
     "split": "{{count}} verzoek is gehalveerd en opnieuw gesteld.",
     "split_other": "{{count}} verzoeken zijn gehalveerd en opnieuw gesteld.",
@@ -38,7 +38,7 @@
     "leftOut": "Niet voorgesteld: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "door het model minder dan {{threshold}}% betrouwbaarheid gegeven",
+      "below_threshold": "met een score onder {{threshold}}%",
       "invalid": "noemt geen twee vergeleken kolommen",
       "not_comparable": "tussen kolommen van verschillende klassen",
       "same_column": "van een kolom naar zichzelf",
@@ -49,7 +49,8 @@
       "rejected": "eerder afgewezen",
       "matches_foreign_key": "komt overeen met een refererende sleutel uit deze run",
       "out_of_scope": "buiten de gekozen tabellen",
-      "weaker": "herhaalt een kolompaar waarvoor een sterker voorstel is behouden"
+      "weaker": "herhaalt een kolompaar waarvoor een sterker voorstel is behouden",
+      "many_to_many": "zonder dat een van beide kolommen een sleutel is"
     }
   }
 }
