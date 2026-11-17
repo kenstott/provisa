@@ -453,9 +453,6 @@ async def register_table(
                 model.region = await registration_region(  # REQ-1921
                     _conn, input, is_view=bool(input.view_sql) or input.view_metrics is not None
                 )
-                # REQ-1921: registered through the admin, a table or view starts as draft — out of
-                # service until its domain's owners release it.
-                model.draft = True
                 # REQ-2109: the settings the registration carries, checked as their own mutations
                 # check them; one refused refuses the registration.
                 model = await with_carried_settings(info, _conn, input, model)

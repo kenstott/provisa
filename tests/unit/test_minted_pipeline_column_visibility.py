@@ -109,6 +109,8 @@ def _state(monkeypatch, secret_to: tuple[str, ...]):
         rls_rules=[],
         metrics=[],
         draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     monkeypatch.setattr(st, "tables", tables, raising=False)
     return st

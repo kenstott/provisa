@@ -22,7 +22,6 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
@@ -130,11 +129,7 @@ async def test_bitemporal_view_http_end_to_end(client):
         "{ success message } }",
     )
     assert reg["data"]["registerTable"]["success"], reg
-    # REQ-1921: registered through the admin, the view starts as draft; released, it is built.
-    released = await _admin(
-        client, release_mutation(registered_id(reg["data"]["registerTable"]["message"]))
-    )
-    assert released["data"]["setTableDraft"]["success"], released
+    # REQ-1921: registered, the view is live and built: no step releases it.
 
     # (1) Persistence round-trip: the bitemporal config survives GraphQL -> DB -> read-back.
     tables = await _admin(
@@ -267,10 +262,6 @@ async def test_a_correction_is_read_as_it_was_recorded(client):
         "{ success message } }",
     )
     assert reg["data"]["registerTable"]["success"], reg
-    released = await _admin(
-        client, release_mutation(registered_id(reg["data"]["registerTable"]["message"]))
-    )
-    assert released["data"]["setTableDraft"]["success"], released
     tables = await _admin(client, "query { tables { tableName schemaName } }")
     schema = next(t for t in tables["data"]["tables"] if t["tableName"] == "bt_corrected")[
         "schemaName"

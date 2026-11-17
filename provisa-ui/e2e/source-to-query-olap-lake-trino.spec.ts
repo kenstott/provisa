@@ -60,7 +60,7 @@ import {
   pickSchemaAndTable,
   submitRegister,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   submitSourceAndExpectListed,
   FORM_FIELD,
 } from "./source-to-query-helpers";
@@ -272,7 +272,7 @@ test.describe("source to query through the UI: pinot (REQ-1740)", () => {
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(page, `SELECT count(*) AS cnt FROM pet_store.${registered}`);
@@ -426,7 +426,7 @@ test.describe("source to query through the UI: hive_s3 (REQ-229)", () => {
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(
@@ -543,7 +543,7 @@ test.describe("source to query through the UI: hive (REQ-1763)", () => {
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(
@@ -622,7 +622,7 @@ test.describe("source to query through the UI: druid (REQ-1763)", () => {
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId }, TRINO_BACKEND_URL);
+    await expectRegisteredLive(page, { sourceId }, TRINO_BACKEND_URL);
 
     const registered = await trinoTableName(sourceId);
     const rows = await runSqlOnPage(

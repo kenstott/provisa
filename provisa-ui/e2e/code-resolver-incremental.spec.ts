@@ -190,14 +190,12 @@ test.beforeAll(async () => {
     [STORES, [column("id"), column("region")]],
     [REGIONS, [column("id")]],
   ] as const) {
-    const registered = await mutate(
+    // REQ-1921: registered, the table is live.
+    await mutate(
       `registerTable(input: {sourceId: "${SOURCE}", domainId: "${DOMAIN}", ` +
         `schemaName: "default", tableName: "${table}", cacheTtl: 300, ` +
         `columns: [${columns.join(", ")}]})`,
     );
-    const id = /\(id=(\d+)\)/.exec(registered.message);
-    if (!id) throw new Error(`registerTable named no id: ${registered.message}`);
-    await mutate(`setTableDraft(tableId: ${id[1]}, draft: false)`);
   }
   const command = await fetch(`${BACKEND_URL}/admin/actions/functions`, {
     method: "POST",

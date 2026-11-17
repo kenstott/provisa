@@ -39,7 +39,7 @@ import {
   openSourcesForm,
   pickSchemaAndTable,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   setSourceCacheTtl,
   submitRegisterAndExpectListed,
   submitSourceAndExpectListed,
@@ -124,8 +124,18 @@ function registerJsonSchema(topic: string, properties: Record<string, string>): 
 // ---------------------------------------------------------------------------------------------
 
 const RSS_ITEMS = [
-  { guid: "item-1", title: "First item", link: "https://example.com/1", pubDate: "Mon, 01 Jan 2024 00:00:00 GMT" },
-  { guid: "item-2", title: "Second item", link: "https://example.com/2", pubDate: "Tue, 02 Jan 2024 00:00:00 GMT" },
+  {
+    guid: "item-1",
+    title: "First item",
+    link: "https://example.com/1",
+    pubDate: "Mon, 01 Jan 2024 00:00:00 GMT",
+  },
+  {
+    guid: "item-2",
+    title: "Second item",
+    link: "https://example.com/2",
+    pubDate: "Tue, 02 Jan 2024 00:00:00 GMT",
+  },
 ];
 
 function rssFeedXml(): string {
@@ -458,7 +468,6 @@ test.describe("source to query through the UI — streaming/push types (REQ-1739
       ["ws-2", "world"],
     ]);
   });
-
 });
 
 // ---------------------------------------------------------------------------------------------
@@ -645,7 +654,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       // REQ-1921: registered through the admin, it starts as draft, and a draft table has no
       // dataset (dqDataset stays null until it is released). Release it as soon as it is listed;
       // registration lists it asynchronously, and a release with nothing listed yet is a no-op.
-      await releaseDraftTables(page, { sourceId });
+      await expectRegisteredLive(page, { sourceId });
       const tablesRes = await page.request.post("/admin/graphql", {
         data: { query: "{ tables { sourceId dqDataset } }" },
       });
@@ -782,7 +791,7 @@ test.describe("source to query through the UI: kafka (REQ-1739/REQ-1745/REQ-1766
       // REQ-1921: registered through the admin, it starts as draft, and a draft table has no
       // dataset (dqDataset stays null until it is released). Release it as soon as it is listed;
       // registration lists it asynchronously, and a release with nothing listed yet is a no-op.
-      await releaseDraftTables(page, { sourceId });
+      await expectRegisteredLive(page, { sourceId });
       const tablesRes = await page.request.post("/admin/graphql", {
         data: { query: "{ tables { sourceId dqDataset } }" },
       });

@@ -11,8 +11,7 @@
 // REQ-2234 (EDITORS FIRST): a table that cannot be picked in the Tables field -- it needs input,
 // or its source needs a Cache TTL for each table -- is registered on its own by a Register action
 // beside its option in the picker's list: it is handed over as it will be registered, with discovery's defaults, and opened in
-// the table's detail panel in edit, where what is missing is given; its Save registers it as a
-// draft.
+// the table's detail panel in edit, where what is missing is given; its Save registers it, live.
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
@@ -179,7 +178,7 @@ describe("Register beside a table that cannot be picked in the Tables field", ()
     ]);
   });
 
-  it("opens it in the table's editor, where Save registers it as a draft", async () => {
+  it("opens it in the table's editor, where Save registers it live", async () => {
     const { onContinue } = renderForm();
     await listed();
     await userEvent.click(action("blobs") as HTMLElement);
@@ -187,7 +186,7 @@ describe("Register beside a table that cannot be picked in the Tables field", ()
     const registration = onContinue.mock.calls[0][0];
     // TablesPage's startCreating: the table as it will be registered, in its edit form.
     const draft = draftFromRegistration(registration);
-    expect(draft).toMatchObject({ id: UNREGISTERED_ID, tableName: "blobs", draft: true });
+    expect(draft).toMatchObject({ id: UNREGISTERED_ID, tableName: "blobs" });
     document.body.innerHTML = "";
     render(
       <TableEditForm
@@ -215,10 +214,10 @@ describe("Register beside a table that cannot be picked in the Tables field", ()
     );
     expect(screen.getByTestId("table-edit-table")).toHaveValue("blobs");
     expect(screen.getByTestId("table-edit-save")).toBeInTheDocument();
-    expect(registrationInput(draft, registration, null)).toMatchObject({
-      tableName: "blobs",
-      draft: true,
-    });
+    const input = registrationInput(draft, registration, null);
+    expect(input).toMatchObject({ tableName: "blobs" });
+    // REQ-1921: a registration is live; the input carries no draft setting.
+    expect(input).not.toHaveProperty("draft");
   });
 
   it("says why, and offers Register, on every table when its source needs a Cache TTL for each", async () => {

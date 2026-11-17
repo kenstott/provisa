@@ -8,9 +8,8 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1921: the edit form's Draft checkbox puts a table out of service or releases it, saved on
-// its own (setTableDraft) — and in the order the handover needs: going to draft before a region
-// change, a release after it (a draft table is claimed by its destination alone).
+// REQ-1921: draft is the internal waypoint of a region move, never a person's choice: the edit
+// form offers no Draft control, and a save -- with or without a region change -- carries no draft.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, waitFor, within } from "../../test-utils/render";
@@ -170,10 +169,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -182,7 +177,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 
@@ -222,7 +216,7 @@ async function openEditor(name: string) {
   const row = (await screen.findByText(name)).closest("tr") as HTMLElement;
   await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-  return screen.findByTestId("table-draft-checkbox");
+  return screen.findByTestId("table-edit-save");
 }
 
 async function pickRegion(region: string) {
@@ -250,36 +244,28 @@ describe("TablesPage — draft (REQ-1921)", () => {
     }
   });
 
-  it("shows a table's draft and saves nothing for it when unchanged", async () => {
-    expect(await openEditor("staging")).toBeChecked();
+  it("offers no Draft control, on a draft or a table in service", async () => {
+    await openEditor("staging");
+    expect(screen.queryByTestId("table-draft-checkbox")).not.toBeInTheDocument();
+  });
+
+  it("saves a draft's edit without a draft and without another call", async () => {
+    await openEditor("staging");
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() => expect(updateTable).toHaveBeenCalled());
+    expect(updateTable.mock.calls[0][0]).not.toHaveProperty("draft");
     expect(calls).toEqual([]);
   });
 
-  // REQ-2109: the draft and the region go with the table's own save, in one transaction; the
-  // server judges the move with the table as draft when it is draft before or after the save.
-  it("goes to draft and moves region in the one save", async () => {
-    await userEvent.click(await openEditor("orders"));
+  // REQ-2109: the region goes with the table's own save, in one transaction.
+  it("moves region in the one save, carrying no draft", async () => {
+    await openEditor("orders");
     await pickRegion("us");
     await userEvent.click(screen.getByTestId("table-edit-save"));
     await waitFor(() =>
-      expect(updateTable).toHaveBeenCalledWith(
-        expect.objectContaining({ draft: true, region: "us" }),
-      ),
+      expect(updateTable).toHaveBeenCalledWith(expect.objectContaining({ region: "us" })),
     );
-    expect(calls).toEqual([]);
-  });
-
-  it("moves and is released in the one save", async () => {
-    await userEvent.click(await openEditor("staging"));
-    await pickRegion("us");
-    await userEvent.click(screen.getByTestId("table-edit-save"));
-    await waitFor(() =>
-      expect(updateTable).toHaveBeenCalledWith(
-        expect.objectContaining({ draft: false, region: "us" }),
-      ),
-    );
+    expect(updateTable.mock.calls[0][0]).not.toHaveProperty("draft");
     expect(calls).toEqual([]);
   });
 });

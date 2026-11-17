@@ -45,9 +45,27 @@ def _outside_sql_catalog() -> str:
     return f"NOT (domain_id = '{META_DOMAIN_ID}' AND table_name IN ({names}))"
 
 
+#: REQ-1921: a row of ``registered_tables`` that is withdrawn: itself, or through its source.
+WITHDRAWN_SOURCE = "source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)"
+WITHDRAWN_TABLE = f"(withdrawn OR {WITHDRAWN_SOURCE})"
+
 #: REQ-2248: a relationship ``r`` that is served: neither it nor a table it joins is retired.
+#: REQ-1921: nor withdrawn -- a relationship is withdrawn while either end (or its junction) is,
+#: derived here and stored nowhere.
 _TRAVERSABLE = (
+    "NOT r.retired AND NOT EXISTS (SELECT 1 FROM registered_tables x WHERE "
+    "(x.retired OR x.withdrawn OR x.source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)) "
+    "AND x.id IN (r.source_table_id, r.target_table_id, r.via_table_id))"
+)
+
+
+#: REQ-1921: a relationship ``r`` withdrawn and nothing more: neither it nor an end is retired,
+#: and an end (or its junction) is withdrawn, itself or through its source.
+_WITHDRAWN_EDGE = (
     "NOT r.retired AND NOT EXISTS (SELECT 1 FROM registered_tables x WHERE x.retired "
+    "AND x.id IN (r.source_table_id, r.target_table_id, r.via_table_id)) "
+    "AND EXISTS (SELECT 1 FROM registered_tables x WHERE "
+    "(x.withdrawn OR x.source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)) "
     "AND x.id IN (r.source_table_id, r.target_table_id, r.via_table_id))"
 )
 
@@ -80,18 +98,28 @@ def _joined_columns(rel: dict) -> set[tuple[int, str]]:
 
 
 async def fetch_tables(  # REQ-155, REQ-393, REQ-399
-    conn: "Connection", *, draft: bool = False, catalog: bool = True
+    conn: "Connection", *, draft: bool = False, withdrawn: bool = False, catalog: bool = True
 ) -> list[dict]:
     """Fetch registered tables with columns — the data plane's: those in service. ``draft``
-    True fetches the ones out of service instead (REQ-1921), which no schema offers and no
-    statement reads: fetched to be refused by name, for their steward's preview
-    (admin/table_read.py) and for the replica such a preview lands. ``catalog`` False leaves out
-    a SQL catalog's views, for a reader of the tables that hold data."""
+    True fetches the ones at a region move's waypoint instead (REQ-1921), which no schema offers
+    and no statement reads: fetched to be refused by name, for their steward's preview
+    (admin/table_read.py) and for the replica such a preview lands. ``withdrawn`` True fetches
+    the withdrawn ones (REQ-1921: the table, or its source, taken out of production), which serve
+    no role and keep no replica: fetched only for their steward's preview. ``catalog`` False
+    leaves out a SQL catalog's views, for a reader of the tables that hold data."""
+    if draft and withdrawn:
+        raise ValueError("fetch_tables: draft and withdrawn are two different fetches")
     # REQ-2248: a retired table is in no schema, drafts or not, and serves nothing.
+    if withdrawn:
+        state = WITHDRAWN_TABLE
+    elif draft:
+        state = f"draft AND NOT {WITHDRAWN_TABLE}"
+    else:
+        state = f"NOT draft AND NOT {WITHDRAWN_TABLE}"
     served = (
-        "draft = $1 AND NOT retired"
+        f"{state} AND NOT retired"
         if catalog
-        else f"draft = $1 AND NOT retired AND {_outside_sql_catalog()}"
+        else f"{state} AND NOT retired AND {_outside_sql_catalog()}"
     )
     rows = await conn.fetch(
         "SELECT id, source_id, domain_id, schema_name, table_name, "
@@ -99,6 +127,8 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "enable_aggregates, enable_group_by, view_sql, dq_contract, profiler_source_id, "  # REQ-1443/1934
         "live, push_debounce_quiet, push_debounce_max_delay, cache_ttl, "  # REQ-1733, REQ-1730
         "row_materialize, role_ttl, replicate, load_protected, region, draft, "  # REQ-1865/1907/826/1141/1921
+        f"{WITHDRAWN_TABLE} AS withdrawn, "  # REQ-1921: the table's or its source's
+        f"{WITHDRAWN_SOURCE} AS source_withdrawn, "  # REQ-1921: its source's alone
         "off_peak_window, off_peak_tz, "  # REQ-1141: when a load-protected table is refreshed
         "file_glob, source_file_column, delta, table_format, "  # REQ-788/874/1981
         "change_signal, watermark_column, probe_type, "  # REQ-929/924/982: the table's own
@@ -109,8 +139,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         # REQ-2109: what a bitemporal table maps, and the refresh interval and allowed lateness
         # of the version log of one updated in place (bitemporal_capture).
         "business_key, valid_time, recorded_time, mv_refresh_interval, mv_allowed_lateness "
-        f"FROM registered_tables WHERE {served} ORDER BY id",
-        draft,
+        f"FROM registered_tables WHERE {served} ORDER BY id"
     )
     from provisa.core.repositories import write_grant as write_grant_repo
 
@@ -136,8 +165,7 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
         "embedding, embedding_model "  # REQ-421, REQ-423: what a similarity search governs
         # REQ-2248: a retired column is absent from its table.
         "FROM table_columns WHERE table_id IN (SELECT id FROM served) AND NOT retired "
-        "ORDER BY table_id, id",
-        draft,
+        "ORDER BY table_id, id"
     ):
         columns_of.setdefault(r["table_id"], []).append(r)
     tables = []
@@ -192,11 +220,13 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
 
 
 async def fetch_relationships(
-    conn: "Connection",
+    conn: "Connection", *, withdrawn: bool = False
 ) -> list[dict]:  # REQ-155, REQ-194, REQ-351, REQ-399
     """Fetch relationships, each with its effective names as stored on its row
     (core.relationship_names): ``graphql_alias`` the pinned one or the stored GraphQL field,
-    ``computed_cypher_alias`` the stored Cypher type where no alias is pinned."""
+    ``computed_cypher_alias`` the stored Cypher type where no alias is pinned. ``withdrawn``
+    True fetches instead the ones withdrawn only because an end (or the junction) is withdrawn
+    (REQ-1921): in no compiled graph, read only where a steward asks to see what is withdrawn."""
     rows = await conn.fetch(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
         "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
@@ -217,7 +247,7 @@ async def fetch_relationships(
         "LEFT JOIN registered_tables v ON v.id = r.via_table_id "
         # REQ-2248: a retired relationship is not traversable, nor one that reaches a retired
         # table at either end or through it.
-        f"WHERE {_TRAVERSABLE} "
+        f"WHERE {_WITHDRAWN_EDGE if withdrawn else _TRAVERSABLE} "
         "ORDER BY r.id"
     )
     retired_columns = await _retired_columns(conn)

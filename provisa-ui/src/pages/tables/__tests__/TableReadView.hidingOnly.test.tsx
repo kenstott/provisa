@@ -12,7 +12,6 @@
 // previews it, but is not offered the table editor's acts -- deploy, profile, delete.
 
 import { describe, it, expect, vi } from "vitest";
-import userEvent from "@testing-library/user-event";
 import { fireEvent, render, screen, within } from "../../../test-utils/render";
 // The glossary terms that name the table's columns, as the server answers: one rooted term, and an
 // abstract one reachable from it (which names no column).
@@ -184,47 +183,17 @@ describe("TableReadView for a table with a required parameter", () => {
   });
 });
 
-// REQ-1921: the Draft box sits with the table's other actions. It shows the stored state and
-// asks for the change; whoever may not release a table sees the state and cannot change it.
-describe("TableReadView's Draft box", () => {
-  it("is checked on a draft and asks to release it when unticked", () => {
-    const onSetDraft = vi.fn();
-    const draft = makeTable({ id: 7, draft: true });
-    renderView(false, draft, { onSetDraft });
-    const box = screen.getByTestId("table-read-view-draft");
-    expect(box).toBeChecked();
-    expect(screen.getByLabelText("Draft")).toBe(box);
-    fireEvent.click(box);
-    expect(onSetDraft).toHaveBeenCalledTimes(1);
-    expect(onSetDraft).toHaveBeenCalledWith(draft, false);
-    // Not optimistic: the box follows the stored state, which has not changed yet.
-    expect(box).toBeChecked();
-  });
-
-  it("is unchecked on a table in service and asks to return it to draft when ticked", () => {
-    const onSetDraft = vi.fn();
-    const released = makeTable({ id: 7, draft: false });
-    renderView(false, released, { onSetDraft });
-    const box = screen.getByTestId("table-read-view-draft");
-    expect(box).not.toBeChecked();
-    fireEvent.click(box);
-    expect(onSetDraft).toHaveBeenCalledWith(released, true);
-  });
-
-  it("shows the state and cannot be changed by a caller who may not register tables", async () => {
-    const onSetDraft = vi.fn();
-    renderView(true, makeTable({ id: 7, draft: true }), { onSetDraft });
-    const box = screen.getByTestId("table-read-view-draft");
-    expect(box).toBeChecked();
-    expect(box).toBeDisabled();
-    // As a person clicks: a disabled control takes no click (a dispatched event would).
-    await userEvent.setup({ pointerEventsCheck: 0 }).click(box);
-    expect(onSetDraft).not.toHaveBeenCalled();
-    expect(box).toBeChecked();
+// REQ-1921: draft is the internal waypoint of a region move, never a person's choice: the read
+// view offers no control to set or clear it, and still marks a draft's preview.
+describe("TableReadView and a draft", () => {
+  it.each([true, false])("offers no control to set or clear draft (draft: %s)", (draft) => {
+    renderView(false, makeTable({ id: 7, draft }));
+    expect(screen.queryByTestId("table-read-view-draft")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Draft")).not.toBeInTheDocument();
   });
 
   it("says a draft's preview is a draft preview, and keeps Preview and Profile offered", () => {
-    renderView(false, makeTable({ id: 7, draft: true }), { onSetDraft: vi.fn() });
+    renderView(false, makeTable({ id: 7, draft: true }));
     expect(screen.getByTestId("table-read-view-draft-note")).toHaveTextContent(
       "Draft preview: readers cannot see this table yet.",
     );
@@ -233,7 +202,7 @@ describe("TableReadView's Draft box", () => {
   });
 
   it("says nothing of drafts on a table in service", () => {
-    renderView(false, makeTable({ id: 7, draft: false }), { onSetDraft: vi.fn() });
+    renderView(false, makeTable({ id: 7, draft: false }));
     expect(screen.queryByTestId("table-read-view-draft-note")).not.toBeInTheDocument();
   });
 });

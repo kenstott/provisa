@@ -205,6 +205,7 @@ def test_a_meta_role_inlines_each_members_inherited_constants(monkeypatch):
             "role_chains": {"base": ["base"], "east": ["east", "base"], "west": ["west"]},
             "tables": tables,
             "draft_tables": [],
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

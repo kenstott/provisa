@@ -98,7 +98,9 @@ async def sql_client(monkeypatch):
     async def _no_registered_sources(_conn):
         return []
 
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _no_registered_sources)
+    monkeypatch.setattr(
+        "provisa.core.repositories.source.list_in_production", _no_registered_sources
+    )
     # The middleware reads the bound org's declared claim types (REQ-2057); the state here
     # carries no config, and no org declares any.
     monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])

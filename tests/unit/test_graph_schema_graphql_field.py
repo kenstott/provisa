@@ -77,6 +77,8 @@ def state(monkeypatch):
         rls_rules=[],
         metrics=[],
         draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 

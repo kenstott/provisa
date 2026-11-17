@@ -646,11 +646,12 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
   },
   "vector_models": [...],
   "nl": {"rate_limit": 20},
-  "api_keys_set": {"anthropic": true, "openai": false}
+  "api_keys_set": {"anthropic": true, "openai": false},
+  "deployment_keys": true
 }
 ```
 
-API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
+API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. `deployment_keys` is `true` on an install of one organization, where a vendor with no key set falls back to the deployment's environment variable. On a server of many organizations it is `false`. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from). Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -660,9 +661,9 @@ Update the org's AI-model assignments, vector-model registry, or NL rate limit. 
 
 Return the model names a vendor currently serves, for the model picker.
 
-The list is read live from the vendor's own list-models API, with the org's configured key, or with the deployment credential when the org has no key. A model released after this build shipped can be selected the same day the vendor starts serving it.
+The list is read live from the vendor's own list-models API, with the same key the org's calls to that vendor use ([Where an AI key comes from](secrets.md#where-an-ai-key-comes-from)). A model released after this build shipped can be selected the same day the vendor starts serving it.
 
-Returns `400` when the vendor publishes no list-models API (enter the model name directly in that case) or when no key is available.
+Returns `400` when the vendor publishes no list-models API; enter the model name directly in that case. Returns `409` with code `ai.key_required` when there is no key to use.
 
 ---
 
