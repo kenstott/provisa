@@ -89192,7 +89192,16 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
     from a column the reader sees masked is masked for that reader, as that column is, since it was derived
     from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
-    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.'
+    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.
+    (Amended 2026-11-16, WHERE THE STORED ROWS CANNOT CARRY A READER''S RULE, THE READ IS REFUSED BY NAME;
+    A RULE CHANGE REBUILDS:) Lead 2026-11-16, consequences of the amendment of this day. Where the stored
+    rows of a transform view cannot carry what a reader''s rule needs, that reader''s read is refused by
+    name, never answered unfiltered: a row rule on a table read inside a derived table or another view,
+    a row rule over a view that groups, aggregates, removes duplicates or combines queries, and a faked
+    mask on an input that feeds an output. A view that calls a code command (REQ-2249) is read under the
+    same rule. A change to a row rule or a mask that changes which input columns the stored rows must keep
+    rebuilds each view it touches, and until that build has published, the view is read as before the change
+    or refused by name, never with an engine error.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
