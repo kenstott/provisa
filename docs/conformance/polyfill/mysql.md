@@ -8,11 +8,23 @@ This page lists every feature that has a polyfill or a limitation on MySQL. A fe
 
 When MySQL is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 246, of which 170 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 252, of which 176 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-187 of the grid's 387 features are native on MySQL and left out.
+190 of the grid's 396 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
+<tr><td><strong>arraycontains</strong><br>Whether an array holds every element of another; a NULL element of the other is held by none.</td><td><pre><code>arraycontains($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>arraycontained</strong><br>Whether every element of an array is held by another; a NULL element is held by none.</td><td><pre><code>arraycontained($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>arrayoverlap</strong><br>Whether two arrays hold an element in common; a NULL element is in common with none.</td><td><pre><code>arrayoverlap($a::anyarray, $b::anyarray)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_remove</strong><br>An array without each element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_remove($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: array_ndims($a::anyarray). <code>0A000</code> array_ndims() has no form on mysql</li></ul></td><td></td><td></td></tr>
@@ -292,6 +304,12 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pg_char_to_encoding</strong><br>An encoding&#x27;s number by any of PostgreSQL&#x27;s names of it; -1 for a name of none.</td><td><pre><code>pg_char_to_encoding($n)
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_char_to_encoding($n). <code>0A000</code> pg_char_to_encoding() has no form on mysql</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>pg_size_pretty</strong><br>A bigint count of bytes in the largest unit below its limit, as dbsize.c writes it.</td><td><pre><code>pg_size_pretty($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pg_encoding_max_length</strong><br>The most bytes of a character of an encoding, by its number.</td><td><pre><code>pg_encoding_max_length($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ntile</strong><br>The bucket of a row in a window, as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.bucketed: ntile over a window, as PostgreSQL&#x27;s integer: every engine&#x27;s is a bigint. On ClickHouse a</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>numeric_mod</strong><br>The remainder of one numeric divided by another, at the larger scale of the two.</td><td><pre><code>numeric_mod($a, $b)
 =&gt;

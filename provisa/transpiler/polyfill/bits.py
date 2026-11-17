@@ -165,8 +165,9 @@ def _names(names: frozenset[str]) -> frozenset[str]:
     return names | {_NAMED[n] for n in names if n in _NAMED}
 
 
-#: Each argument's kind: a bit string, or another value (an integer, a boolean).
-_B, _V = "bit", "value"
+#: Each argument's kind: a bit string, an integer of 32 or of 64 bits, or another value.
+_B, _V, _I4, _I8 = "bit", "value", "int4", "int8"
+_KINDS = {_I4: frozenset({"integer", "smallint"}), _I8: frozenset({"bigint"})}
 
 
 def _row(name: str, kinds: tuple[str, ...], form: str) -> Rewrite:
@@ -182,7 +183,8 @@ def _row(name: str, kinds: tuple[str, ...], form: str) -> Rewrite:
             return None
         args = call[1]
         for arg, kind in zip(args, kinds, strict=True):
-            if kind == _B and (trino.said(arg) or "").split("(")[0] not in _BITS:
+            said = (trino.said(arg) or "").split("(")[0]
+            if (kind == _B and said not in _BITS) or (kind in _KINDS and said not in _KINDS[kind]):
                 return None
         bindings = {h: _value(a) for h, a in zip(holes, args, strict=True)}
         return graft(replacement(form, dialect, pattern), bindings)
@@ -429,6 +431,32 @@ FUNCTIONS: tuple[Feature, ...] = (
 )  # fmt: skip
 
 
+def _of_an_integer(width: int) -> str:
+    """bitfromint4 or bitfromint8: the low bits of an integer, as many as the length says (1 for
+    a length of 0 or less, or past VARBITMAXLEN), each bit past the integer's own its sign."""
+    length = f"if(ifNull(toInt64($b), 1) <= 0 OR ifNull(toInt64($b), 1) > {_VARBITMAXLEN}, 1, toInt64($b))"
+    held = f"toUInt64(least({length}, {_MOST_PADDED}))"
+    past = ch_fail("0A000", f"bit() of a length past {_MOST_PADDED} has no form on clickhouse")
+    each = (
+        f"arrayStringConcat(arrayMap(_k -> if(_k >= {width}, if($a < 0, '1', '0'), "
+        f"toString(bitTest($a, least(_k, {width - 1})))), arrayReverse(range({held}))))"
+    )
+    return _checked([past.format(condition=f"{length} > {_MOST_PADDED}")], _null_if_any("ab", each))
+
+
+OF_AN_INTEGER = Feature(
+    "bit of an integer",
+    FAMILY,
+    "An integer's low bits as a bit string of a length, sign-extended past its own.",
+    read=Side(
+        rules=(
+            Rule(None, {_CH: _row("bit", (_I4, _V), _of_an_integer(32))}),
+            Rule(None, {_CH: _row("bit", (_I8, _V), _of_an_integer(64))}),
+        )
+    ),
+)
+
+
 def _two_forms(name: str, summary: str, forms: dict[int, tuple[tuple[str, ...], str]]) -> Feature:
     """``name`` of more than one argument count, each its form."""
     rules = tuple(Rule(None, {_CH: _row(name, kinds, form)}) for kinds, form in forms.values())
@@ -472,7 +500,7 @@ def _aggregate_form(name: str) -> str:
         "arrayJoinLess",
         bit.replace("_g", "arrayMap(_x -> substring(_x, _i, 1), _all)"),
     )
-    return f"if({sizes} = 0 AND count($a) > 0, {each}, NULL)"
+    return f"if({sizes} = 0, if(count($a) > 0, {each}, NULL), NULL)"
 
 
 def _aggregate(name: str) -> Callable[[exp.Expr, str], exp.Expr | None]:
@@ -513,5 +541,6 @@ FEATURES: tuple[Feature, ...] = (
     *FUNCTIONS,
     SUBSTRING_2,
     OVERLAY,
+    OF_AN_INTEGER,
     *AGGREGATES,
 )

@@ -83,7 +83,8 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "exploding_generate_series": _NUMERIC,
     "generate_series": _NUMERIC,
     "rand": _NUMERIC,
-    # No form, and nothing the engine has answers as PostgreSQL does.
+    # No form, and nothing the engine has answers as PostgreSQL does. (ClickHouse's pg_size_pretty
+    # of a value the statement says is an integer is polyfill.server's row.)
     "pg_size_pretty": _ANY,
     "pg_sleep": _ANY,
     "setseed": _ANY,

@@ -738,6 +738,40 @@ OID_LITERAL = Feature(
 )
 
 
+#: A tid held as its text, '(block,offset)', as the number that orders it (block, then offset).
+_TID_KEY = (
+    "(toUInt64OrZero(splitByChar(',', replaceRegexpAll(ifNull($a, ''), '[() ]', ''))[1]) * 65536 + "
+    "toUInt64OrZero(splitByChar(',', replaceRegexpAll(ifNull($a, ''), '[() ]', ''))[2]))"
+)
+
+
+def _tid_extreme(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """max or min of tids, held as their text, in PostgreSQL's order (block, then offset); NULL of
+    no value. Over a window or under a FILTER it is no row's."""
+    if not isinstance(node, (exp.Max, exp.Min)) or isinstance(
+        node.parent, (exp.Window, exp.Filter)
+    ):
+        return None
+    value = node.this
+    if trino.said(value) != "tid":
+        return None
+    kind = "argMaxIf" if isinstance(node, exp.Max) else "argMinIf"
+    form = f"if(count($a) = 0, NULL, {kind}($a, {_TID_KEY}, $a IS NOT NULL))"
+    return graft(replacement(form, dialect, "f($a)"), {"a": value})
+
+
+TID_EXTREMES = Feature(
+    "max and min of tids",
+    FAMILY,
+    "The last or first tid of a group, by block and then offset.",
+    read=Side(
+        rules=(
+            Rule(None, {"clickhouse": Rewrite(_tid_extreme, mentions=r"::\s*tid\b", first=True)}),
+        ),
+    ),
+)
+
+
 #: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision).
 _MOST_DIGITS = 38
 _NUMERIC_OUT_OF_BOUND = (
@@ -1307,6 +1341,7 @@ FEATURES: tuple[Feature, ...] = (
     TIME,
     INTEGER,
     OID_LITERAL,
+    TID_EXTREMES,
     NUMERIC,
     DATE_DAYS,
     STAMP,
