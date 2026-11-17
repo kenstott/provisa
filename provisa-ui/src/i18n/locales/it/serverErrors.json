@@ -324,6 +324,13 @@
       "catalog_view_refused": "{{view}} è una vista di catalogo del dominio meta e non può essere letta in un'unica istruzione con una tabella di un'origine dati: leggile in due istruzioni.",
       "function_unsupported": "{{function}}() non ha un equivalente su {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Regola di oscuramento {{rule}}: {{why}}",
+      "pattern_backtracks": "Regola di oscuramento {{rule}}: il modello può causare un backtracking catastrofico (una ripetizione annidata in una ripetizione illimitata, o alternative al suo interno che possono iniziare con lo stesso testo). Riscrivilo senza quella forma.",
+      "pattern_unsupported": "Regola di oscuramento {{rule}}: la regola di un'organizzazione non può usare riferimenti all'indietro, lookahead o lookbehind, gruppi atomici, ripetizioni possessive o gruppi condizionali.",
+      "pattern_too_large": "Regola di oscuramento {{rule}}: il modello è troppo grande una volta espanse le ripetizioni. Usa un numero di ripetizioni minore.",
+      "server_reference": "Regola di oscuramento {{rule}}: un'organizzazione su questo server non può fare riferimento all'ambiente del server. Usa ${secret:NAME} dal vault dell'organizzazione stessa."
+    },
     "replication": {
       "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
       "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",
@@ -726,6 +733,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Non esiste alcun ruolo chiamato {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "Il modello di filtro dei log è rifiutato: {{why}}",
+      "pattern_exceeded": "Il modello di filtro dei log è rifiutato: ha superato il suo limite di passi ({{steps}} passi) su una riga di log di {{length}} caratteri."
     },
     "dbt": {
       "products": {
