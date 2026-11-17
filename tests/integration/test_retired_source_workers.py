@@ -32,7 +32,6 @@ import os
 import pytest
 import sqlalchemy as sa
 
-from tests.helpers import registered_id, release_mutation
 from tests.integration.cross_worker_evidence import Worker
 from tests.integration.test_config_sync_workers import _stamps_agree, _until_every_worker
 from tests.integration.test_settings_catalog_workers import _one_connection_per_worker
@@ -108,11 +107,7 @@ def test_a_source_registered_after_another_was_retired_is_queryable_on_every_wor
         "{ success message } }"
     )
     assert res["data"]["registerTable"]["success"], res
-    # REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    released = author.admin(
-        release_mutation(registered_id(res["data"]["registerTable"]["message"]))
-    )
-    assert released["data"]["setTableDraft"]["success"], released
+    # REQ-1921: registered, it is live: no step puts it in service.
 
     def _reads_customers(w: Worker) -> tuple[bool, dict]:
         body = w.data("{ s__customers { id name } }")
