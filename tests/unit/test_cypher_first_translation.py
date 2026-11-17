@@ -1,3 +1,13 @@
+# Copyright (c) 2026 Kenneth Stott
+# Canary: 223f5226-7675-4e26-bb74-28b81bfa2d44
+#
+# This source code is licensed under the Business Source License 1.1
+# found in the LICENSE file in the root directory of this source tree.
+#
+# NOTICE: Use of this software for training artificial intelligence or
+# machine learning models is strictly prohibited without explicit written
+# permission from the copyright holder.
+
 """The first Cypher translation in a process does the work a later one does: it imports only the
 modules its own statement needs and parses no more than a later translation parses. Measured by
 counting, in a fresh interpreter, never by seconds. And the keyword table the translator quotes by
