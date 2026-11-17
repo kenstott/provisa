@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Directories log files may be read from",
-        "help": "The directories a Logs source's files may be in, once their links are followed; by default /var/log. Add one, such as ~/Library/Logs, to read the server's own files under it into tables. A server of many organizations reads no log file of its own whatever this says."
+        "help": "The directories a Logs source's files may be in, once their links are followed; by default /var/log. Add one, such as ~/Library/Logs, to read the server's own files under it into tables. A sandbox organization, and on a server of many organizations every organization but the deployment's own, reads no file of the server's own outside its own folder but those its demo's sources name, whatever this says."
       },
       "preview_lines": {
         "label": "Lines read to find a log's columns",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Directories source files may be downloaded from",
-        "help": "The directories a CSV or Parquet source's file may be downloaded from by its path on this server, once its links are followed; none by default. Add one to let a steward copy a file under it into the organization's folder. A server of many organizations copies no file of its own whatever this says."
+        "help": "The directories a CSV or Parquet source's file may be downloaded from by its path on this server, once its links are followed; none by default. Add one to let a steward copy a file under it into the organization's folder. A sandbox organization, and on a server of many organizations every organization but the deployment's own, copies no file of the server's own outside its own folder but those its demo's sources name, whatever this says."
       }
     },
     "polly": {

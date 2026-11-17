@@ -244,8 +244,8 @@ def require_own_disk(location: str | None, org_id: str | None = None) -> None:
 def locations(source_type: str, fields: dict[str, Any]) -> list[str]:
     """Every location a source of ``source_type`` names that could be on the server's own disk,
     as written: its path, when its type reads one (:data:`PATH_TYPES`), the files its other
-    fields name (:data:`_OTHER_LOCATIONS`), the place its file is downloaded from and its code
-    directory."""
+    fields name (:data:`_OTHER_LOCATIONS`), the place its file is downloaded from, its code
+    directory and a Logs source's glob."""
     found: list[str] = []
     path = fields.get("path")
     if source_type in PATH_TYPES and isinstance(path, str) and path:
@@ -272,6 +272,10 @@ def locations(source_type: str, fields: dict[str, Any]) -> list[str]:
         directory = code.get("path")
         if isinstance(directory, str) and directory:
             found.append(directory)
+    # A Logs source's glob (REQ-1996), read by logs.roots.checked_glob and checked_file.
+    glob = mapping.get("glob") if source_type == "logs" and isinstance(mapping, dict) else None
+    if isinstance(glob, str) and glob:
+        found.append(glob)
     return found
 
 

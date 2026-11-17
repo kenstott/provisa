@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Diretórios dos quais arquivos de log podem ser lidos",
-        "help": "Os diretórios em que os arquivos de uma fonte Logs podem estar, depois de seguidos seus links; por padrão /var/log. Adicione um, como ~/Library/Logs, para ler em tabelas os arquivos do próprio servidor que estejam nele. Um servidor de muitas organizações não lê nenhum arquivo de log próprio, seja o que for que esta configuração diga."
+        "help": "Os diretórios em que os arquivos de uma fonte Logs podem estar, depois de seguidos seus links; por padrão /var/log. Adicione um, como ~/Library/Logs, para ler em tabelas os arquivos do próprio servidor que estejam nele. Uma organização sandbox e, num servidor de muitas organizações, toda organização exceto a própria da implantação não lê nenhum arquivo do servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, diga o que disser esta configuração."
       },
       "preview_lines": {
         "label": "Linhas lidas para achar as colunas de um log",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Diretórios dos quais arquivos de fontes podem ser baixados",
-        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os seus links; nenhum por padrão. Adicione um para que um steward possa copiar um arquivo dentro dele para a pasta da organização. Um servidor de muitas organizações não copia nenhum arquivo próprio, diga o que disser esta configuração."
+        "help": "Os diretórios dos quais o arquivo de uma fonte CSV ou Parquet pode ser baixado pelo seu caminho neste servidor, depois de seguidos os seus links; nenhum por padrão. Adicione um para que um steward possa copiar um arquivo dentro dele para a pasta da organização. Uma organização sandbox e, num servidor de muitas organizações, toda organização exceto a própria da implantação não copia nenhum arquivo do servidor fora da sua própria pasta, exceto os que as fontes da sua demo nomeiam, diga o que disser esta configuração."
       }
     },
     "polly": {

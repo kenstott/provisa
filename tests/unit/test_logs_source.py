@@ -150,37 +150,41 @@ def test_a_demo_bundles_seeding_run_reads_its_demos_logs_inside_the_allowed_root
         checked_glob(f"{root}/system.log*")
 
 
-def test_a_sandbox_tier_demo_org_reads_its_own_demos_logs_and_nothing_else(
-    root, monkeypatch, tmp_path
+def test_a_sandbox_tier_demo_org_reads_the_logs_its_demo_declares_and_nothing_else(
+    root, monkeypatch
 ):
-    """REQ-2049: a demo's logs are its own source, read live from its bundle -- by its template
-    and its sandboxes, inside that demo's directory only; any other held org of a
-    many-organization server still reads no log file of the server's own."""
-    from provisa.core import org_files
+    """REQ-2049, REQ-1997: a demo's logs are its own source, read live from its bundle -- by its
+    template and its sandboxes, the files its Logs source's glob names and nothing else, not
+    even the rest of the demo's directory; any other held org of a many-organization server
+    still reads no log file of the server's own."""
     from provisa.core.request_context import current_org
     from provisa.security import sandbox_egress
 
     monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
     monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
     monkeypatch.setenv("PROVISA_DEMO_SEED_EXPORT", "false")
-    monkeypatch.setenv("PROVISA_DEMO_BUNDLES", "weblogs")
     demo = root / "demo-bundles" / "weblogs" / "202610141747-0a3ad1932"
     (demo / "logs").mkdir(parents=True)
+    (demo / "logs" / "access.json").write_text("{}\n")
+    (demo / "logs" / "notes.txt").write_text("x\n")
     (root / "demo-bundles" / "other" / "1" / "logs").mkdir(parents=True)
-    folder = tmp_path / "folder"
-    folder.mkdir()
-    (folder / "demo-directory").write_text(str(demo))
-    monkeypatch.setattr(org_files, "folder", lambda org_id: folder)
-    monkeypatch.setattr("provisa.core.demo_bundles.bundles_root", lambda: root / "demo-bundles")
+    declared = {"type": "logs", "mapping": {"glob": f"{demo}/logs/*.json", "format": "jsonl"}}
 
     for org in ("sbx0123456789ab", "sbxtplweblogs"):
+        sandbox_egress.set_demo_destinations(org, [declared])
         token = current_org.set(org)
         try:
             assert checked_glob(f"{demo}/logs/*.json") == f"{demo}/logs/*.json"
+            assert checked_file(str(demo / "logs" / "access.json"))
+            with pytest.raises(LogPathRefused, match="outside its own folder"):
+                checked_file(str(demo / "logs" / "notes.txt"))
+            with pytest.raises(LogPathRefused, match="outside its own folder"):
+                checked_glob(f"{demo}/logs/*")
             with pytest.raises(LogPathRefused, match="outside its own folder"):
                 checked_glob(f"{root}/demo-bundles/other/1/logs/*.json")
         finally:
             current_org.reset(token)
+            sandbox_egress.forget(org)
     token = current_org.set("acme")
     try:
         with pytest.raises(LogPathRefused, match="outside its own folder"):
