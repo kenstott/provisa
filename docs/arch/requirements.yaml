@@ -3735,7 +3735,13 @@
     the counts and what was left out and why) is collapsible, shown collapsed to its first line once the
     run has ended. The Relationships page does not show that summary: it shows only one line about the latest
     run (going, with its progress, or ended, with how many suggestions wait), with a way to open it in the
-    dialog; the line goes once the run''s suggestions are all decided.'
+    dialog; the line goes once the run''s suggestions are all decided. (Amended 2026-11-16, ONE COLLAPSIBLE
+    RUN BLOCK SHOWS PROGRESS WHILE RUNNING AND THE SUMMARY AFTER:) Maintainer 2026-11-16 (''you could repurpose
+    this to include progress on a run(s)''). The dialog''s collapsible run block is one component for a
+    run''s whole life: while the run is going it shows its progress (requests done of the total, suggestions
+    so far, the model) with Stop and Run in background; when the run ends the same block holds its summary,
+    collapsed to its first line. Its first line is the line the Relationships page shows. Runs going at
+    once are each a line in that block.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
