@@ -51,6 +51,17 @@
     "stopped": "Gestoppt. Das Gefundene bleibt erhalten.",
     "failed": "Der Lauf ist fehlgeschlagen: {{error}}",
     "newRun": "Neuer Lauf",
-    "noSuggestions": "Keine Vorschläge dieses Laufs warten auf eine Entscheidung."
+    "noSuggestions": "Keine Vorschläge dieses Laufs warten auf eine Entscheidung.",
+    "restore": {
+      "fromLastRun": "Dies sind die Felder Ihres letzten Laufs.",
+      "reset": "Auf Standardwerte zurücksetzen",
+      "leftOut": "Davon ausgelassen, weil es nicht mehr gilt:",
+      "domainsGone": "Die Domäne {{names}} ist nicht mehr verfügbar.",
+      "domainsGone_other": "Die Domänen {{names}} sind nicht mehr verfügbar.",
+      "tablesGone": "{{count}} Tabelle ist dort nicht mehr registriert.",
+      "tablesGone_other": "{{count}} Tabellen sind dort nicht mehr registriert.",
+      "vendorNoKey": "{{vendor}} hat keinen Schlüssel, daher ist das Modell das zugewiesene.",
+      "modelGone": "{{vendor}} führt {{model}} nicht mehr auf, daher ist das Modell das zugewiesene."
+    }
   }
 }

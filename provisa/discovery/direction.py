@@ -22,7 +22,11 @@ sample of N rows; last, the table whose domain and name sort first.
 Removed, each kind counted (:class:`Removed`): a column to that same column (two different columns
 of one table are kept); primary key to primary key; both sides repeating in that sample; a match
 for an existing relationship in either direction; one pending or rejected; a semantic suggestion
-matching a foreign key of the same run, the foreign key being kept.
+matching a foreign key of the same run, the foreign key being kept; a proposal of a pair of
+columns another proposal of that pair was kept for (``weaker``).
+
+Nothing removed is dropped: each removed proposal is given back with why (:class:`LeftOut`), so a
+run can keep it and a reviewer can read it.
 """
 
 # Requirements: REQ-413
@@ -100,6 +104,8 @@ class Removed:
     rejected: int = 0
     matches_foreign_key: int = 0
     out_of_scope: int = 0
+    #: Proposals of a pair of columns another proposal of that pair was kept for.
+    weaker: int = 0
 
     def as_dict(self) -> dict[str, int]:
         return dict(self.__dict__)
@@ -243,23 +249,34 @@ def _marked(p: Proposal, tables: dict[int, TableFacts]) -> Proposal:
     return replace(p, reasoning=f"{p.reasoning}; {note}" if p.reasoning else note)
 
 
-def _kept(proposals: Sequence[Proposal], decision: Decision) -> Proposal:
-    """The proposal kept for a decided pair: the most confident one in the decided direction, or
-    the most confident one turned that way."""
+def _kept(proposals: Sequence[Proposal], decision: Decision) -> tuple[Proposal, Proposal]:
+    """The proposal kept for a decided pair, and how it is shown: the most confident one in the
+    decided direction, or the most confident one turned that way; the decision's evidence joins
+    its reasoning."""
     ranked = sorted(proposals, key=lambda p: (p.kind != "foreign_keys", -p.confidence))
     same = [p for p in ranked if p.start == decision.start]
-    chosen = same[0] if same else replace(ranked[0], start=ranked[0].end, end=ranked[0].start)
+    chosen = same[0] if same else ranked[0]
+    shown = chosen if same else replace(chosen, start=chosen.end, end=chosen.start)
     if decision.evidence:
         reasoning = (
-            f"{chosen.reasoning}; {decision.evidence}" if chosen.reasoning else (decision.evidence)
+            f"{shown.reasoning}; {decision.evidence}" if shown.reasoning else decision.evidence
         )
-        chosen = replace(chosen, reasoning=reasoning)
-    return chosen
+        shown = replace(shown, reasoning=reasoning)
+    return chosen, shown
 
 
 def _needs_decision(proposals: Sequence[Proposal]) -> bool:
     """Both directions suggested: written both ways, or read both ways."""
     return len({p.written for p in proposals}) > 1 or len({p.start for p in proposals}) > 1
+
+
+@dataclass(frozen=True)
+class LeftOut:
+    """A proposal that is not shown, and why: a field of :class:`Removed`, or a reason an answer's
+    element was not kept for (:mod:`provisa.discovery.runner`)."""
+
+    proposal: Proposal
+    reason: str
 
 
 @dataclass
@@ -268,6 +285,8 @@ class Outcome:
     removed: Removed
     #: How many pairs each rule decided.
     decided_by: dict[str, int]
+    #: Every proposal removed, each with the field of :class:`Removed` that counts it.
+    left_out: list[LeftOut] = field(default_factory=list)
 
 
 async def settle(
@@ -282,16 +301,22 @@ async def settle(
     kept per pair of columns, only relationships starting in the source set and ending in the
     target set."""
     removed = Removed()
+    left_out: list[LeftOut] = []
+
+    def leave_out(p: Proposal, reason: str) -> None:
+        setattr(removed, reason, getattr(removed, reason) + 1)
+        left_out.append(LeftOut(p, reason))
+
     decided_by: dict[str, int] = {}
     fk_pairs = {p.pair for p in proposals if p.kind == "foreign_keys"}
     pending: list[Proposal] = []
     for p in proposals:
         if p.start == p.end:
-            removed.same_column += 1
+            leave_out(p, "same_column")
         elif _is_pk(tables, p.start) and _is_pk(tables, p.end):
-            removed.primary_key_to_primary_key += 1
+            leave_out(p, "primary_key_to_primary_key")
         elif p.kind == "semantics" and p.pair in fk_pairs:
-            removed.matches_foreign_key += 1
+            leave_out(p, "matches_foreign_key")
         else:
             pending.append(p)
 
@@ -302,26 +327,34 @@ async def settle(
     kept: list[Proposal] = []
     for group in by_pair.values():
         if not _needs_decision(group):
-            kept.append(max(group, key=lambda p: p.confidence))
-            continue
-        decision = await decide(group, tables, known, read_sample)
-        if decision is None:
-            removed.both_repeating += 1
-            continue
-        decided_by[decision.rule] = decided_by.get(decision.rule, 0) + 1
-        kept.append(_kept(group, decision))
+            chosen = max(group, key=lambda p: p.confidence)
+            kept.append(chosen)
+        else:
+            decision = await decide(group, tables, known, read_sample)
+            if decision is None:
+                # One pair of columns, counted once; each of its proposals is left out for it.
+                removed.both_repeating += 1
+                left_out.extend(LeftOut(p, "both_repeating") for p in group)
+                continue
+            decided_by[decision.rule] = decided_by.get(decision.rule, 0) + 1
+            chosen, shown_as = _kept(group, decision)
+            kept.append(shown_as)
+        passed_over = list(group)
+        passed_over.remove(chosen)
+        for p in passed_over:
+            leave_out(p, "weaker")
 
     shown: list[Proposal] = []
     for p in kept:
         reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
         if p.start[0] not in source_ids or p.end[0] not in target_ids:
-            removed.out_of_scope += 1
+            leave_out(p, "out_of_scope")
         elif p.edge in known.existing or reverse in known.existing:
-            removed.existing += 1
+            leave_out(p, "existing")
         elif p.edge in known.pending:
-            removed.pending += 1
+            leave_out(p, "pending")
         elif p.edge in known.rejected:
-            removed.rejected += 1
+            leave_out(p, "rejected")
         else:
             shown.append(_marked(p, tables))
-    return Outcome(shown, removed, decided_by)
+    return Outcome(shown, removed, decided_by, left_out)

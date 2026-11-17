@@ -1,5 +1,11 @@
 {
   "discoverResult": {
+    "scopeKinds": "Procurado: {{kinds}}.",
+    "scopeSource": "Origem: {{count}} tabela de {{domains}}.",
+    "scopeSource_other": "Origem: {{count}} tabelas de {{domains}}.",
+    "scopeTargetSame": "Destino: o mesmo que a origem.",
+    "scopeTarget": "Destino: {{count}} tabela de {{domains}}.",
+    "scopeTarget_other": "Destino: {{count}} tabelas de {{domains}}.",
     "foreignKeys": "Chaves estrangeiras: {{found}} encontradas, {{count}} sugerida.",
     "foreignKeys_other": "Chaves estrangeiras: {{found}} encontradas, {{count}} sugeridas.",
     "semanticsFound": "Semântica: {{count}} sugestão.",
@@ -11,17 +17,22 @@
     "partial_other": "{{failed}} de {{count}} solicitações falharam, portanto o resultado é parcial.",
     "semanticsNoneProposed": "Semântica: nenhuma. O modelo não propôs relacionamentos.",
     "semanticsBelowThreshold": "Semântica: nenhuma. Todas as sugestões ficaram abaixo do limiar de confiança de {{threshold}}%.",
+    "semanticsScoredBelowThreshold": "Semântica: nenhuma. O modelo deu a cada proposta {{threshold}}% ou mais, e o Jev pontuou cada uma abaixo disso.",
     "semanticsFiltered": "Semântica: nenhuma. Todas as sugestões foram deixadas de fora, pelos motivos abaixo.",
     "split": "{{count}} solicitação foi dividida ao meio e enviada de novo.",
     "split_other": "{{count}} solicitações foram divididas ao meio e enviadas de novo.",
     "cutShort": "{{count}} resposta parou no seu limite de tamanho; as sugestões que ela concluiu são mantidas.",
     "cutShort_other": "{{count}} respostas pararam no seu limite de tamanho; as sugestões que elas concluíram são mantidas.",
+    "scoringFailed": "O Jev não conseguiu pontuar as propostas de {{count}} solicitação, então elas mantiveram a confiança do modelo.",
+    "scoringFailed_other": "O Jev não conseguiu pontuar as propostas de {{count}} solicitações, então elas mantiveram a confiança do modelo.",
     "failedRequest": "Para colunas do tipo {{group}}: {{message}}",
-    "leftOut": "Deixadas de fora: {{list}}.",
+    "leftOut": "Não sugeridas: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "abaixo do limiar de confiança de {{threshold}}%",
-      "invalid": "citando uma tabela ou coluna inexistente",
+      "below_threshold": "com menos de {{threshold}}% de confiança segundo o modelo",
+      "scored_below_threshold": "pontuadas abaixo de {{threshold}}% pelo Jev",
+      "invalid": "sem citar duas colunas comparadas",
+      "not_comparable": "entre colunas de classes diferentes",
       "same_column": "de uma coluna para ela mesma",
       "primary_key_to_primary_key": "chave primária para chave primária",
       "both_repeating": "valores repetidos nos dois lados",
@@ -29,7 +40,8 @@
       "pending": "já aguardando",
       "rejected": "rejeitadas antes",
       "matches_foreign_key": "iguais a uma chave estrangeira encontrada nesta execução",
-      "out_of_scope": "fora das tabelas escolhidas"
+      "out_of_scope": "fora das tabelas escolhidas",
+      "weaker": "repetindo um par de colunas para o qual uma proposta mais forte foi mantida"
     }
   }
 }

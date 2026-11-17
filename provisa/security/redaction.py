@@ -11,7 +11,10 @@
 """Central redaction: one rule list applied wherever Provisa writes text out (REQ-2087).
 
 A rule is a named regular expression, or a ``${secret:...}`` / ``${env:...}`` reference resolved
-when the rules are built and matched literally. A match becomes ``[REDACTED:<rule>]``. The list:
+when the rules are built and matched literally. A match becomes ``[REDACTED:<rule>]`` in what
+Provisa records (logs, spans, the audit trail), and a bare ``[REDACTED]`` in text sent to a client
+(:func:`client_redact`): a client is never told which rule or which variable a word matched. The
+list:
 
 - the built-ins, a starter set of common shapes (card numbers checked by Luhn, US SSNs, bearer
   tokens, Provisa's own access tokens, common cloud keys and private-key blocks);
@@ -51,6 +54,15 @@ AUTO = "auto"
 #: would rewrite every word holding those two letters in every log line and span, making the
 #: records unreadable without protecting a value that short (REQ-2087).
 MIN_SECRET_LENGTH = 4
+#: The marker in text sent to a client: it names no rule and no variable (REQ-2087).
+CLIENT_MARKER = "[REDACTED]"
+#: A marker that names its rule, as the records carry it.
+_NAMED_MARKER = re.compile(r"\[REDACTED:[^\]\n]*\]")
+
+
+def _marker(name: str, named: bool) -> str:
+    return f"[REDACTED:{name}]" if named else CLIENT_MARKER
+
 
 _NAME = re.compile(r"^[A-Za-z0-9_.\-]{1,64}$")
 _REFERENCE = re.compile(r"^\$\{(env|secret):([^}]+)\}$")
@@ -172,28 +184,31 @@ class Redactor:
             else None
         )
 
-    def redact(self, text: str) -> str:
+    def redact(self, text: str, *, named: bool = True) -> str:
+        """``text`` with each match replaced: by the marker naming its rule, or (``named`` False,
+        the client's form) by the bare marker, a marker already in the text losing its name too."""
         if not text:
             return text
         if self._literal is not None:
-            text = self._literal.sub(lambda m: f"[REDACTED:{self._names[m.group(0)]}]", text)
+            text = self._literal.sub(lambda m: _marker(self._names[m.group(0)], named), text)
         for name, compiled, check in self._patterns:
+            marker = _marker(name, named)
             if check is None:
-                text = compiled.sub(f"[REDACTED:{name}]", text)
+                text = compiled.sub(lambda _m, said=marker: said, text)
             else:
                 text = compiled.sub(
-                    lambda m, n=name, c=check: f"[REDACTED:{n}]" if c(m) else m.group(0), text
+                    lambda m, said=marker, c=check: said if c(m) else m.group(0), text
                 )
-        return text
+        return text if named else _NAMED_MARKER.sub(CLIENT_MARKER, text)
 
-    def redact_value(self, value: Any) -> Any:
+    def redact_value(self, value: Any, *, named: bool = True) -> Any:
         """``value`` with every string inside it redacted (dicts, lists and tuples walked)."""
         if isinstance(value, str):
-            return self.redact(value)
+            return self.redact(value, named=named)
         if isinstance(value, dict):
-            return {k: self.redact_value(v) for k, v in value.items()}
+            return {k: self.redact_value(v, named=named) for k, v in value.items()}
         if isinstance(value, (list, tuple)):
-            return type(value)(self.redact_value(v) for v in value)
+            return type(value)(self.redact_value(v, named=named) for v in value)
         return value
 
 
@@ -228,16 +243,35 @@ def _rebuild() -> None:
     }
 
 
+def _redactor(org_id: str | None) -> Redactor:
+    return _process if org_id is None else _per_org.get(org_id, _process)
+
+
 def redact(text: str, org_id: str | None = None) -> str:
-    """``text`` redacted: by every org's rules when ``org_id`` is None (what leaves the process),
-    else by the deployment's, that org's and the automatic rule."""
-    redactor = _process if org_id is None else _per_org.get(org_id, _process)
-    return redactor.redact(text)
+    """``text`` redacted for Provisa's own records (a log, a span, the audit trail), each match
+    naming its rule: by every org's rules when ``org_id`` is None (what leaves the process), else
+    by the deployment's, that org's and the automatic rule. Never for text sent to a client:
+    that is :func:`client_redact`."""
+    return _redactor(org_id).redact(text)
 
 
 def redact_value(value: Any, org_id: str | None = None) -> Any:
-    redactor = _process if org_id is None else _per_org.get(org_id, _process)
-    return redactor.redact_value(value)
+    """:func:`redact` over every string inside ``value``: for the records only."""
+    return _redactor(org_id).redact_value(value)
+
+
+def client_redact(text: str, org_id: str | None = None) -> str:
+    """``text`` redacted as anything outside Provisa's own records is sent it -- a client's error
+    on any transport, a prompt or a text sent to a model: the same matches as :func:`redact`, each
+    replaced by the bare marker, and a named marker the text already carries made bare. The marker
+    names no rule and no variable, so a client cannot learn which secret a word it typed matches
+    (REQ-2087)."""
+    return _redactor(org_id).redact(text, named=False)
+
+
+def client_redact_value(value: Any, org_id: str | None = None) -> Any:
+    """:func:`client_redact` over every string inside ``value``."""
+    return _redactor(org_id).redact_value(value, named=False)
 
 
 def note_user_value(reference: str, value: str) -> None:

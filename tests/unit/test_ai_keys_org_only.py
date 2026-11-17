@@ -516,16 +516,16 @@ async def test_discovery_is_not_rescored_by_jev_on_a_server_of_many(many, monkey
     from provisa.discovery import run
 
     _stored(monkeypatch, {})
-    assert await run._refiner(SimpleNamespace(model_db=_DB)) is None
+    assert await run._refiner(SimpleNamespace(model_db=_DB), {}) is None
     _stored(monkeypatch, {JEV: "jev-stored"})
-    assert await run._refiner(SimpleNamespace(model_db=_DB)) is not None
+    assert await run._refiner(SimpleNamespace(model_db=_DB), {}) is not None
 
 
 async def test_discovery_is_rescored_by_jev_on_an_install_of_one(one, monkeypatch):
     from provisa.discovery import run
 
     _stored(monkeypatch, {})
-    assert await run._refiner(SimpleNamespace(model_db=_DB)) is not None
+    assert await run._refiner(SimpleNamespace(model_db=_DB), {}) is not None
 
 
 # --- the code source's model service ---------------------------------------------------------------

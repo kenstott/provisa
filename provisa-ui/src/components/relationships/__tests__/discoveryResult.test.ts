@@ -50,16 +50,19 @@ const report = (over: Partial<DiscoveryReport>): DiscoveryReport => ({
   ...over,
 });
 
+/** What the run found: the lines after the one that says what it looked for. */
+const found = (r: DiscoveryReport, tr: typeof t) => discoveryResultLines(r, tr).slice(1);
+
 describe("discoveryResultLines", () => {
   it("counts foreign keys found and suggested", () => {
-    expect(discoveryResultLines(report({ foreign_keys: { found: 3, suggested: 2 } }), t)).toEqual([
+    expect(found(report({ foreign_keys: { found: 3, suggested: 2 } }), t)).toEqual([
       "Foreign keys: 3 found, 2 suggested.",
     ]);
   });
 
   it("says why semantics found none", () => {
     const why = (empty_reason: SemanticsReport["empty_reason"]) =>
-      discoveryResultLines(report({ semantics: { ...SEMANTICS, empty_reason } }), t)[0];
+      found(report({ semantics: { ...SEMANTICS, empty_reason } }), t)[0];
     expect(why("unreadable")).toBe("Semantics: none. The model's answer could not be read.");
     expect(why("requests_failed")).not.toContain("proposed no relationships");
     expect(why("none_proposed")).toBe("Semantics: none. The model proposed no relationships.");
@@ -72,7 +75,7 @@ describe("discoveryResultLines", () => {
   });
 
   it("says how many requests were split, cut short, or failed, and the rest continued", () => {
-    const lines = discoveryResultLines(
+    const lines = found(
       report({
         semantics: {
           ...SEMANTICS,
@@ -94,7 +97,7 @@ describe("discoveryResultLines", () => {
   });
 
   it("says the semantic pass failed, and why, when every request failed", () => {
-    const lines = discoveryResultLines(
+    const lines = found(
       report({
         foreign_keys: { found: 6, suggested: 6 },
         semantics: {
@@ -127,7 +130,7 @@ describe("discoveryResultLines", () => {
   });
 
   it("says one request failed when the only request failed", () => {
-    const lines = discoveryResultLines(
+    const lines = found(
       report({
         semantics: {
           ...SEMANTICS,
@@ -143,7 +146,7 @@ describe("discoveryResultLines", () => {
   });
 
   it("says how many of the requests failed when the answered ones proposed none", () => {
-    const lines = discoveryResultLines(
+    const lines = found(
       report({
         semantics: {
           ...SEMANTICS,
@@ -162,7 +165,7 @@ describe("discoveryResultLines", () => {
   });
 
   it("words a failed request from the catalog, or from the server's message for a new code", () => {
-    const lines = discoveryResultLines(
+    const lines = found(
       report({
         semantics: {
           ...SEMANTICS,
@@ -185,7 +188,7 @@ describe("discoveryResultLines", () => {
   });
 
   it("counts what was left out, by kind", () => {
-    const lines = discoveryResultLines(
+    const lines = found(
       report({
         removed: { same_column: 1, primary_key_to_primary_key: 0, matches_foreign_key: 2 },
         semantics: { ...SEMANTICS, suggested: 1, invalid: 1 },
@@ -193,8 +196,93 @@ describe("discoveryResultLines", () => {
       t,
     );
     expect(lines[lines.length - 1]).toBe(
-      "Left out: naming a table or column that does not exist (1), from a column to itself (1), " +
+      "Not suggested: not naming two compared columns (1), from a column to itself (1), " +
         "matching a foreign key found in this run (2).",
+    );
+  });
+
+  it("says first the scope the run ran with, so a table outside it is plain", () => {
+    const same = report({
+      foreign_keys: { found: 6, suggested: 6 },
+      semantics: { ...SEMANTICS, suggested: 2 },
+      model: {
+        vendor: "anthropic",
+        model: "claude-fable-5-2",
+        input_tokens: 1000000,
+        output_tokens: 128000,
+        limits_source: "known",
+      },
+      source_domains: ["pet-store", "shelter"],
+      target_domains: ["pet-store", "shelter"],
+      source_tables: 29,
+      target_tables: 29,
+      target_same_as_source: true,
+    });
+    expect(discoveryResultLines(same, t).slice(0, 4)).toEqual([
+      "Looked for: Foreign keys, Semantics.",
+      "Model: anthropic:claude-fable-5-2",
+      "Source: 29 tables of pet-store, shelter.",
+      "Target: the same as the source.",
+    ]);
+    const two = {
+      ...same,
+      target_same_as_source: false,
+      source_tables: 1,
+      source_domains: ["city"],
+      target_tables: 24,
+    };
+    expect(discoveryResultLines(two, t).slice(2, 4)).toEqual([
+      "Source: 1 table of city.",
+      "Target: 24 tables of pet-store, shelter.",
+    ]);
+    // A run recorded before a run said its sets: the kinds, and what it found.
+    expect(discoveryResultLines(report({ foreign_keys: { found: 3, suggested: 2 } }), t)).toEqual([
+      "Looked for: Foreign keys.",
+      "Foreign keys: 3 found, 2 suggested.",
+    ]);
+  });
+
+  it("says when Jev, not the model, put every proposal under the threshold", () => {
+    const lines = found(
+      report({
+        semantics: {
+          ...SEMANTICS,
+          proposed: 30,
+          empty_reason: "scored_below_threshold",
+          scored: 30,
+          scored_below_threshold: 30,
+        },
+      }),
+      t,
+    );
+    expect(lines).toEqual([
+      "Semantics: none. The model gave every proposal 70% or more, and Jev scored each below that.",
+      "Not suggested: scored below 70% by Jev (30).",
+    ]);
+  });
+
+  it("tells the model's own low confidence from Jev's, and counts the other reasons", () => {
+    const lines = found(
+      report({
+        removed: { weaker: 2 },
+        semantics: {
+          ...SEMANTICS,
+          suggested: 3,
+          below_threshold: 4,
+          scored_below_threshold: 1,
+          not_comparable: 5,
+          scoring_failed: 1,
+        },
+      }),
+      t,
+    );
+    expect(lines).toContain(
+      "Jev could not score the proposals of 1 request, so they kept the model's confidence.",
+    );
+    expect(lines[lines.length - 1]).toBe(
+      "Not suggested: given less than 70% confidence by the model (4), scored below 70% by Jev (1), " +
+        "between columns of different classes (5), " +
+        "repeating a pair of columns a stronger proposal was kept for (2).",
     );
   });
 });

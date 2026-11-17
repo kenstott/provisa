@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen mit {{threshold}} % oder mehr sind anfangs angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
+    "colScore": "Bewertung",
+    "colKind": "Art",
+    "colReasoning": "Begründung",
+    "colNote": "Hinweis",
+    "colNotAgain": "Nicht erneut empfehlen",
+    "notAgainAria": "{{name}} nicht erneut empfehlen",
+    "kind": {
+      "foreign_keys": "Constraint",
+      "semantics": "Semantisch"
+    },
+    "asWritten": "Wie das Modell es schrieb: {{answer}}",
+    "apply": "Anwenden",
+    "applyAccept": "{{count}} akzeptieren",
+    "applyNotAgain": "{{count}} nicht erneut empfehlen",
+    "applyBoth": "{{accept}} akzeptieren, {{notAgain}} nicht erneut empfehlen",
+    "applied": "{{accepted}} akzeptiert, {{notAgain}} nicht erneut zu empfehlen.",
+    "failed": "{{count}} konnte nicht angewendet werden:",
+    "failed_other": "{{count}} konnten nicht angewendet werden:",
+    "none": "Dieser Lauf hat keinen Vorschlag mehr, der zu entscheiden wäre.",
+    "reason": {
+      "invalid_shape": "Keine Beziehung in der verlangten Form: Ein Feld fehlt oder hat die falsche Form",
+      "unknown_column": "Nennt eine Tabelle oder Spalte, die die Anfrage nicht verglichen hat",
+      "not_comparable": "Die beiden Spalten haben unterschiedliche Klassen und werden daher nicht verglichen",
+      "below_threshold": "Die Konfidenz des Modells liegt unter der Schwelle von {{threshold}} %.",
+      "scored_below_threshold": "Jev bewertete ihn mit {{scored}} %, unter der Schwelle von {{threshold}} %. Das Modell gab {{confidence}} %.",
+      "same_column": "Von einer Spalte zu sich selbst",
+      "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
+      "both_repeating": "Werte wiederholen sich auf beiden Seiten, daher ist keine die Eins-Seite",
+      "existing": "Bereits registriert",
+      "pending": "Wartet bereits unter den Vorschlägen",
+      "rejected": "Zuvor abgelehnt",
+      "matches_foreign_key": "Entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
+      "out_of_scope": "Außerhalb der gewählten Quell- und Zieltabellen",
+      "weaker": "Ein stärkerer Vorschlag für dieselben zwei Spalten wurde behalten"
+    }
+  }
+}

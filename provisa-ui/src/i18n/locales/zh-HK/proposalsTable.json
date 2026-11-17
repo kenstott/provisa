@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "套用時會接受已剔選的列。評分為 {{threshold}}% 或以上的列預設剔選。兩個方格都未剔選的列保持未決定。",
+    "colScore": "評分",
+    "colKind": "類型",
+    "colReasoning": "理由",
+    "colNote": "備註",
+    "colNotAgain": "不再推薦",
+    "notAgainAria": "不再推薦 {{name}}",
+    "kind": {
+      "foreign_keys": "約束",
+      "semantics": "語意"
+    },
+    "asWritten": "模型的原文：{{answer}}",
+    "apply": "套用",
+    "applyAccept": "接受 {{count}} 項",
+    "applyNotAgain": "不再推薦 {{count}} 項",
+    "applyBoth": "接受 {{accept}} 項，不再推薦 {{notAgain}} 項",
+    "applied": "已接受 {{accepted}} 項，{{notAgain}} 項不再推薦。",
+    "failed": "{{count}} 項無法套用：",
+    "failed_other": "{{count}} 項無法套用：",
+    "none": "今次執行已沒有待決定的提議。",
+    "reason": {
+      "invalid_shape": "不是所要求形式的關係：欠缺欄位或欄位形式有誤",
+      "unknown_column": "引用了請求未比較的表或欄",
+      "not_comparable": "兩欄的類別不同，因此不作比較",
+      "below_threshold": "模型的信心低於 {{threshold}}% 的門檻。",
+      "scored_below_threshold": "Jev 的評分為 {{scored}}%，低於 {{threshold}}% 的門檻。模型給出的是 {{confidence}}%。",
+      "same_column": "由某欄指向其本身",
+      "primary_key_to_primary_key": "主索引鍵到主索引鍵",
+      "both_repeating": "兩邊均有重複值，因此任何一邊都不是「一」的一方",
+      "existing": "已登記",
+      "pending": "已在建議中等候",
+      "rejected": "之前已拒絕",
+      "matches_foreign_key": "與今次執行中找到的外部索引鍵相同",
+      "out_of_scope": "不在所選的來源表和目標表之內",
+      "weaker": "同樣兩欄已保留了更強的提議"
+    }
+  }
+}

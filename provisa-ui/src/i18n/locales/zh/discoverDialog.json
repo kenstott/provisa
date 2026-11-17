@@ -51,6 +51,17 @@
     "stopped": "已停止。已找到的内容会保留。",
     "failed": "运行失败：{{error}}",
     "newRun": "新的运行",
-    "noSuggestions": "本次运行没有待处理的建议。"
+    "noSuggestions": "本次运行没有待处理的建议。",
+    "restore": {
+      "fromLastRun": "这些是您上次运行的字段。",
+      "reset": "恢复默认值",
+      "leftOut": "以下内容已不再有效，因此未带入：",
+      "domainsGone": "域 {{names}} 已不可用。",
+      "domainsGone_other": "域 {{names}} 已不可用。",
+      "tablesGone": "有 {{count}} 个表已不在其中注册。",
+      "tablesGone_other": "有 {{count}} 个表已不在其中注册。",
+      "vendorNoKey": "{{vendor}} 没有密钥，因此使用已分配的模型。",
+      "modelGone": "{{vendor}} 不再提供 {{model}}，因此使用已分配的模型。"
+    }
   }
 }

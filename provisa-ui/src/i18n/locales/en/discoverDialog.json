@@ -51,6 +51,17 @@
     "stopped": "Stopped. What was found is kept.",
     "failed": "The run failed: {{error}}",
     "newRun": "New run",
-    "noSuggestions": "None of this run's suggestions are waiting."
+    "noSuggestions": "None of this run's suggestions are waiting.",
+    "restore": {
+      "fromLastRun": "These are the fields of your last run.",
+      "reset": "Reset to defaults",
+      "leftOut": "Left out of them, because it no longer holds:",
+      "domainsGone": "The domain {{names}} is no longer available.",
+      "domainsGone_other": "The domains {{names}} are no longer available.",
+      "tablesGone": "{{count}} table is no longer registered there.",
+      "tablesGone_other": "{{count}} tables are no longer registered there.",
+      "vendorNoKey": "{{vendor}} has no key, so the model is the assigned one.",
+      "modelGone": "{{vendor}} no longer lists {{model}}, so the model is the assigned one."
+    }
   }
 }

@@ -351,10 +351,11 @@ async def _provider(cfg: dict, model_db: "Database", vendor: str) -> tuple[Any, 
 
 
 def _redacted_messages(messages: Any, org_id: str) -> Any:
-    """What goes out, through the central redaction (REQ-2087)."""
-    from provisa.security.redaction import redact_value
+    """What goes out, through the central redaction (REQ-2087), in the form sent outside
+    Provisa's records: the model's answer returns to the caller, who is told no rule's name."""
+    from provisa.security.redaction import client_redact_value
 
-    return redact_value(messages, org_id)
+    return client_redact_value(messages, org_id)
 
 
 async def _chat(
@@ -384,10 +385,11 @@ async def _chat(
             **params,
         )
     except Exception as exc:  # allow-ble: any vendor failure is the one refusal of the call, naming the model; its message is redacted
-        from provisa.security.redaction import redact
+        from provisa.security.redaction import client_redact
 
         raise ServiceRefused(
-            502, f"the model {model!r} ({provider_key}) failed: {redact(str(exc), grant.org_id)}"
+            502,
+            f"the model {model!r} ({provider_key}) failed: {client_redact(str(exc), grant.org_id)}",
         ) from None
     reported = getattr(resp, "usage", None)
     usage = (
@@ -440,7 +442,7 @@ async def _embeddings(
     grant: ServiceGrant, model_db: "Database", cfg: dict, request: dict, budget: Any
 ) -> dict:
     from provisa.api.mcp import polly_usage
-    from provisa.security.redaction import redact
+    from provisa.security.redaction import client_redact
     from provisa.vector.providers import EmbeddingError, get_provider
     from provisa.vector.registry import VectorModelError, VectorModelRegistry
 
@@ -461,11 +463,11 @@ async def _embeddings(
     await _admit_budget(budget, vector_model.id)
     try:
         vectors, tokens = await get_provider(vector_model.provider).embed_with_usage(
-            [redact(t, grant.org_id) for t in texts], vector_model
+            [client_redact(t, grant.org_id) for t in texts], vector_model
         )
     except EmbeddingError as exc:
         raise ServiceRefused(
-            502, f"the model {vector_model.id!r} failed: {redact(str(exc), grant.org_id)}"
+            502, f"the model {vector_model.id!r} failed: {client_redact(str(exc), grant.org_id)}"
         ) from None
     usage = polly_usage.Usage(input_tokens=tokens or 0, calls=1)
     await _meter(grant, model_db, vector_model.id, usage, price)

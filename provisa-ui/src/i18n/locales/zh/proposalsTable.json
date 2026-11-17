@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "应用时会接受已勾选的行。评分为 {{threshold}}% 或以上的行默认勾选。两个框都未勾选的行保持未决定。",
+    "colScore": "评分",
+    "colKind": "类型",
+    "colReasoning": "理由",
+    "colNote": "备注",
+    "colNotAgain": "不再推荐",
+    "notAgainAria": "不再推荐 {{name}}",
+    "kind": {
+      "foreign_keys": "约束",
+      "semantics": "语义"
+    },
+    "asWritten": "模型的原文：{{answer}}",
+    "apply": "应用",
+    "applyAccept": "接受 {{count}} 条",
+    "applyNotAgain": "不再推荐 {{count}} 条",
+    "applyBoth": "接受 {{accept}} 条，不再推荐 {{notAgain}} 条",
+    "applied": "已接受 {{accepted}} 条，{{notAgain}} 条不再推荐。",
+    "failed": "{{count}} 条无法应用：",
+    "failed_other": "{{count}} 条无法应用：",
+    "none": "本次运行已没有待决定的提议。",
+    "reason": {
+      "invalid_shape": "不是所要求形式的关系：缺少字段或字段形式有误",
+      "unknown_column": "引用了请求未比较的表或列",
+      "not_comparable": "两列的类别不同，因此不作比较",
+      "below_threshold": "模型的置信度低于 {{threshold}}% 的阈值。",
+      "scored_below_threshold": "Jev 的评分为 {{scored}}%，低于 {{threshold}}% 的阈值。模型给出的是 {{confidence}}%。",
+      "same_column": "从某列指向其自身",
+      "primary_key_to_primary_key": "主键到主键",
+      "both_repeating": "两侧均有重复值，因此任何一侧都不是“一”的一方",
+      "existing": "已注册",
+      "pending": "已在建议中等待",
+      "rejected": "之前已拒绝",
+      "matches_foreign_key": "与本次运行中找到的外键相同",
+      "out_of_scope": "不在所选的源表和目标表之内",
+      "weaker": "同样两列已保留了更强的提议"
+    }
+  }
+}

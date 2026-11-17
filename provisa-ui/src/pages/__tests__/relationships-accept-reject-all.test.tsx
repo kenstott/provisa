@@ -103,6 +103,7 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   startDiscoveryRun: vi.fn(),
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
+  fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7 }),
   acceptCandidates: vi.fn(),
   rejectCandidates: vi.fn(),
   rejectCandidate: vi.fn(),
