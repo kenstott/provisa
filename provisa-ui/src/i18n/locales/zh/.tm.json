@@ -10854,5 +10854,6 @@
   "zh/serverErrors.json::serverErrors.redaction.pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
   "zh/serverErrors.json::serverErrors.redaction.server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault.",
   "zh/serverErrors.json::serverErrors.debug_logs.pattern_refused": "The log filter pattern is refused: {{why}}",
-  "zh/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
+  "zh/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters.",
+  "zh/serverErrors.json::serverErrors.data.view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published."
 }

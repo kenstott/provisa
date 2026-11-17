@@ -153,6 +153,7 @@
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
       "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
