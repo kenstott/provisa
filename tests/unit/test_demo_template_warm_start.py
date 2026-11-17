@@ -44,8 +44,17 @@ async def platform(control_plane):
     return control_plane.platform
 
 
-async def _built(pool, demo: PublishedDemo, *, version: str | None = None) -> None:
+@pytest.fixture(autouse=True)
+def _node_disk(tmp_path, monkeypatch):
+    """This node's data directory: the org folders a test puts on disk (_on_disk) are here."""
+    monkeypatch.setattr("provisa.core.org_files.data_dir", lambda: tmp_path)
+
+
+async def _built(
+    pool, demo: PublishedDemo, *, version: str | None = None, counts: dict | None = None
+) -> None:
     """``demo``'s template as a finished build leaves it: its org ready, and its record."""
+    held = _BUILT if counts is None else counts
     async with pool.acquire() as conn:
         await conn.execute_core(
             insert(orgs).values(id=demo.template_org, name=demo.title, provisioning_state="ready")
@@ -54,13 +63,18 @@ async def _built(pool, demo: PublishedDemo, *, version: str | None = None) -> No
             insert(demo_template_readiness).values(
                 template_org=demo.template_org,
                 version=version or demo_templates.readiness_version(demo),
-                replicas=_BUILT["replicas"],
-                views=_BUILT["views"],
+                replicas=held["replicas"],
+                views=held["views"],
             )
         )
 
 
 def _on_disk(monkeypatch, counts: dict[str, dict]) -> None:
+    """Each org of ``counts`` has its folder on this node, its store holding those rows."""
+    from provisa.core import org_files
+
+    for org in counts:
+        org_files.folder(org).mkdir(parents=True, exist_ok=True)
     monkeypatch.setattr(
         "provisa.api.demo_replicas.store_counts",
         lambda org: counts.get(org, {"replicas": {}, "views": {}}),
@@ -254,6 +268,22 @@ async def test_a_store_that_differs_from_its_record_is_built_again(platform, mon
     await _built(platform, demo)
     _on_disk(monkeypatch, {demo.template_org: held})
     assert await demo_templates.warm_ready(platform, demo) is False
+
+
+async def test_a_template_whose_folder_is_not_on_this_node_is_prepared_again(platform, monkeypatch):
+    """A node with a fresh disk under a shared control plane, for a template recorded with an
+    empty store: its store's rows (none) match the record, and its folder is not on this node.
+    Served as built, its runtime was never built here, so nothing made its folder ready, and a
+    visitor's open read the template's store there: 500 OrgFolderUnavailable (release 510). It is
+    prepared again, as a template with rows recorded is."""
+    demo = _demo("alpha")
+    empty = {"replicas": {}, "views": {}}
+    await _built(platform, demo, counts=empty)
+    _on_disk(monkeypatch, {})  # this node holds none of its folder
+    monkeypatch.setattr("provisa.api.demo_replicas.store_counts", lambda _org: empty)
+    assert await demo_templates.warm_ready(platform, demo) is False
+    _on_disk(monkeypatch, {demo.template_org: empty})  # its folder here, its store empty
+    assert await demo_templates.warm_ready(platform, demo) is True
 
 
 async def test_a_template_never_recorded_is_built(platform, monkeypatch):
