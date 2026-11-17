@@ -219,7 +219,10 @@
       "unknown_command": "不明なコマンド: '{{name}}'",
       "unknown_impl_kind": "不明な関数 impl_kind：「{{impl_kind}}」",
       "written_table_missing": "コマンド '{{name}}' は登録されていない '{{table}}' に書き込みます",
-      "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。"
+      "host_code_refused": "コマンド '{{name}}' は種類 {{impl_kind}} で、サーバーのホスト上でコードを実行します。このデプロイではホストコードはオフです。代わりにコードリゾルバーを使用してください。",
+      "no_plain_list": "ソース '{{source_id}}' の必須パラメーターのない操作で '{{operation}}' の行を返すものがないため、そのテーブルはオンのままです",
+      "plain_list_unregistered": "ソース '{{source_id}}' の '{{operation}}' はリスト {{lists}} の行を返します。先にそのリストをテーブルとして登録してください",
+      "table_has_dependents": "関数 '{{name}}' のテーブル '{{table}}' はまだ他のオブジェクトから参照されています。先にそれらの参照を削除してください"
     },
     "graphql_remote": {
       "introspection_failed": "イントロスペクションに失敗しました：{{error}}",
@@ -528,7 +531,8 @@
       "code_resolver_retired": "コードリゾルバー '{{resolver}}' を廃止しました",
       "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません",
       "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
-      "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。"
+      "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
+      "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",

@@ -52,6 +52,8 @@
     "colVisibleTo": "Visibile a (ruoli, separati da virgola; vuoto = tutti)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Maschera",
+    "exposedAsTable": "Anche come tabella",
+    "exposedAsTableHint": "I client che leggono tabelle, come gli strumenti di BI, leggono questa funzione come una tabella con i suoi parametri come colonne. Disattivata, restituisce le righe dell'elenco della sorgente dello stesso tipo e la tabella viene rimossa.",
     "requiresApproval": "Richiede approvazione",
     "requiresApprovalHint": "Ogni chiamata viene eseguita solo dopo l'approvazione dell'hook di approvazione. Senza un hook configurato, le chiamate vengono rifiutate.",
     "writesTable": "Scrive nella tabella",

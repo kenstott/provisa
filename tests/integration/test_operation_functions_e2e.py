@@ -56,9 +56,13 @@ _PET = {
     },
 }
 _OK = {"description": "ok"}
+_PET_REF = {"$ref": "#/components/schemas/Pet"}
+_OWNER_REF = {"$ref": "#/components/schemas/Owner"}
 _SPEC = {
     "openapi": "3.0.0",
     "info": {"title": "Pets", "version": "1.0.0"},
+    # Pet is returned by the plain list and by the lookup; Owner by a lookup alone (REQ-1986).
+    "components": {"schemas": {"Pet": _PET, "Owner": _PET}},
     "paths": {
         "/pets": {
             "get": {
@@ -67,7 +71,7 @@ _SPEC = {
                     "200": {
                         **_OK,
                         "content": {
-                            "application/json": {"schema": {"type": "array", "items": _PET}}
+                            "application/json": {"schema": {"type": "array", "items": _PET_REF}}
                         },
                     }
                 },
@@ -79,7 +83,25 @@ _SPEC = {
                 "parameters": [
                     {"name": "petId", "in": "path", "required": True, "schema": {"type": "integer"}}
                 ],
-                "responses": {"200": {**_OK, "content": {"application/json": {"schema": _PET}}}},
+                "responses": {
+                    "200": {**_OK, "content": {"application/json": {"schema": _PET_REF}}}
+                },
+            }
+        },
+        "/owners/{ownerId}": {
+            "get": {
+                "operationId": "getOwnerById",
+                "parameters": [
+                    {
+                        "name": "ownerId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    }
+                ],
+                "responses": {
+                    "200": {**_OK, "content": {"application/json": {"schema": _OWNER_REF}}}
+                },
             }
         },
     },
@@ -102,6 +124,11 @@ class _Api:
                     pet = dict(_PETS[int(self.path[6:]) - 1])
                     pet["name"] = f"detail of {pet['name']}"
                     body = json.dumps(pet).encode()
+                elif self.path.startswith("/owners/") and self.path[8:].isdigit():
+                    owner = int(self.path[8:])
+                    body = json.dumps(
+                        {"id": owner, "name": f"owner {owner}", "status": "active"}
+                    ).encode()
                 else:
                     self.send_response(400)
                     self.end_headers()
@@ -223,6 +250,9 @@ def _config(spec_path: str, base_url: str) -> dict:
                 "returns": "default.get_pet_by_id",
                 "arguments": [{"name": "petId", "type": "integer"}],
                 "domain_id": "pets",
+                # REQ-1986: also exposed as its table, which the relationship and the row rule
+                # above refer to.
+                "exposed_as_table": True,
                 **visible,
             }
         ],
@@ -401,3 +431,70 @@ def test_information_schema_lists_its_parameters_and_its_returned_table(served):
         "WHERE r.routine_name = 'get_pet' ORDER BY p.ordinal_position",
     )
     assert parameters == [("petId", "integer")]
+
+
+# --- the table as an attribute of the function (REQ-1986) ---------------------------------------
+
+
+def _function(server, body: dict, name: str | None = None) -> httpx.Response:
+    return httpx.request(
+        "POST" if name is None else "PUT",
+        f"{server.base_url}/admin/actions/functions" + ("" if name is None else f"/{name}"),
+        json={"domainId": "pets", "visibleTo": _ROLES, **body},
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=300,
+    )
+
+
+def _registered(server, name: str) -> dict:
+    listed = httpx.get(
+        f"{server.base_url}/admin/actions", headers={"X-Provisa-Role": _ADMIN}, timeout=60
+    )
+    assert listed.status_code == 200, listed.text
+    return next(f for f in listed.json()["functions"] if f["name"] == name)
+
+
+def test_a_function_no_plain_list_shares_a_type_with_derives_its_table(served):
+    """Registered with nothing but its operation, getOwnerById is also a table (no plain list
+    returns Owner): the table is derived from the function, and answers as the function does."""
+    server, api = served
+    created = _function(
+        server, {"name": "get_owner", "sourceId": "api", "functionName": "getOwnerById"}
+    )
+    assert created.status_code == 200, created.text
+    function = _registered(server, "get_owner")
+    assert function["exposedAsTable"] is True
+    assert function["returns"] == "openapi.getOwnerById"
+    api.by_id()
+    as_function = _rows(server, "SELECT id, name FROM get_owner(3)")
+    assert api.by_id() == ["/owners/3"]
+    as_table = _rows(server, 'SELECT id, name FROM pets.get_owner_by_id WHERE "_nf_ownerId" = 3')
+    assert api.by_id() == ["/owners/3"]
+    assert as_table == as_function == [(3, "owner 3")]
+
+
+def test_turning_the_table_off_is_refused_while_a_relationship_and_a_row_rule_refer_to_it(
+    served,
+):
+    server, _ = served
+    function = _registered(server, "get_pet")
+    assert function["exposedAsTable"] is True
+    refused = _function(
+        server,
+        {
+            "name": "get_pet",
+            "sourceId": "api",
+            "functionName": "getPetById",
+            "exposedAsTable": False,
+        },
+        name="get_pet",
+    )
+    assert refused.status_code == 409, refused.text
+    said = refused.json()
+    assert said["code"] == "functions.table_has_dependents"
+    named = {(d["kind"], d["name"]) for d in said["params"]["dependents"]}
+    assert ("relationship", "list-pets-to-get-pet-by-id") in named
+    assert ("row_filter", f"{_READER} on get_pet_by_id") in named
+    # Nothing changed: the function still returns its table, which still answers.
+    assert _registered(server, "get_pet")["exposedAsTable"] is True
+    assert _rows(server, _TABLE_FORM.format(2)) == [(2, "detail of pet 2")]

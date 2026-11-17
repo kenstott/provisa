@@ -52,6 +52,8 @@
     "colVisibleTo": "公開先(ロール、カンマ区切り。空欄 = 全員)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "マスク",
+    "exposedAsTable": "テーブルとしても公開",
+    "exposedAsTableHint": "BI ツールなどテーブルを読むクライアントは、この関数をパラメーターを列とするテーブルとして読みます。オフにすると、ソースの同じ型のリストの行を返し、テーブルは削除されます。",
     "requiresApproval": "承認が必要",
     "requiresApprovalHint": "各呼び出しは承認フックが承認した後にのみ実行されます。フックが構成されていない場合、呼び出しは拒否されます。",
     "writesTable": "書き込み先テーブル",

@@ -219,7 +219,10 @@
       "unknown_command": "Comando desconhecido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de função desconhecido: '{{impl_kind}}'",
       "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada",
-      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso."
+      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso.",
+      "no_plain_list": "Nenhuma operação da fonte '{{source_id}}' sem um parâmetro obrigatório devolve as linhas de '{{operation}}', por isso a tabela continua ativada",
+      "plain_list_unregistered": "'{{operation}}' da fonte '{{source_id}}' devolve as linhas da sua lista {{lists}}; registre primeiro essa lista como tabela",
+      "table_has_dependents": "A tabela '{{table}}' da função '{{name}}' ainda é referenciada por outros objetos; remova primeiro essas referências"
     },
     "graphql_remote": {
       "introspection_failed": "Falha na introspecção: {{error}}",
@@ -528,7 +531,8 @@
       "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
       "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele",
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\"."
+      "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
+      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",

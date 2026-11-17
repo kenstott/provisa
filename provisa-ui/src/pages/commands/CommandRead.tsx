@@ -223,6 +223,10 @@ export function FunctionRead({
             value: roles(fn.visibleTo) ?? t("commandsPage.all"),
           },
           { label: t("commandFormFields.writesTable"), value: fn.writesTable },
+          // REQ-1986: whether the function is also exposed as a table derived from it.
+          ...(fn.exposedAsTable == null
+            ? []
+            : [{ label: t("commandFormFields.exposedAsTable"), value: yesNo(fn.exposedAsTable) }]),
           {
             label: t("commandFormFields.requiresApproval"),
             value: yesNo(Boolean(fn.requiresApproval)),
