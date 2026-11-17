@@ -54,29 +54,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      # Maven Central rather than a kenstott/calcite GitHub release: that release was deleted
-      # out from under CI and every download began 404ing, while Central is immutable once
-      # published and serves anonymously (GitHub Packages 401s even for public artifacts). Each
-      # jar is shaded and carries its own META-INF/services/io.trino.spi.Plugin, so one jar per
-      # directory is a complete plugin. Version pinned to the same coordinates
-      # tests/conftest.py::_TRINO_PLUGIN_VERSION and ui-e2e-trino.yml use.
-      - name: Download plugins from Maven Central
-        run: |
-          MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
-          VERSION="0.106.3"
-          PLUGINS_DIR="trino/plugins"
-          # name:version. trino-file (REQ-1960) is at 0.109.0; trino-salesforce (REQ-1946) and
-          # trino-cloudops (REQ-1947) are at 0.108.0, the
-          # first release with what Provisa needs of them; see tests/conftest.py _TRINO_PLUGIN_VERSIONS.
-          for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:0.109.0 \
-              trino-salesforce:0.108.0 trino-cloudops:0.108.0; do
-            plugin="${spec%%:*}"
-            version="${spec##*:}"
-            mkdir -p "$PLUGINS_DIR/$plugin"
-            curl -fsSL "$MAVEN/$plugin/$version/$plugin-$version.jar" \
-              -o "$PLUGINS_DIR/$plugin/$plugin-$version.jar"
-            ls "$PLUGINS_DIR/$plugin"/*.jar >/dev/null
-          done
+      # The pinned jars (tests/trino_plugins.py: versions and sha256s), the same ones every test
+      # lane mounts: this job primes their cache, a hit or one checksum-verified fetch from Maven
+      # Central (.github/actions/trino-plugins). Each jar is shaded and carries its own
+      # META-INF/services/io.trino.spi.Plugin, so one jar per directory is a complete plugin.
+      - name: Trino plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
 
       # REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
       # trino-functions/ in a Maven container; the engine's compose mounts it beside the others.
