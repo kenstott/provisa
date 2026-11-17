@@ -86800,7 +86800,14 @@ And a constant naming a secret that does not exist fails the query, naming the c
     readable text. In text sent to a client the replacement is a bare marker that names no rule and no variable,
     so a client cannot learn which secret a word they typed matches. Logs, spans and the audit trail keep
     the marker that names the rule. Redaction applies only to what is shown or logged, never to a statement,
-    an identifier, a bound value or a result row.'
+    an identifier, a bound value or a result row. (Amended 2026-11-16, THE BARE MARKER IS WHAT EVERY CLIENT
+    SURFACE AND EVERY MODEL RECEIVES:) Lead 2026-11-16, consequences of the rule above (the marker sent
+    to a client names no secret). Every client surface sends the bare marker [REDACTED]: HTTP, pgwire, gRPC,
+    Flight SQL, MCP, subscription frames and Bolt, whose failure text is redacted like the others. An error
+    message returned inside a successful HTTP answer (a GraphQL errors list in a 200 body) is redacted the
+    same way as one in a 400 or above: where the text travels does not change the rule. Text sent to a model
+    (a prompt, an embedding input) carries the bare marker too. The named marker [REDACTED:<rule>] is kept
+    only in logs, spans and audit records.'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
