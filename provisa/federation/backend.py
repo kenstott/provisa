@@ -643,6 +643,11 @@ class EngineBackend:
         WITHOUT connecting, so a sleeping cluster (idle-stopped between sessions) is only woken by
         the first real query. In-process engines have no remote terminal to defer — no-op."""
 
+    def open(self, state: Any) -> None:
+        """Lifecycle: the start of a lifespan that serves on this engine. An engine with no
+        terminal of its own has nothing to open; a native engine closed by an earlier lifespan in
+        this process builds its runtime again from here on (``NativeEngineBackend.open``)."""
+
     def close(self, state: Any) -> None:
         """Lifecycle: tear down the engine terminal. An engine with none has nothing to close; a
         native engine closes its runtime (``NativeEngineBackend.close``)."""

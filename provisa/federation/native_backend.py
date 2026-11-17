@@ -40,6 +40,7 @@ from typing import TYPE_CHECKING, Any
 from provisa.federation.backend import EngineBackend
 from provisa.federation.engine import UnreachableSource
 from provisa.federation.pgwire_replica import SourceStillStartingError, server_start_errors
+from provisa.federation.runtime_support import EngineClosed
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 
@@ -246,6 +247,17 @@ class NativeEngineBackend(EngineBackend):
         # server to serve (``attach_started``), not at the retry interval.
         self._starting: set[tuple[str, str, str, str]] = set()
         self._walk_lock = threading.Lock()
+        # Set by close, cleared by open: work that reaches a closed engine (a cancelled request's
+        # thread, a walk still running at shutdown) is refused, never handed a new runtime.
+        self._closed = False
+
+    def open(self, state: Any) -> None:
+        """Lifecycle: a lifespan starts serving on this engine. One closed by an earlier lifespan
+        in this process (the shared engine outlives each app) builds its runtime again on first
+        use."""
+        del state
+        with self._walk_lock:
+            self._closed = False
 
     def close(self, state: Any) -> None:
         """Lifecycle: the runtime this backend built is closed and dropped with everything
@@ -254,9 +266,12 @@ class NativeEngineBackend(EngineBackend):
         next app "store attached" from memory while that app named another store, and the cache
         write then named a catalog that was never attached. Closing it also releases what its
         sources hold: DuckDB's postgres extension keeps a pool to an attached source's server for
-        as long as the attaching database lives. Called by the lifespan at shutdown."""
+        as long as the attaching database lives. Called by the lifespan at shutdown; until the
+        next lifespan opens it, the engine refuses work (``EngineClosed``) rather than build a
+        runtime nothing would close."""
         del state
         with self._walk_lock:
+            self._closed = True
             runtime, self._runtime = self._runtime, None
             self._attached.clear()
             self._detached.clear()
@@ -298,12 +313,18 @@ class NativeEngineBackend(EngineBackend):
 
     def _store_runtime(self) -> Any:
         """The persistent runtime, built if this process has none yet, with no source attached by
-        this call: for what is answered from the engine and its store alone."""
-        if self._runtime is None:
+        this call: for what is answered from the engine and its store alone. A closed engine
+        refuses (``EngineClosed``): a runtime built after the lifespan closed it would attach the
+        control plane again and outlive the process's use of it."""
+        runtime = self._runtime
+        if runtime is None:
             with self._walk_lock:
+                if self._closed:
+                    raise EngineClosed(self.engine.name, "no runtime is built after its shutdown")
                 if self._runtime is None:
                     self._runtime = self._new_runtime()
-        return self._runtime
+                runtime = self._runtime
+        return runtime
 
     def _store_catalog(self, state: Any, org_id: str) -> str:
         """The catalog the store is read under, from the runtime's store attach alone (REQ-1912):
