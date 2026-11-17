@@ -294,14 +294,14 @@ def _pgwire(srv, role: str) -> list[dict]:
 def _graphql(srv, role: str) -> list[dict]:
     response = httpx.post(
         f"{srv.base_url}/data/graphql",
-        json={"query": "{ clean_suppliers(order_by: {id: asc}) { id street city country } }"},
+        json={"query": "{ cleanSuppliers(order_by: {id: asc}) { id street city country } }"},
         headers={"X-Provisa-Role": role},
         timeout=srv.request_timeout + 120,
     )
     assert response.status_code == 200, response.text
     body = response.json()
     assert not body.get("errors"), body
-    return body["data"]["clean_suppliers"]
+    return body["data"]["cleanSuppliers"]
 
 
 _DOORS = {"sql_http": _sql_over_http, "pgwire": _pgwire, "graphql": _graphql}
