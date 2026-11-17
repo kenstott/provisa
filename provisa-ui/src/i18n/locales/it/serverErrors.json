@@ -202,7 +202,8 @@
       "empty_answer": "Il modello non ha restituito alcun testo."
     },
     "environments": {
-      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo."
+      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo.",
+      "owner_not_member": "{{user}} ha creato l'ambiente {{env}} ma non è membro di {{org}}; agire al suo interno come proprietario richiede l'appartenenza."
     },
     "front_door": {
       "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa cinque minuti.",
@@ -899,6 +900,11 @@
     "preflight": {
       "confined_unavailable": "Il controllo preliminare di {{subject}} non è stato eseguito: in questa organizzazione viene eseguito solo in un processo confinato, e non è stato possibile avviarne uno ({{reason}}).",
       "confined_failed": "Il controllo preliminare di {{subject}} non ha restituito alcun verdetto: il suo processo confinato è terminato prima ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} è fuori dal progetto caricato; un progetto legge solo i propri file.",
+      "filter_value_refused": "{{value}} non può essere un valore in un filtro di autorizzazione: un valore è una stringa, un numero, true, false, null, un elenco di questi o una variabile di sessione.",
+      "filter_operator_refused": "{{operator}} non è un operatore con cui si possa convertire un filtro di autorizzazione."
     }
   }
 }

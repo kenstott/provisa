@@ -202,7 +202,8 @@
       "empty_answer": "Das Modell hat keinen Text zurückgegeben."
     },
     "environments": {
-      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
+      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut.",
+      "owner_not_member": "{{user}} hat die Umgebung {{env}} erstellt, ist aber kein Mitglied von {{org}}; um darin als Eigentümer zu handeln, ist eine Mitgliedschaft erforderlich."
     },
     "front_door": {
       "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa fünf Minuten bereit.",
@@ -899,6 +900,11 @@
     "preflight": {
       "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
       "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} liegt außerhalb des hochgeladenen Projekts; ein Projekt liest nur seine eigenen Dateien.",
+      "filter_value_refused": "{{value}} kann kein Wert in einem Berechtigungsfilter sein: Ein Wert ist eine Zeichenkette, eine Zahl, true, false, null, eine Liste davon oder eine Sitzungsvariable.",
+      "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     }
   }
 }

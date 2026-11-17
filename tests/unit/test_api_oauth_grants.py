@@ -119,7 +119,7 @@ class TestStated:
 
 class TestRefreshToken:
     def test_the_refresh_token_is_exchanged_for_the_token_sent(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             assert access_token(_refresh()) == "access-1"
         assert post.call_args.args == (TOKEN_URL,)
         assert post.call_args.kwargs["data"] == {
@@ -130,7 +130,7 @@ class TestRefreshToken:
         }
 
     def test_a_stated_scope_is_asked_for(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             access_token(_refresh(scope=SCOPE))
         assert post.call_args.kwargs["data"]["scope"] == SCOPE
 
@@ -141,38 +141,40 @@ class TestRefreshToken:
             client_secret="${env:TEST_GRANT_CLIENT_SECRET}",
             refresh_token="${env:TEST_GRANT_REFRESH}",
         )
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             access_token(auth)
         sent = post.call_args.kwargs["data"]
         assert sent["client_secret"] == "resolved-client-secret"
         assert sent["refresh_token"] == "resolved-refresh-token"
 
     def test_a_token_is_held_until_it_lapses(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             assert access_token(_refresh()) == access_token(_refresh()) == "access-1"
         post.assert_called_once()
 
     def test_a_token_about_to_lapse_is_asked_for_again(self):
         soon = _issuer(access_token="access-1", expires_in=oauth_grants._EXPIRY_MARGIN - 1)
-        with patch.object(oauth_grants.httpx, "post", side_effect=[soon, _granted("access-2")]):
+        with patch.object(
+            oauth_grants.httpx.Client, "post", side_effect=[soon, _granted("access-2")]
+        ):
             assert access_token(_refresh()) == "access-1"
             assert access_token(_refresh()) == "access-2"
 
     def test_a_token_with_no_stated_life_is_not_held(self):
         answers = [_issuer(access_token="access-1"), _issuer(access_token="access-2")]
-        with patch.object(oauth_grants.httpx, "post", side_effect=answers):
+        with patch.object(oauth_grants.httpx.Client, "post", side_effect=answers):
             assert access_token(_refresh()) == "access-1"
             assert access_token(_refresh()) == "access-2"
         assert oauth_grants._tokens == {}
 
     def test_another_persons_approval_is_another_token(self):
         answers = [_granted("access-ada"), _granted("access-bo")]
-        with patch.object(oauth_grants.httpx, "post", side_effect=answers):
+        with patch.object(oauth_grants.httpx.Client, "post", side_effect=answers):
             assert access_token(_refresh()) == "access-ada"
             assert access_token(_refresh(refresh_token="made-up-other-token")) == "access-bo"
 
     def test_no_credential_is_kept_as_a_key_of_the_hold(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()):
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()):
             access_token(_refresh())
         assert not any("made-up" in key for key in oauth_grants._tokens)
 
@@ -181,7 +183,7 @@ class TestRefreshToken:
             400, error="invalid_grant", error_description="Token has been expired or revoked."
         )
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=refused),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=refused),
             pytest.raises(CredentialRefused) as raised,
         ):
             access_token(_refresh())
@@ -193,7 +195,7 @@ class TestRefreshToken:
     def test_a_refusal_without_a_reason_names_its_status(self):
         bare = httpx.Response(401, text="no", request=httpx.Request("POST", TOKEN_URL))
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=bare),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=bare),
             pytest.raises(CredentialRefused) as raised,
         ):
             access_token(_refresh())
@@ -201,7 +203,7 @@ class TestRefreshToken:
 
     def test_an_issuer_that_fails_is_not_a_refusal(self):
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=_issuer(503)),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=_issuer(503)),
             pytest.raises(httpx.HTTPStatusError),
         ):
             access_token(_refresh())
@@ -210,7 +212,7 @@ class TestRefreshToken:
 
 class TestPublicClient:
     def test_a_client_with_no_secret_sends_none(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             assert access_token(_refresh(client_secret=None)) == "access-1"
         assert post.call_args.kwargs["data"] == {
             "grant_type": "refresh_token",
@@ -224,43 +226,45 @@ class TestExchange:
     refresh token calls this)."""
 
     def test_the_answer_is_returned_with_its_life(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()):
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()):
             assert exchange_refresh_token(_refresh()) == RefreshGrant("access-1", 3600.0, None)
 
     def test_a_replacement_is_returned_to_the_caller(self):
         answer = _granted(refresh_token="made-up-second-token")
-        with patch.object(oauth_grants.httpx, "post", return_value=answer):
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=answer):
             grant = exchange_refresh_token(_refresh())
         assert grant.replacement == "made-up-second-token"
 
     def test_the_same_token_answered_again_is_not_a_replacement(self):
         answer = _granted(refresh_token="made-up-refresh-token")
-        with patch.object(oauth_grants.httpx, "post", return_value=answer):
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=answer):
             assert exchange_refresh_token(_refresh()).replacement is None
 
     def test_exactly_the_stated_refresh_token_is_sent_every_time(self):
         answers = [_granted(refresh_token="made-up-second-token"), _granted("access-2")]
-        with patch.object(oauth_grants.httpx, "post", side_effect=answers) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", side_effect=answers) as post:
             exchange_refresh_token(_refresh())
             exchange_refresh_token(_refresh())
         sent = [call.kwargs["data"]["refresh_token"] for call in post.call_args_list]
         assert sent == ["made-up-refresh-token", "made-up-refresh-token"]
 
     def test_nothing_is_held(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             exchange_refresh_token(_refresh())
             exchange_refresh_token(_refresh())
         assert post.call_count == 2
         assert oauth_grants._tokens == {}
 
     def test_no_stated_life_is_said_so(self):
-        with patch.object(oauth_grants.httpx, "post", return_value=_issuer(access_token="a")):
+        with patch.object(
+            oauth_grants.httpx.Client, "post", return_value=_issuer(access_token="a")
+        ):
             assert exchange_refresh_token(_refresh()).expires_in is None
 
     def test_a_refusal_is_the_issuers(self):
         refused = _issuer(400, error="invalid_grant", error_description="AADSTS700082: expired.")
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=refused),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=refused),
             pytest.raises(CredentialRefused) as raised,
         ):
             exchange_refresh_token(_refresh())
@@ -273,7 +277,7 @@ class TestReplacedRefreshTokenOnAPlainCall:
     def test_it_is_refused_by_name_and_no_token_is_held(self):
         answer = _granted(refresh_token="made-up-second-token")
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=answer),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=answer),
             pytest.raises(ReplacementNotKept) as raised,
         ):
             access_token(_refresh())
@@ -284,7 +288,7 @@ class TestReplacedRefreshTokenOnAPlainCall:
     def test_the_generic_caller_is_such_a_call(self):
         answer = _granted(refresh_token="made-up-second-token")
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=answer),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=answer),
             pytest.raises(ReplacementNotKept),
         ):
             _apply_auth(_refresh(), {}, {})
@@ -292,7 +296,7 @@ class TestReplacedRefreshTokenOnAPlainCall:
 
 class TestServiceAccount:
     def test_an_assertion_signed_by_the_key_is_exchanged(self, key_file, signing_key):
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             assert access_token(_service_account(key_file)) == "access-1"
         assert post.call_args.args == (TOKEN_URL,)
         sent = post.call_args.kwargs["data"]
@@ -307,7 +311,7 @@ class TestServiceAccount:
 
     def test_scopes_are_asked_for_together(self, key_file, signing_key):
         scopes = [SCOPE, "https://www.googleapis.com/auth/tasks.readonly"]
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()) as post:
             access_token(_service_account(key_file, scopes=scopes))
         claims = jwt.decode(
             post.call_args.kwargs["data"]["assertion"],
@@ -319,7 +323,7 @@ class TestServiceAccount:
 
     def test_each_account_read_as_has_its_own_token(self, key_file):
         answers = [_granted("access-ada"), _granted("access-bo")]
-        with patch.object(oauth_grants.httpx, "post", side_effect=answers) as post:
+        with patch.object(oauth_grants.httpx.Client, "post", side_effect=answers) as post:
             assert access_token(_service_account(key_file)) == "access-ada"
             assert (
                 access_token(_service_account(key_file, subject="bo@example.test")) == "access-bo"
@@ -329,7 +333,7 @@ class TestServiceAccount:
 
     def test_the_key_is_resolved_from_its_reference(self, key_file, monkeypatch):
         monkeypatch.setenv("TEST_GRANT_KEY_FILE", key_file)
-        with patch.object(oauth_grants.httpx, "post", return_value=_granted()):
+        with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()):
             assert access_token(_service_account("${env:TEST_GRANT_KEY_FILE}")) == "access-1"
 
     def test_a_domain_that_has_not_delegated_is_refused_with_googles_reason(self, key_file):
@@ -339,7 +343,7 @@ class TestServiceAccount:
             error_description="Client is unauthorized to retrieve access tokens using this method.",
         )
         with (
-            patch.object(oauth_grants.httpx, "post", return_value=refused),
+            patch.object(oauth_grants.httpx.Client, "post", return_value=refused),
             pytest.raises(CredentialRefused) as raised,
         ):
             access_token(_service_account(key_file))
@@ -357,7 +361,7 @@ class TestServiceAccount:
     )
     def test_a_key_that_is_not_one_is_refused_before_anything_is_sent(self, key, said):
         with (
-            patch.object(oauth_grants.httpx, "post") as post,
+            patch.object(oauth_grants.httpx.Client, "post") as post,
             pytest.raises(ServiceAccountKeyInvalid, match=said) as raised,
         ):
             access_token(_service_account(key))
@@ -367,7 +371,7 @@ class TestServiceAccount:
     def test_a_private_key_that_cannot_sign_is_refused_without_quoting_it(self, key_file):
         broken = json.dumps({**json.loads(key_file), "private_key": "made-up-not-a-key"})
         with (
-            patch.object(oauth_grants.httpx, "post") as post,
+            patch.object(oauth_grants.httpx.Client, "post") as post,
             pytest.raises(ServiceAccountKeyInvalid) as raised,
         ):
             access_token(_service_account(broken))
@@ -380,7 +384,7 @@ class TestApplied:
         for auth in (_refresh(), _service_account(key_file)):
             headers: dict = {}
             params: dict = {}
-            with patch.object(oauth_grants.httpx, "post", return_value=_granted()):
+            with patch.object(oauth_grants.httpx.Client, "post", return_value=_granted()):
                 _apply_auth(auth, headers, params)
             assert headers == {"Authorization": "Bearer access-1"}
             assert params == {}
@@ -418,8 +422,8 @@ class TestHeldPerOrganizationAndCredential:
         # Each kind of credential, with ``secret`` as the part of it that is secret.
         other_key = json.dumps({**json.loads(key_file), "private_key_id": secret})
         return [
-            ("refresh", lambda: access_token(_refresh(client_secret=secret)), "httpx.post"),
-            ("service account", lambda: access_token(_service_account(other_key)), "httpx.post"),
+            ("refresh", lambda: access_token(_refresh(client_secret=secret)), "httpx.Client.post"),
+            ("service account", lambda: access_token(_service_account(other_key)), "httpx.Client.post"),
             (
                 "client credentials",
                 lambda: _client_credentials_token(_client_credentials(client_secret=secret)),
@@ -451,7 +455,7 @@ class TestHeldPerOrganizationAndCredential:
         else:
             monkeypatch.setenv("TEST_ROTATED_SECRET", "made-up-secret-1")
             fetch = next(f for k, f, _ in self._kinds(key_file, reference) if k == kind)
-        target = "httpx.Client.post" if kind == "client credentials" else "httpx.post"
+        target = "httpx.Client.post"  # every grant posts through the egress-checked client
         with patch(target, side_effect=[_granted("token-1"), _granted("token-2")]) as post:
             assert fetch() == "token-1"
             assert fetch() == "token-1"
@@ -466,7 +470,7 @@ class TestHeldPerOrganizationAndCredential:
     def test_the_hold_is_keyed_by_a_digest_never_the_secret(self, key_file, monkeypatch):
         monkeypatch.setenv("TEST_HELD_SECRET", "made-up-resolved-secret")
         auths = [
-            (lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")), "httpx.post"),
+            (lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")), "httpx.Client.post"),
             (
                 lambda: _client_credentials_token(
                     _client_credentials(client_secret="${env:TEST_HELD_SECRET}")
@@ -489,7 +493,7 @@ class TestHeldPerOrganizationAndCredential:
         token = current_org.set(None)
         try:
             with (
-                patch("httpx.post", return_value=_granted()) as post,
+                patch("httpx.Client.post", return_value=_granted()) as post,
                 pytest.raises(RuntimeError, match="No active org bound"),
             ):
                 access_token(_refresh())

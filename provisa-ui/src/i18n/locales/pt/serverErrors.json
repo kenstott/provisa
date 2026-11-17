@@ -202,7 +202,8 @@
       "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
-      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
+      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente.",
+      "owner_not_member": "{{user}} criou o ambiente {{env}}, mas não é membro de {{org}}; atuar nele como proprietário exige ser membro."
     },
     "front_door": {
       "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",
@@ -899,6 +900,11 @@
     "preflight": {
       "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
       "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",
+      "filter_value_refused": "{{value}} não pode ser um valor em um filtro de permissão: um valor é uma string, um número, true, false, null, uma lista destes ou uma variável de sessão.",
+      "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     }
   }
 }

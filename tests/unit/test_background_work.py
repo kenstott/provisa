@@ -162,6 +162,51 @@ async def test_running_work_is_cancelled_and_has_ended_when_shutdown_returns():
     assert time.monotonic() - began < 5  # cancelled, not waited out
 
 
+@pytest.mark.parametrize("submit", ["spawn_background", "spawn_after", "spawn_long_lived"])
+async def test_work_submitted_while_shutdown_runs_is_refused_and_never_runs_after_it(
+    caplog, submit
+):
+    """A task still running when shutdown begins (the config watcher mid-reload, whose control-plane
+    read blocks its thread so the cancel lands only at its next await) may submit more work: a
+    replica reload spawns its convergence. Shutdown has already taken the pool and the timer, so
+    that submission is refused by name -- never run on a fresh pool after shutdown returns, where it
+    reopened control-plane connections the lifespan had already disposed (release 510: two backends
+    left connected after an in-process app's shutdown)."""
+    entered = threading.Event()
+    ran: list[str] = []
+
+    async def _converge() -> None:
+        ran.append("converged")
+
+    async def _watcher() -> None:
+        entered.set()
+        time.sleep(0.5)  # a blocking control-plane read: shutdown begins meanwhile
+        coro = _converge()
+        if submit == "spawn_background":
+            spawn_background(coro, name="replica-converge")
+        elif submit == "spawn_after":
+            spawn_after(0, coro, name="replica-converge")
+        else:
+            spawn_long_lived(coro, name="replica-converge")
+        await asyncio.sleep(0)
+
+    spawn_long_lived(_watcher(), name="config-watch")
+    assert await asyncio.to_thread(entered.wait, 5)
+    with caplog.at_level(logging.ERROR, logger="provisa.core.connection_loop"):
+        await asyncio.to_thread(shutdown_background, 5)
+    await asyncio.sleep(0.5)  # anything submitted on a fresh pool would have run by now
+    assert ran == []
+    assert any(
+        r.exc_info is not None
+        and isinstance(r.exc_info[1], cl_mod.BackgroundShuttingDown)
+        and "replica-converge" in str(r.exc_info[1])
+        for r in caplog.records
+    ), [r.getMessage() for r in caplog.records]
+    # Once shutdown has returned, a later start (a test re-running the lifespan) submits again.
+    await asyncio.wait_for(asyncio.wrap_future(spawn_background(_converge(), name="next")), 5)
+    assert ran == ["converged"]
+
+
 async def test_a_task_cancelled_by_name_ends_and_others_run_on():
     """Work keyed to something going away (a deleted source's catalog walk) is stopped by its
     name: the named task is cancelled at its next await and its future is done once it ended; a

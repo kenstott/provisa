@@ -25,6 +25,7 @@ from sqlalchemy import func, select, update
 from provisa.api.errors import ApiError
 from provisa.core.host_code import refuse_host_code
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.engine_error_names import client_text
 
@@ -437,6 +438,7 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     from provisa.api.app import state
     from provisa.core.builtin_commands import BuiltinRefused, check as check_builtin
     from provisa.core.command_bindings import CommandBindingRefused, check_declared, check_names
+    from provisa.api.mcp.tool_groups import check_command_names
     from provisa.core.sql_expression import (
         SqlExpressionRefused,
         check_for_engines,
@@ -470,6 +472,7 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     try:
         check_declared(body.name, body.languageBindings)
         check_names([*served.values(), saved])
+        check_command_names([*served.values(), saved])  # REQ-2246
         if body.implKind == "builtin":
             check_builtin(body.name, body.binding)
         if body.implKind == "sql_expression":
@@ -859,6 +862,8 @@ async def create_webhook(
 ):  # REQ-209, REQ-210, REQ-211, REQ-253, REQ-434
     """Create a tracked webhook."""
     require_capability_request(request, "table_registration")
+    # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
+    sandbox_egress.require_url_allowed(body.url)
     body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
 
@@ -943,6 +948,8 @@ async def create_webhook(
 async def update_webhook(request: Request, name: str, body: WebhookInput):  # REQ-209, REQ-253
     """Update a tracked webhook by name."""
     require_capability_request(request, "table_registration")
+    # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
+    sandbox_egress.require_url_allowed(body.url)
     body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 

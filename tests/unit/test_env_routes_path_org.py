@@ -222,3 +222,69 @@ def test_an_owner_holding_owned_management_in_the_paths_org_deletes_it(served):
     served.caller.owns = True
     resp = served.http.delete(f"/admin/orgs/{ORG_B}/environments/{ENV}")
     assert resp.status_code == 299, resp.text
+
+
+#: The routes an environment's owner acts on as its owner (_guard_within, _guard_owned).
+OWNER_ROUTES = [
+    ("POST", _PREFIX + "/{name}/merge"),
+    ("POST", _PREFIX + "/{name}/deploy"),
+    ("POST", _PREFIX + "/{name}/undo"),
+    ("POST", _PREFIX + "/{name}/redo"),
+    ("GET", _PREFIX + "/{name}/merge-preview"),
+    ("POST", _PREFIX + "/{name}/rebuild"),
+    ("POST", _PREFIX + "/{name}/push"),
+    ("POST", _PREFIX + "/{name}/review"),
+    ("POST", _PREFIX + "/{name}/pull"),
+    ("DELETE", _PREFIX + "/{name}"),
+]
+
+
+def test_the_owner_routes_are_routes():
+    assert set(OWNER_ROUTES) <= set(ROUTES)
+
+
+@pytest.mark.parametrize(
+    ("method", "path"), OWNER_ROUTES, ids=[f"{m} {p}" for m, p in OWNER_ROUTES]
+)
+class TestOwnerPath:
+    """REQ-1528, REQ-1327: removing a member leaves ``environments.created_by`` naming them, so the
+    owner path holds only for a current member of the environment's org, on a request bound to it."""
+
+    def test_a_former_member_who_created_it_is_refused_by_name(self, served, method, path):
+        served.caller.active_org = ORG_A
+        served.caller.owns = True
+        served.pool.member = False
+        resp = _call(served, method, path)
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["code"] == "environments.owner_not_member"
+        assert served.built == []
+
+    def test_an_owner_bound_to_another_org_is_refused(self, served, method, path):
+        served.caller.active_org = ORG_A
+        served.caller.owns = True
+        resp = _call(served, method, path)
+        assert resp.status_code == 403, resp.text
+        assert resp.json()["code"] == "environments.capability_required_in_org"
+        assert served.built == []
+
+    def test_a_member_owner_bound_to_the_paths_org_passes(self, served, method, path):
+        served.caller.active_org = ORG_B
+        served.caller.owns = True
+        resp = _call(served, method, path)
+        assert resp.status_code == 299, resp.text
+        assert resp.json() == {"guard_passed_for": ORG_B}
+
+
+def test_a_former_member_cannot_browse_the_environment_they_created(served, monkeypatch):
+    """A repository ref naming an environment is guarded as the environment is (_browse)."""
+
+    async def _get_env(_admin_db, _org_id, name):
+        return {"name": name}
+
+    monkeypatch.setattr(er, "get_env", _get_env)
+    served.caller.active_org = ORG_A
+    served.caller.owns = True
+    served.pool.member = False
+    resp = served.http.get(f"/admin/orgs/{ORG_B}/environments/-/repo/files", params={"ref": ENV})
+    assert resp.status_code == 403, resp.text
+    assert resp.json()["code"] == "environments.owner_not_member"
