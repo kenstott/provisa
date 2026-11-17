@@ -195,11 +195,15 @@ def test_graphql_names_the_argument_by_the_parameters_alias(compiled):
 
 @pytest.mark.parametrize(
     "table, argument, args",
-    [("get_pet_by_id", "pet_id", {"petId": 3}), ("get_owner_by_id", "owner_id", {"owner_id": 3})],
+    [
+        ("get_pet_by_id", "pet_id", {"petId": "3"}),
+        ("get_owner_by_id", "owner_id", {"owner_id": "3"}),
+    ],
 )
 def test_graphql_binds_a_parameter_by_its_alias(compiled, table, argument, args):
     schema, ctx = compiled
-    query = f"{{ {_field(schema, table)}({argument}: 3) {{ name }} }}"
+    # The argument is the type its column metadata names; this one has none, so a string.
+    query = f'{{ {_field(schema, table)}({argument}: "3") {{ name }} }}'
     (one,) = compile_query(parse_query(schema, query, ctx=ctx), ctx)
     assert one.api_args == args
     table_id = PET if table == "get_pet_by_id" else OWNER
