@@ -25182,7 +25182,11 @@
     its field in the settings UI; a request past the cap is refused. The cap''s default value is not settled.
     (Amended 2026-11-16, THE SINK CAP DEFAULTS TO 5:) Maintainer 2026-11-16. The cap on running sinks per
     principal defaults to 5; this settles the default left open in A SINK OR STREAM ENDS WITH ITS OWNER''S
-    ROLE; SINKS ARE CAPPED.'
+    ROLE; SINKS ARE CAPPED. (Amended 2026-11-16, STARTING A SINK NEEDS THE WRITE CAPABILITY:) Maintainer
+    2026-11-16. Starting a Kafka sink writes query results into a topic on the operator''s cluster, which
+    Provisa may also read back as a source, so it is a write: it needs the write capability (REQ-868) of
+    the role the sink starts under, besides read access to what it subscribes to. A caller without it is
+    refused by name before anything is produced.'
   use_case: An X-Provisa-Sink header lets a client wire a live subscription directly into a Kafka topic
     for downstream stream processing without holding an SSE connection.
   code:
@@ -41593,26 +41597,32 @@
   feature: sign-in-and-identity-credentials
   priority: MUST
   type: behavioral
-  description: Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
+  description: 'Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
     (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored
     hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity
     via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing
-    per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name from
-    the user profile — so audit and usage reporting attribute the act to the person, identically to an interactive
-    session; the token's own label is carried as a separate claim recording WHICH of that person's credentials
-    was used. Token management is self-service on the user's own profile, where the secret is displayed
-    exactly once at issuance and the listing shows only a display prefix and lifecycle timestamps. (Amended
-    2026-11-16, A TOKEN'S ROLE NARROWS IT:) Maintainer 2026-11-16 ('should narrow'). A personal access token
-    that names a role acts only as that role, on every transport and in both assignment modes; it never
-    reaches another role its owner holds. A token may name only a role its issuer holds when it is issued
-    (REQ-2076). Whether a token's scopes are enforced or removed, and what each scope would allow, is not
-    settled. (Amended 2026-11-16, A TOKEN'S SCOPES ARE THE ROLES IT MAY USE:) Maintainer 2026-11-16 ('scope
-    is always a role name'; 'the PAT creator must assign specific roles'). This completes A TOKEN'S ROLE
-    NARROWS IT, whose last sentence (scopes not settled) and whose single named role are [SUPERSEDED by
-    this amendment]. A token carries one non-empty list of role names, its scopes; the separate single-role
-    field is gone. The token acts only as a role in its scopes. Each scope must be a role the issuer holds
-    when the token is issued and still holds when it is used; a token with no scopes is not issued. The
-    token form picks the roles with the standard multi-select.
+    per-org scope. A validated token resolves to its OWNER''S account — user id, email and display name
+    from the user profile — so audit and usage reporting attribute the act to the person, identically to
+    an interactive session; the token''s own label is carried as a separate claim recording WHICH of that
+    person''s credentials was used. Token management is self-service on the user''s own profile, where the
+    secret is displayed exactly once at issuance and the listing shows only a display prefix and lifecycle
+    timestamps. (Amended 2026-11-16, A TOKEN''S ROLE NARROWS IT:) Maintainer 2026-11-16 (''should narrow'').
+    A personal access token that names a role acts only as that role, on every transport and in both assignment
+    modes; it never reaches another role its owner holds. A token may name only a role its issuer holds
+    when it is issued (REQ-2076). Whether a token''s scopes are enforced or removed, and what each scope
+    would allow, is not settled. (Amended 2026-11-16, A TOKEN''S SCOPES ARE THE ROLES IT MAY USE:) Maintainer
+    2026-11-16 (''scope is always a role name''; ''the PAT creator must assign specific roles''). This completes
+    A TOKEN''S ROLE NARROWS IT, whose last sentence (scopes not settled) and whose single named role are
+    [SUPERSEDED by this amendment]. A token carries one non-empty list of role names, its scopes; the separate
+    single-role field is gone. The token acts only as a role in its scopes. Each scope must be a role the
+    issuer holds when the token is issued and still holds when it is used; a token with no scopes is not
+    issued. The token form picks the roles with the standard multi-select. (Amended 2026-11-16, IN CLAIMS
+    MODE A TOKEN''S ROLES LAST NO LONGER THAN ITS OWNER''S LAST SIGN-IN:) Maintainer 2026-11-16. Where the
+    identity provider supplies the roles, a personal access token acts with the roles its owner holds now:
+    a provider that can be asked again is asked at each use; for one that cannot (OIDC, Keycloak, SAML),
+    the roles mirrored from the owner''s last sign-in hold only until that sign-in expires, after which
+    the token is refused by name until the owner signs in again. A role removed at the provider therefore
+    stops applying at the next re-read or at that expiry.'
   use_case: Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate
     against all Provisa protocols using the same role/scope model as browser auth, eliminating the need
     for separate credential management per client type.
@@ -86964,7 +86974,16 @@ And a constant naming a secret that does not exist fails the query, naming the c
     message returned inside a successful HTTP answer (a GraphQL errors list in a 200 body) is redacted the
     same way as one in a 400 or above: where the text travels does not change the rule. Text sent to a model
     (a prompt, an embedding input) carries the bare marker too. The named marker [REDACTED:<rule>] is kept
-    only in logs, spans and audit records.'
+    only in logs, spans and audit records. (Amended 2026-11-16, AN ORGANIZATION''S REDACTION RULES APPLY
+    TO ITS OWN TEXT ONLY, AND CANNOT STALL OR READ THE SERVER:) Lead 2026-11-16, following the security
+    audit (item T4); this supersedes the earlier wording that telemetry and errors are redacted by every
+    organization''s rules together. An organization''s patterns and reference values apply only to text
+    that organization produced (its spans, its log records, its audit entries, its client text); a record
+    no organization produced gets the deployment''s rules and every secret value. An organization''s pattern
+    is refused when saved if it could backtrack catastrophically (nested or overlapping repeats, lookaround,
+    back references) or is too large, and runs with a step limit linear in the text''s length; past the
+    limit the text is withheld and the rule is named to its administrators. A held organization''s rule
+    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax.'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
@@ -89230,7 +89249,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
     CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
     until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
-    is refused by name; the view is never read under the rules it had before the change.'
+    is refused by name; the view is never read under the rules it had before the change. (Amended 2026-11-16,
+    A CODE-COMMAND VIEW''S BRIDGE ROWS ARE FILTERED BY THE READER''S RULE ON EACH INPUT, THROUGH ITS RELATIONSHIP:)
+    Lead 2026-11-16, narrowing the amendment of this day that refused every reader with a row rule on a
+    table read inside another view, so that REQ-2249''s rule (row rules apply at each hop) holds. For a
+    view that calls a code command, the stored bridge rows are filtered by the reader''s row rule on each
+    input table through the input''s registered relationship to the view (an EXISTS over the input under
+    the reader''s rule). An output that is an input''s relationship key is derived from that key column
+    only, so a mask elsewhere on the input does not mask it. A row rule on an input that has no relationship
+    from the view is still refused by name.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -96850,7 +96877,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: complete
+  status: in-progress
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -96869,7 +96896,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     after which the client''s list holds that group too. Nothing is unreachable in sip mode, and a group
     costs tokens only once it is added. A tool''s rights are unchanged: what a role may call is decided
     as in full mode. Full mode lists every tool, as before. Sip mode changes only which tools are listed;
-    result sizes keep their own settings.'
+    result sizes keep their own settings. (Amended 2026-11-16, AN MCP SESSION LISTS ONLY WHAT ITS ROLES
+    MAY USE, AND EACH VISIBLE COMMAND IS ITS OWN TOOL:) Maintainer 2026-11-16. As a principal''s GraphQL
+    schema is reduced to its roles, so is its MCP tool list: tools/list names only the built-in tools the
+    principal''s roles'' capabilities allow, within the session''s mode. Each command visible to the role,
+    where its MCP binding offers it, is listed as its own typed tool (its name from the binding, its input
+    schema from the command''s arguments) and runs the command under that role. Over remote HTTP the role
+    is resolved from the bearer token when the list is asked for; over stdio it is the pinned mcp.role.
+    A call to a tool the list does not offer is refused by name, as before.'
   scenario: 'Given an MCP client that connects in sip mode
 
     When it lists the tools

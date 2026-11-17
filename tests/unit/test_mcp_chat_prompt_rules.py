@@ -63,6 +63,15 @@ class TestTheAdminApi:  # REQ-2114
         assert "run discover_relationships for it" in s
         assert "/admin/discover/candidates/{id}/accept" in s
 
+    def test_the_discovery_tool_names_every_key_it_returns(self):
+        """REQ-413: discover_relationships is a stored run; its description states what the
+        answer holds (provisa.api.mcp.admin_api.discover_relationships)."""
+        tool = next(t for t in chat_mod._TOOLS if t["name"] == "discover_relationships")
+        described = _flat(tool["description"])
+        for key in ("candidates", "foreign_keys", "semantics", "run_id", "proposals"):
+            assert key in described, key
+        assert "stored run" in described
+
     def test_show_demo_or_teach_uses_the_screen_not_the_api(self):
         """REQ-2115's rule stands."""
         s = _flat(chat_mod._SYSTEM)
