@@ -447,6 +447,80 @@ def endpoint_address(endpoint: Mapping[str, object]) -> str:
     return address
 
 
+# --- embedding models (REQ-420) ------------------------------------------------------------------
+
+
+async def vector_model_key(model: Any) -> str | None:
+    """The key an embedding model (provisa.vector.registry.VectorModel) is called with: what its
+    ``api_key_env`` resolves to (provisa.core.secrets.resolve_api_key_field); None for a model
+    that declares no key. REQ-1395 as amended 2026-11-16: on a server of many organizations a key
+    read from the server's environment (a bare variable name, ``${env:...}``) is refused, as an AI
+    endpoint's is; no embedding model is the sandbox tier's (REQ-2006), so none is excepted. A key
+    that resolves to nothing is refused."""
+    field = model.api_key_env
+    if not field:
+        return None
+    from provisa.core.env_reference_guard import refuse_named_by_org
+
+    refuse_named_by_org(field)  # REQ-1557: a held organization's own key variable is not read
+    if _many() and _key_field_reads_environment(field):
+        raise AiKeyRequired(
+            model.id,
+            "ai.vector_model_key_from_server",
+            f"The embedding model {model.id} takes its key from the server's environment, which "
+            f"an organization on this server does not use. Give it a key of your own under "
+            f"{WHERE_TO_ADD_AI_KEY}.",
+        )
+    from provisa.core.secrets import resolve_api_key_field
+
+    key = await resolve_api_key_field(field)
+    if not key:
+        raise AiKeyRequired(
+            model.id,
+            "ai.vector_model_key_unset",
+            f"The embedding model {model.id} has no key: {field} is not set.",
+            field=field,
+        )
+    return key
+
+
+def vector_model_address(model: Any, vendor_address: str, *, local_server: bool) -> str:
+    """The base address an embedding model is reached at: its ``base_url``; with none,
+    ``vendor_address``. REQ-1395 as amended 2026-11-16: on a server of many organizations an
+    address from the server's environment (``${env:...}``) is refused, and so is a local model
+    server (``local_server``: Ollama) at the server's own address, which is where it is reached
+    with no ``base_url``; an organization declares its own."""
+    address = model.base_url
+    if address:
+        if _many() and "${env:" in address:
+            raise AiKeyRequired(
+                model.id,
+                "ai.vector_model_address_from_server",
+                f"The embedding model {model.id} takes its address from the server's "
+                f"environment, which an organization on this server does not use. Give it an "
+                f"address of its own under {WHERE_TO_ADD_AI_KEY}.",
+            )
+        return address
+    if local_server and _many():
+        raise AiKeyRequired(
+            model.id,
+            "ai.vector_model_local_server",
+            f"The embedding model {model.id} is reached at the server's own address, which an "
+            f"organization on this server does not use. Give it an address of its own under "
+            f"{WHERE_TO_ADD_AI_KEY}.",
+        )
+    return vendor_address
+
+
+def hub_token() -> bool | None:
+    """The ``token`` a local model is fetched from the Hugging Face hub with
+    (sentence-transformers, huggingface_hub): given none, huggingface_hub sends the HF_TOKEN the
+    server's environment holds. On a server of many organizations, ``False``: no token is sent
+    (REQ-1395 as amended 2026-11-16). On an install of one, ``None``: the deployment's, as
+    huggingface_hub reads it."""
+    return False if _many() else None
+
+
 # --- the vendors' own clients ----------------------------------------------------------------------
 
 #: aisuite's providers built on a vendor SDK's client, by the SDK. Each other provider aisuite has

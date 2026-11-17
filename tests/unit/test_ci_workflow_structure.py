@@ -1330,3 +1330,151 @@ def test_the_mssql_odbc_install_keeps_its_retries_and_has_no_fallback():
     miss = next(s for s in _odbc_steps() if "!= 'true'" in s.get("if", ""))
     assert "Acquire::Retries=5" in miss["env"]["APT_OPTS"]
     assert "ACCEPT_EULA=Y" in miss["run"]
+
+
+def _npm_audit_gate():
+    spec = importlib.util.spec_from_file_location(
+        "npm_audit_gate", REPO / "scripts/ci/npm_audit_gate.py"
+    )
+    gate = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(gate)
+    return gate
+
+
+def test_the_cve_audit_runs_the_npm_gate_over_every_npm_lockfile():
+    """Every committed npm lockfile is audited, from the lockfile alone (no install)."""
+    job = yaml.safe_load((REPO / ".github/workflows/cve-audit.yml").read_text())["jobs"][
+        "npm-audit"
+    ]
+    setup = next(s for s in job["steps"] if s.get("uses") == "./.github/actions/setup-ui")
+    assert setup["with"]["install"] == "false"
+    runs = [s["run"] for s in job["steps"] if "scripts/ci/npm_audit_gate.py" in s.get("run", "")]
+    assert len(runs) == 1
+    audited = set(runs[0].split("npm_audit_gate.py", 1)[1].split())
+    lockfiles = {
+        str(p.parent.relative_to(REPO))
+        for pattern in ("*/package-lock.json", "*/*/package-lock.json")
+        for p in REPO.glob(pattern)
+        if "node_modules" not in p.parts
+    }
+    assert lockfiles and audited == lockfiles
+
+
+def test_the_npm_gate_allow_list_names_dev_advisories_with_a_reason():
+    for ghsa, why in _npm_audit_gate().ALLOW.items():
+        assert re.fullmatch(r"GHSA(-[23456789cfghjmpqrvwx]{4}){3}", ghsa), ghsa
+        assert len(why.split()) >= 8, f"{ghsa}: say which package carries it and what blocks it"
+
+
+def _audit_report(*advisories: tuple[str, str, str]) -> dict:
+    """An npm audit --json report holding (package, severity, GHSA id) advisories."""
+    vulns: dict = {}
+    for package, severity, ghsa in advisories:
+        via = {
+            "name": package,
+            "severity": severity,
+            "title": "t",
+            "url": f"https://github.com/advisories/{ghsa}",
+        }
+        vulns.setdefault(package, {"via": []})["via"].append(via)
+    return {"vulnerabilities": vulns}
+
+
+def test_the_npm_gate_fails_a_production_advisory_even_when_allowed():
+    gate = _npm_audit_gate()
+    prod = _audit_report(("dompurify", "high", "GHSA-aaaa-bbbb-cccc"))
+    problems = gate.violations(
+        [("ui", prod, prod)], {"GHSA-aaaa-bbbb-cccc": "listed by mistake for a prod package"}
+    )
+    assert any("production GHSA-aaaa-bbbb-cccc" in p for p in problems)
+
+
+def test_the_npm_gate_passes_an_allowed_dev_advisory_and_fails_an_unlisted_one():
+    gate = _npm_audit_gate()
+    full = _audit_report(
+        ("vite", "critical", "GHSA-aaaa-bbbb-cccc"), ("zod", "high", "GHSA-dddd-eeee-ffff")
+    )
+    problems = gate.violations([("ui", full, _audit_report())], {"GHSA-aaaa-bbbb-cccc": "why"})
+    assert problems == ["ui: dev-only GHSA-dddd-eeee-ffff zod high: t (not in ALLOW)"]
+
+
+def test_the_npm_gate_ignores_moderate_and_fails_a_stale_allow_entry():
+    gate = _npm_audit_gate()
+    full = _audit_report(("glob", "moderate", "GHSA-aaaa-bbbb-cccc"))
+    assert gate.violations([("ui", full, full)], {}) == []
+    stale = gate.violations([("ui", full, full)], {"GHSA-aaaa-bbbb-cccc": "why"})
+    assert stale == [
+        "ALLOW names GHSA-aaaa-bbbb-cccc, which no dev-only advisory matches: remove it"
+    ]
+
+
+# Node: the repository's one pin is the root .nvmrc. CI, the image's renderer stage and the NixOS
+# guest build on it, so a bump in one place without the others fails here.
+_NVMRC = REPO / ".nvmrc"
+
+
+def _node_pin() -> str:
+    return _NVMRC.read_text().strip()
+
+
+def _setup_node_steps():
+    for where, step in _steps():
+        yield where, step
+    for action in ACTIONS:
+        for step in yaml.safe_load(action.read_text())["runs"]["steps"]:
+            yield f"{action.parent.name}:{step.get('name') or step.get('uses')}", step
+
+
+def test_node_is_pinned_once_at_the_repository_root():
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "--", "*.nvmrc", ".nvmrc"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert tracked == [".nvmrc"], f"Node pins tracked: {tracked}; the one pin is the root .nvmrc"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", _node_pin()), f".nvmrc is {_node_pin()!r}, not x.y.z"
+
+
+def test_every_setup_node_reads_the_nvmrc_and_hard_codes_no_version():
+    setup_node = 0
+    for where, step in _setup_node_steps():
+        with_ = step.get("with") or {}
+        assert "node-version" not in with_, (
+            f"{where} hard-codes node-version {with_['node-version']}"
+        )
+        if (step.get("uses") or "").startswith("actions/setup-node"):
+            setup_node += 1
+            assert with_.get("node-version-file") == ".nvmrc", (
+                f"{where} sets up Node without node-version-file: .nvmrc"
+            )
+    assert setup_node, "no actions/setup-node step found"
+
+
+def test_no_workflow_or_action_names_a_node_version_anywhere():
+    for path in [*WORKFLOWS, *ACTIONS]:
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            assert not re.search(r"\bnode-version\s*:", line), f"{path.name}:{n}: {line.strip()}"
+
+
+def test_the_images_node_is_the_nvmrc():
+    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / "Dockerfile").read_text(), flags=re.M)
+    assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
+
+
+def test_the_nixos_guests_node_is_the_nvmrc_major():
+    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    majors = re.findall(r"\bnodejs_(\d+)\b", nix)
+    assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
+
+
+def test_the_uis_engines_admit_the_nvmrc():
+    import json
+
+    engines = json.loads((REPO / "provisa-ui" / "package.json").read_text())["engines"]["node"]
+    floor = re.fullmatch(r">=(\d+)\.(\d+)\.(\d+)", engines)
+    assert floor, f"provisa-ui engines.node is {engines!r}, expected >=x.y.z"
+    pin = tuple(int(x) for x in _node_pin().split("."))
+    assert tuple(int(x) for x in floor.groups()) <= pin, f"engines {engines} refuses .nvmrc {pin}"

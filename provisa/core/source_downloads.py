@@ -24,16 +24,14 @@ whatever the setting holds (REQ-1997, ``source_uploads.require_own_disk``)."""
 
 from __future__ import annotations
 
-import ipaddress
 import os
-import socket
 from collections.abc import AsyncIterator
 from pathlib import Path, PurePosixPath
 from typing import Any
 from urllib.parse import unquote, urlparse
 
 from provisa.core import settings_registry, source_uploads
-from provisa.core.secrets_providers import many_organisations
+from provisa.security import sandbox_egress
 
 #: The source types whose file can be downloaded: one CSV or Parquet file.
 DOWNLOAD_TYPES = frozenset({"csv", "parquet"})
@@ -118,28 +116,21 @@ def checked_mount(address: str, org_id: str | None = None) -> Path:
     return Path(real)
 
 
-def _not_private(host: str, address: str) -> None:
-    """On a server of many organizations, refuse by name an address whose host resolves to a
-    private, loopback, link-local or otherwise internal address: a tenant's download must not
-    reach the platform's own network (its cloud metadata server hands out the VM's credentials)."""
-    if not many_organisations():
-        return
+def _not_private(host: str, port: int | None, address: str, org_id: str | None) -> None:
+    """For a held org (``org_id``, the bound org when None), refuse by name an address whose host
+    is not public, unless its demo declares it (``sandbox_egress.require_allowed``, REQ-1557): a
+    held org's download must not reach the server's own network (its cloud metadata server hands
+    out the VM's credentials)."""
     try:
-        found = {str(info[4][0]) for info in socket.getaddrinfo(host, None)}
-    except socket.gaierror as exc:
+        sandbox_egress.require_allowed(host, port, org_id)
+    except sandbox_egress.PrivateDestinationRefused as exc:
         raise DownloadRefused(
-            f"{address}: {host} does not resolve", "files.download_failed", address=address
+            f"{address}: {host} is {exc.params['address']}, which is not a public address; "
+            "this organization downloads nothing from the server's own network",
+            "files.download_internal_address",
+            address=address,
+            host=host,
         ) from exc
-    for ip in found:
-        parsed = ipaddress.ip_address(ip.split("%", 1)[0])
-        if not parsed.is_global or parsed.is_multicast:
-            raise DownloadRefused(
-                f"{address}: {host} resolves to {ip}, an address inside the server's own "
-                "network, which a server of many organizations downloads nothing from",
-                "files.download_internal_address",
-                address=address,
-                host=host,
-            )
 
 
 def file_name(address: str) -> str:
@@ -160,7 +151,7 @@ async def _mount_chunks(path: Path) -> AsyncIterator[bytes]:
             yield chunk
 
 
-async def _https_chunks(address: str) -> AsyncIterator[bytes]:
+async def _https_chunks(address: str, org_id: str | None) -> AsyncIterator[bytes]:
     import httpx
 
     url = address
@@ -173,7 +164,7 @@ async def _https_chunks(address: str) -> AsyncIterator[bytes]:
                     "files.download_bad_address",
                     address=address,
                 )
-            _not_private(parsed.hostname or "", address)
+            _not_private(parsed.hostname or "", parsed.port, address, org_id)
             async with client.stream("GET", url) as response:
                 if response.is_redirect:
                     url = str(response.url.join(response.headers["location"]))
@@ -195,7 +186,7 @@ async def _https_chunks(address: str) -> AsyncIterator[bytes]:
     )
 
 
-def _s3_body(address: str, hints: dict[str, Any]) -> tuple[Any, int | None]:
+def _s3_body(address: str, hints: dict[str, Any], org_id: str | None) -> tuple[Any, int | None]:
     import boto3
     from botocore.config import Config
 
@@ -205,8 +196,11 @@ def _s3_body(address: str, hints: dict[str, Any]) -> tuple[Any, int | None]:
     parsed = urlparse(address)
     endpoint = hints.get("endpoint") or None
     # The host the bytes come from: an S3-compatible store's endpoint, else AWS's own.
-    host = (urlparse(endpoint).hostname or "") if endpoint else "s3.amazonaws.com"
-    _not_private(host, address)
+    if endpoint:
+        host, port = urlparse(endpoint).hostname or "", urlparse(endpoint).port
+    else:
+        host, port = "s3.amazonaws.com", None
+    _not_private(host, port, address, org_id)
     client = boto3.client(
         "s3",
         endpoint_url=endpoint,
@@ -252,10 +246,12 @@ async def download(
             source_id, name, _mount_chunks(path), path.stat().st_size, org_id
         )
     if kind == "s3":
-        body, length = await asyncio.to_thread(_s3_body, address, hints or {})
+        body, length = await asyncio.to_thread(_s3_body, address, hints or {}, org_id)
         return await source_uploads.receive(source_id, name, _s3_chunks(body), length, org_id)
     # Its length is not taken on the server's word: the limit is held as the bytes arrive.
-    return await source_uploads.receive(source_id, name, _https_chunks(address), None, org_id)
+    return await source_uploads.receive(
+        source_id, name, _https_chunks(address, org_id), None, org_id
+    )
 
 
 async def read_bytes(address: str, *, hints: dict[str, Any] | None = None) -> bytes:
@@ -267,10 +263,10 @@ async def read_bytes(address: str, *, hints: dict[str, Any] | None = None) -> by
     if kind == "mount":
         chunks = _mount_chunks(checked_mount(address))
     elif kind == "s3":
-        body, _length = await asyncio.to_thread(_s3_body, address, hints or {})
+        body, _length = await asyncio.to_thread(_s3_body, address, hints or {}, None)
         chunks = _s3_chunks(body)
     else:
-        chunks = _https_chunks(address)
+        chunks = _https_chunks(address, None)
     limit = source_uploads.max_bytes()
     held = bytearray()
     async for chunk in chunks:

@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Directory da cui si possono leggere i file di log",
-        "help": "Le directory in cui possono trovarsi i file di una sorgente Logs, una volta seguiti i loro collegamenti; per impostazione predefinita /var/log. Aggiungerne una, come ~/Library/Logs, per leggere in tabelle i file del server che contiene. Un server di molte organizzazioni non legge alcun file di log proprio, qualunque cosa dica questa impostazione."
+        "help": "Le directory in cui possono trovarsi i file di una sorgente Logs, una volta seguiti i loro collegamenti; per impostazione predefinita /var/log. Aggiungerne una, come ~/Library/Logs, per leggere in tabelle i file del server che contiene. Un'organizzazione sandbox e, su un server di molte organizzazioni, ogni organizzazione tranne quella propria del deployment non legge alcun file del server fuori dalla propria cartella, tranne quelli che nominano le sorgenti della sua demo, qualunque cosa dica questa impostazione."
       },
       "preview_lines": {
         "label": "Righe lette per trovare le colonne di un log",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Directory da cui si possono scaricare i file delle sorgenti",
-        "help": "Le directory da cui il file di una sorgente CSV o Parquet può essere scaricato tramite il suo percorso su questo server, dopo averne seguito i link; nessuna per impostazione predefinita. Aggiungine una per permettere a uno steward di copiare un file al suo interno nella cartella dell'organizzazione. Un server di molte organizzazioni non copia alcun file proprio, qualunque cosa dica questa impostazione."
+        "help": "Le directory da cui il file di una sorgente CSV o Parquet può essere scaricato tramite il suo percorso su questo server, dopo averne seguito i link; nessuna per impostazione predefinita. Aggiungine una per permettere a uno steward di copiare un file al suo interno nella cartella dell'organizzazione. Un'organizzazione sandbox e, su un server di molte organizzazioni, ogni organizzazione tranne quella propria del deployment non copia alcun file del server fuori dalla propria cartella, tranne quelli che nominano le sorgenti della sua demo, qualunque cosa dica questa impostazione."
       }
     },
     "polly": {

@@ -93,7 +93,7 @@ class TestProviders:
         encoding: list[int] = []  # how many encodes run at once, each time one starts
 
         class _Model:
-            def __init__(self, model_id):
+            def __init__(self, model_id, token):
                 loads.append(model_id)
                 time.sleep(0.2)  # long enough for the other thread to arrive meanwhile
 
@@ -138,10 +138,10 @@ class TestProviders:
         cached: set[str] = set()
 
         class _Model:
-            def __init__(self, model_id):
+            def __init__(self, model_id, token):
                 cached.add(model_id)  # loading fetches it into the hub cache
 
-        def _snapshot_download(model_id, local_files_only):
+        def _snapshot_download(model_id, local_files_only, token):
             assert local_files_only
             if model_id not in cached:
                 raise FileNotFoundError("outgoing traffic has been disabled")

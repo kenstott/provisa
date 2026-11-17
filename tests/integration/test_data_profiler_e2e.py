@@ -26,7 +26,7 @@ import urllib.request
 from typing import Any
 
 import pytest
-from tests.helpers import PROFILER_RUN_DEFAULTS, registered_id, release_field
+from tests.helpers import PROFILER_RUN_DEFAULTS
 import sqlalchemy as sa
 
 from tests.integration.worker_boot_harness import WorkerBoot, _config
@@ -188,14 +188,7 @@ def _register(boot, entry: dict) -> None:
         },
     )
     assert result["registerTable"]["success"], result
-    # REQ-1921: a table registered through the admin starts as a draft; the owner releases it.
-    released = _graphql(
-        boot,
-        f"mutation {{ {release_field(registered_id(result['registerTable']['message']))} "
-        "{ success message } }",
-        {},
-    )
-    assert released["setTableDraft"]["success"], released
+    # REQ-1921: registered, it is live: no step puts it in service.
     for rule in entry["rowRules"]:
         result = _graphql(
             boot,

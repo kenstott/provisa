@@ -599,11 +599,13 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
         draft_reach() if _draft_rows and draft_reach is not None else frozenset()
     )
     # The drafts' rows it reads, beside the rows of its scope: every one, or those of its domains.
+    # REQ-1921: a withdrawn table's row is read as a draft's is -- by its domain's stewards.
+    out_of_service = exp.paren(exp.or_(exp.column("draft"), exp.column("withdrawn")))
     drafts_read: exp.Expr | None = (  # pyright: ignore[reportPrivateImportUsage]
-        exp.column("draft")
+        out_of_service.copy()
         if reach is None
         else exp.and_(
-            exp.column("draft"),
+            out_of_service.copy(),
             _in_list(exp.column("domain_id"), [exp.Literal.string(d) for d in sorted(reach)]),
             copy=False,
         )
@@ -652,9 +654,11 @@ def build_governance_context(  # REQ-002, REQ-005, REQ-040, REQ-263, REQ-265, RE
     # scope (the whole catalog's included).
     for tm in _draft_rows if reach is not None else ():
         if drafts_read is None:
-            _and_rule(gov, tm.table_id, exp.not_(exp.column("draft")))
+            _and_rule(gov, tm.table_id, exp.not_(out_of_service.copy()))
         elif meta_scope is None:
-            _and_rule(gov, tm.table_id, exp.or_(exp.not_(exp.column("draft")), drafts_read.copy()))
+            _and_rule(
+                gov, tm.table_id, exp.or_(exp.not_(out_of_service.copy()), drafts_read.copy())
+            )
 
     # REQ-2190: a column the relation a statement reads does not hold is no column of the catalog's
     # either; which those are is decided in code, so no view can say.

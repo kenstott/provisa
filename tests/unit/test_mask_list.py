@@ -98,6 +98,7 @@ def test_a_meta_role_is_judged_by_its_own_set(monkeypatch):
             "role_chains": CHAINS,
             "tables": [],
             "draft_tables": [],
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

@@ -677,3 +677,73 @@ def test_no_vendor_client_is_built_without_every_value_explicit():
         "A vendor's client built from anything but provisa.core.org_secrets.sdk_config takes "
         f"what it is not given from the server's environment: {bare}"
     )
+
+
+#: Where an embedding model's key, address and the server's own variables could be read: the
+#: model's fields (provisa.vector.registry defines them) and the environment.
+_EMBEDDING_READS = frozenset(
+    {"api_key_env", "base_url", "environ", "getenv", "resolve_api_key_field", "resolve_secrets"}
+)
+
+#: What fetches a local model from the Hugging Face hub; given no token, it sends the server's.
+_HUB_FETCHES = frozenset({"SentenceTransformer", "snapshot_download", "hf_hub_download"})
+
+
+def _ast_name(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    return node.id if isinstance(node, ast.Name) else None
+
+
+def test_no_embedding_provider_reads_a_key_or_address_but_through_the_resolver():
+    """REQ-1395 as amended 2026-11-16, for embedding models: every key and base address an
+    embedding provider sends is the resolver's (provisa.core.org_secrets.vector_model_key,
+    vector_model_address), so no file of provisa/vector reads a model's key or address field or
+    the environment itself."""
+    reads = []
+    for path in sorted((_PACKAGE / "vector").rglob("*.py")):
+        if path.name == "registry.py":
+            continue
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if _ast_name(node) in _EMBEDDING_READS and isinstance(node, (ast.Attribute, ast.Name)):
+                reads.append(
+                    f"{path.relative_to(_PACKAGE.parent)}:{node.lineno}: {_ast_name(node)}"
+                )
+    assert reads == [], (
+        "An embedding provider reads its key and address through provisa.core.org_secrets "
+        f"(vector_model_key, vector_model_address), never itself: {reads}"
+    )
+
+
+def test_every_embedding_provider_takes_its_address_from_the_resolver():
+    """Each provider that sends a request (provisa.vector.providers) is reached at the address
+    vector_model_address gives; a local model is fetched with the resolver's hub token."""
+    import inspect
+
+    from provisa.vector import providers
+
+    for name, cls in providers._PROVIDERS.items():
+        source = inspect.getsource(cls)
+        if "httpx" in source:
+            assert "vector_model_address" in source or "_ollama_address" in source, name
+        else:
+            assert "hub_token()" in source, name
+
+
+def test_every_hub_fetch_is_given_the_resolvers_token():
+    """Every fetch of a local model from the Hugging Face hub in provisa/ is given
+    provisa.core.org_secrets.hub_token(), so a server of many organizations sends no HF_TOKEN of
+    its own environment."""
+    bare = []
+    for path in _sources():
+        text = path.read_text(encoding="utf-8")
+        if not any(name in text for name in _HUB_FETCHES):
+            continue
+        for node in ast.walk(ast.parse(text)):
+            if not isinstance(node, ast.Call) or _ast_name(node.func) not in _HUB_FETCHES:
+                continue
+            given = {k.arg: k.value for k in node.keywords}
+            token = given.get("token")
+            if not (isinstance(token, ast.Call) and _ast_name(token.func) == "hub_token"):
+                bare.append(f"{path.relative_to(_PACKAGE.parent)}:{node.lineno}")
+    assert bare == [], f"A hub fetch not given hub_token(): {bare}"

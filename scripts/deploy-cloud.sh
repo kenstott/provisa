@@ -225,6 +225,16 @@ build_ui() {
   local base
   base="$(org_base_domain)" || exit 1
   echo "== building UI (org base domain: $base)"
+  # The UI builds on the repository's Node pin (.nvmrc), as CI and the image do.
+  local want
+  want="v$(cat "$REPO/.nvmrc")"
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # shellcheck disable=SC1091
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use "$want" >/dev/null
+  if [ "$(node --version)" != "$want" ]; then
+    echo "The UI builds on Node $want (.nvmrc); node on PATH is $(node --version). nvm install ${want#v}" >&2
+    exit 1
+  fi
   (cd "$REPO/provisa-ui" && VITE_ORG_BASE_DOMAIN="$base" npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;

@@ -34,15 +34,12 @@ export interface Candidate {
 }
 
 /** The name a suggestion's relationship takes when accepted: the one suggested, else one made from
- *  the columns it joins. Its row's Accept and Accept all give the same name. */
+ *  the columns it joins: what a decision table's Apply sends with an accepted proposal. */
 export function candidateName(c: Candidate, tableNameById: Record<string, string>): string {
   const srcTable = tableNameById[c.source_table_id] ?? String(c.source_table_id);
   const tgtTable = tableNameById[c.target_table_id] ?? String(c.target_table_id);
   return c.suggested_name || `${srcTable}-${c.source_column}-to-${tgtTable}`;
 }
-
-/** The reason a suggestion is rejected with, by its row's Reject and by Reject all. */
-export const REJECT_REASON = "Rejected by user";
 
 export const EMPTY_FORM = {
   id: "",

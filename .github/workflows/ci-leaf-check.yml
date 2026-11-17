@@ -120,9 +120,9 @@ jobs:
       - uses: ./.github/actions/setup-ui
         with:
           playwright: chromium
-      - name: Node 22, the UI's dependencies and Chromium are there
+      - name: Node at .nvmrc, the UI's dependencies and Chromium are there
         run: |
-          node --version | grep -E '^v22\.'
+          test "$(node --version)" = "v$(cat .nvmrc)"
           test -x provisa-ui/node_modules/.bin/vite
           test -x provisa-ui/node_modules/.bin/playwright
           ls "$HOME/.cache/ms-playwright" | grep -E '^chromium'
@@ -136,11 +136,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
-      - name: Node 20 and no installed dependencies
+      - name: Node at .nvmrc and no installed dependencies
         run: |
-          node --version | grep -E '^v20\.'
+          test "$(node --version)" = "v$(cat .nvmrc)"
           test ! -e provisa-ui/node_modules
 
   mssql-odbc:

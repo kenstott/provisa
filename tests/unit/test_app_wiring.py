@@ -52,7 +52,7 @@ def _patch_fetch_tables(monkeypatch):
         ]
 
     monkeypatch.setattr("provisa.api.admin.db_queries.fetch_tables", _fetch)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
 
 
 class _Sched:

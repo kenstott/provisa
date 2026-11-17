@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "local_server_from_environment": "{{vendor}} viene raggiunto all'indirizzo proprio del server, che un'organizzazione su questo server non usa. Dichiara un endpoint AI al tuo indirizzo in Amministrazione, Modelli AI.",
       "server_environment_sets": "{{vendor}} non può essere chiamato qui: l'ambiente del server imposta {{variable}}, che il suo client invierebbe per ogni organizzazione.",
+      "vector_model_address_from_server": "Il modello di embedding {{vendor}} prende il suo indirizzo dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
+      "vector_model_key_from_server": "Il modello di embedding {{vendor}} prende la sua chiave dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli una chiave tua in Amministrazione, Modelli AI.",
+      "vector_model_key_unset": "Il modello di embedding {{vendor}} non ha una chiave: {{field}} non è impostato.",
+      "vector_model_local_server": "Il modello di embedding {{vendor}} viene raggiunto all'indirizzo proprio del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
       "vendor_uses_server_credentials": "{{vendor}} viene raggiunto con le credenziali proprie del server, che un'organizzazione su questo server non usa. Scegli un fornitore che accetta una chiave, o un endpoint AI, in Amministrazione, Modelli AI."
     },
     "api": {
@@ -158,7 +162,8 @@
       "parameter_by_equality_only": "Il parametro {{parameter}} riceve il valore per uguaglianza: {{parameter}} = un valore, {{parameter}} IN (valori) o un join su {{parameter}}. {{form}} non gli dà alcun valore.",
       "parameter_unbound_on_branch": "Il parametro {{parameter}} riceve un valore in un ramo di un OR e nessuno in un altro. Dai un valore a {{parameter}} in ogni ramo.",
       "parameter_conflict": "Il parametro {{parameter}} riceve due valori diversi insieme ({{first}} e {{second}}). Dagli un solo valore, oppure elenca i valori con IN o OR.",
-      "parameter_calls_over_cap": "L'istruzione richiede {{calls}} chiamate a {{table}}, una per ogni valore dato ai suoi parametri, e per un'istruzione ne vengono fatte al massimo {{cap}} (impostazione {{setting}}). Indica meno valori."
+      "parameter_calls_over_cap": "L'istruzione richiede {{calls}} chiamate a {{table}}, una per ogni valore dato ai suoi parametri, e per un'istruzione ne vengono fatte al massimo {{cap}} (impostazione {{setting}}). Indica meno valori.",
+      "parameter_not_written": "La relazione {{relationship}} si unisce sul parametro {{parameter}}, che un'istruzione associa a un valore e non scrive mai. Una scrittura non crea {{relationship}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -470,8 +475,6 @@
       "mask_unreachable": "Avete definito una maschera non raggiungibile: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' non trovato",
       "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll.",
-      "table_draft_set": "Tabella {{table}} impostata come bozza",
-      "table_released": "Tabella {{table}} rilasciata",
       "openapi_no_rows_field": "Tabella {{table}}: la risposta non ha alcuna proprietà {{rows_field}} da cui leggere le righe.",
       "paging_rows_field_fixed": "Tabella {{table}}: la posizione delle sue righe ({{rows_field}}) è impostata alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
       "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato.",
@@ -500,6 +503,8 @@
       "role_updated": "Ruolo '{{role}}' aggiornato",
       "relationship_id_taken": "La relazione '{{relationship}}' esiste già",
       "relationship_id_reserved": "L'id della relazione '{{id}}' inizia con '{{prefix}}', un prefisso riservato alle relazioni integrate. Scegli un altro id.",
+      "relationship_source_column_missing": "La relazione '{{relationship}}' non indica alcuna colonna sorgente. Una relazione si unisce su una colonna della sua tabella sorgente.",
+      "relationship_target_column_missing": "La relazione '{{relationship}}' non indica alcuna colonna di destinazione. Una relazione si unisce su una colonna della sua tabella di destinazione, a meno che la destinazione sia una funzione.",
       "relationship_graphql_alias_taken": "L'alias GraphQL '{{alias}}' è già l'alias della relazione '{{relationship}}' da '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Attività pianificata '{{task}}' aggiornata",
@@ -540,7 +545,13 @@
       "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso",
       "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\".",
-      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione"
+      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione",
+      "table_withdrawn": "Tabella {{table}} ritirata",
+      "table_put_back": "Tabella {{table}} ripristinata",
+      "source_withdrawn": "Origine {{source}} ritirata",
+      "source_put_back": "Origine {{source}} ripristinata",
+      "withdrawn_source_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: la sua origine {{source}} è ritirata e nessun motore legge un'origine ritirata.",
+      "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",

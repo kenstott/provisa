@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Répertoires où les fichiers journaux peuvent être lus",
-        "help": "Les répertoires où peuvent se trouver les fichiers d'une source Logs, une fois leurs liens suivis ; par défaut /var/log. Ajoutez-en un, comme ~/Library/Logs, pour lire dans des tables les fichiers propres au serveur qui s'y trouvent. Un serveur de plusieurs organisations ne lit aucun fichier journal qui lui soit propre, quoi qu'indique ce réglage."
+        "help": "Les répertoires où peuvent se trouver les fichiers d'une source Logs, une fois leurs liens suivis ; par défaut /var/log. Ajoutez-en un, comme ~/Library/Logs, pour lire dans des tables les fichiers propres au serveur qui s'y trouvent. Une organisation sandbox et, sur un serveur de plusieurs organisations, toute organisation autre que celle du déploiement ne lit aucun fichier du serveur hors de son propre dossier, sauf ceux que nomment les sources de sa démo, quoi qu'indique ce réglage."
       },
       "preview_lines": {
         "label": "Lignes lues pour trouver les colonnes d'un journal",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Répertoires d'où les fichiers des sources peuvent être téléchargés",
-        "help": "Les répertoires d'où le fichier d'une source CSV ou Parquet peut être téléchargé par son chemin sur ce serveur, une fois ses liens suivis ; aucun par défaut. Ajoutez-en un pour qu'un steward puisse copier un fichier qui s'y trouve dans le dossier de l'organisation. Un serveur de nombreuses organisations ne copie aucun fichier qui lui appartient, quoi que dise ce réglage."
+        "help": "Les répertoires d'où le fichier d'une source CSV ou Parquet peut être téléchargé par son chemin sur ce serveur, une fois ses liens suivis ; aucun par défaut. Ajoutez-en un pour qu'un steward puisse copier un fichier qui s'y trouve dans le dossier de l'organisation. Une organisation sandbox et, sur un serveur de plusieurs organisations, toute organisation autre que celle du déploiement ne copie aucun fichier du serveur hors de son propre dossier, sauf ceux que nomment les sources de sa démo, quoi qu'indique ce réglage."
       }
     },
     "polly": {

@@ -196,14 +196,16 @@ async def test_a_local_huggingface_model_reports_its_snapshot_commit(monkeypatch
     from provisa.vector.providers import HuggingFaceLocalProvider
 
     hub = SimpleNamespace(
-        snapshot_download=lambda repo, local_files_only: (
+        snapshot_download=lambda repo, local_files_only, token: (
             f"/cache/models--{repo}/snapshots/0f1e2d3c" if local_files_only else None
         )
     )
     monkeypatch.setitem(sys.modules, "huggingface_hub", hub)
     # The model is loaded before its snapshot is read (a host that never had it fetches it).
     monkeypatch.setitem(
-        sys.modules, "sentence_transformers", SimpleNamespace(SentenceTransformer=lambda _id: None)
+        sys.modules,
+        "sentence_transformers",
+        SimpleNamespace(SentenceTransformer=lambda _id, token: None),
     )
     monkeypatch.setattr(HuggingFaceLocalProvider, "_cache", {})
     model = VectorModel(id="all-MiniLM", provider="huggingface", dimensions=3)

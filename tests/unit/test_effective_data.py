@@ -342,7 +342,10 @@ def _drafted(monkeypatch, gate):
     from provisa.api.admin import table_read
 
     state = _two_role_state()
-    state.role_build_inputs = {"draft_tables": [{**state.tables[0], "draft": True}]}
+    state.role_build_inputs = {
+        "draft_tables": [{**state.tables[0], "draft": True}],
+        "withdrawn_tables": [],
+    }
     state.tables = []
     monkeypatch.setattr("provisa.api.app.state", state)
     asked: list[int] = []
@@ -484,6 +487,7 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
             "role_chains": {"east": ["east"], "west": ["west"]},
             "tables": tables,
             "draft_tables": [],
+            "withdrawn_tables": [],
             "metrics": [],
             "functions": [],
             "webhooks": [],

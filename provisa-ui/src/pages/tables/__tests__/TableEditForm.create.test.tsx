@@ -89,7 +89,6 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
     expect(draft).toMatchObject({
       id: UNREGISTERED_ID,
       tableName: "trades",
-      draft: true,
       materialize: false,
       businessKey: [],
     });
@@ -179,9 +178,10 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
       gqlNamingConvention: "snake",
       roleTtl: [{ role: "analyst", ttl: 60 }],
       replicate: -1,
-      draft: false,
       writeGrants: [{ role: "analyst", operation: "update", columns: ["trade_date"] }],
     });
+    // REQ-1921: a registration is live; the input carries no draft setting.
+    expect(input).not.toHaveProperty("draft");
     expect((input.columns as { name: string }[]).map((c) => c.name)).toEqual([
       "trade_id",
       "trade_date",

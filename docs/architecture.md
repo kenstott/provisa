@@ -624,7 +624,7 @@ The vendor field accepts any `aisuite`-compatible vendor (`anthropic`, `openai`,
 
 **Vector model registry.** A list of embedding models (fields: `id`, `provider`, `dimensions`, optional `api_key_env` and `base_url`, `enabled` flag). Full-list replacement: every entry must have `id`, `provider`, and `dimensions` or the write is rejected `400`.
 
-**API keys.** Each vendor's LLM API key is stored encrypted through `provisa.core.org_secrets` (see below). The `GET` response says only whether a key is set for each vendor and never returns the value. Sending a blank string for a vendor clears its key, so LLM calls for that vendor go back to the deployment's environment-variable credential.
+**API keys.** Each vendor's LLM API key is stored encrypted through `provisa.core.org_secrets` (see below). The `GET` response says only whether a key is set for each vendor and never returns the value. Sending a blank string for a vendor clears its key. On an install of one organization, calls to that vendor then use the deployment's environment variable. On a server of many organizations the vendor has no key, and its calls are refused. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from).
 
 ## Per-Org Encrypted Secrets
 

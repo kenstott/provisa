@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Directorios desde los que se pueden leer archivos de registro",
-        "help": "Los directorios en los que pueden estar los archivos de un origen Logs, una vez seguidos sus enlaces; por defecto /var/log. Añada uno, como ~/Library/Logs, para leer en tablas los archivos propios del servidor que haya bajo él. Un servidor de muchas organizaciones no lee ningún archivo de registro propio, diga lo que diga esto."
+        "help": "Los directorios en los que pueden estar los archivos de un origen Logs, una vez seguidos sus enlaces; por defecto /var/log. Añada uno, como ~/Library/Logs, para leer en tablas los archivos propios del servidor que haya bajo él. Una organización sandbox y, en un servidor de muchas organizaciones, toda organización salvo la propia del despliegue no lee ningún archivo del servidor fuera de su propia carpeta salvo los que nombran los orígenes de su demo, diga lo que diga esto."
       },
       "preview_lines": {
         "label": "Líneas leídas para hallar las columnas de un registro",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Directorios desde los que se pueden descargar archivos de origen",
-        "help": "Los directorios desde los que se puede descargar el archivo de un origen CSV o Parquet por su ruta en este servidor, una vez seguidos sus enlaces; ninguno de forma predeterminada. Añada uno para que un steward pueda copiar un archivo que esté dentro a la carpeta de la organización. Un servidor de muchas organizaciones no copia ningún archivo propio, diga lo que diga esto."
+        "help": "Los directorios desde los que se puede descargar el archivo de un origen CSV o Parquet por su ruta en este servidor, una vez seguidos sus enlaces; ninguno de forma predeterminada. Añada uno para que un steward pueda copiar un archivo que esté dentro a la carpeta de la organización. Una organización sandbox y, en un servidor de muchas organizaciones, toda organización salvo la propia del despliegue no copia ningún archivo del servidor fuera de su propia carpeta salvo los que nombran los orígenes de su demo, diga lo que diga esto."
       }
     },
     "polly": {

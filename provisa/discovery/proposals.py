@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete, insert, select, update
 
 from provisa.core.schema_org import discovery_run_proposals as rows_t
+from provisa.core.schema_org import relationship_candidates as candidates_t
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.direction import Kind, Proposal
@@ -67,14 +68,14 @@ REASONS: tuple[str, ...] = (
 
 #: The reasons a proposal left out for can still be decided by a reviewer. Not these: one that
 #: names no two compared columns; two columns that are not compared; a column to itself; one
-#: already registered; one repeating a foreign key or a stronger proposal listed beside it.
+#: already registered; one already decided (rejected: a decided pair keeps its decision); one
+#: repeating a foreign key or a stronger proposal listed beside it.
 ACCEPTABLE: frozenset[str] = frozenset(
     {
         BELOW_THRESHOLD,
         "primary_key_to_primary_key",
         "both_repeating",
         "pending",
-        "rejected",
         "out_of_scope",
     }
 )
@@ -187,6 +188,21 @@ async def _candidate_of(conn: "Connection", run_id: int, proposal_id: int) -> in
         raise NotDecidable(f"Proposal {proposal_id} is not among the run's undecided proposals")
     if not decidable(row.left_out):
         raise NotDecidable(f"Proposal {proposal_id} cannot be decided: it is {row.left_out}")
+    # REQ-413 (amended 2026-11-16): a pair once accepted or marked not to be recommended again
+    # keeps that decision; storing the proposal would reopen it as pending.
+    rc = candidates_t
+    held = (
+        await conn.execute_core(
+            select(rc.c.status).where(
+                rc.c.source_table_id == row.source_table_id,
+                rc.c.source_column == row.source_column,
+                rc.c.target_table_id == row.target_table_id,
+                rc.c.target_column == row.target_column,
+            )
+        )
+    ).scalar_one_or_none()
+    if held is not None and held != "suggested":
+        raise NotDecidable(f"Proposal {proposal_id} cannot be decided: its pair is already {held}")
     (candidate_id,) = await candidates_repo.store_candidates(
         conn,
         [

@@ -25,7 +25,7 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
+from tests.helpers import registered_id
 from tests.integration.test_code_sources_e2e import _ROLE, _admin, _archive, _config
 from tests.port_lease import lease_ports
 
@@ -388,19 +388,17 @@ def ledger(server):
             f'tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
         )
         ids[table] = registered_id(registered["message"])
-        _admin(server, release_field(ids[table]))
     # "clips" carries a row-level security rule: analyst may only read the row whose id = 1,
     # so the governed pipeline's RLS enforcement is covered on the minted-token listener (REQ-2226).
     clips_cols = [
         _column("id", "bigint", _ROLE, _ANALYST),
         _column("region", "text", _ROLE, _ANALYST),
     ]
-    registered_clips = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "ledger", domainId: "fx", schemaName: "default", '
         f'tableName: "clips", cacheTtl: 300, columns: [{", ".join(clips_cols)}]}})',
     )
-    _admin(server, release_field(registered_id(registered_clips["message"])))
     _admin(
         server,
         f'upsertRlsRule(input: {{tableId: "clips", roleId: "{_ANALYST}", filterExpr: "id = 1", '
@@ -425,13 +423,12 @@ def vault_digest(server, ledger):
     """A materialized view over a @query whose input is the governed table "vault", built."""
     sql = "SELECT r.status, r.body FROM read_whole('fx.vault') AS r"
     columns = [_column("status", "text", _ROLE, _ANALYST), _column("body", "text", _ROLE, _ANALYST)]
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
         f'tableName: "vault_digest", alias: "vault_digest", viewSql: {json.dumps(sql)}, '
         f"materialize: true, mvRefreshInterval: 3600, columns: [{', '.join(columns)}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     refreshed = _admin(server, 'refreshMv(mvId: "view-vault_digest")')
     assert refreshed["success"], refreshed
 

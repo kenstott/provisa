@@ -683,7 +683,7 @@
     "logs": {
       "allowed_roots": {
         "label": "Mappen waaruit logbestanden gelezen mogen worden",
-        "help": "De mappen waarin de bestanden van een Logs-bron mogen staan, nadat hun koppelingen gevolgd zijn; standaard /var/log. Voeg er een toe, zoals ~/Library/Logs, om de eigen bestanden van de server daaronder in tabellen te lezen. Een server met veel organisaties leest geen eigen logbestand, wat hier ook staat."
+        "help": "De mappen waarin de bestanden van een Logs-bron mogen staan, nadat hun koppelingen gevolgd zijn; standaard /var/log. Voeg er een toe, zoals ~/Library/Logs, om de eigen bestanden van de server daaronder in tabellen te lezen. Een sandbox-organisatie en, op een server met veel organisaties, elke organisatie behalve die van de deployment zelf leest buiten haar eigen map geen bestand van de server, behalve de bestanden die de bronnen van haar demo noemen, wat hier ook staat."
       },
       "preview_lines": {
         "label": "Regels gelezen om de kolommen van een log te vinden",
@@ -711,7 +711,7 @@
       },
       "download_roots": {
         "label": "Mappen waaruit bronbestanden gedownload mogen worden",
-        "help": "De mappen waaruit het bestand van een CSV- of Parquet-bron via het pad op deze server gedownload mag worden, nadat de links ervan zijn gevolgd; standaard geen. Voeg er een toe zodat een steward een bestand daarin naar de map van de organisatie kan kopiëren. Een server met veel organisaties kopieert geen eigen bestand, wat hier ook staat."
+        "help": "De mappen waaruit het bestand van een CSV- of Parquet-bron via het pad op deze server gedownload mag worden, nadat de links ervan zijn gevolgd; standaard geen. Voeg er een toe zodat een steward een bestand daarin naar de map van de organisatie kan kopiëren. Een sandbox-organisatie en, op een server met veel organisaties, elke organisatie behalve die van de deployment zelf kopieert buiten haar eigen map geen bestand van de server, behalve de bestanden die de bronnen van haar demo noemen, wat hier ook staat."
       }
     },
     "polly": {

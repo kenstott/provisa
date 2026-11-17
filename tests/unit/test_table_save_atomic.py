@@ -11,7 +11,7 @@
 """One save of a table applies everything, or nothing (REQ-2109, settled).
 
 registerTable and updateTable carry the settings that also have mutations of their own -- the
-naming convention, the role TTLs, replicate, the write grants and draft -- and apply all of them
+naming convention, the role TTLs, replicate and the write grants -- and apply all of them
 with the table in one control-plane transaction. A refusal of any one leaves nothing stored: no
 table row, no columns, no grants on a registration; the stored table as it was on an update."""
 
@@ -158,7 +158,6 @@ EVERYTHING = {
     "role_ttl": [RoleTtlInput(role="support", ttl=60)],
     "replicate": -1,
     "write_grants": [_grant()],
-    "draft": False,
 }
 
 
@@ -296,12 +295,22 @@ async def test_registering_a_stored_table_again_keeps_its_grants(plane):
 
 
 async def test_left_out_a_registration_takes_a_new_tables_values(plane):
+    """REQ-1921 (amended 2026-11-16): a table registered in production is live on
+    registration, never a draft, and not withdrawn."""
     result = await _register()
     assert result.success, result.message
     table, _cols, grants = await _stored(plane)
     assert table is not None
-    assert (table["draft"], table["replicate"], dict(table["role_ttl"])) == (True, None, {})
+    assert (table["draft"], table["withdrawn"]) == (False, False)
+    assert (table["replicate"], dict(table["role_ttl"])) == (None, {})
     assert grants == []
+
+
+def test_a_registration_or_an_update_takes_no_draft():
+    """REQ-1921: draft is the waypoint of a region move, never a person's choice: the table
+    input has no draft to send."""
+    with pytest.raises(TypeError):
+        _input(draft=True)
 
 
 @pytest.mark.parametrize(
@@ -539,7 +548,6 @@ async def test_the_build_loads_what_a_bitemporal_table_maps(plane):
         recorded_time="updated_at",
         mv_refresh_interval=90,
         mv_allowed_lateness=30.0,
-        draft=False,
     )
     assert result.success, result.message
     async with plane.acquire() as conn:
@@ -570,7 +578,6 @@ async def test_a_version_logs_interval_and_lateness_are_kept_on_its_tables_row(p
             business_key=["id"],
             valid_time="placed_on",
             recorded_time="updated_at",
-            draft=False,
         )
     ).success
     registry = MVRegistry()
