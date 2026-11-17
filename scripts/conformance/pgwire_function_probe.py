@@ -33,6 +33,8 @@ from pathlib import Path
 
 import yaml
 
+from provisa.transpiler import server_functions
+
 FAMILIES = Path(__file__).resolve().parent / "function_families.yaml"
 
 #: The enum the job seeds beside its fixture: PostgreSQL ships none, and anyenum needs one.
@@ -292,6 +294,25 @@ def statement(fn: Function, args: list[str]) -> str:
     if fn.kind == "w":
         return f"SELECT {named}({', '.join(args)}) OVER () AS v"
     return f"SELECT {named}({', '.join(args)}) AS v"
+
+
+#: The validator's refusal of a function that reads or acts on its server (V007 of
+#: compiler.sql_validator), as a client reads it, and the function it names.
+_NOT_SERVED = re.compile(
+    r"\[V007\] Function '([^']+)' is not served: it reads or acts on its server"
+)
+
+
+def not_served(name: str, error: str) -> bool:
+    """Whether ``error`` is the validator's refusal of ``name`` itself as a function that reads or
+    acts on its server. The list is the validator's own (transpiler.server_functions): a refusal
+    naming another function, or one that is not on it, is no decision about ``name``, and stays
+    the error it is. The one rule both the pgwire suite (pgwire_catalog_types) and the function
+    measure (function_support) read the refusal by: it is so on every engine, PostgreSQL included."""
+    listed = server_functions.refused_in_a_governed_statement(name, names_a_table=True)
+    return listed == "server" and any(
+        said[1] == name.lower() for said in _NOT_SERVED.finditer(error)
+    )
 
 
 def refused_by_name(error: str) -> bool:
