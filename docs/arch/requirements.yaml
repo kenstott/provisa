@@ -3683,7 +3683,10 @@
     distinct target scores as a key relationship whatever the model rated it; a pair whose values barely
     meet scores low however alike its names are. A table that cannot be read in full (a parameterized table)
     is measured on what it can give and says so. The threshold that decides which rows start ticked is set
-    in the dialog and kept for the person who set it.'
+    in the dialog and kept for the person who set it. (Amended 2026-11-16, SUGGESTIONS ARE DECIDED ONLY
+    IN A RUN''S RESULT; THE RELATIONSHIPS PAGE LISTS NONE:) Maintainer 2026-11-16. The Relationships page
+    lists registered relationships only; it has no list of suggestions. A suggestion is decided only in
+    a Discover run''s result table, and a decided one is shown in no list.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
