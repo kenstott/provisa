@@ -291,3 +291,267 @@ async def test_a_role_that_may_not_call_the_function_reads_no_such_relation(monk
     monkeypatch.setattr(app_mod, "state", _state(), raising=False)
     with pytest.raises(GovernanceRefused, match="V006"):
         await _pipeline._govern_and_route("SELECT id FROM get_pet(5)", "visitor")
+
+
+@pytest.mark.asyncio
+async def test_a_role_with_a_row_rule_is_governed_the_same_through_both_forms(monkeypatch):
+    """The row rule of the table the function returns applies to the call as to the table."""
+    import provisa.api.app as app_mod
+    from provisa.compiler.rls import RLSContext
+    from provisa.pgwire import _pipeline
+
+    async def _governed(sql: str) -> str:
+        state = _state()
+        state.rls_contexts = {"analyst": RLSContext(rules={1: "name = 'rex'"})}
+        monkeypatch.setattr(app_mod, "state", state, raising=False)
+        captured: dict = {}
+
+        async def _route(exec_sql, governed_sql, gov_ctx, ctx, state, **kwargs):
+            captured["exec_sql"] = exec_sql
+            raise _Captured
+
+        with patch.object(_pipeline, "_optimize_and_route", new=AsyncMock(side_effect=_route)):
+            with pytest.raises(_Captured):
+                await _pipeline._govern_and_route(sql, "analyst")
+        return captured["exec_sql"]
+
+    as_function = await _governed("SELECT id, name FROM get_pet(5)")
+    as_table = await _governed('SELECT id, name FROM pet_by_id WHERE "_nf_petId" = 5')
+    assert "'rex'" in as_function
+    assert "'rex'" in as_table
+
+
+# --- what a source offers, and what registering one makes -----------------------------------------
+
+_PET_SCHEMA = {
+    "type": "object",
+    "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
+}
+_SPEC = {
+    "openapi": "3.0.0",
+    "info": {"title": "Pets", "version": "1.0.0"},
+    "components": {"schemas": {"Pet": _PET_SCHEMA}},
+    "paths": {
+        "/pets": {
+            "get": {
+                "operationId": "listPets",
+                "parameters": [{"name": "status", "in": "query", "schema": {"type": "string"}}],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {
+                                "schema": {
+                                    "type": "array",
+                                    "items": {"$ref": "#/components/schemas/Pet"},
+                                }
+                            }
+                        },
+                    }
+                },
+            }
+        },
+        "/pets/{petId}": {
+            "get": {
+                "operationId": "getPetById",
+                "parameters": [
+                    {
+                        "name": "petId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "integer"},
+                    },
+                    {"name": "weight", "in": "query", "schema": {"type": "number"}},
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {
+                            "application/json": {"schema": {"$ref": "#/components/schemas/Pet"}}
+                        },
+                    }
+                },
+            }
+        },
+        "/owners/{ownerId}": {
+            "get": {
+                "operationId": "getOwner",
+                "parameters": [
+                    {
+                        "name": "ownerId",
+                        "in": "path",
+                        "required": True,
+                        "schema": {"type": "string"},
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "ok",
+                        "content": {"application/json": {"schema": _PET_SCHEMA}},
+                    }
+                },
+            }
+        },
+    },
+}
+
+
+def test_the_spec_names_the_type_of_the_rows_an_operation_returns():
+    from provisa.openapi.mapper import parse_spec
+
+    queries, _ = parse_spec(_SPEC)
+    by_id = {q.operation_id: q for q in queries}
+    assert by_id["listPets"].returns_type == "Pet"
+    assert by_id["getPetById"].returns_type == "Pet"
+    # A schema written in place names no type.
+    assert by_id["getOwner"].returns_type is None
+
+
+class _SourceState:
+    def __init__(self, tables: list[dict]) -> None:
+        self.source_types = {"api": "openapi"}
+        self.openapi_specs = {"api": {"spec": _SPEC}}
+        self.tables = tables
+
+
+_REGISTERED = [
+    {"source_id": "api", "schema_name": "default", "table_name": "get_pet_by_id"},
+    {"source_id": "api", "schema_name": "default", "table_name": "list_pets"},
+]
+
+
+@pytest.mark.asyncio
+async def test_each_operation_that_reads_rows_and_requires_a_parameter_is_offered_as_a_function():
+    from provisa.executor.source_operation import offered_operations
+
+    offered = {op.name: op for op in await offered_operations(_SourceState(_REGISTERED), "api")}
+    get_pet = offered["getPetById"]
+    assert get_pet.reads and get_pet.table == "getPetById"
+    assert get_pet.arguments == ("petId", "weight")
+    assert get_pet.argument_types == ("integer", "float")
+    assert get_pet.returns_type == "Pet"
+    assert offered["getOwner"].returns_type is None
+    # A plain list requires nothing: it is a table, not a function.
+    assert "listPets" not in offered
+
+
+@pytest.mark.asyncio
+async def test_registering_one_makes_a_query_returning_its_tables_rows(monkeypatch):
+    import provisa.api.app as app_mod
+    from provisa.api.admin import actions_router
+    from provisa.api.admin.actions_router import FunctionInput, _as_source_operation
+
+    monkeypatch.setattr(app_mod, "state", _SourceState(_REGISTERED), raising=False)
+    monkeypatch.setattr(
+        "provisa.api.admin.schema_helpers._ensure_openapi_spec", AsyncMock(return_value=None)
+    )
+    body = FunctionInput(name="get_pet", sourceId="api", functionName="getPetById")
+    await _as_source_operation(body)
+    assert (body.implKind, body.kind, body.schemaName) == ("source_operation", "query", "openapi")
+    assert body.returns == "default.get_pet_by_id"
+    assert body.arguments == [
+        {"name": "petId", "type": "integer"},
+        {"name": "weight", "type": "float"},
+    ]
+    assert actions_router._source_type_of(body) == "Pet"
+    assert is_operation_function(
+        {"impl_kind": body.implKind, "kind": body.kind, "returns": body.returns}
+    )
+
+
+@pytest.mark.asyncio
+async def test_registering_one_whose_table_is_not_registered_is_refused(monkeypatch):
+    import provisa.api.app as app_mod
+    from provisa.api.admin.actions_router import FunctionInput, _as_source_operation
+    from provisa.api.errors import ApiError
+
+    monkeypatch.setattr(app_mod, "state", _SourceState(_REGISTERED[1:]), raising=False)
+    monkeypatch.setattr(
+        "provisa.api.admin.schema_helpers._ensure_openapi_spec", AsyncMock(return_value=None)
+    )
+    with pytest.raises(ApiError) as refused:
+        await _as_source_operation(
+            FunctionInput(name="get_pet", sourceId="api", functionName="getPetById")
+        )
+    assert refused.value.code == "functions.operation_table_unregistered"
+
+
+# --- called on its own: read as SQL reads it, through the one pipeline -------------------------
+
+
+def test_a_call_on_its_own_is_the_select_from_the_function_with_its_arguments_bound():
+    from provisa.executor.operation_call import statement
+
+    assert statement(_GET_PET, ["petId", "lang"]) == (
+        'SELECT * FROM GET_PET("petId" => $1, "lang" => $2)'
+    )
+
+
+@pytest.mark.asyncio
+async def test_dispatch_reads_an_operation_function_through_the_pipeline_as_the_caller():
+    from provisa.executor import function_dispatch
+
+    with patch(
+        "provisa.executor.operation_call.run", new=AsyncMock(return_value=[{"id": 5}])
+    ) as run:
+        rows = await function_dispatch._exec_source_operation(
+            _GET_PET, {"a0": 5}, None, None, type("S", (), {"role_id": "analyst"})()
+        )
+    assert rows == [{"id": 5}]
+    assert run.await_args.args[1] == {"petId": 5}
+    assert run.await_args.args[3] == "analyst"
+
+
+@pytest.mark.asyncio
+async def test_run_binds_only_the_arguments_given(monkeypatch):
+    from provisa.executor import operation_call
+    from provisa.pgwire import _pipeline
+
+    govern = AsyncMock(return_value="plan")
+    monkeypatch.setattr(_pipeline, "_govern_and_route", govern)
+    monkeypatch.setattr(_pipeline, "_execute_plan", AsyncMock(return_value="result"))
+    monkeypatch.setattr("provisa.executor.serialize.result_records", lambda r: [{"r": r}])
+    rows = await operation_call.run(_GET_PET, {"petId": 5, "lang": None}, None, "analyst")
+    assert rows == [{"r": "result"}]
+    sql, role = govern.await_args.args
+    assert sql == 'SELECT * FROM GET_PET("petId" => $1)'
+    assert role == "analyst"
+    assert govern.await_args.kwargs["params"] == [5]
+
+
+# --- the catalogs -----------------------------------------------------------------------------------
+
+
+def test_pg_proc_states_argument_names_types_and_the_returned_table():
+    from provisa.api._pg_catalog_views import _is_routines, _pg_proc
+
+    proc = _pg_proc()
+    assert '"proargnames"' in proc and "a.argument ->> 'name'" in proc
+    assert "WHEN 'integer' THEN 23" in proc
+    assert "f.impl_kind = 'source_operation' AND f.kind = 'query'" in proc
+    assert "LEFT JOIN catalog_tables ct ON ct.table_id = rt.id" in proc
+    assert "'USER-DEFINED'" in _is_routines()
+
+
+def test_the_session_catalog_lists_an_operation_function_as_returning_rows():
+    from unittest.mock import MagicMock
+
+    from provisa.pgwire.catalog_populate import _build_catalog_db
+
+    state = MagicMock()
+    state.multitenancy = False
+    ctx = MagicMock()
+    ctx.tables = {}
+    state.contexts = {"analyst": ctx}
+    state.schema_build_cache = {"column_types": {}}
+    state.tracked_functions = {"get_pet": {**_GET_PET, "visible_to": ["analyst"]}}
+    db = _build_catalog_db("analyst", state)
+    assert db.execute("SELECT proretset FROM _pg_proc WHERE proname = 'get_pet'").fetchall() == [
+        (True,)
+    ]
+    assert db.execute(
+        "SELECT data_type FROM _is_routines WHERE routine_name = 'get_pet'"
+    ).fetchall() == [("USER-DEFINED",)]
+    assert db.execute(
+        "SELECT parameter_name, data_type FROM _is_parameters ORDER BY ordinal_position"
+    ).fetchall() == [("petId", "integer"), ("lang", "character varying")]
