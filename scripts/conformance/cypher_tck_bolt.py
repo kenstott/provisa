@@ -17,7 +17,7 @@ reads them. A scenario on an empty graph that matches a pattern runs the same wa
 Each scenario has a connection of its own (the driver's pool holds one, closed after it); the
 user's graph session is the same on every connection, so the runner empties it before each
 scenario and a session's graph is never read by the next. The connection signs in with the TCK session user's
-token and acts as ``tck_empty``, the role that user's name maps to, which reaches no model domain:
+token and acts as ``tck_empty``, the role that user is assigned, which reaches no model domain:
 its graph is the session's alone, the TCK's empty graph.
 
 Values come back as the driver reads them and are put in the forms the runner compares: a node

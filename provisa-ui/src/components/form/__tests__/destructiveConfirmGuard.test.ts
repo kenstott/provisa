@@ -23,10 +23,7 @@ const SRC = resolve(__dirname, "../../..");
 const THE_CONFIRM = "components/form/DestructiveConfirmButton.tsx";
 
 /** Red and filled, yet not a confirm: each says why. */
-const EXCEPTIONS: Record<string, string> = {
-  "components/relationships/CandidatesTable.tsx":
-    "a row's Reject of a suggested relationship: it opens no confirm and deletes nothing",
-};
+const EXCEPTIONS: Record<string, string> = {};
 
 function componentFiles(dir: string): string[] {
   return readdirSync(dir).flatMap((name) => {

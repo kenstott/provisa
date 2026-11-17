@@ -30,14 +30,7 @@ import { SqlModelingModal } from "../components/SqlModelingModal";
 import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
 import { DiscoverButton, DiscoverResultBanner } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
-import {
-  fetchCandidates,
-  fetchRejectedCount,
-  acceptCandidate,
-  rejectCandidate,
-  clearRejectedCandidates,
-  fetchSettings,
-} from "../api/admin";
+import { fetchRejectedCount, clearRejectedCandidates, fetchSettings } from "../api/admin";
 import {
   useRelationships,
   useAllRelationships,
@@ -51,13 +44,7 @@ import { tagLossInput, tagLossOf } from "../components/relationships/tagLoss";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
-import {
-  EMPTY_FORM,
-  REJECT_REASON,
-  tableRef,
-  type Candidate,
-  type RelForm,
-} from "../components/relationships/relationship-types";
+import { EMPTY_FORM, tableRef, type RelForm } from "../components/relationships/relationship-types";
 import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
@@ -69,9 +56,6 @@ import {
   ConflictModal,
   ReverseRelationshipForm,
 } from "../components/relationships/RelationshipModals";
-import { CandidatesTable } from "../components/relationships/CandidatesTable";
-import { CandidatesBulkFailures } from "../components/relationships/CandidatesBulkFailures";
-import { useCandidatesAtOnce } from "../components/relationships/useCandidatesAtOnce";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { applyConvention, domainToSqlName } from "../naming";
@@ -95,7 +79,6 @@ export function RelationshipsPage() {
   const { upsertRelationship } = useUpsertRelationship();
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   // What the open form has to say of a save that did not go through.
   const [saveProblem, setSaveProblem] = useState("");
@@ -160,13 +143,11 @@ export function RelationshipsPage() {
   };
 
   const load = useCallback(async () => {
-    const [actions, c, rc] = await Promise.all([
+    const [actions, rc] = await Promise.all([
       fetchActions().catch(() => ({ functions: [], webhooks: [] })),
-      fetchCandidates().catch(() => []),
       fetchRejectedCount().catch(() => 0),
     ]);
     setFunctions(actions.functions);
-    setCandidates(c as Candidate[]);
     setRejectedCount(rc);
   }, []);
 
@@ -357,32 +338,9 @@ export function RelationshipsPage() {
     else void handleAdd(resolve);
   };
 
-  // Accept all and Reject all, gated like the rows' own actions by the page's capability.
-  const atOnce = useCandidatesAtOnce({
-    candidates,
-    tableNameById,
-    onStart: () => {
-      setDiscoverError("");
-      setDiscoverMsg("");
-    },
-    onMessage: setDiscoverMsg,
-    onError: setDiscoverError,
-    onAccepted: async () => {
-      await refetchRels();
-      await load();
-    },
-    onRejected: (ids) => {
-      setCandidates((prev) => prev.filter((c) => !ids.has(c.id)));
-      setRejectedCount((prev) => prev + ids.size);
-    },
-  });
-
-  const clearAtOnce = atOnce.clear;
-
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
-    clearAtOnce();
     try {
       const result = await clearRejectedCandidates();
       setDiscoverMsg(t("relationshipsPage.clearedRejections", { count: result.deleted }));
@@ -390,42 +348,23 @@ export function RelationshipsPage() {
     } catch (e) {
       setDiscoverError(e instanceof Error ? e.message : String(e));
     }
-  }, [t, clearAtOnce]);
+  }, [t]);
 
-  // REQ-413: the discovery run is the server's; the suggestions are read again as it stores more.
-  const loadCandidates = useCallback(async () => {
-    try {
-      setCandidates((await fetchCandidates()) as Candidate[]);
-    } catch (e) {
-      setDiscoverError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-  const discovery = useDiscoveryRun(loadCandidates);
+  // REQ-413 (amended 2026-11-16): the discovery run is the server's. The page lists no
+  // suggestions: they are decided only in the run's result, so a run storing more changes
+  // nothing here.
+  const nothingListed = useCallback(() => {}, []);
+  const discovery = useDiscoveryRun(nothingListed);
   const openDiscover = () => {
     setDiscoverAsk(true);
     void discovery.refresh();
   };
-
-  const handleAccept = useCallback(
-    async (id: number, name: string) => {
-      await acceptCandidate(id, name);
-      await refetchRels();
-      load();
-    },
-    [load, refetchRels],
-  );
 
   // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed.
   const handleApplied = useCallback(() => {
     void refetchRels();
     load();
   }, [load, refetchRels]);
-
-  const handleReject = useCallback(async (id: number) => {
-    await rejectCandidate(id, REJECT_REASON);
-    setCandidates((prev) => prev.filter((c) => c.id !== id));
-    setRejectedCount((prev) => prev + 1);
-  }, []);
 
   // The form's values for a relationship, as its edit form holds them.
   const formOf = useCallback(
@@ -838,7 +777,6 @@ export function RelationshipsPage() {
           {settingsError}
         </Alert>
       )}
-      <CandidatesBulkFailures failures={atOnce.failures} />
       <DiscoverResultBanner run={discovery.run} />
       <DiscoverDialog
         opened={discoverAsk}
@@ -1039,19 +977,6 @@ export function RelationshipsPage() {
 
       {conflictRel && <ConflictModal rel={conflictRel} onClose={() => setConflictRel(null)} />}
 
-      {!erd.on && candidates.length > 0 && (
-        <div className="page-aux">
-          <CandidatesTable
-            candidates={candidates}
-            tableDomainById={tableDomainById}
-            tableNameById={tableNameById}
-            onAccept={handleAccept}
-            onReject={handleReject}
-            onAcceptAll={atOnce.acceptAll}
-            onRejectAll={atOnce.rejectAll}
-          />
-        </div>
-      )}
       {refusal.dialog}
       {tagLoss && (
         <Modal

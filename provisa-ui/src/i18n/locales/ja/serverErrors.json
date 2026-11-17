@@ -475,8 +475,6 @@
       "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
-      "table_draft_set": "テーブル {{table}} を下書きにしました",
-      "table_released": "テーブル {{table}} を公開しました",
       "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
       "paging_rows_field_fixed": "テーブル {{table}}: 行の場所（{{rows_field}}）はテーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
       "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
@@ -505,6 +503,8 @@
       "role_updated": "ロール「{{role}}」を更新しました",
       "relationship_id_taken": "リレーションシップ「{{relationship}}」はすでに存在します",
       "relationship_id_reserved": "リレーションシップ ID「{{id}}」は、組み込みのリレーションシップ用に予約されている接頭辞「{{prefix}}」で始まっています。別の ID を指定してください。",
+      "relationship_source_column_missing": "リレーションシップ「{{relationship}}」にはソース列が指定されていません。リレーションシップはソーステーブルの列で結合します。",
+      "relationship_target_column_missing": "リレーションシップ「{{relationship}}」にはターゲット列が指定されていません。ターゲットが関数でない限り、リレーションシップはターゲットテーブルの列で結合します。",
       "relationship_graphql_alias_taken": "GraphQL エイリアス「{{alias}}」は、すでに「{{table}}」からのリレーションシップ「{{relationship}}」のエイリアスです",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました",
@@ -545,7 +545,13 @@
       "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません",
       "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
       "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
-      "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します"
+      "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します",
+      "table_withdrawn": "テーブル {{table}} を取り下げました",
+      "table_put_back": "テーブル {{table}} を元に戻しました",
+      "source_withdrawn": "ソース {{source}} を取り下げました",
+      "source_put_back": "ソース {{source}} を元に戻しました",
+      "withdrawn_source_not_previewable": "テーブル {{table}} はプレビューできません: ソース {{source}} が取り下げられており、取り下げられたソースを読むエンジンはありません。",
+      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",

@@ -43,7 +43,7 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id
 from tests.smoke import test_main_is_startable as smoke
 from tests.smoke.test_main_is_startable import REPO, Instance
 
@@ -261,7 +261,6 @@ def files(instance: Instance, tmp_path_factory) -> dict[str, int]:
             )["registerTable"]
             assert registered["success"], registered
             ids[name] = registered_id(registered["message"])
-            _gql(instance, release_mutation(ids[name]))
     _gql(instance, "mutation { rebuildSchemas { success message } }")
     print("the files source reports:", json.dumps(reported, sort_keys=True))
     # The key the files share is text in both: the JSON file's and the Parquet file's.

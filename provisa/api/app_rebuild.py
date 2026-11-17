@@ -163,7 +163,11 @@ async def _register_user_views_in_state(
                         _registered_tables_t.c.mv_expected_events,  # REQ-961
                         _registered_tables_t.c.mv_business_day_grain,  # REQ-962
                         _registered_tables_t.c.region,  # REQ-1921: where the view is built
-                        _registered_tables_t.c.draft,  # REQ-1921
+                        # REQ-1921: out of service -- a region move's waypoint, or withdrawn --
+                        # a view is registered for building only once back in service.
+                        (_registered_tables_t.c.draft | _registered_tables_t.c.withdrawn).label(
+                            "draft"
+                        ),
                     ).where(
                         _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
                         _registered_tables_t.c.view_sql.is_not(None),

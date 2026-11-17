@@ -392,7 +392,7 @@ Zeilen bleiben dauerhaft erhalten. Provisa hat keine Aufbewahrungseinstellung un
 
 ## Schwärzung {: #redaction }
 
-Was Provisa über seine eigene Arbeit aufzeichnet, durchläuft eine Liste von Schwärzungsregeln, bevor es irgendwohin geschrieben wird. Text, auf den eine Regel passt, wird durch `[REDACTED:<rule>]` ersetzt, das die passende Regel nennt.
+Was Provisa über seine eigene Arbeit aufzeichnet, und jeder Fehlertext, den es einem Client sendet, durchläuft eine Liste von Schwärzungsregeln, bevor es irgendwohin geschrieben wird. In den Logs, Spans und im Audit-Trail von Provisa wird Text, auf den eine Regel passt, durch `[REDACTED:<rule>]` ersetzt, das die passende Regel nennt. Ein Client erhält die bloße Markierung `[REDACTED]`. Sie nennt keine Regel und keine Variable, sodass Sie nicht erfahren können, welchem Secret ein von Ihnen gesendetes Wort entspricht.
 
 Die Liste hat vier Teile:
 
@@ -412,7 +412,8 @@ Die Liste gilt an jedem Ausgang, an den Provisa schreibt:
 - jeder Span, als eine geschwärzte Kopie, die jedem Exporter übergeben wird, und die Ansicht der letzten Spans;
 - jeder Log-Eintrag in der OpenTelemetry-Log-Pipeline von Provisa und jede Zeile, die ein Logging-Handler schreibt, Standardausgabe und Container-Logs eingeschlossen;
 - der Abfragetext des Audit-Logs, bevor er gehasht und verschlüsselt wird, sodass weder der Text noch sein Hash einen erkannten Wert preisgibt; und das Detail des administrativen Protokolls;
-- die Fehlermeldungen, die ein Client über HTTP, pgwire, gRPC, Arrow Flight und MCP erhält.
+- die Fehlermeldungen, die ein Client über HTTP, pgwire, gRPC, Arrow Flight, MCP und Bolt erhält. Ein Fehler in einer erfolgreichen Antwort, etwa eine GraphQL-Liste `errors` in einer 200-Antwort oder der letzte Frame einer Subscription, wird genauso geschwärzt wie einer in einer 400-Antwort;
+- der Text, den Provisa an ein Modell sendet, etwa ein Prompt oder eine Embedding-Eingabe; er trägt die bloße Markierung.
 
 Telemetrie und Client-Fehler sind beim Schreiben keiner einzelnen Organisation zugeordnet; sie werden daher mit den Regeln aller Organisationen zusammen geschwärzt. Zwei Fehler gehen ungeschwärzt durch: ein HTTP-Fehlerrumpf größer als 1 MiB und der Fehler eines Arrow-Flight-Streams, der fehlschlägt, nachdem er zu senden begonnen hat.
 

@@ -392,7 +392,7 @@ Las filas se conservan para siempre. Provisa no tiene ajuste de retención y nun
 
 ## Redacción de datos sensibles {: #redaction }
 
-Lo que Provisa registra sobre su propio trabajo pasa por una lista de reglas de redacción antes de escribirse en ningún sitio. El texto que coincide con una regla se sustituye por `[REDACTED:<rule>]`, que nombra la regla que coincidió.
+Lo que Provisa registra sobre su propio trabajo, y cada texto de error que envía a un cliente, pasa por una lista de reglas de redacción antes de escribirse en ningún sitio. En los logs, spans y registro de auditoría de Provisa, el texto que coincide con una regla se sustituye por `[REDACTED:<rule>]`, que nombra la regla que coincidió. Un cliente recibe la marca simple `[REDACTED]`. No nombra ninguna regla ni ninguna variable, así que no puede saber con qué secreto coincide una palabra que envió.
 
 La lista tiene cuatro partes:
 
@@ -412,7 +412,8 @@ La lista se aplica en cada salida que escribe Provisa:
 - cada span, como una copia redactada que se entrega a cada exportador, y la vista de spans recientes;
 - cada registro de log en la canalización de logs de OpenTelemetry de Provisa, y cada línea que escribe un manejador de logging, incluidas la salida estándar y los logs de los contenedores;
 - el texto de consulta del registro de auditoría, antes de calcular su hash y cifrarlo, de modo que ni el texto ni su hash revelan un valor detectado; y el detalle del registro administrativo;
-- los mensajes de error que recibe un cliente por HTTP, pgwire, gRPC, Arrow Flight y MCP.
+- los mensajes de error que recibe un cliente por HTTP, pgwire, gRPC, Arrow Flight, MCP y Bolt. Un error dentro de una respuesta correcta, como una lista `errors` de GraphQL en una respuesta 200 o el último frame de una suscripción, se redacta igual que uno en una respuesta 400;
+- el texto que Provisa envía a un modelo, como un prompt o una entrada de embedding, que lleva la marca simple.
 
 La telemetría y los errores de cliente no están ligados a una sola organización cuando se escriben, así que se redactan con las reglas de todas las organizaciones juntas. Dos errores pasan sin redactar: un cuerpo de error HTTP de más de 1 MiB y el error de un flujo de Arrow Flight que falla después de empezar a enviar.
 

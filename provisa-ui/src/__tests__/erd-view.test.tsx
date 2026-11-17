@@ -235,7 +235,6 @@ vi.mock("../api/admin", async (importOriginal) => ({
     cache: { default_ttl: 300 },
     naming: { domain_prefix: false, convention: "none" },
   }),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
 }));
 vi.mock("../api/actions", () => ({
@@ -245,7 +244,6 @@ vi.mock("../components/TagControl", () => ({ TagControl: () => null }));
 vi.mock("../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(),
   useSetTableRegion: () => vi.fn(),
 }));
 vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({

@@ -75,7 +75,6 @@ export function buildTableUpdateInput(t: RegisteredTable): Record<string, unknow
     roleTtl: t.roleTtl.map(({ role, ttl }) => ({ role, ttl })),
     replicate: t.replicate,
     rowMaterialize: t.rowMaterialize, // REQ-1865
-    draft: t.draft,
     live: t.live
       ? {
           queryId: t.live.queryId ?? undefined,
