@@ -1692,6 +1692,60 @@ ANSWERED = [
     ("SELECT pg_catalog.\"to_hex\"('-9223372036854775808'::bigint) AS v", "8000000000000000"),
     ("SELECT pg_catalog.\"to_hex\"('9223372036854775807'::bigint) AS v", "7fffffffffffffff"),
     ("SELECT pg_catalog.\"to_hex\"('0'::bigint) AS v", "0"),
+    ('SELECT pg_catalog."sum"(NULL::bigint) AS v', None),
+    (
+        'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES (3::bigint), ((-7)::bigint), (5000000000::bigint)) AS t(c1)',
+        "4999999996",
+    ),
+    (
+        'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES (NULL::bigint), (NULL::bigint)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('-9223372036854775808'::bigint), ('-9223372036854775808'::bigint)) AS t(c1)",
+        "-18446744073709551616",
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('9223372036854775807'::bigint), ('9223372036854775807'::bigint)) AS t(c1)",
+        "18446744073709551614",
+    ),
+    ("SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('0'::bigint), ('0'::bigint)) AS t(c1)", "0"),
+    ('SELECT pg_catalog."sum"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "98.25",
+    ),
+    (
+        'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "-Infinity",
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "-0",
+    ),
+    ('SELECT pg_catalog."sum"(NULL::real) AS v', None),
+    (
+        'SELECT pg_catalog."sum"(c1) AS v FROM (VALUES (0.5::real), ((-2.25)::real), (100::real)) AS t(c1)',
+        "98.25",
+    ),
+    ('SELECT pg_catalog."sum"(c1) AS v FROM (VALUES (NULL::real), (NULL::real)) AS t(c1)', None),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('NaN'::real), ('NaN'::real)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('-Infinity'::real), ('-Infinity'::real)) AS t(c1)",
+        "-Infinity",
+    ),
+    ("SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('-0'::real), ('-0'::real)) AS t(c1)", "-0"),
     ("SELECT '1.4e-45'::real", "1e-45"),
     ("SELECT 0.1::real", "0.1"),
     ("SELECT '-7.125'::real", "-7.125"),
@@ -1925,6 +1979,18 @@ RAISED = [
     ),
     ("SELECT pg_catalog.\"to_hex\"('2147483648'::integer) AS v", "22003"),
     ("SELECT pg_catalog.\"to_hex\"('9223372036854775808'::bigint) AS v", "22003"),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('9223372036854775808'::bigint), ('9223372036854775808'::bigint)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"sum\"(c1) AS v FROM (VALUES ('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "22003",
+    ),
     ("SELECT '3.4028236e+38'::real", "22003"),
     ("SELECT '1e-46'::real", "22003"),
     ("SELECT pg_catalog.power(0::double precision, (-1)::double precision)", "2201F"),
@@ -1953,14 +2019,19 @@ NOT_FINITE_NUMERICS = [
 ]
 
 
+#: scripts/conformance/function_support.py's FLOAT_TOLERANCE.
+_TOLERANCE = 1e-14
+
+
 def _real(value: float) -> float:
     return struct.unpack("<f", struct.pack("<f", value))[0]
 
 
 def _same(want, got) -> bool:
     """PostgreSQL's text of a value against the engine's: a boolean t or f (ClickHouse's 1 or 0),
-    a float by its value (NaN equal to NaN), a real by its value as a real, a double within 2
-    units in the last place (libm's trigonometry and pow differ by one)."""
+    a float by its value (NaN equal to NaN), a real by its value as a real, a double within the
+    function support measure's relative tolerance (FLOAT_TOLERANCE: each libm's trigonometry and
+    pow differ in the last digits)."""
     if want is None or got is None:
         return want is got
     if want in ("t", "f") and isinstance(got, (bool, int)):
@@ -1971,7 +2042,9 @@ def _same(want, got) -> bool:
             return math.isnan(expected) and math.isnan(got)
         if expected == got or _real(expected) == got:
             return True
-        return math.isfinite(expected) and abs(expected - got) <= 2 * math.ulp(expected)
+        return math.isfinite(expected) and abs(expected - got) <= _TOLERANCE * max(
+            abs(expected), abs(got)
+        )
     if isinstance(got, int):
         return int(want) == got
     return want == str(got)

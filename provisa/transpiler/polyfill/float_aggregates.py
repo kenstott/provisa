@@ -28,7 +28,12 @@ the overflow raised where the values are finite and a sum is not."""
 
 from __future__ import annotations
 
+import sqlglot.expressions as exp
+
+from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.matching import graft
+from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_only
 
 _NAN = "toFloat64('nan')"
@@ -147,4 +152,52 @@ REGRESSIONS: tuple[Feature, ...] = tuple(
     for name, (summary, answer) in _REGRESSIONS.items()
 )
 
-FEATURES: tuple[Feature, ...] = REGRESSIONS
+#: sum of a bigint is a numeric (int8_sum), exact past a bigint's range, where ClickHouse's sum
+#: of an Int64 wraps: its sum in Decimal128 (38 digits, the sum of up to 2^64 bigints). sum of a
+#: real or a double raises its overflow from finite values (float4pl, float8pl).
+_SUM_OF_BIGINTS = "sum(toDecimal128($v, 0))"
+_SUM_OF_DOUBLES = ch_checked(
+    [_OVERFLOW.format(condition=f"NOT {_V_NOT_FINITE} AND isInfinite({_SUM})")], "sum($v)"
+)
+#: A real's sum is a real, added as reals (float4pl): ClickHouse's sumWithOverflow keeps a Float32.
+_REAL_SUM = "sumWithOverflow($v)"
+_SUM_OF_REALS = ch_checked(
+    [_OVERFLOW.format(condition=f"NOT {_V_NOT_FINITE} AND isInfinite({_REAL_SUM})")], _REAL_SUM
+)
+
+
+def _sum(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """sum of a bigint, or of a real or a double, as the statement says its argument's type; any
+    other keeps what it had. Of a real or a double over a window or under a FILTER (the form's
+    several aggregates would read the outer call's alone), it keeps what it had too."""
+    from provisa.transpiler.function_macros import said_type
+
+    call = trino.called(node)
+    if call is None or "sum" not in call[0] or len(call[1]) != 1:
+        return None
+    argument = call[1][0]
+    if isinstance(argument, exp.Distinct):
+        return None
+    said = said_type(argument) or trino.said(argument)
+    if said == "bigint":
+        form = _SUM_OF_BIGINTS
+    elif said in ("real", "double precision") and not _over_or_filtered(node):
+        form = _SUM_OF_REALS if said == "real" else _SUM_OF_DOUBLES
+    else:
+        return None
+    return graft(replacement(form, dialect, "sum($v)"), {"v": argument})
+
+
+def _over_or_filtered(node: exp.Expr) -> bool:
+    outer = node.parent.parent if isinstance(node.parent, exp.Dot) else node.parent
+    return isinstance(outer, (exp.Filter, exp.Window))
+
+
+SUM = Feature(
+    "sum of numbers",
+    FAMILY,
+    "The sum of a group's bigints, exact; of its reals or doubles, the overflow raised.",
+    read=Side(rules=(Rule(None, {"clickhouse": Rewrite(_sum, mentions=r"\bsum\s*\(")}),)),
+)
+
+FEATURES: tuple[Feature, ...] = (*REGRESSIONS, SUM)

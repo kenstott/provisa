@@ -72,6 +72,7 @@ from provisa.transpiler import (
 )
 from provisa.transpiler.metadata_functions import VALUE_FORMS
 from provisa.transpiler.polyfill import notation as polyfill_notation
+from provisa.transpiler.polyfill import trino as polyfill_trino
 from provisa.transpiler.polyfill.regex import said_text
 from provisa.transpiler.pg_literals import literal_input as postgres_literal
 from provisa.transpiler.pg_literals import values_cast
@@ -2186,6 +2187,10 @@ def _polyfilled_by_rule(
     if isinstance(form, polyfill.Refusal):
         raise RowRefused(called, dialect, form)
     if isinstance(form, polyfill.Rewrite):
+        if form.function is polyfill_trino.kept:
+            # The old table's form: no argument is read here, as each would be read again by the
+            # old table's walk (twice a level of a nested call: abs of abs of abs).
+            return None
         written = applied.rewritten
         if written is None:
             # A rule's own pattern: its arguments in their forms first, as a form's holes are
