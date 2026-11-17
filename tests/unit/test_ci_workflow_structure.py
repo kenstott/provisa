@@ -1406,3 +1406,149 @@ def test_the_npm_gate_ignores_moderate_and_fails_a_stale_allow_entry():
     assert stale == [
         "ALLOW names GHSA-aaaa-bbbb-cccc, which no dev-only advisory matches: remove it"
     ]
+
+
+# Node: the repository's one pin is the root .nvmrc. CI, the image's renderer stage and the NixOS
+# guest build on it, so a bump in one place without the others fails here.
+_NVMRC = REPO / ".nvmrc"
+
+
+def _node_pin() -> str:
+    return _NVMRC.read_text().strip()
+
+
+def _setup_node_steps():
+    for where, step in _steps():
+        yield where, step
+    for action in ACTIONS:
+        for step in yaml.safe_load(action.read_text())["runs"]["steps"]:
+            yield f"{action.parent.name}:{step.get('name') or step.get('uses')}", step
+
+
+def test_node_is_pinned_once_at_the_repository_root():
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "--", "*.nvmrc", ".nvmrc"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert tracked == [".nvmrc"], f"Node pins tracked: {tracked}; the one pin is the root .nvmrc"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", _node_pin()), f".nvmrc is {_node_pin()!r}, not x.y.z"
+
+
+def test_every_setup_node_reads_the_nvmrc_and_hard_codes_no_version():
+    setup_node = 0
+    for where, step in _setup_node_steps():
+        with_ = step.get("with") or {}
+        assert "node-version" not in with_, (
+            f"{where} hard-codes node-version {with_['node-version']}"
+        )
+        if (step.get("uses") or "").startswith("actions/setup-node"):
+            setup_node += 1
+            assert with_.get("node-version-file") == ".nvmrc", (
+                f"{where} sets up Node without node-version-file: .nvmrc"
+            )
+    assert setup_node, "no actions/setup-node step found"
+
+
+def test_no_workflow_or_action_names_a_node_version_anywhere():
+    for path in [*WORKFLOWS, *ACTIONS]:
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            assert not re.search(r"\bnode-version\s*:", line), f"{path.name}:{n}: {line.strip()}"
+
+
+def test_the_images_node_is_the_nvmrc():
+    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / "Dockerfile").read_text(), flags=re.M)
+    assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
+
+
+def test_the_nixos_guests_node_is_the_nvmrc_major():
+    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    majors = re.findall(r"\bnodejs_(\d+)\b", nix)
+    assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
+
+
+def test_the_uis_engines_admit_the_nvmrc():
+    import json
+
+    engines = json.loads((REPO / "provisa-ui" / "package.json").read_text())["engines"]["node"]
+    floor = re.fullmatch(r">=(\d+)\.(\d+)\.(\d+)", engines)
+    assert floor, f"provisa-ui engines.node is {engines!r}, expected >=x.y.z"
+    pin = tuple(int(x) for x in _node_pin().split("."))
+    assert tuple(int(x) for x in floor.groups()) <= pin, f"engines {engines} refuses .nvmrc {pin}"
+
+
+# --- the Trino plugin jars: primed once per workflow run, restored before every test ------------
+
+_PLUGINS_ACTION = "./.github/actions/trino-plugins"
+_LANE_WORKFLOW = "./.github/workflows/lane.yml"
+
+
+def _plugin_phases(body: dict) -> list[str]:
+    """The plugin-cache phases a job runs: its own action steps, or `restore` for a call of the
+    lane workflow with trino-plugins switched on (literally or by an expression)."""
+    if body.get("uses") == _LANE_WORKFLOW:
+        return ["restore"] if (body.get("with") or {}).get("trino-plugins", False) else []
+    return [
+        (s.get("with") or {}).get("phase")
+        for s in body.get("steps") or []
+        if s.get("uses") == _PLUGINS_ACTION
+    ]
+
+
+def _needed(jobs: dict, job: str) -> set[str]:
+    """Every job ``job`` waits for, directly or through another."""
+    seen: set[str] = set()
+    todo = [job]
+    while todo:
+        needs = jobs[todo.pop()].get("needs") or []
+        for n in [needs] if isinstance(needs, str) else needs:
+            if n not in seen:
+                seen.add(n)
+                todo.append(n)
+    return seen
+
+
+def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
+    """Release 510 (run 44081179966): each parallel lane missed an evicted plugin cache and
+    fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
+    429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
+    or one download, checksum-verified, saved at once) and every job that restores it (`phase:
+    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    precedes pytest and no lane ever downloads."""
+    restoring = []
+    for path in WORKFLOWS:
+        if path.name == "lane.yml":
+            continue  # the callee: each caller's job is checked where it calls it
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        primers = {j for j, body in jobs.items() if "prime" in _plugin_phases(body)}
+        for job, body in jobs.items():
+            phases = _plugin_phases(body)
+            assert set(phases) <= {"prime", "restore"}, f"{path.name}:{job}: {phases}"
+            if "restore" in phases and "prime" not in phases:
+                restoring.append(f"{path.name}:{job}")
+                assert _needed(jobs, job) & primers, (
+                    f"{path.name}:{job} restores the Trino plugins without waiting for a job "
+                    f"that primes them (primers here: {sorted(primers)})"
+                )
+    assert restoring, "no job restores the Trino plugins"
+
+
+def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
+    steps = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())["jobs"][
+        "lane"
+    ]["steps"]
+    names = [s.get("name") for s in steps]
+    restore = steps[names.index("Restore Trino plugins")]
+    assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
+    assert names.index("Restore Trino plugins") < names.index("Run lane")
+    assert [s for s in steps if s.get("uses") == _PLUGINS_ACTION] == [restore]
+
+
+def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
+    """The jars come from the action's one fetch per pin; a workflow step of its own that ran the
+    fetch would be a second, uncached path to Maven Central."""
+    for where, step in _steps():
+        assert "trino_plugins.py fetch" not in (step.get("run") or ""), where
