@@ -633,8 +633,9 @@ DECLARED: list[Setting] = [
         effect="live",  # read when a source's file is downloaded
         # REQ-2113: the directories a CSV or Parquet source's file may be downloaded from by a
         # file mount path, after following symlinks. None by default: each entry lets the
-        # server's own files under it be copied into an org's folder. Refused whatever it holds
-        # on a server of many organizations.
+        # server's own files under it be copied into an org's folder. A held org
+        # (sandbox_egress.held) copies none outside its folder but what its demo declares,
+        # whatever it holds (REQ-1997).
         req="REQ-2113",
         env="PROVISA_SOURCES_DOWNLOAD_ROOTS",
         default=(),
@@ -647,7 +648,8 @@ DECLARED: list[Setting] = [
         effect="live",  # read when a Logs source is saved, previewed and read
         # REQ-1996 (maintainer ruling, 2026-10-12): the directories a Logs source's glob may
         # resolve into, after following symlinks; by default /var/log. Each entry lets the
-        # server's own files under it be read into tables.
+        # server's own files under it be read into tables. A held org (sandbox_egress.held)
+        # reads none outside its folder but what its demo declares (REQ-1997).
         req="REQ-1996",
         env="PROVISA_LOGS_ALLOWED_ROOTS",
         default=("/var/log",),
