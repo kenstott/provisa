@@ -18,8 +18,9 @@ Greeting, and KNOWS (Person to Person) and WORKS_FOR (Person to Company), each a
 KNOWS carries the ``from`` property the driver's introduction example writes. The tables start
 empty: each example writes the rows it reads, after its cleanup has emptied the graph.
 
-The job's driver user acts as a role of its own, ``bolt_examples``, mapped from its username,
-whose domain access is that domain alone: the examples' ``MATCH (a) DETACH DELETE a`` cleanup
+The job's driver user acts as a role of its own, ``bolt_examples``, assigned to it once the
+instance has created it (the control plane holds the instance's assignments, so a sign-in acts
+only as a role it holds), whose domain access is that domain alone: the examples' ``MATCH (a) DETACH DELETE a`` cleanup
 reaches their own graph and nothing else (not conformance.types_fixture), and their MERGE and
 DETACH DELETE run as written. A junction's keys cascade a deleted person or company.
 
@@ -136,7 +137,7 @@ def relationships() -> list[dict]:
 
 def access(user: str) -> dict:
     """The examples' domain, their role (reaching that domain alone, writing as the examples do)
-    and the rule mapping the driver's user to it, by username."""
+    and the driver's user's assignment of it, which the instance gives that user once created."""
     return {
         "domains": [{"id": DOMAIN, "description": "The Neo4j driver examples' graph"}],
         "roles": [
@@ -147,7 +148,7 @@ def access(user: str) -> dict:
                 "domain_access": [DOMAIN],
             }
         ],
-        "role_mapping": [{"claim": "username", "type": "exact", "value": user, "role": ROLE}],
+        "assignments": {user: [{"role_id": ROLE, "domain_id": "*"}]},
     }
 
 

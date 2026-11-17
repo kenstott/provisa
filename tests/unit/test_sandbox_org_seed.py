@@ -291,3 +291,127 @@ class TestSeatingTheDeploymentsAdministrators:
         await _assign(tenant_dbs.root, "alice", "platform_admin")
         await sandbox_mod.reseat_after_conferral(admin_db)
         assert await _sandbox_roles(tenant_dbs.sandbox, "alice") == ["org_admin"]
+
+
+async def _public_invite(pool):
+    from provisa.core.schema_admin import org_invites
+
+    async with pool.acquire() as conn:
+        result = await conn.execute_core(
+            select(org_invites).where(
+                org_invites.c.token == sandbox_mod.SANDBOX_PUBLIC_INVITE_TOKEN
+            )
+        )
+        row = result.fetchone()
+    return dict(row._mapping) if row is not None else None
+
+
+class TestThePublicInvite:
+    """The public sandbox invite is part of the deployment's configuration, like the org it names.
+
+    The marketing site links one fixed token. On 2026-11-16 a deploy wiped ``org_invites`` and the
+    link answered "Invite not found" until somebody minted a new one by hand -- with a new token the
+    site did not carry. So startup seeds it with the site's token on every boot, exactly as it seeds
+    the org: a reset that deletes it gets it back on the restart that follows.
+    """
+
+    def test_the_token_is_the_one_the_site_links(self):
+        from pathlib import Path
+
+        site = Path(__file__).resolve().parents[2] / "site" / "index.html"
+        assert (
+            f"sandbox.provisa.dev/register?invite={sandbox_mod.SANDBOX_PUBLIC_INVITE_TOKEN}"
+            in site.read_text()
+        )
+
+    async def test_a_first_boot_seeds_it(self, admin_db, spawned):
+        from provisa.core.environments import PROD
+        from provisa.core.org_invite import ENV_POLICY_PER_VISITOR, SANDBOX_ROLE
+
+        await ensure_sandbox_org(admin_db)
+        await _drain()
+        invite = await _public_invite(admin_db)
+        assert invite is not None
+        assert invite["org_id"] == SANDBOX_ORG_ID
+        # The visitor's role, conferrable only by a per-visitor invitation (REQ-1595, REQ-2155):
+        # each redeemer gets a fresh environment deployed from prod, reaped after a day of disuse.
+        assert invite["role_id"] == SANDBOX_ROLE
+        assert invite["env_policy"] == ENV_POLICY_PER_VISITOR
+        assert invite["env_name"] == PROD
+        assert invite["env_ttl_seconds"] == sandbox_mod.SANDBOX_INVITE_IDLE_TTL_SECONDS
+        # Open: addressed to nobody, redeemed by everybody (REQ-1594).
+        assert invite["max_uses"] is None
+        assert invite["email"] is None
+
+    async def test_a_ready_org_still_has_it_seeded(self, admin_db, spawned):
+        await _ready(admin_db)
+        assert await ensure_sandbox_org(admin_db) == "ready"
+        assert await _public_invite(admin_db) is not None
+
+    async def test_a_reset_that_deleted_it_gets_it_back_on_the_next_boot(self, admin_db, spawned):
+        # What scripts/deploy-cloud.sh reset_state does to org_invites, then the restart.
+        from provisa.core.schema_admin import org_invites
+
+        await _ready(admin_db)
+        await ensure_sandbox_org(admin_db)
+        async with admin_db.acquire() as conn:
+            await conn.execute_core(org_invites.delete().where(org_invites.c.org_id.isnot(None)))
+        assert await _public_invite(admin_db) is None
+
+        await ensure_sandbox_org(admin_db)
+        assert await _public_invite(admin_db) is not None
+
+    async def test_a_boot_restores_its_terms_and_keeps_its_count(self, admin_db, spawned):
+        # Its terms are configuration, so an edit or an expiry does not survive a boot; how many
+        # people redeemed it is history, and is kept.
+        import datetime
+
+        from provisa.core.schema_admin import org_invites
+
+        await _ready(admin_db)
+        await ensure_sandbox_org(admin_db)
+        past = datetime.datetime(2020, 1, 1, tzinfo=datetime.timezone.utc)
+        async with admin_db.acquire() as conn:
+            await conn.execute_core(
+                org_invites.update()
+                .where(org_invites.c.token == sandbox_mod.SANDBOX_PUBLIC_INVITE_TOKEN)
+                .values(expires_at=past, max_uses=3, uses=3, role_id="analyst")
+            )
+        await ensure_sandbox_org(admin_db)
+        invite = await _public_invite(admin_db)
+        assert invite is not None
+        assert invite["max_uses"] is None
+        assert invite["role_id"] == "sandbox"
+        assert invite["expires_at"] > datetime.datetime.now(tz=datetime.timezone.utc)
+        assert invite["uses"] == 3
+
+    async def test_a_visitor_is_admitted_by_it_and_so_is_the_next(
+        self, admin_db, spawned, monkeypatch
+    ):
+        # The preview the sign-in page reads, then the redemption's own read and claim -- twice,
+        # because an open link is not burnt by its first visitor.
+        import datetime
+
+        from provisa.api.auth_router import get_invite
+        from provisa.core.org_invite import INVITE_REDEMPTION_COLUMNS, is_spent, spend
+        from provisa.core.schema_admin import org_invites
+
+        await _ready(admin_db)
+        await ensure_sandbox_org(admin_db)
+        token = sandbox_mod.SANDBOX_PUBLIC_INVITE_TOKEN
+        monkeypatch.setattr("provisa.api.app.state.admin_db", admin_db, raising=False)
+        info = await get_invite(token)
+        assert info["valid"] is True and info["org_id"] == SANDBOX_ORG_ID
+
+        for visitor in ("visitor-1", "visitor-2"):
+            async with admin_db.acquire() as conn:
+                result = await conn.execute_core(
+                    select(*INVITE_REDEMPTION_COLUMNS).where(org_invites.c.token == token)
+                )
+                invite = dict(result.fetchone()._mapping)
+                assert not is_spent(invite)
+                assert invite["expires_at"] > datetime.datetime.now(tz=datetime.timezone.utc)
+                # REQ-1308 refuses a user redeeming an invite they issued; the deployment issued
+                # this one, and no account is the deployment.
+                assert invite["created_by"] != visitor
+                assert (await conn.execute_core(spend(token, visitor))).fetchone() is not None
