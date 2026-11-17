@@ -1871,6 +1871,8 @@ async def _load_and_build(
 
             # REQ-2031: a source all of whose tables never expire and have landed is not contacted.
             _kept = await kept_sources(state)
+            # REQ-1921: nor a withdrawn one: no engine attaches it.
+            _kept |= await _withdrawn_sources(state)
             async with bound_to_request_org():
                 await attach_store_sources(
                     config.model_copy(
@@ -1898,6 +1900,8 @@ async def _load_and_build(
     from provisa.federation.replica_routing import kept_sources as _kept_sources
 
     _kept_at_boot = await _kept_sources(state)  # REQ-2031: no pool, no credential
+    # REQ-1921: a withdrawn source is attached by no engine and given no pool.
+    _kept_at_boot |= await _withdrawn_sources(state)
     await _build_source_pools_and_enums(
         config.model_copy(
             update={"sources": [s for s in config.sources if s.id not in _kept_at_boot]}
@@ -2615,6 +2619,15 @@ async def _set_up_org_schema(org_id: str, env: str) -> None:
     await apply_tenancy_role_grants(model_db, org_id, multitenancy=state.multitenancy, env=env)
 
 
+async def _withdrawn_sources(state: Any) -> frozenset[str]:
+    """REQ-1921: the withdrawn sources of the bound org, read from its model store."""
+    from provisa.core.repositories import source as source_repo
+
+    assert state.model_db is not None
+    async with state.model_db.acquire() as conn:
+        return await source_repo.withdrawn_ids(conn)
+
+
 async def _build_org_runtime(
     org_id: str,
     *,
@@ -2958,7 +2971,8 @@ async def _build_org_runtime(
 
             # REQ-2031: a source all of whose tables never expire and have landed is never
             # contacted: no engine catalog, no pool, no credential.
-            uncontacted = unbound | await kept_sources(state)
+            # REQ-1921: nor a withdrawn source: no engine attaches it, it has no pool.
+            uncontacted = unbound | await kept_sources(state) | await _withdrawn_sources(state)
             async with bound_to_request_org():
                 failed_catalogs = await attach_store_sources(
                     org_config.model_copy(
@@ -3505,6 +3519,10 @@ async def _rebuild_schemas_impl(
         tables = as_generated(tables, await synthetic_sources(_pg))
         # REQ-1921: out of service — offered in no schema, refused by name when named.
         draft_tables = await _fetch_tables(_pg, draft=True)
+        # REQ-1921: withdrawn -- serves no role and is named by no context; kept only for its
+        # steward's preview (admin/table_read.py).
+        withdrawn_tables = await _fetch_tables(_pg, withdrawn=True)
+        withdrawn_relationships = await _fetch_relationships(_pg, withdrawn=True)
         _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
 
@@ -3773,8 +3791,8 @@ async def _rebuild_schemas_impl(
         )
         # REQ-1921: a draft's grants too, so a role inheriting from one granted it is named
         # it -- to be refused as draft, or read by a role holding org_admin.
-        expand_column_grants([*tables, *draft_tables], role_chains_by_id)
-        narrow_own_domain_grants([*tables, *draft_tables], roles)
+        expand_column_grants([*tables, *draft_tables, *withdrawn_tables], role_chains_by_id)
+        narrow_own_domain_grants([*tables, *draft_tables, *withdrawn_tables], roles)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
@@ -3792,6 +3810,7 @@ async def _rebuild_schemas_impl(
         _build.count(
             tables=len(tables),
             draft_tables=len(draft_tables),
+            withdrawn_tables=len(withdrawn_tables),
             views=sum(1 for _t in tables if _t.get("view_sql")),
             columns=sum(len(_t.get("columns") or []) for _t in tables),
             relationships=len(relationships),
@@ -3804,7 +3823,9 @@ async def _rebuild_schemas_impl(
 
         state.federation_engine.reseed_ops(_OPS_VIEWS)
 
-        await _register_user_views_in_state(conn, raw_config, tables, draft_tables)
+        await _register_user_views_in_state(
+            conn, raw_config, tables, [*draft_tables, *withdrawn_tables]
+        )
         # REQ-2163: the ontology schema's Class tables, over the tables this build serves.
         from provisa.api._ontology_classes import register_class_tables
 
@@ -3969,7 +3990,12 @@ async def _rebuild_schemas_impl(
             table_write_returns_rows,
         )
 
-        for _t in [*tables, *draft_tables]:
+        for _t in [*tables, *draft_tables, *withdrawn_tables]:
+            if _t.get("source_withdrawn"):
+                # REQ-1921: a withdrawn source is attached by no engine and has no pool: its
+                # tables take no write, and its type is not among the sources this build read.
+                _t["write_ops"], _t["write_returns_rows"], _t["write_refused_forms"] = [], False, []
+                continue
             # A view has no source of its own to write to; every other table's source is typed.
             _stype = None if _t.get("view_sql") else state.source_types[_t["source_id"]]
             # REQ-1997: where the source's file is decides whether it takes writes.
@@ -4010,6 +4036,8 @@ async def _rebuild_schemas_impl(
             metrics=_metric_dicts,  # REQ-1319
             field_numbers=_field_numbers,
             draft_tables=draft_tables,  # REQ-1921
+            withdrawn_tables=withdrawn_tables,  # REQ-1921
+            withdrawn_relationships=withdrawn_relationships,  # REQ-1921
         )
     except NamesClashRefused as refused:
         # REQ-194: the clashes are kept for the names report, each naming both objects.
@@ -4057,7 +4085,7 @@ async def _rebuild_schemas_impl(
     # the reclamation sweep.) Entries are kept by place, not by table, so the place is purged.
     from provisa.cache.tenancy import purge_when_drafted
 
-    await purge_when_drafted(state, frozenset(t["id"] for t in draft_tables))
+    await purge_when_drafted(state, frozenset(t["id"] for t in [*draft_tables, *withdrawn_tables]))
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {

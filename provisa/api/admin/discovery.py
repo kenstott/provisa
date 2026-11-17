@@ -82,19 +82,10 @@ class AcceptRequest(BaseModel):
 
 
 class AcceptEach(BaseModel):
-    """One suggestion of an Accept all, with the name its relationship takes, as on its row."""
+    """One proposal to accept, with the name its relationship takes."""
 
     id: int
     name: str | None = None
-
-
-class AcceptAllRequest(BaseModel):
-    candidates: list[AcceptEach] = Field(min_length=1)
-
-
-class RejectAllRequest(BaseModel):
-    ids: list[int] = Field(min_length=1)
-    reason: str
 
 
 _log = _logging.getLogger(__name__)
@@ -730,50 +721,6 @@ async def reject_candidate(request: Request, candidate_id: int, body: RejectRequ
     async with pool.acquire() as _conn:
         await candidates_repo.reject(cast("Connection", _conn), candidate_id, body.reason)
     return {"status": "rejected"}
-
-
-@router.post("/candidates/accept")
-async def accept_candidates(request: Request, body: AcceptAllRequest):  # REQ-413, REQ-612
-    """Accept every suggestion listed, each as its row's Accept would and in a transaction of its
-    own: one that fails is reported with its reason and leaves the others accepted."""
-    require_capability_request(request, "create_relationship")
-    pool = state.model_db
-    assert pool is not None
-    results: list[dict[str, Any]] = []
-    async with pool.acquire() as _conn:
-        conn = cast("Connection", _conn)
-        for each in body.candidates:
-            try:
-                accepted = await candidates_repo.accept(conn, each.id, each.name)
-            except Exception as exc:  # reported per suggestion, the rest go on
-                _log.warning("Accept all: candidate %s failed: %s", each.id, exc)
-                results.append({"id": each.id, "ok": False, "error": client_text(str(exc))})
-                continue
-            results.append(
-                {"id": each.id, "ok": True, "relationship_id": accepted["relationship_id"]}
-            )
-    return {"results": results}
-
-
-@router.post("/candidates/reject")
-async def reject_candidates(request: Request, body: RejectAllRequest):  # REQ-413, REQ-167
-    """Reject every suggestion listed with the one reason given, each as its row's Reject would:
-    one that fails is reported with its reason and leaves the others rejected."""
-    require_capability_request(request, "create_relationship")
-    pool = state.model_db
-    assert pool is not None
-    results: list[dict[str, Any]] = []
-    async with pool.acquire() as _conn:
-        conn = cast("Connection", _conn)
-        for candidate_id in body.ids:
-            try:
-                await candidates_repo.reject(conn, candidate_id, body.reason)
-            except Exception as exc:  # reported per suggestion, the rest go on
-                _log.warning("Reject all: candidate %s failed: %s", candidate_id, exc)
-                results.append({"id": candidate_id, "ok": False, "error": client_text(str(exc))})
-                continue
-            results.append({"id": candidate_id, "ok": True})
-    return {"results": results}
 
 
 @router.get("/candidates/rejected/count")

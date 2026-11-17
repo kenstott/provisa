@@ -36,7 +36,6 @@ import pytest
 import yaml
 from graphql import build_schema, graphql_sync
 
-from tests.helpers import registered_id, release_mutation
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
@@ -177,18 +176,6 @@ def _register(srv, source_id: str, table: str, *, row_materialize: bool, name: s
     return resp.json()["data"]["registerTable"]
 
 
-def _release(srv, registered: dict) -> None:
-    """Put a registered table in service, as a domain owner does after registering it."""
-    resp = httpx.post(
-        f"{srv.base_url}/admin/graphql",
-        json={"query": release_mutation(registered_id(registered["message"]))},
-        headers=_HEADERS,
-        timeout=60,
-    )
-    assert resp.status_code == 200 and "errors" not in resp.json(), resp.text
-    assert resp.json()["data"]["setTableDraft"]["success"], resp.text
-
-
 def _sql(srv, sql: str) -> list[dict]:
     resp = httpx.post(
         f"{srv.base_url}/data/sql",
@@ -203,7 +190,6 @@ def _sql(srv, sql: str) -> list[dict]:
 def test_the_rows_named_by_key_are_fetched_in_one_request_and_kept_for_the_ttl(server, remote):
     registered = _register(server, "hasura", "albums", row_materialize=True, name="title")
     assert registered["success"], registered
-    _release(server, registered)
     remote.reads.clear()  # registration offers the table to the remote once
 
     sql = "SELECT id, title FROM albums WHERE id IN (1, 3) ORDER BY id"
@@ -220,10 +206,9 @@ def test_the_rows_named_by_key_are_fetched_in_one_request_and_kept_for_the_ttl(s
     # The same rows, from the whole table landed: the table updated to be read whole.
     whole = _register(server, "hasura", "albums", row_materialize=False, name="title")
     assert whole["success"], whole
-    _release(server, whole)  # an update puts the table back in draft
     remote.reads.clear()
     assert _sql(server, sql) == first
-    # The release's landing reconcile and the read may each land the table: every request is
+    # The registration's landing reconcile and the read may each land the table: every request is
     # for the whole table, none for keys.
     assert remote.reads, "the whole table was never read from the remote"
     assert all("where" not in (r.get("variables") or {}) for r in remote.reads), remote.reads

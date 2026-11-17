@@ -35,7 +35,7 @@ either, and the pair says so. Such a pair's score is the model's: no values were
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
@@ -43,7 +43,7 @@ from provisa.discovery.columns import TableFacts
 from provisa.discovery.context import measured_score
 
 if TYPE_CHECKING:
-    from provisa.discovery.direction import ColumnRef, Proposal
+    from provisa.discovery.direction import ColumnRef, Edge, Proposal
 
 #: The most distinct values read of one column for a pair's measure.
 DISTINCT_BOUND = 10_000
@@ -194,10 +194,16 @@ class Measure:
 
 
 class Measurer:
-    """Measures a run's proposed pairs, reading each column once for the run."""
+    """Measures a run's proposed pairs, reading each column once for the run. ``decided`` holds
+    the pairs already registered (a junction's legs among them) or decided by a reviewer, in the
+    direction stored: REQ-413 (amended 2026-11-16) never proposes one again, so none is measured
+    as a new pair and each is left out for what it already is."""
 
-    def __init__(self, reader: Reader, tables: dict[int, TableFacts]) -> None:
+    def __init__(
+        self, reader: Reader, tables: dict[int, TableFacts], *, decided: Collection[Edge]
+    ) -> None:
         self._reader = reader
+        self._decided = decided
         self._tables = tables
         self._values: dict[ColumnRef, Values | Unmeasured] = {}
         self._pairs: dict[tuple[ColumnRef, ColumnRef], Measure] = {}
@@ -234,9 +240,13 @@ class Measurer:
 
     async def measured(self, proposal: Proposal) -> Proposal:
         """``proposal`` with its measure and the score it gives. A semantic pair whose source
-        alone is distinct is turned round to start at the referring column."""
+        alone is distinct is turned round to start at the referring column. A pair already
+        registered or decided is returned as proposed, unmeasured."""
         from provisa.discovery.direction import turned
 
+        start, end = proposal.start, proposal.end
+        if proposal.edge in self._decided or (*end, *start) in self._decided:
+            return proposal
         measure = await self.pair(proposal.start, proposal.end)
         measured = replace(proposal, measure=measure, score=measure.score())
         if proposal.kind == "semantics" and measure.cardinality() == "one-to-many":

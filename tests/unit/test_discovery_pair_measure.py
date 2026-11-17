@@ -125,7 +125,7 @@ def _semantic(source: tuple[int, str], target: tuple[int, str], confidence: floa
 
 async def _measured(p, *, bound: int = measure.DISTINCT_BOUND, data=DATA):
     reader = _Reader(data, bound)
-    return await Measurer(reader, TABLES).measured(p), reader
+    return await Measurer(reader, TABLES, decided=frozenset()).measured(p), reader
 
 
 async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_many():
@@ -206,7 +206,7 @@ async def test_a_column_holding_more_than_the_bound_is_looked_up_not_compared_wi
 
 async def test_each_column_is_read_once_for_the_run():
     reader = _Reader(DATA, measure.DISTINCT_BOUND)
-    measurer = Measurer(reader, TABLES)
+    measurer = Measurer(reader, TABLES, decided=frozenset())
     await measurer.all(
         [
             _semantic((2, "neighborhood"), (1, "neighborhood"), 0.5),
@@ -232,7 +232,7 @@ async def test_the_threshold_is_judged_on_the_measured_score_and_the_rest_are_ke
             _semantic((2, "neighborhood"), (1, "neighborhood"), 0.95),
         ],
         [_semantic((4, "code"), (5, "code"), 0.9)],
-        Measurer(reader, TABLES).all,
+        Measurer(reader, TABLES, decided=frozenset()).all,
         tally,
     )
     assert [(p.start, p.score) for p in out] == [((3, "permit_id"), KEY_SCORE)]

@@ -387,21 +387,28 @@ async def perform(
             )
     tables = prepared.tables
     # Every proposed pair is measured on its data, read as the person who started the run.
-    measurer = Measurer(gather.values_reader(state, spec.role), tables)
+    # A pair already registered or decided is never measured as a new one (REQ-413).
+    measurer = Measurer(
+        gather.values_reader(state, spec.role), tables, decided=known.existing | known.rejected
+    )
     fk = await measurer.all(_fk_proposals(fk_found))
     publisher = Publisher(pool, scope)
     read_sample = _caching(gather.uniqueness_reader(state))
 
     def registered(read: Recorded) -> Recorded:
-        """``read``, said to be already registered where it is: a proposal left out as an answer
-        was read (the model rated it low, say) may be one of a relationship that exists, and is
-        then not one a reviewer can still accept."""
+        """``read``, said to be already registered or rejected where it is: a proposal left out
+        as an answer was read (the model rated it low, say) may be one of a relationship that
+        exists or a pair a reviewer rejected, and is then not one a reviewer can still decide."""
         p = read.proposal
         if p is None:
             return read
         reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
         if p.edge in known.existing or reverse in known.existing:
             return replace(read, left_out="existing")
+        # REQ-413 (amended 2026-11-16): a pair marked not to be recommended again keeps that
+        # decision, whatever this run's answer rated it.
+        if p.edge in known.rejected or reverse in known.rejected:
+            return replace(read, left_out="rejected")
         return read
 
     async def settled(semantic: list[Proposal], unread: list[Recorded]) -> Outcome:

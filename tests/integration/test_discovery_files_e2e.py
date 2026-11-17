@@ -47,7 +47,7 @@ import pytest
 import yaml
 
 from provisa.discovery.context import KEY_SCORE, SHARED_CEILING, measured_score
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id
 from tests.smoke import test_main_is_startable as smoke
 from tests.smoke.test_main_is_startable import REPO, Instance
 
@@ -265,7 +265,6 @@ def files(instance: Instance, tmp_path_factory) -> dict[str, int]:
             )["registerTable"]
             assert registered["success"], registered
             ids[name] = registered_id(registered["message"])
-            _gql(instance, release_mutation(ids[name]))
     _gql(instance, "mutation { rebuildSchemas { success message } }")
     print("the files source reports:", json.dumps(reported, sort_keys=True))
     # The key the files share is text in both: the JSON file's and the Parquet file's.
@@ -482,8 +481,8 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     """All three domains, with the limits of a model that holds a whole type group in one request:
     the permit columns share the text request with every other text column, and every proposal is
     read again. What the first run's reviewer decided shows: the accepted ones are registered and
-    cannot be decided, and the neighborhood pairs, a key of no table, are scored under the
-    threshold again, the one marked among them."""
+    cannot be decided, the one marked keeps its decision and cannot be decided, and the other
+    neighborhood pairs, a key of no table, are scored under the threshold again."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
     prompts = endpoint.prompts[before:]
@@ -503,9 +502,10 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     }
     assert read == {
         _PERMIT: ("existing", False),
+        # Marked not to be recommended again: it keeps that decision and is not measured anew.
         ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "below_threshold",
-            True,
+            "rejected",
+            False,
         ),
         ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
             "below_threshold",

@@ -14,7 +14,7 @@ import type { MaskEntry } from "../lib/masks";
 import { NEVER_EXPIRES, ttlText } from "../components/form/cacheTtl";
 import { resultRedirectText } from "../components/resultRedirectText";
 import { Tip } from "../components/Tip";
-import { useSetTableDraft, useRegionChoices } from "../hooks/useRegionQueries";
+import { useRegionChoices } from "../hooks/useRegionQueries";
 import { useRegionSelection } from "../hooks/useRegionSelection";
 import { filterByRegion } from "../hooks/regionFilter";
 import { RegionSelector } from "../components/RegionSelector";
@@ -164,7 +164,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
   const getColumnDependents = useColumnDependents();
   const { updateTable } = useUpdateTable();
   const { deleteTable } = useDeleteTable();
-  const setTableDraft = useSetTableDraft();
   const { purgeCacheByTable } = usePurgeCacheByTable();
   const { forceRegen } = useForceRegen();
   const { deployViewToDb } = useDeployViewToDb();
@@ -496,15 +495,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     const name = tables.find((tbl) => tbl.id === id)?.tableName ?? String(id);
     if (refusal.refused(result, name)) return false;
     if (!result.success) throw new Error(serverMessage(result, result.message));
-    await reload();
-  };
-
-  // REQ-1921: the detail's Draft box. The same mutation the edit form's draft control saves
-  // through; the box shows what is stored, so the tables are reloaded once it answers.
-  const handleSetDraft = async (table: RegisteredTable, draft: boolean) => {
-    setError(null);
-    const result = await setTableDraft(table.id, draft);
-    if (!result.success) setError(serverMessage(result, result.message));
     await reload();
   };
 
@@ -1019,7 +1009,6 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             handleDelete={handleDelete}
             handleProfile={handleProfile}
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
-            onSetDraft={handleSetDraft}
             source={sources.find((s) => s.id === t.sourceId)}
             relationships={relationships}
             onInvalidateCache={!hidingOnly && hasCacheable(t) ? handlePurgeTableCache : undefined}

@@ -10,7 +10,7 @@ You need:
 
 - **Docker Desktop**, running. Named demos and `--source` demos start containers.
 - **Python 3.12**, to create the repository's virtual environment.
-- **Node.js 20 or later**, for the UI. The launcher loads `nvm` if you have it and switches to the version in `.nvmrc`.
+- **Node.js 24.12 or later**, for the UI. The launcher loads `nvm` if you have it and installs or switches to the version in `.nvmrc`.
 - **Git**, to clone the repository.
 
 Set up once:

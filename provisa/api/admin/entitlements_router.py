@@ -55,6 +55,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import AwareDatetime, BaseModel
 
+from provisa.api.admin._platform_guard import require_roles_removable
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.capabilities import _resolved_capabilities, require_capability_request
 from provisa.api.errors import ApiError
@@ -778,10 +779,21 @@ def _rule(state: Any, rule_key: str) -> tuple[str, ExpiryRule]:
 
 
 async def _end_grant(
-    state: Any, principal: str, role_id: str, ends_at: datetime, actor: str, reason: str
+    request: Request,
+    state: Any,
+    principal: str,
+    role_id: str,
+    ends_at: datetime,
+    actor: str,
+    reason: str,
 ) -> None:
     """End ``principal``'s grant of ``role_id`` at ``ends_at``: set or shorten its own expiry.
-    Refused by name when Provisa holds no grant of the role for them."""
+    Refused by name when Provisa holds no grant of the role for them.
+
+    Ending a grant takes the role away, so it asks what removing the role asks
+    (``rights.check_role_grant``): REQ-1327 (amended 2026-11-16), ending org_admin needs org_admin.
+    """
+    require_roles_removable(request, [role_id])
     db = _db(state)
     async with db.acquire() as conn:
         ended = await role_grants.end_grant(conn, principal, role_id, ends_at)
@@ -830,7 +842,9 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
     _refuse_past(body.ends_at)
     actor = _caller(request) or _ANONYMOUS
     if not body.ends:
-        await _end_grant(state, body.principal, body.role_id, body.ends_at, actor, body.reason)
+        await _end_grant(
+            request, state, body.principal, body.role_id, body.ends_at, actor, body.reason
+        )
         return await _view(state, body.principal, body.role_id)
     await _refuse_past_grant(state, body.principal, body.role_id, body.ends_at)
     if _preview(state, body.principal, body.role_id, body).removes_nothing:
@@ -877,7 +891,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
     actor = _caller(request) or _ANONYMOUS
     db = _db(state)
     if not body.ends:
-        await _end_grant(state, principal, rule.role_id, body.ends_at, actor, body.reason)
+        await _end_grant(request, state, principal, rule.role_id, body.ends_at, actor, body.reason)
         async with db.acquire() as conn:
             await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
             state.held_entitlements = await store.load_held(conn)

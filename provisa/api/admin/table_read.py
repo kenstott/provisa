@@ -116,12 +116,44 @@ def table_sql_ref(table: dict) -> str:
 
 
 def draft_table(state: Any, table_id: int) -> dict | None:
-    """The draft ``table_id``, or None when no draft has that id. Whom it is served to is asked
+    """The table ``table_id`` out of service -- a draft, or withdrawn (REQ-1921) -- or None when
+    no such table has that id. A withdrawn one is read only by its steward's preview: it is in no
+    role's context, so no statement a caller sends names it. Whom it is served to is asked
     elsewhere (:func:`table_for_steward`, :func:`draft_served_to`)."""
-    for table in state.role_build_inputs["draft_tables"]:
+    inputs = state.role_build_inputs
+    for table in [*inputs["draft_tables"], *inputs["withdrawn_tables"]]:
         if table["id"] == table_id:
             return table
     return None
+
+
+def _require_previewable(state: Any, table: dict, source: Any) -> None:
+    """REQ-1921: a withdrawn table keeps no replica and a withdrawn source is attached by no
+    engine, so a preview of one is refused, saying why, where the engine could reach its rows
+    only through what it does not keep."""
+    from provisa.federation.replica_routing import reads_replica
+
+    if not table.get("withdrawn"):
+        return
+    if table.get("source_withdrawn"):
+        raise ApiError(
+            409,
+            "schema.withdrawn_source_not_previewable",
+            f"table {table['table_name']!r} cannot be previewed: its source "
+            f"{table['source_id']!r} is withdrawn, and no engine reads a withdrawn source",
+            table=table["table_name"],
+            source=table["source_id"],
+        )
+    if source is not None and reads_replica(
+        source, table, state.federation_engine.engine, promoted=False
+    ):
+        raise ApiError(
+            409,
+            "schema.withdrawn_table_not_previewable",
+            f"table {table['table_name']!r} cannot be previewed: it is withdrawn and keeps no "
+            "replica, and the engine reads its source only through one",
+            table=table["table_name"],
+        )
 
 
 def _in_service(state: Any, table_id: int) -> dict | None:
@@ -446,6 +478,13 @@ async def reading_drafts(state: Any, role_id: str, drafts: list[dict]) -> _WithD
     routes = state.replica_routes
     for draft in drafts:
         source = sources.get(draft["source_id"])
+        if draft.get("withdrawn"):
+            # REQ-1921: a withdrawn table keeps no replica, whatever its replicate setting: its
+            # preview reads its source in place, or is refused.
+            from provisa.core.replicate import NEVER
+
+            draft = {**draft, "replicate": NEVER}
+            _require_previewable(state, draft, source)
         if source is not None:
             routes = routes_with_draft(state, draft, source, routes)
     surface = surface_with_drafts(state, role_id, drafts)

@@ -181,10 +181,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -193,7 +189,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 
@@ -274,7 +269,7 @@ describe("TablesPage — the detail panel", () => {
     await select("orders");
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
     const panel = screen.getByTestId("tables-split-panel");
-    expect(await within(panel).findByTestId("table-draft-checkbox")).toBeInTheDocument();
+    expect(await within(panel).findByTestId("table-edit-save")).toBeInTheDocument();
   });
 
   it("closes from the panel’s own button, and from a second click on the row", async () => {
@@ -302,7 +297,7 @@ describe("TablesPage — the detail panel", () => {
     render(<TablesPage />);
     await select("orders");
     const head = (await screen.findByTestId("tables-split-title")).parentElement as HTMLElement;
-    for (const id of ["table-read-view-preview", "table-read-view-edit", "table-read-view-draft"]) {
+    for (const id of ["table-read-view-preview", "table-read-view-edit"]) {
       expect(await within(head).findByTestId(id)).toBeInTheDocument();
     }
   });
@@ -313,7 +308,7 @@ describe("TablesPage — the detail panel", () => {
     const head = screen.getByTestId("tables-split-title").parentElement as HTMLElement;
     expect(await within(head).findByTestId("table-read-view-preview")).toBeInTheDocument();
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-    await screen.findByTestId("table-draft-checkbox");
+    await screen.findByTestId("table-edit-save");
     // The name, then Save and Cancel: nothing of the read view's actions is left to grey out.
     const save = await within(head).findByTestId("table-edit-save");
     const cancel = within(head).getByTestId("table-edit-cancel");
@@ -348,7 +343,7 @@ describe("TablesPage — the detail panel", () => {
     render(<TablesPage />);
     await select("orders");
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-    await screen.findByTestId("table-draft-checkbox");
+    await screen.findByTestId("table-edit-save");
     fireEvent.keyDown(screen.getByTestId("tables-split-panel"), { key: "Escape" });
     expect(screen.getByTestId("tables-split-panel")).toBeInTheDocument();
   });
@@ -384,7 +379,7 @@ describe("TablesPage — the detail panel", () => {
     it("Edit closes the preview and shows the edit form", async () => {
       await openPreview();
       await userEvent.click(screen.getByTestId("table-read-view-edit"));
-      await screen.findByTestId("table-draft-checkbox");
+      await screen.findByTestId("table-edit-save");
       expect(screen.queryByTestId("table-preview-modal")).toBeNull();
     });
 

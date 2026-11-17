@@ -72,6 +72,7 @@ _SOURCE = {
     "dialect": "postgresql",
     "replicate": None,
     "region": None,
+    "withdrawn": False,  # REQ-1921
     "path": "/data",
     "mapping": {"k": "v"},
     "federation_hints": {"warehouse": "w"},
@@ -86,7 +87,12 @@ async def _read_sources(monkeypatch, info):
     what names a source to someone who does not register sources (REQ-1958; who is answered which
     table is tests/unit/test_admin_catalog_scope.py)."""
     # A request is served after a role build, which leaves its inputs (drafts among them).
-    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": []}, raising=False)
+    monkeypatch.setattr(
+        appmod.state,
+        "role_build_inputs",
+        {"draft_tables": [], "withdrawn_tables": []},
+        raising=False,
+    )
 
     async def _named(conn, scope):  # noqa: ARG001
         return {"pg"}

@@ -33,6 +33,7 @@ the same statement runs unchanged on both servers.
 Usage:
   pgwire_catalog_types.py seed   --pg <dsn>
   pgwire_catalog_types.py config --out <provisa.yaml> --pg-port <port>
+  pgwire_catalog_types.py assignments --extra-access <access.yaml> --user <job user>
   pgwire_catalog_types.py probe  --pg <dsn> --provisa <dsn> --out-json <f> --out-md <f>
   pgwire_catalog_types.py combine --pgspec <f> [--catalog <f>] --out <f>
 
@@ -368,9 +369,10 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
             },
             "assignments_source": "provisa",
             "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
-            # A job's extra access adds its rules (write_config). The Cypher TCK's session user is
-            # assigned tck_empty instead (.github/workflows/conformance-cypher.yml): the control
-            # plane holds the assignments, so a mapped role it does not hold is not one (REQ-1263).
+            # No rule: the control plane holds the assignments, so a sign-in acts only as a role
+            # it holds (REQ-120, REQ-1263). A user acting as a role of its own is assigned it: the
+            # Cypher TCK's session user tck_empty (.github/workflows/conformance-cypher.yml), a
+            # job user the roles of its extra access (job_assignments).
             "role_mapping": [],
             # The role a pgwire login acts as when its user names none.
             "default_role": "org_admin",
@@ -445,6 +447,34 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
     }
 
 
+_ACCESS_FIELDS = {"domains", "roles", "assignments"}
+
+
+def _access(path: Path) -> dict:
+    import yaml
+
+    access = yaml.safe_load(path.read_text())
+    if set(access) != _ACCESS_FIELDS:
+        raise SystemExit(
+            f"{path}: has {sorted(access)}, where a job's access is {sorted(_ACCESS_FIELDS)}"
+        )
+    return access
+
+
+def job_assignments(extra_access: Path, users: list[str]) -> dict[str, list[dict]]:
+    """The role assignments of a job's extra access, by user (``{username: [{role_id,
+    domain_id}]}``), each given to its user once the user is created (POST
+    /admin/users/{id}/assignments). An assignment naming a user the job does not create is refused
+    by name: no one would hold it."""
+    assignments = _access(extra_access)["assignments"]
+    strangers = sorted(set(assignments) - set(users))
+    if strangers:
+        raise SystemExit(
+            f"{extra_access}: assigns roles to {strangers}, users the job does not create"
+        )
+    return assignments
+
+
 def write_config(
     path: Path,
     pg_port: int,
@@ -457,8 +487,9 @@ def write_config(
     entries a job seeded into the same PostgreSQL, e.g. scripts/conformance/flightsql/fixtures.py)
     registered beside ``types_fixture``, the relationships between them (``extra_relationships``,
     a YAML list of model relationship entries, e.g. scripts/conformance/bolt/fixtures.py), and the
-    domains, roles and role mapping rules its user acts by (``extra_access``, a YAML mapping of
-    ``domains``, ``roles`` and ``role_mapping``, e.g. scripts/conformance/bolt/fixtures.py)."""
+    domains and roles its users act by (``extra_access``, a YAML mapping of ``domains``, ``roles``
+    and ``assignments``, e.g. scripts/conformance/bolt/fixtures.py). The assignments are not the
+    model's: each user is given its own once created (job_assignments)."""
     import yaml
 
     config = provisa_config(pg_port, pg_dsn)
@@ -467,15 +498,9 @@ def write_config(
     if extra_relationships is not None:
         config["relationships"] = yaml.safe_load(extra_relationships.read_text())
     if extra_access is not None:
-        access = yaml.safe_load(extra_access.read_text())
-        fields = {"domains", "roles", "role_mapping"}
-        if set(access) != fields:
-            raise SystemExit(
-                f"{extra_access}: has {sorted(access)}, where a job's access is {sorted(fields)}"
-            )
+        access = _access(extra_access)
         config["domains"].extend(access["domains"])
         config["roles"].extend(access["roles"])
-        config["auth"]["role_mapping"].extend(access["role_mapping"])
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(yaml.safe_dump(config, sort_keys=False))
     print(f"wrote {path}")
@@ -1047,8 +1072,11 @@ def main(argv: list[str]) -> int:
     c.add_argument("--extra-tables", type=Path, help="a job's own seeded fixture tables (YAML)")
     c.add_argument("--extra-relationships", type=Path, help="the relationships between them (YAML)")
     c.add_argument(
-        "--extra-access", type=Path, help="a job's domains, roles and role mapping rules (YAML)"
+        "--extra-access", type=Path, help="a job's domains, roles and assignments (YAML)"
     )
+    a = sub.add_parser("assignments", help="a job user's assignments, one JSON body per line")
+    a.add_argument("--extra-access", required=True, type=Path)
+    a.add_argument("--user", required=True, help="the job user, the one user the job creates")
     p = sub.add_parser("probe")
     p.add_argument("--pg", required=True)
     p.add_argument("--provisa", required=True)
@@ -1071,6 +1099,9 @@ def main(argv: list[str]) -> int:
             args.extra_relationships,
             args.extra_access,
         )
+    elif args.command == "assignments":
+        for assignment in job_assignments(args.extra_access, [args.user]).get(args.user, []):
+            print(json.dumps(assignment))
     elif args.command == "combine":
         catalog = (
             json.loads(args.catalog.read_text()) if args.catalog and args.catalog.exists() else None

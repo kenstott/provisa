@@ -19,7 +19,6 @@ import { RelationshipsPage } from "../RelationshipsPage";
 import {
   applyRunDecisions,
   countDiscoveryRun,
-  fetchCandidates,
   fetchDiscoveryModels,
   fetchDiscoveryRun,
   fetchDiscoveryRuns,
@@ -135,7 +134,6 @@ export const startMock = vi.mocked(startDiscoveryRun);
 export const runMock = vi.mocked(fetchDiscoveryRun);
 export const runsMock = vi.mocked(fetchDiscoveryRuns);
 export const stopMock = vi.mocked(stopDiscoveryRun);
-export const candidatesMock = vi.mocked(fetchCandidates);
 export const proposalsMock = vi.mocked(fetchRunProposals);
 export const applyMock = vi.mocked(applyRunDecisions);
 export const saveThresholdMock = vi.mocked(saveDiscoveryThreshold);
@@ -288,7 +286,6 @@ export function resetDiscoveryMocks() {
   runMock.mockReset().mockResolvedValue(runOf({}));
   runsMock.mockReset().mockResolvedValue([]);
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
-  candidatesMock.mockReset().mockResolvedValue([]);
   proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
   applyMock.mockReset().mockResolvedValue([]);
   saveThresholdMock.mockReset().mockImplementation(async (threshold) => ({ threshold }));

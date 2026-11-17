@@ -30,7 +30,6 @@ import {
   acceptBox,
   applyButton,
   applyMock,
-  candidatesMock,
   countMock,
   dialog,
   discoverButton,
@@ -54,7 +53,6 @@ import {
   semanticsBox,
   startMock,
   stopMock,
-  suggestion,
   vendorModelsMock,
 } from "./discoverDialog.fixtures";
 
@@ -413,10 +411,6 @@ describe("Discovery dialog: the run in progress", () => {
 
   it("Stop asks the server to stop and keeps what was found", async () => {
     proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
-    candidatesMock.mockResolvedValue([
-      suggestion(101, "customer_id", "run:7"),
-      suggestion(55, "buyer_id", "cross-domain"),
-    ]);
     runMock.mockResolvedValue(
       runOf({ requests_total: 3, requests_done: 1, suggestions: 1, report: REPORT }),
     );

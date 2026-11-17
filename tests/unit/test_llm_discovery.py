@@ -8,45 +8,34 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Unit tests for LLM relationship discovery — gaps not covered by existing tests.
+"""Unit tests for LLM relationship discovery as a run asks and reads it (REQ-413).
 
 Source files:
-  - provisa/discovery/analyzer.py  — analyze(), RelationshipCandidate, _validate_candidate
-  - provisa/discovery/prompt.py    — build_prompt()
-  - provisa/discovery/collector.py — DiscoveryInput, TableMeta
+  - provisa/discovery/runner.py  — read_items(), execute(), MIN_CONFIDENCE
+  - provisa/discovery/context.py — prompt(): the request a run sends
+  - provisa/discovery/windows.py — plan(): the requests of a run
 
-Existing coverage (do NOT duplicate):
-  - test_discovery_analyzer.py:
-      valid_response_parsed, invalid_candidates_filtered, below_threshold_filtered,
-      malformed_json_returns_empty, response_in_code_block_parsed
-  - test_discovery_prompt.py:
-      prompt_includes_table_metadata, multiple_tables, existing/rejected exclusion,
-      cross_domain tables, domain= annotation
-  - test_discovery_candidates.py:
-      store_candidates, list_pending, accept, reject lifecycle (mocked asyncpg)
-
-This file adds:
-  - FK suggestion request/response — full API call shape (model, max_tokens, messages)
-  - Confidence threshold boundary — exactly at min_confidence is included
-  - Confidence threshold boundary — just below min_confidence is excluded
-  - Error when LLM unavailable — exception from _respond propagates
-  - Multiple candidates with mixed confidence — only passing ones returned
-  - Invalid cardinality value in LLM response is filtered
-  - Non-array JSON response returns empty list
-  - RelationshipCandidate dataclass field types are correct
-  - build_prompt output format section is present
+This file covers:
+  - The proposal read from an answer: its fields and their types
+  - Confidence threshold boundary — exactly at the run's threshold is kept, just below left out
+  - A model that fails is reported for its request, never swallowed
+  - An element with an invalid cardinality, a missing key or an unknown table is left out
+  - The request states the JSON shape it wants back and carries the sample values
 """
 
 from __future__ import annotations
 
 import json
-from unittest.mock import patch
 
 import pytest
 
-from provisa.discovery.analyzer import RelationshipCandidate, analyze, _validate_candidate
-from provisa.discovery.collector import DiscoveryInput, TableMeta
-from provisa.discovery.prompt import build_prompt
+from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
+from provisa.discovery.direction import Proposal
+from provisa.discovery.runner import MIN_CONFIDENCE, Tally, execute, read_items
+from provisa.discovery.runner import kept as judged
+from provisa.discovery.windows import Request, plan
+from provisa.llm.client import Completion
+from provisa.llm.limits import DEFAULT_LIMITS
 
 
 # ---------------------------------------------------------------------------
@@ -54,30 +43,42 @@ from provisa.discovery.prompt import build_prompt
 # ---------------------------------------------------------------------------
 
 
-def _make_table(
-    table_id: int,
-    name: str,
-    columns: list[str],
-    schema: str = "public",
-    domain: str = "d1",
-) -> TableMeta:
-    return TableMeta(
-        table_id=table_id,
-        source_id="src1",
-        domain_id=domain,
-        schema_name=schema,
-        table_name=name,
-        columns=[{"name": c, "type": "integer"} for c in columns],
-        sample_values=[{c: "1" for c in columns}],
+def _col(name: str, *samples: str) -> ColumnFacts:
+    return ColumnFacts(
+        name=name,
+        data_type="integer",
+        description=None,
+        tags=(),
+        classes=(UNKNOWN,),
+        sensitive=False,
+        samples=samples,
+        is_primary_key=name == "id",
+        groups=type_groups("integer", subtype=None, array_depth=0),
     )
 
 
-def _make_di(tables: list[TableMeta] | None = None) -> DiscoveryInput:
+def _make_table(table_id: int, name: str, columns: list[str], *samples: str) -> TableFacts:
+    return TableFacts(
+        table_id=table_id,
+        domain_id="d1",
+        schema_name="public",
+        table_name=name,
+        description=None,
+        tags=(),
+        role=None,
+        columns=tuple(_col(c, *samples) for c in columns),
+    )
+
+
+def _request(tables: list[TableFacts] | None = None) -> tuple[int, Request]:
+    """The one request a run makes over ``tables`` compared with themselves."""
     if tables is None:
-        t1 = _make_table(1, "orders", ["id", "customer_id"])
-        t2 = _make_table(2, "customers", ["id", "name"])
-        tables = [t1, t2]
-    return DiscoveryInput(tables=tables, existing_relationships=[], rejected_pairs=[])
+        tables = [
+            _make_table(1, "orders", ["id", "customer_id"]),
+            _make_table(2, "customers", ["id", "name"]),
+        ]
+    k, (request,) = plan(tables, None, *DEFAULT_LIMITS)
+    return k, request
 
 
 def _candidate_json(
@@ -100,14 +101,38 @@ def _candidate_json(
     }
 
 
-def _patch_complete_sync(return_text: str):
-    """Patch ProvisaLLMClient._respond, the one call every completion makes, to answer
-    return_text in full (not cut off at its token limit)."""
-    from provisa.llm.client import Completion
+async def _not_measured(found: list[Proposal]) -> list[Proposal]:
+    """No values to measure here: each proposal keeps the model's confidence, as one whose values
+    were not compared does (REQ-413). The measure itself: test_discovery_pair_measure."""
+    return found
 
-    return patch(
-        "provisa.llm.client.ProvisaLLMClient._respond",
-        return_value=Completion(return_text, "anthropic", "test-model", None, False),
+
+async def _read(
+    items: list, tables: list[TableFacts] | None = None
+) -> tuple[list[Proposal], Tally]:
+    """The proposals an answer's elements make, judged as the run judges them (measured, then
+    held to the threshold)."""
+    _, request = _request(tables)
+    tally = Tally(total=1)
+    return await judged(*read_items(request, items, tally), _not_measured, tally), tally
+
+
+class _Watcher:
+    async def stop_asked(self) -> bool:
+        return False
+
+    async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
+        return None
+
+
+async def _direct(fn, *args):
+    return fn(*args)
+
+
+async def _run(ask) -> tuple[Tally, list[Proposal]]:
+    k, request = _request()
+    return await execute(
+        [request], k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
     )
 
 
@@ -117,27 +142,26 @@ def _patch_complete_sync(return_text: str):
 
 
 class TestFKSuggestionRequestResponseShape:
-    """The analyzer must call the LLM and produce RelationshipCandidate objects
-    with the correct field types."""
+    """A run reads each element of the model's answer into a proposal with the correct field
+    types."""
 
-    def test_response_fields_are_correct_types(self):
-        """Each RelationshipCandidate must have correctly typed fields."""
-        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.85)])):
-            results = analyze("test prompt", "fake-key", _make_di())
+    async def test_response_fields_are_correct_types(self):
+        """Each proposal must have correctly typed fields."""
+        kept, _ = await _read([_candidate_json(confidence=0.85)])
 
-        assert len(results) == 1
-        c = results[0]
-        assert isinstance(c, RelationshipCandidate)
-        assert isinstance(c.source_table_id, int)
-        assert isinstance(c.source_column, str)
-        assert isinstance(c.target_table_id, int)
-        assert isinstance(c.target_column, str)
-        assert isinstance(c.cardinality, str)
-        assert isinstance(c.confidence, float)
-        assert isinstance(c.reasoning, str)
+        assert len(kept) == 1
+        p = kept[0]
+        assert isinstance(p, Proposal)
+        src_table, src_col, tgt_table, tgt_col = p.edge
+        assert isinstance(src_table, int)
+        assert isinstance(src_col, str)
+        assert isinstance(tgt_table, int)
+        assert isinstance(tgt_col, str)
+        assert isinstance(p.confidence, float)
+        assert isinstance(p.reasoning, str)
 
-    def test_response_field_values_match_llm_output(self):
-        """All candidate fields must map to their LLM response counterparts."""
+    async def test_response_field_values_match_llm_output(self):
+        """All proposal fields must map to their LLM response counterparts."""
         raw = _candidate_json(
             src_table=1,
             src_col="customer_id",
@@ -147,17 +171,12 @@ class TestFKSuggestionRequestResponseShape:
             confidence=0.92,
             reasoning="Name pattern match",
         )
-        with _patch_complete_sync(json.dumps([raw])):
-            results = analyze("prompt", "fake-key", _make_di())
+        (p,), _ = await _read([raw])
 
-        c = results[0]
-        assert c.source_table_id == 1
-        assert c.source_column == "customer_id"
-        assert c.target_table_id == 2
-        assert c.target_column == "id"
-        assert c.cardinality == "many-to-one"
-        assert c.confidence == pytest.approx(0.92)
-        assert c.reasoning == "Name pattern match"
+        assert p.edge == (1, "customer_id", 2, "id")
+        assert p.written == ((1, "customer_id"), (2, "id"))
+        assert p.confidence == pytest.approx(0.92)
+        assert p.reasoning == "Name pattern match"
 
 
 # ---------------------------------------------------------------------------
@@ -166,33 +185,34 @@ class TestFKSuggestionRequestResponseShape:
 
 
 class TestConfidenceThresholdBoundary:
-    """Candidates exactly at min_confidence must be included; just below excluded."""
+    """Proposals exactly at the run's threshold are kept; just below are left out."""
 
-    def test_exactly_at_threshold_is_included(self):
-        """confidence == min_confidence should be accepted (inclusive lower bound)."""
-        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.7)])):
-            results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.7)
-        assert len(results) == 1
-        assert results[0].confidence == pytest.approx(0.7)
+    def test_the_threshold_is_0_7(self):
+        assert MIN_CONFIDENCE == 0.7
 
-    def test_just_below_threshold_is_excluded(self):
-        """confidence < min_confidence should be filtered out."""
-        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.699)])):
-            results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.7)
-        assert len(results) == 0
+    async def test_exactly_at_threshold_is_included(self):
+        """confidence == the threshold is kept (inclusive lower bound)."""
+        kept, _ = await _read([_candidate_json(confidence=0.7)])
+        assert len(kept) == 1
+        assert kept[0].confidence == pytest.approx(0.7)
 
-    def test_mixed_confidence_returns_only_passing(self):
-        """Three candidates: two pass, one does not."""
-        di = _make_di(
-            [
-                _make_table(1, "orders", ["id", "customer_id", "product_id"]),
-                _make_table(2, "customers", ["id", "name"]),
-                _make_table(3, "products", ["id", "title"]),
-            ]
-        )
+    async def test_just_below_threshold_is_excluded(self):
+        """confidence < the threshold is left out as below_threshold."""
+        kept, tally = await _read([_candidate_json(confidence=0.699)])
+        assert kept == []
+        assert tally.below_threshold == 1
+        assert [r.left_out for r in tally.left_out] == ["below_threshold"]
+
+    async def test_mixed_confidence_returns_only_passing(self):
+        """Three proposals: two pass, one does not."""
+        tables = [
+            _make_table(1, "orders", ["id", "customer_id", "product_id"]),
+            _make_table(2, "customers", ["id", "name"]),
+            _make_table(3, "products", ["id", "title"]),
+        ]
         payload = [
             _candidate_json(src_col="customer_id", tgt_table=2, confidence=0.95),
-            _candidate_json(src_col="product_id", tgt_table=3, confidence=0.5),  # filtered
+            _candidate_json(src_col="product_id", tgt_table=3, confidence=0.5),  # left out
             {
                 "source_table_id": 2,
                 "source_column": "id",
@@ -203,23 +223,10 @@ class TestConfidenceThresholdBoundary:
                 "reasoning": "reverse side",
             },
         ]
-        with _patch_complete_sync(json.dumps(payload)):
-            results = analyze("prompt", "fake-key", di, min_confidence=0.7)
-        assert len(results) == 2
-        confidences = {r.confidence for r in results}
+        kept, _ = await _read(payload, tables)
+        assert len(kept) == 2
+        confidences = {p.confidence for p in kept}
         assert 0.5 not in confidences
-
-    def test_zero_threshold_accepts_all_valid(self):
-        """min_confidence=0.0 accepts any valid candidate regardless of score."""
-        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.01)])):
-            results = analyze("prompt", "fake-key", _make_di(), min_confidence=0.0)
-        assert len(results) == 1
-
-    def test_threshold_1_accepts_only_perfect_confidence(self):
-        """min_confidence=1.0 accepts only candidates with confidence exactly 1.0."""
-        with _patch_complete_sync(json.dumps([_candidate_json(confidence=0.999)])):
-            results = analyze("prompt", "fake-key", _make_di(), min_confidence=1.0)
-        assert len(results) == 0
 
 
 # ---------------------------------------------------------------------------
@@ -228,40 +235,35 @@ class TestConfidenceThresholdBoundary:
 
 
 class TestLLMUnavailableError:
-    """LLM errors must propagate — the analyzer must not swallow them."""
+    """A model's error is reported for its request: never swallowed."""
 
-    def test_api_connection_error_propagates(self):
-        """ConnectionError from _respond must not be silently swallowed."""
-        with patch(
-            "provisa.llm.client.ProvisaLLMClient._respond",
-            side_effect=ConnectionError("LLM unreachable"),
-        ):
-            with pytest.raises(ConnectionError):
-                analyze("prompt", "fake-key", _make_di())
+    @pytest.mark.parametrize(
+        "error",
+        [
+            ConnectionError("LLM unreachable"),
+            PermissionError("Invalid API key"),
+            RuntimeError("Rate limit exceeded"),
+        ],
+    )
+    async def test_a_model_error_is_reported_as_a_failed_request(self, error):
+        def ask(prompt: str, max_tokens: int) -> Completion:
+            raise error
 
-    def test_api_status_error_401_propagates(self):
-        """PermissionError from _respond must propagate."""
-        with patch(
-            "provisa.llm.client.ProvisaLLMClient._respond",
-            side_effect=PermissionError("Invalid API key"),
-        ):
-            with pytest.raises(PermissionError):
-                analyze("prompt", "bad-key", _make_di())
+        tally, proposals = await _run(ask)
+        assert proposals == []
+        assert tally.done == 1
+        (failed,) = tally.failed
+        assert failed["code"] == "llm.request_failed"
+        assert failed["params"] == {"reason": str(error)}
 
-    def test_api_rate_limit_error_propagates(self):
-        """RuntimeError (rate limit) from _respond must propagate."""
-        with patch(
-            "provisa.llm.client.ProvisaLLMClient._respond",
-            side_effect=RuntimeError("Rate limit exceeded"),
-        ):
-            with pytest.raises(RuntimeError):
-                analyze("prompt", "fake-key", _make_di())
-
-    def test_empty_content_list_returns_empty(self):
-        """If the LLM returns an empty JSON array, analyze returns []."""
-        with _patch_complete_sync("[]"):
-            results = analyze("prompt", "fake-key", _make_di())
-        assert results == []
+    async def test_empty_content_list_returns_empty(self):
+        """If the LLM returns an empty JSON array, the run has no proposal and no failure."""
+        tally, proposals = await _run(
+            lambda p, m: Completion("[]", "anthropic", "test-model", None, False)
+        )
+        assert proposals == []
+        assert tally.failed == []
+        assert tally.proposed == 0
 
 
 # ---------------------------------------------------------------------------
@@ -270,36 +272,42 @@ class TestLLMUnavailableError:
 
 
 class TestCandidateValidation:
-    """_validate_candidate covers structural / referential integrity checks."""
+    """read_items leaves out an element that names no two compared columns of its request."""
 
-    def test_invalid_cardinality_filtered(self):
+    async def test_invalid_cardinality_filtered(self):
         """Only 'many-to-one' and 'one-to-many' are valid cardinalities."""
-        di = _make_di()
-        raw = _candidate_json(cardinality="many-to-many")  # invalid
-        assert not _validate_candidate(raw, di)
+        kept, tally = await _read([_candidate_json(cardinality="many-to-many")])
+        assert kept == []
+        assert [r.left_out for r in tally.left_out] == ["invalid_shape"]
 
-    def test_missing_required_key_filtered(self):
-        """A candidate missing 'cardinality' must be rejected."""
-        di = _make_di()
+    async def test_missing_required_key_filtered(self):
+        """An element missing 'cardinality' is left out."""
         raw = _candidate_json()
         del raw["cardinality"]
-        assert not _validate_candidate(raw, di)
+        kept, tally = await _read([raw])
+        assert kept == []
+        assert [r.left_out for r in tally.left_out] == ["invalid_shape"]
 
-    def test_source_table_not_in_input_filtered(self):
-        """Reference to an unknown source_table_id must be rejected."""
-        di = _make_di()
-        raw = _candidate_json(src_table=99)  # table 99 not in di
-        assert not _validate_candidate(raw, di)
+    async def test_source_table_not_in_input_filtered(self):
+        """Reference to an unknown source_table_id is left out."""
+        kept, tally = await _read([_candidate_json(src_table=99)])
+        assert kept == []
+        assert [r.left_out for r in tally.left_out] == ["unknown_column"]
 
-    def test_target_table_not_in_input_filtered(self):
-        """Reference to an unknown target_table_id must be rejected."""
-        di = _make_di()
-        raw = _candidate_json(tgt_table=99)
-        assert not _validate_candidate(raw, di)
+    async def test_target_table_not_in_input_filtered(self):
+        """Reference to an unknown target_table_id is left out."""
+        kept, tally = await _read([_candidate_json(tgt_table=99)])
+        assert kept == []
+        assert [r.left_out for r in tally.left_out] == ["unknown_column"]
 
-    def test_valid_candidate_passes_validation(self):
-        """A well-formed candidate referencing known tables and columns passes."""
-        di = _make_di()
+    async def test_unknown_column_filtered(self):
+        """Reference to a column its table does not have is left out."""
+        kept, tally = await _read([_candidate_json(src_col="nonexistent_col")])
+        assert kept == []
+        assert [r.left_out for r in tally.left_out] == ["unknown_column"]
+
+    async def test_valid_candidate_passes_validation(self):
+        """A well-formed element naming known tables and columns is kept."""
         raw = _candidate_json(
             src_table=1,
             src_col="customer_id",
@@ -307,16 +315,16 @@ class TestCandidateValidation:
             tgt_col="id",
             cardinality="many-to-one",
         )
-        assert _validate_candidate(raw, di)
+        kept, tally = await _read([raw])
+        assert [p.edge for p in kept] == [(1, "customer_id", 2, "id")]
+        assert tally.left_out == []
 
-    def test_one_to_many_cardinality_passes_validation(self):
-        """one-to-many is a valid cardinality value."""
-        di = _make_di(
-            [
-                _make_table(1, "customers", ["id"]),
-                _make_table(2, "orders", ["id", "customer_id"]),
-            ]
-        )
+    async def test_one_to_many_cardinality_passes_validation(self):
+        """one-to-many is a valid cardinality value, read the other way round."""
+        tables = [
+            _make_table(1, "customers", ["id"]),
+            _make_table(2, "orders", ["id", "customer_id"]),
+        ]
         raw = {
             "source_table_id": 1,
             "source_column": "id",
@@ -326,7 +334,8 @@ class TestCandidateValidation:
             "confidence": 0.9,
             "reasoning": "PK to FK",
         }
-        assert _validate_candidate(raw, di)
+        kept, _ = await _read([raw], tables)
+        assert [p.edge for p in kept] == [(2, "customer_id", 1, "id")]
 
 
 # ---------------------------------------------------------------------------
@@ -335,21 +344,20 @@ class TestCandidateValidation:
 
 
 class TestPromptOutputFormat:
-    """build_prompt must include the JSON output format specification."""
+    """The request a run sends states the JSON shape of its answer."""
+
+    def _prompt(self, tables: list[TableFacts] | None = None) -> str:
+        k, request = _request(tables)
+        return request.prompt(k)
 
     def test_output_format_section_present(self):
-        di = _make_di()
-        prompt = build_prompt(di)
-        assert "Output Format" in prompt
+        assert "Return ONLY a JSON array, no other text, each element:" in self._prompt()
 
     def test_prompt_requests_json_array(self):
-        di = _make_di()
-        prompt = build_prompt(di)
-        assert "JSON array" in prompt
+        assert "JSON array" in self._prompt()
 
     def test_prompt_lists_required_keys(self):
-        di = _make_di()
-        prompt = build_prompt(di)
+        prompt = self._prompt()
         for key in (
             "source_table_id",
             "source_column",
@@ -361,43 +369,25 @@ class TestPromptOutputFormat:
             assert key in prompt
 
     def test_prompt_specifies_cardinality_values(self):
-        di = _make_di()
-        prompt = build_prompt(di)
+        prompt = self._prompt()
         assert "many-to-one" in prompt
         assert "one-to-many" in prompt
 
     def test_prompt_specifies_confidence_range(self):
-        di = _make_di()
-        prompt = build_prompt(di)
-        assert "0.0" in prompt or "0.0-1.0" in prompt or "float" in prompt
+        assert "0.0-1.0" in self._prompt()
 
     def test_sample_values_included_in_prompt(self):
-        """Tables with sample_values must have them in the prompt."""
-        t1 = TableMeta(
-            table_id=1,
-            source_id="src1",
-            domain_id="d1",
-            schema_name="public",
-            table_name="orders",
-            columns=[{"name": "id", "type": "integer"}],
-            sample_values=[{"id": "42"}],
-        )
-        di = DiscoveryInput(tables=[t1], existing_relationships=[], rejected_pairs=[])
-        prompt = build_prompt(di)
-        assert "Sample rows" in prompt
-        assert "42" in prompt
+        """Columns with sample values send them in the request."""
+        tables = [
+            _make_table(1, "orders", ["id", "customer_id"], "42"),
+            _make_table(2, "customers", ["id"], "42"),
+        ]
+        prompt = self._prompt(tables)
+        assert '"sample_values":["42"]' in prompt
 
     def test_empty_sample_values_skipped(self):
-        """Tables with no sample_values should not emit a 'Sample rows' line."""
-        t1 = TableMeta(
-            table_id=1,
-            source_id="src1",
-            domain_id="d1",
-            schema_name="public",
-            table_name="orders",
-            columns=[{"name": "id", "type": "integer"}],
-            sample_values=[],
-        )
-        di = DiscoveryInput(tables=[t1], existing_relationships=[], rejected_pairs=[])
-        prompt = build_prompt(di)
-        assert "Sample rows" not in prompt
+        """Columns with no sample values send an empty list and no value."""
+        prompt = self._prompt()
+        assert '"sample_values":[]' in prompt
+        window = json.loads(prompt.split("## SOURCE and TARGET window\n", 1)[1])
+        assert all(c["sample_values"] == [] for block in window for c in block["compared_columns"])

@@ -518,7 +518,7 @@ def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
     # meta: REQ-1132's default tier: the tables it reads, not the whole catalog. Ops is not read.
     # REQ-1921: and no draft's row, read only where a role holds table registration in its domain.
     assert gov.rls_rules[CATALOG] == rule_of(
-        f"(id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})) AND (NOT draft)"
+        f"(id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})) AND (NOT (draft OR withdrawn))"
     )
     # ontology: the glossary's own rule, scoped to the role's data domains.
     assert mentions(gov.rls_rules[TERMS], "pet-store") and mentions(gov.rls_rules[TERMS], "shelter")

@@ -127,7 +127,7 @@ async def client(monkeypatch, source):
         )
 
     monkeypatch.setattr("provisa.audit.query_log.log_queries", _nothing)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _nothing)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _nothing)
     monkeypatch.setattr("provisa.auth.middleware._loaded_derived_roles", lambda: [])
     monkeypatch.setattr("provisa.executor.direct.execute_direct", _executed_on_duckdb)
     # What follows a write reads the registry, which this state does not hold.

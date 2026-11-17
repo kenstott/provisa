@@ -1812,13 +1812,6 @@ mutation SetSourceRegion($sourceId: String!, $region: String) {
   }
 }
 
-# REQ-1921: put a table or view out of service (draft) or release it.
-mutation SetTableDraft($tableId: Int!, $draft: Boolean!) {
-  setTableDraft(tableId: $tableId, draft: $draft) {
-    ...MutationResult
-  }
-}
-
 # REQ-1954: the import sets a ServiceNow table may be bound to (its active transform maps).
 query AvailableImportSets($sourceId: String!, $schemaName: String!, $tableName: String!) {
   availableImportSets(sourceId: $sourceId, schemaName: $schemaName, tableName: $tableName) {

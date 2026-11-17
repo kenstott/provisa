@@ -371,8 +371,16 @@ async def restore_shared_terminal(state: Any, shard: str, stamp: int) -> None:
 
         async with state.model_db.acquire() as conn, bound_to_request_org():
             config = await store_config(raw, conn)
+            # REQ-1921: a withdrawn source is attached by no engine.
+            from provisa.core.repositories import source as source_repo
+
+            withdrawn = await source_repo.withdrawn_ids(conn)
             failed = await attach_store_sources(
-                config, state.federation_engine, catalog_names=default.source_catalogs
+                config.model_copy(
+                    update={"sources": [s for s in config.sources if s.id not in withdrawn]}
+                ),
+                state.federation_engine,
+                catalog_names=default.source_catalogs,
             )
         # A catalog that did not come back is not a boot-time inconvenience here: the resumed
         # coordinator now serves every shared-lane org WITHOUT it, and the next query answers a raw

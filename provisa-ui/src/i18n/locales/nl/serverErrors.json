@@ -475,8 +475,6 @@
       "mask_unreachable": "U hebt een masker gedefinieerd dat niet bereikbaar is: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
       "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll.",
-      "table_draft_set": "Tabel {{table}} als concept ingesteld",
-      "table_released": "Tabel {{table}} vrijgegeven",
       "openapi_no_rows_field": "Tabel {{table}}: het antwoord heeft geen eigenschap {{rows_field}} om rijen uit te lezen.",
       "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
       "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt.",
@@ -505,6 +503,8 @@
       "role_updated": "Rol '{{role}}' bijgewerkt",
       "relationship_id_taken": "Relatie '{{relationship}}' bestaat al",
       "relationship_id_reserved": "De relatie-id '{{id}}' begint met '{{prefix}}', een voorvoegsel dat is gereserveerd voor ingebouwde relaties. Kies een andere id.",
+      "relationship_source_column_missing": "De relatie '{{relationship}}' noemt geen bronkolom. Een relatie koppelt op een kolom van haar brontabel.",
+      "relationship_target_column_missing": "De relatie '{{relationship}}' noemt geen doelkolom. Een relatie koppelt op een kolom van haar doeltabel, tenzij haar doel een functie is.",
       "relationship_graphql_alias_taken": "De GraphQL-alias '{{alias}}' is al de alias van relatie '{{relationship}}' vanuit '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Geplande taak '{{task}}' bijgewerkt",
@@ -545,7 +545,13 @@
       "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt",
       "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden).",
-      "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt"
+      "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt",
+      "table_withdrawn": "Tabel {{table}} teruggetrokken",
+      "table_put_back": "Tabel {{table}} teruggezet",
+      "source_withdrawn": "Bron {{source}} teruggetrokken",
+      "source_put_back": "Bron {{source}} teruggezet",
+      "withdrawn_source_not_previewable": "Tabel {{table}} kan niet worden bekeken: de bron {{source}} is teruggetrokken, en geen engine leest een teruggetrokken bron.",
+      "withdrawn_table_not_previewable": "Tabel {{table}} kan niet worden bekeken: hij is teruggetrokken en houdt geen replica, en de engine leest de bron alleen via een replica."
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",

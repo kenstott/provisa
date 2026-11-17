@@ -26,7 +26,7 @@ import pytest_asyncio
 import sqlalchemy as sa
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation
+from tests.helpers import registered_id
 
 pytestmark = [pytest.mark.e2e, pytest.mark.asyncio(loop_scope="session")]
 
@@ -136,8 +136,6 @@ async def model(client, source_db):
                 f'input: {{sourceId: "{source_id}", domainId: "{_DOMAIN}", schemaName: "{schema}", '
                 f'tableName: "{table}", columns: [{cols}]}}',
             )
-            released = await _admin(client, release_mutation(registered_id(reg["message"])))
-            assert released["setTableDraft"]["success"], released
             ids[table] = registered_id(reg["message"])
             _REGISTERED.append(ids[table])
         yield ids
@@ -177,8 +175,6 @@ async def _register_view(client, name: str, sql: str, columns: list[str]) -> int
     )
     table_id = registered_id(reg["message"])
     _REGISTERED.append(table_id)
-    released = await _admin(client, release_mutation(table_id))
-    assert released["setTableDraft"]["success"], released
     return table_id
 
 

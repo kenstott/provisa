@@ -1707,7 +1707,8 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     assert [r["id"] for r in remaining] == [undecided["id"]]
 
     # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
-    # registered (the one the model rates low too), the one marked as rejected before.
+    # registered (the one the model rates low too), the one marked as rejected before, which keeps
+    # that decision and cannot be decided again (REQ-413, amended 2026-11-16).
     _, again = await _answered(
         world,
         [
@@ -1721,7 +1722,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
         (r["source_table_id"], r["target_table_id"], r["reason"], r["decidable"]) for r in again
     ] == [
         (1, 2, "existing", False),
-        (3, 1, "rejected", True),
+        (3, 1, "rejected", False),
         (3, 2, "pending", True),
         (1, 3, "existing", False),
     ]
