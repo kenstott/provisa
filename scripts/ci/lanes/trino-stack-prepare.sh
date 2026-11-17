@@ -71,33 +71,13 @@ case "$cert" in
 esac
 
 # The Calcite-derived connector plugins are gitignored (they exist only where built), and
-# Trino aborts with "No service providers of type io.trino.spi.Plugin" without them — a
-# failure that surfaces only as an unhealthy container two minutes in. Version pinned to
-# the same coordinates tests/conftest.py::_TRINO_PLUGIN_VERSION and build-dmg.yml use; all
-# three must move together or a connector behaves differently here than in the shipped
-# image. They track the engine release the pgwire bundles pin
-# (provisa/runtime_deps/pgwire_bundles.py RELEASE_TAG): trino-splunk before engine-v0.93.0
-# rejects the `schema` catalog property TrinoSplunkConnector passes ("Configuration
-# property 'schema' was not used"), so the splunk catalog was never created. Source is Maven Central rather than a kenstott/calcite GitHub release: that
-# release was deleted mid-run and every download began 404ing, while Central is immutable
-# once published and serves anonymously (GitHub Packages 401s even for public artifacts).
-# Each jar is shaded and carries its own META-INF/services/io.trino.spi.Plugin, so one jar
-# per directory is a complete plugin.
-MAVEN="https://repo1.maven.org/maven2/io/simpleishard"
-VERSION="0.106.3"
-# name:version. trino-file (REQ-1960) is at 0.109.0; trino-salesforce (REQ-1946) and
-# trino-cloudops (REQ-1947) are at 0.108.0, the
-# first release with what Provisa needs of them; see tests/conftest.py _TRINO_PLUGIN_VERSIONS.
-for spec in trino-sharepoint:$VERSION trino-splunk:$VERSION trino-file:0.109.0 \
-    trino-salesforce:0.108.0 trino-cloudops:0.108.0; do
-  plugin="${spec%%:*}"
-  version="${spec##*:}"
-  mkdir -p "trino/plugins/$plugin"
-  # Central answered one of these requests 404 (run 43618638224) while the jar was present; retry.
-  curl -fsSL --retry 5 --retry-all-errors --retry-delay 5 "$MAVEN/$plugin/$version/$plugin-$version.jar" \
-    -o "trino/plugins/$plugin/$plugin-$version.jar"
-  ls "trino/plugins/$plugin"/*.jar >/dev/null
-done
+# Trino aborts with "No service providers of type io.trino.spi.Plugin" without them -- a failure
+# that surfaces only as an unhealthy container two minutes in. This script fetches none: the
+# caller has restored the pinned jars (tests/trino_plugins.py) from the cache one job per workflow
+# run primed from Maven Central (.github/actions/trino-plugins). A lane that fetched its own went
+# to Central once per job and run, beside every other lane. Here they are only checked, by name,
+# before the stack mounts them.
+python3 tests/trino_plugins.py verify
 
 # REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
 # trino-functions/ in a Maven container; the engine's compose mounts it beside the others.

@@ -33,8 +33,32 @@ from tests.unit.mcp_local_principal import act_for
 _BASE = "http://127.0.0.1:8000"
 
 
+def _every_right() -> list[str]:
+    from provisa.security.rights import Capability
+
+    return [c.value for c in Capability]
+
+
 def _state() -> Any:
-    return RoleState(contexts={"analyst": object(), "steward": object()}, org_id="default")
+    # The analyst holds every right, so each tool is offered to it and the mode alone decides
+    # what a session is listed; which tools a role's rights offer is test_mcp_tools_by_role's.
+    return RoleState(
+        contexts={"analyst": object(), "steward": object()},
+        roles={
+            "analyst": {"id": "analyst", "capabilities": _every_right()},
+            "steward": {"id": "steward"},
+        },
+        org_id="default",
+        idp_entitlements={},  # as the real state: the mirror, empty until a sign-in
+    )
+
+
+@pytest.fixture(autouse=True)
+def _pinned(monkeypatch):
+    """A local session acts as the pinned role (mcp.role) for the principal the operator named:
+    its tool list is that role's (REQ-2246)."""
+    monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst")
+    act_for(monkeypatch)
 
 
 Connect = Callable[..., Any]
@@ -207,15 +231,18 @@ async def test_an_unknown_mode_is_refused_by_name():
     assert "full" in response.json()["error"] and "sip" in response.json()["error"]
 
 
-async def _rights_outcomes(connect: Connect, query: str, add: str | None) -> list[Any]:
+async def _rights_outcomes(
+    monkeypatch: Any, connect: Connect, query: str, add: str | None
+) -> list[Any]:
     """What two calls of the statistics tool ``describe`` answer: as a role its rights allow, and
-    as a role they refuse."""
+    as a role they refuse, each the session's pinned role."""
     outcomes = []
-    async with connect(query) as session:
-        if add is not None:
-            await session.call_tool(tool_groups.CATALOG_TOOL, {"add": add})
-        for role in ("analyst", "steward"):
-            result = await session.call_tool("describe", {"sql": "SELECT 1", "role": role})
+    for role in ("analyst", "steward"):
+        monkeypatch.setenv("PROVISA_MCP_ROLE", role)
+        async with connect(query) as session:
+            if add is not None:
+                await session.call_tool(tool_groups.CATALOG_TOOL, {"add": add})
+            result = await session.call_tool("describe", {"sql": "SELECT 1"})
             outcomes.append((result.isError, result.content[0].text))
     return outcomes
 
@@ -224,7 +251,6 @@ async def test_rights_on_an_added_or_unlisted_tool_are_decided_as_in_full_mode(m
     from provisa.api.mcp import tools
 
     state = _state()
-    monkeypatch.setenv("PROVISA_MCP_ROLE", "analyst,steward")
     act_for(monkeypatch, state)
 
     async def _stats_describe(_state: Any, role: str, sql: str) -> dict:
@@ -235,9 +261,9 @@ async def test_rights_on_an_added_or_unlisted_tool_are_decided_as_in_full_mode(m
 
     monkeypatch.setattr(tools, "stats_describe", _stats_describe)
     async with _serving(state) as (_mcp, connect):
-        full = await _rights_outcomes(connect, "?tools=full", None)
-        sip_added = await _rights_outcomes(connect, "?tools=sip", "statistics")
-        sip_unlisted = await _rights_outcomes(connect, "?tools=sip", None)
+        full = await _rights_outcomes(monkeypatch, connect, "?tools=full", None)
+        sip_added = await _rights_outcomes(monkeypatch, connect, "?tools=sip", "statistics")
+        sip_unlisted = await _rights_outcomes(monkeypatch, connect, "?tools=sip", None)
     assert full[0][0] is False and "analyst" in full[0][1]
     assert full[1][0] is True and "may not describe" in full[1][1]
     assert sip_added == full

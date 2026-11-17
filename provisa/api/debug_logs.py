@@ -17,17 +17,17 @@ administrator reads it; an organization's members and administrators, a single-t
 administrator included, do not.
 """
 
-# Requirements: REQ-1327, REQ-1913
+# Requirements: REQ-1327, REQ-1913, REQ-2087
 
 from __future__ import annotations
 
 import logging
-import re
 from collections import deque
 
 from fastapi import APIRouter, Request
 
 from provisa.api.admin._platform_guard import require_deployment_settings
+from provisa.api.debug_log_filter import lines_matching
 
 
 class DebugLogBufferHandler(logging.Handler):
@@ -59,5 +59,5 @@ async def debug_logs(request: Request, pattern: str | None = None, limit: int = 
         return {"error": "log buffer not initialized", "logs": []}
     logs = list(buffer_handler.buffer)
     if pattern:
-        logs = [log for log in logs if re.search(pattern, log)]
+        logs = lines_matching(pattern, logs)  # bounded: the pattern is the client's
     return {"count": len(logs), "logs": logs[-limit:]}

@@ -30,6 +30,7 @@ from provisa.core import settings_catalog
 from provisa.core.schema_org import admin_audit_log, user_directory, user_role_assignments
 from provisa.entitlements import expiry_run, store
 from provisa.entitlements.lists import ExpiryRule, HeldEntitlements
+from tests.pg_control_plane import ORG
 
 pytestmark = pytest.mark.unit
 
@@ -97,12 +98,12 @@ async def test_the_run_emits_each_event_into_the_trail_once(control_plane, thres
     soon = await _rule(db, "alice", _NOW + timedelta(days=3))
     passed = await _rule(db, "bob", _NOW - timedelta(hours=1))
     await _rule(db, "carol", _NOW + timedelta(days=30))
-    first = await expiry_run.run(db, _NOW)
+    first = await expiry_run.run(db, ORG, _NOW)
     assert (len(first.expiring), len(first.expired)) == (1, 1)
     assert await _trail(db) == sorted(
         [(expiry_run.EXPIRING_SOON, "alice", soon), (expiry_run.EXPIRED, "bob", passed)]
     )
-    again = await expiry_run.run(db, _NOW)
+    again = await expiry_run.run(db, ORG, _NOW)
     assert (again.expiring, again.expired) == ([], [])
     assert len(await _trail(db)) == 2
 
@@ -110,9 +111,9 @@ async def test_the_run_emits_each_event_into_the_trail_once(control_plane, thres
 async def test_the_one_setting_is_the_entries_threshold(control_plane, threshold):
     db = control_plane.org()
     await _rule(db, "alice", _NOW + timedelta(days=10))
-    assert (await expiry_run.run(db, _NOW)).expiring == []
+    assert (await expiry_run.run(db, ORG, _NOW)).expiring == []
     threshold["value"] = 14
-    assert len((await expiry_run.run(db, _NOW)).expiring) == 1
+    assert len((await expiry_run.run(db, ORG, _NOW)).expiring) == 1
 
 
 async def test_a_rule_that_passes_after_its_expiring_soon_event_is_then_expired(
@@ -120,8 +121,8 @@ async def test_a_rule_that_passes_after_its_expiring_soon_event_is_then_expired(
 ):
     db = control_plane.org()
     key = await _rule(db, "alice", _NOW + timedelta(days=1))
-    await expiry_run.run(db, _NOW)
-    await expiry_run.run(db, _NOW + timedelta(days=2))
+    await expiry_run.run(db, ORG, _NOW)
+    await expiry_run.run(db, ORG, _NOW + timedelta(days=2))
     assert await _trail(db) == sorted(
         [(expiry_run.EXPIRING_SOON, "alice", key), (expiry_run.EXPIRED, "alice", key)]
     )
@@ -133,7 +134,7 @@ async def test_a_withdrawn_rule_emits_nothing(control_plane, threshold):
     async with db.acquire() as conn:
         [rule] = (await store.load_held(conn))["alice"].expiries
         await store.withdraw_expiry(conn, rule, "alice", set_by="admin", reason="renewed")
-    run = await expiry_run.run(db, _NOW + timedelta(days=2))
+    run = await expiry_run.run(db, ORG, _NOW + timedelta(days=2))
     assert (run.expiring, run.expired) == ([], [])
 
 
@@ -292,11 +293,11 @@ async def test_notices_go_wherever_mail_is_configured_single_org_included(
 
     calls: list[str] = []
 
-    async def _sweep(db, *, notify):
+    async def _sweep(db, *, org_id, notify):
         calls.append(f"sweep notify={notify}")
         return role_grants.Sweep([], [], [], [])
 
-    async def _run(db, now):
+    async def _run(db, org_id, now):
         calls.append("run")
         return expiry_run.Run([], [])
 

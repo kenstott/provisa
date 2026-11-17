@@ -4196,6 +4196,9 @@ def _after_answer_steps(
       order, so a contract is never derived from a names table older than its lineage;
     * the lifecycle wiring -- a listener, ingest engine or poll job of a source just registered
       starts with the pass;
+    * the stored views' rebuilds -- a view whose kept rule inputs a rule change changed is built
+      again from the pass; until that build publishes, a reader whose rule reads a column it adds
+      is refused by name;
     * the warm-up -- a role's surface is built by the first request that reads it.
     """
     from provisa.core.repositories import model_names as _model_names
@@ -4259,6 +4262,14 @@ def _after_answer_steps(
         # the connection loop a request built on stops running when its request ends.
         await _rewire_lifecycle()
 
+    async def view_rebuilds() -> None:
+        # REQ-2131: a change to a row rule that changes which input columns a stored view's rows
+        # keep builds the view again; until it publishes, a reader whose rule reads a column it
+        # adds is refused by name (mv/transform_view_rules.py).
+        from provisa.mv.transform_view_rules import rebuild_for_rules
+
+        await rebuild_for_rules(state)
+
     warm_inputs = runtime.role_build_inputs
 
     async def warm_up() -> None:
@@ -4271,6 +4282,7 @@ def _after_answer_steps(
         rebuild_trace.NAMES_TABLE: functools.partial(_as_the_system, names_table),
         rebuild_trace.ANNOUNCE: functools.partial(_as_the_system, announce_change),
         rebuild_trace.LIFECYCLE: functools.partial(_as_the_system, lifecycle),
+        rebuild_trace.VIEW_REBUILDS: functools.partial(_as_the_system, view_rebuilds),
         rebuild_trace.WARM_UP: functools.partial(_as_the_system, warm_up),
     }
 

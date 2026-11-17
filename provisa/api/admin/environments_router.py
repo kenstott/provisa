@@ -209,20 +209,13 @@ async def _member_rights(request: Request, org_id: str, *rights: str) -> str | N
             "This requires one of the " + ", ".join(repr(r) for r in rights) + " capabilities.",
             org=org_id,
         )
-    async with _admin_pool().acquire() as conn:
-        result = await conn.execute_core(
-            select(user_org_memberships.c.org_id).where(
-                user_org_memberships.c.user_id == user_id,
-                user_org_memberships.c.org_id == org_id,
-            )
+    if not await _is_member(user_id, org_id):
+        raise ApiError(
+            403,
+            "environments.membership_required",
+            f"Acting on the environments of {org_id!r} requires membership of it.",
+            org=org_id,
         )
-        if result.fetchone() is None:
-            raise ApiError(
-                403,
-                "environments.membership_required",
-                f"Acting on the environments of {org_id!r} requires membership of it.",
-                org=org_id,
-            )
     if not _bound_to(request, org_id):
         raise ApiError(
             403,
@@ -300,9 +293,51 @@ async def _guard_within(request: Request, org_id: str, name: str) -> str | None:
     await _confined(request, org_id, name)
     user_id = _caller_user_id(request)
     if user_id is not None and await owns_environment(_admin_pool(), org_id, name, user_id):
+        await _owner_standing(request, org_id, name, user_id)
         await _org_ready_on_this_node(org_id)
         return user_id
     return await _guard(request, org_id)
+
+
+async def _is_member(user_id: str, org_id: str) -> bool:
+    """Whether ``user_id`` holds a membership row in ``org_id`` now."""
+    async with _admin_pool().acquire() as conn:
+        result = await conn.execute_core(
+            select(user_org_memberships.c.org_id).where(
+                user_org_memberships.c.user_id == user_id,
+                user_org_memberships.c.org_id == org_id,
+            )
+        )
+        return result.fetchone() is not None
+
+
+async def _owner_standing(request: Request, org_id: str, name: str, user_id: str) -> None:
+    """The owner path's conditions beyond ``created_by`` (REQ-1528, REQ-1327).
+
+    Removing a member (``remove_from_org``) deletes their membership, role assignments and tokens
+    and leaves ``environments.created_by`` as it was: the environment is the org's, and its
+    history names who made it. So the creator is still the owner of record after leaving, and
+    ownership alone would keep a former member acting in it. The owner's authority is therefore
+    held only while they are a member of the environment's org, and only on a request bound to
+    that org, as every other right on these paths is.
+    """
+    if not await _is_member(user_id, org_id):
+        raise ApiError(
+            403,
+            "environments.owner_not_member",
+            f"{user_id!r} created environment {name!r} but is not a member of {org_id!r}; "
+            "acting in it as its owner requires membership.",
+            org=org_id,
+            env=name,
+            user=user_id,
+        )
+    if not _bound_to(request, org_id):
+        raise ApiError(
+            403,
+            "environments.capability_required_in_org",
+            f"owner of {name} in {org_id} required",
+            org=org_id,
+        )
 
 
 def _caller_capabilities(request: Request) -> set[str]:
@@ -320,14 +355,12 @@ async def _guard_owned(request: Request, org_id: str, name: str) -> str | None: 
     another's. The pin is asked first, as in :func:`_guard_within`."""
     await _confined(request, org_id, name)
     user_id = _caller_user_id(request)
-    if (
-        user_id is not None
-        and _bound_to(request, org_id)  # REQ-1327: the right is read in the path's org
-        and OWNED_CAPABILITY in _caller_capabilities(request)
-        and await owns_environment(_admin_pool(), org_id, name, user_id)
-    ):
-        await _org_ready_on_this_node(org_id)
-        return user_id
+    if user_id is not None and await owns_environment(_admin_pool(), org_id, name, user_id):
+        # REQ-1327: a current member, on a request bound to the path's org, where the right is read.
+        await _owner_standing(request, org_id, name, user_id)
+        if OWNED_CAPABILITY in _caller_capabilities(request):
+            await _org_ready_on_this_node(org_id)
+            return user_id
     return await _guard(request, org_id)
 
 
@@ -364,6 +397,7 @@ async def _audit(org_id: str, actor: str | None, action: str, name: str, detail:
 
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action=action,
         actor_id=actor or "anonymous",
         subject_id=name,

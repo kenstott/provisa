@@ -320,9 +320,24 @@ jobs:
           any=$(python3 -c "import json,sys; print('true' if json.loads(sys.argv[1])['include'] else 'false')" "$matrix")
           echo "any=$any" >> "$GITHUB_OUTPUT"
 
+  # Maven Central is asked for the pinned Trino plugin jars once per pin, here: each job that
+  # mounts them needs this one and restores its cache (.github/actions/trino-plugins), so
+  # parallel jobs never fetch at once (release 510: HTTP 429 mid-collection, run 44081179966).
+  trino-plugins:
+    name: Trino plugins
+    needs: plan
+    if: needs.plan.outputs.any == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+
   lane:
     name: ${{ matrix.lane }}${{ matrix.shard && format(' {0}', matrix.shard) || '' }}
-    needs: plan
+    needs: [plan, trino-plugins]
     if: needs.plan.outputs.any == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: ${{ matrix.timeout }}
@@ -337,6 +352,13 @@ jobs:
         run: |
           name="${{ matrix.lane }}${{ matrix.shard && format('-{0}', matrix.shard) || '' }}"
           echo "lane=${name//\//of}" >> "$GITHUB_OUTPUT"
+
+      # Before the VM boots: the guest copies the checkout (/mnt/src) to ~/provisa, jars included.
+      - name: Restore Trino plugins
+        id: trino-plugins
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: restore
 
       - uses: ./.github/actions/nixos-vm
 
