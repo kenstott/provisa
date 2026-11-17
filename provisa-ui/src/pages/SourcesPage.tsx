@@ -171,7 +171,8 @@ export function SourcesPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { sources, loading: sourcesLoading, refetch: refetchSources } = useSources();
   // The tables registered from each source, for its panel's Tables section.
-  const { tables: registeredTables } = useTables({ columns: false });
+  // REQ-1921: a source's Tables section lists its withdrawn tables too, marked.
+  const { tables: registeredTables } = useTables({ columns: false, includeWithdrawn: true });
   // REQ-2241: the open source and its panel's section are the URL (`?expanded=<id>&section=`).
   // The section is the same in its read view and its edit form.
   const detail = useDetailParam("sources");

@@ -7489,7 +7489,7 @@
   "he/sourceSections.json::sourceSections.commandName": "Command",
   "he/sourceSections.json::sourceSections.commands": "Commands",
   "he/sourceSections.json::sourceSections.connection": "Connection",
-  "he/sourceSections.json::sourceSections.draft": "Draft",
+  "he/sourceSections.json::sourceSections.withdrawn": "Withdrawn",
   "he/sourceSections.json::sourceSections.label": "Source sections",
   "he/sourceSections.json::sourceSections.load": "Load",
   "he/sourceSections.json::sourceSections.operations": "Operations",

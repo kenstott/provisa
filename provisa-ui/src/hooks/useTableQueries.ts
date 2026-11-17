@@ -45,14 +45,18 @@ interface TablesRead<T> {
  * cache and sends no request of its own: the page's mount revalidates the list, and a table
  * mutation or a schema-version bump refetches it while it is shown. Without it, every tab and
  * sub-form mounting under the page re-read the whole catalog. */
-export function useTables(opts: { inPage?: boolean; columns: false }): TablesRead<TableRow>;
+export function useTables(opts: {
+  inPage?: boolean;
+  columns: false;
+  includeWithdrawn?: boolean;
+}): TablesRead<TableRow>;
 export function useTables(opts?: {
   inPage?: boolean;
   columns?: true;
   includeWithdrawn?: boolean;
 }): TablesRead<ListedTable>;
-/** `includeWithdrawn` (REQ-1921, with the columns): the withdrawn tables too, marked, in the domains
- * the caller may preview them; a graph view's Show withdrawn. */
+/** `includeWithdrawn` (REQ-1921): the withdrawn tables too, marked, in the domains the caller may
+ * preview them: a graph view's Show withdrawn, a source's Tables section. */
 export function useTables({
   inPage = false,
   columns = true,
@@ -62,7 +66,7 @@ export function useTables({
     columns ? TABLE_LIST_QUERY : TABLE_ROWS_QUERY,
     {
       fetchPolicy: inPage ? "cache-first" : "cache-and-network",
-      ...(columns ? { variables: { includeWithdrawn } } : {}),
+      variables: { includeWithdrawn },
     },
   );
   return {

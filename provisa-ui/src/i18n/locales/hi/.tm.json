@@ -7491,7 +7491,7 @@
   "hi/sourceSections.json::sourceSections.commandName": "Command",
   "hi/sourceSections.json::sourceSections.commands": "Commands",
   "hi/sourceSections.json::sourceSections.connection": "Connection",
-  "hi/sourceSections.json::sourceSections.draft": "Draft",
+  "hi/sourceSections.json::sourceSections.withdrawn": "Withdrawn",
   "hi/sourceSections.json::sourceSections.label": "Source sections",
   "hi/sourceSections.json::sourceSections.load": "Load",
   "hi/sourceSections.json::sourceSections.operations": "Operations",

@@ -8,7 +8,7 @@
     "operations": "操作",
     "tableName": "テーブル",
     "tableDomain": "ドメイン",
-    "draft": "下書き",
+    "withdrawn": "取り下げ中",
     "commands": "コマンド",
     "commandName": "コマンド",
     "commandKind": "種類"

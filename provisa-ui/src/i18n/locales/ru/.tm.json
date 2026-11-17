@@ -7499,7 +7499,7 @@
   "ru/sourceSections.json::sourceSections.commandName": "Command",
   "ru/sourceSections.json::sourceSections.commands": "Commands",
   "ru/sourceSections.json::sourceSections.connection": "Connection",
-  "ru/sourceSections.json::sourceSections.draft": "Draft",
+  "ru/sourceSections.json::sourceSections.withdrawn": "Withdrawn",
   "ru/sourceSections.json::sourceSections.label": "Source sections",
   "ru/sourceSections.json::sourceSections.load": "Load",
   "ru/sourceSections.json::sourceSections.operations": "Operations",

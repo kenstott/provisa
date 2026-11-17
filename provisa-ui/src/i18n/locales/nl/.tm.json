@@ -7492,7 +7492,7 @@
   "nl/sourceSections.json::sourceSections.commandName": "Command",
   "nl/sourceSections.json::sourceSections.commands": "Commands",
   "nl/sourceSections.json::sourceSections.connection": "Connection",
-  "nl/sourceSections.json::sourceSections.draft": "Draft",
+  "nl/sourceSections.json::sourceSections.withdrawn": "Withdrawn",
   "nl/sourceSections.json::sourceSections.label": "Source sections",
   "nl/sourceSections.json::sourceSections.load": "Load",
   "nl/sourceSections.json::sourceSections.operations": "Operations",

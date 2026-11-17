@@ -7537,7 +7537,7 @@
   "zh-HK/sourceSections.json::sourceSections.commandName": "Command",
   "zh-HK/sourceSections.json::sourceSections.commands": "Commands",
   "zh-HK/sourceSections.json::sourceSections.connection": "Connection",
-  "zh-HK/sourceSections.json::sourceSections.draft": "Draft",
+  "zh-HK/sourceSections.json::sourceSections.withdrawn": "Withdrawn",
   "zh-HK/sourceSections.json::sourceSections.label": "Source sections",
   "zh-HK/sourceSections.json::sourceSections.load": "Load",
   "zh-HK/sourceSections.json::sourceSections.operations": "Operations",

@@ -326,8 +326,8 @@ fragment ListedTableFields on RegisteredTableType {
 
 # The registered tables without their columns, for the pages that name, count or pick tables and
 # show none of their columns.
-query TableRowsQuery {
-  tables {
+query TableRowsQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
   }
 }
