@@ -933,3 +933,131 @@ async def test_a_list_the_identity_provider_sends_is_not_added_to(control_plane)
             await conn.execute_core(select(entitlements).where(entitlements.c.source == "provisa"))
         ).fetchall()
         assert provisa_rows == []
+
+
+# -- the build a grant reads (REQ-194, REQ-2125, amended 2026-11-16) ----------------------------------
+
+
+async def _stored_sql_names(conn) -> dict[str, str]:
+    from provisa.core.schema_org import model_names
+
+    rows = await conn.execute_core(
+        select(model_names.c.object_id, model_names.c.name).where(model_names.c.surface == "sql")
+    )
+    return {r.object_id: r.name for r in rows.fetchall()}
+
+
+@pytest.mark.asyncio
+async def test_a_table_registered_and_granted_at_once_is_found_before_the_pass_has_run(
+    control_plane,
+):
+    """The build that registered customers (2) has answered and published its names; its
+    after-answer pass, which writes the stored names table, is held: the stored copy is the build
+    before's, which had no customers. The grant reads the build published."""
+    from provisa.core.repositories.model_names import write_names_table
+
+    async with _store(control_plane) as db, db.acquire() as conn:
+        before = names_table({t: n for t, n in _NAMED.items() if t != 2}, views=frozenset({3, 4}))
+        await write_names_table(conn, before.rows)
+
+        granted = await offer_grant.entries(
+            conn, "c360", DataProductOffer(name="o", role_id="viewer"), _BUILT
+        )
+
+        assert granted == ["sales.orders", "sales.customers", "sales.orders_checks"]
+        assert "2" not in await _stored_sql_names(conn), "the pass has not run"
+
+
+@pytest.mark.asyncio
+async def test_a_rename_then_a_grant_records_the_new_name_before_the_pass_has_run(control_plane):
+    """orders is renamed orders_v2 and granted at once: the entry is the new name, though the
+    stored names table (the pass of the build before) still holds the old one."""
+    from provisa.core.repositories.model_names import write_names_table
+
+    async with _store(control_plane) as db, db.acquire() as conn:
+        await write_names_table(conn, _BUILT.names.rows)  # type: ignore[union-attr]
+        renamed = published(
+            names_table({**_NAMED, 1: ("sales", "orders_v2")}, views=frozenset({3, 4})),
+            _BUILT.checked,
+            {3: {1, 2}, 4: {1, 7}},  # orders_sample reads both datasets
+        )
+        sample = DataProductOffer(
+            name="s", role_id="viewer", data_level="sample", sample_views=[3], dq_results=False
+        )
+        await offers.save(conn, "c360", sample, offer_id=None, by="o", published=renamed)
+        held = await _bid(conn, (await offers.list_offers(conn, "c360"))[-1])
+
+        async def _renamed_held(_conn, _held: dict) -> offer_hooks.Grants:
+            return offer_hooks.Grants(domain_id="sales", role_defaults={}, published=renamed)
+
+        accepted = await offer_hooks.decide(
+            conn, _decision(held), may_grant=_anyone, grants=_renamed_held
+        )
+        full = await offer_grant.entries(
+            conn, "c360", DataProductOffer(name="o", role_id="viewer"), renamed
+        )
+
+        assert accepted["granted"]["entries"] == ["sales.orders_sample"]
+        assert full == ["sales.orders_v2", "sales.customers", "sales.orders_checks"]
+        assert (await _stored_sql_names(conn))["1"] == "orders", "the pass has not run"
+
+
+@pytest.mark.asyncio
+async def test_a_checker_the_build_retargeted_is_granted_with_its_new_dataset(control_plane):
+    """The checker orders_checks (5) now checks customers (2) in the build published; the stored
+    checker targets, the pass's, still say orders (1). A grant gives the dq results on the
+    dataset the build resolved."""
+    from provisa.dq.registration import write_checker_targets
+
+    async with _store(control_plane) as db, db.acquire() as conn:
+        await write_checker_targets(conn, {5: 1})
+        retargeted = published(_BUILT.names, {5: 2}, {3: {1}, 4: {1, 7}})
+
+        assert await offers.quality_tables(conn, "c360", 1, retargeted) == []
+        assert await offers.quality_tables(conn, "c360", 2, retargeted) == [5]
+
+
+def test_a_request_reads_the_names_checkers_and_view_reads_its_runtime_published():
+    """What the routers hand the store (provisa.api.offer_derivation.published) is the runtime's
+    published build: its names table, its checker targets, and each view's reads resolved against
+    its tables -- a view over a view reads that view, and a table is no view."""
+    from types import SimpleNamespace
+
+    from provisa.api.offer_derivation import published as from_runtime
+    from provisa.mv.registry import MVRegistry
+
+    def row(tid: int, name: str, view_sql: str | None = None) -> dict:
+        return {
+            "id": tid,
+            "source_id": "__derived__" if view_sql else "crm",
+            "domain_id": "sales",
+            "schema_name": "public",
+            "table_name": name,
+            "view_sql": view_sql,
+        }
+
+    state = SimpleNamespace(
+        names_table=_BUILT.names,
+        checked_targets={5: 1},
+        tables=[
+            row(1, "orders"),
+            row(2, "customers"),
+            row(3, "orders_sample", "SELECT id FROM sales.orders LIMIT 10"),
+            row(
+                4,
+                "wide_view",
+                "SELECT o.id FROM sales.orders o JOIN sales.customers c ON o.customer_id = c.id",
+            ),
+            row(8, "sample_of_sample", "SELECT id FROM sales.orders_sample"),
+        ],
+        view_context=None,
+        source_catalogs={},
+        mv_registry=MVRegistry(),
+        tracked_functions={},
+    )
+
+    built = from_runtime(state)
+
+    assert built.names is _BUILT.names
+    assert built.checkers_of(1) == [5]
+    assert built.view_reads([1, 3, 4, 8]) == {3: {1}, 4: {1, 2}, 8: {3}}

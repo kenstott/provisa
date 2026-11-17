@@ -285,7 +285,7 @@ def test_a_record_holds_its_phases_in_the_order_entered_and_refuses_an_unlisted_
     with rebuild_trace.building(record):
         record.phase(rebuild_trace.TABLES)
         record.phase(rebuild_trace.COMPILE)
-        with pytest.raises(ValueError, match="not a build phase"):
+        with pytest.raises(ValueError, match="not a phase of the build before its answer"):
             record.phase("something else")
     assert record.phase_names == [rebuild_trace.TABLES, rebuild_trace.COMPILE]
     assert record.outcome == rebuild_trace.BUILT
