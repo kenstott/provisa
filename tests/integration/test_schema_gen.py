@@ -103,9 +103,21 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
     from tests.conftest import as_deployment_org
 
     # The module's config load is the deployment org's work, bound like the boot's (REQ-1266).
+    from provisa.core.environments import PROD, org_schema
+    from provisa.core.model_change import ModelPlane
+    from provisa.core.region_stores import open_org_stores
+
     with as_deployment_org():
         prior_engine = app_mod.state.federation_engine
         prior_conn = app_mod.state.engine_conn
+        prior_stores = (app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db)
+        # The org's stores are opened before its source state is built, as boot opens them
+        # (startup_seed: open_org_stores over the tenant engine) — never inherited from a module
+        # that ran an in-process boot before this one.
+        org_id = app_mod.state.org_id
+        app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db = open_org_stores(
+            org_schema(org_id, PROD), ModelPlane(org_id, PROD), model_engine=tenant_db.engine
+        )
         app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
         # bind_terminal only stores connection kwargs (wake-on-traffic, REQ-1043) — it does NOT
         # connect. register_source/introspect_columns both no-op when state.engine_conn is None
@@ -141,6 +153,7 @@ async def _load_config(tenant_db, _init_schema, platform_admin_db):
         finally:
             app_mod.state.federation_engine = prior_engine
             app_mod.state.engine_conn = prior_conn
+            app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db = prior_stores
             if prior_env is None:
                 os.environ.pop("PROVISA_ENGINE", None)
             else:

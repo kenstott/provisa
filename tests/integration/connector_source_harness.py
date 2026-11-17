@@ -117,6 +117,9 @@ async def connector_client():
         prior_engine = app_mod.state.federation_engine
         prior_catalogs = dict(app_mod.state.source_catalogs)
         prior_types = dict(app_mod.state.source_types)
+        # The boot below opens the deployment org's stores on its runtime (startup_seed); they are
+        # put back after, or a later module inherits a store this app opened and then closed.
+        prior_stores = (app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db)
         app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
         app_mod.state.federation_engine.bind_terminal()
     try:
@@ -128,6 +131,7 @@ async def connector_client():
     finally:
         with as_deployment_org():
             app_mod.state.federation_engine = prior_engine
+            app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db = prior_stores
             for live, prior in (
                 (app_mod.state.source_catalogs, prior_catalogs),
                 (app_mod.state.source_types, prior_types),
