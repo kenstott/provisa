@@ -115,7 +115,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     pagingCeilingRows: r.pagingCeilingRows,
     replicate: null,
     region: str(i.region),
-    draft: true,
+    draft: false, // REQ-1921: a registered table is live
     rowMaterialize: false, // REQ-1865: chosen on the Load and timeliness tab
     loadProtected: null,
     offPeakWindow: null,
@@ -202,7 +202,7 @@ export function duplicateOfTable(table: RegisteredTable): TableDuplicate {
     id: UNREGISTERED_ID,
     productIds: [],
     writeGrants: [],
-    draft: true,
+    draft: false, // REQ-1921: a registered table is live
   };
   if (table.viewSql != null || table.viewMetrics != null) {
     draft.tableName = duplicateName(table.tableName);

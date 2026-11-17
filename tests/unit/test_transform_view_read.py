@@ -54,7 +54,10 @@ def _state(status: MVStatus) -> SimpleNamespace:
     return SimpleNamespace(
         mv_registry=registry,
         stored_view_reads={"clean_suppliers"},
-        role_build_inputs={"draft_tables": []},  # no table is out of service
+        role_build_inputs={
+            "draft_tables": [],
+            "withdrawn_tables": [],
+        },  # no table is out of service
     )
 
 

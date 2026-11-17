@@ -265,13 +265,14 @@ def test_a_caller_without_the_right_or_outside_the_domain_is_refused(state, monk
     assert err.value.code == "auth.domain_denied"
 
 
-def test_the_release_and_the_read_ask_for_the_same_right():
-    """set_table_draft requires table_registration in the table's domain; so does the read."""
+def test_withdrawing_and_the_read_ask_for_the_same_right():
+    """REQ-1921: withdrawing a table or putting it back requires table_registration in its
+    domain; so does the steward's read of it."""
     import inspect
 
     from provisa.api.admin import schema_mutation
 
-    release = inspect.getsource(schema_mutation.Mutation.set_table_draft)
+    release = inspect.getsource(schema_mutation._set_table_withdrawn)
     assert 'require_capability(info, "table_registration", domain_id=row.domain_id)' in release
     read = inspect.getsource(table_read.table_for_steward)
     assert 'require_capability_request(request, "table_registration")' in read

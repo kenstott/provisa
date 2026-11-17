@@ -145,6 +145,8 @@ class SourceType:  # REQ-012
     password_ref: str | None = ""
     change_signal: str = "ttl"  # REQ-929: source default change signal (inherited by its tables)
     is_system: bool = False  # a source Provisa runs for itself: not offered by Register table
+    # REQ-1921: out of production until put back (withdrawSource / putBackSource).
+    withdrawn: bool = False
     cdc: SourceCdcConfigType | None = None  # REQ-824: source-level CDC transport
 
 
@@ -495,7 +497,11 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     cache_ttl: int | None
     replicate: int | None  # REQ-826: NULL = inherit source
     region: str | None  # REQ-1921: where its data lives; null = no region
-    draft: bool  # REQ-1921: out of service until its domain's owners release it
+    draft: bool  # REQ-1921: at a region move's waypoint -- out of service until the move ends
+    # REQ-1921: out of production until put back -- itself (withdrawTable / putBackTable), and
+    # its source (withdrawSource / putBackSource). Listed only to a caller who may preview it.
+    withdrawn: bool
+    source_withdrawn: bool
     row_materialize: bool  # REQ-1865: replicated row by row, fetched by key as statements ask
     load_protected: bool | None  # REQ-1141: NULL = inherit source
     off_peak_window: str | None  # REQ-1141: per-table window override
@@ -1003,6 +1009,9 @@ class RelationshipType:  # REQ-019, REQ-020, REQ-158, REQ-413
     parameters: list["RelationshipParameterType"] = strawberry.field(default_factory=list)
     # REQ-2249: the code resolver set this edge belongs to; changed and retired only through it.
     code_resolver: str | None = None
+    # REQ-1921: withdrawn while an end (or its junction) is withdrawn or retired -- derived, in no
+    # compiled graph. Listed only when asked for, to a caller who may preview those ends.
+    withdrawn: bool = False
 
     @strawberry.field
     def auto_suggested(self) -> bool:

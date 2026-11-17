@@ -59,6 +59,17 @@ _TRAVERSABLE = (
 )
 
 
+#: REQ-1921: a relationship ``r`` withdrawn and nothing more: neither it nor an end is retired,
+#: and an end (or its junction) is withdrawn, itself or through its source.
+_WITHDRAWN_EDGE = (
+    "NOT r.retired AND NOT EXISTS (SELECT 1 FROM registered_tables x WHERE x.retired "
+    "AND x.id IN (r.source_table_id, r.target_table_id, r.via_table_id)) "
+    "AND EXISTS (SELECT 1 FROM registered_tables x WHERE "
+    "(x.withdrawn OR x.source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)) "
+    "AND x.id IN (r.source_table_id, r.target_table_id, r.via_table_id))"
+)
+
+
 async def _retired_columns(conn: "Connection") -> set[tuple[int, str]]:
     """REQ-2248: the retired columns, as (table id, column name)."""
     rows = await conn.fetch("SELECT table_id, column_name FROM table_columns WHERE retired")
@@ -209,11 +220,13 @@ async def fetch_tables(  # REQ-155, REQ-393, REQ-399
 
 
 async def fetch_relationships(
-    conn: "Connection",
+    conn: "Connection", *, withdrawn: bool = False
 ) -> list[dict]:  # REQ-155, REQ-194, REQ-351, REQ-399
     """Fetch relationships, each with its effective names as stored on its row
     (core.relationship_names): ``graphql_alias`` the pinned one or the stored GraphQL field,
-    ``computed_cypher_alias`` the stored Cypher type where no alias is pinned."""
+    ``computed_cypher_alias`` the stored Cypher type where no alias is pinned. ``withdrawn``
+    True fetches instead the ones withdrawn only because an end (or the junction) is withdrawn
+    (REQ-1921): in no compiled graph, read only where a steward asks to see what is withdrawn."""
     rows = await conn.fetch(
         "SELECT r.id, r.source_table_id, r.target_table_id, r.source_column, "
         "r.target_column, r.cardinality, r.materialize, r.refresh_interval, "
@@ -234,7 +247,7 @@ async def fetch_relationships(
         "LEFT JOIN registered_tables v ON v.id = r.via_table_id "
         # REQ-2248: a retired relationship is not traversable, nor one that reaches a retired
         # table at either end or through it.
-        f"WHERE {_TRAVERSABLE} "
+        f"WHERE {_WITHDRAWN_EDGE if withdrawn else _TRAVERSABLE} "
         "ORDER BY r.id"
     )
     retired_columns = await _retired_columns(conn)

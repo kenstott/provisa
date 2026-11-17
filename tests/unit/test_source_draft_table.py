@@ -8,7 +8,7 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-2113: a single-file CSV or Parquet source's table is set up with it, as a draft, when the
+"""REQ-2113: a single-file CSV or Parquet source's table is set up with it, live (REQ-1921), when the
 create form (or Polly) asks: named after the source, typed from its file as Register Table
 proposes it, every role seeing every column. When it cannot be, the source stands and why is
 said."""
@@ -48,7 +48,7 @@ def registered(monkeypatch):
     return seen
 
 
-async def test_the_draft_table_is_named_and_typed_from_the_file(registered):
+async def test_the_table_is_named_and_typed_from_the_file(registered):
     made = SourceInput(
         id="supplies", type="parquet", register_file_table=True, table_domain_id="shelter"
     )

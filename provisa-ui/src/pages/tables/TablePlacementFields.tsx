@@ -8,11 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1921: where a table's (or view's) data lives and whether it is in service — its region
-// and its draft flag, each saved on its own (setTableRegion, setTableDraft).
+// REQ-1921: where a table's (or view's) data lives -- its region, saved on its own
+// (setTableRegion).
 
-import { Checkbox } from "@mantine/core";
-import { useTranslation } from "react-i18next";
 import { RegionSelect } from "../../components/admin/RegionSelect";
 import { useRegionChoices } from "../../hooks/useRegionQueries";
 import type { RegisteredTable } from "../../types/admin";
@@ -38,21 +36,6 @@ export function TableRegionField({
         regions={regionChoices.regions}
         scope={isView ? "view" : "table"}
         testId="table-region-select"
-      />
-    </FormField>
-  );
-}
-
-/** Out of service while checked: a tick among the form's ticks. */
-export function TableDraftTick({ table, onChange }: PlacementProps) {
-  const { t } = useTranslation();
-  return (
-    <FormField help={t("tableEditForm.draftHelp")} size="short">
-      <Checkbox
-        label={t("tableEditForm.draftLabel")}
-        checked={table.draft}
-        onChange={(e) => onChange({ ...table, draft: e.currentTarget.checked })}
-        data-testid="table-draft-checkbox"
       />
     </FormField>
   );

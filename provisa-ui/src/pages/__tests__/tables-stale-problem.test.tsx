@@ -164,7 +164,6 @@ const updateTable = vi.fn();
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: [], connected: null }),
-  useSetTableDraft: () => vi.fn(),
   useSetTableRegion: () => vi.fn(),
 }));
 

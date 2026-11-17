@@ -187,10 +187,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -199,7 +195,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 
@@ -262,7 +257,7 @@ describe("+ Table opens an empty form", () => {
     render(<TablesPage />);
     await select("ord");
     await userEvent.click(await screen.findByTestId("table-read-view-edit"));
-    await screen.findByTestId("table-draft-checkbox");
+    await screen.findByTestId("table-edit-save");
     await userEvent.click(screen.getByTestId("table-edit-cancel"));
     await userEvent.click(await screen.findByTestId("tables-add-toggle"));
     await within(await screen.findByTestId("tables-split-panel")).findByTestId(

@@ -197,6 +197,7 @@ def _rebuild(monkeypatch, roles: list[dict]) -> None:
         metrics=[],
         draft_tables=[],
         withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
 
 

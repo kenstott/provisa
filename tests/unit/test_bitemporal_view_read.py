@@ -60,7 +60,10 @@ def _state() -> SimpleNamespace:
     return SimpleNamespace(
         mv_registry=registry,
         bitemporal_view_reads={"bt_view": (LOG, SPEC)},
-        role_build_inputs={"draft_tables": []},  # no table is out of service
+        role_build_inputs={
+            "draft_tables": [],
+            "withdrawn_tables": [],
+        },  # no table is out of service
     )
 
 

@@ -261,6 +261,37 @@ async def _listed_sources(conn: Any, scope: CatalogScope) -> set[str]:
     return {r.source_id for r in _res.fetchall() if scope.lists_table(r.id)}
 
 
+async def _with_withdrawn(
+    conn: Any, info: StrawberryInfo, include_withdrawn: bool, rows: list[dict]
+) -> list[RelationshipType]:  # REQ-1921
+    """``rows`` (relationships, each with its ends' ids) as the admin lists them: one with an end
+    (or its junction) withdrawn or retired is withdrawn -- derived, stored nowhere -- and left
+    out, unless ``include_withdrawn`` and the caller may preview each withdrawn end, when it is
+    listed marked withdrawn. A retired end is previewed by no one."""
+    from dataclasses import replace
+
+    from provisa.api.admin.withdrawn import (
+        edge_ends,
+        preview_reach,
+        previews,
+        retired_table_ids,
+        withdrawn_table_domains,
+    )
+
+    withdrawn = await withdrawn_table_domains(conn)
+    retired = await retired_table_ids(conn)
+    reach = preview_reach(info) if include_withdrawn else frozenset()
+    listed: list[RelationshipType] = []
+    for row in rows:
+        ends = edge_ends(row)
+        out = [t for t in ends if t in withdrawn or t in retired]
+        if not out:
+            listed.append(_rel_from_row(row))
+        elif not any(t in retired for t in out) and all(previews(reach, withdrawn[t]) for t in out):
+            listed.append(replace(_rel_from_row(row), withdrawn=True))
+    return listed
+
+
 async def _listed_relationships(
     conn: Any, scope: CatalogScope, rows: list[RelationshipType]
 ) -> list[RelationshipType]:
@@ -1233,8 +1264,11 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def tables(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RegisteredTableType]:  # REQ-016, REQ-021, REQ-042
+        """The registered tables the caller is served. REQ-1921: a withdrawn one (itself or
+        through its source) is left out; ``include_withdrawn`` lists it, marked withdrawn, to a
+        caller who may preview it (table registration reaching its domain)."""
         with _stage(_tracer, "admin.schema_introspect"):
             from provisa.api.admin.capabilities import _identity_from_info, _resolved_capabilities
             from provisa.api.app import state as _state
@@ -1268,11 +1302,20 @@ class Query:  # REQ-021, REQ-042
                 # REQ-1958, REQ-2152: the caller is answered the tables it is served; one the last
                 # schema build did not compile (saved since) is judged by its stored columns.
                 scope = catalog_scope(info)
+                from provisa.api.admin.withdrawn import (
+                    preview_reach,
+                    previews,
+                    withdrawn_table_domains,
+                )
+
+                withdrawn = await withdrawn_table_domains(conn)
+                reach = preview_reach(info) if include_withdrawn else frozenset()
                 listed = [
                     r
                     for r in rows
                     if (scope.lists_table(r["id"]) or r["id"] not in scope.compiled)
                     and (r["domain_id"], r["table_name"]) not in SQL_CATALOG_TABLES  # REQ-2190
+                    and (r["id"] not in withdrawn or previews(reach, r["domain_id"]))
                 ]
                 # What every listed table reads beside its row, read once for all of them.
                 listing = await table_listing(conn, listed)
@@ -1289,8 +1332,10 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def relationships(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
+        """REQ-1921: a withdrawn relationship is left out; ``include_withdrawn`` lists it, marked
+        withdrawn, to a caller who may preview its withdrawn ends (:func:`_with_withdrawn`)."""
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -1318,7 +1363,9 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            rows = await _with_withdrawn(
+                conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
+            )
             return await _listed_relationships(conn, catalog_scope(info), rows)
 
     @strawberry.field
@@ -1358,9 +1405,11 @@ class Query:  # REQ-021, REQ-042
 
     @strawberry.field
     async def all_relationships(
-        self, info: StrawberryInfo
+        self, info: StrawberryInfo, include_withdrawn: bool = False
     ) -> list[RelationshipType]:  # REQ-019, REQ-020, REQ-1958
-        """All relationships including system-generated meta:% entries (used by ERD)."""
+        """All relationships including system-generated meta:% entries (used by ERD). REQ-1921:
+        a withdrawn one is left out; ``include_withdrawn`` lists it, marked withdrawn, to a caller
+        who may preview its withdrawn ends (:func:`_with_withdrawn`)."""
         pool = await _get_pool()
         _st = registered_tables.alias("st")
         _tt = registered_tables.alias("tt")
@@ -1386,7 +1435,9 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
-            rows = [_rel_from_row(dict(r._mapping)) for r in _res.fetchall()]
+            rows = await _with_withdrawn(
+                conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
+            )
             rows.extend(await _has_table_synthetic_relationships(conn))
             return await _listed_relationships(conn, catalog_scope(info), rows)
 

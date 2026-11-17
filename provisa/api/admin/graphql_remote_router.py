@@ -441,6 +441,9 @@ async def _upsert_tables_to_semantic_layer(  # REQ-308, REQ-599, REQ-602
                     for a, required in arguments(t)
                 ],
             )
+            from provisa.api.admin.region_defaults import kept_draft
+
+            tbl.draft = await kept_draft(conn, source_id, "graphql", _sql_name)
             try:
                 await table_repo.upsert(conn, tbl)
             except table_repo.ColumnDropRefused as refused:

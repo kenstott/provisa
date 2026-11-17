@@ -1139,9 +1139,59 @@ async def _answered_read(
     return JSONResponse(content=content, headers=build_cache_headers(_executed.cache_entry))
 
 
+def _with_withdrawn(state: Any, role_id: str, surface: Any) -> tuple[Any, frozenset[int], set]:
+    """REQ-1921: the role's label map with the withdrawn tables it may preview (table
+    registration reaching their domains) and their withdrawn relationships, built for this one
+    answer and kept nowhere; with the ids of those tables and the names of the junctions among
+    them. No context a statement is compiled in holds them."""
+    from provisa.api.app_loaders import schema_input_with_drafts
+    from provisa.compiler.context import build_context
+    from provisa.gql.label_map import CypherLabelMap
+    from provisa.security.rights import effective_domain_access_role, registers_tables_in
+
+    inputs = state.role_build_inputs
+    role = state.roles[role_id]
+    shown = [
+        t
+        for t in inputs["withdrawn_tables"]
+        if registers_tables_in(role, state.roles, t["domain_id"])
+    ]
+    shown_ids = frozenset(t["id"] for t in shown)
+    served_ids = {t["id"] for t in inputs["tables"]}
+    edges = [
+        r
+        for r in inputs["withdrawn_relationships"]
+        if all(
+            t in shown_ids or t in served_ids
+            for t in (r["source_table_id"], r["target_table_id"], r["via_table_id"])
+            if t is not None
+        )
+    ]
+    if not shown:
+        return _build_label_map(surface.context, role_id, state), shown_ids, set()
+    from dataclasses import replace
+
+    si = schema_input_with_drafts(state, role, shown, marked=False)
+    si = replace(si, relationships=[*si.relationships, *edges])
+    cache = state.schema_build_cache
+    label_map = CypherLabelMap.from_schema(
+        build_context(si),
+        domain_access=effective_domain_access_role(role_id, state.roles)["domain_access"],
+        all_tables=[*cache.get("tables", []), *shown],
+        all_relationships=[*cache.get("relationships", []), *edges],
+        all_column_types=si.column_types,
+        source_catalogs=state.source_catalogs,
+    )
+    return label_map, shown_ids, {t["table_name"] for t in shown}
+
+
 @router.get("/data/graph-schema")
-async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
-    """Return node labels and relationship types for the current role."""
+async def graph_schema(
+    request: Request, include_withdrawn: bool = Query(False)
+) -> JSONResponse:  # REQ-392, REQ-398
+    """Return node labels and relationship types for the current role. REQ-1921: a withdrawn
+    table and its relationships are left out; ``include_withdrawn`` returns them, marked
+    withdrawn, to a role that may preview them (table registration reaching their domains)."""
     from provisa.api.app import state
 
     from provisa.api.role_surface import role_surface
@@ -1156,7 +1206,12 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
         )
     ctx = surface.context
 
-    label_map = _build_label_map(ctx, role_id, state)
+    withdrawn_ids: frozenset[int] = frozenset()
+    withdrawn_junctions: set[str] = set()
+    if include_withdrawn:
+        label_map, withdrawn_ids, withdrawn_junctions = _with_withdrawn(state, role_id, surface)
+    else:
+        label_map = _build_label_map(ctx, role_id, state)
     all_tables: list[dict] = getattr(state, "schema_build_cache", {}).get("tables", [])
     col_types: dict = getattr(state, "schema_build_cache", {}).get("column_types", {})
     from provisa.gql.label_map import _table_label_from_table_name
@@ -1218,6 +1273,7 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     ],
                     "property_types": _property_types(n),
                     "traversal_only": n.traversal_only,
+                    "withdrawn": n.table_id in withdrawn_ids,  # REQ-1921
                     **cluster_by_name.get(
                         n.table_label, {"scl1": None, "scl2": None, "scl3": None}
                     ),
@@ -1252,6 +1308,10 @@ async def graph_schema(request: Request) -> JSONResponse:  # REQ-392, REQ-398
                     # registration) is read only as a hop of its own; a variable-length walk leaves
                     # it out unless named, and named it does not read the constant.
                     "constant_source": r.constant_source,
+                    # REQ-1921: an end, or the junction, is withdrawn.
+                    "withdrawn": label_map.nodes[r.source_label].table_id in withdrawn_ids
+                    or label_map.nodes[r.target_label].table_id in withdrawn_ids
+                    or (r.via is not None and r.via.table_name in withdrawn_junctions),
                 }
                 for r in label_map.relationships.values()
             ],

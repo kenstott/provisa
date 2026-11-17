@@ -65,6 +65,16 @@ async def registration_region(conn: "Connection", inp, *, is_view: bool) -> str 
     return await new_table_region(conn, inp.source_id, is_view=is_view)
 
 
+async def kept_draft(conn: "Connection", source_id: str, schema_name: str, table_name: str) -> bool:
+    """The draft a table a bulk admin registration writes keeps (REQ-1921): a table it creates is
+    live; one already registered keeps what it has -- a re-sync is not a registration, and draft
+    is a region move's waypoint, which a re-sync leaves as it is."""
+    from provisa.core.repositories import table as table_repo
+
+    held = await table_repo.get_by_name(conn, source_id, schema_name, table_name)
+    return False if held is None else bool(held["draft"])
+
+
 async def kept_placement(conn: "Connection", model) -> tuple[str | None, bool, bool]:
     """The region, draft and withdrawn an edit of a registered table keeps: the stored ones. A
     table's region changes only through ``setTableRegion``, its draft only by a region move and

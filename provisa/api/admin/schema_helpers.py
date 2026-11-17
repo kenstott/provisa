@@ -281,6 +281,8 @@ class TableListing:
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
     products: dict[int, list[str]]  # table id -> the products it is a member of (REQ-1634)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
+    # REQ-1921: the withdrawn sources among theirs: each table of one is withdrawn through it.
+    withdrawn_sources: frozenset[str]
     # OpenAPI source -> why its document could not be read: its tables are listed all the same,
     # saying so, since one source out of reach fails no listing.
     endpoint_errors: dict[str, str] = field(default_factory=dict)
@@ -343,7 +345,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     # REQ-1997: the source's path too -- where its file is decides whether it takes writes.
     source_rows = (
         await conn.execute_core(
-            select(sources.c.id, sources.c.type, sources.c.path).where(
+            select(sources.c.id, sources.c.type, sources.c.path, sources.c.withdrawn).where(
                 sources.c.id.in_(sorted({r["source_id"] for r in rows}))
             )
         )
@@ -376,6 +378,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         products=await data_product_repo.table_memberships(conn),
         endpoints=endpoints,
         endpoint_errors=endpoint_errors,
+        withdrawn_sources=frozenset(r.id for r in source_rows if r.withdrawn),
     )
 
 
@@ -514,6 +517,8 @@ async def _fetch_table_with_columns(
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
         draft=row["draft"],  # REQ-1921
+        withdrawn=row["withdrawn"],  # REQ-1921
+        source_withdrawn=row["source_id"] in listing.withdrawn_sources,  # REQ-1921
         row_materialize=row["row_materialize"],  # REQ-1865
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141

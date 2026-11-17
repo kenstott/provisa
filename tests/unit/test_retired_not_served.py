@@ -279,6 +279,7 @@ async def surfaces(plane, monkeypatch):
         metrics=[],
         draft_tables=[],
         withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 

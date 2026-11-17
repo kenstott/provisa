@@ -186,7 +186,7 @@ def _state(pg) -> SimpleNamespace:
         compiled_query_cache=CompiledQueryCache(),
         routing_cache=CompiledQueryCache(),
         replica_routes=ReplicaRoutes(),
-        role_build_inputs={"draft_tables": []},
+        role_build_inputs={"draft_tables": [], "withdrawn_tables": []},
         model_stamp=1,
         tracked_functions={
             "recent_orders": {"name": "recent_orders", "returns": "sales.orders"},

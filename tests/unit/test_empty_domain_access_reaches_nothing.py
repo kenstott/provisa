@@ -452,6 +452,7 @@ def _built_roles(monkeypatch, roles: list[dict]) -> Any:
         metrics=[],
         draft_tables=[],  # REQ-1921: none out of service
         withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     return state
 
@@ -573,6 +574,7 @@ def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
         metrics=[],
         draft_tables=[],  # REQ-1921: none out of service
         withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     assert appmod.state.roles["r"]["domain_access"] == []
     for surface in (state.schemas, state.contexts, state.rls_contexts, state.proto_files):

@@ -1891,8 +1891,8 @@ class Table(
     # every region). Its source's region is only the admin form's default for a new table.
     region: str | None = None
     # REQ-1921: the waypoint of a move between regions, as the store holds it -- out of service
-    # while set. Set by the move alone: no save, registration or configuration writes it
-    # (repositories.table.upsert leaves it), so a registered table is live.
+    # while set. A move sets and clears it; a registration never does, so a registered table is
+    # live. Carried as the store holds it, so a promotion lands a move's waypoint with it.
     draft: bool = False
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None

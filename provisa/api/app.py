@@ -3522,6 +3522,7 @@ async def _rebuild_schemas_impl(
         # REQ-1921: withdrawn -- serves no role and is named by no context; kept only for its
         # steward's preview (admin/table_read.py).
         withdrawn_tables = await _fetch_tables(_pg, withdrawn=True)
+        withdrawn_relationships = await _fetch_relationships(_pg, withdrawn=True)
         _assert_domain_table_unique(tables)
         relationships = await _fetch_relationships(_pg)
 
@@ -4031,6 +4032,7 @@ async def _rebuild_schemas_impl(
             field_numbers=_field_numbers,
             draft_tables=draft_tables,  # REQ-1921
             withdrawn_tables=withdrawn_tables,  # REQ-1921
+            withdrawn_relationships=withdrawn_relationships,  # REQ-1921
         )
     except NamesClashRefused as refused:
         # REQ-194: the clashes are kept for the names report, each naming both objects.

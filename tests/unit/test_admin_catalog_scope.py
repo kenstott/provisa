@@ -173,7 +173,7 @@ def _model(monkeypatch):
     for name, value in (
         ("roles", _ROLES),
         ("contexts", contexts),
-        ("role_build_inputs", {"draft_tables": []}),
+        ("role_build_inputs", {"draft_tables": [], "withdrawn_tables": []}),
         ("tables", _TABLES),  # what the last schema build compiled
     ):
         monkeypatch.setattr(appmod.state, name, value, raising=False)
@@ -320,7 +320,9 @@ async def test_a_draft_is_answered_by_the_grant_on_its_stored_columns(monkeypatc
             {"column_name": "score", "visible_to": ["auditor"], "scope": "domain"},
         ]
     )
-    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": [draft]})
+    monkeypatch.setattr(
+        appmod.state, "role_build_inputs", {"draft_tables": [draft], "withdrawn_tables": []}
+    )
     monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
     for column in draft["columns"]:
         _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
@@ -338,7 +340,9 @@ async def test_a_draft_whose_grants_exclude_the_registrants_role_is_not_answered
     """REQ-2152: registration ends when the table is saved; a draft granted to another role only
     is not listed to the registrar who saved it."""
     draft = _draft([{"column_name": "id", "visible_to": ["auditor"], "scope": "domain"}])
-    monkeypatch.setattr(appmod.state, "role_build_inputs", {"draft_tables": [draft]})
+    monkeypatch.setattr(
+        appmod.state, "role_build_inputs", {"draft_tables": [draft], "withdrawn_tables": []}
+    )
     monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
     for column in draft["columns"]:
         _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
@@ -657,7 +661,10 @@ def test_a_drafts_name_is_read_by_the_caller_it_is_served_to():
 
     state = types.SimpleNamespace(
         tables=[{"id": 1, "table_name": "orders"}],
-        role_build_inputs={"draft_tables": [{"id": 9, "table_name": "drafted"}]},
+        role_build_inputs={
+            "draft_tables": [{"id": 9, "table_name": "drafted"}],
+            "withdrawn_tables": [],
+        },
     )
     scope = CatalogScope(
         whole=False, reach=None, served={1: {"id"}, 9: {"id"}}, governance=False, role="analyst"
