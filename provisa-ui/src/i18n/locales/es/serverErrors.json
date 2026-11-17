@@ -153,6 +153,7 @@
       "source_starting": "El origen {{source}} todavía se está iniciando. Vuelva a intentarlo en un momento.",
       "source_unavailable": "El origen {{source}} no pudo responder. Inténtelo de nuevo en breve.",
       "view_outside_load_window": "La vista {{view}} solo se puede leer dentro de su ventana de lectura. Vuelve a abrirse a las {{opens_at}}.",
+      "view_awaits_rule_rebuild": "La vista {{view}} se está volviendo a crear por un cambio en las reglas de fila de sus entradas. Este rol podrá leerla cuando esa compilación se haya publicado.",
       "graphql_body_missing": "La solicitud no tiene cuerpo: una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_body_not_json": "El cuerpo de la solicitud no es JSON: {{error}}",
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",

@@ -267,15 +267,17 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
 
 
 def _with_kept_inputs(state: Any, mv: "MVDefinition", semantic: str) -> str:
-    """REQ-2131 (amended 2026-11-16): a view applying a column transform is built once and stored,
-    and a reader's row rules filter its stored rows: its build keeps, beside its columns, every
-    input column a role's row rule on one of its inputs reads (``transform_view_rules``)."""
-    from provisa.codesource.columns_fold import called
+    """REQ-2131 (amended 2026-11-16), REQ-2249: a view applying a column transform or calling a
+    code command is built once and stored, and a reader's row rules filter its stored rows: its
+    build keeps, beside its columns, every input column a role's row rule on one of its inputs
+    reads (``transform_view_rules``)."""
     from provisa.compiler.stage2 import context_table_map
     from provisa.mv.transform_view_rules import kept_inputs, roles_rules, with_rule_inputs
+    from provisa.mv.view_read import lands_stored_read
+    from provisa.pgwire._pipeline import view_commands
 
     transforms = getattr(state, "column_transforms", None) or {}
-    if mv.view_table is None or not called(semantic, transforms):
+    if mv.view_table is None or not lands_stored_read(semantic, transforms, view_commands(state)):
         return semantic
     kept = kept_inputs(semantic, context_table_map(state.view_context), roles_rules(state))
     return with_rule_inputs(semantic, kept)

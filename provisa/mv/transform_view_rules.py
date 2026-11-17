@@ -8,7 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A reader's rules on a view applying a column transform (REQ-2131, amended 2026-11-16).
+"""A reader's rules on a view applying a column transform (REQ-2131, amended 2026-11-16) or calling
+a code command (REQ-2249): both are stored views, read only from their stored tables.
 
 The view is built once and stored, never recomputed per reader, and no transform is called on a
 read. So:
@@ -21,9 +22,16 @@ read. So:
   read over those kept columns, and masks each output whose lineage (:func:`output_lineage`)
   includes a column masked for the reader, with that column's mask. A reader with no row rule on
   an input and no mask on a column an output derives from reads the stored rows as they are.
+* A code command's rows are computed from the whole of each table it is given, so each of its
+  outputs derives from every column of those tables, and its rows carry no input row's values.
+* The kept columns a read filters over are those the stored table holds as built
+  (:func:`stored_rule_inputs`), never those the rules name now: a row rule changed since the build
+  is refused by name (:class:`ViewAwaitsRuleRebuild`) until the build that follows the change has
+  published (:func:`rebuild_for_rules`), never read under the rules before it nor failed by the
+  engine.
 """
 
-# Requirements: REQ-2131
+# Requirements: REQ-2131, REQ-2249
 
 from __future__ import annotations
 
@@ -33,11 +41,15 @@ from typing import TYPE_CHECKING, Any
 import sqlglot
 from sqlglot import exp
 
+from provisa.core.read_refusal import ReadRefused
+
 if TYPE_CHECKING:
     from provisa.compiler.stage2 import GovernanceContext
+    from provisa.mv.models import MVDefinition
 
 #: Where a kept input column is stored: the input's alias in the definition, then the column.
 _RULE_INPUT = "__rule_input_{alias}__{column}"
+_RULE_INPUT_PREFIX = "__rule_input_"
 
 #: An output's lineage: the (table id, column name as the definition reads it) it derives from.
 Lineage = frozenset[tuple[int, str]]
@@ -46,6 +58,21 @@ Lineage = frozenset[tuple[int, str]]
 def rule_input(alias: str, column: str) -> str:
     """The stored table's name for input ``column`` of the input read as ``alias``."""
     return _RULE_INPUT.format(alias=alias, column=column)
+
+
+class ViewAwaitsRuleRebuild(ReadRefused):
+    """A stored view read by a role whose row rule on one of its inputs reads an input column its
+    stored rows do not hold yet: the rule changed since the view was built, and the build that
+    follows the change has not published (REQ-2131)."""
+
+    code = "data.view_awaits_rule_rebuild"
+
+    def __init__(self, view: str) -> None:
+        super().__init__(
+            f"the view {view!r} is being built again for a change to the row rules on its "
+            "inputs; this role can read it once that build has published"
+        )
+        self.params = {"view": view}
 
 
 def _parse(sql: str) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
@@ -188,11 +215,13 @@ class _Lineage:
         columns_of: Callable[[int], list[str]],
         views: Mapping[str, str],
         transforms: Mapping[str, dict],
+        commands: Mapping[str, dict],
     ) -> None:
         self.table_map = table_map
         self.columns_of = columns_of
         self.views = views
         self.transforms = {name.lower(): command for name, command in transforms.items()}
+        self.commands = {name.lower(): command for name, command in commands.items()}
 
     def of_query(
         self, query: exp.Expr, ctes: Mapping[str, dict[str, Lineage]]
@@ -225,7 +254,9 @@ class _Lineage:
         for relation in _relations(select):
             alias = relation.alias_or_name
             if isinstance(relation, exp.Table):
-                if not relation.db and relation.name in ctes:
+                if (command := _command_of(relation, self.commands)) is not None:
+                    scope.derived[alias] = self._command(relation, command)
+                elif not relation.db and relation.name in ctes:
                     scope.derived[alias] = ctes[relation.name]
                 elif relation.name in self.views:
                     scope.derived[alias] = self.of_query(_parse(self.views[relation.name]), {})
@@ -234,6 +265,21 @@ class _Lineage:
             elif isinstance(relation, exp.Subquery):
                 scope.derived[alias] = self.of_query(relation.this, ctes)
         return scope
+
+    def _command(self, call: exp.Table, command: dict) -> dict[str, Lineage]:
+        """REQ-2249: a code command's rows are computed from the whole of each table it is
+        given, so each of its output columns derives from every column of those tables."""
+        from provisa.compiler.naming import table_id_of  # noqa: PLC0415
+        from provisa.compiler.sql_validator import command_table_arguments  # noqa: PLC0415
+
+        inputs: set[tuple[int, str]] = set()
+        for table in command_table_arguments(call, command):
+            if table.name in self.views:
+                for lineage in self.of_query(_parse(self.views[table.name]), {}).values():
+                    inputs |= lineage
+            elif (table_id := table_id_of(table, self.table_map)) is not None:
+                inputs |= {(table_id, column) for column in self.columns_of(table_id)}
+        return {c["name"]: frozenset(inputs) for c in command.get("output_columns") or []}
 
     def _column(self, column: exp.Column, scope: _Scope) -> Lineage:
         holders = [column.table] if column.table else scope.names()
@@ -290,31 +336,51 @@ class _Lineage:
         return {item.alias_or_name: self._expression(item, scope, ctes)}
 
 
+def _command_of(relation: exp.Table, commands: Mapping[str, dict]) -> dict | None:
+    """The code command ``relation`` calls (REQ-2249), by ``commands``' lower-cased names."""
+    target = relation.this
+    if relation.db or not isinstance(target, exp.Anonymous):
+        return None
+    return commands.get(target.name.lower())
+
+
 def output_lineage(
     definition: str,
     table_map: Mapping[str, int],
     columns_of: Callable[[int], list[str]],
     views: Mapping[str, str],
     transforms: Mapping[str, dict],
+    commands: Mapping[str, dict],
 ) -> dict[str, Lineage]:
     """Each output column of ``definition`` with the registered columns it is computed from,
     through derived tables, common table expressions and the other ``views`` it reads; a column
-    transform's outputs each from all of its inputs (REQ-2131)."""
-    return _Lineage(table_map, columns_of, views, transforms).of_query(_parse(definition), {})
+    transform's outputs each from all of its inputs (REQ-2131); a code command's each from every
+    column of the tables it is given (REQ-2249)."""
+    lineage = _Lineage(table_map, columns_of, views, transforms, commands)
+    return lineage.of_query(_parse(definition), {})
 
 
 def tables_read(
-    definition: str, table_map: Mapping[str, int], views: Mapping[str, str]
+    definition: str,
+    table_map: Mapping[str, int],
+    views: Mapping[str, str],
+    commands: Mapping[str, dict],
 ) -> set[int]:
     """Every registered table ``definition`` reads, anywhere in it, through the other ``views``
-    it reads too."""
+    it reads and as the tables a code command it calls is given (REQ-2249)."""
     from provisa.compiler.naming import table_id_of  # noqa: PLC0415
+    from provisa.compiler.sql_validator import command_table_arguments  # noqa: PLC0415
 
+    lowered = {name.lower(): command for name, command in commands.items()}
     found: set[int] = set()
     pending, seen = [definition], set()
     while pending:
-        for table in _parse(pending.pop()).find_all(exp.Table):
-            if table.name in views and table.name not in seen:
+        tables = list(_parse(pending.pop()).find_all(exp.Table))
+        while tables:
+            table = tables.pop()
+            if (command := _command_of(table, lowered)) is not None:
+                tables += command_table_arguments(table, command)
+            elif table.name in views and table.name not in seen:
                 seen.add(table.name)
                 pending.append(views[table.name])
             elif (table_id := table_id_of(table, table_map)) is not None:
@@ -359,15 +425,25 @@ def reader_rows(
     gov: "GovernanceContext",
     state: Any,
     views: Mapping[str, str],
+    commands: Mapping[str, dict],
+    stored: frozenset[str] | None,
 ) -> exp.Select | None:  # pyright: ignore[reportPrivateImportUsage]
-    """The reader's read of transform view ``view``'s stored rows, through ``reference`` (the
-    view's reference in the governed statement, which optimization answers from its stored table): its row rules applied over the kept input columns and each output computed
-    from a column masked for it masked with that column's mask. None when no rule of the reader
-    narrows the view's inputs: it reads the stored rows as they are.
+    """The reader's read of stored view ``view``'s rows, through ``reference`` (the view's
+    reference in the governed statement, which optimization answers from its stored table): its
+    row rules applied over the kept input columns and each output computed from a column masked
+    for it masked with that column's mask. None when no rule of the reader narrows the view's
+    inputs: it reads the stored rows as they are.
+
+    ``stored`` is the kept input columns the stored table holds as built
+    (:func:`stored_rule_inputs`; None when it is not built), read only when the reader has a row
+    rule on an input (:func:`filters_rows`). A rule reading a column the rules keep but the
+    stored table does not hold yet is refused by name until the build that keeps it publishes
+    (:class:`ViewAwaitsRuleRebuild`).
 
     A row rule of the reader on a table the stored rows carry no input values of -- one read
-    inside a derived table or another view, or by a view whose rows fold its inputs together -- is
-    refused naming the table: those rows cannot be filtered by it."""
+    inside a derived table or another view, given to a code command, or read by a view whose rows
+    fold its inputs together -- is refused naming the table: those rows cannot be filtered by
+    it."""
     from provisa.compiler.naming import apply_sql_name  # noqa: PLC0415
     from provisa.compiler.stage2 import registered_name  # noqa: PLC0415
     from provisa.security.masking import MaskType, mask_expression  # noqa: PLC0415
@@ -381,15 +457,18 @@ def reader_rows(
         rule = gov.rls_rules.get(table_id)
         if rule is None:
             continue
-        missing = sorted(c for c in rule_columns(rule) if (alias, c) not in kept_set)
+        columns = sorted(rule_columns(rule))
+        missing = [c for c in columns if (alias, c) not in kept_set]
         if missing:
             raise PermissionError(
                 f"[V003] View {view!r} is stored without input {', '.join(missing)} that this "
                 f"role's row rule on its input {alias!r} reads"
             )
+        if stored is None or any(rule_input(alias, c) not in stored for c in columns):
+            raise ViewAwaitsRuleRebuild(view)
         filters.append(_reader_filter(rule, alias, table_id, held, gov))
         filtered.add(table_id)
-    for table_id in sorted(tables_read(definition, gov.table_map, views) - filtered):
+    for table_id in sorted(tables_read(definition, gov.table_map, views, commands) - filtered):
         if table_id in gov.rls_rules:
             raise PermissionError(
                 f"[V003] This role's row rule on table {_table_name(table_id, gov)!r} cannot "
@@ -406,6 +485,7 @@ def reader_rows(
         columns_of,
         views,
         getattr(state, "column_transforms", None) or {},
+        commands,
     )
     items: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
     masked_any = False
@@ -431,8 +511,91 @@ def reader_rows(
         return None
     from provisa.compiler.rls import all_of  # noqa: PLC0415
 
-    stored = reference.copy()
-    stored.set("alias", exp.TableAlias(this=exp.to_identifier(held)))
-    read = exp.select(*items).from_(stored)
+    stored_table = reference.copy()
+    stored_table.set("alias", exp.TableAlias(this=exp.to_identifier(held)))
+    read = exp.select(*items).from_(stored_table)
     where = all_of(filters)
     return read if where is None else read.where(where)
+
+
+def filters_rows(definition: str, gov: "GovernanceContext") -> bool:
+    """Whether the reader has a row rule on an input whose values the stored rows of
+    ``definition`` keep: the read filters over kept columns, so it reads what the stored table
+    holds (:func:`stored_rule_inputs`)."""
+    return any(table_id in gov.rls_rules for _, table_id in rule_inputs(definition, gov.table_map))
+
+
+async def stored_rule_inputs(mv: "MVDefinition", state: Any) -> frozenset[str] | None:
+    """The kept input columns ``mv``'s stored table holds, read from the table itself; None when
+    it is not built. Held on ``mv`` for the build it read (its ``last_refresh_at``) under the rules
+    of the model it read them for (``role_build_inputs``): a build published, or a rule changed,
+    reads the table again."""
+    key = (mv.last_refresh_at, id(state.role_build_inputs))
+    held = mv.stored_rule_inputs
+    if held is not None and held[0] == key:
+        return held[1]
+    from provisa.federation.execution_auth import SystemAuth, mint_system_token  # noqa: PLC0415
+    from provisa.mv.refresh import _target_columns  # noqa: PLC0415
+
+    columns = await _target_columns(
+        state.federation_engine,
+        mv,
+        mv.stored_ref(),
+        SystemAuth(mint_system_token(), reason=f"mv_rule_inputs:{mv.id}"),
+    )
+    if columns is None:
+        return None
+    kept = frozenset(c for c in columns if c.startswith(_RULE_INPUT_PREFIX))
+    mv.stored_rule_inputs = (key, kept)
+    return kept
+
+
+async def views_to_rebuild(state: Any) -> list["MVDefinition"]:
+    """The stored views (REQ-2131, REQ-2249) built here whose stored tables hold other kept input
+    columns than the row rules of the model now name: each must be built again. One not built yet
+    is built with the rules in force by its first build."""
+    from provisa.compiler.stage2 import context_table_map  # noqa: PLC0415
+    from provisa.federation.replica_converge import builds_here  # noqa: PLC0415
+
+    stored_reads = getattr(state, "stored_view_reads", None) or set()
+    if not stored_reads:
+        return []
+    table_map = context_table_map(state.view_context)
+    rules_of = roles_rules(state)
+    found: list["MVDefinition"] = []
+    for view in sorted(stored_reads):
+        mv = state.mv_registry.get(f"view-{view}")
+        if mv is None or mv.semantic_sql is None:
+            raise RuntimeError(f"stored view {view!r} has no definition registered")
+        if not mv.enabled or not builds_here(mv.region):
+            continue
+        kept = kept_inputs(mv.semantic_sql, table_map, rules_of)
+        needed = frozenset(rule_input(alias, column) for alias, _, column in kept)
+        held = await stored_rule_inputs(mv, state)
+        if held is not None and held != needed:
+            found.append(mv)
+    return found
+
+
+async def rebuild_for_rules(state: Any) -> list[str]:
+    """Start a build of each stored view whose kept input columns a change to the row rules
+    changed (:func:`views_to_rebuild`), each on a background worker; the ids of those started.
+    Until a build publishes, a reader whose rule reads a column it adds is refused by name
+    (:class:`ViewAwaitsRuleRebuild`)."""
+    from provisa.core.connection_loop import spawn_background  # noqa: PLC0415
+    from provisa.mv.refresh import refresh_mv  # noqa: PLC0415
+
+    started: list[str] = []
+    for mv in await views_to_rebuild(state):
+        spawn_background(
+            refresh_mv(
+                state.federation_engine,
+                mv,
+                state.mv_registry,
+                store=state.model_db,
+                ledger=state.tenant_db,
+            ),
+            name=f"rule-change build of {mv.id}",
+        )
+        started.append(mv.id)
+    return started
