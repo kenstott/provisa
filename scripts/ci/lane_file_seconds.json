@@ -584,6 +584,7 @@
   "tests/integration/test_timestamptz_e2e.py": 0.0,
   "tests/integration/test_trace_detail_span_count_e2e.py": 120.8,
   "tests/integration/test_trace_scope_e2e.py": 222.9,
+  "tests/integration/test_transform_view_reader_rules_e2e.py": 60.0,
   "tests/integration/test_triggers_on_change_e2e.py": 30.9,
   "tests/integration/test_trino_clickhouse_catalog_e2e.py": 20.5,
   "tests/integration/test_trino_flight_engine_e2e.py": 0.7,
