@@ -758,20 +758,29 @@ Restart the federation engine container (single-node dev only).
 
 #### `POST /admin/discover/relationships`
 
-Trigger relationship discovery. Always runs FK introspection from the federation engine. The `semantics` kind asks the model your organization assigns to relationship inference. When that model's vendor has no key to use, the request is refused with `409` and code `discovery.semantics_unavailable`.
+Run relationship discovery while you wait. The run is stored like one started from the discovery dialog, and its proposals are kept as candidates.
 
 **Request body:**
 
 ```json
 {
   "scope": "domain",
-  "domain_id": "sales"
+  "domain_id": "sales",
+  "kinds": ["foreign_keys", "semantics"]
 }
 ```
 
-`scope` must be one of `"table"`, `"domain"`, `"cross-domain"`. For `"table"` scope, `table_id` (integer) is required. For `"domain"` scope, `domain_id` is required.
+`scope` is one of `"table"`, `"domain"` or `"cross-domain"`. A `"table"` scope compares the tables of that table's domain and needs `table_id` (integer). A `"domain"` scope needs `domain_id`. A `"cross-domain"` scope compares the tables of every domain.
 
-**Response.** `{"candidates_found": 12, "stored_ids": [1, 2, 3, ...]}`
+`kinds` names at least one of `"foreign_keys"` and `"semantics"`. The `semantics` kind asks the model your organization assigns to relationship inference. When that model's vendor has no key to use, the request is refused with `409` and code `discovery.semantics_unavailable`.
+
+**Response.** The run, the number of candidates found, their ids, and a report for each kind that ran:
+
+```json
+{"run": {...}, "candidates_found": 12, "stored_ids": [1, 2, 3], "foreign_keys": {...}, "semantics": {...}}
+```
+
+A run that fails answers `502` with code `discovery.run_failed`.
 
 #### `GET /admin/discover/candidates`
 
