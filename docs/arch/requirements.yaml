@@ -75405,7 +75405,13 @@
     its ends is withdrawn or retired, a derived state with no setting of its own. Graph views (the ERD,
     Explore''s graph, the graph schema) leave withdrawn tables and their relationships out, and show them,
     drawn apart, only to a person who may preview them and asks to; no query language reaches them; relationship
-    discovery never includes them.'
+    discovery never includes them. (Amended 2026-11-16, WITHDRAWN IS THE WAYPOINT OF A MOVE BETWEEN REGIONS;
+    THERE IS NO DRAFT:) Maintainer 2026-11-16, replacing the amendment of this day that kept draft as the
+    internal waypoint of a region move. There is no draft state. A move between regions passes through withdrawn:
+    the holder of data residency for the origin region withdraws the object, so no data is held or read
+    anywhere, and a holder for the destination region puts it back into that region; putting back names
+    a region, within the regions the person''s grant covers. A configuration file carries a withdrawn object
+    as withdrawn, so a promotion carries a move in progress.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
