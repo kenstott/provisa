@@ -120,6 +120,7 @@ def _state(
             ],
         },
         tracked_functions={"rank_suppliers": RANK_SUPPLIERS},
+        relationships=[],
     )
     if stored is None:
         from provisa.mv.transform_view_rules import kept_inputs, roles_rules, rule_input
@@ -522,3 +523,50 @@ def test_a_rule_change_builds_each_stored_view_whose_kept_inputs_it_changed(monk
     state.federation_engine.columns = [*_OUTPUTS, "__rule_input_suppliers__raw_address"]
     state.mv_registry.mark_refreshed("view-clean_suppliers", 70)
     assert asyncio.run(transform_view_rules.rebuild_for_rules(state)) == []
+
+
+# --- REQ-2131 (amended b0823d303a): a bridge is filtered through its relationship to each input ---
+
+CALLED_ONLY = "SELECT r.supplier_id AS id, r.score FROM rank_suppliers('fx.suppliers') AS r"
+
+#: suppliers.id to the view's id: the relationship a code resolver's set registers.
+SUPPLIER_TO_VIEW = {
+    "source_table_id": 1,
+    "target_table_id": 2,
+    "source_column": "id",
+    "target_column": "id",
+    "via_table_id": None,
+    "target_function_name": None,
+}
+
+
+def test_a_code_command_views_rows_are_filtered_through_its_relationship_to_the_input():
+    """The rows the command's call returns carry no supplier's values, but the view's id is
+    suppliers.id by a registered relationship: the reader's rule on suppliers holds through it."""
+    state = _state(MVStatus.FRESH, {1: _east()}, definition=CALLED_ONLY)
+    state.relationships = [SUPPLIER_TO_VIEW]
+    answered = _answered(RANKED_STATEMENT, state, _ranked_reader(row_rule=True))
+    assert (
+        'WHERE EXISTS(SELECT 1 FROM fx.suppliers AS __rule_1 WHERE "__rule_1"."id" = '
+        '"clean_suppliers"."id" AND "__rule_1"."region" = \'east\')'
+    ) in answered
+    assert "rank_suppliers" not in answered
+    assert state.federation_engine.probes == []  # no kept column is read
+
+
+def test_a_key_output_is_masked_only_by_a_mask_on_its_key_column():
+    """id is the view's key to suppliers.id: a mask on another suppliers column masks score,
+    which the command computed from the whole table, and leaves id in clear."""
+    state = _state(MVStatus.FRESH, definition=CALLED_ONLY)
+    state.relationships = [SUPPLIER_TO_VIEW]
+    items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("region",))))
+    assert items == {"id": '"clean_suppliers"."id"', "score": "'***'"}
+    items = _items(_answered(RANKED_STATEMENT, state, _ranked_reader(masked=("id",))))
+    assert items == {"id": "'***'", "score": "'***'"}
+
+
+def test_a_junction_edge_through_the_view_is_no_relationship_to_filter_by():
+    state = _state(MVStatus.FRESH, {1: _east()}, definition=CALLED_ONLY)
+    state.relationships = [{**SUPPLIER_TO_VIEW, "target_table_id": 1, "via_table_id": 2}]
+    with pytest.raises(PermissionError, match="fx.suppliers"):
+        _answered(RANKED_STATEMENT, state, _ranked_reader(row_rule=True))

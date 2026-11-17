@@ -23,7 +23,11 @@ read. So:
   includes a column masked for the reader, with that column's mask. A reader with no row rule on
   an input and no mask on a column an output derives from reads the stored rows as they are.
 * A code command's rows are computed from the whole of each table it is given, so each of its
-  outputs derives from every column of those tables, and its rows carry no input row's values.
+  outputs derives from every column of those tables, and its rows carry no input row's values. A
+  reader's rule on such a table is held through that table's registered relationship to the view
+  (an EXISTS over the table under the rule, :func:`view_keys`), and an output that is the table's
+  relationship key derives from that key column only (amended b0823d303a; REQ-2249: rules apply at
+  each hop). A rule on a given table with no relationship to the view is refused by name.
 * The kept columns a read filters over are those the stored table holds as built
   (:func:`stored_rule_inputs`), never those the rules name now: a row rule changed since the build
   is refused by name (:class:`ViewAwaitsRuleRebuild`) until the build that follows the change has
@@ -410,6 +414,80 @@ def _reader_filter(
     return pred
 
 
+def command_inputs(
+    definition: str, table_map: Mapping[str, int], commands: Mapping[str, dict]
+) -> dict[int, str]:
+    """Each registered table a code command the definition calls is given (REQ-2249), by its id,
+    with the name the definition gives it."""
+    from provisa.compiler.naming import table_id_of  # noqa: PLC0415
+    from provisa.compiler.sql_validator import command_table_arguments  # noqa: PLC0415
+
+    lowered = {name.lower(): command for name, command in commands.items()}
+    found: dict[int, str] = {}
+    for call in _parse(definition).find_all(exp.Table):
+        command = _command_of(call, lowered)
+        if command is None:
+            continue
+        for table in command_table_arguments(call, command):
+            table_id = table_id_of(table, table_map)
+            if table_id is not None:
+                found.setdefault(table_id, table.sql(dialect="postgres"))
+    return found
+
+
+def view_keys(
+    view_table_id: int, given: Mapping[int, str], relationships: Iterable[dict]
+) -> dict[int, tuple[str, str, str]]:
+    """(name, its key column, the view's column) of each table in ``given`` that a registered
+    relationship joins to the view on one column each, in either direction (a junction edge
+    through the view is none of these)."""
+    found: dict[int, tuple[str, str, str]] = {}
+    for rel in relationships:
+        if rel.get("via_table_id") is not None or rel.get("target_function_name"):
+            continue
+        ends = (rel["source_table_id"], rel["target_table_id"])
+        if ends[1] == view_table_id and ends[0] in given:
+            table_id, key, column = ends[0], rel["source_column"], rel["target_column"]
+        elif ends[0] == view_table_id and ends[1] in given:
+            table_id, key, column = ends[1], rel["target_column"], rel["source_column"]
+        else:
+            continue
+        found.setdefault(table_id, (given[table_id], key, column))
+    return found
+
+
+def _related_filter(
+    rule: exp.Expr,  # pyright: ignore[reportPrivateImportUsage]
+    name: str,
+    table_id: int,
+    input_column: str,
+    view_column: str,
+    held: str,
+    gov: "GovernanceContext",
+) -> exp.Expr:  # pyright: ignore[reportPrivateImportUsage]
+    """EXISTS a row of the table ``name`` under the reader's ``rule`` whose ``input_column`` is
+    the stored row's ``view_column``: the reader's rule on that input, held through its
+    relationship to the view."""
+    from provisa.compiler.rls import cast_session_terms  # noqa: PLC0415
+
+    inner = f"__rule_{table_id}"
+    pred = rule.copy()
+    cast_session_terms(pred, {n: dtype for n, dtype in gov.all_columns.get(table_id, [])})
+    for column in list(pred.find_all(exp.Column)):
+        if _top_scope(column):
+            column.replace(exp.column(column.name, table=inner, quoted=True))
+    joined = exp.EQ(
+        this=exp.column(input_column, table=inner, quoted=True),
+        expression=exp.column(view_column, table=held, quoted=True),
+    )
+    read = (
+        exp.select(exp.Literal.number(1))
+        .from_(exp.to_table(name, dialect="postgres").as_(inner))
+        .where(exp.and_(joined, pred))
+    )
+    return exp.Exists(this=read)
+
+
 def _table_name(table_id: int, gov: "GovernanceContext") -> str:
     """A name the reader's statements give table ``table_id``: its qualified one, else its bare."""
     names = sorted(n for n, tid in gov.table_map.items() if tid == table_id)
@@ -440,10 +518,11 @@ def reader_rows(
     stored table does not hold yet is refused by name until the build that keeps it publishes
     (:class:`ViewAwaitsRuleRebuild`).
 
-    A row rule of the reader on a table the stored rows carry no input values of -- one read
-    inside a derived table or another view, given to a code command, or read by a view whose rows
-    fold its inputs together -- is refused naming the table: those rows cannot be filtered by
-    it."""
+    A row rule of the reader on a table a code command is given is held through that table's
+    registered relationship to the view (:func:`view_keys`). Any other row rule on a table the
+    stored rows carry no input values of -- one read inside a derived table or another view, given
+    to a code command with no relationship to the view, or read by a view whose rows fold its
+    inputs together -- is refused naming the table: those rows cannot be filtered by it."""
     from provisa.compiler.naming import apply_sql_name  # noqa: PLC0415
     from provisa.compiler.stage2 import registered_name  # noqa: PLC0415
     from provisa.security.masking import MaskType, mask_expression  # noqa: PLC0415
@@ -468,6 +547,17 @@ def reader_rows(
             raise ViewAwaitsRuleRebuild(view)
         filters.append(_reader_filter(rule, alias, table_id, held, gov))
         filtered.add(table_id)
+    given = command_inputs(definition, gov.table_map, commands)
+    keys = view_keys(view_table_id, given, state.relationships)
+    for table_id, (name, input_column, view_column) in sorted(keys.items()):
+        # REQ-2131 (amended b0823d303a), REQ-2249: a bridge's rows are filtered by the reader's
+        # rule on each table its command is given, through that table's relationship to the view.
+        rule = gov.rls_rules.get(table_id)
+        if rule is not None:
+            filters.append(
+                _related_filter(rule, name, table_id, input_column, view_column, held, gov)
+            )
+            filtered.add(table_id)
     for table_id in sorted(tables_read(definition, gov.table_map, views, commands) - filtered):
         if table_id in gov.rls_rules:
             raise PermissionError(
@@ -487,6 +577,10 @@ def reader_rows(
         getattr(state, "column_transforms", None) or {},
         commands,
     )
+    for table_id, (_, input_column, view_column) in keys.items():
+        # An output that is a given table's relationship key derives from that key column only.
+        if (table_id, input_column) in lineage.get(view_column, frozenset()):
+            lineage[view_column] = frozenset({(table_id, input_column)})
     items: list[exp.Expr] = []  # pyright: ignore[reportPrivateImportUsage]
     masked_any = False
     for physical, dtype in gov.all_columns.get(view_table_id, []):
