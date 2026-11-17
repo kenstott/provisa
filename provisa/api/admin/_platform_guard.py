@@ -28,6 +28,7 @@ from provisa.security.inheritance import right_not_in_parents
 from provisa.security.rights import (
     DEPLOYMENT_GRANTER,
     Capability,
+    OrgAdminGrantError,
     PlatformRoleGrantError,
     check_role_grant,
     platform_rights_in,
@@ -199,6 +200,15 @@ def require_role_grantable(  # REQ-1337
             role=role_id,
             rights=exc.missing,
         ) from exc
+    except OrgAdminGrantError as exc:
+        raise org_admin_refusal(exc.missing) from exc
+
+
+def org_admin_refusal(missing: Iterable[str]) -> ApiError:  # REQ-1327
+    """The 403 for an act that is an org_admin's (deleting the org, granting org_admin) asked by
+    a caller lacking ``missing`` of org_admin's rights: user_management alone allows neither."""
+    right = ", ".join(sorted(missing))
+    return ApiError(403, "platform.right_required", f"{right} capability required", right=right)
 
 
 def role_definition_problem(  # REQ-042, REQ-1337, REQ-1530
