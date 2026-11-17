@@ -153,6 +153,7 @@
       "source_starting": "The source {{source}} is still starting. Try again in a moment.",
       "source_unavailable": "The source {{source}} could not answer. Try again shortly.",
       "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
+      "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
       "graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
       "graphql_body_not_json": "The request body is not JSON: {{error}}",
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
@@ -324,6 +325,13 @@
       "catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
       "function_unsupported": "{{function}}() has no form on {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Redaction rule {{rule}}: {{why}}",
+      "pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
+      "pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
+      "pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
+      "server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault."
+    },
     "replication": {
       "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
       "no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
@@ -344,7 +352,9 @@
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
       "description_missing": "Role '{{role}}' needs a description of what it is for",
-      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it"
+      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it",
+      "platform_right_requires_platform_admin": "A role carrying {{rights}} is defined by a platform administrator",
+      "rights_not_held": "Role {{role}} carries {{rights}}, which you do not hold"
     },
     "schema": {
       "allowed_domains_updated": "Allowed domains updated for source '{{source}}'",
@@ -727,6 +737,10 @@
     "dbt_sources": {
       "unknown_role": "No role named {{role}} exists."
     },
+    "debug_logs": {
+      "pattern_refused": "The log filter pattern is refused: {{why}}",
+      "pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
+    },
     "dbt": {
       "products": {
         "none_offered": "Source {{source_id}} has no public model with an enforced contract.",
@@ -885,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
       "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
+      "filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
+      "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
     }
   }
 }

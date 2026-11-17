@@ -10845,5 +10845,18 @@
   "ru/serverErrors.json::serverErrors.ai.vector_model_address_from_server": "The embedding model {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "ru/serverErrors.json::serverErrors.ai.vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "ru/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
-  "ru/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
+  "ru/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
+  "ru/serverErrors.json::serverErrors.roles.platform_right_requires_platform_admin": "A role carrying {{rights}} is defined by a platform administrator",
+  "ru/serverErrors.json::serverErrors.roles.rights_not_held": "Role {{role}} carries {{rights}}, which you do not hold",
+  "ru/serverErrors.json::serverErrors.redaction.rule_invalid": "Redaction rule {{rule}}: {{why}}",
+  "ru/serverErrors.json::serverErrors.redaction.pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
+  "ru/serverErrors.json::serverErrors.redaction.pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
+  "ru/serverErrors.json::serverErrors.redaction.pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
+  "ru/serverErrors.json::serverErrors.redaction.server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault.",
+  "ru/serverErrors.json::serverErrors.debug_logs.pattern_refused": "The log filter pattern is refused: {{why}}",
+  "ru/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters.",
+  "ru/serverErrors.json::serverErrors.data.view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
+  "ru/serverErrors.json::serverErrors.import.include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
+  "ru/serverErrors.json::serverErrors.import.filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
+  "ru/serverErrors.json::serverErrors.import.filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
 }

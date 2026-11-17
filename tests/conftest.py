@@ -527,10 +527,11 @@ os.environ.setdefault(
 )
 
 
-# The Calcite-derived Trino connector plugins the compose stack bind-mounts, and the Maven
-# coordinates they come from. Kept in step with .github/workflows/build-dmg.yml's
-# download-plugins job and ui-e2e-trino.yml — CI and the test harness must fetch the same
-# build, or a connector behaves differently here than in the shipped image.
+# The Calcite-derived Trino connector plugins the compose stack bind-mounts: their pin, sha256s
+# and fetch live in tests/trino_plugins.py (standard library only, so a workflow step runs it
+# before any environment exists). Kept in step with release-prebuilt.yml and
+# scripts/ci/lanes/trino-stack-prepare.sh -- CI and the test harness must fetch the same build,
+# or a connector behaves differently here than in the shipped image.
 #
 # Maven Central, not the kenstott/calcite GitHub release: the engine-v0.32.0 release was
 # deleted mid-CI-run and every download started 404ing. Central is immutable once published,
@@ -538,50 +539,37 @@ os.environ.setdefault(
 # artifacts). Each published jar is a shaded fat jar carrying its own
 # META-INF/services/io.trino.spi.Plugin and no io.trino.spi classes, so a single jar dropped
 # into trino/plugins/<name>/ is a complete plugin directory.
-_TRINO_PLUGIN_MAVEN = "https://repo1.maven.org/maven2/io/simpleishard"
-_TRINO_PLUGIN_VERSION = "0.106.3"
-_TRINO_PLUGINS = (
-    "trino-sharepoint",
-    "trino-splunk",
-    "trino-file",
-    "trino-salesforce",
-    "trino-cloudops",
+from tests import trino_plugins as _trino_plugins  # noqa: E402
+from tests.trino_plugins import (  # noqa: E402
+    _TRINO_PLUGINS,
+    TrinoPluginRefused,
 )
-# Plugins fetched at a version other than _TRINO_PLUGIN_VERSION; a plugin absent here is at
-# _TRINO_PLUGIN_VERSION. The same table as provisa/runtime_deps/pgwire_bundles.py
-# CONNECTOR_RELEASE, for the same reason, and each entry goes when _TRINO_PLUGIN_VERSION moves.
-#   trino-salesforce: 0.108.0 is the first release that has it (REQ-1946).
-#   trino-cloudops: 0.108.0 is the first whose plugin takes the `schema` property (REQ-1947).
-#   trino-file: 0.109.0 is the first whose plugin takes the `crawl` property (REQ-1960).
-# A plain assignment of literals: integration-suite.yml's "Trino plugin pin" step reads it.
-_TRINO_PLUGIN_VERSIONS = {
-    "trino-salesforce": "0.108.0",
-    "trino-cloudops": "0.108.0",
-    "trino-file": "0.109.0",
-}
 
 
 def _trino_plugin_version(name: str) -> str:
-    return _TRINO_PLUGIN_VERSIONS.get(name, _TRINO_PLUGIN_VERSION)
+    return _trino_plugins.plugin_version(name)
 
 
 def _download_trino_plugin(target: str, name: str) -> None:
-    """Fetch the pinned plugin jar into ``target`` (an empty directory).
+    """Fetch the pinned plugin jar into ``target`` (an empty directory), checked by its sha256.
 
     Tests provision the services they need, and Trino is no exception: without these jars it
     aborts with "No service providers of type io.trino.spi.Plugin", which surfaces only as an
     unhealthy container two minutes into the run. Downloading here turns that into a first-run
-    cost instead of an unexplained stack failure.
-    """
-    import urllib.request
+    cost of a local run instead of an unexplained stack failure.
 
-    version = _trino_plugin_version(name)
-    url = f"{_TRINO_PLUGIN_MAVEN}/{name}/{version}/{name}-{version}.jar"
-    os.makedirs(target, exist_ok=True)
-    print(f"[conftest] downloading Trino plugin {name} from {url}")
-    urllib.request.urlretrieve(  # noqa: S310 — pinned https Maven Central URL
-        url, os.path.join(target, f"{name}-{version}.jar")
-    )
+    A CI run never downloads here: its workflow restores the jars from the cache one job fetched
+    them into and verifies them before pytest (.github/actions/trino-plugins). A jar missing on a
+    runner means that step was left out, and the run is refused by name rather than sending
+    every lane to Maven Central at once (release 510: HTTP 429 mid-collection).
+    """
+    if os.environ.get("GITHUB_ACTIONS") == "true":
+        raise TrinoPluginRefused(
+            f"Trino plugin {name}: {os.path.join(target, _trino_plugins.jar_name(name))} is "
+            "missing. A CI job restores the pinned jars with .github/actions/trino-plugins "
+            "before pytest; it never downloads them at collection."
+        )
+    _trino_plugins.fetch(target, name)
 
 
 # What _populate_trino_plugins itself downloaded, per plugin: {name: {"file", "sha256"}}. It sits
@@ -600,10 +588,7 @@ def _downloads(plugins: str) -> dict[str, dict[str, str]]:
 
 
 def _sha256(path: str) -> str:
-    import hashlib
-
-    with open(path, "rb") as f:
-        return hashlib.sha256(f.read()).hexdigest()
+    return _trino_plugins.sha256(path)
 
 
 def _record_download(plugins: str, name: str, jar: str) -> None:
@@ -648,12 +633,20 @@ def _populate_trino_plugins() -> None:
         # empty directory is "never populated", not "populated with nothing".
         present = sorted(os.listdir(target)) if os.path.isdir(target) else []
         if present == [pinned]:
+            # The pinned file name with other bytes (a truncated fetch, a rebuilt jar) is not the
+            # pinned build: refused by name, never mounted.
+            problem = _trino_plugins.jar_problem(os.path.join(target, pinned), name)
+            if problem is not None:
+                raise TrinoPluginRefused(
+                    f"Trino plugin {name}: {problem}. Empty {target} and the pinned build is "
+                    "downloaded on the next local run."
+                )
             continue
         if present and _downloaded_here(plugins, name, target, present):
             os.unlink(os.path.join(target, present[0]))  # this harness's fetch for an earlier pin
             present = []
         if present:
-            raise RuntimeError(
+            raise TrinoPluginRefused(
                 f"{target} holds {present[:3]}{' ...' if len(present) > 3 else ''}, not the "
                 f"pinned {pinned} (_TRINO_PLUGIN_VERSION). Empty that directory and the pinned "
                 "build is downloaded on the next run."
@@ -719,12 +712,15 @@ class _DockerServiceManager:
         batches = _marker_batches(session.items)
         _name_the_broker(batches)
 
-        # Trino's custom plugin jars (trino/plugins/*) are gitignored build artifacts:
-        # present only where they were built (the primary checkout). A fresh worktree
-        # mounts empty dirs and Trino fails startup ("No service providers ... in the
-        # classpath"). Populate missing plugin dirs from the primary checkout, located
-        # worktree-agnostically via the git common dir.
-        _populate_trino_plugins()
+        # Trino's plugin jars (trino/plugins/*) are gitignored: each directory must hold exactly
+        # the pinned build, checked by sha256, or Trino fails startup ("No service providers ...
+        # in the classpath") or runs a connector other than the pinned one.
+        try:
+            _populate_trino_plugins()
+        except TrinoPluginRefused as exc:
+            # A refusal names the jar and ends the session before any test, not as an
+            # INTERNALERROR traceback from inside collection.
+            pytest.exit(str(exc), returncode=pytest.ExitCode.USAGE_ERROR)
 
         # Sessions killed before their own teardown leave a PID-named project behind; clear
         # those (and only those) so containers/memory are not leaked forever. A live sibling
