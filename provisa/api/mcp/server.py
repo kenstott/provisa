@@ -1328,9 +1328,11 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
     import json as _json
 
     async def _send_401(send: Any, detail: str) -> None:
-        from provisa.security.redaction import redact
+        from provisa.security.redaction import client_redact
 
-        body = _json.dumps({"error": "unauthorized", "detail": redact(detail)}).encode("utf-8")
+        body = _json.dumps({"error": "unauthorized", "detail": client_redact(detail)}).encode(
+            "utf-8"
+        )
         await send(
             {
                 "type": "http.response.start",

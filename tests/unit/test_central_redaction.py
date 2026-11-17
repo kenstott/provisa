@@ -370,7 +370,7 @@ def test_an_http_error_body_is_redacted():
     client = TestClient(app)
     bad_resp = client.get("/bad")
     assert bad_resp.status_code == 400
-    assert bad_resp.json() == {"detail": "auth failed: [REDACTED:auto:pw]"}
+    assert bad_resp.json() == {"detail": "auth failed: [REDACTED]"}
     assert int(bad_resp.headers["content-length"]) == len(bad_resp.content)
     # A success body is the data asked for; the middleware leaves it alone.
     assert client.get("/ok").text == SECRET
@@ -393,7 +393,7 @@ def test_a_pgwire_error_message_is_redacted():
     handler.wfile = _W()
     handler._send_pg_error("ERROR", "XX000", f"source said {SECRET}")
     blob = b"".join(written)
-    assert SECRET.encode() not in blob and b"[REDACTED:auto:pw]" in blob
+    assert SECRET.encode() not in blob and b"source said [REDACTED]\x00" in blob
 
 
 def test_a_grpc_handler_error_is_redacted():
@@ -421,8 +421,8 @@ def test_a_grpc_handler_error_is_redacted():
     with pytest.raises(_Abort):
         _unary(_aborts)(None, _Ctx())
     assert aborted == [
-        (grpc.StatusCode.UNKNOWN, "Exception calling application: upstream [REDACTED:auto:pw]"),
-        (grpc.StatusCode.INVALID_ARGUMENT, "bad [REDACTED:auto:pw]"),
+        (grpc.StatusCode.UNKNOWN, "Exception calling application: upstream [REDACTED]"),
+        (grpc.StatusCode.INVALID_ARGUMENT, "bad [REDACTED]"),
     ]
 
 
@@ -446,7 +446,7 @@ def test_a_flight_error_is_redacted_and_keeps_its_type():
 
     with pytest.raises(flight.FlightUnauthenticatedError) as unauth:
         _Server().do_action(None, None)
-    assert SECRET not in str(unauth.value) and "[REDACTED:auto:pw]" in str(unauth.value)
+    assert SECRET not in str(unauth.value) and "token [REDACTED]" in str(unauth.value)
     with pytest.raises(flight.FlightServerError) as other:
         _Server().get_schema(None, None)
     assert SECRET not in str(other.value)
@@ -496,7 +496,7 @@ def test_an_mcp_tool_error_is_redacted():
 
     redaction.set_org("acme", [], {"pw": SECRET}, _resolve({}))
     said = _redacted_error(ValueError(f"source said {SECRET}"))
-    assert said is not None and str(said) == "source said [REDACTED:auto:pw]"
+    assert said is not None and str(said) == "source said [REDACTED]"
     assert _redacted_error(ValueError("nothing to hide")) is None
 
 

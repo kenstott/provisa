@@ -273,7 +273,7 @@ def test_a_role_names_the_orgs_model_and_what_goes_out_is_redacted(server, sourc
     assert answered["body"]["model"] == _MODEL
     sent = endpoint.received[-1]
     assert sent["model"] == _MODEL
-    assert card not in json.dumps(sent) and "[REDACTED:card_number]" in json.dumps(sent)
+    assert card not in json.dumps(sent) and "churn for [REDACTED]?" in json.dumps(sent)
 
 
 def test_a_model_the_org_does_not_assign_is_refused_by_name(server, sources):
