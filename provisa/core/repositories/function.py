@@ -80,6 +80,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
             k: v.model_dump(exclude_defaults=True) for k, v in func.language_bindings.items()
         },
         "source_type": func.source_type,  # REQ-1986
+        "exposed_as_table": func.exposed_as_table,  # REQ-1986
     }
     update_cols = [
         "source_id",
@@ -100,6 +101,7 @@ async def upsert_function(  # REQ-205, REQ-206, REQ-207, REQ-304, REQ-305, REQ-3
         "writes_table",
         "language_bindings",
         "source_type",
+        "exposed_as_table",
     ]
     function_id = await conn.upsert_returning(
         tracked_functions,
@@ -277,6 +279,7 @@ def function_from_dict(d: dict) -> Function:  # REQ-205, REQ-304
         writes_table=d.get("writes_table"),
         language_bindings=d["language_bindings"],  # REQ-2168
         source_type=d.get("source_type"),  # REQ-1986
+        exposed_as_table=d.get("exposed_as_table"),  # REQ-1986
     )
 
 

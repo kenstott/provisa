@@ -645,8 +645,25 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
     ``LookupError`` when there is no such object.
     """
     attributes = await _attributes(conn, ref)
+    blocking = await _blocking(conn, ref, REFERENCES, attributes)
+    if ref.kind == "relationship":
+        for view_id in await _views_published_over(conn, ref.id):
+            blocking.setdefault(ObjectRef("table", view_id), set()).add(
+                "registered_tables.view_sql"
+            )
+    return await _dependents(conn, blocking)
+
+
+async def _blocking(
+    conn: "Connection",
+    ref: ObjectRef,
+    references: tuple[Reference, ...],
+    attributes: Mapping[str, Any],
+) -> dict[ObjectRef, set[str]]:
+    """Each object that refers to ``ref`` through one of the DEPENDENT ``references``, with the
+    columns it refers through; its references to itself and retired objects left out."""
     blocking: dict[ObjectRef, set[str]] = {}
-    for reference in REFERENCES:
+    for reference in references:
         if reference.to != ref.kind or reference.standing is not Standing.DEPENDENT:
             continue
         assert reference.of is not None and reference.owner is not None
@@ -659,11 +676,30 @@ async def guard(conn: "Connection", ref: ObjectRef) -> list[Dependent]:
                 # itself marked (a retired table's columns).
                 continue
             blocking.setdefault(referrer, set()).add(f"{reference.table}.{reference.column}")
-    if ref.kind == "relationship":
-        for view_id in await _views_published_over(conn, ref.id):
-            blocking.setdefault(ObjectRef("table", view_id), set()).add(
-                "registered_tables.view_sql"
-            )
+    return blocking
+
+
+# REQ-1986: a function's derived table is hidden by turning its attribute off, which is refused
+# while anything a steward made refers to the table: its dependents, and these, which are parts
+# of a table (they go when it is deleted) but are made on it by a steward -- a row rule, a data
+# product's membership, a write grant to a role, a glossary term's reference, a tag.
+HIDING_BLOCKS: tuple[Reference, ...] = (
+    _dep("rls_rules", "table_id", "table", "row_filter", "id"),
+    _dep("data_product_tables", "table_id", "table", "data_product", "product_id"),
+    _dep("table_write_grants", "table_id", "table", "role", "role_id"),
+    _dep("glossary_term_refs", "table_id", "table", "glossary_term", "term_id"),
+    _dep("tag_assignments", "table_id", "table", "tag_assignment", "id"),
+)
+
+
+async def hiding_guard(conn: "Connection", table_id: int, function_name: str) -> list[Dependent]:
+    """REQ-1986: the objects that block hiding the table ``table_id`` derived from the function
+    ``function_name`` -- empty when it may be hidden. The function's own reference to the table
+    it returns does not count."""
+    ref = ObjectRef("table", table_id)
+    attributes = await _attributes(conn, ref)
+    blocking = await _blocking(conn, ref, (*REFERENCES, *HIDING_BLOCKS), attributes)
+    blocking.pop(ObjectRef("command", function_name), None)
     return await _dependents(conn, blocking)
 
 

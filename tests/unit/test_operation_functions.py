@@ -19,6 +19,7 @@ and routes is the table's, so both forms ask the source the same call under the 
 
 from __future__ import annotations
 
+from typing import Any
 from unittest.mock import AsyncMock, patch
 
 import pytest
@@ -437,8 +438,10 @@ async def test_each_operation_that_reads_rows_and_requires_a_parameter_is_offere
 
 @pytest.mark.asyncio
 async def test_registering_one_makes_a_query_returning_its_tables_rows(monkeypatch):
+    """Off at registration (listPets returns Pet), it returns the rows of the plain list's table;
+    test_function_table holds the attribute itself."""
     import provisa.api.app as app_mod
-    from provisa.api.admin import actions_router
+    from provisa.api.admin import _function_table, actions_router
     from provisa.api.admin.actions_router import FunctionInput, _as_source_operation
 
     monkeypatch.setattr(app_mod, "state", _SourceState(_REGISTERED), raising=False)
@@ -446,34 +449,44 @@ async def test_registering_one_makes_a_query_returning_its_tables_rows(monkeypat
         "provisa.api.admin.schema_helpers._ensure_openapi_spec", AsyncMock(return_value=None)
     )
     body = FunctionInput(name="get_pet", sourceId="api", functionName="getPetById")
-    await _as_source_operation(body)
+    operation = await _as_source_operation(body)
+    assert operation is not None and operation.table == "getPetById"
     assert (body.implKind, body.kind, body.schemaName) == ("source_operation", "query", "openapi")
-    assert body.returns == "default.get_pet_by_id"
     assert body.arguments == [
         {"name": "petId", "type": "integer"},
         {"name": "weight", "type": "float"},
     ]
     assert actions_router._source_type_of(body) == "Pet"
+    assert await _function_table.default_exposed(app_mod.state, "api", "Pet") is False
+    body.returns = "default.list_pets"
     assert is_operation_function(
         {"impl_kind": body.implKind, "kind": body.kind, "returns": body.returns}
     )
 
 
 @pytest.mark.asyncio
-async def test_registering_one_whose_table_is_not_registered_is_refused(monkeypatch):
+async def test_registering_one_whose_table_is_not_registered_derives_it(monkeypatch):
+    """The table is derived from the function, never required to be registered beforehand."""
     import provisa.api.app as app_mod
-    from provisa.api.admin.actions_router import FunctionInput, _as_source_operation
-    from provisa.api.errors import ApiError
+    from provisa.api.admin.actions_router import (
+        FunctionInput,
+        _as_source_operation,
+        _settle_table,
+    )
 
     monkeypatch.setattr(app_mod, "state", _SourceState(_REGISTERED[1:]), raising=False)
     monkeypatch.setattr(
         "provisa.api.admin.schema_helpers._ensure_openapi_spec", AsyncMock(return_value=None)
     )
-    with pytest.raises(ApiError) as refused:
-        await _as_source_operation(
-            FunctionInput(name="get_pet", sourceId="api", functionName="getPetById")
-        )
-    assert refused.value.code == "functions.operation_table_unregistered"
+    derive = AsyncMock(return_value="openapi.getPetById")
+    monkeypatch.setattr("provisa.api.admin._function_table.derive_table", derive)
+    body = FunctionInput(
+        name="get_pet", sourceId="api", functionName="getPetById", exposedAsTable=True
+    )
+    operation = await _as_source_operation(body)
+    request: Any = None  # deriving is stood in for: no request is read
+    assert await _settle_table(request, body, operation, None) is None
+    assert body.returns == "openapi.getPetById"
 
 
 # --- called on its own: read as SQL reads it, through the one pipeline -------------------------

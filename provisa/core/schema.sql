@@ -1682,6 +1682,7 @@ CREATE TABLE IF NOT EXISTS tracked_functions (
     writes_table  TEXT,  -- REQ-1924, REQ-871: "schema.table" of the registered table it writes
     language_bindings JSONB NOT NULL DEFAULT '{}',  -- REQ-2168: the command's name per language
     source_type   TEXT,  -- REQ-1986: the returned row's type as the source's schema names it
+    exposed_as_table BOOLEAN,  -- REQ-1986: also a parameterized table, derived from it (NULL: no table form)
     created_at    TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     updated_at    TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
