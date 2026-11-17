@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "Una fila marcada se acepta al aplicar. Las filas con un {{threshold}} % o más empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
+    "colJev": "Jev",
     "colKind": "Tipo",
     "colReasoning": "Razonamiento",
     "colNote": "Nota",
@@ -25,7 +26,6 @@
       "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
       "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
       "below_threshold": "La confianza del modelo está por debajo del umbral del {{threshold}} %.",
-      "scored_below_threshold": "Jev la puntuó con un {{scored}} %, por debajo del umbral del {{threshold}} %. El modelo le dio un {{confidence}} %.",
       "same_column": "De una columna a sí misma",
       "primary_key_to_primary_key": "Clave primaria a clave primaria",
       "both_repeating": "Los valores se repiten en ambos lados, así que ninguno es el lado uno",

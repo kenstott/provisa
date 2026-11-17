@@ -8,14 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Optional Jev-assisted confidence scoring for generative-LLM proposals.
+"""Optional Jev-assisted confidence scoring for generative-LLM glossary proposals.
 
-Two call sites use this: FK relationship discovery (provisa.discovery.analyzer /
-provisa.api.admin.discovery) and glossary relationship-type proposals
-(provisa.api.admin.glossary_router). Both already run a generative LLM to PROPOSE
-candidates; these functions run a second Jev pass to SCORE what was proposed with a
-calibrated confidence, replacing (relationships) or gating (glossary edges) the
-generating model's own self-reported confidence.
+Glossary relationship-type proposals (provisa.api.admin.glossary_router) run a generative LLM to
+PROPOSE candidates; this module runs a second Jev pass to SCORE what was proposed with a
+calibrated confidence, gating the generating model's own self-reported confidence. Relationship
+discovery asks Jev through provisa.discovery.rescoring, with the run's evidence.
 
 Only called when a Jev key resolves (provisa.core.org_secrets.org_ai_key_or_none) — the
 caller decides whether to invoke this module at all, so its absence is never a silent
@@ -28,66 +26,9 @@ proposals are returned rather than losing the whole batch.
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Any
-
-if TYPE_CHECKING:
-    from provisa.discovery.analyzer import RelationshipCandidate
+from typing import Any
 
 log = logging.getLogger(__name__)
-
-
-async def refine_relationship_confidence(
-    candidates: list["RelationshipCandidate"], api_key: str, min_confidence: float
-) -> list["RelationshipCandidate"]:
-    """Re-score each FK candidate's existence via a Jev noul question, replacing its
-    LLM-self-reported ``confidence`` with Jev's calibrated one and dropping candidates that
-    fall below ``min_confidence`` under the new score.
-    """
-    if not candidates:
-        return candidates
-
-    from dataclasses import replace
-
-    from provisa.jev.client import evaluate
-
-    questions = [
-        {
-            "id": str(i),
-            "type": "noul",
-            "instructions": (
-                f"Is column '{c.source_column}' on table id {c.source_table_id} genuinely a "
-                f"{c.cardinality} foreign key referencing column '{c.target_column}' on table "
-                f"id {c.target_table_id}? The proposing model's reasoning: {c.reasoning}"
-            ),
-            "criteria": {
-                "true": "a real, correctly-typed foreign-key relationship",
-                "false": "not a real relationship, or the wrong cardinality",
-            },
-        }
-        for i, c in enumerate(candidates)
-    ]
-    try:
-        result = await evaluate(api_key, {"candidate_count": len(candidates)}, questions)
-    except Exception:
-        log.warning(
-            "Jev relationship confidence scoring failed; keeping model-reported confidence",
-            exc_info=True,
-        )
-        return candidates
-
-    answers: dict[str, Any] = result.get("answers", {})
-    out: list[RelationshipCandidate] = []
-    for i, c in enumerate(candidates):
-        answer = answers.get(str(i))
-        if answer is None:
-            out.append(c)
-            continue
-        confidence = float(answer.get("noul", c.confidence))
-        if confidence < min_confidence:
-            log.info("Jev dropped relationship candidate below threshold: %s", c)
-            continue
-        out.append(replace(c, confidence=confidence))
-    return out
 
 
 async def refine_glossary_edges(

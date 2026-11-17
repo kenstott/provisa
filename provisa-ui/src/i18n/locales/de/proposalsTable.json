@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen mit {{threshold}} % oder mehr sind anfangs angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
     "colScore": "Bewertung",
+    "colJev": "Jev",
     "colKind": "Art",
     "colReasoning": "Begründung",
     "colNote": "Hinweis",
@@ -25,7 +26,6 @@
       "unknown_column": "Nennt eine Tabelle oder Spalte, die die Anfrage nicht verglichen hat",
       "not_comparable": "Die beiden Spalten haben unterschiedliche Klassen und werden daher nicht verglichen",
       "below_threshold": "Die Konfidenz des Modells liegt unter der Schwelle von {{threshold}} %.",
-      "scored_below_threshold": "Jev bewertete ihn mit {{scored}} %, unter der Schwelle von {{threshold}} %. Das Modell gab {{confidence}} %.",
       "same_column": "Von einer Spalte zu sich selbst",
       "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
       "both_repeating": "Werte wiederholen sich auf beiden Seiten, daher ist keine die Eins-Seite",

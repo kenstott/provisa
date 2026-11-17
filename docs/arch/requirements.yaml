@@ -81993,7 +81993,14 @@
     to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment)
     hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary
     filters; (6) a source whose operations have no named return type cannot be compared, so each of its
-    parameterized operations gets its table.'
+    parameterized operations gets its table. (Amended 2026-11-16, THE DERIVED TABLE SHARES ITS FUNCTION''S
+    STATE AND IS EDITED ONLY THROUGH IT:) Lead 2026-11-16, consequences of the table being an attribute
+    of its function. The derived table has its function''s release state: released with it, never a draft
+    of its own, since a draft table would leave a released function unreadable. It is not deleted, and its
+    columns and parameters are not edited, on the table itself: only through its function. Turning the switch
+    off, or deleting the function, is refused while a relationship, view, metric, row rule, data-product
+    membership or write grant refers to the derived table, naming each; glossary references and tags the
+    product made itself do not block it. A parameter is bound under its own name and under its alias alike.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 

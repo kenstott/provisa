@@ -22,19 +22,15 @@ import {
   type RunProposal,
 } from "../../api/admin";
 
-/** A proposal's score: Jev's where Jev scored it, else the model's; null where it has none. */
-export const scoreOf = (p: RunProposal): number | null =>
-  p.scored === null ? p.confidence : p.scored;
-
 /** Whether a proposal starts ticked to accept: it can be decided, the run's rules removed it
- *  for nothing but already waiting from an earlier run, and its score is at the threshold. */
+ *  for nothing but already waiting from an earlier run, and the model's score is at the
+ *  threshold. Jev's score is shown beside it and does not decide (REQ-1789). */
 export function startsAccepted(p: RunProposal, threshold: number): boolean {
-  const score = scoreOf(p);
   return (
     p.decidable &&
     (p.reason === null || p.reason === "pending") &&
-    score !== null &&
-    score >= threshold
+    p.confidence !== null &&
+    p.confidence >= threshold
   );
 }
 

@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "A ticked row is accepted when you apply. Rows scoring {{threshold}}% or more start ticked. A row with neither box ticked stays undecided.",
     "colScore": "Score",
+    "colJev": "Jev",
     "colKind": "Kind",
     "colReasoning": "Reasoning",
     "colNote": "Note",
@@ -25,7 +26,6 @@
       "unknown_column": "Names a table or column the request did not compare",
       "not_comparable": "The two columns have different classes, so they are not compared",
       "below_threshold": "The model's confidence is below the {{threshold}}% threshold.",
-      "scored_below_threshold": "Jev scored it {{scored}}%, below the {{threshold}}% threshold. The model gave {{confidence}}%.",
       "same_column": "From a column to itself",
       "primary_key_to_primary_key": "Primary key to primary key",
       "both_repeating": "Values repeat on both sides, so neither is the one side",

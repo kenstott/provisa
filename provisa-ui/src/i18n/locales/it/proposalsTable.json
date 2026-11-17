@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "Una riga spuntata viene accettata quando si applica. Le righe con punteggio pari o superiore al {{threshold}}% partono spuntate. Una riga senza alcuna casella spuntata resta non decisa.",
     "colScore": "Punteggio",
+    "colJev": "Jev",
     "colKind": "Tipo",
     "colReasoning": "Motivazione",
     "colNote": "Nota",
@@ -25,7 +26,6 @@
       "unknown_column": "Nomina una tabella o una colonna che la richiesta non ha confrontato",
       "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
       "below_threshold": "La confidenza del modello è sotto la soglia del {{threshold}}%.",
-      "scored_below_threshold": "Jev l'ha valutata {{scored}}%, sotto la soglia del {{threshold}}%. Il modello aveva dato {{confidence}}%.",
       "same_column": "Da una colonna a se stessa",
       "primary_key_to_primary_key": "Da chiave primaria a chiave primaria",
       "both_repeating": "I valori si ripetono su entrambi i lati, quindi nessuno è il lato uno",
