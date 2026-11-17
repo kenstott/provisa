@@ -175,9 +175,13 @@
       "run_still_going": "Discovery run {{run_id}} is still going. Decide its proposals once it has ended.",
       "schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
       "semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
+      "source_domains_empty": "The chosen source domains hold no table discovery reads.",
       "source_not_found": "Source '{{source_id}}' not found",
+      "source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
       "table_id_required": "table_id required for table scope",
       "table_not_found": "Table {{table_id}} is not registered.",
+      "target_domains_empty": "The chosen target domains hold no table discovery reads.",
+      "target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
       "unknown_source_type": "Unknown source type: {{type}}",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."

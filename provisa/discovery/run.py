@@ -185,6 +185,11 @@ def sizes(source: list[TableFacts], target: list[TableFacts] | None) -> dict[str
     }
 
 
+def _left_out(named: tuple[int, ...] | None, kept: list[TableFacts]) -> int:
+    """How many of the tables chosen by name a set left out; none were when none were named."""
+    return 0 if named is None else len(set(named)) - len(kept)
+
+
 async def table_sets(conn: "Connection", spec: RunSpec) -> tuple[list[int], list[int] | None]:
     """The ids of the source set and of the target set (None: the same as the source)."""
     source = await gather.scope_table_ids(conn, spec.source_domains, spec.source_tables)
@@ -416,6 +421,11 @@ async def perform(
             "target_same_as_source": prepared.target is None,
             "source_domains": sorted({t.domain_id for t in prepared.source}),
             "target_domains": sorted({t.domain_id for t in prepared.target or prepared.source}),
+            # Tables chosen by name that the run left out (a system domain's, one out of service).
+            "source_left_out": _left_out(spec.source_tables, prepared.source),
+            "target_left_out": (
+                0 if spec.same_as_source else _left_out(spec.target_tables, prepared.target or [])
+            ),
             "decided_by": dict(outcome.decided_by),
             "stored_ids": sorted(publisher.stored.values()),
             # REQ-1986: suggestions with a table that is never read, so no values were compared.

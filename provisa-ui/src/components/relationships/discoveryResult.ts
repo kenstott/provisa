@@ -126,12 +126,23 @@ function scopeLines(report: DiscoveryReport, t: TFunction): string[] {
   }
   const { source_domains: from, target_domains: to } = report;
   if (from === undefined || to === undefined) return lines;
+  // A set of no table has no domain to name: its count alone.
+  const set = (key: "Source" | "Target", count: number | undefined, domains: string[]) =>
+    domains.length > 0
+      ? t(`discoverResult.scope${key}`, { count, domains: domains.join(", ") })
+      : t(`discoverResult.scope${key}Count`, { count });
   lines.push(
-    t("discoverResult.scopeSource", { count: report.source_tables, domains: from.join(", ") }),
+    set("Source", report.source_tables, from),
     report.target_same_as_source
       ? t("discoverResult.scopeTargetSame")
-      : t("discoverResult.scopeTarget", { count: report.target_tables, domains: to.join(", ") }),
+      : set("Target", report.target_tables, to),
   );
+  if (report.source_left_out) {
+    lines.push(t("discoverResult.sourceLeftOut", { count: report.source_left_out }));
+  }
+  if (report.target_left_out) {
+    lines.push(t("discoverResult.targetLeftOut", { count: report.target_left_out }));
+  }
   return lines;
 }
 

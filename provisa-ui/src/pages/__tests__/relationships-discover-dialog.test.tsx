@@ -101,6 +101,18 @@ describe("Discovery dialog: the run's scope", () => {
     expect(offered).not.toContain("meta");
   });
 
+  it("never offers a system domain's table, which a run would leave out", async () => {
+    await openDialog();
+    // Every domain offered (shop is ticked from the Domains picker): every table a run could read.
+    await pick("Source domains", "crm");
+    await userEvent.click(screen.getByRole("textbox", { name: "Source tables" }));
+    const offered = (await screen.findAllByRole("option", { hidden: true })).map(
+      (o) => o.textContent,
+    );
+    expect(offered).toEqual(expect.arrayContaining(["orders", "customers", "accounts"]));
+    expect(offered).not.toContain("registered_tables");
+  });
+
   it("sends the scope it shows: kinds, source domains, every table, same as source, assigned model", async () => {
     await openDialog();
     fireEvent.click(runButton());

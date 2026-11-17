@@ -17,6 +17,10 @@ import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { type DiscoveryScope } from "../../api/admin";
 import {
   LAST,
+  applyMock,
+  countMock,
+  proposal,
+  proposalsMock,
   REPORT,
   SCOPE,
   SLOW,
@@ -27,7 +31,6 @@ import {
   runButton,
   runMock,
   runOf,
-  runsMock,
   sameBox,
   semanticsBox,
   startMock,
@@ -57,6 +60,16 @@ vi.mock("../../components/TagControl", () => ({ TagControl: () => null }));
 
 beforeEach(resetDiscoveryMocks);
 
+/** Run once with the defaults, the run ending as one of ``scope``, then press New run. */
+async function newRunFrom(scope: DiscoveryScope) {
+  runMock.mockResolvedValue(runOf({ status: "done", scope, report: REPORT }));
+  startMock.mockResolvedValue(runOf({ scope }));
+  await openDialog();
+  fireEvent.click(runButton());
+  fireEvent.click(await screen.findByTestId("discover-new-run", {}, SLOW));
+  await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
+}
+
 describe("Discovery dialog: a run starts from the fields of the one before", () => {
   it("New run opens the form with the ended run's fields, not the defaults", async () => {
     runMock.mockResolvedValue(runOf({ status: "done", scope: LAST, report: REPORT }));
@@ -75,18 +88,29 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
     expect(screen.queryByTestId("discover-restore-notes")).toBeNull();
   });
 
-  it("opening the dialog starts from the latest run the signed-in person started", async () => {
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
-    );
+  it("opening the dialog starts from the defaults, after a run whose proposals were applied too", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", scope: LAST, report: REPORT }));
+    startMock.mockResolvedValue(runOf({ scope: LAST }));
+    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7 });
     await openDialog();
-    expect(runsMock).toHaveBeenCalledWith(1, true);
-    expect(fkBox().checked).toBe(false);
-    expect(sameBox().checked).toBe(false);
-    await waitFor(() => expect(lastScope()).toEqual(LAST), SLOW);
+    fireEvent.click(runButton());
+    await screen.findByTestId("proposal-501", {}, SLOW);
+    fireEvent.click(screen.getByTestId("discover-apply"));
+    await waitFor(() => expect(applyMock).toHaveBeenCalled());
+    fireEvent.keyDown(screen.getByTestId("discover-dialog"), { key: "Escape" });
+    await waitFor(() => expect(screen.queryByTestId("proposal-501")).not.toBeInTheDocument());
+    // The page's banner keeps the run's result.
+    expect(screen.getByTestId("rels-discover-result")).toBeInTheDocument();
+    countMock.mockClear();
+    fireEvent.click(screen.getByTestId("rels-discover"));
+    await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);
+    expect(screen.queryByTestId("discover-from-last-run")).toBeNull();
+    expect(fkBox().checked).toBe(true);
+    expect(sameBox().checked).toBe(true);
+    await waitFor(() => expect(lastScope()).toEqual(SCOPE), SLOW);
   });
 
-  it("starts from the defaults when the person has run none", async () => {
+  it("starts from the defaults when no run has ended in the dialog", async () => {
     await openDialog();
     expect(screen.queryByTestId("discover-from-last-run")).toBeNull();
     expect(screen.queryByTestId("discover-reset-defaults")).toBeNull();
@@ -103,10 +127,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
       vendor: "mistral",
       model: "mistral-large",
     };
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: stale })] : [],
-    );
-    await openDialog();
+    await newRunFrom(stale);
     const notes = await screen.findByTestId("discover-restore-notes");
     expect(notes).toHaveTextContent("Left out of them, because it no longer holds:");
     expect(notes).toHaveTextContent("The domain legacy is no longer available.");
@@ -117,10 +138,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
   });
 
   it("leaves out a model its vendor no longer lists", async () => {
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: { ...LAST, model: "gpt-3" } })] : [],
-    );
-    await openDialog();
+    await newRunFrom({ ...LAST, model: "gpt-3" });
     expect(await screen.findByTestId("discover-restore-notes")).toHaveTextContent(
       "openai no longer lists gpt-3, so the model is the assigned one.",
     );
@@ -128,10 +146,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
   });
 
   it("Reset to defaults sets the form up as a first run", async () => {
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
-    );
-    await openDialog();
+    await newRunFrom(LAST);
     expect(fkBox().checked).toBe(false);
     fireEvent.click(screen.getByTestId("discover-reset-defaults"));
     await waitFor(() => expect(fkBox().checked).toBe(true));
@@ -147,10 +162,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
       source_domains: ["crm"],
       source_tables: [3, 5],
     };
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: everyCrmTable })] : [],
-    );
-    await openDialog();
+    await newRunFrom(everyCrmTable);
     await waitFor(
       () => expect(lastScope()).toEqual({ ...SCOPE, source_domains: ["crm"], source_tables: null }),
       SLOW,
@@ -160,30 +172,14 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
 
   it("restores a run over every domain then as every domain, so one registered since is in it", async () => {
     TABLES.tables = [...REGISTERED, table(6, "files", "permits", SINCE)];
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine
-        ? [runOf({ id: 5, status: "done", scope: { ...SCOPE, source_domains: ["crm", "shop"] } })]
-        : [],
-    );
-    await openDialog();
+    await newRunFrom({ ...SCOPE, source_domains: ["crm", "shop"] });
     await waitFor(() => expect(lastScope().source_domains).toEqual(["crm", "files", "shop"]), SLOW);
     expect(screen.queryByTestId("discover-new-tables")).toBeNull();
   });
 
   it("keeps a run's own choice of some of a domain's tables as it was", async () => {
     TABLES.tables = [...REGISTERED, table(6, "crm", "leads", SINCE)];
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine
-        ? [
-            runOf({
-              id: 5,
-              status: "done",
-              scope: { ...SCOPE, source_domains: ["crm"], source_tables: [3] },
-            }),
-          ]
-        : [],
-    );
-    await openDialog();
+    await newRunFrom({ ...SCOPE, source_domains: ["crm"], source_tables: [3] });
     await waitFor(() => expect(lastScope().source_tables).toEqual([3]), SLOW);
   });
 
@@ -194,10 +190,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
       table(7, "files", "inspections", SINCE),
       table(8, "shop", "returns", SINCE),
     ];
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: SCOPE })] : [],
-    );
-    await openDialog();
+    await newRunFrom(SCOPE);
     // The new shop table is in the run already: only the files tables are outside it.
     expect(screen.getByTestId("discover-new-tables")).toHaveTextContent(
       "2 tables registered since your last run are in files, which it did not look at.",
@@ -210,10 +203,7 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
 
   it("adds them to a target of its own too, and to a table list set by hand", async () => {
     TABLES.tables = [...REGISTERED, table(6, "files", "permits", SINCE)];
-    runsMock.mockImplementation(async (_limit, mine) =>
-      mine ? [runOf({ id: 5, status: "done", scope: LAST })] : [],
-    );
-    await openDialog();
+    await newRunFrom(LAST);
     expect(screen.getByTestId("discover-new-tables")).toHaveTextContent(
       "1 table registered since your last run is in files, which it did not look at.",
     );
