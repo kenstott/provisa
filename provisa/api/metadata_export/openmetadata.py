@@ -72,6 +72,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -1201,7 +1202,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=entity.asset,
                     message=(
                         f"table {entity.asset.fqn()}: not written: the live read its "
-                        f"steward state is kept from failed ({exc})"
+                        f"steward state is kept from failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1284,7 +1285,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     message=(
                         f"table {entity.asset.fqn()}: not written: the read of its "
                         f"predecessor {old_fqn!r} (id {old_id}), whose steward enrichment it "
-                        f"carries, failed ({exc})"
+                        f"carries, failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1329,7 +1330,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=entity.asset,
                     message=(
                         f"table {entity.asset.fqn()}: superseded note on predecessor "
-                        f"{old_fqn!r} failed ({exc})"
+                        f"{old_fqn!r} failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1369,7 +1370,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=AssetRefStub(fqn),
                     message=(
                         f"glossary_term {fqn}: not written: the live read its steward "
-                        f"curation is kept from failed ({exc})"
+                        f"curation is kept from failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -1560,7 +1561,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                     asset=AssetRefStub(ROLE_PROPERTY),
                     message=(
                         f"the term role was not exported: declaring the custom property "
-                        f"{ROLE_PROPERTY} on the glossaryTerm type failed ({exc}). The terms "
+                        f"{ROLE_PROPERTY} on the glossaryTerm type failed ({describe_http_failure(exc)}). The terms "
                         "were published without it."
                     ),
                 )
@@ -1691,7 +1692,7 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
                         AssetError(
                             asset=AssetRefStub(RELATIONSHIP_PROPERTY),
                             message=(
-                                f"custom property {RELATIONSHIP_PROPERTY}: {exc}. Approved "
+                                f"custom property {RELATIONSHIP_PROPERTY}: {describe_http_failure(exc)}. Approved "
                                 "relationships were not published; every other asset was."
                             ),
                         )

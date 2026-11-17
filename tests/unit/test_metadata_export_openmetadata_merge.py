@@ -167,6 +167,8 @@ def _mock_transport(monkeypatch, live_response):
         gets.append(url)
         request = httpx.Request("GET", url)
         if isinstance(live_response, Exception):
+            if isinstance(live_response, httpx.RequestError):
+                live_response.request = request  # as httpx's client sets it on what it raises
             raise live_response
         if isinstance(live_response, int):
             return httpx.Response(live_response, text="unavailable", request=request)

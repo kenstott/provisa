@@ -19,6 +19,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import Response
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.admin._platform_guard import (
     has_deployment_settings,
     has_platform_settings,
@@ -1688,7 +1689,9 @@ async def restart_query_engine(request: Request, container: str | None = None): 
     except httpx.TimeoutException:
         raise ApiError(504, "settings.docker_restart_timeout", "the restart timed out")
     except httpx.HTTPError as exc:
-        raise ApiError(502, "settings.docker_unreachable", f"docker socket error: {exc}")
+        raise ApiError(
+            502, "settings.docker_unreachable", f"docker socket error: {describe_http_failure(exc)}"
+        )
 
     if resp.status_code == 404:
         raise ApiError(404, "settings.container_not_found", f"no container named {name}")
