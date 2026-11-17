@@ -184,7 +184,13 @@ def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_join(
     roots = _graphql(instance, "{ __schema { queryType { fields { name } } } }")
     names = [f["name"] for f in roots["__schema"]["queryType"]["fields"]]
     for table in ("building_permits", "budget_2026__budget"):
-        (root,) = [n for n in names if n.endswith(f"__{table}")]
+        # The root field is the domain's prefix and the table's name in the GraphQL naming
+        # convention (``cf__buildingPermits`` under camelCase).
+        (root,) = [
+            n
+            for n in names
+            if "__" in n and n.split("__", 1)[1].replace("_", "").lower() == table.replace("_", "")
+        ]
         rows = _graphql(
             instance,
             f"{{ {root}(limit: 5) {{ neighborhood neighborhood_dimension {{ neighborhood }} }} }}",
