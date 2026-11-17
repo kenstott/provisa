@@ -129,16 +129,19 @@ export declare function ask_capped(inputs: AskInputs): Promise<Answer[]>;
 
 class _Endpoint:
     """An OpenAI-compatible endpoint on the loopback: answers every chat completion, keeping what
-    it was sent."""
+    it was sent. While ``answering`` is cleared it holds each request until it is set again."""
 
     def __init__(self) -> None:
         self.received: list[dict] = []
+        self.answering = threading.Event()
+        self.answering.set()
         endpoint = self
 
         class _Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:  # noqa: N802 -- http.server's name
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 endpoint.received.append(body)
+                endpoint.answering.wait()
                 answer = json.dumps(
                     {
                         "id": "chatcmpl-1",

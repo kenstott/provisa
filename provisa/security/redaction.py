@@ -25,11 +25,16 @@ list:
   ``${user:...}`` value as it resolves -- matched by value, listed by name only.
 
 Patterns are best effort, and the built-ins are a start: an org adds rules for its own sensitive
-formats (account numbers, internal ids). What leaves the process -- every span, every log record,
-stdout -- is redacted with every org's rules together, since an exported span or log record is not
-read in an org's context; a rule only removes text, so applying another org's rule removes more,
-never less. The audit tables and a client's error message, written in an org's context, use the
-deployment's rules, that org's, and the automatic rule.
+formats (account numbers, internal ids).
+
+An org's rules apply only to that org's text: a record (span, log record, audit row, admin trail)
+the org's request or task produced, and the text its clients and models are sent. A record no org
+produced (start-up, a task bound to none) is redacted by the built-ins, the deployment's rules and
+every secret value Provisa holds, so a secret is never written out for want of an org. An org's
+pattern runs on :mod:`provisa.security.bounded_pattern`'s matcher, checked when saved and limited
+in steps at use, so no org's pattern can stall the thread that writes another org's record. A
+held org (:func:`provisa.security.sandbox_egress.held`) may not reference the server's
+environment (``${env:...}``): the redaction of a probe word would tell it the variable's value.
 """
 
 # Requirements: REQ-2087
@@ -42,6 +47,13 @@ import threading
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from typing import Any
+
+from provisa.security.bounded_pattern import (
+    BoundedPattern,
+    PatternRefused,
+    StepLimitExceeded,
+    compile_bounded,
+)
 
 _log = logging.getLogger(__name__)
 
@@ -131,18 +143,38 @@ _VALIDATORS: dict[str, Callable[[re.Match], bool]] = {"card_number": _card}
 
 
 class RuleInvalid(ValueError):
-    """A rule refused by name for what is wrong with it."""
+    """A rule refused by name for what is wrong with it; ``code`` is the catalogued message."""
 
-    def __init__(self, name: str, why: str) -> None:
+    def __init__(self, name: str, why: str, code: str = "redaction.rule_invalid") -> None:
         super().__init__(f"redaction rule {name!r}: {why}")
         self.rule = name
         self.why = why
+        self.code = code
 
 
-def parse_rules(raw: Iterable[dict], source: str) -> list[Rule]:
+#: The catalogued message for each way the bounded matcher refuses an org's pattern.
+_PATTERN_CODES = (
+    ("backtrack catastrophically", "redaction.pattern_backtracks"),
+    ("is not available in an org's rule", "redaction.pattern_unsupported"),
+    ("is too large", "redaction.pattern_too_large"),
+)
+
+
+def _org_pattern(name: str, pattern: str) -> None:
+    try:
+        compile_bounded(pattern)
+    except PatternRefused as exc:
+        why = str(exc)
+        code = next((c for said, c in _PATTERN_CODES if said in why), "redaction.rule_invalid")
+        raise RuleInvalid(name, why, code) from exc
+
+
+def parse_rules(raw: Iterable[dict], source: str, *, server_references: bool = True) -> list[Rule]:
     """``raw`` (``[{name, pattern | reference}]``) as rules, each checked: a name of letters,
     digits, ``_ . -``; exactly one of a pattern that compiles or a ``${secret:}`` / ``${env:}``
-    reference; no name twice, nor a built-in's."""
+    reference; no name twice, nor a built-in's. An org's pattern must be one the bounded matcher
+    runs (:mod:`provisa.security.bounded_pattern`); with ``server_references`` False (a held
+    org's rules) an ``${env:...}`` reference is refused by name."""
     rules: list[Rule] = []
     seen = {r.name for r in BUILTINS}
     for item in raw:
@@ -160,22 +192,48 @@ def parse_rules(raw: Iterable[dict], source: str) -> list[Rule]:
                 re.compile(pattern)
             except re.error as exc:
                 raise RuleInvalid(name, f"the pattern does not compile: {exc}") from exc
-        if reference is not None and not _REFERENCE.match(reference):
-            raise RuleInvalid(name, "a reference is ${secret:NAME} or ${env:NAME}")
+            if source == "org":
+                _org_pattern(name, pattern)
+        if reference is not None:
+            matched = _REFERENCE.match(reference)
+            if matched is None:
+                raise RuleInvalid(name, "a reference is ${secret:NAME} or ${env:NAME}")
+            if matched.group(1) == "env" and not server_references:
+                raise RuleInvalid(name, _SERVER_REFERENCE, "redaction.server_reference")
         seen.add(name)
         rules.append(Rule(name, pattern, reference, source))
     return rules
 
 
-class Redactor:
-    """Compiled rules: patterns in order, then the literal values (longest first)."""
+_SERVER_REFERENCE = (
+    "an organization on this server may not reference the server's environment; "
+    "use ${secret:NAME} from the organization's own vault"
+)
 
-    def __init__(self, rules: list[Rule], literals: dict[str, str]) -> None:
-        self._patterns = [
-            (r.name, re.compile(r.pattern), _VALIDATORS.get(r.name))
-            for r in rules
-            if r.pattern is not None
-        ]
+
+def _replacer(rule: Rule) -> Callable[[str, str], str]:
+    """``(text, marker) -> text`` for one pattern rule: an org's on the bounded matcher, the
+    built-ins and the deployment's (the operator's own) on ``re``."""
+    assert rule.pattern is not None
+    if rule.source == "org":
+        bounded: BoundedPattern = compile_bounded(rule.pattern)
+        return lambda text, said: bounded.sub(lambda _m: said, text)
+    compiled = re.compile(rule.pattern)
+    check = _VALIDATORS.get(rule.name)
+    if check is None:
+        return lambda text, said: compiled.sub(lambda _m: said, text)
+    return lambda text, said: compiled.sub(lambda m: said if check(m) else m.group(0), text)
+
+
+class Redactor:
+    """Compiled rules: patterns in order, then the literal values (longest first). ``org_id`` is
+    the org whose records it redacts (None: no org's)."""
+
+    def __init__(
+        self, rules: list[Rule], literals: dict[str, str], org_id: str | None = None
+    ) -> None:
+        self._org = org_id
+        self._patterns = [(r.name, _replacer(r)) for r in rules if r.pattern is not None]
         usable = {v: n for v, n in literals.items() if len(v) >= MIN_SECRET_LENGTH}
         self._names = usable
         self._literal = (
@@ -191,14 +249,15 @@ class Redactor:
             return text
         if self._literal is not None:
             text = self._literal.sub(lambda m: _marker(self._names[m.group(0)], named), text)
-        for name, compiled, check in self._patterns:
+        for name, replace in self._patterns:
             marker = _marker(name, named)
-            if check is None:
-                text = compiled.sub(lambda _m, said=marker: said, text)
-            else:
-                text = compiled.sub(
-                    lambda m, said=marker, c=check: said if c(m) else m.group(0), text
-                )
+            try:
+                text = replace(text, marker)
+            except StepLimitExceeded as exc:
+                # The text is withheld whole: what the rule would have removed is not known, and
+                # a rule only ever removes text (REQ-2087). Said once per rule, by name.
+                _exceeded_once(self._org, name, exc)
+                return marker
         return text if named else _NAMED_MARKER.sub(CLIENT_MARKER, text)
 
     def redact_value(self, value: Any, *, named: bool = True) -> Any:
@@ -217,41 +276,68 @@ class Redactor:
 _lock = threading.Lock()
 _deployment: list[Rule] = []
 _orgs: dict[str, list[Rule]] = {}
-#: Resolved values by the rule they belong to: a reference rule's value, or a secret the model can
-#: reach (``auto:<name>``). Per org, and "" for the deployment's own.
-_values: dict[str, dict[str, str]] = {}
+#: Reference rules' resolved values (value -> rule name): per org, and "" for the deployment's.
+_references: dict[str, dict[str, str]] = {}
+#: The secrets each org's model can reach (value -> ``auto:<name>``).
+_secrets: dict[str, dict[str, str]] = {}
 #: ``auto:<name>`` names per org, for the page: names only, never values.
 _auto_names: dict[str, list[str]] = {}
-#: ``${user:...}`` values as they resolve, by ``auto:user:<name>``.
-_user_values: dict[str, str] = {}
+#: ``${secret:...}`` / ``${user:...}`` values as they resolve (value -> ``auto:...``), by the org
+#: bound when they resolved; "" when none was.
+_noted: dict[str, dict[str, str]] = {}
+#: Pattern rules that exceeded the matcher's step limit, per org ("" for no org's records).
+_exceeded: dict[str, set[str]] = {}
 _process = Redactor(list(BUILTINS), {})
 _per_org: dict[str, Redactor] = {}
+
+
+def _exceeded_once(org_id: str | None, name: str, exc: StepLimitExceeded) -> None:
+    said = _exceeded.setdefault(org_id or "", set())
+    if name in said:
+        return
+    said.add(name)
+    _log.error(
+        "redaction rule %r of org %s: %s; the text was withheld",
+        name,
+        org_id,
+        exc,
+    )
 
 
 def _rebuild() -> None:
     """Swap in new redactors built from what is held now. Called under ``_lock``."""
     global _process, _per_org
-    every_value: dict[str, str] = {}
-    for values in _values.values():
-        every_value.update(values)
-    every_value.update(_user_values)
-    every_org_rule = [r for rules in _orgs.values() for r in rules]
-    _process = Redactor([*BUILTINS, *_deployment, *every_org_rule], every_value)
+    shared = {**_references.get("", {}), **_noted.get("", {})}
+    every_secret: dict[str, str] = {}
+    for values in [*_secrets.values(), *_noted.values()]:
+        every_secret.update(values)
+    _process = Redactor([*BUILTINS, *_deployment], {**shared, **every_secret})
     _per_org = {
-        org: Redactor([*BUILTINS, *_deployment, *rules], every_value)
+        org: Redactor(
+            [*BUILTINS, *_deployment, *rules],
+            {
+                **shared,
+                **_references.get(org, {}),
+                **_secrets.get(org, {}),
+                **_noted.get(org, {}),
+            },
+            org,
+        )
         for org, rules in _orgs.items()
     }
 
 
 def _redactor(org_id: str | None) -> Redactor:
+    """The redactor for ``org_id``'s text: an org whose rules are not loaded holds none of its
+    own yet, so the deployment's apply, as to a record of no org."""
     return _process if org_id is None else _per_org.get(org_id, _process)
 
 
 def redact(text: str, org_id: str | None = None) -> str:
     """``text`` redacted for Provisa's own records (a log, a span, the audit trail), each match
-    naming its rule: by every org's rules when ``org_id`` is None (what leaves the process), else
-    by the deployment's, that org's and the automatic rule. Never for text sent to a client:
-    that is :func:`client_redact`."""
+    naming its rule: by the deployment's rules, ``org_id``'s and the secrets that org reaches;
+    with ``org_id`` None (a record no org produced) by the deployment's rules and every secret
+    value held. Never for text sent to a client: that is :func:`client_redact`."""
     return _redactor(org_id).redact(text)
 
 
@@ -275,20 +361,25 @@ def client_redact_value(value: Any, org_id: str | None = None) -> Any:
 
 
 def note_user_value(reference: str, value: str) -> None:
-    """A ``${user:...}`` value as it resolves (per request): matched from now on."""
+    """A ``${user:...}`` value as it resolves (per request): matched from now on, in the bound
+    org's text and in records of no org."""
     _note(value, f"{AUTO}:user:{reference}")
 
 
 def note_secret_value(reference: str, value: str) -> None:
-    """A ``${secret:...}`` value as it resolves anywhere: matched from now on."""
+    """A ``${secret:...}`` value as it resolves anywhere: matched from now on, in the bound org's
+    text and in records of no org."""
     _note(value, f"{AUTO}:{reference}")
 
 
 def _note(value: str, name: str) -> None:
-    if not value or len(value) < MIN_SECRET_LENGTH or value in _user_values:
+    from provisa.core.request_context import current_org
+
+    org = current_org.get() or ""
+    if not value or len(value) < MIN_SECRET_LENGTH or value in _noted.get(org, {}):
         return
     with _lock:
-        _user_values[value] = name
+        _noted.setdefault(org, {})[value] = name
         _rebuild()
 
 
@@ -296,12 +387,19 @@ def is_loaded(org_id: str) -> bool:
     return org_id in _orgs
 
 
-def _resolved(rules: list[Rule], resolve: Callable[[str], str]) -> dict[str, str]:
+def _resolved(
+    rules: list[Rule], resolve: Callable[[str], str], *, server_references: bool = True
+) -> dict[str, str]:
     """Each reference rule's value. One that does not resolve is logged at ERROR by name and left
-    out: the other rules stand, and the page shows it unresolved (REQ-2087)."""
+    out: the other rules stand, and the page shows it unresolved (REQ-2087). Without
+    ``server_references`` (a held org) an ``${env:...}`` reference is never resolved: one stored
+    is refused here, as the save refuses it."""
     out: dict[str, str] = {}
     for rule in rules:
         if rule.reference is None:
+            continue
+        if not server_references and rule.reference.startswith("${env:"):
+            _log.error("redaction rule %r: %s", rule.name, _SERVER_REFERENCE)
             continue
         try:
             out[resolve(rule.reference)] = rule.name
@@ -313,7 +411,7 @@ def _resolved(rules: list[Rule], resolve: Callable[[str], str]) -> dict[str, str
 def set_deployment_rules(rules: list[Rule], resolve: Callable[[str], str]) -> None:
     with _lock:
         _deployment[:] = rules
-        _values[""] = _resolved(rules, resolve)
+        _references[""] = _resolved(rules, resolve)
         _rebuild()
 
 
@@ -322,23 +420,25 @@ def set_org(
     rules: list[Rule],
     secrets: dict[str, str],
     resolve: Callable[[str], str],
+    *,
+    server_references: bool = True,
 ) -> None:
-    """The org's own rules and the secrets its model can reach (name -> value)."""
+    """The org's own rules and the secrets its model can reach (name -> value). A held org
+    (``server_references`` False) has no ``${env:...}`` reference resolved."""
     with _lock:
         _orgs[org_id] = rules
-        values = _resolved(rules, resolve)
-        for name, value in secrets.items():
-            values.setdefault(value, f"{AUTO}:{name}")
-        _values[org_id] = values
+        _references[org_id] = _resolved(rules, resolve, server_references=server_references)
+        _secrets[org_id] = {value: f"{AUTO}:{name}" for name, value in secrets.items()}
         _auto_names[org_id] = sorted(secrets)
+        _exceeded.pop(org_id, None)
         _rebuild()
 
 
 def described(org_id: str) -> dict:
     """What the Redaction page shows: every rule, by source; the automatic rule by name only."""
     with _lock:
-        deployment_values = set(_values.get("", {}).values())
-        org_values = set(_values.get(org_id, {}).values())
+        deployment_values = set(_references.get("", {}).values())
+        org_values = set(_references.get(org_id, {}).values())
         unresolved = [
             r.name
             for r in [*_deployment, *_orgs.get(org_id, [])]
@@ -349,8 +449,9 @@ def described(org_id: str) -> dict:
             "deployment": [r.as_dict() for r in _deployment],
             "org": [r.as_dict() for r in _orgs.get(org_id, [])],
             "automatic": _auto_names.get(org_id, []),
-            "resolved_at_use": len(_user_values),
+            "resolved_at_use": len(_noted.get(org_id, {})) + len(_noted.get("", {})),
             "unresolved": unresolved,
+            "exceeded": sorted(_exceeded.get(org_id, set())),
         }
 
 
@@ -360,8 +461,10 @@ def reset() -> None:
     with _lock:
         _deployment.clear()
         _orgs.clear()
-        _values.clear()
+        _references.clear()
+        _secrets.clear()
         _auto_names.clear()
-        _user_values.clear()
+        _noted.clear()
+        _exceeded.clear()
         _process = Redactor(list(BUILTINS), {})
         _per_org = {}
