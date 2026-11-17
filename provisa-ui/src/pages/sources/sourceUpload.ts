@@ -23,14 +23,13 @@ export const DOWNLOAD_TYPES = new Set(["csv", "parquet"]);
  * first one a table may be put into (never meta or ops, internalDomains.ts). Nothing for a
  * source whose file is not one CSV or Parquet file. */
 export function draftTable(
-  form: { type: string; registerFileTable?: boolean; tableDomainId?: string | null },
+  form: { type: string; registerTableFromFile?: boolean; tableDomainId?: string | null },
   domains: { id: string }[],
-): { registerFileTable: boolean; tableDomainId: string | null } {
-  if (!DOWNLOAD_TYPES.has(form.type)) return { registerFileTable: false, tableDomainId: null };
+): { registerTableFromFile: boolean; tableDomainId: string | null } {
+  if (!DOWNLOAD_TYPES.has(form.type)) return { registerTableFromFile: false, tableDomainId: null };
   return {
-    registerFileTable: form.registerFileTable ?? true,
-    tableDomainId:
-      form.tableDomainId ?? domains.find((d) => isAssignableDomain(d.id))?.id ?? null,
+    registerTableFromFile: form.registerTableFromFile ?? true,
+    tableDomainId: form.tableDomainId ?? domains.find((d) => isAssignableDomain(d.id))?.id ?? null,
   };
 }
 

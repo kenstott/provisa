@@ -20,7 +20,7 @@ from types import SimpleNamespace
 import pytest
 
 from provisa.api.admin import schema_query
-from provisa.api.admin.schema_mutation import Mutation, _register_file_table
+from provisa.api.admin.schema_mutation import Mutation, _register_table_from_file
 from provisa.api.admin.types import AvailableColumnType, MutationResult, SourceInput
 
 
@@ -50,9 +50,9 @@ def registered(monkeypatch):
 
 async def test_the_table_is_named_and_typed_from_the_file(registered):
     made = SourceInput(
-        id="supplies", type="parquet", register_file_table=True, table_domain_id="shelter"
+        id="supplies", type="parquet", register_table_from_file=True, table_domain_id="shelter"
     )
-    assert await _register_file_table(SimpleNamespace(context={}), made) is None
+    assert await _register_table_from_file(SimpleNamespace(context={}), made) is None
     (table,) = registered
     assert (table.source_id, table.domain_id, table.schema_name, table.table_name) == (
         "supplies",
@@ -73,20 +73,20 @@ async def test_the_table_is_named_and_typed_from_the_file(registered):
 
 async def test_without_a_domain_or_for_another_type_the_source_stands_and_says_why(registered):
     info = SimpleNamespace(context={})
-    no_domain = SourceInput(id="s", type="csv", register_file_table=True)
-    said = await _register_file_table(info, no_domain)
+    no_domain = SourceInput(id="s", type="csv", register_table_from_file=True)
+    said = await _register_table_from_file(info, no_domain)
     assert said is not None and said.success and said.code == "schema.source_created_without_table"
     assert "no domain" in said.params["reason"]
-    sqlite = SourceInput(id="db", type="sqlite", register_file_table=True, table_domain_id="d")
-    said = await _register_file_table(info, sqlite)
+    sqlite = SourceInput(id="db", type="sqlite", register_table_from_file=True, table_domain_id="d")
+    said = await _register_table_from_file(info, sqlite)
     assert said is not None and said.success and "single table" in said.params["reason"]
     assert registered == []
 
 
 def test_no_mutation_resolver_reaches_through_self():
     """Strawberry runs a Mutation resolver with `self` as the schema's root value, which the admin
-    schema never sets: `self._register_file_table` raised "'NoneType' object has no attribute
-    '_register_file_table'" on every createSource with registerFileTable."""
+    schema never sets: `self._register_table_from_file` raised "'NoneType' object has no attribute
+    '_register_table_from_file'" on every createSource with registerTableFromFile."""
     import ast
     import inspect
 
@@ -115,7 +115,7 @@ def _publishing(monkeypatch, register):
         rebuilds.append("rebuild")
 
     monkeypatch.setattr(schema_mutation, "_rebuild_schemas", _rebuild)
-    monkeypatch.setattr(schema_mutation, "_register_file_table", register)
+    monkeypatch.setattr(schema_mutation, "_register_table_from_file", register)
     return schema_mutation._publish_new_source, rebuilds
 
 
@@ -128,7 +128,7 @@ async def test_a_source_saved_with_its_draft_table_rebuilds_the_schemas_once(mon
         return None
 
     publish, rebuilds = _publishing(monkeypatch, _registered)
-    made = SourceInput(id="s", type="parquet", register_file_table=True, table_domain_id="d")
+    made = SourceInput(id="s", type="parquet", register_table_from_file=True, table_domain_id="d")
     assert await publish(SimpleNamespace(context={}), made) is None
     assert rebuilds == []  # the registration's own stands for it: stubbed here
 
@@ -149,7 +149,7 @@ async def test_a_source_whose_draft_table_was_not_set_up_is_rebuilt_for(monkeypa
         return said
 
     publish, rebuilds = _publishing(monkeypatch, _without)
-    made = SourceInput(id="s", type="csv", register_file_table=True)
+    made = SourceInput(id="s", type="csv", register_table_from_file=True)
     assert await publish(SimpleNamespace(context={}), made) is said
     assert rebuilds == ["rebuild"]
 
@@ -159,7 +159,7 @@ async def test_a_draft_table_that_raised_leaves_the_source_rebuilt_for(monkeypat
         raise RuntimeError("the file could not be read")
 
     publish, rebuilds = _publishing(monkeypatch, _raises)
-    made = SourceInput(id="s", type="csv", register_file_table=True, table_domain_id="d")
+    made = SourceInput(id="s", type="csv", register_table_from_file=True, table_domain_id="d")
     with pytest.raises(RuntimeError):
         await publish(SimpleNamespace(context={}), made)
     assert rebuilds == ["rebuild"]

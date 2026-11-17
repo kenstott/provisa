@@ -3991,6 +3991,11 @@ async def _rebuild_schemas_impl(
         )
 
         for _t in [*tables, *draft_tables, *withdrawn_tables]:
+            if _t.get("source_withdrawn"):
+                # REQ-1921: a withdrawn source is attached by no engine and has no pool: its
+                # tables take no write, and its type is not among the sources this build read.
+                _t["write_ops"], _t["write_returns_rows"], _t["write_refused_forms"] = [], False, []
+                continue
             # A view has no source of its own to write to; every other table's source is typed.
             _stype = None if _t.get("view_sql") else state.source_types[_t["source_id"]]
             # REQ-1997: where the source's file is decides whether it takes writes.

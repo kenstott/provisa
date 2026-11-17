@@ -406,7 +406,7 @@ def _build_live_source(tier, token: dict[str, str]) -> list[str]:
                         "id": source_id,
                         "type": "parquet",
                         "path": path,
-                        "registerFileTable": True,
+                        "registerTableFromFile": True,
                         "tableDomainId": domain,
                     }
                 },

@@ -984,7 +984,7 @@ export function SourcesPage() {
         // single-file source's table set up with it, as a draft.
         downloadFrom: coreForm.downloadFrom?.trim() || null,
         ...(editingSourceId
-          ? { registerFileTable: false, tableDomainId: null }
+          ? { registerTableFromFile: false, tableDomainId: null }
           : draftTable(form, domains)),
         maxLiveConcurrency:
           coreForm.maxLiveConcurrency.trim() === "" ? null : Number(coreForm.maxLiveConcurrency),

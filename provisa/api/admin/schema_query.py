@@ -426,7 +426,9 @@ def _names_read(state: Any, scope: CatalogScope) -> Callable[[str], bool]:
     ids: dict[str, list[int]] = {}
     # The compiled tables and the drafts, which no context compiles: the scope serves a draft by
     # its stored columns (catalog_scope), so its builds are its readers' as well.
-    for t in [*state.tables, *state.role_build_inputs["draft_tables"]]:
+    # REQ-1921: and the withdrawn ones, whose kept builds are their stewards' to see.
+    inputs = state.role_build_inputs
+    for t in [*state.tables, *inputs["draft_tables"], *inputs["withdrawn_tables"]]:
         ids.setdefault(t["table_name"], []).append(t["id"])
 
     def _reads(name: str) -> bool:
@@ -1363,10 +1365,11 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
+            scope = catalog_scope(info)
             rows = await _with_withdrawn(
                 conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
             )
-            return await _listed_relationships(conn, catalog_scope(info), rows)
+            return await _listed_relationships(conn, scope, rows)
 
     @strawberry.field
     async def code_resolvers(self, info: StrawberryInfo) -> list[CodeResolverType]:  # REQ-2249
@@ -1435,11 +1438,12 @@ class Query:  # REQ-021, REQ-042
                 )
                 .order_by(relationships.c.id)
             )
+            scope = catalog_scope(info)
             rows = await _with_withdrawn(
                 conn, info, include_withdrawn, [dict(r._mapping) for r in _res.fetchall()]
             )
             rows.extend(await _has_table_synthetic_relationships(conn))
-            return await _listed_relationships(conn, catalog_scope(info), rows)
+            return await _listed_relationships(conn, scope, rows)
 
     @strawberry.field
     async def roles(

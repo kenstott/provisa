@@ -191,7 +191,7 @@ class TestOneFileOrMany:  # REQ-2113
         s = _flat(chat_mod._SYSTEM)
         assert "ONE file by a fully resolved path" in s
         assert "download_from set to that path" in s
-        assert "register_file_table true" in s
+        assert "register_table_from_file true" in s
         assert "refuses a file mount path by name: offer an https:// or s3:// address" in s
 
     def test_a_directory_a_glob_or_several_files_is_a_files_source(self):
@@ -202,7 +202,7 @@ class TestOneFileOrMany:  # REQ-2113
         """REQ-2114: what the old proposal tool described now guides the createSource input."""
         s = _flat(chat_mod._SYSTEM)
         assert "sets download_from and leaves path out" in s
-        assert "register_file_table with table_domain_id" in s
+        assert "register_table_from_file with table_domain_id" in s
 
 
 class TestExploreSurfaces:

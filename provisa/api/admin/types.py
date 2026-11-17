@@ -1199,7 +1199,7 @@ class SourceInput:  # REQ-012
     # REQ-2113: a single-file CSV or Parquet source's table set up with it, live (REQ-1921), in
     # this domain, named and typed from the file as Register Table proposes it. Not stored on the
     # source.
-    register_file_table: bool = False
+    register_table_from_file: bool = False
     table_domain_id: str | None = None
     freshness_gate: bool = False  # REQ-860
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport

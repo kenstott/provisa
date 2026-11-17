@@ -222,7 +222,7 @@ describe("Duplicate, in a source's panel head", () => {
       password: "${secret:sales_pw}",
       cacheTtl: 120,
       description: "The sales warehouse",
-      registerFileTable: false,
+      registerTableFromFile: false,
     });
     // No table goes with it: the original's tables stay the original's.
     expect(Object.keys(sent).some((k) => /tables?$/i.test(k))).toBe(false);

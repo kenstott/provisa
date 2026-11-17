@@ -2579,12 +2579,12 @@ async def _publish_new_source(
     """Rebuild the schemas once for a source just created, with its table when one was asked
     for. Registering that table ends in a rebuild of its own, and typing it from the file needs
     none first: a Save paid for both, the longest steps it has. What keeps the source from being
-    answered as saved is returned, as :func:`_register_file_table` says it."""
-    if not input.register_file_table:
+    answered as saved is returned, as :func:`_register_table_from_file` says it."""
+    if not input.register_table_from_file:
         await _rebuild_schemas()
         return None
     try:
-        said = await _register_file_table(info, input)
+        said = await _register_table_from_file(info, input)
     except BaseException:
         # The source stands, whatever became of its table.
         await _rebuild_schemas()
@@ -2634,7 +2634,7 @@ def default_table_input(
     )
 
 
-async def _register_file_table(
+async def _register_table_from_file(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
     """A single-file CSV or Parquet source's table, set up with the source and live on

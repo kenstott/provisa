@@ -265,10 +265,11 @@ def test_a_withdrawn_table_keeps_no_replica_and_put_back_is_replicated_again(ser
         what="the withdrawn table's replica being retired",
     )
     _wait(lambda: _replica_rows(pg) is None, seconds=90, what="the replica's drop")
-    # Its steward's preview lands nothing: a withdrawn table keeps no replica.
+    # Its source is floored to its replica (no live attach), and a withdrawn table keeps no
+    # replica: its steward's preview is refused saying why, and lands nothing.
     previewed = _preview(srv, table_id, {"sorts": [{"col": "id", "dir": "asc"}]})
-    assert previewed.status_code == 200, previewed.text
-    assert [(r["id"], r["amount"]) for r in previewed.json()["rows"]] == _ID_AMOUNT
+    assert previewed.status_code == 409, previewed.text
+    assert previewed.json()["code"] == "schema.withdrawn_table_not_previewable", previewed.text
     assert _replica_rows(pg) is None
 
     _mutate(srv, f"putBackTable(tableId: {table_id})")

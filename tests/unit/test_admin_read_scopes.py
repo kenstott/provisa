@@ -72,6 +72,7 @@ _SOURCE = {
     "dialect": "postgresql",
     "replicate": None,
     "region": None,
+    "withdrawn": False,  # REQ-1921
     "path": "/data",
     "mapping": {"k": "v"},
     "federation_hints": {"warehouse": "w"},
