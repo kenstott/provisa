@@ -158,6 +158,32 @@ def _check_env_policy(body: CreateInviteBody) -> None:
         raise ApiError(400, "invites.invalid_max_uses", "max_uses must be at least 1, or null")
 
 
+async def _require_org_admin_rights(request: Request, org_id: str) -> None:  # REQ-1327
+    """Raise 403 unless the caller is an org_admin of ``org_id``: :func:`_require_org_admin`, then
+    every right the org_admin role carries there (REQ-1337: rights, not the role's name).
+
+    REQ-1327 (amended 2026-11-16): deleting an organization and granting org_admin are an
+    org_admin's acts; user_management alone allows neither. The platform administrator
+    (``cross_org``) keeps both: an org's lifecycle and the appointment of its admins.
+    """
+    from provisa.api.admin._platform_guard import org_admin_refusal
+    from provisa.api.admin.capabilities import _resolved_capabilities
+    from provisa.api.app import state as _app_state
+    from provisa.security.rights import ORG_ADMIN_ROLE, org_admin_rights_missing
+
+    await _require_org_admin(request, org_id, allow_cross_org=True)
+    identity = getattr(request.state, "identity", None)
+    if identity is None or getattr(identity, "user_id", "anonymous") == "anonymous":
+        return  # dev mode — no auth configured, as _require_org_admin
+    caps = _resolved_capabilities(identity, _app_state)
+    # The request acts in org_id (_require_org_admin confined it there, or the caller holds
+    # cross_org and lacks nothing), so state.roles is that org's: org_admin is a standard role,
+    # seeded in every org.
+    missing = org_admin_rights_missing(_app_state.roles[ORG_ADMIN_ROLE]["capabilities"], caps)
+    if missing:
+        raise org_admin_refusal(missing)
+
+
 async def _org_role_rows(org_id: str) -> list[dict]:
     """The roles defined in ``org_id``'s model: ``id``, ``capabilities``, ``parents``."""
     from provisa.api.app import ensure_org_runtime
@@ -240,7 +266,9 @@ async def resolve_invite_role(
     """
     from provisa.api.app import state
     from provisa.security.inheritance import effective_capabilities
+    from provisa.api.admin._platform_guard import org_admin_refusal
     from provisa.security.rights import (
+        OrgAdminGrantError,
         PlatformRoleGrantError,
         check_role_grant,
         platform_rights_in,
@@ -275,6 +303,8 @@ async def resolve_invite_role(
             role=resolved,
             rights=exc.missing,
         ) from exc
+    except OrgAdminGrantError as exc:
+        raise org_admin_refusal(exc.missing) from exc
     return resolved
 
 
