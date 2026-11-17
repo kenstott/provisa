@@ -94,7 +94,7 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
+  fetchSuggestions: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7 }),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
   // REQ-194: the reverse is offered once the GraphQL convention its alias is named by is read.
   fetchSettings: vi.fn().mockResolvedValue({

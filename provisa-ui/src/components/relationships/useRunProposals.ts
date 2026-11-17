@@ -19,7 +19,9 @@ import {
   fetchRunProposals,
   type DecisionResult,
   type DiscoveryRun,
+  type RunDecisions,
   type RunProposal,
+  type RunProposals,
 } from "../../api/admin";
 
 /** Whether a proposal starts ticked to accept: it can be decided, the run's rules removed it
@@ -35,7 +37,7 @@ export function startsAccepted(p: RunProposal, threshold: number): boolean {
 }
 
 export interface RunProposalsState {
-  /** The shown run's undecided proposals, the highest score first; null until read. */
+  /** The undecided proposals shown, the highest score first; null until read. */
   proposals: RunProposal[] | null;
   threshold: number;
   accept: ReadonlySet<number>;
@@ -52,17 +54,51 @@ export interface RunProposalsState {
   /** How many the last Apply accepted and marked; null before any. */
   applied: { accepted: number; notAgain: number } | null;
   error: string;
+  /** Read the proposals again: what was decided elsewhere leaves, what was stored joins. */
+  reload: () => Promise<void>;
+}
+
+/** Where a decision table's proposals come from and where its decisions go. ``key`` names
+ *  what is shown: a different key is a different table, read afresh. */
+export interface ProposalSource {
+  key: string;
+  read: () => Promise<RunProposals>;
+  send: (decisions: RunDecisions) => Promise<DecisionResult[]>;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
+/** An ended run's result: its undecided proposals, decided through the run. */
 export function useRunProposals(
   run: DiscoveryRun | null,
   /** Told after an Apply that decided something: relationships and suggestions have changed. */
   onApplied: () => void,
 ): RunProposalsState {
+  const runId = run?.id;
+  const ended = run !== null && run.status !== "running";
+  const source = useMemo<ProposalSource | null>(
+    () =>
+      runId === undefined || !ended
+        ? null
+        : {
+            key: `run:${runId}`,
+            read: () => fetchRunProposals(runId),
+            send: (decisions) => applyRunDecisions(runId, decisions),
+          },
+    [runId, ended],
+  );
+  return useProposalDecisions(source, onApplied);
+}
+
+/** A decision table over ``source``'s proposals (REQ-413): the dialog's result of a run, and the
+ *  Relationships page's waiting suggestions, decided the one way. Null: nothing is shown. */
+export function useProposalDecisions(
+  source: ProposalSource | null,
+  /** Told after an Apply that decided something: relationships and suggestions have changed. */
+  onApplied: () => void,
+): RunProposalsState {
   const [read, setRead] = useState<{
-    runId: number;
+    key: string;
     proposals: RunProposal[];
     threshold: number;
   } | null>(null);
@@ -72,31 +108,39 @@ export function useRunProposals(
   const [failures, setFailures] = useState<RunProposalsState["failures"]>([]);
   const [applied, setApplied] = useState<RunProposalsState["applied"]>(null);
   const [error, setError] = useState("");
-  const runId = run?.id;
-  const ended = run !== null && run.status !== "running";
 
-  const load = useCallback(async (id: number) => {
-    const { proposals, threshold } = await fetchRunProposals(id);
-    setRead({ runId: id, proposals, threshold });
+  const load = useCallback(async (from: ProposalSource) => {
+    const { proposals, threshold } = await from.read();
+    setRead({ key: from.key, proposals, threshold });
     setAccept(new Set(proposals.filter((p) => startsAccepted(p, threshold)).map((p) => p.id)));
     setNotAgain(new Set());
   }, []);
 
   useEffect(() => {
-    if (runId === undefined || !ended) return;
+    if (source === null) return;
     let live = true;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- a different run's result
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- a different table's result
     setFailures([]);
     setApplied(null);
-    load(runId)
+    load(source)
       .then(() => live && setError(""))
       .catch((e) => live && setError(errorText(e)));
     return () => {
       live = false;
     };
-  }, [runId, ended, load]);
+  }, [source, load]);
 
-  const shown = read !== null && read.runId === runId && ended ? read : null;
+  const reload = useCallback(async () => {
+    if (source === null) return;
+    try {
+      await load(source);
+      setError("");
+    } catch (e) {
+      setError(errorText(e));
+    }
+  }, [source, load]);
+
+  const shown = read !== null && source !== null && read.key === source.key ? read : null;
   const decidable = useMemo(
     () => (shown ? shown.proposals.filter((p) => p.decidable).map((p) => p.id) : []),
     [shown],
@@ -126,14 +170,14 @@ export function useRunProposals(
 
   const apply = useCallback(
     async (nameOf: (p: RunProposal) => string) => {
-      if (!shown) return;
+      if (!shown || source === null) return;
       const byId = new Map(shown.proposals.map((p) => [p.id, p]));
       const chosen = (ids: ReadonlySet<number>) =>
         shown.proposals.filter((p) => p.decidable && ids.has(p.id));
       setApplying(true);
       setError("");
       try {
-        const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
+        const results: DecisionResult[] = await source.send({
           accept: chosen(accept).map((p) => ({ id: p.id, name: nameOf(p) })),
           not_again: chosen(notAgain).map((p) => p.id),
         });
@@ -146,7 +190,7 @@ export function useRunProposals(
         const ok = (action: DecisionResult["action"]) =>
           results.filter((r) => r.ok && r.action === action).length;
         setApplied({ accepted: ok("accept"), notAgain: ok("not_again") });
-        await load(shown.runId);
+        await load(source);
         if (results.some((r) => r.ok)) onApplied();
       } catch (e) {
         setError(errorText(e));
@@ -154,7 +198,7 @@ export function useRunProposals(
         setApplying(false);
       }
     },
-    [shown, accept, notAgain, load, onApplied],
+    [shown, source, accept, notAgain, load, onApplied],
   );
 
   return {
@@ -170,5 +214,6 @@ export function useRunProposals(
     failures,
     applied,
     error,
+    reload,
   };
 }

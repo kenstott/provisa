@@ -1804,3 +1804,83 @@ async def test_a_jev_call_that_fails_keeps_the_models_confidence_and_the_result_
     assert semantics["suggested"] == 1 and semantics["scoring_failed"] == 1
     (candidate,) = await _candidates(db)
     assert candidate["confidence"] == 0.95
+
+
+async def test_the_pages_suggestions_are_the_runs_proposals_and_a_decided_one_leaves_them(
+    monkeypatch, tmp_path
+):
+    """The Relationships page lists every suggestion still waiting as its run listed it (kind,
+    score, reasoning) and decides them as a run's result is decided: one Apply accepts what is
+    ticked and marks what is not to be recommended again; each decided one leaves the page's
+    list and its run's table, and what is left alone stays waiting."""
+    from provisa.discovery.analyzer import RelationshipCandidate
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.fk_found = [
+        RelationshipCandidate(3, "region_id", 2, "id", "many-to-one", 1.0, "Foreign key constraint")
+    ]
+    run, _ = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.95),
+            _suggestion((1, "customer_id"), (3, "id"), 0.8),
+            _suggestion((3, "region_id"), (1, "id"), 0.55),
+        ],
+        kinds=["foreign_keys", "semantics"],
+    )
+    listed = await discovery.list_suggestions(_REQUEST)
+    assert listed["threshold"] == 0.7
+    rows = listed["proposals"]
+    # The run's suggestions, the highest score first; the one under the threshold is not one.
+    assert [
+        (r["kind"], r["source_table_id"], r["target_table_id"], r["confidence"], r["reason"])
+        for r in rows
+    ] == [
+        ("foreign_keys", 3, 2, 1.0, None),
+        ("semantics", 1, 2, 0.95, None),
+        ("semantics", 1, 3, 0.8, None),
+    ]
+    assert all(r["decidable"] and r["run_id"] == run["id"] for r in rows)
+    fk, kept, other = rows
+
+    done = await discovery.apply_suggestions(
+        _REQUEST,
+        _apply([(fk["id"], "store-region"), (kept["id"], "orders-customer")], [other["id"]]),
+    )
+    assert done["results"] == [
+        {"id": fk["id"], "action": "accept", "ok": True, "relationship_id": "store-region"},
+        {"id": kept["id"], "action": "accept", "ok": True, "relationship_id": "orders-customer"},
+        {"id": other["id"], "action": "not_again", "ok": True},
+    ]
+    assert (await discovery.list_suggestions(_REQUEST))["proposals"] == []
+    assert await discovery.list_candidates(_REQUEST) == []
+    assert [
+        r["reason"] for r in (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    ] == ["below_threshold"]
+
+
+async def test_a_suggestion_left_undecided_in_a_runs_result_stays_on_the_page_until_decided(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, (kept, undecided) = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.95),
+            _suggestion((3, "region_id"), (2, "id"), 0.8),
+        ],
+    )
+    await discovery.apply_decisions(_REQUEST, run["id"], _apply([(kept["id"], "orders-customer")]))
+    (waiting,) = (await discovery.list_suggestions(_REQUEST))["proposals"]
+    assert waiting["id"] == undecided["id"]
+    # Decided twice is refused by name; the rest of an Apply goes on.
+    done = await discovery.apply_suggestions(_REQUEST, _apply([(kept["id"], "x")], [waiting["id"]]))
+    assert [(r["id"], r["ok"]) for r in done["results"]] == [
+        (kept["id"], False),
+        (waiting["id"], True),
+    ]
+    assert (await discovery.list_suggestions(_REQUEST))["proposals"] == []

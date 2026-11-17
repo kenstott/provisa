@@ -17,6 +17,7 @@ from __future__ import annotations
 import asyncio
 import logging as _logging
 from dataclasses import dataclass
+from collections.abc import Awaitable, Callable
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, Request
@@ -560,7 +561,6 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
-    results: list[dict[str, Any]] = []
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         found = await _held(conn, run_id)
@@ -571,40 +571,86 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
                 f"Discovery run {run_id} is still going; decide its proposals once it has ended",
                 run_id=run_id,
             )
-        if set(e.id for e in body.accept) & set(body.not_again):
-            raise ApiError(
-                400,
-                "discovery.decided_both_ways",
-                "A proposal is accepted or not recommended again, not both",
+
+        async def of_this_run(_proposal_id: int) -> int:
+            return run_id
+
+        return {"results": await _decide(conn, body, of_this_run)}
+
+
+async def _decide(
+    conn: "Connection", body: ApplyRequest, run_of: Callable[[int], Awaitable[int]]
+) -> list[dict[str, Any]]:  # REQ-413
+    """Apply a reviewer's decisions, each proposal in a transaction of its own, ``run_of``
+    naming the run each belongs to: one that fails is reported with its reason and the others
+    go on."""
+    if set(e.id for e in body.accept) & set(body.not_again):
+        raise ApiError(
+            400,
+            "discovery.decided_both_ways",
+            "A proposal is accepted or not recommended again, not both",
+        )
+    results: list[dict[str, Any]] = []
+    for each in body.accept:
+        try:
+            relationship_id = await proposals_repo.accept(
+                conn, await run_of(each.id), each.id, each.name
             )
-        for each in body.accept:
-            try:
-                relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
-            except Exception as exc:  # reported per proposal, the rest go on
-                _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
-                results.append(
-                    {"id": each.id, "action": "accept", "ok": False, "error": client_text(str(exc))}
-                )
-                continue
+        except Exception as exc:  # reported per proposal, the rest go on
+            _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
             results.append(
-                {"id": each.id, "action": "accept", "ok": True, "relationship_id": relationship_id}
+                {"id": each.id, "action": "accept", "ok": False, "error": client_text(str(exc))}
             )
-        for proposal_id in body.not_again:
-            try:
-                await proposals_repo.not_again(conn, run_id, proposal_id)
-            except Exception as exc:  # reported per proposal, the rest go on
-                _log.warning("Apply: marking proposal %s failed: %s", proposal_id, exc)
-                results.append(
-                    {
-                        "id": proposal_id,
-                        "action": "not_again",
-                        "ok": False,
-                        "error": client_text(str(exc)),
-                    }
-                )
-                continue
-            results.append({"id": proposal_id, "action": "not_again", "ok": True})
-    return {"results": results}
+            continue
+        results.append(
+            {"id": each.id, "action": "accept", "ok": True, "relationship_id": relationship_id}
+        )
+    for proposal_id in body.not_again:
+        try:
+            await proposals_repo.not_again(conn, await run_of(proposal_id), proposal_id)
+        except Exception as exc:  # reported per proposal, the rest go on
+            _log.warning("Apply: marking proposal %s failed: %s", proposal_id, exc)
+            results.append(
+                {
+                    "id": proposal_id,
+                    "action": "not_again",
+                    "ok": False,
+                    "error": client_text(str(exc)),
+                }
+            )
+            continue
+        results.append({"id": proposal_id, "action": "not_again", "ok": True})
+    return results
+
+
+@router.get("/suggestions")
+async def list_suggestions(request: Request):  # REQ-413
+    """Every suggestion still waiting, whichever run stored it, as its run lists it: the
+    Relationships page decides them in the table a run's result is decided in."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        return {
+            "proposals": await proposals_repo.suggested(cast("Connection", _conn), state),
+            "threshold": MIN_CONFIDENCE,
+        }
+
+
+@router.post("/suggestions/apply")
+async def apply_suggestions(request: Request, body: ApplyRequest):  # REQ-413, REQ-612
+    """Decide waiting suggestions (by their proposals' ids) as a run's result is decided
+    (:func:`apply_decisions`), each in its own run."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        conn = cast("Connection", _conn)
+
+        async def of_its_run(proposal_id: int) -> int:
+            return await proposals_repo.run_of_proposal(conn, proposal_id)
+
+        return {"results": await _decide(conn, body, of_its_run)}
 
 
 @router.get("/candidates")

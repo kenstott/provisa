@@ -947,20 +947,23 @@ export async function applyRunDecisions(
   ).results;
 }
 
-export async function fetchCandidates(): Promise<unknown[]> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates`);
-  if (!resp.ok) throw httpError("Fetch candidates", resp.status);
-  return resp.json();
+/** Every suggestion still waiting, whichever run stored it, as its run lists it, and the score
+ *  from which a row starts ticked (REQ-413). */
+export function fetchSuggestions(): Promise<RunProposals> {
+  return discoveryRequest("/suggestions", "Suggestions");
 }
 
-export async function acceptCandidate(id: number, name?: string): Promise<unknown> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/accept`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: name ?? null }),
-  });
-  if (!resp.ok) throw httpError("Accept", resp.status);
-  return resp.json();
+/** Decide waiting suggestions (their proposals' ids) as a run's result is decided. */
+export async function applySuggestionDecisions(
+  decisions: RunDecisions,
+): Promise<DecisionResult[]> {
+  return (
+    await discoveryRequest<{ results: DecisionResult[] }>(
+      "/suggestions/apply",
+      "Apply",
+      postJson(decisions),
+    )
+  ).results;
 }
 
 export async function fetchRejectedCount(): Promise<number> {
@@ -976,48 +979,6 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   });
   if (!resp.ok) throw httpError("Clear rejections", resp.status);
   return resp.json();
-}
-
-/** The outcome of one suggestion in an Accept all or Reject all: done, or why not. */
-export type CandidateOutcome =
-  { id: number; ok: true; relationship_id?: string } | { id: number; ok: false; error: string };
-
-async function candidatesAtOnce(
-  action: "accept" | "reject",
-  body: unknown,
-  label: string,
-): Promise<CandidateOutcome[]> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${action}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    const failure = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(serverMessage(failure, requestFailed(label, resp.status)));
-  }
-  return ((await resp.json()) as { results: CandidateOutcome[] }).results;
-}
-
-/** Accept every suggestion given, each under its own name, in one request: one outcome each. */
-export function acceptCandidates(
-  candidates: { id: number; name: string }[],
-): Promise<CandidateOutcome[]> {
-  return candidatesAtOnce("accept", { candidates }, "Accept all");
-}
-
-/** Reject every suggestion given with the one reason, in one request: one outcome each. */
-export function rejectCandidates(ids: number[], reason: string): Promise<CandidateOutcome[]> {
-  return candidatesAtOnce("reject", { ids, reason }, "Reject all");
-}
-
-export async function rejectCandidate(id: number, reason: string): Promise<void> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/reject`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason }),
-  });
-  if (!resp.ok) throw httpError("Reject", resp.status);
 }
 
 // --- Schema Discovery ---

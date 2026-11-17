@@ -14,7 +14,17 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Code2, X, Link2 } from "lucide-react";
-import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
+import {
+  ActionIcon,
+  Alert,
+  Button,
+  Group,
+  Modal,
+  Pagination,
+  Table,
+  Text,
+  Title,
+} from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
 import { tagLossTitle } from "../components/admin/tagLoss";
@@ -31,12 +41,11 @@ import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
 import { DiscoverButton, DiscoverResultBanner } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
 import {
-  fetchCandidates,
+  applySuggestionDecisions,
   fetchRejectedCount,
-  acceptCandidate,
-  rejectCandidate,
   clearRejectedCandidates,
   fetchSettings,
+  fetchSuggestions,
 } from "../api/admin";
 import {
   useRelationships,
@@ -51,13 +60,7 @@ import { tagLossInput, tagLossOf } from "../components/relationships/tagLoss";
 import { fetchActions } from "../api/actions";
 import type { TrackedFunction } from "../api/actions";
 import type { MutationResult, Relationship } from "../types/admin";
-import {
-  EMPTY_FORM,
-  REJECT_REASON,
-  tableRef,
-  type Candidate,
-  type RelForm,
-} from "../components/relationships/relationship-types";
+import { EMPTY_FORM, tableRef, type RelForm } from "../components/relationships/relationship-types";
 import { AddRelationshipForm } from "../components/relationships/AddRelationshipForm";
 import { RelationshipRow } from "../components/relationships/RelationshipRow";
 import { RelationshipDetail } from "../components/relationships/RelationshipDetail";
@@ -69,9 +72,11 @@ import {
   ConflictModal,
   ReverseRelationshipForm,
 } from "../components/relationships/RelationshipModals";
-import { CandidatesTable } from "../components/relationships/CandidatesTable";
-import { CandidatesBulkFailures } from "../components/relationships/CandidatesBulkFailures";
-import { useCandidatesAtOnce } from "../components/relationships/useCandidatesAtOnce";
+import { ProposalsTable } from "../components/relationships/ProposalsTable";
+import {
+  useProposalDecisions,
+  type ProposalSource,
+} from "../components/relationships/useRunProposals";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { applyConvention, domainToSqlName } from "../naming";
@@ -95,7 +100,6 @@ export function RelationshipsPage() {
   const { upsertRelationship } = useUpsertRelationship();
   const { deleteRelationship } = useDeleteRelationship();
   const [functions, setFunctions] = useState<TrackedFunction[]>([]);
-  const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [saving, setSaving] = useState<string | null>(null);
   // What the open form has to say of a save that did not go through.
   const [saveProblem, setSaveProblem] = useState("");
@@ -160,13 +164,11 @@ export function RelationshipsPage() {
   };
 
   const load = useCallback(async () => {
-    const [actions, c, rc] = await Promise.all([
+    const [actions, rc] = await Promise.all([
       fetchActions().catch(() => ({ functions: [], webhooks: [] })),
-      fetchCandidates().catch(() => []),
       fetchRejectedCount().catch(() => 0),
     ]);
     setFunctions(actions.functions);
-    setCandidates(c as Candidate[]);
     setRejectedCount(rc);
   }, []);
 
@@ -357,32 +359,26 @@ export function RelationshipsPage() {
     else void handleAdd(resolve);
   };
 
-  // Accept all and Reject all, gated like the rows' own actions by the page's capability.
-  const atOnce = useCandidatesAtOnce({
-    candidates,
-    tableNameById,
-    onStart: () => {
-      setDiscoverError("");
-      setDiscoverMsg("");
-    },
-    onMessage: setDiscoverMsg,
-    onError: setDiscoverError,
-    onAccepted: async () => {
-      await refetchRels();
-      await load();
-    },
-    onRejected: (ids) => {
-      setCandidates((prev) => prev.filter((c) => !ids.has(c.id)));
-      setRejectedCount((prev) => prev + ids.size);
-    },
-  });
-
-  const clearAtOnce = atOnce.clear;
+  // REQ-413: every suggestion still waiting, decided in the table a run's result is decided in:
+  // the accept box, "Don't recommend again", one Apply. A decided one leaves the list. Read by a
+  // person who may create relationships; the list is not shown to anyone else.
+  const suggestionSource = useMemo<ProposalSource | null>(
+    () =>
+      canManage
+        ? { key: "suggestions", read: fetchSuggestions, send: applySuggestionDecisions }
+        : null,
+    [canManage],
+  );
+  const suggestionsApplied = useCallback(() => {
+    void refetchRels();
+    load();
+  }, [load, refetchRels]);
+  const suggestions = useProposalDecisions(suggestionSource, suggestionsApplied);
+  const reloadSuggestions = suggestions.reload;
 
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
-    clearAtOnce();
     try {
       const result = await clearRejectedCandidates();
       setDiscoverMsg(t("relationshipsPage.clearedRejections", { count: result.deleted }));
@@ -390,42 +386,21 @@ export function RelationshipsPage() {
     } catch (e) {
       setDiscoverError(e instanceof Error ? e.message : String(e));
     }
-  }, [t, clearAtOnce]);
+  }, [t]);
 
   // REQ-413: the discovery run is the server's; the suggestions are read again as it stores more.
-  const loadCandidates = useCallback(async () => {
-    try {
-      setCandidates((await fetchCandidates()) as Candidate[]);
-    } catch (e) {
-      setDiscoverError(e instanceof Error ? e.message : String(e));
-    }
-  }, []);
-  const discovery = useDiscoveryRun(loadCandidates);
+  const discovery = useDiscoveryRun(reloadSuggestions);
   const openDiscover = () => {
     setDiscoverAsk(true);
     void discovery.refresh();
   };
 
-  const handleAccept = useCallback(
-    async (id: number, name: string) => {
-      await acceptCandidate(id, name);
-      await refetchRels();
-      load();
-    },
-    [load, refetchRels],
-  );
-
   // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed.
   const handleApplied = useCallback(() => {
     void refetchRels();
     load();
-  }, [load, refetchRels]);
-
-  const handleReject = useCallback(async (id: number) => {
-    await rejectCandidate(id, REJECT_REASON);
-    setCandidates((prev) => prev.filter((c) => c.id !== id));
-    setRejectedCount((prev) => prev + 1);
-  }, []);
+    void reloadSuggestions();
+  }, [load, refetchRels, reloadSuggestions]);
 
   // The form's values for a relationship, as its edit form holds them.
   const formOf = useCallback(
@@ -838,7 +813,6 @@ export function RelationshipsPage() {
           {settingsError}
         </Alert>
       )}
-      <CandidatesBulkFailures failures={atOnce.failures} />
       <DiscoverResultBanner run={discovery.run} />
       <DiscoverDialog
         opened={discoverAsk}
@@ -1039,16 +1013,17 @@ export function RelationshipsPage() {
 
       {conflictRel && <ConflictModal rel={conflictRel} onClose={() => setConflictRel(null)} />}
 
-      {!erd.on && candidates.length > 0 && (
-        <div className="page-aux">
-          <CandidatesTable
-            candidates={candidates}
+      {!erd.on && ((suggestions.proposals?.length ?? 0) > 0 || suggestions.error !== "") && (
+        <div className="page-aux" data-testid="rels-suggestions">
+          <Title order={3} mt="xl" mb="xs">
+            {t("candidatesTable.heading")}
+          </Title>
+          <ProposalsTable
+            state={suggestions}
             tableDomainById={tableDomainById}
             tableNameById={tableNameById}
-            onAccept={handleAccept}
-            onReject={handleReject}
-            onAcceptAll={atOnce.acceptAll}
-            onRejectAll={atOnce.rejectAll}
+            testId="suggestions"
+            rowTestId="suggestion"
           />
         </div>
       )}

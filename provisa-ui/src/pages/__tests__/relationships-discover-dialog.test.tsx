@@ -23,7 +23,7 @@ import { RelationshipsPage } from "../RelationshipsPage";
 import {
   applyRunDecisions,
   countDiscoveryRun,
-  fetchCandidates,
+  fetchSuggestions,
   fetchDiscoveryModels,
   fetchDiscoveryRun,
   fetchDiscoveryRuns,
@@ -86,7 +86,7 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn(),
+  fetchSuggestions: vi.fn(),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
   fetchSettings: vi.fn().mockResolvedValue({
     naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
@@ -179,19 +179,6 @@ const REPORT = {
   },
   model: HAIKU,
 };
-const suggestion = (id: number, column: string, scope: string) => ({
-  id,
-  source_table_id: 1,
-  source_column: column,
-  target_table_id: 2,
-  target_column: "id",
-  cardinality: "many-to-one",
-  confidence: 0.9,
-  reasoning: "Same customer key",
-  suggested_name: `orders-${column}`,
-  scope,
-});
-
 const modelsMock = vi.mocked(fetchDiscoveryModels);
 const vendorModelsMock = vi.mocked(fetchVendorModels);
 const limitsMock = vi.mocked(fetchModelLimits);
@@ -200,7 +187,7 @@ const startMock = vi.mocked(startDiscoveryRun);
 const runMock = vi.mocked(fetchDiscoveryRun);
 const runsMock = vi.mocked(fetchDiscoveryRuns);
 const stopMock = vi.mocked(stopDiscoveryRun);
-const candidatesMock = vi.mocked(fetchCandidates);
+const suggestionsMock = vi.mocked(fetchSuggestions);
 const proposalsMock = vi.mocked(fetchRunProposals);
 const applyMock = vi.mocked(applyRunDecisions);
 const proposal = (over: Partial<RunProposal>): RunProposal => ({
@@ -343,7 +330,7 @@ beforeEach(() => {
   runMock.mockReset().mockResolvedValue(runOf({}));
   runsMock.mockReset().mockResolvedValue([]);
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
-  candidatesMock.mockReset().mockResolvedValue([]);
+  suggestionsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7 });
   proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7 });
   applyMock.mockReset().mockResolvedValue([]);
 });
@@ -668,10 +655,19 @@ describe("Discovery dialog: the run in progress", () => {
 
   it("Stop asks the server to stop and keeps what was found", async () => {
     proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7 });
-    candidatesMock.mockResolvedValue([
-      suggestion(101, "customer_id", "run:7"),
-      suggestion(55, "buyer_id", "cross-domain"),
-    ]);
+    // The page's waiting suggestions: one of this run and one an earlier run stored.
+    suggestionsMock.mockResolvedValue({
+      proposals: [
+        proposal({ id: 101 }),
+        proposal({
+          id: 55,
+          run_id: 2,
+          source_column: "buyer_id",
+          suggested_name: "orders-buyer_id",
+        }),
+      ],
+      threshold: 0.7,
+    });
     runMock.mockResolvedValue(
       runOf({ requests_total: 3, requests_done: 1, suggestions: 1, report: REPORT }),
     );

@@ -8,9 +8,9 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-413: the suggestions list is accepted or rejected as a whole, each after a confirmation that
-// names the count, and a suggestion that fails is named; the run's result never covers the list of
-// registered relationships.
+// REQ-413: the suggestions still waiting are decided on the page as a run's result is decided in
+// the dialog: the accept box, "Don't recommend again", one Apply stating its counts. A decided
+// suggestion leaves the list; the run's result never covers the list of registered relationships.
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { readFileSync } from "node:fs";
@@ -19,15 +19,14 @@ import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
 import {
-  acceptCandidates,
+  applySuggestionDecisions,
   startDiscoveryRun,
   fetchDiscoveryRun,
   fetchDiscoveryRuns,
   fetchDiscoveryModels,
   countDiscoveryRun,
-  fetchCandidates,
-  rejectCandidate,
-  rejectCandidates,
+  fetchSuggestions,
+  type RunProposal,
 } from "../../api/admin";
 
 const REGISTERED = {
@@ -70,7 +69,7 @@ const TABLES = {
   ],
   loading: false,
 };
-const AUTH = { capabilities: ["create_relationship"] };
+const AUTH = { capabilities: ["create_relationship"] as string[] };
 const FILTER = { domainsEnabled: false, domains: [], checkedDomains: new Set<string>() };
 
 vi.mock("../../hooks/useAdminQueries", () => ({
@@ -93,7 +92,8 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchCandidates: vi.fn(),
+  fetchSuggestions: vi.fn(),
+  applySuggestionDecisions: vi.fn(),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
   fetchSettings: vi.fn().mockResolvedValue({
     naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },
@@ -104,43 +104,50 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
   fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7 }),
-  acceptCandidates: vi.fn(),
-  rejectCandidates: vi.fn(),
-  rejectCandidate: vi.fn(),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),
 }));
 vi.mock("../../components/TagControl", () => ({ TagControl: () => null }));
 
-const candidate = (id: number, column: string, name: string | null) => ({
+const suggestion = (id: number, column: string, over: Partial<RunProposal> = {}): RunProposal => ({
   id,
+  run_id: 3,
+  kind: "semantics",
   source_table_id: 1,
   source_column: column,
   target_table_id: 2,
   target_column: "id",
-  cardinality: "many_to_one",
+  cardinality: "many-to-one",
   confidence: 0.9,
-  reasoning: "Foreign key constraint",
-  suggested_name: name,
+  scored: null,
+  reasoning: `orders name their customer by ${column}`,
+  suggested_name: null,
+  reason: null,
+  answer: null,
+  decidable: true,
+  reduced_information: false,
+  ...over,
 });
-// The third has no suggested name: Accept all gives it the name its row's Accept would.
-const SUGGESTED = [
-  candidate(7, "customer_id", "purchase-history"),
-  candidate(8, "buyer_id", "buyer"),
-  candidate(9, "payer_id", null),
+// A foreign key constraint of the run, a suggestion named by the model, one with no name (its
+// relationship takes the name made from its columns) and one found on reduced information.
+const WAITING = [
+  suggestion(7, "customer_id", {
+    kind: "foreign_keys",
+    confidence: 1,
+    reasoning: "Foreign key constraint",
+  }),
+  suggestion(8, "buyer_id", { suggested_name: "buyer" }),
+  suggestion(9, "payer_id", { reduced_information: true }),
 ];
 
-const candidatesMock = vi.mocked(fetchCandidates);
-const acceptAllMock = vi.mocked(acceptCandidates);
-const rejectAllMock = vi.mocked(rejectCandidates);
-const rejectOneMock = vi.mocked(rejectCandidate);
+const suggestionsMock = vi.mocked(fetchSuggestions);
+const applyMock = vi.mocked(applySuggestionDecisions);
 
 beforeEach(() => {
-  candidatesMock.mockReset().mockResolvedValue(SUGGESTED);
-  acceptAllMock.mockReset();
-  rejectAllMock.mockReset();
-  rejectOneMock.mockReset().mockResolvedValue(undefined);
+  AUTH.capabilities = ["create_relationship"];
+  suggestionsMock.mockReset().mockResolvedValue({ proposals: WAITING, threshold: 0.7 });
+  applyMock.mockReset();
   vi.mocked(fetchDiscoveryModels).mockReset();
   vi.mocked(countDiscoveryRun).mockReset();
   vi.mocked(startDiscoveryRun).mockReset();
@@ -150,132 +157,95 @@ beforeEach(() => {
 
 async function showSuggestions() {
   render(<RelationshipsPage />);
-  await waitFor(() => expect(screen.getByTestId("candidates-accept-all")).toBeInTheDocument());
+  await waitFor(() => expect(screen.getByTestId("suggestions-apply")).toBeInTheDocument());
 }
 
-describe("RelationshipsPage: Accept all and Reject all", () => {
-  it("puts both actions at the head of the suggestions list", async () => {
+describe("RelationshipsPage: the suggestions waiting are a decision table", () => {
+  it("lists each as its run listed it, every one at the threshold ticked to accept", async () => {
     await showSuggestions();
-    const heading = screen.getByText("Suggested Relationships");
-    const head = heading.parentElement as HTMLElement;
-    expect(within(head).getByTestId("candidates-accept-all")).toHaveTextContent("Accept all");
-    expect(within(head).getByTestId("candidates-reject-all")).toHaveTextContent("Reject all");
-  });
-
-  it("asks before accepting, naming the count, and sends nothing on Cancel", async () => {
-    await showSuggestions();
-    fireEvent.click(screen.getByTestId("candidates-accept-all"));
-    const ask = await screen.findByRole("dialog");
-    expect(ask).toHaveTextContent(
-      "Accept all 3 listed suggestions? Each becomes a registered relationship.",
-    );
-    // Accepting destroys nothing: the confirmation's non-destructive form.
-    expect(within(ask).getByTestId("candidates-accept-all-confirm-confirm")).toHaveAttribute(
-      "data-tone",
-      "confirm",
-    );
-    fireEvent.click(within(ask).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(acceptAllMock).not.toHaveBeenCalled();
-  });
-
-  it("accepts every suggestion in one request, each under its row's name", async () => {
-    acceptAllMock.mockResolvedValue([
-      { id: 7, ok: true, relationship_id: "purchase-history" },
-      { id: 8, ok: true, relationship_id: "buyer" },
-      { id: 9, ok: true, relationship_id: "orders-payer_id-to-customers" },
-    ]);
-    await showSuggestions();
-    fireEvent.click(screen.getByTestId("candidates-accept-all"));
-    fireEvent.click(await screen.findByTestId("candidates-accept-all-confirm-confirm"));
-    await waitFor(() => expect(acceptAllMock).toHaveBeenCalledTimes(1));
-    expect(acceptAllMock).toHaveBeenCalledWith([
-      { id: 7, name: "purchase-history" },
-      { id: 8, name: "buyer" },
-      { id: 9, name: "orders-payer_id-to-customers" },
-    ]);
-    await waitFor(() =>
-      expect(screen.getByTestId("rels-discover-msg")).toHaveTextContent("3 suggestions accepted."),
-    );
-    expect(screen.queryByTestId("rels-bulk-failures")).not.toBeInTheDocument();
-  });
-
-  it("names each suggestion that could not be accepted, with its reason", async () => {
-    acceptAllMock.mockResolvedValue([
-      { id: 7, ok: true, relationship_id: "purchase-history" },
-      { id: 8, ok: false, error: "relationship buyer already exists" },
-      { id: 9, ok: true, relationship_id: "orders-payer_id-to-customers" },
-    ]);
-    await showSuggestions();
-    fireEvent.click(screen.getByTestId("candidates-accept-all"));
-    fireEvent.click(await screen.findByTestId("candidates-accept-all-confirm-confirm"));
-    const failures = await screen.findByTestId("rels-bulk-failures");
-    expect(failures).toHaveTextContent("1 suggestion could not be accepted:");
-    expect(failures).toHaveTextContent("buyer: relationship buyer already exists");
-    expect(screen.getByTestId("rels-discover-msg")).toHaveTextContent("2 suggestions accepted.");
-  });
-
-  it("rejects every suggestion in one request with the reason a row's Reject gives", async () => {
-    rejectAllMock.mockResolvedValue([
-      { id: 7, ok: true },
-      { id: 8, ok: true },
-      { id: 9, ok: true },
-    ]);
-    await showSuggestions();
-    // The reason a single row's Reject sends.
-    fireEvent.click(screen.getByRole("button", { name: "Reject suggested relationship buyer" }));
-    await waitFor(() => expect(rejectOneMock).toHaveBeenCalled());
-    const rowReason = rejectOneMock.mock.calls[0][1];
-
-    fireEvent.click(screen.getByTestId("candidates-reject-all"));
-    const ask = await screen.findByRole("dialog");
-    expect(ask).toHaveTextContent(
-      "Reject all 2 listed suggestions? They are not suggested again until rejections are cleared.",
-    );
-    fireEvent.click(within(ask).getByTestId("candidates-reject-all-confirm-confirm"));
-    await waitFor(() => expect(rejectAllMock).toHaveBeenCalledTimes(1));
-    expect(rejectAllMock).toHaveBeenCalledWith([7, 9], rowReason);
-    await waitFor(() =>
-      expect(screen.queryByText("Suggested Relationships")).not.toBeInTheDocument(),
-    );
-  });
-
-  it("keeps a suggestion that could not be rejected listed, and names it", async () => {
-    rejectAllMock.mockResolvedValue([
-      { id: 7, ok: true },
-      { id: 8, ok: false, error: "Candidate 8 not found or not in suggested status" },
-      { id: 9, ok: true },
-    ]);
-    await showSuggestions();
-    fireEvent.click(screen.getByTestId("candidates-reject-all"));
-    fireEvent.click(await screen.findByTestId("candidates-reject-all-confirm-confirm"));
-    const failures = await screen.findByTestId("rels-bulk-failures");
-    expect(failures).toHaveTextContent("1 suggestion could not be rejected:");
-    expect(failures).toHaveTextContent("buyer: Candidate 8 not found or not in suggested status");
+    const section = screen.getByTestId("rels-suggestions");
+    expect(within(section).getByText("Suggested Relationships")).toBeInTheDocument();
+    for (const id of [7, 8, 9]) expect(screen.getByTestId(`suggestion-${id}`)).toBeInTheDocument();
+    expect(within(screen.getByTestId("suggestion-7")).getByText("Constraint")).toBeInTheDocument();
+    expect(within(screen.getByTestId("suggestion-8")).getByText("Semantic")).toBeInTheDocument();
     expect(
-      screen.getByRole("button", { name: "Accept suggested relationship buyer" }),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("button", { name: "Accept suggested relationship purchase-history" }),
-    ).not.toBeInTheDocument();
-  });
-
-  it("shows a request that failed as a whole as an error", async () => {
-    acceptAllMock.mockRejectedValue(new Error("Accept all failed: HTTP 500"));
-    await showSuggestions();
-    fireEvent.click(screen.getByTestId("candidates-accept-all"));
-    fireEvent.click(await screen.findByTestId("candidates-accept-all-confirm-confirm"));
-    await waitFor(() =>
-      expect(screen.getByTestId("rels-discover-error")).toHaveTextContent(
-        "Accept all failed: HTTP 500",
+      within(screen.getByTestId("suggestion-9")).getByText(
+        "Reduced information: no values were compared",
       ),
+    ).toBeInTheDocument();
+    expect(screen.getByTestId("suggestions-apply")).toHaveTextContent("Accept 3");
+  });
+
+  it("offers one way to decide: no Accept all, Reject all or a row's own Accept and Reject", async () => {
+    await showSuggestions();
+    const section = screen.getByTestId("rels-suggestions");
+    for (const name of [/^Accept all$/, /^Reject all$/, /^Accept$/, /^Reject$/]) {
+      expect(within(section).queryByRole("button", { name })).toBeNull();
+    }
+  });
+
+  it("applies the ticks: accepts each under its name, marks the one not to recommend again, and the decided leave", async () => {
+    applyMock.mockResolvedValue([
+      { id: 7, action: "accept", ok: true, relationship_id: "orders-customer_id-to-customers" },
+      { id: 8, action: "accept", ok: true, relationship_id: "buyer" },
+      { id: 9, action: "not_again", ok: true },
+    ]);
+    await showSuggestions();
+    fireEvent.click(screen.getByTestId("suggestion-not-again-9"));
+    const apply = screen.getByTestId("suggestions-apply");
+    expect(apply).toHaveTextContent("Accept 2, don't recommend 1 again");
+    suggestionsMock.mockResolvedValue({ proposals: [], threshold: 0.7 });
+    fireEvent.click(apply);
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith({
+        accept: [
+          { id: 7, name: "orders-customer_id-to-customers" },
+          { id: 8, name: "buyer" },
+        ],
+        not_again: [9],
+      }),
     );
+    // Nothing waits any more: the list leaves the page and the relationships are read again.
+    await waitFor(() => expect(screen.queryByTestId("rels-suggestions")).toBeNull());
+    expect(RELS.refetch).toHaveBeenCalled();
+  });
+
+  it("leaves an unticked suggestion waiting and names one that could not be accepted", async () => {
+    applyMock.mockResolvedValue([
+      { id: 7, action: "accept", ok: false, error: "A relationship named 'x' already exists" },
+    ]);
+    await showSuggestions();
+    fireEvent.click(
+      screen
+        .getByTestId("suggestions-proposals")
+        .querySelector('[data-testid="suggestion-8"] input[type="checkbox"]') as HTMLElement,
+    );
+    fireEvent.click(
+      screen.getByTestId("suggestion-9").querySelector('input[type="checkbox"]') as HTMLElement,
+    );
+    suggestionsMock.mockResolvedValue({ proposals: WAITING, threshold: 0.7 });
+    fireEvent.click(screen.getByTestId("suggestions-apply"));
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith({
+        accept: [{ id: 7, name: "orders-customer_id-to-customers" }],
+        not_again: [],
+      }),
+    );
+    const failures = await screen.findByTestId("suggestions-apply-failures");
+    expect(failures).toHaveTextContent(
+      "orders-customer_id-to-customers: A relationship named 'x' already exists",
+    );
+  });
+
+  it("is not read for a person who may not create relationships", async () => {
+    AUTH.capabilities = [];
+    render(<RelationshipsPage />);
+    await screen.findByTestId("relationships-split");
+    expect(suggestionsMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("rels-suggestions")).toBeNull();
   });
 });
 
-// jsdom computes no layout, so what is checked is the arrangement the layout depends on: the
-// result banner, the registered relationships and the suggestions are each the page column's own
-// item, and with the suggestions shown the registered list keeps its height (the page scrolls).
 describe("RelationshipsPage: the result banner does not cover the registered relationships", () => {
   const css = readFileSync(resolve(process.cwd(), "src", "App.css"), "utf8");
   const ruleBody = (selector: string): string => {
