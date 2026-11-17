@@ -486,12 +486,19 @@ def test_the_admin_trail_detail_is_redacted(monkeypatch):
             return False
 
     class _Db:
+        model = None
+
         def acquire(self):
             return _Acquire()
 
     asyncio.run(
         org_membership.record_admin_action(
-            _Db(), action="x", actor_id="a", subject_id="s", detail={"why": SECRET}
+            _Db(),
+            org_id="acme",
+            action="x",
+            actor_id="a",
+            subject_id="s",
+            detail={"why": SECRET},
         )
     )
     assert written[0]["detail"] == {"why": "[REDACTED:auto:pw]"}
