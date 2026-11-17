@@ -18,6 +18,7 @@ from __future__ import annotations
 
 
 import asyncio
+import functools
 import logging
 import hashlib
 import os
@@ -4237,22 +4238,20 @@ def _after_answer_steps(
 
         await warm_role_surfaces(runtime, warm_inputs, build=build)
 
-    def as_the_system(step: Callable[[], Awaitable[None]]) -> Callable[[], Awaitable[None]]:
-        # REQ-2188: a build's writes are the system's, whoever's request ran it: no row rule
-        # holds them, in the pass as in the build.
-        async def run() -> None:
-            with model_row_rules.unnarrowed():
-                await step()
-
-        return run
-
     return {
-        rebuild_trace.DERIVED_WRITES: as_the_system(derived_writes),
-        rebuild_trace.NAMES_TABLE: as_the_system(names_table),
-        rebuild_trace.ANNOUNCE: as_the_system(announce_change),
-        rebuild_trace.LIFECYCLE: as_the_system(lifecycle),
-        rebuild_trace.WARM_UP: as_the_system(warm_up),
+        rebuild_trace.DERIVED_WRITES: functools.partial(_as_the_system, derived_writes),
+        rebuild_trace.NAMES_TABLE: functools.partial(_as_the_system, names_table),
+        rebuild_trace.ANNOUNCE: functools.partial(_as_the_system, announce_change),
+        rebuild_trace.LIFECYCLE: functools.partial(_as_the_system, lifecycle),
+        rebuild_trace.WARM_UP: functools.partial(_as_the_system, warm_up),
     }
+
+
+async def _as_the_system(step: Callable[[], Awaitable[None]]) -> None:
+    """One phase of a build's after-answer pass. REQ-2188: a build's writes are the system's,
+    whoever's request ran it: no row rule holds them, in the pass as in the build."""
+    with model_row_rules.unnarrowed():
+        await step()
 
 
 async def _rewire_lifecycle() -> None:
