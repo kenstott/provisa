@@ -61,7 +61,10 @@
       "tablesGone": "{{count}} table n'y est plus enregistrée.",
       "tablesGone_other": "{{count}} tables n'y sont plus enregistrées.",
       "vendorNoKey": "{{vendor}} n'a pas de clé, le modèle est donc celui qui est attribué.",
-      "modelGone": "{{vendor}} ne propose plus {{model}}, le modèle est donc celui qui est attribué."
+      "modelGone": "{{vendor}} ne propose plus {{model}}, le modèle est donc celui qui est attribué.",
+      "newTables": "{{count}} table enregistrée depuis votre dernière exécution se trouve dans {{domains}}, que cette exécution n'a pas examiné.",
+      "newTables_other": "{{count}} tables enregistrées depuis votre dernière exécution se trouvent dans {{domains}}, que cette exécution n'a pas examiné.",
+      "addNewTables": "Ajouter à cette exécution"
     }
   }
 }

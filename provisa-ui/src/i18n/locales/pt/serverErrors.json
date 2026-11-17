@@ -180,9 +180,13 @@
       "run_still_going": "A execução de descoberta {{run_id}} ainda está em andamento. Decida sobre as propostas quando ela terminar.",
       "schema_discovery_unsupported": "O tipo de fonte '{{source_type}}' não oferece suporte à descoberta de esquema. Defina as colunas manualmente.",
       "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
+      "source_domains_empty": "Os domínios de origem escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
+      "source_tables_not_read": "Nenhuma das tabelas de origem escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
       "table_id_required": "table_id obrigatório para escopo de tabela",
       "table_not_found": "A tabela {{table_id}} não está registrada.",
+      "target_domains_empty": "Os domínios de destino escolhidos não contêm nenhuma tabela que a descoberta lê.",
+      "target_tables_not_read": "Nenhuma das tabelas de destino escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
       "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
     },

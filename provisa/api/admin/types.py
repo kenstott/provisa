@@ -503,6 +503,8 @@ class RegisteredTableType:  # REQ-013, REQ-014, REQ-016, REQ-135
     gql_naming_convention: str | None
     watermark_column: str | None
     columns: list[TableColumnType]
+    # REQ-413: when the table was registered (ISO 8601).
+    registered_at: str
     # REQ-2074: null for a caller without view_governance, as a column's grant lists are.
     write_grants: list[WriteGrantType] | None = None
     unique_constraints: list[UniqueConstraintType] = strawberry.field(
