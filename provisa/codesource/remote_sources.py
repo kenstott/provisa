@@ -740,6 +740,7 @@ def worker_for(
         setup=setup,
         script_hash=remote.get("script_hash"),
         names=remote.get("names"),
+        org_id=org_id,
     )
 
 

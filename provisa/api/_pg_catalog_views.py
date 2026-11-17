@@ -177,8 +177,13 @@ _CATALOG_NAMES = ", ".join(
 )
 _IS_ITSELF = f"rt.domain_id = 'meta' AND rt.table_name IN ({_CATALOG_NAMES})"
 #: Over ``rt``, a row of registered_tables: whether a catalog lists it.
-#: REQ-1921, REQ-2248: a draft or retired table is in no catalog.
-LISTED_TABLE = f"NOT rt.draft AND NOT rt.retired AND NOT ({_IS_ITSELF})"
+#: REQ-1921, REQ-2248: a draft, withdrawn (itself or through its source) or retired table is in no
+#: catalog.
+LISTED_TABLE = (
+    "NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn "
+    "AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) "
+    f"AND NOT ({_IS_ITSELF})"
+)
 
 
 def _catalog_tables() -> str:

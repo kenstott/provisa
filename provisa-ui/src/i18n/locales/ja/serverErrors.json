@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
       "local_server_from_environment": "{{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスの AI エンドポイントを宣言してください。",
       "server_environment_sets": "ここでは {{vendor}} を呼び出せません：サーバーの環境が {{variable}} を設定しており、そのクライアントがすべての組織に対して送信してしまいます。",
+      "vector_model_address_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "vector_model_key_from_server": "埋め込みモデル {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
+      "vector_model_key_unset": "埋め込みモデル {{vendor}} にキーがありません：{{field}} が設定されていません。",
+      "vector_model_local_server": "埋め込みモデル {{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
       "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
     },
     "api": {
@@ -149,6 +153,7 @@
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
       "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
@@ -159,7 +164,9 @@
       "parameter_unbound_on_branch": "パラメータ {{parameter}} は OR の一方の分岐で値が与えられ、もう一方では与えられていません。すべての分岐で {{parameter}} に値を与えてください。",
       "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
       "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。",
-      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。"
+      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。",
+      "parameter_required": "テーブル '{{table}}' にはパラメーター {{parameters}} が必要です。それぞれに値を指定してください（SQL ではその列に対する WHERE 条件、GraphQL では引数）。",
+      "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -197,7 +204,8 @@
       "empty_answer": "モデルはテキストを返しませんでした。"
     },
     "environments": {
-      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
+      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。",
+      "owner_not_member": "{{user}} は環境 {{env}} を作成しましたが、{{org}} のメンバーではありません。所有者としてこの環境で操作するにはメンバーシップが必要です。"
     },
     "front_door": {
       "coordinator_waking": "環境を起動しています。約 5 分で準備が整います。",
@@ -320,6 +328,13 @@
       "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
       "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
     },
+    "redaction": {
+      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
+      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
+      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
+      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
+      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
+    },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
@@ -340,7 +355,9 @@
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
       "description_missing": "ロール '{{role}}' には目的の説明が必要です",
-      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません",
+      "platform_right_requires_platform_admin": "{{rights}} を含むロールはプラットフォーム管理者が定義します",
+      "rights_not_held": "ロール {{role}} には、あなたが持っていない {{rights}} が含まれています"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",
@@ -471,8 +488,6 @@
       "mask_unreachable": "到達できないマスクが定義されています: {{entries}}",
       "webhook_not_found": "Webhook「{{webhook}}」が見つかりません",
       "change_streams_unavailable": "ソース '{{source}}' はスタンドアロンの MongoDB サーバーで、change streams を提供しません。native 変更シグナルにはレプリカセットまたはシャードクラスターが必要です。レプリカセットとして実行するか、poll 変更シグナルを使用してください。",
-      "table_draft_set": "テーブル {{table}} を下書きにしました",
-      "table_released": "テーブル {{table}} を公開しました",
       "openapi_no_rows_field": "テーブル {{table}}: 応答には、行を読み取るためのプロパティ {{rows_field}} がありません。",
       "paging_rows_field_fixed": "テーブル {{table}}: 行の場所（{{rows_field}}）はテーブルの登録時に設定されます。別の場所から行を読み取るには、テーブルを登録し直してください。",
       "relationship_request_queued": "リクエスト #{{id}} としてキューに登録しました。リレーションシップを作成できる {{required}} 人の異なるユーザーの承認が必要で、関わる各ドメインに少なくとも 1 人の権限が及んでいる必要があります。",
@@ -501,6 +516,8 @@
       "role_updated": "ロール「{{role}}」を更新しました",
       "relationship_id_taken": "リレーションシップ「{{relationship}}」はすでに存在します",
       "relationship_id_reserved": "リレーションシップ ID「{{id}}」は、組み込みのリレーションシップ用に予約されている接頭辞「{{prefix}}」で始まっています。別の ID を指定してください。",
+      "relationship_source_column_missing": "リレーションシップ「{{relationship}}」にはソース列が指定されていません。リレーションシップはソーステーブルの列で結合します。",
+      "relationship_target_column_missing": "リレーションシップ「{{relationship}}」にはターゲット列が指定されていません。ターゲットが関数でない限り、リレーションシップはターゲットテーブルの列で結合します。",
       "relationship_graphql_alias_taken": "GraphQL エイリアス「{{alias}}」は、すでに「{{table}}」からのリレーションシップ「{{relationship}}」のエイリアスです",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました",
@@ -541,7 +558,13 @@
       "code_resolver_has_dependents": "依存するものがある間はコードリゾルバー '{{resolver}}' を廃止できません",
       "incremental_no_change": "コードソースに {{table}} 用の @change 関数がありません。@change table={{table}} で宣言してください。",
       "incremental_needs_rebuild_every": "{{table}} は増分で維持されるため、時刻に従って全体が再ビルドされます。「全体の再ビルド間隔」に間隔を秒単位で設定してください。",
-      "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します"
+      "table_derived_from_function": "テーブル '{{name}}' は関数から派生しています。関数のテーブルをオフにすると削除され、列とパラメーターは関数で編集します",
+      "table_withdrawn": "テーブル {{table}} を取り下げました",
+      "table_put_back": "テーブル {{table}} を元に戻しました",
+      "source_withdrawn": "ソース {{source}} を取り下げました",
+      "source_put_back": "ソース {{source}} を元に戻しました",
+      "withdrawn_source_not_previewable": "テーブル {{table}} はプレビューできません: ソース {{source}} が取り下げられており、取り下げられたソースを読むエンジンはありません。",
+      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -604,7 +627,11 @@
       "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
-      "unknown_role": "不明なロール「{{role}}」です"
+      "unknown_role": "不明なロール「{{role}}」です",
+      "owner_role_lost": "サブスクリプションは終了しました: 所有者が、開始時のロールを保持していません ({{roles}})",
+      "sink_cap_reached": "実行中の Kafka シンクはすでに {{cap}} 個あり、オペレーターが許可する上限です ({{setting}})",
+      "sink_needs_write": "ロール「{{role}}」には、Kafka シンクに必要な書き込み権限がありません",
+      "owner_sign_in_expired": "サブスクリプションは終了しました: 開始時のサインインの有効期限が切れました。もう一度サインインして開始し直してください"
     },
     "users": {
       "assignment_not_found": "割り当てが見つかりません",
@@ -648,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
       "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
       "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。",
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
@@ -716,6 +742,10 @@
     },
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
+    },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
     },
     "dbt": {
       "products": {
@@ -875,6 +905,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
       "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} はアップロードされたプロジェクトの外にあります。プロジェクトは自身のファイルのみを読み取ります。",
+      "filter_value_refused": "{{value}} は権限フィルターの値にできません。値は文字列、数値、true、false、null、それらのリスト、またはセッション変数です。",
+      "filter_operator_refused": "{{operator}} は権限フィルターを変換できる演算子ではありません。"
     }
   }
 }

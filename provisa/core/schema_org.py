@@ -200,6 +200,9 @@ sources = Table(
     # REQ-2248: deleting a source that holds no live table retires it, as a table is retired.
     *_retirement(),
     Column("retired_id", Text),  # REQ-2248: its id while live (retirement.retired_key)
+    # REQ-1921: withdrawn -- out of production while set: its tables serve no role, no engine
+    # attaches it, none of its tables keeps a replica; its definition and grants stay.
+    Column("withdrawn", Boolean, nullable=False, default=False, server_default=false()),
 )
 
 domains = Table(
@@ -278,9 +281,12 @@ registered_tables = Table(
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
     Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
-    # REQ-1921: out of service while set — read and written nowhere, offered in no schema, copied
-    # nowhere; a table or view registered through the admin starts so.
+    # REQ-1921: the waypoint of a move between regions -- out of service while set, read and
+    # written nowhere, offered in no schema, copied nowhere. Set by the move, never chosen.
     Column("draft", Boolean, nullable=False, default=False, server_default=false()),
+    # REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
+    # keeps no replica; its definition, grants and relationships stay. Put back by one action.
+    Column("withdrawn", Boolean, nullable=False, default=False, server_default=false()),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141
     Column("off_peak_tz", Text),  # REQ-1141
@@ -1963,6 +1969,8 @@ user_directory = Table(
     Column("display_name", Text),
     Column("email", Text),
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
+    # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
+    Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -2731,6 +2739,11 @@ discovery_run_proposals = Table(
     Column("target_column", Text, nullable=True),
     Column("confidence", Float, nullable=True),
     Column("scored", Float, nullable=True),
+    # REQ-413: the pair's values measured against each other (JSON), the score that gives it
+    # (None: no values were compared) and the cardinality it decides.
+    Column("score", Float, nullable=True),
+    Column("cardinality", Text, nullable=True),
+    Column("measure", Text, nullable=True),
     Column("reasoning", Text, nullable=True),
     Column("suggested_name", Text, nullable=True),
     Column("left_out", Text, nullable=True),

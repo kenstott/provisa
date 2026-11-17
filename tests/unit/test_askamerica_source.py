@@ -1524,7 +1524,7 @@ def test_a_single_schema_sibling_attaches_on_postgres_exactly_as_before(endpoint
             'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "fdw_pgwire_my_src" '
             "OPTIONS (user 'provisa')",
             'CREATE SCHEMA IF NOT EXISTS "fdw_pgwire_my_src"',
-            'IMPORT FOREIGN SCHEMA my_src FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
+            'IMPORT FOREIGN SCHEMA "my_src" FROM SERVER "fdw_pgwire_my_src" INTO "fdw_pgwire_my_src"',
         ],
         "local_schema": "fdw_pgwire_my_src",
     }

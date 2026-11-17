@@ -602,6 +602,8 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
         "stored_product_ids": ["p1"],
         "region": None,  # REQ-1921
         "draft": False,  # REQ-1921
+        "withdrawn": False,  # REQ-1921
+        "source_withdrawn": False,  # REQ-1921
         "row_materialize": False,  # REQ-1865
     }
     base.update(kw)

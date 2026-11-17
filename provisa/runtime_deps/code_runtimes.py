@@ -39,6 +39,7 @@ from http import HTTPStatus
 from pathlib import Path
 from typing import Callable
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.runtime_deps.pgwire_bundles import default_cache_root
 
 #: The release platforms Provisa runs on (the same three the pgwire bundles are built for).
@@ -482,7 +483,7 @@ def fetch_https(url: str) -> bytes:
     try:
         response = httpx.get(url, follow_redirects=True, timeout=300.0)
     except httpx.HTTPError as exc:
-        raise RuntimeUnavailable(f"failed to download {url}: {exc}") from exc
+        raise RuntimeUnavailable(f"failed to download {url}: {describe_http_failure(exc)}") from exc
     if response.status_code != HTTPStatus.OK:
         raise RuntimeUnavailable(f"failed to download {url}: HTTP {response.status_code}")
     return response.content

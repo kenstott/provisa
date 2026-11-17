@@ -216,3 +216,28 @@ def test_the_preflight_reads_the_container_after_the_compose_that_forwards_the_s
     for code in ("push_api", "push_plugins", "push_cfg"):
         if code in steps:
             assert preflight < steps.index(code), (code, steps)
+
+
+def test_a_container_environment_larger_than_a_pipe_buffer_passes(tmp_path):
+    # Each key is matched as soon as its line is read. A reader that stops at the first match
+    # while a producer is still writing makes the producer's next write fail with a broken pipe,
+    # which pipefail turns into "missing". 200 KB of settings after the matched lines is more than
+    # any pipe buffer holds, so a check fed through such a pipe fails on every run, not by timing.
+    padding = {f"STRIPE_ZZ_PADDING_{i:05d}": "v" for i in range(10_000)}
+    env = {**_PRICES, "STRIPE_WEBHOOK_SECRET": _SECRET, **_LIVE, **padding}
+    result = _preflight(tmp_path, env)
+    assert result.returncode == 0, result.stderr[-2000:]
+    assert "Broken pipe" not in result.stderr
+    assert "STRIPE_PRICE_STARTER=<set>" in result.stdout
+
+
+def test_no_check_in_the_deploy_stops_reading_a_pipe_early():
+    # `producer | grep -q` exits at the first match, and under pipefail the producer's broken
+    # pipe fails the check whenever it was still writing. Every match reads a variable instead.
+    lines = _SCRIPT.read_text().splitlines()
+    early = [
+        f"{n}: {line.strip()}"
+        for n, line in enumerate(lines, 1)
+        if re.search(r"\|\s*grep\s+-[A-Za-z]*q", line)
+    ]
+    assert not early, early

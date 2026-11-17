@@ -38,7 +38,7 @@ from provisa.api.errors import ApiError
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core import schema_org as so
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.parameters import ParameterRequired, missing_reason
+from provisa.core.parameter_binding import ParameterRequired
 from provisa.core.read_refusal import SourceUnavailable
 from provisa.discovery import context, gather, windows
 from provisa.discovery.columns import NOT_READ, ColumnFacts, TableFacts, classes_meet, type_groups
@@ -48,7 +48,10 @@ from provisa.profiler.classify import catalogue
 from provisa.profiler.run import ProfileError
 
 _REQUEST = cast(
-    Any, SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-1")))
+    Any,
+    SimpleNamespace(
+        headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-1"))
+    ),
 )
 _TABLES = (
     "sources",
@@ -66,6 +69,7 @@ _TABLES = (
     "data_products",
     "discovery_runs",
     "discovery_run_proposals",
+    "user_directory",
     "glossary_term_domains",
     "glossary_term_edges",
     "glossary_term_experts",
@@ -80,6 +84,7 @@ _PUBLISHED: dict[int, tuple[str, list[str]]] = {}
 @pytest.fixture(autouse=True)
 def _nothing_published():
     _PUBLISHED.clear()
+    _TABLE_NAMES.clear()
 
 
 class _Reads:
@@ -102,7 +107,7 @@ class _Reads:
     def refuse(self, table: str) -> None:
         if table in self.never_read:
             self.attempted.append(table)
-            raise ParameterRequired(table, missing_reason(["orderId"]))
+            raise ParameterRequired(table, ["orderId"])
         if table in self.failing:
             raise self.failing[table]
 
@@ -146,6 +151,7 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
     """``columns``: (name, type, primary key), or with a fourth, the kind of the required
     parameter the column is."""
     _PUBLISHED[tid] = (domain, [c[0] for c in columns])
+    _TABLE_NAMES[tid] = name
     async with db.acquire() as conn:
         await conn.execute_core(
             insert(so.registered_tables).values(
@@ -166,12 +172,56 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
             )
 
 
+class _Measured:
+    """The seam a pair's measure reads through: the governed pipeline as the run's role. A
+    column's values are those given for (table, column), else the column's values of
+    :class:`_Reads`. Each read is kept with the role it was made as; a table in ``unpublished``
+    is not in the role's schema."""
+
+    def __init__(self, reads: _Reads):
+        self.reads = reads
+        self.values: dict[tuple[str, str], list[Any]] = {}
+        self.sql: list[tuple[str, str]] = []
+        self.unpublished: set[str] = set()
+
+    def published_as(self, state: Any, role: str, table_id: int) -> Any:
+        domain, columns = _PUBLISHED[table_id]
+        name = _TABLE_NAMES[table_id]
+        if name in self.unpublished:
+            return None
+        return f'"{domain_to_sql_name(domain)}"."{name}"', {c: c.lower() for c in columns}
+
+    def column(self, table: str, column: str) -> list[Any]:
+        if (table, column) in self.values:
+            return self.values[(table, column)]
+        return [v for v in self.reads.values.get(column, []) if v is not None]
+
+    async def governed_as(self, sql: str, role: str) -> list[tuple]:
+        self.sql.append((sql, role))
+        table = sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0]
+        self.reads.refuse(table)
+        column = sql.split('"', 2)[1]
+        values = self.column(table, column)
+        if " IN (" in sql:
+            wanted = sql.rsplit(" IN (", 1)[1].rstrip(")").split(", ")
+            held = {str(v): v for v in values}
+            return [(held[w.strip("'")],) for w in wanted if w.strip("'") in held]
+        counts = Counter(values)
+        limit = int(sql.rsplit("LIMIT ", 1)[1])
+        return sorted(counts.items(), key=lambda kv: -kv[1])[:limit]
+
+
+#: Each registered table's name, by id.
+_TABLE_NAMES: dict[int, str] = {}
+
+
 class _World:
     def __init__(self, monkeypatch, db: Database, *, config: dict, api_keys: dict[str, str]):
         self.db = db
         self.reads = _Reads(
             {"id": [1, 2, 3], "customer_id": [1, 1, 2], "name": ["a", "b", "c"], "ref": ["x"]}
         )
+        self.measured = _Measured(self.reads)
         self.classified: list[dict] = []
         #: The kinds a table's latest profile run matched, by column; a table absent was never
         #: profiled and is classified during the run, with the kinds ``classifies`` gives it.
@@ -233,6 +283,8 @@ class _World:
         monkeypatch.setattr("provisa.profiler.run.classify_table", classify_table)
         monkeypatch.setattr("provisa.profiler.run.resolve_target", self.reads.resolve_target)
         monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
+        monkeypatch.setattr(gather, "_published_as", self.measured.published_as)
+        monkeypatch.setattr(gather, "_governed_as", self.measured.governed_as)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
         monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)
@@ -290,7 +342,7 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     await discovery.count_run(_REQUEST, _scope())
     assert world.classified == []  # the count before Run classifies nothing
-    await discovery.prepare(discovery.state, _scope().spec(), None)
+    await discovery.prepare(discovery.state, _scope().spec("org_admin"), None)
     assert [
         (c["table_id"], c["values_per_column"], c["sample_above_cells"]) for c in world.classified
     ] == [
@@ -389,7 +441,7 @@ def _pet_world(monkeypatch, db: Database) -> _World:
 
 async def _prepared(scope: discovery.RunScope) -> Any:
     """The run's tables and requests, as the background run prepares them."""
-    spec = scope.spec()
+    spec = scope.spec("org_admin")
     return await discovery.prepare(discovery.state, spec, await discovery._run_model(spec))
 
 
@@ -559,7 +611,7 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
             id="source-unavailable",
         ),
         pytest.param(
-            ParameterRequired("pets", missing_reason(["status"])),
+            ParameterRequired("pets", ["status"]),
             "classification",
             "requires the parameter(s) ['status']",
             id="a-parameter-its-registration-does-not-record",
@@ -1515,12 +1567,23 @@ async def _three_tables(db: Database) -> None:
     )
 
 
+def _stores_meet_half_the_customers(world: _World) -> None:
+    """stores.id holds one of the two customers orders name: orders.customer_id -> stores.id
+    measures half contained in a key, under the threshold (REQ-413)."""
+    world.measured.values[("stores", "id")] = [2, 10, 11]
+
+
+#: The score of a pair half contained in a key.
+_HALF_IN_A_KEY = round(context.KEY_SCORE * 0.5, 4)
+
+
 async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monkeypatch, tmp_path):
     from provisa.discovery.analyzer import RelationshipCandidate
 
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _three_tables(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _stores_meet_half_the_customers(world)
     world.fk_found = [
         RelationshipCandidate(3, "region_id", 2, "id", "many-to-one", 1.0, "Foreign key constraint")
     ]
@@ -1552,14 +1615,16 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     assert [(r["kind"], r["left_out"], r["source_column"], r["target_table_id"]) for r in kept] == [
         ("foreign_keys", None, "region_id", 2),
         ("semantics", None, "customer_id", 2),
-        ("semantics", "below_threshold", "customer_id", 3),
+        # Elements that made no proposal are read first; a proposal is judged once measured.
         ("semantics", "unknown_column", None, None),
         ("semantics", "invalid_shape", None, None),
+        ("semantics", "below_threshold", "customer_id", 3),
         ("semantics", "matches_foreign_key", "region_id", 2),
     ]
-    assert kept[2]["confidence"] == 0.55 and kept[2]["reasoning"] == "orders name their customer"
-    assert json.loads(kept[3]["answer"])["target_table_id"] == 9
-    assert json.loads(kept[4]["answer"]) == {"source_table_id": 1}
+    assert kept[4]["confidence"] == 0.55 and kept[4]["reasoning"] == "orders name their customer"
+    assert kept[4]["score"] == _HALF_IN_A_KEY
+    assert json.loads(kept[2]["answer"])["target_table_id"] == 9
+    assert json.loads(kept[3]["answer"]) == {"source_table_id": 1}
 
     answered = await discovery.list_proposals(_REQUEST, run["id"])
     assert answered["threshold"] == 0.7
@@ -1597,6 +1662,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _three_tables(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _stores_meet_half_the_customers(world)
     run, listed = await _answered(
         world,
         [
@@ -1625,7 +1691,8 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     }
     assert by_edge[(1, "customer_id", 2)]["status"] == "accepted"
     assert by_edge[(1, "customer_id", 3)]["status"] == "accepted"
-    assert by_edge[(1, "customer_id", 3)]["confidence"] == 0.55
+    # Stored with the score its measure gave it, the model's 0.55 kept on the run's row.
+    assert by_edge[(1, "customer_id", 3)]["confidence"] == _HALF_IN_A_KEY
     assert by_edge[(3, "region_id", 1)]["status"] == "rejected"
     assert by_edge[(3, "region_id", 1)]["rejection_reason"] == "Not to be recommended again"
     # Left alone, it is undecided: still waiting as the run's suggestion, nothing recorded against it.
@@ -1640,7 +1707,8 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     assert [r["id"] for r in remaining] == [undecided["id"]]
 
     # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
-    # registered (the one the model rates low too), the one marked as rejected before.
+    # registered (the one the model rates low too), the one marked as rejected before, which keeps
+    # that decision and cannot be decided again (REQ-413, amended 2026-11-16).
     _, again = await _answered(
         world,
         [
@@ -1654,7 +1722,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
         (r["source_table_id"], r["target_table_id"], r["reason"], r["decidable"]) for r in again
     ] == [
         (1, 2, "existing", False),
-        (3, 1, "rejected", True),
+        (3, 1, "rejected", False),
         (3, 2, "pending", True),
         (1, 3, "existing", False),
     ]
@@ -1716,7 +1784,10 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
     await _three_tables(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     other = cast(
-        Any, SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-2")))
+        Any,
+        SimpleNamespace(
+            headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-2"))
+        ),
     )
     mine = await _run(world, _scope(kinds=["foreign_keys"], source_domains=["sales"]))
     theirs = (await discovery.start_run(other, _scope(source_domains=["crm"])))["run"]
@@ -1857,3 +1928,144 @@ async def test_a_run_says_how_many_of_the_chosen_tables_it_left_out(monkeypatch,
     assert run["report"]["source_tables"] == 1
     assert run["report"]["source_left_out"] == 1
     assert run["report"]["target_left_out"] == 0
+
+
+# --- each proposed pair measured on its data (REQ-413, amended 2026-11-16) -------------------------
+
+
+async def _city(db: Database) -> None:
+    await _table(
+        db, 1, "sales", "building_permits", [("permit_id", "text", False), ("hood", "text", False)]
+    )
+    await _table(
+        db, 2, "sales", "inspections", [("permit_id", "text", False), ("result", "text", False)]
+    )
+    await _table(db, 3, "crm", "complaints", [("hood", "text", False)])
+
+
+def _city_values(world: _World) -> None:
+    permits = [f"BP-{n:04d}" for n in range(1, 101)]
+    world.measured.values = {
+        ("building_permits", "permit_id"): permits,
+        ("building_permits", "hood"): sorted(["Riverside", "Harbor", "Downtown"] * 10),
+        ("inspections", "permit_id"): [p for p in permits[:30] for _ in range(2)],
+        ("complaints", "hood"): ["Riverside", "Harbor", "Downtown"] * 4,
+    }
+
+
+async def test_each_proposed_pair_is_measured_as_the_runs_person_and_its_row_shows_it(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    request = cast(
+        Any,
+        SimpleNamespace(
+            headers={},
+            state=SimpleNamespace(role="steward", identity=SimpleNamespace(user_id="steward-1")),
+        ),
+    )
+    world.answers = [
+        json.dumps(
+            [
+                _suggestion((2, "permit_id"), (1, "permit_id"), 0.45),
+                _suggestion((3, "hood"), (1, "hood"), 0.9),
+            ]
+        )
+    ]
+    started = (await discovery.start_run(request, _scope()))["run"]
+    (run_id, spec, model) = world.launched.pop()
+    assert spec.role == "steward"
+    await discovery.run_discovery(run_id, spec, model)
+    run = (await discovery.get_run(request, started["id"]))["run"]
+    assert run["status"] == "done", run
+    # Every value read for the measure was read as the person who started the run.
+    assert world.measured.sql and {role for _, role in world.measured.sql} == {"steward"}
+
+    listed = (await discovery.list_proposals(request, run_id))["proposals"]
+    by_source = {(r["source_column"], r["source_table_id"]): r for r in listed}
+    permit = by_source[("permit_id", 2)]
+    assert permit["cardinality"] == "many-to-one"
+    assert permit["score"] == context.KEY_SCORE and permit["confidence"] == 0.45
+    assert permit["measured"] is True and permit["reason"] is None and permit["acceptable"]
+    assert permit["measure"]["source_in_target"] == 30
+    assert permit["measure"]["source"]["values"] == 30
+    assert permit["measure"]["target"]["distinct"] is True
+    hood = by_source[("hood", 3)]
+    assert hood["cardinality"] == "many-to-many"
+    assert hood["score"] == context.SHARED_CEILING and hood["confidence"] == 0.9
+    assert hood["reason"] == "below_threshold"
+    assert hood["decidable"] is True and hood["acceptable"] is False
+    assert hood["measure"]["source_in_target"] == hood["measure"]["source"]["values"] == 3
+    # The highest score first: the measure's, not the model's.
+    assert [r["source_column"] for r in listed] == ["permit_id", "hood"]
+    # The pair the measure keyed is stored as a suggestion with its measured cardinality.
+    assert [
+        (c["source_table_id"], c["cardinality"], c["confidence"]) for c in await _candidates(db)
+    ] == [(2, "many-to-one", context.KEY_SCORE)]
+
+
+async def test_a_many_to_many_pair_is_refused_on_accept_and_can_be_marked_not_again(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    run, listed = await _answered(world, [_suggestion((3, "hood"), (1, "hood"), 0.9)])
+    (hood,) = listed
+    refused = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(accept=[(hood["id"], "x")])
+    )
+    assert refused["results"][0]["ok"] is False
+    assert "neither column's values are distinct" in refused["results"][0]["error"]
+    marked = await discovery.apply_decisions(_REQUEST, run["id"], _apply(not_again=[hood["id"]]))
+    assert marked["results"] == [{"id": hood["id"], "action": "not_again", "ok": True}]
+
+
+async def test_a_pair_with_a_table_that_requires_a_parameter_keeps_the_models_score_and_says_so(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _table(db, 1, "sales", "building_permits", [("permit_id", "text", False)])
+    await _table(
+        db,
+        2,
+        "sales",
+        "visits",
+        [("permit_id", "text", False), ("_nf_owner", "text", False, "path_param")],
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    world.reads.never_read.add("visits")
+    run, listed = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.8)])
+    assert run["status"] == "done", run
+    assert world.reads.attempted == []  # the parameterized table is never read
+    (row,) = listed
+    assert row["measured"] is False and row["score"] == row["confidence"] == 0.8
+    assert row["measure"]["source"]["unmeasured"] == "not_read"
+    assert row["measure"]["target"]["distinct"] is True
+    assert row["cardinality"] == "many-to-one" and row["reduced_information"] is True
+
+
+async def test_the_threshold_is_the_persons_own_and_kept_across_a_reload(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    other = cast(
+        Any,
+        SimpleNamespace(headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="b"))),
+    )
+    assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.7
+    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.55))
+    # A reload reads it again: the person's own, from the store; another person's is untouched.
+    assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.55
+    assert (await discovery.get_threshold(other))["threshold"] == 0.7
+    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)])
+    answered = await discovery.list_proposals(_REQUEST, run["id"])
+    assert answered["threshold"] == 0.55 and answered["kept_at"] == 0.7
+    with pytest.raises(Exception):
+        discovery.ThresholdBody(threshold=1.5)

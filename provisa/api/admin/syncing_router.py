@@ -48,6 +48,7 @@ from provisa.control_plane.entitlements import (
 )
 from provisa.core.models import CatalogConnection, CatalogsConfig, MetadataExportConfig
 from provisa.core.org_forget import on_forget
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.api.engine_error_names import client_text, client_value
 
 router = APIRouter()
@@ -269,6 +270,9 @@ async def set_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122, REQ-1072
     config = catalogs_config({CONFIG_KEY: merged})
     known = await _domain_ids()
     for entry in config.catalogs:
+        if entry.endpoint:
+            # REQ-2006: a held org's catalog endpoint is a public destination; refused by name.
+            sandbox_egress.require_url_allowed(entry.endpoint)
         unknown = sorted(set(entry.domains) - known)
         if unknown:
             raise ApiError(

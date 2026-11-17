@@ -79,7 +79,7 @@ class TestESMappingBridge:
             }
         }
         resp.raise_for_status = MagicMock()
-        with patch("httpx.get", return_value=resp) as httpx_get:
+        with patch("httpx.Client.get", return_value=resp) as httpx_get:
             props = fetch_index_mapping("localhost", 9200, "orders")
         httpx_get.assert_called_once()
         assert httpx_get.call_args.args[0] == "http://localhost:9200/orders/_mapping"
@@ -91,6 +91,6 @@ class TestESMappingBridge:
         resp = MagicMock()
         resp.json.return_value = {"i": {"mappings": {"properties": {"x": {"type": "keyword"}}}}}
         resp.raise_for_status = MagicMock()
-        with patch("httpx.get", return_value=resp) as httpx_get:
+        with patch("httpx.Client.get", return_value=resp) as httpx_get:
             fetch_index_mapping("h", 9243, "i", use_ssl=True)
         assert httpx_get.call_args.args[0] == "https://h:9243/i/_mapping"

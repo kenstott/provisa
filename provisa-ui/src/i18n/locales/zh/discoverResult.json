@@ -24,7 +24,7 @@
     "partial": "{{count}} 个请求中有 {{failed}} 个失败，因此结果不完整。",
     "partial_other": "{{count}} 个请求中有 {{failed}} 个失败，因此结果不完整。",
     "semanticsNoneProposed": "语义：无。模型未提出任何关系。",
-    "semanticsBelowThreshold": "语义：无。每条建议都低于 {{threshold}}% 的置信度阈值。",
+    "semanticsBelowThreshold": "语义：无。每条提议的评分都低于保留建议所需的 {{threshold}}%。",
     "semanticsFiltered": "语义：无。每条建议都因下列原因被排除。",
     "split": "{{count}} 个请求被一分为二后重新发送。",
     "split_other": "{{count}} 个请求被一分为二后重新发送。",
@@ -38,7 +38,7 @@
     "leftOut": "未建议：{{list}}。",
     "leftOutItem": "{{label}}（{{count}}）",
     "removed": {
-      "below_threshold": "模型给出的置信度低于 {{threshold}}%",
+      "below_threshold": "评分低于 {{threshold}}%",
       "invalid": "未指明两个被比较的列",
       "not_comparable": "位于不同类别的列之间",
       "same_column": "从某列指向其自身",
@@ -49,7 +49,8 @@
       "rejected": "之前已拒绝",
       "matches_foreign_key": "与本次运行中找到的外键相同",
       "out_of_scope": "不在所选表之内",
-      "weaker": "与已保留更强提议的列对重复"
+      "weaker": "与已保留更强提议的列对重复",
+      "many_to_many": "两列都不是键"
     }
   }
 }

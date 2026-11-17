@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
       "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
       "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
+      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "vector_model_key_from_server": "O modelo de embedding {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "vector_model_key_unset": "O modelo de embedding {{vendor}} não tem chave: {{field}} não está definido.",
+      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
       "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
     },
     "api": {
@@ -149,6 +153,7 @@
       "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
       "source_unavailable": "A origem {{source}} não pôde responder. Tente novamente em breve.",
       "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}.",
+      "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
       "graphql_body_missing": "A requisição não tem corpo: uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
@@ -159,7 +164,9 @@
       "parameter_unbound_on_branch": "O parâmetro {{parameter}} recebe um valor num ramo de um OR e nenhum noutro. Dê um valor a {{parameter}} em todos os ramos.",
       "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
       "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores.",
-      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}."
+      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}.",
+      "parameter_required": "A tabela '{{table}}' requer o(s) parâmetro(s) {{parameters}}: dê um valor a cada um (uma condição WHERE sobre a sua coluna em SQL, um argumento em GraphQL).",
+      "parameter_wrong_type": "O parâmetro {{parameter}} recebe um valor do tipo {{type}}; '{{value}}' não é um."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -197,7 +204,8 @@
       "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
-      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
+      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente.",
+      "owner_not_member": "{{user}} criou o ambiente {{env}}, mas não é membro de {{org}}; atuar nele como proprietário exige ser membro."
     },
     "front_door": {
       "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",
@@ -320,6 +328,13 @@
       "catalog_view_refused": "{{view}} é uma exibição de catálogo do domínio meta e não pode ser lida em uma instrução junto com uma tabela de uma fonte de dados: leia-as em duas instruções.",
       "function_unsupported": "{{function}}() não tem equivalente em {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
+      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
+      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
+      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
+      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
+    },
     "replication": {
       "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
       "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
@@ -340,7 +355,9 @@
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
       "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
-      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém",
+      "platform_right_requires_platform_admin": "Uma função com {{rights}} é definida por um administrador da plataforma",
+      "rights_not_held": "A função {{role}} inclui {{rights}}, que você não detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -471,8 +488,6 @@
       "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
-      "table_draft_set": "Tabela {{table}} definida como rascunho",
-      "table_released": "Tabela {{table}} liberada",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
       "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
       "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
@@ -501,6 +516,8 @@
       "role_updated": "Função '{{role}}' atualizada",
       "relationship_id_taken": "O relacionamento '{{relationship}}' já existe",
       "relationship_id_reserved": "O id do relacionamento '{{id}}' começa com '{{prefix}}', um prefixo reservado para relacionamentos integrados. Escolha outro id.",
+      "relationship_source_column_missing": "O relacionamento '{{relationship}}' não indica nenhuma coluna de origem. Um relacionamento se une por uma coluna de sua tabela de origem.",
+      "relationship_target_column_missing": "O relacionamento '{{relationship}}' não indica nenhuma coluna de destino. Um relacionamento se une por uma coluna de sua tabela de destino, a menos que seu destino seja uma função.",
       "relationship_graphql_alias_taken": "O alias GraphQL '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada",
@@ -541,7 +558,13 @@
       "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele",
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
-      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função"
+      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
+      "table_withdrawn": "Tabela {{table}} retirada",
+      "table_put_back": "Tabela {{table}} reposta",
+      "source_withdrawn": "Fonte {{source}} retirada",
+      "source_put_back": "Fonte {{source}} reposta",
+      "withdrawn_source_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: a sua fonte {{source}} está retirada e nenhum motor lê uma fonte retirada.",
+      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -604,7 +627,11 @@
       "schema_registry_unreachable": "Não é possível acessar o registro de esquemas {{registry}}: {{error}}",
       "sse_limit_reached": "máximo de assinaturas SSE simultâneas atingido",
       "table_not_found": "Tabela '{{table}}' não encontrada",
-      "unknown_role": "Função desconhecida '{{role}}'"
+      "unknown_role": "Função desconhecida '{{role}}'",
+      "owner_role_lost": "A assinatura terminou: seu proprietário não tem mais a função sob a qual ela foi iniciada ({{roles}})",
+      "sink_cap_reached": "Você já tem {{cap}} sinks do Kafka em execução, o máximo que o operador permite ({{setting}})",
+      "sink_needs_write": "O papel '{{role}}' não tem o direito de escrita que um sink do Kafka exige",
+      "owner_sign_in_expired": "A assinatura terminou: o login sob o qual ela foi iniciada expirou; entre novamente e inicie-a outra vez"
     },
     "users": {
       "assignment_not_found": "Atribuição não encontrada",
@@ -648,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} não é um número inteiro de linhas: LIMIT espera uma contagem de 0 ou mais, p. ex. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} não é um número inteiro de linhas: SKIP espera uma contagem de 0 ou mais, p. ex. SKIP 10.",
       "engine_refused": "O mecanismo recusou a consulta: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lê {{variable}}, mas a instrução não vincula nenhuma variável: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
       "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
@@ -716,6 +742,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Não existe nenhuma função chamada {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
     },
     "dbt": {
       "products": {
@@ -875,6 +905,11 @@
     "preflight": {
       "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
       "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",
+      "filter_value_refused": "{{value}} não pode ser um valor em um filtro de permissão: um valor é uma string, um número, true, false, null, uma lista destes ou uma variável de sessão.",
+      "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     }
   }
 }

@@ -35,6 +35,7 @@ from provisa.core.parameter_binding import (
     ParameterBindingRefused,
     ParameterByEqualityOnly,
     ParameterNotWritten,
+    ParameterWrongType,
 )
 from provisa.cypher.parser import parse_cypher
 from provisa.cypher.write_translator import WriteTranslator, parse_cypher_write, written
@@ -111,17 +112,17 @@ def test_a_condition_that_assigns_nothing_is_refused_naming_the_parameter(
     assert refused.value.params == {"parameter": "_nf_petId", "form": form}
 
 
-def test_a_wrongly_typed_value_binds_as_the_sql_front_binds_it(graph):  # noqa: F811
-    """The value goes to the binding step as given, which states it as the parameter's type, as a
-    SQL statement's ``"_nf_petId" = 'x'`` does: one rule for every front."""
+def test_a_wrongly_typed_value_is_refused_as_the_sql_front_refuses_it(graph):  # noqa: F811
+    """The value goes to the binding step as given, which refuses a value the parameter's type
+    does not take before the call, as for a SQL statement's ``"_nf_petId" = 'x'``: one rule for
+    every front."""
     cypher = _sql(graph, "MATCH (b:PetById) WHERE b.petId = 'x' RETURN b.name AS name")
     sql = cypher.replace('b."_nf_petId"', '"b"."_nf_petId"')
     assert "b.\"_nf_petId\" = 'x'" in cypher
-    assert (
-        bind_parameters(cypher, [], _TYPES).bound({}).nf_args
-        == bind_parameters(sql, [], _TYPES).bound({}).nf_args
-        == {"petId": "x"}
-    )
+    for statement in (cypher, sql):
+        with pytest.raises(ParameterWrongType) as refused:
+            bind_parameters(statement, [], _TYPES).bound({})
+        assert refused.value.params == {"parameter": "_nf_petId", "type": "integer", "value": "x"}
 
 
 # --- Writes -----------------------------------------------------------------------------------

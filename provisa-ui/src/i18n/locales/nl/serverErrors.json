@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "local_server_from_environment": "{{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Leg onder Beheer, AI-modellen een AI-eindpunt op uw eigen adres vast.",
       "server_environment_sets": "{{vendor}} kan hier niet worden aangeroepen: de omgeving van de server stelt {{variable}} in, die zijn client voor elke organisatie zou meesturen.",
+      "vector_model_address_from_server": "Het embeddingmodel {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "vector_model_key_from_server": "Het embeddingmodel {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
+      "vector_model_key_unset": "Het embeddingmodel {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
+      "vector_model_local_server": "Het embeddingmodel {{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
       "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
     },
     "api": {
@@ -149,6 +153,7 @@
       "source_starting": "De bron {{source}} wordt nog gestart. Probeer het zo opnieuw.",
       "source_unavailable": "De bron {{source}} kon niet antwoorden. Probeer het straks opnieuw.",
       "view_outside_load_window": "De view {{view}} kan alleen binnen het leesvenster worden gelezen. Het opent weer om {{opens_at}}.",
+      "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
       "graphql_body_missing": "Het verzoek heeft geen body: een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_body_not_json": "De body van het verzoek is geen JSON: {{error}}",
       "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
@@ -159,7 +164,9 @@
       "parameter_unbound_on_branch": "De parameter {{parameter}} krijgt in één tak van een OR een waarde en in een andere niet. Geef {{parameter}} in elke tak een waarde.",
       "parameter_conflict": "De parameter {{parameter}} krijgt tegelijk twee verschillende waarden ({{first}} en {{second}}). Geef hem één waarde, of som de waarden op met IN of OR.",
       "parameter_calls_over_cap": "Het statement heeft {{calls}} aanroepen naar {{table}} nodig, één voor elke waarde van zijn parameters, en per statement worden er hoogstens {{cap}} gedaan (instelling {{setting}}). Geef minder waarden op.",
-      "parameter_not_written": "De relatie {{relationship}} koppelt op de parameter {{parameter}}, die een statement aan een waarde bindt en nooit schrijft. Een schrijfactie maakt {{relationship}} niet aan."
+      "parameter_not_written": "De relatie {{relationship}} koppelt op de parameter {{parameter}}, die een statement aan een waarde bindt en nooit schrijft. Een schrijfactie maakt {{relationship}} niet aan.",
+      "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
+      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -197,7 +204,8 @@
       "empty_answer": "Het model gaf geen tekst terug."
     },
     "environments": {
-      "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
+      "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw.",
+      "owner_not_member": "{{user}} heeft omgeving {{env}} gemaakt, maar is geen lid van {{org}}; om erin als eigenaar te handelen is lidmaatschap vereist."
     },
     "front_door": {
       "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer vijf minuten gereed.",
@@ -320,6 +328,13 @@
       "catalog_view_refused": "{{view}} is een catalogusview van het meta-domein en kan niet in één instructie samen met een tabel van een databron worden gelezen: lees ze in twee instructies.",
       "function_unsupported": "{{function}}() heeft geen equivalent op {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Redactieregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Redactieregel {{rule}}: het patroon kan catastrofaal terugzoeken (een herhaling genest in een onbegrensde herhaling, of alternatieven daarin die met dezelfde tekst kunnen beginnen). Herschrijf het zonder die vorm.",
+      "pattern_unsupported": "Redactieregel {{rule}}: de regel van een organisatie kan geen terugverwijzingen, lookahead of lookbehind, atomaire groepen, bezittelijke herhalingen of voorwaardelijke groepen gebruiken.",
+      "pattern_too_large": "Redactieregel {{rule}}: het patroon is te groot als de herhalingen worden uitgeschreven. Gebruik een kleiner aantal herhalingen.",
+      "server_reference": "Redactieregel {{rule}}: een organisatie op deze server kan niet verwijzen naar de omgeving van de server. Gebruik ${secret:NAME} uit de eigen kluis van de organisatie."
+    },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
       "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
@@ -340,7 +355,9 @@
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
       "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
-      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het"
+      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het",
+      "platform_right_requires_platform_admin": "Een rol met {{rights}} wordt gedefinieerd door een platformbeheerder",
+      "rights_not_held": "Rol {{role}} bevat {{rights}}, die u niet hebt"
     },
     "schema": {
       "allowed_domains_updated": "Toegestane domeinen bijgewerkt voor bron '{{source}}'",
@@ -471,8 +488,6 @@
       "mask_unreachable": "U hebt een masker gedefinieerd dat niet bereikbaar is: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' niet gevonden",
       "change_streams_unavailable": "Bron '{{source}}' is een zelfstandige MongoDB-server, die geen change streams levert: het native wijzigingssignaal vereist een replica set of een sharded cluster. Draai hem als replica set, of gebruik het wijzigingssignaal poll.",
-      "table_draft_set": "Tabel {{table}} als concept ingesteld",
-      "table_released": "Tabel {{table}} vrijgegeven",
       "openapi_no_rows_field": "Tabel {{table}}: het antwoord heeft geen eigenschap {{rows_field}} om rijen uit te lezen.",
       "paging_rows_field_fixed": "Tabel {{table}}: waar de rijen staan ({{rows_field}}) wordt ingesteld bij het registreren van de tabel. Registreer de tabel opnieuw om de rijen ergens anders te lezen.",
       "relationship_request_queued": "In wachtrij geplaatst als verzoek #{{id}}. Het heeft goedkeuringen nodig van {{required}} verschillende gebruikers die relaties mogen aanmaken, van wie er minstens één tot elk geraakt domein reikt.",
@@ -501,6 +516,8 @@
       "role_updated": "Rol '{{role}}' bijgewerkt",
       "relationship_id_taken": "Relatie '{{relationship}}' bestaat al",
       "relationship_id_reserved": "De relatie-id '{{id}}' begint met '{{prefix}}', een voorvoegsel dat is gereserveerd voor ingebouwde relaties. Kies een andere id.",
+      "relationship_source_column_missing": "De relatie '{{relationship}}' noemt geen bronkolom. Een relatie koppelt op een kolom van haar brontabel.",
+      "relationship_target_column_missing": "De relatie '{{relationship}}' noemt geen doelkolom. Een relatie koppelt op een kolom van haar doeltabel, tenzij haar doel een functie is.",
       "relationship_graphql_alias_taken": "De GraphQL-alias '{{alias}}' is al de alias van relatie '{{relationship}}' vanuit '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Geplande taak '{{task}}' bijgewerkt",
@@ -541,7 +558,13 @@
       "code_resolver_has_dependents": "Coderesolver '{{resolver}}' kan niet buiten gebruik worden gesteld zolang iets ervan afhangt",
       "incremental_no_change": "De codebron heeft geen @change-functie voor {{table}}. Declareer er een met @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} wordt incrementeel bijgehouden en daarom volgens een klok volledig herbouwd. Stel bij 'Volledige herbouw elke' in hoe vaak (in seconden).",
-      "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt"
+      "table_derived_from_function": "Tabel '{{name}}' is afgeleid van een functie: ze wordt verwijderd door de tabel van de functie uit te schakelen, en de kolommen en parameters worden op de functie bewerkt",
+      "table_withdrawn": "Tabel {{table}} teruggetrokken",
+      "table_put_back": "Tabel {{table}} teruggezet",
+      "source_withdrawn": "Bron {{source}} teruggetrokken",
+      "source_put_back": "Bron {{source}} teruggezet",
+      "withdrawn_source_not_previewable": "Tabel {{table}} kan niet worden bekeken: de bron {{source}} is teruggetrokken, en geen engine leest een teruggetrokken bron.",
+      "withdrawn_table_not_previewable": "Tabel {{table}} kan niet worden bekeken: hij is teruggetrokken en houdt geen replica, en de engine leest de bron alleen via een replica."
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -604,7 +627,11 @@
       "schema_registry_unreachable": "Schema-registry {{registry}} is niet bereikbaar: {{error}}",
       "sse_limit_reached": "maximum aantal gelijktijdige SSE-abonnementen bereikt",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
-      "unknown_role": "Onbekende rol '{{role}}'"
+      "unknown_role": "Onbekende rol '{{role}}'",
+      "owner_role_lost": "Het abonnement is beëindigd: de eigenaar heeft niet langer de rol waaronder het is gestart ({{roles}})",
+      "sink_cap_reached": "U hebt al {{cap}} actieve Kafka-sinks, het maximum dat de operator toestaat ({{setting}})",
+      "sink_needs_write": "Rol '{{role}}' mist het schrijfrecht dat een Kafka-sink nodig heeft",
+      "owner_sign_in_expired": "Het abonnement is beëindigd: de aanmelding waaronder het is gestart, is verlopen; meld u opnieuw aan en start het opnieuw"
     },
     "users": {
       "assignment_not_found": "Toewijzing niet gevonden",
@@ -648,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} is geen geheel aantal rijen: LIMIT verwacht een aantal van 0 of meer, bijv. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} is geen geheel aantal rijen: SKIP verwacht een aantal van 0 of meer, bijv. SKIP 10.",
       "engine_refused": "De engine heeft de query geweigerd: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL.",
       "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
       "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",
@@ -716,6 +742,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Er bestaat geen rol met de naam {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "Het filterpatroon voor logboeken wordt geweigerd: {{why}}",
+      "pattern_exceeded": "Het filterpatroon voor logboeken wordt geweigerd: het overschreed zijn stappenlimiet ({{steps}} stappen) op een logregel van {{length}} tekens."
     },
     "dbt": {
       "products": {
@@ -875,6 +905,11 @@
     "preflight": {
       "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
       "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} ligt buiten het geüploade project; een project leest alleen zijn eigen bestanden.",
+      "filter_value_refused": "{{value}} kan geen waarde in een machtigingsfilter zijn: een waarde is een tekenreeks, een getal, true, false, null, een lijst daarvan of een sessievariabele.",
+      "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     }
   }
 }

@@ -136,7 +136,10 @@ async def _register_user_views_in_state(
             ).fetchall()
             if (_name := binding_name(dict(_r._mapping), "sql")) is not None
         }
-        state.stored_view_reads = set()
+        # REQ-1914: built aside and published in one assignment below; requests run while this
+        # build reads, and one finding the set empty would expand a stored view's read of its
+        # stored table into the statement (V006).
+        _stored_reads: set[str] = set()
         _view_rows = [
             dict(_r._mapping)
             for _r in (
@@ -163,7 +166,11 @@ async def _register_user_views_in_state(
                         _registered_tables_t.c.mv_expected_events,  # REQ-961
                         _registered_tables_t.c.mv_business_day_grain,  # REQ-962
                         _registered_tables_t.c.region,  # REQ-1921: where the view is built
-                        _registered_tables_t.c.draft,  # REQ-1921
+                        # REQ-1921: out of service -- a region move's waypoint, or withdrawn --
+                        # a view is registered for building only once back in service.
+                        (_registered_tables_t.c.draft | _registered_tables_t.c.withdrawn).label(
+                            "draft"
+                        ),
                     ).where(
                         _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -259,7 +266,7 @@ async def _register_user_views_in_state(
                 )
                 _vr["materialize"] = True  # landed, declared or not
                 state.view_sql_map[_vr["table_name"]] = f"SELECT * FROM {_stored}"
-                state.stored_view_reads.add(_vr["table_name"])
+                _stored_reads.add(_vr["table_name"])
             else:
                 state.view_sql_map[_vr["table_name"]] = _semantic_sql
             if _vr.get("materialize"):
@@ -357,6 +364,7 @@ async def _register_user_views_in_state(
                     )  # REQ-961
                     _existing.expected_events = _vr.get("mv_expected_events")  # REQ-961
                     _existing.business_day_grain = bool(_vr.get("mv_business_day_grain"))  # REQ-962
+        state.stored_view_reads = _stored_reads
         # REQ-1921: a view that is draft is offered to no reader, wherever this runs (each region
         # on its reload): no statement expands it. A materialized one stays registered above,
         # with its build DISABLED — the scheduler and the rewriter skip a disabled build

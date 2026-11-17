@@ -304,6 +304,7 @@ async def _meter(
         )
     await record_admin_action(
         model_db,
+        org_id=grant.org_id,
         action=LLM_CALL,
         actor_id=f"source:{grant.source_id}",
         subject_id=model,

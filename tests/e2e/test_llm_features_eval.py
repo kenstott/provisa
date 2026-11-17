@@ -33,9 +33,7 @@ import re
 import pytest
 
 from provisa.api.admin.schema_helpers import _call_llm
-from provisa.discovery.analyzer import analyze
-from provisa.discovery.collector import DiscoveryInput, TableMeta
-from provisa.discovery.prompt import build_prompt
+from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
 
 pytestmark = [
     pytest.mark.e2e,
@@ -126,49 +124,81 @@ async def test_column_description_is_on_topic():
 # ── relationships: ground-truth precision/recall ─────────────────────────────
 
 
-def _tbl(tid: int, name: str, cols: list[str]) -> TableMeta:
-    return TableMeta(
-        table_id=tid,
-        source_id="shop",
-        domain_id="sales",
-        schema_name="public",
-        table_name=name,
-        columns=[{"name": c, "type": "integer" if c.endswith("id") else "text"} for c in cols],
-        sample_values=[],
-    )
+def _tbl(tid: int, name: str, cols: list[str]) -> TableFacts:
+    """A table as a discovery run sees it (REQ-413), with no sample values."""
+
+    def col(c: str) -> ColumnFacts:
+        data_type = "integer" if c.endswith("id") else "varchar"
+        return ColumnFacts(
+            name=c,
+            data_type=data_type,
+            description=None,
+            tags=(),
+            classes=(UNKNOWN,),
+            sensitive=False,
+            samples=(),
+            is_primary_key=c == "id",
+            groups=type_groups(data_type, subtype=None, array_depth=0),
+        )
+
+    return TableFacts(tid, "sales", "public", name, None, (), None, tuple(col(c) for c in cols))
 
 
-def test_relationship_inference_finds_obvious_fks():
+class _Watcher:
+    async def stop_asked(self) -> bool:
+        return False
+
+    async def returned(self, tally, proposals) -> None:
+        return None
+
+
+async def _inferred(tables: list[TableFacts], min_confidence: float) -> set[tuple]:
+    """The edges a discovery run's requests over ``tables`` (compared with themselves) get from
+    the live model at ``min_confidence`` or more: the run's suggestions, and those it left out as
+    below its threshold when ``min_confidence`` is lower."""
+    from provisa.discovery.run import SYSTEM_PROMPT
+    from provisa.discovery.runner import execute
+    from provisa.discovery.windows import plan
+    from provisa.llm.client import ProvisaLLMClient
+
+    max_tokens = 4_096
+    k, requests = plan(tables, None, 32_000, max_tokens)
+    client = ProvisaLLMClient("relationship_inference", config=_OPENROUTER_CONFIG, api_keys={})
+
+    def ask(prompt: str, max_out: int):
+        return client.complete_sync_detailed(prompt, SYSTEM_PROMPT, max_out)
+
+    tally, kept = await execute(requests, k, max_tokens, ask, _Watcher())
+    assert tally.failed == [], f"a request failed: {tally.failed}"
+    found = [*kept, *(r.proposal for r in tally.left_out if r.left_out == "below_threshold")]
+    return {p.edge for p in found if p is not None and p.confidence >= min_confidence}
+
+
+@pytest.mark.asyncio
+async def test_relationship_inference_finds_obvious_fks():
     # Synthetic schema with NO declared constraints; the obvious FKs must be inferred from naming.
     customers = _tbl(1, "customers", ["id", "name", "email"])
     orders = _tbl(2, "orders", ["id", "customer_id", "total_amount", "status"])
     order_items = _tbl(3, "order_items", ["id", "order_id", "product_id", "quantity"])
-    di = DiscoveryInput(
-        tables=[customers, orders, order_items], existing_relationships=[], rejected_pairs=[]
-    )
 
-    prompt = build_prompt(di)
-    cands = analyze(prompt, {}, di, min_confidence=0.5)
+    edges = await _inferred([customers, orders, order_items], min_confidence=0.5)
 
-    edges = {
-        (c.source_table_id, c.source_column, c.target_table_id, c.target_column) for c in cands
-    }
     # GROUND TRUTH — the two unambiguous FKs (many-to-one child -> parent).
     ground_truth = {
         (2, "customer_id", 1, "id"),  # orders.customer_id -> customers.id
         (3, "order_id", 2, "id"),  # order_items.order_id -> orders.id
     }
     # order_items.product_id has no products table here, so it is NOT ground truth (may or may not
-    # be guessed; a candidate that references a non-existent column is already filtered by analyze).
+    # be guessed; a proposal that names a non-existent column is already left out by the run).
 
     found = edges & ground_truth
     recall = len(found) / len(ground_truth)
     # Precision over the ground-truthable space: every inferred edge must at least connect two real
-    # columns (analyze validates this) and point child->parent on an *_id column.
+    # columns (the run checks this) and point child->parent on an *_id column.
     id_edges = [e for e in edges if e[1].endswith("_id")]
     precision = (len(found) / len(id_edges)) if id_edges else 0.0
 
-    assert cands, "the model returned no relationship candidates at all"
+    assert edges, "the model returned no relationship candidates at all"
     assert recall >= 0.5, f"missed the obvious FKs (recall {recall:.2f}); inferred: {sorted(edges)}"
     # Lenient precision floor — tolerate ONE extra plausible guess (e.g. product_id) but not a flood.
     assert precision >= 0.33, (
@@ -176,15 +206,15 @@ def test_relationship_inference_finds_obvious_fks():
     )
 
 
-def test_relationship_inference_does_not_invent_edges_on_unrelated_tables():
+@pytest.mark.asyncio
+async def test_relationship_inference_does_not_invent_edges_on_unrelated_tables():
     # Two tables with NO shared/foreign key naming → the model should infer (almost) nothing.
     weather = _tbl(10, "weather", ["id", "city", "temperature", "recorded_at"])
     recipes = _tbl(11, "recipes", ["id", "title", "instructions", "servings"])
-    di = DiscoveryInput(tables=[weather, recipes], existing_relationships=[], rejected_pairs=[])
 
-    cands = analyze(build_prompt(di), {}, di, min_confidence=0.7)
+    edges = await _inferred([weather, recipes], min_confidence=0.7)
     # At a 0.7 confidence bar there is no real FK to find; allow at most one low-signal guess.
-    assert len(cands) <= 1, f"hallucinated relationships between unrelated tables: {cands}"
+    assert len(edges) <= 1, f"hallucinated relationships between unrelated tables: {edges}"
 
 
 # ── discovery over a folder of files: the key the files share ───────────────────────────────────

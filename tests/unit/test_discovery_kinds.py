@@ -110,6 +110,9 @@ async def _listed(run: dict) -> list[dict]:
 
 async def test_the_route_is_a_run_whose_proposals_are_stored(monkeypatch, tmp_path):
     d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    # customers.id holds both customers orders name, and two of the three orders' ids: the first
+    # pair is contained in a key, the second meets it on two values of three (REQ-413).
+    d.world.measured.values[("customers", "id")] = [1, 2, 4]
     d.answer = json.dumps(
         [_suggestion((1, "customer_id"), (2, "id")), _suggestion((1, "id"), (2, "id"), 0.3)]
     )
@@ -176,6 +179,23 @@ def test_a_run_names_at_least_one_kind_and_a_known_scope():
         discovery.DiscoverRequest.model_validate({"scope": "galaxy", "kinds": ["foreign_keys"]})
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [{"domain_ids": ["sales"]}, {"source_domains": ["sales"]}, {"domian_id": "sales"}],
+)
+def test_a_field_the_route_does_not_read_is_refused(extra):
+    """The route never ignores an input: a field it does not read, such as a list of domains
+    for the cross-domain scope (that scope compares every domain), is refused, not dropped."""
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        discovery.DiscoverRequest.model_validate(
+            {"scope": "cross-domain", "kinds": ["foreign_keys"], **extra}
+        )
+
+
+def test_the_cross_domain_scope_names_no_domains():
+    assert "domain_ids" not in discovery.DiscoverRequest.model_fields
+
+
 # --- the assigned model, whatever its vendor ----------------------------------------------------
 
 
@@ -240,6 +260,8 @@ async def test_an_unreadable_answer_is_reported(monkeypatch, tmp_path):
 
 async def test_all_below_the_confidence_threshold_is_reported_with_the_count(monkeypatch, tmp_path):
     d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    # Each pair meets customers.id on one value: both score under the threshold (REQ-413).
+    d.world.measured.values[("customers", "id")] = [2, 7, 8, 9]
     d.answer = json.dumps(
         [
             _suggestion((1, "customer_id"), (2, "id"), 0.3),

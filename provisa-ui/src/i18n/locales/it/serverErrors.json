@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
       "local_server_from_environment": "{{vendor}} viene raggiunto all'indirizzo proprio del server, che un'organizzazione su questo server non usa. Dichiara un endpoint AI al tuo indirizzo in Amministrazione, Modelli AI.",
       "server_environment_sets": "{{vendor}} non può essere chiamato qui: l'ambiente del server imposta {{variable}}, che il suo client invierebbe per ogni organizzazione.",
+      "vector_model_address_from_server": "Il modello di embedding {{vendor}} prende il suo indirizzo dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
+      "vector_model_key_from_server": "Il modello di embedding {{vendor}} prende la sua chiave dall'ambiente del server, che un'organizzazione su questo server non usa. Assegnagli una chiave tua in Amministrazione, Modelli AI.",
+      "vector_model_key_unset": "Il modello di embedding {{vendor}} non ha una chiave: {{field}} non è impostato.",
+      "vector_model_local_server": "Il modello di embedding {{vendor}} viene raggiunto all'indirizzo proprio del server, che un'organizzazione su questo server non usa. Assegnagli un indirizzo tuo in Amministrazione, Modelli AI.",
       "vendor_uses_server_credentials": "{{vendor}} viene raggiunto con le credenziali proprie del server, che un'organizzazione su questo server non usa. Scegli un fornitore che accetta una chiave, o un endpoint AI, in Amministrazione, Modelli AI."
     },
     "api": {
@@ -149,6 +153,7 @@
       "source_starting": "L'origine {{source}} è ancora in fase di avvio. Riprova tra un momento.",
       "source_unavailable": "L'origine {{source}} non ha potuto rispondere. Riprova tra poco.",
       "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}.",
+      "view_awaits_rule_rebuild": "La vista {{view}} è in fase di ricostruzione per una modifica alle regole di riga sui suoi input. Questo ruolo potrà leggerla quando quella build sarà pubblicata.",
       "graphql_body_missing": "La richiesta non ha corpo: una richiesta GraphQL è un oggetto JSON con una query.",
       "graphql_body_not_json": "Il corpo della richiesta non è JSON: {{error}}",
       "graphql_request_not_object": "Una richiesta GraphQL è un oggetto JSON con una query.",
@@ -159,7 +164,9 @@
       "parameter_unbound_on_branch": "Il parametro {{parameter}} riceve un valore in un ramo di un OR e nessuno in un altro. Dai un valore a {{parameter}} in ogni ramo.",
       "parameter_conflict": "Il parametro {{parameter}} riceve due valori diversi insieme ({{first}} e {{second}}). Dagli un solo valore, oppure elenca i valori con IN o OR.",
       "parameter_calls_over_cap": "L'istruzione richiede {{calls}} chiamate a {{table}}, una per ogni valore dato ai suoi parametri, e per un'istruzione ne vengono fatte al massimo {{cap}} (impostazione {{setting}}). Indica meno valori.",
-      "parameter_not_written": "La relazione {{relationship}} si unisce sul parametro {{parameter}}, che un'istruzione associa a un valore e non scrive mai. Una scrittura non crea {{relationship}}."
+      "parameter_not_written": "La relazione {{relationship}} si unisce sul parametro {{parameter}}, che un'istruzione associa a un valore e non scrive mai. Una scrittura non crea {{relationship}}.",
+      "parameter_required": "La tabella '{{table}}' richiede il parametro o i parametri {{parameters}}: dai un valore a ciascuno (una condizione WHERE sulla sua colonna in SQL, un argomento in GraphQL).",
+      "parameter_wrong_type": "Il parametro {{parameter}} accetta un valore di tipo {{type}}; '{{value}}' non lo è."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -197,7 +204,8 @@
       "empty_answer": "Il modello non ha restituito alcun testo."
     },
     "environments": {
-      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo."
+      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo.",
+      "owner_not_member": "{{user}} ha creato l'ambiente {{env}} ma non è membro di {{org}}; agire al suo interno come proprietario richiede l'appartenenza."
     },
     "front_door": {
       "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa cinque minuti.",
@@ -320,6 +328,13 @@
       "catalog_view_refused": "{{view}} è una vista di catalogo del dominio meta e non può essere letta in un'unica istruzione con una tabella di un'origine dati: leggile in due istruzioni.",
       "function_unsupported": "{{function}}() non ha un equivalente su {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Regola di oscuramento {{rule}}: {{why}}",
+      "pattern_backtracks": "Regola di oscuramento {{rule}}: il modello può causare un backtracking catastrofico (una ripetizione annidata in una ripetizione illimitata, o alternative al suo interno che possono iniziare con lo stesso testo). Riscrivilo senza quella forma.",
+      "pattern_unsupported": "Regola di oscuramento {{rule}}: la regola di un'organizzazione non può usare riferimenti all'indietro, lookahead o lookbehind, gruppi atomici, ripetizioni possessive o gruppi condizionali.",
+      "pattern_too_large": "Regola di oscuramento {{rule}}: il modello è troppo grande una volta espanse le ripetizioni. Usa un numero di ripetizioni minore.",
+      "server_reference": "Regola di oscuramento {{rule}}: un'organizzazione su questo server non può fare riferimento all'ambiente del server. Usa ${secret:NAME} dal vault dell'organizzazione stessa."
+    },
     "replication": {
       "answer_not_json": "La risposta letta per la replica di {{table}} non è JSON valido: [{{content_type}}] {{cause}} (nei {{kib}} KiB prima del byte {{before_byte}} della risposta).",
       "no_whole_copy": "La tabella {{schema}}.{{table}} della sorgente {{source}} non ha una copia completa da creare: è replicata riga per riga oppure ha una colonna parametro.",
@@ -340,7 +355,9 @@
       "org_selection_required": "Selezione dell'organizzazione richiesta",
       "already_exists": "Il ruolo '{{role}}' esiste già",
       "description_missing": "Il ruolo '{{role}}' ha bisogno di una descrizione di a cosa serve",
-      "right_not_in_parents": "Il ruolo {{role}} non può detenere {{right}}: nessun genitore lo detiene"
+      "right_not_in_parents": "Il ruolo {{role}} non può detenere {{right}}: nessun genitore lo detiene",
+      "platform_right_requires_platform_admin": "Un ruolo che include {{rights}} è definito da un amministratore della piattaforma",
+      "rights_not_held": "Il ruolo {{role}} include {{rights}}, che non detieni"
     },
     "schema": {
       "allowed_domains_updated": "Domini consentiti aggiornati per l'origine '{{source}}'",
@@ -471,8 +488,6 @@
       "mask_unreachable": "Avete definito una maschera non raggiungibile: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' non trovato",
       "change_streams_unavailable": "L'origine '{{source}}' è un server MongoDB standalone, che non fornisce change stream: il segnale di modifica native richiede un replica set o un cluster shardato. Eseguilo come replica set oppure usa il segnale di modifica poll.",
-      "table_draft_set": "Tabella {{table}} impostata come bozza",
-      "table_released": "Tabella {{table}} rilasciata",
       "openapi_no_rows_field": "Tabella {{table}}: la risposta non ha alcuna proprietà {{rows_field}} da cui leggere le righe.",
       "paging_rows_field_fixed": "Tabella {{table}}: la posizione delle sue righe ({{rows_field}}) è impostata alla registrazione della tabella. Registra di nuovo la tabella per leggere le sue righe da un'altra posizione.",
       "relationship_request_queued": "Accodata come richiesta n. {{id}}. Richiede le approvazioni di {{required}} utenti diversi che possono creare relazioni, di cui almeno uno raggiunge ciascun dominio toccato.",
@@ -501,6 +516,8 @@
       "role_updated": "Ruolo '{{role}}' aggiornato",
       "relationship_id_taken": "La relazione '{{relationship}}' esiste già",
       "relationship_id_reserved": "L'id della relazione '{{id}}' inizia con '{{prefix}}', un prefisso riservato alle relazioni integrate. Scegli un altro id.",
+      "relationship_source_column_missing": "La relazione '{{relationship}}' non indica alcuna colonna sorgente. Una relazione si unisce su una colonna della sua tabella sorgente.",
+      "relationship_target_column_missing": "La relazione '{{relationship}}' non indica alcuna colonna di destinazione. Una relazione si unisce su una colonna della sua tabella di destinazione, a meno che la destinazione sia una funzione.",
       "relationship_graphql_alias_taken": "L'alias GraphQL '{{alias}}' è già l'alias della relazione '{{relationship}}' da '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Attività pianificata '{{task}}' aggiornata",
@@ -541,7 +558,13 @@
       "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso",
       "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\".",
-      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione"
+      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione",
+      "table_withdrawn": "Tabella {{table}} ritirata",
+      "table_put_back": "Tabella {{table}} ripristinata",
+      "source_withdrawn": "Origine {{source}} ritirata",
+      "source_put_back": "Origine {{source}} ripristinata",
+      "withdrawn_source_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: la sua origine {{source}} è ritirata e nessun motore legge un'origine ritirata.",
+      "withdrawn_table_not_previewable": "Impossibile visualizzare l'anteprima della tabella {{table}}: è ritirata e non conserva alcuna replica, e il motore legge la sua origine solo tramite una replica."
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",
@@ -604,7 +627,11 @@
       "schema_registry_unreachable": "Il registro degli schemi {{registry}} non è raggiungibile: {{error}}",
       "sse_limit_reached": "numero massimo di sottoscrizioni SSE simultanee raggiunto",
       "table_not_found": "Tabella '{{table}}' non trovata",
-      "unknown_role": "Ruolo '{{role}}' sconosciuto"
+      "unknown_role": "Ruolo '{{role}}' sconosciuto",
+      "owner_role_lost": "La sottoscrizione è terminata: il suo proprietario non ha più il ruolo con cui è stata avviata ({{roles}})",
+      "sink_cap_reached": "Hai già {{cap}} sink Kafka in esecuzione, il massimo consentito dall'operatore ({{setting}})",
+      "sink_needs_write": "Il ruolo '{{role}}' non ha il diritto di scrittura richiesto da un sink Kafka",
+      "owner_sign_in_expired": "La sottoscrizione è terminata: l'accesso con cui è stata avviata è scaduto; accedi di nuovo e riavviala"
     },
     "users": {
       "assignment_not_found": "Assegnazione non trovata",
@@ -648,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} non è un numero intero di righe: LIMIT accetta un conteggio da 0 in su, ad es. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} non è un numero intero di righe: SKIP accetta un conteggio da 0 in su, ad es. SKIP 10.",
       "engine_refused": "Il motore ha rifiutato la query: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL.",
       "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
       "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",
@@ -716,6 +742,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Non esiste alcun ruolo chiamato {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "Il modello di filtro dei log è rifiutato: {{why}}",
+      "pattern_exceeded": "Il modello di filtro dei log è rifiutato: ha superato il suo limite di passi ({{steps}} passi) su una riga di log di {{length}} caratteri."
     },
     "dbt": {
       "products": {
@@ -875,6 +905,11 @@
     "preflight": {
       "confined_unavailable": "Il controllo preliminare di {{subject}} non è stato eseguito: in questa organizzazione viene eseguito solo in un processo confinato, e non è stato possibile avviarne uno ({{reason}}).",
       "confined_failed": "Il controllo preliminare di {{subject}} non ha restituito alcun verdetto: il suo processo confinato è terminato prima ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} è fuori dal progetto caricato; un progetto legge solo i propri file.",
+      "filter_value_refused": "{{value}} non può essere un valore in un filtro di autorizzazione: un valore è una stringa, un numero, true, false, null, un elenco di questi o una variabile di sessione.",
+      "filter_operator_refused": "{{operator}} non è un operatore con cui si possa convertire un filtro di autorizzazione."
     }
   }
 }

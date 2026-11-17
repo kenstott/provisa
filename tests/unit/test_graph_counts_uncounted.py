@@ -83,7 +83,6 @@ async def test_a_parameterized_table_is_uncounted_and_the_other_labels_are_count
     from provisa.api.rest import cypher_router
     from provisa.compiler import sql_rewrite
     from provisa.compiler.nf_extractor import apply_dropped_tables
-    from provisa.core.parameters import missing_reason
     from provisa.cypher import parser
     from provisa.executor.result import QueryResult
     from provisa.pgwire import _pipeline
@@ -111,7 +110,7 @@ async def test_a_parameterized_table_is_uncounted_and_the_other_labels_are_count
     async def _govern(sql, role_id, **kw):
         # The pipeline's own refusal of a read that leaves a required parameter without a value.
         if "assignments_by_breed" in sql:
-            apply_dropped_tables(sql, {"assignments_by_breed": missing_reason(["breed_name"])})
+            apply_dropped_tables(sql, {"assignments_by_breed": ["breed_name"]})
         return SimpleNamespace(sql=sql)
 
     async def _run(plan, st):

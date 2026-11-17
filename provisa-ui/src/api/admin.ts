@@ -724,7 +724,13 @@ export interface ModelLimits {
 
 /** The type groups columns are compared within. */
 export type TypeGroup =
-  "whole_number" | "decimal" | "text" | "uuid" | "date" | "timestamp" | "timestamptz";
+  | "whole_number"
+  | "decimal"
+  | "text"
+  | "uuid"
+  | "date"
+  | "timestamp"
+  | "timestamptz";
 
 /** At most how many model requests a run of this scope makes, by type group. The count reads no
  *  table: it is an upper bound from what is registered, and the run may make fewer. */
@@ -744,7 +750,12 @@ export interface DiscoveryCount {
 export interface SemanticsReport {
   suggested: number;
   empty_reason:
-    "requests_failed" | "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
+    | "requests_failed"
+    | "unreadable"
+    | "none_proposed"
+    | "below_threshold"
+    | "filtered"
+    | null;
   requests_total: number;
   requests_done: number;
   split: number;
@@ -780,17 +791,41 @@ export type RemovedKind =
   | "rejected"
   | "matches_foreign_key"
   | "out_of_scope"
-  | "weaker";
+  | "weaker"
+  | "many_to_many";
 
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
 export type ProposalReason =
-  "invalid_shape" | "unknown_column" | "not_comparable" | "below_threshold" | RemovedKind;
+  | "invalid_shape"
+  | "unknown_column"
+  | "not_comparable"
+  | "below_threshold"
+  | RemovedKind;
+
+/** REQ-413: one column of a measured pair: how many distinct values were read (`more`: it holds
+ *  more than the bound), whether its values are distinct, and why it was not measured. */
+export interface MeasuredSide {
+  values: number | null;
+  more: boolean;
+  distinct: boolean | null;
+  unmeasured: "not_read" | "not_readable" | null;
+}
+
+/** REQ-413: a proposed pair's values measured against each other, at most `bound` distinct values
+ *  read of each column. */
+export interface PairMeasure {
+  bound: number;
+  source: MeasuredSide;
+  target: MeasuredSide;
+  source_in_target: number | null;
+  target_in_source: number | null;
+}
 
 /** REQ-413: a proposal a run read. `reason` null: one of the run's suggestions. One that named no
  *  two compared columns has no tables or confidence, and `answer` is the element as the model
- *  wrote it. `confidence` is the model's, which decides; `scored` is Jev's where Jev scored it,
- *  shown beside it. */
+ *  wrote it. `score` decides: the measure's where values were compared (`measured`), else the
+ *  model's `confidence`, which is shown beside it; `scored` is Jev's where Jev scored it. */
 export interface RunProposal {
   id: number;
   run_id: number;
@@ -800,6 +835,9 @@ export interface RunProposal {
   target_table_id: number | null;
   target_column: string | null;
   cardinality: string | null;
+  score: number | null;
+  measured: boolean;
+  measure: PairMeasure | null;
   confidence: number | null;
   scored: number | null;
   reasoning: string | null;
@@ -808,6 +846,8 @@ export interface RunProposal {
   answer: string | null;
   /** Whether a reviewer may accept it or mark it not to be recommended again. */
   decidable: boolean;
+  /** Whether a reviewer may accept it: decidable, and its measure found a key on one side. */
+  acceptable: boolean;
   /** One of its tables requires a parameter, so it is never read: no values were compared. */
   reduced_information: boolean;
 }
@@ -912,11 +952,24 @@ export async function stopDiscoveryRun(id: number): Promise<DiscoveryRun> {
  *  which a row starts ticked. */
 export interface RunProposals {
   proposals: RunProposal[];
+  /** The signed-in person's threshold: rows scoring at least it start ticked. */
   threshold: number;
+  /** The score a run keeps a suggestion at, which `below_threshold` is against. */
+  kept_at: number;
 }
 
 export function fetchRunProposals(runId: number): Promise<RunProposals> {
   return discoveryRequest(`/runs/${runId}/proposals`, "Run proposals");
+}
+
+/** REQ-413: keep the score from which a run's proposals start ticked as the signed-in person's
+ *  own. */
+export function saveDiscoveryThreshold(threshold: number): Promise<{ threshold: number }> {
+  return discoveryRequest("/threshold", "Discovery threshold", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ threshold }),
+  });
 }
 
 /** What a reviewer decided in a run's result: the proposals to accept, each with its
@@ -947,22 +1000,6 @@ export async function applyRunDecisions(
   ).results;
 }
 
-export async function fetchCandidates(): Promise<unknown[]> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates`);
-  if (!resp.ok) throw httpError("Fetch candidates", resp.status);
-  return resp.json();
-}
-
-export async function acceptCandidate(id: number, name?: string): Promise<unknown> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/accept`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: name ?? null }),
-  });
-  if (!resp.ok) throw httpError("Accept", resp.status);
-  return resp.json();
-}
-
 export async function fetchRejectedCount(): Promise<number> {
   const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/rejected/count`);
   if (!resp.ok) throw httpError("Fetch rejected count", resp.status);
@@ -976,48 +1013,6 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
   });
   if (!resp.ok) throw httpError("Clear rejections", resp.status);
   return resp.json();
-}
-
-/** The outcome of one suggestion in an Accept all or Reject all: done, or why not. */
-export type CandidateOutcome =
-  { id: number; ok: true; relationship_id?: string } | { id: number; ok: false; error: string };
-
-async function candidatesAtOnce(
-  action: "accept" | "reject",
-  body: unknown,
-  label: string,
-): Promise<CandidateOutcome[]> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${action}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  if (!resp.ok) {
-    const failure = await resp.json().catch(() => ({ detail: resp.statusText }));
-    throw new Error(serverMessage(failure, requestFailed(label, resp.status)));
-  }
-  return ((await resp.json()) as { results: CandidateOutcome[] }).results;
-}
-
-/** Accept every suggestion given, each under its own name, in one request: one outcome each. */
-export function acceptCandidates(
-  candidates: { id: number; name: string }[],
-): Promise<CandidateOutcome[]> {
-  return candidatesAtOnce("accept", { candidates }, "Accept all");
-}
-
-/** Reject every suggestion given with the one reason, in one request: one outcome each. */
-export function rejectCandidates(ids: number[], reason: string): Promise<CandidateOutcome[]> {
-  return candidatesAtOnce("reject", { ids, reason }, "Reject all");
-}
-
-export async function rejectCandidate(id: number, reason: string): Promise<void> {
-  const resp = await fetch(`${API_BASE_RAW}/admin/discover/candidates/${id}/reject`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ reason }),
-  });
-  if (!resp.ok) throw httpError("Reject", resp.status);
 }
 
 // --- Schema Discovery ---

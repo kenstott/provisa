@@ -645,15 +645,6 @@ def test_a_visitor_lands_a_source_of_their_own_within_the_caps(tier, alpha):
     assert (registered.json().get("data") or {}).get("registerTable", {}).get("success"), (
         registered.text
     )
-    from tests.helpers import registered_id, release_field
-
-    _admin_graphql(
-        tier,
-        alpha,
-        "mutation { "
-        + release_field(registered_id(registered.json()["data"]["registerTable"]["message"]))
-        + " { success message } }",
-    )
     # Registered, the source is read from its replica from now on: always (REQ-826).
     replicated = _admin_graphql(
         tier,

@@ -23,7 +23,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import _ROLE, _SourceAndEngine
 
 pytestmark = [pytest.mark.integration]
@@ -193,7 +192,7 @@ def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databas
                 f'port: {pg.source_port}, database: "shop", username: "provisa", '
                 'password: "provisa"})',
             )
-            registered = _admin(
+            _admin(
                 srv,
                 'registerTable(input: {sourceId: "src", domainId: "shop", schemaName: "public", '
                 'tableName: "inc_orders", watermarkColumn: "updated_at", '
@@ -206,7 +205,6 @@ def test_a_delta_table_applies_insert_update_and_tombstone_incrementally(databas
             )
             # REQ-1921: a table registered through the admin starts as a draft; it is released into
             # service before it is read.
-            _admin(srv, release_field(registered_id(registered["message"])))
             # Floor the table so every read is served from its replica, with a short landing TTL so
             # the build runner re-refreshes quickly (REQ-1907).
             _admin(srv, 'updateSourceCache(sourceId: "src", cacheEnabled: true, cacheTtl: 1)')

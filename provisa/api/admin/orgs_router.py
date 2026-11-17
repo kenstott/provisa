@@ -1229,6 +1229,7 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
 
     Rejected when it would remove the org's last org_admin (REQ-1302).
     """
+    from provisa.api.admin._platform_guard import require_held_roles_removable
     from provisa.api.admin.invites_router import _require_org_admin
     from provisa.core.org_membership import (
         LastOrgAdminError,
@@ -1239,6 +1240,7 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
 
     await _require_org_admin(request, org_id)
     model_db = await _org_model_db(org_id)
+    await require_held_roles_removable(request, model_db, user_id)  # REQ-1327
     try:
         await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
@@ -1247,6 +1249,7 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
         raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="remove_member",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id,
@@ -1284,6 +1287,7 @@ async def leave_org(org_id: str, request: Request):  # REQ-1306
     await suppress_auto_join(_admin_pool(), user_id, org_id)
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="leave_org",
         actor_id=user_id,
         subject_id=user_id,
@@ -1357,6 +1361,7 @@ async def lift_suspension(org_id: str, request: Request):  # REQ-2076
         raise ApiError(404, "orgs.no_suspension", "No such suspension in this org")
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action="security.suspension_lifted",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id or token_hash,
@@ -1395,6 +1400,7 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
     await grant_org_admin(_admin_pool(), model_db, user_id, org_id, joined_via=JOINED_VIA_ADMIN)
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="grant_org_admin",
         actor_id=actor or "anonymous",
         subject_id=user_id,
@@ -1412,7 +1418,7 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
     """
     from sqlalchemy import delete as _sa_delete
 
-    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.api.admin.invites_router import _require_org_admin_rights
     from provisa.core.org_membership import (
         LastOrgAdminError,
         assert_not_last_org_admin,
@@ -1421,7 +1427,9 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
     from provisa.core.schema_org import user_role_assignments
     from provisa.security.rights import ORG_ADMIN_ROLE
 
-    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
+    # REQ-1327 (amended 2026-11-16): revoking org_admin is an org_admin's act, as granting it is;
+    # the platform administrator (cross_org) keeps the audited recovery.
+    await _require_org_admin_rights(request, org_id)
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
         raise ApiError(
@@ -1451,6 +1459,7 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
         )
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="revoke_org_admin",
         actor_id=actor or "anonymous",
         subject_id=user_id,

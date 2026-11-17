@@ -303,10 +303,13 @@ _TOOLS: list[Any] = [
     {
         "name": "discover_relationships",
         "description": (
-            "Run the Relationships page's discovery for one registered table, as the user, and "
-            "list the relationship candidates it found (each with its id, the columns it would "
-            "join, its confidence and why). Use it for 'create any relationships to <table>'; "
-            "accept the candidates the user picks with admin_request POST "
+            "Run the Relationships page's discovery for one registered table's domain, as the "
+            "user, as a stored run. It returns: candidates (each suggestion, with its id, the "
+            "columns it would join, its confidence and why); foreign_keys and semantics (what "
+            "each kind found); run_id (the stored run); and proposals (every proposal the run "
+            "read, with the model's confidence, Jev's score as scored where a Jev key is set, "
+            "and the reason one is not a suggestion). Use it for 'create any relationships to "
+            "<table>'; accept the candidates the user picks with admin_request POST "
             "/admin/discover/candidates/{id}/accept."
         ),
         "input_schema": {
@@ -1110,9 +1113,9 @@ _SYSTEM = (
     "an s3:// URL to a single .csv or .parquet file -- is a CSV or Parquet source given its file "
     "by download: work out csv or parquet from the file's name (ask if it says neither), and "
     "propose type='csv' or 'parquet' with download_from set to that path, path left out, an id "
-    "from the file's name, register_table_draft true and table_domain_id the domain the user "
+    "from the file's name, register_table_from_file true and table_domain_id the domain the user "
     "named (ask which one if they named none) -- the server copies the file into the "
-    "organization's folder and sets up its table as a draft when the source is created. A server "
+    "organization's folder and registers its table, live, when the source is created. A server "
     "of many organizations refuses a file mount path by name: offer an https:// or s3:// address "
     "there. A directory, a glob or several files is a files source instead (type='files', path "
     "set to that directory or glob), proposed and confirmed the same way, its tables registered "
@@ -1134,7 +1137,7 @@ _SYSTEM = (
     "and accept each the user picks with admin_request POST "
     "/admin/discover/candidates/{id}/accept. A source's createSource input: at minimum id and "
     "type; a CSV or Parquet source given its file by download sets download_from and leaves path "
-    "out, and register_table_draft with table_domain_id sets its table up as a draft. A "
+    "out, and register_table_from_file with table_domain_id registers its table with it. A "
     "registerTable input: source_id, domain_id, schema_name, table_name and columns (each at "
     "least name and visible_to); never set alias -- the server derives the right SQL name. When "
     "the user asks to be shown, demoed or taught how something is done, use the screen instead "

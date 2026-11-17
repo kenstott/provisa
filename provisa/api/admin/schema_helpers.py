@@ -28,6 +28,7 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.rebuild_trace import passes_on
 from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
@@ -77,12 +78,20 @@ async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
     import httpx
     from provisa.openapi.register import _openapi_to_provisa_type
 
+    from provisa.security import sandbox_egress
+
     url = base_url.rstrip("/") + query.path
     params = {p["name"]: "" for p in query.query_params}
     try:
-        r = httpx.get(url, params=params, timeout=10, follow_redirects=True)
+        # REQ-2006: a held org's endpoint is a public destination, each redirect checked.
+        with httpx.Client(
+            timeout=10, follow_redirects=True, event_hooks=sandbox_egress.http_sync_event_hooks()
+        ) as client:
+            r = client.get(url, params=params)
         r.raise_for_status()
         data = r.json()
+    except sandbox_egress.PrivateDestinationRefused:
+        raise  # refused by name, never read as an endpoint with no columns
     except Exception:
         return []
     if isinstance(data, list):
@@ -281,6 +290,8 @@ class TableListing:
     grants: dict[int, list[dict]]  # table id -> its write grants (REQ-2074)
     products: dict[int, list[str]]  # table id -> the products it is a member of (REQ-1634)
     endpoints: dict[str, tuple[str, dict[str, Any]]]  # OpenAPI source -> (base url, ops by id)
+    # REQ-1921: the withdrawn sources among theirs: each table of one is withdrawn through it.
+    withdrawn_sources: frozenset[str]
     # OpenAPI source -> why its document could not be read: its tables are listed all the same,
     # saying so, since one source out of reach fails no listing.
     endpoint_errors: dict[str, str] = field(default_factory=dict)
@@ -343,7 +354,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
     # REQ-1997: the source's path too -- where its file is decides whether it takes writes.
     source_rows = (
         await conn.execute_core(
-            select(sources.c.id, sources.c.type, sources.c.path).where(
+            select(sources.c.id, sources.c.type, sources.c.path, sources.c.withdrawn).where(
                 sources.c.id.in_(sorted({r["source_id"] for r in rows}))
             )
         )
@@ -359,8 +370,9 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         except (httpx.HTTPError, OSError) as exc:
             # A document out of reach (its host, its file) is that source's alone: named on its
             # tables and logged, the rest listed.
+            reason = describe_http_failure(exc) if isinstance(exc, httpx.HTTPError) else str(exc)
             endpoint_errors[source_id] = (
-                f"the API document of source {source_id!r} could not be read: {exc}"
+                f"the API document of source {source_id!r} could not be read: {reason}"
             )
             log.warning("%s", endpoint_errors[source_id])
             continue
@@ -376,6 +388,7 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         products=await data_product_repo.table_memberships(conn),
         endpoints=endpoints,
         endpoint_errors=endpoint_errors,
+        withdrawn_sources=frozenset(r.id for r in source_rows if r.withdrawn),
     )
 
 
@@ -514,6 +527,8 @@ async def _fetch_table_with_columns(
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
         draft=row["draft"],  # REQ-1921
+        withdrawn=row["withdrawn"],  # REQ-1921
+        source_withdrawn=row["source_id"] in listing.withdrawn_sources,  # REQ-1921
         row_materialize=row["row_materialize"],  # REQ-1865
         load_protected=row.get("load_protected"),  # REQ-1141
         off_peak_window=row.get("off_peak_window"),  # REQ-1141

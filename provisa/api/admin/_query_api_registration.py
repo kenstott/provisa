@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.core.schema_org import sources
 
@@ -74,7 +75,9 @@ async def preview_sparql(conn: "Connection", source_id: str, query: str) -> "Que
         return await _preview_inferred(row, query)
     try:
         results = await probe_endpoint(cfg, query)
-    except (httpx.HTTPError, ValueError) as exc:
+    except httpx.HTTPError as exc:
+        return QueryPreviewType(error=describe_http_failure(exc))
+    except ValueError as exc:
         return QueryPreviewType(error=f"{type(exc).__name__}: {exc}")
     columns = infer_columns(results)
     if not columns:

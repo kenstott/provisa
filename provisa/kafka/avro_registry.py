@@ -33,6 +33,9 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
 
+from provisa.core.http_failure import describe_http_failure
+from provisa.security import sandbox_egress  # REQ-2006
+
 log = logging.getLogger(__name__)
 
 # Requirements: REQ-1951
@@ -216,17 +219,27 @@ class SchemaRegistry:
         import httpx
 
         if self._client is None:
-            self._client = httpx.AsyncClient(**self.client_options())
+            # REQ-2006: a held org's registry is checked at each request.
+            self._client = httpx.AsyncClient(
+                **self.client_options(), event_hooks=sandbox_egress.http_event_hooks()
+            )
         try:
             return await self._client.get(f"{self._url}{path}", timeout=self._timeout())
-        except (httpx.HTTPError, OSError) as exc:
-            raise SchemaRegistryRefusal(
-                503,
-                "subscribe.schema_registry_unreachable",
-                f"Schema registry {self._url} cannot be reached: {type(exc).__name__}: {exc}",
-                registry=self._url,
-                error=f"{type(exc).__name__}: {exc}",
-            ) from exc
+        except sandbox_egress.PrivateDestinationRefused:
+            raise  # REQ-2006: refused by name, not reported as a registry that cannot be reached
+        except httpx.HTTPError as exc:
+            raise self._unreachable(describe_http_failure(exc)) from exc
+        except OSError as exc:
+            raise self._unreachable(f"{type(exc).__name__}: {exc}") from exc
+
+    def _unreachable(self, error: str) -> SchemaRegistryRefusal:
+        return SchemaRegistryRefusal(
+            503,
+            "subscribe.schema_registry_unreachable",
+            f"Schema registry {self._url} cannot be reached: {error}",
+            registry=self._url,
+            error=error,
+        )
 
     def _refuse_unless_answered(self, response: Any) -> None:
         if response.status_code in (401, 403):

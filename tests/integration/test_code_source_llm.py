@@ -30,7 +30,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import (
     _ROLE,
     _admin,
@@ -130,16 +129,19 @@ export declare function ask_capped(inputs: AskInputs): Promise<Answer[]>;
 
 class _Endpoint:
     """An OpenAI-compatible endpoint on the loopback: answers every chat completion, keeping what
-    it was sent."""
+    it was sent. While ``answering`` is cleared it holds each request until it is set again."""
 
     def __init__(self) -> None:
         self.received: list[dict] = []
+        self.answering = threading.Event()
+        self.answering.set()
         endpoint = self
 
         class _Handler(BaseHTTPRequestHandler):
             def do_POST(self) -> None:  # noqa: N802 -- http.server's name
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 endpoint.received.append(body)
+                endpoint.answering.wait()
                 answer = json.dumps(
                     {
                         "id": "chatcmpl-1",
@@ -234,7 +236,7 @@ def _source(srv, source_id: str, table: str, mapping_extra: dict) -> None:
         f'database: "", cacheTtl: 0, mappingJson: {json.dumps(json.dumps(mapping))}}})',
     )
     status_type = "bigint" if language == "python" else "double"
-    registered = _admin(
+    _admin(
         srv,
         f'registerTable(input: {{sourceId: "{source_id}", domainId: "fx", '
         f'schemaName: "default", tableName: "{table}", cacheTtl: 0, '
@@ -243,7 +245,6 @@ def _source(srv, source_id: str, table: str, mapping_extra: dict) -> None:
         f"{_column('body', 'text')}, {_parameter('model', 'text', required=True)}, "
         f"{_parameter('prompt', 'text', required=True)}]}})",
     )
-    _admin(srv, release_field(registered_id(registered["message"])))
 
 
 @pytest.fixture(scope="module")

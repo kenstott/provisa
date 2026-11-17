@@ -55,6 +55,7 @@ from typing import Any
 from fastapi import APIRouter, Request
 from pydantic import AwareDatetime, BaseModel
 
+from provisa.api.admin._platform_guard import require_roles_removable
 from provisa.api.admin._guards import require_active_org_id
 from provisa.api.admin.capabilities import _resolved_capabilities, require_capability_request
 from provisa.api.errors import ApiError
@@ -337,7 +338,7 @@ def _pending_view(grant: pending.PendingGrant) -> dict:
     }
 
 
-async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
+async def _set_pending(state: Any, org_id: str, body: SetListBody, actor: str) -> dict:
     assert body.email is not None
     db = _db(state)
     async with db.acquire() as conn:
@@ -353,6 +354,7 @@ async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
         )
     await record_admin_action(
         db,
+        org_id=org_id,
         action="entitlements.set_pending",
         actor_id=actor,
         subject_id=grant.email,
@@ -377,7 +379,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
     _check_set(state, body)
     actor = _caller(request) or _ANONYMOUS
     if principal is None:
-        return await _set_pending(state, body, actor)
+        return await _set_pending(state, require_active_org_id(request), body, actor)
     await _refuse_past_grant(state, principal, body.role_id, body.expires_at)
     db = _db(state)
     async with db.acquire() as conn:
@@ -396,6 +398,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.set",
         actor_id=actor,
         subject_id=principal,
@@ -436,6 +439,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
             )
         await record_admin_action(
             db,
+            org_id=require_active_org_id(request),
             action="entitlements.end_pending",
             actor_id=actor,
             subject_id=grant.email,
@@ -453,6 +457,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.end",
         actor_id=actor,
         subject_id=principal,
@@ -680,6 +685,7 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.add",
         actor_id=actor,
         subject_id=body.principal,
@@ -778,10 +784,21 @@ def _rule(state: Any, rule_key: str) -> tuple[str, ExpiryRule]:
 
 
 async def _end_grant(
-    state: Any, principal: str, role_id: str, ends_at: datetime, actor: str, reason: str
+    request: Request,
+    state: Any,
+    principal: str,
+    role_id: str,
+    ends_at: datetime,
+    actor: str,
+    reason: str,
 ) -> None:
     """End ``principal``'s grant of ``role_id`` at ``ends_at``: set or shorten its own expiry.
-    Refused by name when Provisa holds no grant of the role for them."""
+    Refused by name when Provisa holds no grant of the role for them.
+
+    Ending a grant takes the role away, so it asks what removing the role asks
+    (``rights.check_role_grant``): REQ-1327 (amended 2026-11-16), ending org_admin needs org_admin.
+    """
+    require_roles_removable(request, [role_id])
     db = _db(state)
     async with db.acquire() as conn:
         ended = await role_grants.end_grant(conn, principal, role_id, ends_at)
@@ -795,6 +812,7 @@ async def _end_grant(
         )
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="role.expiry_set",
         actor_id=actor,
         subject_id=principal,
@@ -830,7 +848,9 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
     _refuse_past(body.ends_at)
     actor = _caller(request) or _ANONYMOUS
     if not body.ends:
-        await _end_grant(state, body.principal, body.role_id, body.ends_at, actor, body.reason)
+        await _end_grant(
+            request, state, body.principal, body.role_id, body.ends_at, actor, body.reason
+        )
         return await _view(state, body.principal, body.role_id)
     await _refuse_past_grant(state, body.principal, body.role_id, body.ends_at)
     if _preview(state, body.principal, body.role_id, body).removes_nothing:
@@ -849,6 +869,7 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_added",
         actor_id=actor,
         subject_id=body.principal,
@@ -877,7 +898,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
     actor = _caller(request) or _ANONYMOUS
     db = _db(state)
     if not body.ends:
-        await _end_grant(state, principal, rule.role_id, body.ends_at, actor, body.reason)
+        await _end_grant(request, state, principal, rule.role_id, body.ends_at, actor, body.reason)
         async with db.acquire() as conn:
             await store.withdraw_expiry(conn, rule, principal, set_by=actor, reason=body.reason)
             state.held_entitlements = await store.load_held(conn)
@@ -892,6 +913,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_changed",
         actor_id=actor,
         subject_id=principal,
@@ -921,6 +943,7 @@ async def withdraw_expiry(rule_key: str, body: EndExpiryBody, request: Request) 
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_withdrawn",
         actor_id=actor,
         subject_id=principal,

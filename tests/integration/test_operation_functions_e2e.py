@@ -373,6 +373,37 @@ def test_an_argument_that_assigns_nothing_is_the_table_forms_refusal(
     assert function_calls == table_calls
 
 
+@pytest.mark.parametrize(
+    "sql, code, params",
+    [
+        (
+            "SELECT id FROM pets.get_pet_by_id",
+            "data.parameter_required",
+            {"table": "get_pet_by_id", "parameters": "petId"},
+        ),
+        (
+            "SELECT id FROM pets.get_pet_by_id WHERE \"_nf_petId\" = 'two'",
+            "data.parameter_wrong_type",
+            {"parameter": "_nf_petId", "type": "integer", "value": "two"},
+        ),
+    ],
+)
+def test_a_missing_or_wrongly_typed_parameter_is_refused_by_code_before_any_call(
+    served, sql, code, params
+):
+    """REQ-1986: over HTTP SQL a read leaving a required parameter without a value, or giving it a
+    value its type does not take, is refused under its catalogued code, and the source is never
+    called."""
+    server, api = served
+    api.by_id()
+    refused = _sql(server, sql)
+    assert refused.status_code == 400, refused.text
+    body = refused.json()
+    assert body["code"] == code, body
+    assert {k: body["params"][k] for k in params} == params, body
+    assert api.by_id() == []
+
+
 @pytest.mark.parametrize("pet, rows", [(1, []), (2, [(2, "detail of pet 2")])])
 def test_a_role_with_a_row_rule_gets_the_same_governed_rows_through_both_forms(served, pet, rows):
     server, _ = served

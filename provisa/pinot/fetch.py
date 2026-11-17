@@ -37,6 +37,7 @@ from typing import Any
 import httpx
 
 from provisa.compiler.sql_literals import sql_literal
+from provisa.security import sandbox_egress  # REQ-2006
 
 # Pinot's docs cite 8099 as the broker's default query port, but a plain `QuickStart` container's
 # own bundled config binds it to 8000 instead (confirmed live: `docker logs` shows "Started
@@ -84,14 +85,14 @@ class PinotConnection:
 
 def list_tables(conn: PinotConnection) -> list[str]:
     """Every table (Pinot calls them "tables") the controller knows, sorted."""
-    with httpx.Client(timeout=_TIMEOUT) as c:
+    with httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
         resp = c.get(f"{conn.controller_url}/tables")
         resp.raise_for_status()
         return sorted(resp.json().get("tables", []))
 
 
 def _query(conn: PinotConnection, sql: str) -> dict[str, Any]:
-    with httpx.Client(timeout=60.0) as c:
+    with httpx.Client(timeout=60.0, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
         resp = c.post(f"{conn.broker_url}/query/sql", json={"sql": sql})
         resp.raise_for_status()
         body = resp.json()
@@ -109,7 +110,7 @@ def table_columns(conn: PinotConnection, table: str) -> list[dict]:
     names — confirmed live to matter: a wide table (airlineStats, 80+ columns) occasionally took
     long enough under load to blow the Register Table form's 30s column-population wait, even
     though the query itself always eventually succeeded."""
-    with httpx.Client(timeout=_TIMEOUT) as c:
+    with httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
         resp = c.get(f"{conn.controller_url}/tables/{table}/schema")
         resp.raise_for_status()
         spec = resp.json()
@@ -157,7 +158,7 @@ def iter_rows_spooled(
 
     select = ", ".join(f'"{c}"' for c in columns) if columns else "*"
     sql = f'SELECT {select} FROM "{table}" LIMIT {_MAX_ROWS}'
-    with httpx.Client(timeout=60.0) as c:
+    with httpx.Client(timeout=60.0, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
         with spooled(
             lambda: c.stream("POST", f"{conn.broker_url}/query/sql", json={"sql": sql})
         ) as body:

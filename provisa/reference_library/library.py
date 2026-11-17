@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlsplit
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.reference_library import extract, store
 from provisa.reference_library.passages import cut
 
@@ -202,7 +203,7 @@ async def fetch(url: str, org_id: str | None) -> Content:
                             f"{url} serves more than {MAX_BYTES // (1024 * 1024)} MB"
                         )
     except httpx.HTTPError as exc:
-        raise FetchFailed(f"{url} could not be fetched: {exc}") from None
+        raise FetchFailed(f"{url} could not be fetched: {describe_http_failure(exc)}") from None
     except sandbox_egress.PrivateDestinationRefused as exc:
         raise LibraryRefused(str(exc)) from None
     return Content(data, media_type, charset, url)

@@ -123,6 +123,7 @@ async def test_the_four_phases_and_the_warm_up_run_after_the_answer_in_order(mod
         rebuild_trace.NAMES_TABLE,
         rebuild_trace.ANNOUNCE,
         rebuild_trace.LIFECYCLE,
+        rebuild_trace.VIEW_REBUILDS,
         rebuild_trace.WARM_UP,
     ]
     assert build.after.outcome == rebuild_trace.RAN

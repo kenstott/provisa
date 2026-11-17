@@ -410,10 +410,6 @@ async def save(
                 return saved
         async with pool.acquire() as raw:
             await _mark(cast("Connection", raw), input.id, made["id"])
-        if creating:
-            released = await _single().set_table_draft(info, made["id"], False)
-            if not released.success:
-                return released
     return _result(
         True,
         f"Code resolver {input.id!r} saved",

@@ -26,7 +26,11 @@
       "endpoint_key_unset": "The AI endpoint {{vendor}} has no key: {{field}} is not set.",
       "endpoint_address_from_server": "The AI endpoint {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
       "local_server_from_environment": "{{vendor}} is reached at the server's own address, which an organization on this server does not use. Declare an AI endpoint at your own address under Admin, AI Models.",
-      "server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization."
+      "server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization.",
+      "vector_model_key_from_server": "The embedding model {{vendor}} takes its key from the server's environment, which an organization on this server does not use. Give it a key of your own under Admin, AI Models.",
+      "vector_model_key_unset": "The embedding model {{vendor}} has no key: {{field}} is not set.",
+      "vector_model_address_from_server": "The embedding model {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+      "vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models."
     },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
@@ -149,6 +153,7 @@
       "source_starting": "The source {{source}} is still starting. Try again in a moment.",
       "source_unavailable": "The source {{source}} could not answer. Try again shortly.",
       "view_outside_load_window": "The view {{view}} can be read only within its read window. It next opens at {{opens_at}}.",
+      "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
       "graphql_body_missing": "The request has no body: a GraphQL request is a JSON object with a query.",
       "graphql_body_not_json": "The request body is not JSON: {{error}}",
       "graphql_request_not_object": "A GraphQL request is a JSON object with a query.",
@@ -159,7 +164,9 @@
       "parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
       "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
       "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
-      "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}."
+      "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}.",
+      "parameter_required": "Table '{{table}}' requires the parameter(s) {{parameters}}: give each a value (a WHERE condition on its column in SQL, an argument in GraphQL).",
+      "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -197,7 +204,8 @@
       "empty_answer": "The model returned no text."
     },
     "environments": {
-      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
+      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again.",
+      "owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership."
     },
     "front_door": {
       "coordinator_waking": "The environment is starting. It will be ready in about five minutes.",
@@ -320,6 +328,13 @@
       "catalog_view_refused": "{{view}} is a catalog view of the meta domain and cannot be read in one statement with a table of a data source: read them in two statements.",
       "function_unsupported": "{{function}}() has no form on {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Redaction rule {{rule}}: {{why}}",
+      "pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
+      "pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
+      "pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
+      "server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault."
+    },
     "replication": {
       "answer_not_json": "The answer read for the replica of {{table}} is not valid JSON: [{{content_type}}] {{cause}} (in the {{kib}} KiB before byte {{before_byte}} of the answer).",
       "no_whole_copy": "Table {{schema}}.{{table}} of source {{source}} has no whole copy to build: it is replicated row by row, or it has a parameter column.",
@@ -340,7 +355,9 @@
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
       "description_missing": "Role '{{role}}' needs a description of what it is for",
-      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it"
+      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it",
+      "platform_right_requires_platform_admin": "A role carrying {{rights}} is defined by a platform administrator",
+      "rights_not_held": "Role {{role}} carries {{rights}}, which you do not hold"
     },
     "schema": {
       "allowed_domains_updated": "Allowed domains updated for source '{{source}}'",
@@ -471,8 +488,6 @@
       "mask_unreachable": "You have defined a mask that is not reachable: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' not found",
       "change_streams_unavailable": "Source '{{source}}' is a standalone MongoDB server, which serves no change streams: the native change signal needs a replica set or a sharded cluster. Run it as a replica set, or use the poll change signal.",
-      "table_draft_set": "Table {{table}} set as draft",
-      "table_released": "Table {{table}} released",
       "openapi_no_rows_field": "Table {{table}}: the response has no property {{rows_field}} to read rows from.",
       "paging_rows_field_fixed": "Table {{table}}: where its rows are ({{rows_field}}) is set when the table is registered. Register the table again to read its rows from elsewhere.",
       "relationship_request_queued": "Queued as request #{{id}}. It needs approvals from {{required}} different users who may create relationships, at least one reaching each domain it touches.",
@@ -501,6 +516,8 @@
       "role_updated": "Role '{{role}}' updated",
       "relationship_id_taken": "Relationship '{{relationship}}' already exists",
       "relationship_id_reserved": "Relationship id '{{id}}' begins with '{{prefix}}', a prefix kept for built-in relationships. Choose another id.",
+      "relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
+      "relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
       "relationship_graphql_alias_taken": "GraphQL alias '{{alias}}' is already the alias of relationship '{{relationship}}' from '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Scheduled task '{{task}}' updated",
@@ -541,7 +558,13 @@
       "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
       "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
-      "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function"
+      "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
+      "table_withdrawn": "Table {{table}} withdrawn",
+      "table_put_back": "Table {{table}} put back",
+      "source_withdrawn": "Source {{source}} withdrawn",
+      "source_put_back": "Source {{source}} put back",
+      "withdrawn_source_not_previewable": "Table {{table}} cannot be previewed: its source {{source}} is withdrawn, and no engine reads a withdrawn source.",
+      "withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one."
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",
@@ -604,7 +627,11 @@
       "schema_registry_unreachable": "Schema registry {{registry}} cannot be reached: {{error}}",
       "sse_limit_reached": "max concurrent SSE subscriptions reached",
       "table_not_found": "Table '{{table}}' not found",
-      "unknown_role": "Unknown role '{{role}}'"
+      "unknown_role": "Unknown role '{{role}}'",
+      "owner_role_lost": "The subscription ended: its owner no longer holds the role it was started under ({{roles}})",
+      "sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})",
+      "sink_needs_write": "Role '{{role}}' lacks the write right a Kafka sink needs",
+      "owner_sign_in_expired": "The subscription ended: the sign-in it was started under has expired; sign in again and start it again"
     },
     "users": {
       "assignment_not_found": "Assignment not found",
@@ -648,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} is not a whole number of rows: SKIP takes a count of 0 or more, e.g. SKIP 10.",
       "engine_refused": "The engine refused the query: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
       "undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
       "undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
@@ -716,6 +742,10 @@
     },
     "dbt_sources": {
       "unknown_role": "No role named {{role}} exists."
+    },
+    "debug_logs": {
+      "pattern_refused": "The log filter pattern is refused: {{why}}",
+      "pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
     },
     "dbt": {
       "products": {
@@ -875,6 +905,11 @@
     "preflight": {
       "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
       "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
+      "filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
+      "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
     }
   }
 }

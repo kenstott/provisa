@@ -13,10 +13,11 @@
 
 A table served from its replica has nothing at its registered name on the engine: a floored
 source has no live attach at all. The query pipeline renames such a table at the transpile seam;
-these are the engine reads that build their own statement — the discovery sample and column
-listing, the materialized-view preflight inputs, the statistics refresh — and each must reach the
-table through the same published routes, by the rewrite (``address_replicas``) or, for a statement
-that is not a query, by the one-table lookup (``read_address``).
+these are the engine reads that build their own statement — the materialized-view preflight
+inputs, the statistics refresh — and each must reach the table through the same published routes,
+by the rewrite (``address_replicas``) or, for a statement that is not a query, by the one-table
+lookup (``read_address``). A discovery run's sample is not one of them: it is read through the
+query pipeline itself.
 """
 
 # Requirements: REQ-1912, REQ-826
@@ -110,40 +111,33 @@ def test_the_runtime_answers_the_lookup_from_the_published_routes():
     assert bare.read_address(*_REGISTERED) == _REGISTERED
 
 
-# -- discovery: sample and column listing -----------------------------------------------------------
+# -- discovery: sample -----------------------------------------------------------------------------
 
 
-async def test_discovery_lists_the_columns_of_a_replica_served_table_at_its_replica():
-    from provisa.discovery.collector import _fetch_column_types
+async def test_discovery_samples_a_table_through_the_governed_pipeline_at_its_published_name(
+    monkeypatch,
+):
+    """A discovery run builds no engine statement of its own: it reads a table's sample values as
+    the profiler does, through the one query pipeline, by the name the table is published under,
+    so a replica-served table is read at its replica by the transpile seam. Its columns come from
+    the registration, never an engine's information_schema."""
+    from provisa.discovery import gather
+    from provisa.profiler import run as profiler
 
-    rt = _Runtime()
-    rt.rows = [("id", "BIGINT")]
-    assert await _fetch_column_types(rt, *_REGISTERED) == [{"name": "id", "type": "bigint"}]
-    (sql,) = rt.statements
-    assert "FROM provisa_admin.information_schema.columns" in sql
-    assert "table_schema = 'org_acme_replicas' AND table_name = 'src__public__orders'" in sql
-    assert "FROM src." not in sql  # the source has no live attach to list
+    statements: list[str] = []
 
+    async def governed(sql: str) -> tuple[list[str], list[tuple]]:
+        statements.append(sql)
+        return ["id"], [(7,), (7,), (None,)]
 
-async def test_discovery_lists_the_columns_of_a_live_table_through_its_own_catalog():
-    from provisa.discovery.collector import _fetch_column_types
-
-    rt = _Runtime()
-    await _fetch_column_types(rt, *_LIVE)
-    (sql,) = rt.statements
-    assert "FROM src.information_schema.columns" in sql
-    assert "table_schema = 'public' AND table_name = 'customers'" in sql
-
-
-async def test_discovery_samples_a_replica_served_table_at_its_replica():
-    from provisa.discovery.collector import _fetch_samples
-
-    rt = _Runtime()
-    rt.rows = [(7,)]
-    samples = await _fetch_samples(rt, *_REGISTERED, [{"name": "id", "type": "bigint"}], 5)
-    assert samples == [{"id": "7"}]
-    (sql,) = rt.statements
-    assert '"provisa_admin"."org_acme_replicas"."src__public__orders"' in sql
+    monkeypatch.setattr(profiler, "_governed", governed)
+    monkeypatch.setattr(
+        gather, "_published", lambda state, table_id, name: ('"sales"."orders"', {"id": "id"})
+    )
+    samples = await gather._samples(object(), 1, "orders", ["id", "absent"])
+    assert samples == {"id": ("7",)}
+    (sql,) = statements
+    assert sql.startswith('SELECT "id" FROM "sales"."orders" LIMIT ')
     assert "src.public.orders" not in sql.replace('"', "")
 
 

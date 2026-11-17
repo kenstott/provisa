@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "Una fila marcada se acepta al aplicar. Las filas con un {{threshold}} % o más empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
+    "intro": "Una fila marcada se acepta al aplicar. Las filas cuya puntuación alcanza al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
+    "colModel": "Modelo",
     "colJev": "Jev",
     "colKind": "Tipo",
+    "colMeasure": "Medido",
     "colReasoning": "Razonamiento",
     "colNote": "Nota",
     "colNotAgain": "No volver a recomendar",
@@ -25,7 +27,7 @@
       "invalid_shape": "No es una relación como la solicitada: falta un campo o tiene una forma incorrecta",
       "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
       "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
-      "below_threshold": "La confianza del modelo está por debajo del umbral del {{threshold}} %.",
+      "below_threshold": "Puntuado por debajo del {{threshold}} % con el que se conserva una sugerencia.",
       "same_column": "De una columna a sí misma",
       "primary_key_to_primary_key": "Clave primaria a clave primaria",
       "both_repeating": "Los valores se repiten en ambos lados, así que ninguno es el lado uno",
@@ -34,7 +36,31 @@
       "rejected": "Rechazada antes",
       "matches_foreign_key": "Coincide con una clave foránea encontrada en esta ejecución",
       "out_of_scope": "Fuera de las tablas de origen y destino elegidas",
-      "weaker": "Se conservó una propuesta más fuerte de las mismas dos columnas"
-    }
+      "weaker": "Se conservó una propuesta más fuerte de las mismas dos columnas",
+      "many_to_many": "Ninguna de las dos columnas es una clave"
+    },
+    "threshold": "Marcar desde",
+    "thresholdHint": "Su propio umbral, guardado para sus próximas ejecuciones.",
+    "measure": {
+      "inTarget": "{{found}} de {{values}} valores del origen están en el destino.",
+      "inTargetFirst": "{{found}} de los primeros {{values}} valores del origen están en el destino.",
+      "inSource": "{{found}} de {{values}} valores del destino están en el origen.",
+      "inSourceFirst": "{{found}} de los primeros {{values}} valores del destino están en el origen.",
+      "both": "Ambas columnas son claves.",
+      "target": "El destino es una clave.",
+      "source": "El origen es una clave.",
+      "neither": "Ninguna de las dos columnas es una clave.",
+      "notRead": {
+        "source": "El origen no se leyó: su tabla requiere un parámetro.",
+        "target": "El destino no se leyó: su tabla requiere un parámetro."
+      },
+      "notReadable": {
+        "source": "No puede leer la columna de origen.",
+        "target": "No puede leer la columna de destino."
+      },
+      "noValues": "El origen no contiene valores.",
+      "modelScore": "Puntuado por el modelo: no se compararon valores."
+    },
+    "manyToMany": "Ninguna de las dos columnas es una clave, así que no se puede aceptar."
   }
 }

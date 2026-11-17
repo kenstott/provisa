@@ -26,6 +26,10 @@
       "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "local_server_from_environment": "הגישה אל {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו נקודת קצה של AI בכתובת משלכם תחת ניהול, מודלי AI.",
       "server_environment_sets": "לא ניתן לקרוא ל-{{vendor}} כאן: סביבת השרת מגדירה את {{variable}}, שהלקוח שלו היה שולח עבור כל ארגון.",
+      "vector_model_address_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את הכתובת שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
+      "vector_model_key_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את המפתח שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו מפתח משלכם תחת ניהול, מודלי AI.",
+      "vector_model_key_unset": "למודל ה-embedding‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
+      "vector_model_local_server": "הגישה אל מודל ה-embedding‏ {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
       "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
     },
     "api": {
@@ -149,6 +153,7 @@
       "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
       "source_unavailable": "המקור {{source}} לא הצליח להשיב. נסה שוב בקרוב.",
       "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}.",
+      "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
       "graphql_body_missing": "לבקשה אין גוף: בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
       "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
@@ -159,7 +164,9 @@
       "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
       "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
       "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים.",
-      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}."
+      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}.",
+      "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
+      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -197,7 +204,8 @@
       "empty_answer": "המודל לא החזיר טקסט."
     },
     "environments": {
-      "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב."
+      "in_use": "{{count}} פריטים עדיין מפנים אל {{env}}. יש להסיר או לשנות כל אחד מהם ואז למחוק שוב.",
+      "owner_not_member": "{{user}} יצר את הסביבה {{env}} אך אינו חבר ב-{{org}}; פעולה בה כבעלים מחייבת חברות."
     },
     "front_door": {
       "coordinator_waking": "הסביבה מופעלת. היא תהיה מוכנה בעוד כחמש דקות.",
@@ -320,6 +328,13 @@
       "catalog_view_refused": "{{view}} היא תצוגת קטלוג של תחום meta ולא ניתן לקרוא אותה בהוראה אחת יחד עם טבלה של מקור נתונים: קראו אותן בשתי הוראות.",
       "function_unsupported": "ל-{{function}}() אין מקבילה ב-{{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "כלל השחרה {{rule}}: {{why}}",
+      "pattern_backtracks": "כלל השחרה {{rule}}: התבנית עלולה לגרום לחזרה לאחור קטסטרופלית (חזרה המקוננת בתוך חזרה בלתי מוגבלת, או חלופות בתוכה שעשויות להתחיל באותו טקסט). כתבו אותה מחדש ללא מבנה זה.",
+      "pattern_unsupported": "כלל השחרה {{rule}}: כלל של ארגון אינו יכול להשתמש בהפניות לאחור, lookahead או lookbehind, קבוצות אטומיות, חזרות רכושניות או קבוצות מותנות.",
+      "pattern_too_large": "כלל השחרה {{rule}}: התבנית גדולה מדי לאחר פריסת החזרות שלה. השתמשו במספר חזרות קטן יותר.",
+      "server_reference": "כלל השחרה {{rule}}: ארגון בשרת זה אינו יכול להפנות לסביבת השרת. השתמשו ב-${secret:NAME} מהכספת של הארגון עצמו."
+    },
     "replication": {
       "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
       "no_whole_copy": "לטבלה {{schema}}.{{table}} של המקור {{source}} אין עותק שלם לבנות: היא משוכפלת שורה אחר שורה, או שיש לה עמודת פרמטר.",
@@ -340,7 +355,9 @@
       "org_selection_required": "נדרשת בחירת ארגון",
       "already_exists": "התפקיד '{{role}}' כבר קיים",
       "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו",
-      "right_not_in_parents": "התפקיד {{role}} לא יכול להחזיק ב-{{right}}: אף הורה אינו מחזיק בו"
+      "right_not_in_parents": "התפקיד {{role}} לא יכול להחזיק ב-{{right}}: אף הורה אינו מחזיק בו",
+      "platform_right_requires_platform_admin": "תפקיד הכולל את {{rights}} מוגדר על ידי מנהל פלטפורמה",
+      "rights_not_held": "התפקיד {{role}} כולל את {{rights}}, שאינם בידיך"
     },
     "schema": {
       "allowed_domains_updated": "הדומיינים המותרים עודכנו עבור המקור '{{source}}'",
@@ -471,8 +488,6 @@
       "mask_unreachable": "הגדרת מסכה שלא ניתן להגיע אליה: {{entries}}",
       "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
       "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll.",
-      "table_draft_set": "הטבלה {{table}} הוגדרה כטיוטה",
-      "table_released": "הטבלה {{table}} שוחררה",
       "openapi_no_rows_field": "הטבלה {{table}}: בתשובה אין מאפיין {{rows_field}} שממנו ניתן לקרוא שורות.",
       "paging_rows_field_fixed": "הטבלה {{table}}: מיקום שורותיה ({{rows_field}}) נקבע בעת רישום הטבלה. רשמו את הטבלה מחדש כדי לקרוא את שורותיה ממקום אחר.",
       "relationship_request_queued": "נכנס לתור כבקשה מס' {{id}}. היא דורשת אישורים מ-{{required}} משתמשים שונים שרשאים ליצור קשרים, כשלפחות אחד מהם מגיע לכל דומיין שהיא נוגעת בו.",
@@ -501,6 +516,8 @@
       "role_updated": "התפקיד '{{role}}' עודכן",
       "relationship_id_taken": "הקשר '{{relationship}}' כבר קיים",
       "relationship_id_reserved": "מזהה הקשר '{{id}}' מתחיל ב-'{{prefix}}', קידומת השמורה לקשרים מובנים. בחרו מזהה אחר.",
+      "relationship_source_column_missing": "הקשר '{{relationship}}' אינו מציין עמודת מקור. קשר מצטרף על עמודה של טבלת המקור שלו.",
+      "relationship_target_column_missing": "הקשר '{{relationship}}' אינו מציין עמודת יעד. קשר מצטרף על עמודה של טבלת היעד שלו, אלא אם היעד שלו הוא פונקציה.",
       "relationship_graphql_alias_taken": "כינוי ה-GraphQL '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "המשימה המתוזמנת '{{task}}' עודכנה",
@@ -541,7 +558,13 @@
       "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו",
       "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
       "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\".",
-      "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה"
+      "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה",
+      "table_withdrawn": "הטבלה {{table}} הוסרה מהייצור",
+      "table_put_back": "הטבלה {{table}} הוחזרה",
+      "source_withdrawn": "המקור {{source}} הוסר מהייצור",
+      "source_put_back": "המקור {{source}} הוחזר",
+      "withdrawn_source_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: המקור שלה {{source}} הוסר מהייצור, ואף מנוע אינו קורא מקור שהוסר.",
+      "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -604,7 +627,11 @@
       "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות {{registry}}: {{error}}",
       "sse_limit_reached": "הגעת למספר המרבי של מנויי SSE במקביל",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
-      "unknown_role": "תפקיד לא מוכר '{{role}}'"
+      "unknown_role": "תפקיד לא מוכר '{{role}}'",
+      "owner_role_lost": "המנוי הסתיים: לבעליו אין עוד את התפקיד שתחתיו הוא הופעל ({{roles}})",
+      "sink_cap_reached": "כבר יש לך {{cap}} יעדי Kafka פעילים, המספר המרבי שהמפעיל מתיר ({{setting}})",
+      "sink_needs_write": "לתפקיד '{{role}}' אין את הרשאת הכתיבה שיעד Kafka דורש",
+      "owner_sign_in_expired": "המנוי הסתיים: ההתחברות שתחתיה הוא הופעל פגה; התחבר שוב והפעל אותו מחדש"
     },
     "users": {
       "assignment_not_found": "ההקצאה לא נמצאה",
@@ -648,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} אינו מספר שלם של שורות: LIMIT מקבל מספר של 0 ומעלה, למשל LIMIT 10.",
       "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
       "engine_refused": "המנוע דחה את השאילתה: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL.",
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
@@ -716,6 +742,10 @@
     },
     "dbt_sources": {
       "unknown_role": "אין תפקיד בשם {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "תבנית סינון היומן נדחתה: {{why}}",
+      "pattern_exceeded": "תבנית סינון היומן נדחתה: היא חרגה ממגבלת הצעדים שלה ({{steps}} צעדים) בשורת יומן של {{length}} תווים."
     },
     "dbt": {
       "products": {
@@ -875,6 +905,11 @@
     "preflight": {
       "confined_unavailable": "בדיקת הקדם של {{subject}} לא הורצה: בארגון הזה היא רצה רק בתהליך מבודד, ולא ניתן היה להפעיל תהליך כזה ({{reason}}).",
       "confined_failed": "בדיקת הקדם של {{subject}} לא החזירה פסיקה: התהליך המבודד שלה הסתיים קודם לכן ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} נמצא מחוץ לפרויקט שהועלה; פרויקט קורא רק את הקבצים שלו.",
+      "filter_value_refused": "{{value}} אינו יכול להיות ערך במסנן הרשאה: ערך הוא מחרוזת, מספר, true, false, null, רשימה של אלה או משתנה סשן.",
+      "filter_operator_refused": "{{operator}} אינו אופרטור שבעזרתו ניתן להמיר מסנן הרשאה."
     }
   }
 }

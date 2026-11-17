@@ -168,7 +168,17 @@ def catalog_scope(info: Any) -> CatalogScope:
         for table in state.role_build_inputs["draft_tables"]
         if (served := scope.stored_columns(table))
     }
-    return dataclasses.replace(scope, served={**drafts, **scope.served})
+    # REQ-1921: a withdrawn table is answered by its stored columns only to a role that may
+    # preview it -- one holding table registration reaching its domain, as a draft's preview.
+    from provisa.security.rights import registers_tables_in
+
+    withdrawn = {
+        table["id"]: served
+        for table in state.role_build_inputs["withdrawn_tables"]
+        if registers_tables_in(state.roles[role], state.roles, table["domain_id"])
+        and (served := scope.stored_columns(table))
+    }
+    return dataclasses.replace(scope, served={**drafts, **withdrawn, **scope.served})
 
 
 def _acting_reach(identity: Any, state: Any) -> frozenset[str] | None:
