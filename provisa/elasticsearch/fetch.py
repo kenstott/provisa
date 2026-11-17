@@ -75,7 +75,15 @@ class ESConnection:  # REQ-1672
         )
 
     def _client(self) -> httpx.Client:
-        return httpx.Client(base_url=self.base_url, auth=self.auth, timeout=self.timeout)
+        from provisa.security import sandbox_egress
+
+        # REQ-2006: a held org's source is checked at each connection, each request.
+        return httpx.Client(
+            base_url=self.base_url,
+            auth=self.auth,
+            timeout=self.timeout,
+            event_hooks=sandbox_egress.http_sync_event_hooks(),
+        )
 
 
 def list_indices(conn: ESConnection) -> list[str]:  # REQ-1672

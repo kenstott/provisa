@@ -67,6 +67,11 @@ class QdrantConnection:  # REQ-1983
     def client(self) -> Any:
         from qdrant_client import QdrantClient
 
+        from provisa.security import sandbox_egress
+
+        # REQ-2006: a held org's instance is checked at each connection.
+        sandbox_egress.require_url_allowed(self.url)
+
         return QdrantClient(url=self.url, api_key=self.api_key, prefer_grpc=self.prefer_grpc)
 
 

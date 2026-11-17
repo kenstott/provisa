@@ -23,6 +23,7 @@ from provisa.api.data.action_governance import ActionEnforcement, govern_action_
 from provisa.api.errors import ApiError
 from provisa.core.secrets import resolve_secrets
 from provisa.executor.function_dispatch import dispatch_function
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.security.rights import require_role
 from provisa.security.mutation_authz import (
     CommandNotFound,
@@ -538,7 +539,10 @@ async def _invoke_webhook(
         await _require_approval(wh, args, state, role_id, role)
     _record_call(name, args, state, role_id)
     timeout = wh["timeout_ms"] / 1000
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    # REQ-2006: a held org's webhook reaches public destinations only, each hop checked.
+    async with httpx.AsyncClient(
+        timeout=timeout, event_hooks=sandbox_egress.http_event_hooks()
+    ) as client:
         # The URL is kept as written; an environment or secret reference in it is resolved here.
         url = resolve_secrets(wh["url"])
         resp = await client.request(wh["method"].upper(), url, json=_webhook_body(wh, args))
