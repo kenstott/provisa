@@ -34,6 +34,7 @@ from pathlib import Path
 from fastapi import FastAPI, Response
 from starlette.requests import HTTPConnection
 
+from provisa.api.engine_error_names import client_text
 from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
@@ -4804,7 +4805,7 @@ def create_app() -> FastAPI:
     """Create the FastAPI application."""
     from fastapi.middleware.cors import CORSMiddleware
     from provisa.api.json_response import OrjsonResponse
-    from strawberry.fastapi import GraphQLRouter
+    from provisa.api.admin.graphql_router import AdminGraphQLRouter
 
     from provisa.api.admin.schema import admin_schema
 
@@ -5412,7 +5413,8 @@ def create_app() -> FastAPI:
                     f"EnvironmentSelectionError: {exc}, env_org={env_org}, requested_env={requested_env}"
                 )
                 await JSONResponse(
-                    {"error": {"code": "env.unknown", "message": str(exc)}}, status_code=404
+                    {"error": {"code": "env.unknown", "message": client_text(str(exc))}},
+                    status_code=404,
                 )(scope, receive, send)
                 return
             except EnvironmentRightError as exc:
@@ -5421,7 +5423,7 @@ def create_app() -> FastAPI:
                 )
 
                 await JSONResponse(
-                    {"error": {"code": "env.switch_forbidden", "message": str(exc)}},
+                    {"error": {"code": "env.switch_forbidden", "message": client_text(str(exc))}},
                     status_code=403,
                 )(scope, receive, send)
                 return
@@ -5617,7 +5619,7 @@ def create_app() -> FastAPI:
 
     # HTTP only: the admin schema has no subscriptions, and the auth middleware resolves an identity
     # for HTTP requests alone, so a WebSocket must never reach a resolver.
-    admin_router = GraphQLRouter(
+    admin_router = AdminGraphQLRouter(
         admin_schema, context_getter=_admin_graphql_context, subscription_protocols=()
     )
     app.include_router(admin_router, prefix="/admin/graphql")

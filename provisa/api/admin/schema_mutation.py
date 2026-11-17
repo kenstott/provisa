@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from provisa.api.engine_error_names import client_text, client_value
 from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import (
     LabelClash,
@@ -2364,7 +2365,7 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
             success=False,
             message=f"invalid off-peak window: {e}",
             code="schema.invalid_off_peak_window",
-            params={"error": str(e)},
+            params={"error": client_text(str(e))},
         )
     return None
 
@@ -2842,7 +2843,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=str(e),
                 code="schema.invalid_calendar",
-                params={"error": e.reason},
+                params={"error": client_value(e.reason)},
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -3039,7 +3040,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=f"Source {input.id!r}: connection validation failed: {_conn_err}",
                 code="schema.source_connection_failed",
-                params={"source": input.id, "error": str(_conn_err)},
+                params={"source": input.id, "error": client_text(str(_conn_err))},
             )
 
         from provisa.api.admin._change_feed import source_change_feed_refusal
@@ -7260,7 +7261,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=f"ANALYZE completed with errors. OK={len(analyzed)} errors={errors}",
                 code="schema.analyze_errors",
-                params={"ok": len(analyzed), "errors": str(errors)},
+                params={"ok": len(analyzed), "errors": client_text(str(errors))},
             )
         return MutationResult(
             success=True,

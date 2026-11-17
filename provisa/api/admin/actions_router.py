@@ -26,6 +26,7 @@ from provisa.api.errors import ApiError
 from provisa.core.host_code import refuse_host_code
 from provisa.core.schema_org import tracked_functions, tracked_webhooks
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.engine_error_names import client_text
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/admin/actions", tags=["admin", "actions"])
@@ -864,8 +865,10 @@ async def create_webhook(
         "approved": False,
         "creationRequestId": request_id,
         "message": (
-            f"Webhook {body.name!r} registered — awaiting a steward holding "
-            "'webhook_registration' to approve it before it is exposed."
+            client_text(
+                f"Webhook {body.name!r} registered — awaiting a steward holding "
+                "'webhook_registration' to approve it before it is exposed."
+            )
         ),
     }
 

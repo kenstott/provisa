@@ -20,6 +20,7 @@ from sqlalchemy import or_, select
 
 from provisa.core.column_scope import COLUMN_SCOPES, SCOPE_DOMAIN, ColumnScopeInvalid
 from provisa.core.schema_org import registered_tables, roles, sources, table_columns
+from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
     from provisa.api.admin.types import MutationResult
@@ -293,7 +294,7 @@ async def _graphql_columns_for_input(
             success=False,
             message=f"The schema of source {input.source_id!r} could not be read: {unreadable}",
             code="schema.discovery_failed",
-            params={"error": str(unreadable)},
+            params={"error": client_text(str(unreadable))},
         )
     assert offered is not None
     offer, reg = offered
@@ -568,7 +569,7 @@ async def _build_columns_for_input(pool, input) -> "tuple[list, MutationResult |
                 success=False,
                 message=f"Schema discovery failed: {e}",
                 code="schema.discovery_failed",
-                params={"error": str(e)},
+                params={"error": client_text(str(e))},
             )
         discovered_models = _build_column_models(
             [_ColInput(name=d["name"], data_type=d.get("type"), visible_to=[]) for d in discovered]

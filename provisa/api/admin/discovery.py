@@ -42,6 +42,7 @@ from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -663,7 +664,9 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
                 relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
-                results.append({"id": each.id, "action": "accept", "ok": False, "error": str(exc)})
+                results.append(
+                    {"id": each.id, "action": "accept", "ok": False, "error": client_text(str(exc))}
+                )
                 continue
             results.append(
                 {"id": each.id, "action": "accept", "ok": True, "relationship_id": relationship_id}
@@ -674,7 +677,12 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: marking proposal %s failed: %s", proposal_id, exc)
                 results.append(
-                    {"id": proposal_id, "action": "not_again", "ok": False, "error": str(exc)}
+                    {
+                        "id": proposal_id,
+                        "action": "not_again",
+                        "ok": False,
+                        "error": client_text(str(exc)),
+                    }
                 )
                 continue
             results.append({"id": proposal_id, "action": "not_again", "ok": True})
@@ -731,7 +739,7 @@ async def accept_candidates(request: Request, body: AcceptAllRequest):  # REQ-41
                 accepted = await candidates_repo.accept(conn, each.id, each.name)
             except Exception as exc:  # reported per suggestion, the rest go on
                 _log.warning("Accept all: candidate %s failed: %s", each.id, exc)
-                results.append({"id": each.id, "ok": False, "error": str(exc)})
+                results.append({"id": each.id, "ok": False, "error": client_text(str(exc))})
                 continue
             results.append(
                 {"id": each.id, "ok": True, "relationship_id": accepted["relationship_id"]}
@@ -754,7 +762,7 @@ async def reject_candidates(request: Request, body: RejectAllRequest):  # REQ-41
                 await candidates_repo.reject(conn, candidate_id, body.reason)
             except Exception as exc:  # reported per suggestion, the rest go on
                 _log.warning("Reject all: candidate %s failed: %s", candidate_id, exc)
-                results.append({"id": candidate_id, "ok": False, "error": str(exc)})
+                results.append({"id": candidate_id, "ok": False, "error": client_text(str(exc))})
                 continue
             results.append({"id": candidate_id, "ok": True})
     return {"results": results}

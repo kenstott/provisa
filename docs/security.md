@@ -432,7 +432,7 @@ Rows are kept for good. Provisa has no retention setting and never purges the lo
 
 ## Redaction
 
-What Provisa records about its own work passes through one list of redaction rules before it is written anywhere. Text a rule matches is replaced with `[REDACTED:<rule>]`, naming the rule that matched.
+What Provisa records about its own work, and every error text it sends a client, passes through one list of redaction rules before it is written anywhere. In Provisa's logs, spans and audit trail, text a rule matches is replaced with `[REDACTED:<rule>]`, naming the rule that matched. A client receives the bare marker `[REDACTED]`. It names no rule and no variable, so you can't learn which secret a word you sent matches.
 
 The list has four parts:
 
@@ -452,7 +452,8 @@ The list applies at every exit Provisa writes:
 - every span, as one redacted copy handed to every exporter, and the recent-spans view;
 - every log record in Provisa's OpenTelemetry log pipeline, and every line a logging handler writes, standard output and container logs included;
 - the audit log's query text, before it is hashed and encrypted, so neither the text nor its hash discloses a matched value; and the administrative trail's detail;
-- the error messages a client receives over HTTP, pgwire, gRPC, Arrow Flight and MCP.
+- the error messages a client receives over HTTP, pgwire, gRPC, Arrow Flight, MCP and Bolt. An error inside a successful answer, such as a GraphQL `errors` list in a 200 response or a subscription's last frame, is redacted the same way as one in a 400 response;
+- the text Provisa sends a model, such as a prompt or an embedding input, which carries the bare marker.
 
 Telemetry and client errors are not tied to one organization when they are written, so they are redacted by every organization's rules together. Two errors are passed through unredacted: an HTTP error body larger than 1 MiB, and the error of an Arrow Flight stream that fails after it has started sending.
 

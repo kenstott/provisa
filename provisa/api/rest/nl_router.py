@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from provisa.executor.redirect import Delivery
 
 from provisa.nl.job import NlJob, _json_default, make_job_store, new_job_id
+from provisa.api.engine_error_names import client_value
 
 log = logging.getLogger(__name__)
 
@@ -196,7 +197,7 @@ async def _sse_generator(job_id: str) -> AsyncGenerator[str, None]:
                     "target": target,
                     "query": branch.query,
                     "result": branch.result,
-                    "error": branch.error,
+                    "error": client_value(branch.error),
                 }
                 yield f"event: branch\ndata: {json.dumps(payload, default=_json_default)}\n\n"
 

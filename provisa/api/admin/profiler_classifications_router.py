@@ -49,6 +49,7 @@ from provisa.api.admin.capabilities import (
 from provisa.api.admin.profiler_router import _db, _jsonable, _member
 from provisa.api.admin.table_read import refuse_unparameterized, table_for_steward
 from provisa.api.errors import ApiError
+from provisa.api.engine_error_names import client_value
 
 router = APIRouter(prefix="/admin", tags=["admin", "profiler"])
 
@@ -302,7 +303,7 @@ def _scan_doc(scan: dict) -> dict:
         "finishedAt": None if scan["finished_at"] is None else scan["finished_at"].isoformat(),
         "sampledRows": scan["sampled_rows"],
         "scannedColumns": scan["scanned_columns"],
-        "error": scan["error"],
+        "error": client_value(scan["error"]),
     }
 
 
