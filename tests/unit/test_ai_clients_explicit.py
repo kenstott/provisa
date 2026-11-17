@@ -585,3 +585,32 @@ def test_an_organizations_own_endpoint_address_is_reached(many, sent):
 def test_an_install_of_one_reaches_the_local_server_its_environment_names(one, sent):
     assert _client("ollama", {}).complete_sync("q") == "answer"
     assert sent.hosts() == ["env-ollama.example"]
+
+
+async def test_an_organizations_own_endpoint_key_in_its_vault_is_sent(many, monkeypatch, sent):
+    """On a server of many organizations an endpoint's key is the organization's own: a reference
+    into its vault, read where the vault is bound (the model's call runs on a thread of its own)."""
+    from provisa.core import secrets
+
+    async def resolve(field):
+        return "vault-key" if field == "${secret:gateway_key}" else None
+
+    monkeypatch.setattr(secrets, "resolve_api_key_field", resolve)
+    client = _client("gateway", {}, [_gateway("${secret:gateway_key}")])
+    assert client.key_problem() is None
+    assert await client.complete("q") == "answer"
+    assert sent.hosts() == ["gateway.example"]
+    assert sent.requests[0][1]["authorization"] == "Bearer vault-key"
+
+
+async def test_an_endpoint_key_the_vault_does_not_hold_is_refused(many, monkeypatch, sent):
+    from provisa.core import secrets
+
+    async def resolve(_field):
+        return None
+
+    monkeypatch.setattr(secrets, "resolve_api_key_field", resolve)
+    with pytest.raises(AiKeyRequired) as refused:
+        await _client("gateway", {}, [_gateway("${secret:gateway_key}")]).complete("q")
+    assert refused.value.code == "ai.endpoint_key_unset"
+    assert sent.requests == []

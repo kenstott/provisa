@@ -169,6 +169,9 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         # by vendor name, as the caller read them for the acting org; a path with no org bound
         # passes none. The key a call is made with is org_secrets.provider_key's answer.
         self._api_keys: dict[str, str] = api_keys or {}
+        # REQ-1580: why an endpoint's key held in the organization's vault could not be read
+        # (_read_vault_keys), raised by that vendor's call so its fallback is still tried.
+        self._vault_failures: dict[str, BaseException] = {}
         # REQ-464: kept to answer the model's limits (provisa.llm.limits), the org's overrides
         # being in this same resolved config.
         self._config = cfg
@@ -242,14 +245,22 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         return None if self._vendor_key_problem(self._fallback_vendor) is None else primary
 
     def _vendor_key_problem(self, vendor: str) -> str | None:
-        from provisa.core.org_secrets import AiKeyRequired, endpoint_key_now, provider_key
+        from provisa.core.org_secrets import (
+            AiKeyRequired,
+            endpoint_key_in_vault,
+            endpoint_key_now,
+            provider_key,
+        )
 
         endpoint = self._endpoints.get(vendor)
         try:
             if endpoint is None:
                 provider_key(self._api_keys, vendor)
             else:
-                endpoint_key_now(self._api_keys, endpoint)
+                # A key in the organization's vault is read when the call is made (complete).
+                endpoint_key_now(
+                    self._api_keys, endpoint, resolve=not endpoint_key_in_vault(endpoint)
+                )
         except AiKeyRequired:
             return f"{vendor} has no API key"
         return None
@@ -355,6 +366,9 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             # for it (a sandbox's tier endpoint's, REQ-2006), else what its api_key_env names,
             # refused when unset and, on a server of many organizations, when that is the
             # server's environment (REQ-1395).
+            unresolved = self._vault_failures.get(vendor)
+            if unresolved is not None:
+                raise unresolved
             provider_vendor = endpoint["style"]
             provider_cfg = {"base_url": endpoint_address(endpoint)}
             key = endpoint_provider_key(endpoint_key_now(self._api_keys, endpoint))
@@ -505,6 +519,29 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
             max_tokens,
         )
 
+    async def _read_vault_keys(self) -> None:
+        """The key of each endpoint this client calls that is held in the organization's vault
+        (``${secret:...}``), read here, where the vault can be bound; the call runs on a thread
+        of its own, where it cannot (provisa.core.org_secrets.endpoint_key)."""
+        from provisa.core.org_secrets import endpoint_key, endpoint_key_in_vault
+
+        called = [self._vendor, *([self._fallback_vendor] if self._fallback_vendor else [])]
+        for vendor in called:
+            endpoint = self._endpoints.get(vendor)
+            if (
+                endpoint is None
+                or self._api_keys.get(vendor)
+                or not endpoint_key_in_vault(endpoint)
+            ):
+                continue
+            try:
+                key = await endpoint_key(self._api_keys, endpoint)
+            except Exception as exc:  # raised by this vendor's call (_respond)
+                self._vault_failures[vendor] = exc
+                continue
+            if key:
+                self._api_keys = {**self._api_keys, vendor: key}
+
     async def complete_detailed(
         self,
         prompt: str,
@@ -522,6 +559,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         it (:meth:`_json_answer`), on the wires that can be held to one."""
         import asyncio
 
+        await self._read_vault_keys()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,
@@ -553,6 +591,7 @@ class ProvisaLLMClient:  # REQ-355, REQ-356, REQ-358
         """
         import asyncio
 
+        await self._read_vault_keys()
         loop = asyncio.get_event_loop()
         return await loop.run_in_executor(
             None,

@@ -394,15 +394,28 @@ async def endpoint_key(stored: Mapping[str, str], endpoint: Mapping[str, object]
     return key
 
 
-def endpoint_key_now(stored: Mapping[str, str], endpoint: Mapping[str, object]) -> str | None:
+def endpoint_key_in_vault(endpoint: Mapping[str, object]) -> bool:
+    """Whether an endpoint's ``api_key_env`` is a reference into a vault (``${secret:...}``,
+    ``${user:...}``): resolved only where the organization's vault is bound
+    (:func:`endpoint_key`)."""
+    field = str(endpoint.get("api_key_env") or "")
+    return "${secret:" in field or "${user:" in field
+
+
+def endpoint_key_now(
+    stored: Mapping[str, str], endpoint: Mapping[str, object], *, resolve: bool = True
+) -> str | None:
     """:func:`endpoint_key` where no organization's vault is bound (the model client's call, on a
     thread of its own): a variable is read as :func:`endpoint_key` reads it, a reference resolved
-    by provisa.core.secrets.resolve_secrets."""
+    by provisa.core.secrets.resolve_secrets. A key in the vault (:func:`endpoint_key_in_vault`)
+    is resolved beforehand with :func:`endpoint_key` and handed over in ``stored``. With
+    ``resolve`` false, only the refusals are made and None is answered: whether a call would be
+    refused, with nothing read."""
     held = stored.get(str(endpoint["id"]))
     if held:
         return held
     field = _endpoint_key_field(endpoint)
-    if field is None:
+    if field is None or not resolve:
         return None
     if "${" in field:
         from provisa.core.secrets import resolve_secrets
