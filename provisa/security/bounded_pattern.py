@@ -21,9 +21,10 @@ nothing can interrupt it once it starts. An org's pattern is therefore never run
   repeat that can begin with the same character.
 - At use, :class:`BoundedPattern` runs it on Provisa's own matcher, a Pike VM (Thompson's NFA
   simulation, as RE2 uses): every position is visited once per search, with every live thread
-  advanced together, so a search never backtracks. Each call has a step limit
-  (:data:`STEP_LIMIT` thread steps); one that would exceed it raises :class:`StepLimitExceeded`
-  naming the rule, so no pattern stalls the thread that logs.
+  advanced together, so a search never backtracks. Each call has a step limit of
+  :data:`STEP_FACTOR` x the program's size x (the text's length + 1) thread steps -- several times
+  what one scan of the text can take -- and one that would exceed it raises
+  :class:`StepLimitExceeded`, so no pattern stalls the thread that logs.
 
 Matches are leftmost-first, as ``re`` finds them, and the flags ``i``, ``m``, ``s``, ``x`` and
 ``a`` mean what they mean to ``re``.
@@ -44,9 +45,10 @@ from typing import Any
 sre: Any = importlib.import_module("re._constants")
 sre_parse: Any = importlib.import_module("re._parser")
 
-#: Thread steps one call may take. A linear scan of a long log line with a typical pattern takes
-#: a few steps per character; a pattern that would rescan the text after every match is cut off.
-STEP_LIMIT = 200_000
+#: One scan of a text takes at most two steps per instruction per character (each instruction is
+#: entered and stepped at most once per position). A call may take this many scans' worth: a
+#: pattern that rescans the rest of the text after every match (quadratic) is cut off.
+STEP_FACTOR = 8
 #: Instructions one compiled pattern may hold: a bounded repeat is unrolled, so ``a{1,5000}``
 #: would otherwise compile to a program the matcher steps through at every position.
 PROGRAM_LIMIT = 512
@@ -62,7 +64,7 @@ class PatternRefused(ValueError):
 class StepLimitExceeded(RuntimeError):
     """A pattern took more than :data:`STEP_LIMIT` steps on one text."""
 
-    def __init__(self, steps: int, length: int) -> None:
+    def __init__(self, steps: int, length: int) -> None:  # steps: the limit that was exceeded
         super().__init__(
             f"the pattern exceeded its step limit ({steps} steps) on a text of {length} characters"
         )
@@ -177,7 +179,7 @@ class _Compiler:
     def emit(self, inst: _Inst) -> int:
         if len(self.prog) >= PROGRAM_LIMIT:
             raise PatternRefused(
-                f"the pattern is too large (more than {PROGRAM_LIMIT} steps once repeats are "
+                f"the pattern is too large (more than {PROGRAM_LIMIT} instructions once repeats are "
                 "counted out)"
             )
         self.prog.append(inst)
@@ -382,8 +384,10 @@ class BoundedPattern:
         _check(items, flags)
         self.pattern = pattern
         self._prog = _program(items, flags)
+        #: Instructions in the compiled program.
+        self.size = len(self._prog)
 
-    def _search(self, text: str, pos: int, budget: list[int]) -> tuple[int, int] | None:
+    def _search(self, text: str, pos: int, budget: list[int], limit: int) -> tuple[int, int] | None:
         prog, n = self._prog, len(text)
         clist: list[tuple[int, int]] = []
         visited: set[int] = set()
@@ -418,7 +422,7 @@ class BoundedPattern:
                 visited = set()  # nothing lives into the next position: it starts afresh
                 continue
             if budget[0] < 0:
-                raise StepLimitExceeded(STEP_LIMIT, n)
+                raise StepLimitExceeded(limit, n)
             nlist: list[tuple[int, int]] = []
             nvisited: set[int] = set()
             c = text[i] if i < n else ""
@@ -433,18 +437,19 @@ class BoundedPattern:
                     add(nlist, nvisited, pc + 1, start, i + 1)
             clist, visited = nlist, nvisited
         if budget[0] < 0:
-            raise StepLimitExceeded(STEP_LIMIT, n)
+            raise StepLimitExceeded(limit, n)
         return matched
 
     def sub(self, repl: Callable[[str], str], text: str) -> str:
         """``text`` with each non-overlapping match replaced by ``repl(match text)``, leftmost
-        first; raises :class:`StepLimitExceeded` past :data:`STEP_LIMIT` steps."""
-        budget = [STEP_LIMIT]
+        first; raises :class:`StepLimitExceeded` past its step limit (:data:`STEP_FACTOR`)."""
+        limit = STEP_FACTOR * self.size * (len(text) + 1)
+        budget = [limit]
         out: list[str] = []
         pos = 0
         n = len(text)
         while pos <= n:
-            found = self._search(text, pos, budget)
+            found = self._search(text, pos, budget, limit)
             if found is None:
                 break
             start, end = found

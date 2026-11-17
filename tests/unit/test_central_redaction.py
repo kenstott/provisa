@@ -163,8 +163,14 @@ def test_a_value_shorter_than_the_minimum_is_not_matched():
 
 
 def test_a_user_value_is_matched_from_its_first_resolution():
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     assert redaction.redact("personal-token-99") == "personal-token-99"
-    redaction.note_user_value("gh_token", "personal-token-99")
+    token = set_current_org("acme")  # resolved in a request of acme
+    try:
+        redaction.note_user_value("gh_token", "personal-token-99")
+    finally:
+        reset_current_org(token)
     assert redaction.redact("x personal-token-99 y") == "x [REDACTED:auto:user:gh_token] y"
     assert redaction.described("acme")["resolved_at_use"] == 1
 

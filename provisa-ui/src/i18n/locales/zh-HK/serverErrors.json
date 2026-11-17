@@ -324,6 +324,13 @@
       "catalog_view_refused": "{{view}} 是 meta 網域的目錄檢視,不能與數據來源的表在同一條陳述式中讀取:請用兩條陳述式分別讀取。",
       "function_unsupported": "{{function}}() 在 {{dialect}} 上沒有對應形式。"
     },
+    "redaction": {
+      "rule_invalid": "遮蔽規則 {{rule}}：{{why}}",
+      "pattern_backtracks": "遮蔽規則 {{rule}}：此模式可能導致災難性回溯（無界重複中巢狀的重複，或其中可能以相同文字開頭的分支）。請改寫為不含此結構的形式。",
+      "pattern_unsupported": "遮蔽規則 {{rule}}：機構的規則不能使用反向參照、前瞻或後顧斷言、原子組、佔有型重複或條件組。",
+      "pattern_too_large": "遮蔽規則 {{rule}}：展開重複後模式過大。請使用較少的重複次數。",
+      "server_reference": "遮蔽規則 {{rule}}：此伺服器上的機構不能參照伺服器的環境。請使用機構自己保管庫中的 ${secret:NAME}。"
+    },
     "replication": {
       "answer_not_json": "為 {{table}} 的複本讀取的回應不是有效的 JSON：[{{content_type}}] {{cause}}（位於回應第 {{before_byte}} 位元組之前的 {{kib}} KiB 內）。",
       "no_whole_copy": "來源 {{source}} 的資料表 {{schema}}.{{table}} 沒有可建置的完整複本：它按列複製，或者帶有參數欄。",

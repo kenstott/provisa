@@ -324,6 +324,13 @@
       "catalog_view_refused": "{{view}} est une vue de catalogue du domaine meta et ne peut pas être lue dans une même instruction avec une table d'une source de données : lisez-les en deux instructions.",
       "function_unsupported": "{{function}}() n'a pas d'équivalent sur {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Règle de masquage {{rule}} : {{why}}",
+      "pattern_backtracks": "Règle de masquage {{rule}} : le motif peut provoquer un retour arrière catastrophique (une répétition imbriquée dans une répétition illimitée, ou des alternatives à l'intérieur qui peuvent commencer par le même texte). Réécrivez-le sans cette forme.",
+      "pattern_unsupported": "Règle de masquage {{rule}} : la règle d'une organisation ne peut pas utiliser de références arrière, de lookahead ou de lookbehind, de groupes atomiques, de répétitions possessives ni de groupes conditionnels.",
+      "pattern_too_large": "Règle de masquage {{rule}} : le motif est trop grand une fois ses répétitions développées. Utilisez un nombre de répétitions plus petit.",
+      "server_reference": "Règle de masquage {{rule}} : une organisation sur ce serveur ne peut pas faire référence à l'environnement du serveur. Utilisez ${secret:NAME} depuis le coffre propre de l'organisation."
+    },
     "replication": {
       "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
       "no_whole_copy": "La table {{schema}}.{{table}} de la source {{source}} n'a pas de copie complète à construire : elle est répliquée ligne par ligne ou comporte une colonne de paramètre.",

@@ -29,7 +29,7 @@ import pytest
 from provisa.core.request_context import reset_current_org, set_current_org
 from provisa.security import redaction
 from provisa.security.bounded_pattern import (
-    STEP_LIMIT,
+    STEP_FACTOR,
     PatternRefused,
     StepLimitExceeded,
     compile_bounded,
@@ -144,7 +144,7 @@ def test_a_secret_resolved_in_org_as_request_is_matched_in_as_text_and_in_record
     [
         (r"(a+)+$", "redaction.pattern_backtracks"),
         (r"(\w+\s?)*$", "redaction.pattern_backtracks"),
-        (r"(ab|ac)*x", "redaction.pattern_backtracks"),
+        (r"(ab|\wc)*x", "redaction.pattern_backtracks"),
         (r"(x|)*y", "redaction.pattern_backtracks"),
         (r"(a)\1", "redaction.pattern_unsupported"),
         (r"(?<=a)b", "redaction.pattern_unsupported"),
@@ -190,14 +190,15 @@ def test_a_slow_pattern_is_cut_off_at_use_without_stalling_others(caplog):
 
 
 def test_the_step_limit_is_raised_by_name():
+    pattern = compile_bounded(r"a(.*b)?")
     with pytest.raises(StepLimitExceeded) as caught:
-        compile_bounded(r"a(.*b)?").sub(lambda _s: "x", "a" * 5000)
-    assert caught.value.steps == STEP_LIMIT
+        pattern.sub(lambda _s: "x", "a" * 5000)
+    assert caught.value.steps == STEP_FACTOR * pattern.size * 5001
 
 
 def test_a_catastrophic_shape_is_linear_on_the_matcher():
-    # (a|b)*c passes the save check; on re a long run without c is linear too, but this asserts
-    # the matcher itself never backtracks on a text that defeats a backtracking engine's guess.
+    # One scan of a long text with no match stays inside the step limit: the limit is linear in
+    # the text's length, so only a pattern that rescans the text is cut off.
     pattern = compile_bounded(r"(?:a|b)*c")
     started = time.monotonic()
     assert pattern.sub(lambda _s: "x", "ab" * 20000) == "ab" * 20000
