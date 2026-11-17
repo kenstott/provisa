@@ -53,5 +53,8 @@ def test_the_per_role_compile_runs_with_no_connection_checked_out() -> None:
 
 
 def test_the_writes_after_the_compile_still_have_a_connection() -> None:
-    inside = _calls_inside_acquire(app._rebuild_schemas_impl)
-    assert {"persist_field_numbers", "write_lineage_edges", "write_checker_targets"} <= set(inside)
+    # REQ-1914: the field numbers are written before the answer; the lineage edges and checker
+    # targets by the build's after-answer pass (app._after_answer_steps).
+    assert "persist_field_numbers" in _calls_inside_acquire(app._rebuild_schemas_impl)
+    after = set(_calls_inside_acquire(app._after_answer_steps))
+    assert {"write_lineage_edges", "write_checker_targets"} <= after
