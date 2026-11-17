@@ -65,13 +65,13 @@ def published(
 
 class Built:
     """The runtime a build publishes, as far as deriving a contract reads it: every registered
-    table with its stored columns (``draft`` ones left out), the viewer role, and what the viewer
+    table with its stored columns (``withdrawn`` ones left out), the viewer role, and what the viewer
     reads of each column -- ``masked`` {column: mask kind}, ``unread`` columns."""
 
     def __init__(self) -> None:
         self.masked: dict[str, str] = {}
         self.unread: set[str] = set()
-        self.draft: set[str] = set()
+        self.withdrawn: set[str] = set()
         # REQ-2125: each checker's checked table, as the build resolved and published it.
         self.checked: dict[int, int] = {}
 
@@ -92,7 +92,7 @@ class Built:
                 "columns": await table_repo.load_columns(conn, int(r.id)),
             }
             for r in rows
-            if r.table_name not in self.draft
+            if r.table_name not in self.withdrawn
         ]
         return SimpleNamespace(
             roles={"viewer": {"capabilities": []}},

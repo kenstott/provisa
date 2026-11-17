@@ -37,7 +37,6 @@ def _table(**overrides: Any) -> RegisteredTableType:
         cache_ttl=None,
         replicate=None,
         region=None,
-        draft=False,
         withdrawn=False,
         source_withdrawn=False,
         row_materialize=False,

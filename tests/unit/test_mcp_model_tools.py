@@ -601,7 +601,6 @@ def _table(**kw: Any) -> admin_types.RegisteredTableType:
         "profiler_source_id": "prof",
         "stored_product_ids": ["p1"],
         "region": None,  # REQ-1921
-        "draft": False,  # REQ-1921
         "withdrawn": False,  # REQ-1921
         "source_withdrawn": False,  # REQ-1921
         "row_materialize": False,  # REQ-1865

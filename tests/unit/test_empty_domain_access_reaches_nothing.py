@@ -265,8 +265,8 @@ def test_an_empty_list_gets_a_match_nothing_row_filter(multi_domain):
         domain_id=META_DOMAIN_ID,
     )
     gov = build_governance_context("r", RLSContext.empty(), {}, ctx, _tables(), _role([]))
-    # REQ-1921: nor a draft's row, which only a role holding org_admin reads.
-    assert gov.rls_rules[100] == rule_of("(id IN (-1)) AND (NOT (draft OR withdrawn))")
+    # REQ-1921: nor a withdrawn table's row, which only its domain's stewards read.
+    assert gov.rls_rules[100] == rule_of("(id IN (-1)) AND (NOT withdrawn)")
 
 
 def test_single_domain_mode_sees_every_data_table(single_domain):
