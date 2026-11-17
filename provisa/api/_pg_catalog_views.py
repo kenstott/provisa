@@ -875,6 +875,38 @@ def _function_type(returns: str) -> str:
 _FUNCTION_OID = f"{FIRST_FUNCTION_OID} + f.id"
 
 
+def _function_type_oid(declared: str) -> str:
+    """The oid of :func:`_function_type`'s type, over a tracked function's declared type (SQL)."""
+    from provisa.pgwire.catalog_pg17 import TYPES
+    from provisa.pgwire.function_catalog import _FN_TYPE_TO_SQL
+
+    oid_of = {t[-1]: oid for oid, t in TYPES.items() if t[0] == "pg_catalog"}
+    cases = " ".join(f"WHEN '{k}' THEN {oid_of[v]}" for k, v in _FN_TYPE_TO_SQL.items())
+    return f"CASE LOWER(COALESCE({declared}, '')) {cases} ELSE {oid_of['character varying']} END"
+
+
+#: Over ``f``, a row of tracked_functions: whether it is a source operation returning the rows of
+#: its table (REQ-1986, compiler.operation_function.is_operation_function).
+_RETURNS_TABLE_ROWS = (
+    "(f.impl_kind = 'source_operation' AND f.kind = 'query' AND COALESCE(f.returns, '') <> '')"
+)
+
+#: Joined to ``f``: ``ct``, the catalog_tables row of the table whose rows a source operation's
+#: function returns; NULL for every other function.
+_RETURNED_TABLE = (
+    f"LEFT JOIN registered_tables rt ON {_RETURNS_TABLE_ROWS} AND rt.source_id = f.source_id "
+    "AND rt.schema_name || '.' || rt.table_name = f.returns "
+    "LEFT JOIN catalog_tables ct ON ct.table_id = rt.id"
+)
+
+#: Over ``f``: its arguments, each with its position.
+_ARGUMENTS = (
+    "JSONB_ARRAY_ELEMENTS(CAST(f.arguments AS JSONB)) WITH ORDINALITY AS a(argument, position)"
+)
+#: Over ``a``, one of :data:`_ARGUMENTS`: the oid of its type.
+_ARGUMENT_TYPE_OID = _function_type_oid("a.argument ->> 'type'")
+
+
 def _pg_proc() -> str:
     relation = (_PG, "pg_proc")
     return _view(
@@ -890,15 +922,23 @@ def _pg_proc() -> str:
                 "prosecdef": "FALSE",
                 "proleakproof": "FALSE",
                 "proisstrict": "FALSE",
-                "proretset": "f.return_schema IS NOT NULL",
+                "proretset": f"f.return_schema IS NOT NULL OR {_RETURNS_TABLE_ROWS}",
                 "provolatile": "'v'",
                 "proparallel": "'u'",
                 "pronargs": "JSONB_ARRAY_LENGTH(CAST(f.arguments AS JSONB))",
                 "pronargdefaults": "0",
-                "prorettype": "0",
+                # REQ-1986: a source operation's function returns the rows of its table, of the
+                # table's row type; every other function's type is not stated.
+                "prorettype": f"CASE WHEN {_RETURNS_TABLE_ROWS} THEN "
+                f"CAST(ct.relation_oid AS BIGINT) + {_ROW_TYPE_OFFSET} ELSE 0 END",
+                "proargtypes": "ARRAY_TO_STRING(ARRAY(SELECT "
+                f"{_ARGUMENT_TYPE_OID} FROM {_ARGUMENTS} "
+                "ORDER BY a.position), ' ')",
+                "proargnames": f"ARRAY(SELECT a.argument ->> 'name' FROM {_ARGUMENTS} "
+                "ORDER BY a.position)",
                 "prosrc": "f.name",
             },
-            "FROM tracked_functions f",
+            f"FROM tracked_functions f {_RETURNED_TABLE}",
         ),
         _select(
             relation,
@@ -966,15 +1006,21 @@ def _is_routines() -> str:
                 "routine_schema": "'public'",
                 "routine_name": "f.name",
                 "routine_type": "'FUNCTION'",
-                "data_type": "CASE WHEN f.return_schema IS NOT NULL THEN 'record' "
+                # REQ-1986: a source operation's function returns its table's rows, of the
+                # table's row type (USER-DEFINED, as PostgreSQL states a SETOF table).
+                "data_type": f"CASE WHEN {_RETURNS_TABLE_ROWS} THEN 'USER-DEFINED' "
+                "WHEN f.return_schema IS NOT NULL THEN 'record' "
                 f"ELSE {_function_type('f.returns')} END",
+                "type_udt_catalog": f"CASE WHEN {_RETURNS_TABLE_ROWS} THEN {_SERVED_NAME} END",
+                "type_udt_schema": "ct.schema_name",
+                "type_udt_name": "ct.table_name",
                 "routine_body": "'EXTERNAL'",
                 "external_language": "'EXTERNAL'",
                 "is_deterministic": "'NO'",
                 "sql_data_access": "'MODIFIES'",
                 "security_type": "'INVOKER'",
             },
-            "FROM tracked_functions f",
+            f"FROM tracked_functions f {_RETURNED_TABLE}",
         ),
     )
 
@@ -995,9 +1041,7 @@ def _is_parameters() -> str:
                 "parameter_name": "a.argument ->> 'name'",
                 "data_type": _function_type("a.argument ->> 'type'"),
             },
-            "FROM tracked_functions f CROSS JOIN LATERAL "
-            "JSONB_ARRAY_ELEMENTS(CAST(f.arguments AS JSONB)) WITH ORDINALITY AS a(argument, "
-            "position)",
+            f"FROM tracked_functions f CROSS JOIN LATERAL {_ARGUMENTS}",
         ),
     )
 
