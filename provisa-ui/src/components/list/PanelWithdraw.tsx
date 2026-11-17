@@ -176,7 +176,10 @@ export function PanelWithdraw({
               onCancel={() => setChoosing(false)}
               action={
                 <Button
+                  variant="filled"
+                  size="sm"
                   type="button"
+                  data-tone="confirm"
                   disabled={chosen === undefined}
                   data-testid={`${testId}-put-back-confirm`}
                   data-changes="true"
