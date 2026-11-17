@@ -90,7 +90,6 @@ function table(id: number, tableName: string, domainId: string): RegisteredTable
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
     withdrawn: false,
     sourceWithdrawn: false,
     rowMaterialize: false,

@@ -24,6 +24,9 @@
     "withdrawNamed": "Retirar {{name}}",
     "withdrawTitle": "Retirar {{name}}?",
     "putBack": "Restabelecer",
-    "putBackNamed": "Restabelecer {{name}}"
+    "putBackNamed": "Restabelecer {{name}}",
+    "putBackTitle": "Restabelecer {{name}}",
+    "putBackRegionHint": "A região para a qual retorna, uma coberta pela sua permissão de residência de dados.",
+    "putBackNoRegion": "Nenhuma permissão de residência de dados dos seus papéis cobre uma região para onde restabelecê-lo. Quem tem residência de dados para a região de destino o restabelece."
   }
 }

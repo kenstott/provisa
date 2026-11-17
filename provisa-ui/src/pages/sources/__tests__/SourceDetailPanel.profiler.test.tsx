@@ -33,6 +33,7 @@ function panel(type: string) {
       onDelete={vi.fn()}
       onWithdraw={vi.fn()}
       onPutBack={vi.fn()}
+      putBackRegions={null}
     />,
   );
 }

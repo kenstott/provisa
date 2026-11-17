@@ -136,7 +136,6 @@
       "unknown_command": "Comando desconocido: '{{name}}'",
       "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol.",
       "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo",
-      "table_is_draft": "{{table}} es un borrador: fuera de servicio hasta que los responsables de su dominio la liberen",
       "source_unbound": "El origen '{{source}}' no tiene conexión en el entorno '{{env}}': vincúlelo o vuelva a copiarlo del entorno principal",
       "system_catalog_unavailable": "El catálogo '{{catalog}}' del motor se está registrando. Vuelva a intentarlo en breve.",
       "domain_not_accessible": "El rol '{{role_id}}' no tiene acceso al dominio '{{domain}}'",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "El parámetro {{parameter}} recibe un valor en una rama de un OR y ninguno en otra. Dé un valor a {{parameter}} en cada rama.",
       "parameter_conflict": "El parámetro {{parameter}} recibe dos valores distintos a la vez ({{first}} y {{second}}). Dele un solo valor o enumere los valores con IN u OR.",
       "parameter_calls_over_cap": "La sentencia necesita {{calls}} llamadas a {{table}}, una por cada valor dado a sus parámetros, y se hacen como máximo {{cap}} por sentencia (ajuste {{setting}}). Indique menos valores.",
-      "parameter_not_written": "La relación {{relationship}} se une por el parámetro {{parameter}}, que una instrucción vincula a un valor y nunca escribe. Una escritura no crea {{relationship}}."
+      "parameter_not_written": "La relación {{relationship}} se une por el parámetro {{parameter}}, que una instrucción vincula a un valor y nunca escribe. Una escritura no crea {{relationship}}.",
+      "table_is_withdrawn": "{{table}} está retirada: fuera de producción hasta que se restablezca"
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -551,7 +551,10 @@
       "source_withdrawn": "Origen {{source}} retirado",
       "source_put_back": "Origen {{source}} restablecido",
       "withdrawn_source_not_previewable": "No se puede previsualizar la tabla {{table}}: su origen {{source}} está retirado y ningún motor lee un origen retirado.",
-      "withdrawn_table_not_previewable": "No se puede previsualizar la tabla {{table}}: está retirada y no conserva réplica, y el motor solo lee su origen a través de una."
+      "withdrawn_table_not_previewable": "No se puede previsualizar la tabla {{table}}: está retirada y no conserva réplica, y el motor solo lee su origen a través de una.",
+      "table_not_withdrawn": "La tabla {{table}} no está retirada: solo se restablece una tabla retirada. Para mover a otra región una tabla en producción, establezca su región.",
+      "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
+      "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "modo de seguridad desconocido: '{{mode}}'",
       "data_residency_refused": "No se puede establecer la región de {{object}}: la concesión data_residency no cubre {{value}}; una concesión data_residency que lo incluya lo permite",
-      "data_residency_missing": "No se puede establecer la región de {{object}}: ninguna concesión data_residency del usuario cubre {{value}}; una concesión data_residency que lo incluya lo permite"
+      "data_residency_missing": "No se puede establecer la región de {{object}}: ninguna concesión data_residency del usuario cubre {{value}}; una concesión data_residency que lo incluya lo permite",
+      "withdraw_residency_refused": "No se puede retirar {{object}}: ninguna concesión data_residency del llamante cubre {{value}}, donde se conserva; una concesión data_residency que lo incluya lo permite"
     },
     "settings": {
       "auth_required": "{{field}} no se puede cambiar hasta que se configure la autenticación.",

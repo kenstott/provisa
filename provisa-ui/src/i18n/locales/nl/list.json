@@ -24,6 +24,9 @@
     "withdrawNamed": "{{name}} terugtrekken",
     "withdrawTitle": "{{name}} terugtrekken?",
     "putBack": "Terugzetten",
-    "putBackNamed": "{{name}} terugzetten"
+    "putBackNamed": "{{name}} terugzetten",
+    "putBackTitle": "{{name}} terugzetten",
+    "putBackRegionHint": "De regio waarin het terugkeert, een die uw recht op dataresidentie dekt.",
+    "putBackNoRegion": "Geen recht op dataresidentie van uw rollen dekt een regio om het in terug te zetten. Iemand met dataresidentie voor de doelregio zet het terug."
   }
 }

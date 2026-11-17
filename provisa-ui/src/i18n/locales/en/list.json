@@ -24,6 +24,9 @@
     "withdrawNamed": "Withdraw {{name}}",
     "withdrawTitle": "Withdraw {{name}}?",
     "putBack": "Put back",
-    "putBackNamed": "Put back {{name}}"
+    "putBackNamed": "Put back {{name}}",
+    "putBackTitle": "Put back {{name}}",
+    "putBackRegionHint": "The region it returns to, one your data residency grant covers.",
+    "putBackNoRegion": "None of your roles' data residency grants covers a region to put it back into. A holder of data residency for the region it goes to puts it back."
   }
 }

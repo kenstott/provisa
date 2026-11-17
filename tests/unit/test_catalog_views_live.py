@@ -84,8 +84,8 @@ def _model(conn) -> None:
         source_id="src",
         domain_id="sales",
         schema_name="public",
-        table_name="drafted",
-        draft=True,
+        table_name="withdrawn_one",
+        withdrawn=True,
     )
     for table_id, name, data_type, extras in (
         (1, "orderId", "integer", {"is_primary_key": True, "not_null": True}),
@@ -209,7 +209,7 @@ def test_the_catalog_lists_the_model_and_not_itself(plane):
         ("salaries", "hr"),
     ]
     held = {n for (n,) in names}
-    assert "drafted" not in held
+    assert "withdrawn_one" not in held
     assert "table_keys" not in held and "is_tables" not in held
     assert "pg_class" in held and "columns" in held  # the system relations list themselves
 

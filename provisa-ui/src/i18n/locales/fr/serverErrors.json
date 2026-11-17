@@ -136,7 +136,6 @@
       "unknown_command": "Commande « {{name}} » inconnue",
       "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
       "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter",
-      "table_is_draft": "{{table}} est un brouillon : hors service jusqu'à ce que les responsables de son domaine la publient",
       "source_unbound": "La source '{{source}}' n'a pas de connexion dans l'environnement '{{env}}' : liez-la ou recopiez-la depuis l'environnement parent",
       "system_catalog_unavailable": "Le catalogue '{{catalog}}' du moteur est en cours d'enregistrement. Réessayez dans un instant.",
       "domain_not_accessible": "Le rôle '{{role_id}}' n'a pas accès au domaine '{{domain}}'",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "Le paramètre {{parameter}} reçoit une valeur dans une branche d'un OR et aucune dans une autre. Donnez une valeur à {{parameter}} dans chaque branche.",
       "parameter_conflict": "Le paramètre {{parameter}} reçoit deux valeurs différentes à la fois ({{first}} et {{second}}). Donnez-lui une seule valeur, ou énumérez les valeurs avec IN ou OR.",
       "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs.",
-      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}."
+      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}.",
+      "table_is_withdrawn": "{{table}} est retirée : hors production jusqu'à sa remise en service"
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -551,7 +551,10 @@
       "source_withdrawn": "Source {{source}} retirée",
       "source_put_back": "Source {{source}} remise en service",
       "withdrawn_source_not_previewable": "Impossible de prévisualiser la table {{table}} : sa source {{source}} est retirée, et aucun moteur ne lit une source retirée.",
-      "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique."
+      "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique.",
+      "table_not_withdrawn": "La table {{table}} n'est pas retirée : seule une table retirée est remise en service. Pour déplacer une table en production vers une autre région, définissez sa région.",
+      "source_not_withdrawn": "La source {{source}} n'est pas retirée : seule une source retirée est remise en service. Pour changer sa région, définissez sa région.",
+      "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "mode de sécurité « {{mode}} » inconnu",
       "data_residency_refused": "La région de {{object}} ne peut pas être définie : l'autorisation data_residency ne couvre pas {{value}} ; une autorisation data_residency qui l'inclut le permet",
-      "data_residency_missing": "La région de {{object}} ne peut pas être définie : aucune autorisation data_residency de l'appelant ne couvre {{value}} ; une autorisation data_residency qui l'inclut le permet"
+      "data_residency_missing": "La région de {{object}} ne peut pas être définie : aucune autorisation data_residency de l'appelant ne couvre {{value}} ; une autorisation data_residency qui l'inclut le permet",
+      "withdraw_residency_refused": "{{object}} ne peut pas être retiré : aucune autorisation data_residency de l'appelant ne couvre {{value}}, où il est conservé ; une autorisation data_residency qui l'inclut le permet"
     },
     "settings": {
       "auth_required": "{{field}} ne peut pas être modifié tant que l'authentification n'est pas configurée.",

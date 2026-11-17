@@ -95,12 +95,13 @@ async def start_org_live_engine(scheduler: Any) -> None:  # REQ-286, REQ-1266
 
 
 async def _register_user_views_in_state(
-    conn: "Connection", raw_config: dict | None, tables: list[dict], draft_tables: list[dict]
+    conn: "Connection", raw_config: dict | None, tables: list[dict], withdrawn_tables: list[dict]
 ) -> None:
     """Register __derived__ views in mv_registry (REQ-199) or view_sql_map. Non-fatal.
     ``tables`` are the registered table rows this build loaded: what a view inheriting its
     versions is judged against (REQ-2109) -- ``state.tables`` is published only after this.
-    ``draft_tables`` are its draft ones: a draft table keeps its version log, uncaptured."""
+    ``withdrawn_tables`` are its withdrawn ones: a withdrawn table keeps its version log,
+    uncaptured (REQ-1921)."""
     from provisa.api.app import state
 
     with tolerate_startup_failure("user views for inline expansion"):
@@ -163,11 +164,9 @@ async def _register_user_views_in_state(
                         _registered_tables_t.c.mv_expected_events,  # REQ-961
                         _registered_tables_t.c.mv_business_day_grain,  # REQ-962
                         _registered_tables_t.c.region,  # REQ-1921: where the view is built
-                        # REQ-1921: out of service -- a region move's waypoint, or withdrawn --
-                        # a view is registered for building only once back in service.
-                        (_registered_tables_t.c.draft | _registered_tables_t.c.withdrawn).label(
-                            "draft"
-                        ),
+                        # REQ-1921: withdrawn -- a view is registered for building only once put
+                        # back.
+                        _registered_tables_t.c.withdrawn,
                     ).where(
                         _registered_tables_t.c.source_id == DERIVED_SOURCE_ID,
                         _registered_tables_t.c.view_sql.is_not(None),
@@ -300,9 +299,8 @@ async def _register_user_views_in_state(
                             ),
                             target_table=f"mv_{_vr['table_name']}",
                             refresh_interval=int(_vr.get("mv_refresh_interval") or _mv_default_ttl),
-                            enabled=not _vr[
-                                "draft"
-                            ],  # REQ-1921: a draft's build is kept, unscheduled
+                            # REQ-1921: a withdrawn view's build is kept, unscheduled.
+                            enabled=not _vr["withdrawn"],
                             sql=_semantic_sql,
                             semantic_sql=_semantic_sql,  # REQ-1921/1922
                             region=_vr.get("region"),  # REQ-1921
@@ -341,7 +339,7 @@ async def _register_user_views_in_state(
                             "lower its SQL against"
                         )
                     _existing.sql = compile_view_sql_to_physical(_semantic_sql, state.view_context)
-                    _existing.enabled = not _vr["draft"]  # REQ-1921
+                    _existing.enabled = not _vr["withdrawn"]  # REQ-1921
                     _existing.semantic_sql = _semantic_sql  # REQ-1921/1922
                     _existing.region = _vr.get("region")  # REQ-1921
                     _existing.read_tables = read_table_names(_semantic_sql, state.tracked_functions)
@@ -361,15 +359,15 @@ async def _register_user_views_in_state(
                     )  # REQ-961
                     _existing.expected_events = _vr.get("mv_expected_events")  # REQ-961
                     _existing.business_day_grain = bool(_vr.get("mv_business_day_grain"))  # REQ-962
-        # REQ-1921: a view that is draft is offered to no reader, wherever this runs (each region
-        # on its reload): no statement expands it. A materialized one stays registered above,
-        # with its build DISABLED — the scheduler and the rewriter skip a disabled build
+        # REQ-1921: a view that is withdrawn is offered to no reader, wherever this runs (each
+        # region on its reload): no statement expands it. A materialized one stays registered
+        # above, with its build DISABLED -- the scheduler and the rewriter skip a disabled build
         # (mv/registry.py), and the reclamation sweep keeps a registered build's stored table
-        # (mv/refresh.py, REQ-234) — so a view set back to draft keeps what it has built, and is
-        # built again only when its steward previews it (admin/table_read.py). One that is not
-        # materialized has no build.
+        # (mv/refresh.py, REQ-234) -- so a withdrawn view keeps what it has built, and is built
+        # again when its steward previews it (admin/table_read.py) or it is put back. One that is
+        # not materialized has no build.
         for _vr in _view_rows:
-            if not _vr["draft"]:
+            if not _vr["withdrawn"]:
                 continue
             state.view_sql_map.pop(_vr["table_name"], None)
             state.bitemporal_view_reads.pop(_vr["table_name"], None)
@@ -391,7 +389,7 @@ async def _register_user_views_in_state(
         # captures, an MV of its own refreshed on that MV's interval.
         from provisa.mv.bitemporal_capture import register_logs
 
-        register_logs(state, [*tables, *draft_tables], int(_mv_default_ttl))
+        register_logs(state, [*tables, *withdrawn_tables], int(_mv_default_ttl))
 
 
 async def serve_registered_tables(state) -> None:

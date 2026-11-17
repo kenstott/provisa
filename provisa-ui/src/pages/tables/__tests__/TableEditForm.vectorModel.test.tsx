@@ -46,7 +46,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
     withdrawn: false,
     sourceWithdrawn: false,
     rowMaterialize: false,

@@ -44,7 +44,7 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT,
+    domain_id TEXT, tenant_id TEXT, class_term_id TEXT,
     retired BOOLEAN NOT NULL DEFAULT 0, withdrawn BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE sources (id TEXT PRIMARY KEY, withdrawn BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE table_columns (
@@ -104,7 +104,7 @@ def db() -> sqlite3.Connection:
         )
 
     conn.execute(
-        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', 0, NULL, 0, 0)"
+        "INSERT INTO registered_tables VALUES (7, 'crm', 'public', 'users', 'sales', 'org1', NULL, 0, 0)"
     )
     conn.executemany(
         "INSERT INTO table_columns (id, table_id, column_name, alias, masks, domain_id,"
@@ -199,7 +199,7 @@ class TestGlossaryMetaViews:
         9 not yet -- a gap until a same-entity relationship reaches 9 too."""
         db.execute("UPDATE registered_tables SET class_term_id = 't-party' WHERE id = 7")
         db.executemany(
-            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', 0, ?, 0, 0)",
+            "INSERT INTO registered_tables VALUES (?, 'crm', 'public', ?, 'sales', 'org1', ?, 0, 0)",
             [(8, "accounts", "t-party"), (9, "contacts", "t-party"), (6, "people", "t-user")],
         )
         db.execute("INSERT INTO relationships VALUES ('r78', 7, 8, 1, 'org1', 0)")

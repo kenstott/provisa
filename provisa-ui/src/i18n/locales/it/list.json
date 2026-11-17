@@ -24,6 +24,9 @@
     "withdrawNamed": "Ritira {{name}}",
     "withdrawTitle": "Ritirare {{name}}?",
     "putBack": "Ripristina",
-    "putBackNamed": "Ripristina {{name}}"
+    "putBackNamed": "Ripristina {{name}}",
+    "putBackTitle": "Ripristina {{name}}",
+    "putBackRegionHint": "La regione in cui torna, una coperta dalla tua autorizzazione di residenza dei dati.",
+    "putBackNoRegion": "Nessuna autorizzazione di residenza dei dati dei tuoi ruoli copre una regione in cui ripristinarlo. Lo ripristina chi detiene la residenza dei dati per la regione di destinazione."
   }
 }

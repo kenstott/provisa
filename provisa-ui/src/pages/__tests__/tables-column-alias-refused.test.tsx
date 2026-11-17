@@ -79,7 +79,6 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
     withdrawn: false,
     sourceWithdrawn: false,
     rowMaterialize: false,

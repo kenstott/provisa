@@ -57,7 +57,6 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
     withdrawn: false,
     sourceWithdrawn: false,
     rowMaterialize: false,
@@ -136,6 +135,7 @@ function renderView(hidingOnly: boolean, shown: RegisteredTable = TABLE, acts = 
       handleDelete={vi.fn()}
       onWithdraw={vi.fn()}
       onPutBack={vi.fn()}
+      putBackRegions={null}
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
       relationships={[]}
@@ -190,8 +190,8 @@ describe("TableReadView for a table with a required parameter", () => {
 // REQ-1921: there is no draft state: the read view offers no control to set or clear it, and
 // marks a withdrawn table instead.
 describe("TableReadView and a draft", () => {
-  it.each([true, false])("offers no control to set or clear draft (draft: %s)", (draft) => {
-    renderView(false, makeTable({ id: 7, draft }));
+  it.each([true, false])("offers no control to set or clear draft (withdrawn: %s)", (withdrawn) => {
+    renderView(false, makeTable({ id: 7, withdrawn }));
     expect(screen.queryByTestId("table-read-view-draft")).not.toBeInTheDocument();
     expect(screen.queryByLabelText("Draft")).not.toBeInTheDocument();
   });
@@ -232,7 +232,7 @@ describe("TableReadView — Withdraw and Put back", () => {
     renderView(false, makeTable({ id: 7, withdrawn: true }), { onPutBack });
     expect(screen.queryByTestId("table-read-view-withdraw")).not.toBeInTheDocument();
     fireEvent.click(screen.getByTestId("table-read-view-put-back"));
-    await waitFor(() => expect(onPutBack).toHaveBeenCalledWith(7));
+    await waitFor(() => expect(onPutBack).toHaveBeenCalledWith(7, null));
   });
 
   it("names the withdrawn source of a table withdrawn through it, and still offers Withdraw", () => {

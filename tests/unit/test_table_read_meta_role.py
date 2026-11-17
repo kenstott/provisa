@@ -8,10 +8,10 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""A draft's preview read as "Role: All" -- the meta-role of the set the user acts as -- is read
+"""A withdrawn table's preview read as "Role: All" -- the meta-role of the set the user acts as -- is read
 with the union of the set's rights, as every other surface reads under it (REQ-1620, REQ-1921).
 
-A set one of whose members may see the draft answers rows; a set none of whose members may see
+A set one of whose members may see the withdrawn table answers rows; a set none of whose members may see
 it is refused by name, as a single role without the right is.
 """
 
@@ -33,7 +33,7 @@ from tests.unit.test_table_read_as_caller import (
 )
 
 # REQ-2153: each role carries its own domain access, as a built role does.
-# "r" may see the draft's columns; "s" and "t" read the same domain and see none of them.
+# "r" may see the withdrawn table's columns; "s" and "t" read the same domain and see none of them.
 _ROLES = [
     {
         "id": "r",
@@ -61,7 +61,7 @@ _ROLES = [
 
 @pytest.fixture
 def state(multi_domain, monkeypatch):  # noqa: F811
-    """The real role build of three roles, ``refunds`` registered as a draft only ``r`` sees."""
+    """The real role build of three roles, ``refunds`` withdrawn, which only ``r`` sees."""
     import provisa.api.app as appmod
 
     runtime = appmod.state._active_runtime()
@@ -69,11 +69,11 @@ def state(multi_domain, monkeypatch):  # noqa: F811
         monkeypatch.setattr(runtime, name, {}, raising=False)
     built = _built_roles(monkeypatch, [dict(r) for r in _ROLES])
     monkeypatch.setattr(built, "tables", _tables(), raising=False)
-    built.role_build_inputs["draft_tables"] = [_refunds()]
+    built.role_build_inputs["withdrawn_tables"] = [_refunds()]
     return built
 
 
-async def test_a_draft_previewed_as_a_set_one_member_may_see_answers(state, routing):  # noqa: F811
+async def test_a_withdrawn_table_previewed_as_a_set_one_member_may_see_answers(state, routing):  # noqa: F811
     meta = ensure_meta_role(state, ["r", "s"])
     assert is_meta_role_id(meta)
     with pytest.raises(_Routed) as routed:
@@ -82,7 +82,7 @@ async def test_a_draft_previewed_as_a_set_one_member_may_see_answers(state, rout
     assert "refunds" in routed.value.sql
 
 
-async def test_a_draft_previewed_as_a_set_no_member_may_see_is_refused_by_name(
+async def test_a_withdrawn_table_previewed_as_a_set_no_member_may_see_is_refused_by_name(
     state,
     routing,  # noqa: F811
 ):

@@ -158,39 +158,55 @@ def require_residency_change(  # REQ-1921
     what: str,
     before: object,
     after: str | None,
-    *,
-    draft: bool = False,
 ) -> None:
     """Refuse a change of where ``what``'s data lives that the caller's data_residency grant does
     not cover (``security.residency.require_change``; ``before`` is ``residency.CREATED`` for a
     new object). Nothing to check when the platform declares no regions, and — as
     ``require_capability`` — in dev mode (no identity, or the anonymous one)."""
-    _require_residency_of(_identity_from_info(info), what, before, after, draft=draft)
+    checked, covered = _residency_covered(_identity_from_info(info))
+    if checked:
+        from provisa.security.residency import require_change
+
+        require_change(covered, what, before, after)
 
 
 def require_residency_change_request(  # REQ-1921
-    request, what: str, before: object, after: str | None, *, draft: bool = False
+    request, what: str, before: object, after: str | None
 ) -> None:
     """``require_residency_change`` for a REST admin router (a Request rather than an Info)."""
-    _require_residency_of(
-        getattr(request.state, "identity", None), what, before, after, draft=draft
-    )
+    checked, covered = _residency_covered(getattr(request.state, "identity", None))
+    if checked:
+        from provisa.security.residency import require_change
+
+        require_change(covered, what, before, after)
 
 
-def _require_residency_of(
-    identity, what: str, before: object, after: str | None, *, draft: bool
+def require_residency_step(  # REQ-1921
+    info: "strawberry.types.Info", what: str, region: str | None, *, withdrawing: bool
 ) -> None:
+    """Refuse a step of a move between regions the caller's data_residency grant does not cover
+    (``security.residency.require_covers``): withdrawing ``what`` from ``region``, the region it
+    is in, or putting it back into ``region``. Unchecked as :func:`require_residency_change` is."""
+    checked, covered = _residency_covered(_identity_from_info(info))
+    if checked:
+        from provisa.security.residency import require_covers
+
+        require_covers(covered, what, region, withdrawing=withdrawing)
+
+
+def _residency_covered(identity) -> tuple[bool, set[str] | None]:
+    """Whether the caller's residency is checked, and the region values its data_residency
+    grants cover (None: no such right). Not checked when the platform declares no regions, nor
+    in dev mode (no identity, or the anonymous one), as ``require_capability``."""
     from provisa.api.admin.region_defaults import connected_region
     from provisa.api.app import state
-    from provisa.security.residency import require_change
     from provisa.security.rights import residency_values_for_claims
 
     if connected_region() is None:
-        return
+        return False, None
     if identity is None or getattr(identity, "user_id", _ANONYMOUS) == _ANONYMOUS:
-        return
-    covered = residency_values_for_claims(acting_claims(identity), state.roles)
-    require_change(covered, what, before, after, draft=draft)
+        return False, None
+    return True, residency_values_for_claims(acting_claims(identity), state.roles)
 
 
 def require_inspectable_role(info: "strawberry.types.Info", role_id: str) -> None:  # REQ-273

@@ -40,7 +40,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
   useAuth: () => ({
     role: "admin",
-    selectedRoles: ["admin"],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], effectiveResidencyValues: [] }],
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
@@ -85,7 +85,6 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
     withdrawn: false,
     sourceWithdrawn: false,
     rowMaterialize: false,
@@ -143,10 +142,7 @@ function table(
   };
 }
 
-let TABLES = [
-  table(7, "orders", [], { region: "eu" }),
-  table(8, "staging", [], { region: "eu", draft: true }),
-];
+let TABLES = [table(7, "orders", [], { region: "eu" }), table(8, "staging", [], { region: "eu" })];
 const SOURCES = [
   {
     id: "sales-pg",

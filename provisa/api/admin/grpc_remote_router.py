@@ -395,9 +395,6 @@ async def _register_schema(  # REQ-322, REQ-325, REQ-599
             alias=None if sql_name == table_name else sql_name,
             columns=output_cols + nf_cols,
         )
-        from provisa.api.admin.region_defaults import kept_draft
-
-        tbl.draft = await kept_draft(conn, source_id, "grpc_remote", table_name)
         await table_repo.upsert(conn, tbl)
         written += 1
 

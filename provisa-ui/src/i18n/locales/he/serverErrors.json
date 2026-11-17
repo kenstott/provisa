@@ -136,7 +136,6 @@
       "unknown_command": "פקודה לא מוכרת '{{name}}'",
       "write_not_admitted": "התפקיד '{{role}}' אינו רשאי לבצע כתיבה זו: כתיבה דורשת את הרשאת הכתיבה, גישת כתיבה לכל עמודה שנכתבת, ושורות שמסנן השורות של התפקיד מתיר.",
       "write_not_supported": "'{{table}}' אינה מקבלת {{operation}}: המקור שלה אינו יכול לבצע זאת",
-      "table_is_draft": "{{table}} היא טיוטה: מחוץ לשירות עד שבעלי התחום שלה ישחררו אותה",
       "source_unbound": "למקור '{{source}}' אין חיבור בסביבה '{{env}}': יש לקשר אותו או להעתיק אותו מחדש מסביבת האב",
       "system_catalog_unavailable": "הקטלוג '{{catalog}}' של המנוע נמצא בתהליך רישום. יש לנסות שוב בעוד רגע.",
       "domain_not_accessible": "לתפקיד '{{role_id}}' אין גישה לתחום '{{domain}}'",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
       "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
       "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים.",
-      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}."
+      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}.",
+      "table_is_withdrawn": "{{table}} הוסרה מהייצור: מחוץ לייצור עד שתוחזר"
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -551,7 +551,10 @@
       "source_withdrawn": "המקור {{source}} הוסר מהייצור",
       "source_put_back": "המקור {{source}} הוחזר",
       "withdrawn_source_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: המקור שלה {{source}} הוסר מהייצור, ואף מנוע אינו קורא מקור שהוסר.",
-      "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה."
+      "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה.",
+      "table_not_withdrawn": "הטבלה {{table}} לא הוסרה מהייצור: רק טבלה שהוסרה מהייצור מוחזרת. כדי להעביר טבלה בייצור לאזור אחר, הגדירו את האזור שלה.",
+      "source_not_withdrawn": "המקור {{source}} לא הוסר מהייצור: רק מקור שהוסר מהייצור מוחזר. כדי לשנות את האזור שלו, הגדירו את האזור שלו.",
+      "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'",
       "data_residency_refused": "לא ניתן להגדיר את האזור של {{object}}: הרשאת data_residency אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת",
-      "data_residency_missing": "לא ניתן להגדיר את האזור של {{object}}: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת"
+      "data_residency_missing": "לא ניתן להגדיר את האזור של {{object}}: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת",
+      "withdraw_residency_refused": "לא ניתן להסיר את {{object}} מהייצור: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}, שבו הוא נשמר; הרשאת data_residency שכוללת אותו מתירה זאת"
     },
     "settings": {
       "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר.",

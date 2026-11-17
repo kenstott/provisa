@@ -24,6 +24,9 @@
     "withdrawNamed": "撤回 {{name}}",
     "withdrawTitle": "撤回 {{name}}？",
     "putBack": "恢復",
-    "putBackNamed": "恢復 {{name}}"
+    "putBackNamed": "恢復 {{name}}",
+    "putBackTitle": "恢復 {{name}}",
+    "putBackRegionHint": "它要恢復到的區域，須為您的數據駐留授權所涵蓋。",
+    "putBackNoRegion": "您的角色的數據駐留授權均未涵蓋可恢復到的區域。由持有目標區域數據駐留權的人員恢復。"
   }
 }

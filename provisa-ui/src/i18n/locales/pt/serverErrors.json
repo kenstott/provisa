@@ -136,7 +136,6 @@
       "unknown_command": "Comando desconhecido '{{name}}'",
       "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita.",
       "write_not_supported": "'{{table}}' não aceita {{operation}}: sua origem não consegue executá-lo",
-      "table_is_draft": "{{table}} é um rascunho: fora de serviço até que os responsáveis pelo seu domínio a liberem",
       "source_unbound": "A origem '{{source}}' não tem conexão no ambiente '{{env}}': vincule-a ou copie-a novamente do ambiente pai",
       "system_catalog_unavailable": "O catálogo '{{catalog}}' do mecanismo está sendo registrado. Tente novamente em instantes.",
       "domain_not_accessible": "A função '{{role_id}}' não tem acesso ao domínio '{{domain}}'",
@@ -163,7 +162,8 @@
       "parameter_unbound_on_branch": "O parâmetro {{parameter}} recebe um valor num ramo de um OR e nenhum noutro. Dê um valor a {{parameter}} em todos os ramos.",
       "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
       "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores.",
-      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}."
+      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}.",
+      "table_is_withdrawn": "{{table}} está retirada: fora de produção até ser reposta"
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -551,7 +551,10 @@
       "source_withdrawn": "Fonte {{source}} retirada",
       "source_put_back": "Fonte {{source}} reposta",
       "withdrawn_source_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: a sua fonte {{source}} está retirada e nenhum motor lê uma fonte retirada.",
-      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma."
+      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma.",
+      "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
+      "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
+      "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -564,7 +567,8 @@
     "security": {
       "unknown_mode": "modo de segurança desconhecido '{{mode}}'",
       "data_residency_refused": "Não é possível definir a região de {{object}}: a concessão data_residency não cobre {{value}}; uma concessão data_residency que o liste permite isso",
-      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso"
+      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso",
+      "withdraw_residency_refused": "Não é possível retirar {{object}}: nenhuma concessão data_residency de quem chama cobre {{value}}, onde é mantido; uma concessão data_residency que o liste permite isso"
     },
     "settings": {
       "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada.",

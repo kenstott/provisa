@@ -124,7 +124,7 @@ import { icebergCatalogHints } from "./sources/icebergCatalog";
 import { CLOUD_FILE_TYPES, objectStoreHints, objectStoreOf } from "./sources/objectStoreHints";
 import { draftTable, fileLocationOf } from "./sources/sourceUpload";
 import { SourceDetailPanel } from "./sources/SourceDetailPanel";
-import { useSourceWithdrawal } from "../hooks/useWithdrawal";
+import { usePutBackRegions, useSourceWithdrawal } from "../hooks/useWithdrawal";
 import { SourceSectionTabs } from "./sources/SourceSectionTabs";
 import { SourceTablesList } from "./sources/SourceTablesList";
 import { SourceOperations } from "./sources/SourceOperations";
@@ -192,6 +192,7 @@ export function SourcesPage() {
   const { renameSource } = useRenameSource();
   const { deleteSource } = useDeleteSource();
   const { withdrawSource, putBackSource } = useSourceWithdrawal();
+  const putBackRegions = usePutBackRegions();
   const { updateSourceCache } = useUpdateSourceCache();
   const setSourceRegion = useSetSourceRegion();
   const { updateSourceLoadProtection } = useUpdateSourceLoadProtection();
@@ -1798,7 +1799,8 @@ export function SourcesPage() {
                 // REQ-2198: resolves once the list is read again without the source; the
                 // panel's Delete closes the panel and says why a failed one did not go through.
                 onWithdraw={() => withdrawSource(s.id)}
-                onPutBack={() => putBackSource(s.id)}
+                onPutBack={(region) => putBackSource(s.id, region)}
+                putBackRegions={putBackRegions}
                 onDelete={async () => {
                   const result = await deleteSource(s.id);
                   if (refusal.refused(result, s.id)) return false;

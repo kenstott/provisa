@@ -155,7 +155,6 @@ describe("TableEditForm creating a table (REQ-2109)", () => {
       gqlNamingConvention: "snake",
       roleTtl: [{ role: "analyst", ttl: 60 }],
       replicate: -1,
-      draft: false,
       writeGrants: [
         {
           role: "analyst",

@@ -35,6 +35,7 @@ function panel(withdrawn: boolean) {
       onDelete={vi.fn()}
       onWithdraw={onWithdraw}
       onPutBack={onPutBack}
+      putBackRegions={null}
     />,
   );
   return { onWithdraw, onPutBack };

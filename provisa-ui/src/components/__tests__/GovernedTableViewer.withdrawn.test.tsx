@@ -44,7 +44,6 @@ const WITHDRAWN = {
   description: null,
   apiEndpoint: null,
   viewSql: null,
-  draft: false,
   withdrawn: true,
   sourceWithdrawn: false,
   columns: [],
@@ -52,7 +51,7 @@ const WITHDRAWN = {
 
 function page(from: number, count: number) {
   const rows = Array.from({ length: count }, (_, i) => ({ id: from + i, note: `n${from + i}` }));
-  return { columns: ["id", "note"], rows, rowCount: rows.length, draft: true };
+  return { columns: ["id", "note"], rows, rowCount: rows.length, withdrawn: true };
 }
 
 const requests = () => vi.mocked(previewTable).mock.calls.map((call) => call[2]);

@@ -493,7 +493,6 @@ export interface RegisteredTable {
   pagingCeilingRows: number | null;
   replicate: number | null; // REQ-826: null = inherit source
   region: string | null; // REQ-1921: where its data lives; null = no region
-  draft: boolean; // REQ-1921: out of service until its domain's owners release it
   // REQ-1921: out of production until put back: the table itself, and its source.
   withdrawn: boolean;
   sourceWithdrawn: boolean;
@@ -588,7 +587,6 @@ export const LISTED_TABLE_FIELDS = [
   "tableName",
   "alias",
   "description",
-  "draft",
   "withdrawn",
   "sourceWithdrawn",
   "viewSql",

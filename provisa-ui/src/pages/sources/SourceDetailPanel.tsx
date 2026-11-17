@@ -12,6 +12,7 @@ import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { PanelWithdraw } from "../../components/list/PanelWithdraw";
+import type { PutBackRegions } from "../../hooks/useWithdrawal";
 import { useState, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { ActionIcon, Alert, Button, Group, Modal, Stack, Text } from "@mantine/core";
@@ -34,7 +35,9 @@ interface SourceDetailPanelProps {
   onDelete: () => Promise<boolean | void>;
   /** REQ-1921: take the source out of production, and return it; each rejects with the refusal. */
   onWithdraw: () => Promise<void>;
-  onPutBack: () => Promise<void>;
+  onPutBack: (region: string | null) => Promise<void>;
+  /** Where a withdrawn source may be put back; null where the platform declares no regions. */
+  putBackRegions: PutBackRegions | null;
 }
 
 export function SourceDetailPanel({
@@ -46,6 +49,7 @@ export function SourceDetailPanel({
   onDelete,
   onWithdraw,
   onPutBack,
+  putBackRegions,
 }: SourceDetailPanelProps) {
   const { t } = useTranslation();
   const { refreshKaggleSource, loading: refreshing } = useRefreshKaggleSource();
@@ -168,6 +172,9 @@ export function SourceDetailPanel({
             name={s.id}
             withdrawn={s.withdrawn}
             consequence={t("sourceDetailPanel.withdrawConsequence")}
+            region={s.region}
+            putBackRegions={putBackRegions}
+            scope="source"
             onWithdraw={onWithdraw}
             onPutBack={onPutBack}
             testId="source-detail"

@@ -30,6 +30,7 @@ import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { PanelDelete } from "../../components/list/PanelDelete";
 import { PanelWithdraw } from "../../components/list/PanelWithdraw";
+import type { PutBackRegions } from "../../hooks/useWithdrawal";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import { shownType } from "../../irTypes";
@@ -71,7 +72,9 @@ interface TableReadViewProps {
   handleDelete: (id: number) => Promise<boolean | void>;
   /** REQ-1921: take the table out of production, and return it; each rejects with the refusal. */
   onWithdraw: (id: number) => Promise<void>;
-  onPutBack: (id: number) => Promise<void>;
+  onPutBack: (id: number, region: string | null) => Promise<void>;
+  /** Where a withdrawn table may be put back; null where the platform declares no regions. */
+  putBackRegions: PutBackRegions | null;
   handleProfile: (id: number) => void;
   /** REQ-1944: a governance-only viewer: no registration, deploy, profiling or delete. */
   hidingOnly?: boolean;
@@ -121,6 +124,7 @@ export function TableReadView({
   handleDelete,
   onWithdraw,
   onPutBack,
+  putBackRegions,
   handleProfile,
   hidingOnly = false,
   onPreview,
@@ -314,8 +318,11 @@ export function TableReadView({
               name={table.tableName}
               withdrawn={table.withdrawn}
               consequence={t("tableReadView.withdrawConsequence")}
+              region={table.region}
+              putBackRegions={putBackRegions}
+              scope={table.viewSql != null ? "view" : "table"}
               onWithdraw={() => onWithdraw(table.id)}
-              onPutBack={() => onPutBack(table.id)}
+              onPutBack={(region) => onPutBack(table.id, region)}
               testId="table-read-view"
             />
           )}

@@ -305,7 +305,6 @@ fragment ListedTableFields on RegisteredTableType {
   tableName
   alias
   description
-  draft
   withdrawn
   sourceWithdrawn
   viewSql
@@ -383,7 +382,6 @@ query TablesQuery($includeWithdrawn: Boolean! = false) {
     pagingCeilingRows
     replicate
     region
-    draft
     withdrawn
     sourceWithdrawn
     rowMaterialize
@@ -1305,7 +1303,6 @@ query TableAccess($tableId: Int!, $role: String!) {
     pgwire
     rest
     mcp
-    draft
   }
 }
 
@@ -1525,8 +1522,9 @@ mutation WithdrawTable($tableId: Int!) {
   }
 }
 
-mutation PutBackTable($tableId: Int!) {
-  putBackTable(tableId: $tableId) {
+# A put back names the region it returns to (null: no region), within the caller's grant.
+mutation PutBackTable($tableId: Int!, $region: String) {
+  putBackTable(tableId: $tableId, region: $region) {
     ...MutationResult
   }
 }
@@ -1537,8 +1535,8 @@ mutation WithdrawSource($sourceId: String!) {
   }
 }
 
-mutation PutBackSource($sourceId: String!) {
-  putBackSource(sourceId: $sourceId) {
+mutation PutBackSource($sourceId: String!, $region: String) {
+  putBackSource(sourceId: $sourceId, region: $region) {
     ...MutationResult
   }
 }

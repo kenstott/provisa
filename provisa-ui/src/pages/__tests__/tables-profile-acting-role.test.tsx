@@ -34,7 +34,10 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   useAuth: () => ({
     role: { id: "analyst" },
     // "Role: All": the user acts as both roles they hold.
-    selectedRoles: [{ id: "analyst" }, { id: "trader" }],
+    selectedRoles: [
+      { id: "analyst", effectiveCapabilities: [], effectiveResidencyValues: [] },
+      { id: "trader", effectiveCapabilities: [], effectiveResidencyValues: [] },
+    ],
     actingRoles: "analyst,trader",
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
     capabilities: ["admin", "table_registration"],
@@ -52,7 +55,6 @@ const previewTable = vi.fn().mockResolvedValue({
   columns: ["id"],
   rows: [{ id: 41 }],
   rowCount: 1,
-  draft: true,
 });
 
 vi.mock("../../api/admin", async (importOriginal) => ({
@@ -90,7 +92,6 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
     withdrawn: false,
     sourceWithdrawn: false,
     rowMaterialize: false,

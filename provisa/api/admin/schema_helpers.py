@@ -516,7 +516,6 @@ async def _fetch_table_with_columns(
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
-        draft=row["draft"],  # REQ-1921
         withdrawn=row["withdrawn"],  # REQ-1921
         source_withdrawn=row["source_id"] in listing.withdrawn_sources,  # REQ-1921
         row_materialize=row["row_materialize"],  # REQ-1865

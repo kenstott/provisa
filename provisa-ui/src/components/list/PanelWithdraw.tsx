@@ -9,18 +9,23 @@
 // permission from the copyright holder.
 
 // REQ-1921: a detail panel's Withdraw, and once withdrawn its Put back. Withdraw takes the object
-// out of production, so the reader confirms it, told what stops; Put back returns it as it was and
-// asks nothing. While either is pending the control shows a spinner; one that failed says why,
-// where the panel's Delete says it (under the panel's head).
+// out of production, so the reader confirms it, told what stops. Put back names the region the
+// object returns to, among those the reader's data_residency grant covers (the second step of a
+// move between regions); where the platform declares no regions it asks nothing. While either is
+// pending the control shows a spinner; one that failed says why, where the panel's Delete says it
+// (under the panel's head).
 
 import { useContext, useState } from "react";
 import { createPortal } from "react-dom";
-import { ActionIcon, Loader } from "@mantine/core";
+import { ActionIcon, Button, Loader, Modal, Text } from "@mantine/core";
 import { Archive, ArchiveRestore } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { ConfirmDialog } from "../ConfirmDialog";
 import { Tip } from "../Tip";
 import { PanelNoticeContext } from "./panelActions";
+import { RegionSelect } from "../admin/RegionSelect";
+import { FormField, FormFooter, FormLayout } from "../form/FormLayout";
+import type { PutBackRegions } from "../../hooks/useWithdrawal";
 
 export interface PanelWithdrawProps {
   /** The object's name, as its panel's head shows it. */
@@ -29,16 +34,33 @@ export interface PanelWithdrawProps {
   withdrawn: boolean;
   /** What withdrawing stops, said in the confirmation. */
   consequence: string;
+  /** The region it is in now: where Put back offers to return it, when the grant covers it. */
+  region: string | null;
+  /** Where it may be put back; null where the platform declares no regions. */
+  putBackRegions: PutBackRegions | null;
+  /** Which object this is, for the region field's help. */
+  scope: "table" | "view" | "source";
   /** Each resolves once done and the lists read again; each rejects with the refusal. */
   onWithdraw: () => Promise<void>;
-  onPutBack: () => Promise<void>;
+  onPutBack: (region: string | null) => Promise<void>;
   testId: string;
+}
+
+/** The region a put back starts on: where the object is, when the grant covers it, else the
+ * first region the grant covers, else no region when that is covered; undefined when none is. */
+function startRegion(region: string | null, can: PutBackRegions): string | null | undefined {
+  if (region !== null ? can.regions.includes(region) : can.noRegion) return region;
+  if (can.regions.length > 0) return can.regions[0];
+  return can.noRegion ? null : undefined;
 }
 
 export function PanelWithdraw({
   name,
   withdrawn,
   consequence,
+  region,
+  putBackRegions,
+  scope,
   onWithdraw,
   onPutBack,
   testId,
@@ -47,6 +69,9 @@ export function PanelWithdraw({
   const notice = useContext(PanelNoticeContext);
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
+  // The put back's region dialog: open, and the region chosen in it.
+  const [choosing, setChoosing] = useState(false);
+  const [chosen, setChosen] = useState<string | null | undefined>(undefined);
 
   const run = async (action: () => Promise<void>) => {
     setProblem(null);
@@ -81,7 +106,12 @@ export function PanelWithdraw({
             data-changes="true"
             onClick={(e) => {
               e.stopPropagation();
-              void run(onPutBack);
+              if (putBackRegions === null) {
+                void run(() => onPutBack(null));
+                return;
+              }
+              setChosen(startRegion(region, putBackRegions));
+              setChoosing(true);
             }}
           >
             {busy ? spinner : <ArchiveRestore size={14} />}
@@ -114,6 +144,55 @@ export function PanelWithdraw({
             </Tip>
           )}
         </ConfirmDialog>
+      )}
+      {putBackRegions !== null && (
+        <Modal
+          opened={choosing}
+          onClose={() => setChoosing(false)}
+          title={t("list.putBackTitle", { name })}
+          centered
+          data-testid={`${testId}-put-back-dialog`}
+        >
+          <FormLayout>
+            {chosen === undefined ? (
+              <FormField size="full">
+                <Text size="sm" data-testid={`${testId}-put-back-no-region`}>
+                  {t("list.putBackNoRegion")}
+                </Text>
+              </FormField>
+            ) : (
+              <FormField size="medium" hint={t("list.putBackRegionHint")}>
+                <RegionSelect
+                  value={chosen}
+                  onChange={setChosen}
+                  regions={putBackRegions.regions}
+                  noRegion={putBackRegions.noRegion}
+                  scope={scope}
+                  testId={`${testId}-put-back-region`}
+                />
+              </FormField>
+            )}
+            <FormFooter
+              onCancel={() => setChoosing(false)}
+              action={
+                <Button
+                  type="button"
+                  disabled={chosen === undefined}
+                  data-testid={`${testId}-put-back-confirm`}
+                  data-changes="true"
+                  onClick={() => {
+                    if (chosen === undefined) return;
+                    const into = chosen;
+                    setChoosing(false);
+                    void run(() => onPutBack(into));
+                  }}
+                >
+                  {t("list.putBack")}
+                </Button>
+              }
+            />
+          </FormLayout>
+        </Modal>
       )}
       {said !== null && (notice ? createPortal(said, notice) : notice === undefined ? said : null)}
     </>

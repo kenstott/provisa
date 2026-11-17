@@ -63,7 +63,7 @@ import {
   useListedNames, // REQ-2153
 } from "../hooks/useAdminQueries";
 import { usePurgeCacheByTable, useReplicaBuilds } from "../hooks/useAdminOpsQueries";
-import { useTableWithdrawal } from "../hooks/useWithdrawal";
+import { usePutBackRegions, useTableWithdrawal } from "../hooks/useWithdrawal";
 import type { RegisteredTable, ColumnDependentsResult } from "../types/admin";
 import { DERIVED_SOURCE_ID } from "../types/admin";
 import { FilterInput } from "../components/admin/FilterInput";
@@ -141,6 +141,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
     // REQ-1921: the withdrawn tables are listed too, marked, so they can be put back.
   } = useTableDetails({ includeWithdrawn: true });
   const { withdrawTable, putBackTable } = useTableWithdrawal();
+  const putBackRegions = usePutBackRegions();
   const { sources, refetch: refetchSources } = useSources();
   const { domains, refetch: refetchDomains } = useDomains();
   const { dataProducts } = useDataProducts(); // REQ-1634
@@ -1012,6 +1013,7 @@ export function TablesPage({ viewsOnly = false }: { viewsOnly?: boolean } = {}) 
             handleDelete={handleDelete}
             onWithdraw={withdrawTable}
             onPutBack={putBackTable}
+            putBackRegions={putBackRegions}
             handleProfile={handleProfile}
             onPreview={(tb) => setPreviewTable((open) => (open?.id === tb.id ? null : tb))}
             source={sources.find((s) => s.id === t.sourceId)}

@@ -24,6 +24,9 @@
     "withdrawNamed": "Retirer {{name}}",
     "withdrawTitle": "Retirer {{name}} ?",
     "putBack": "Remettre",
-    "putBackNamed": "Remettre {{name}}"
+    "putBackNamed": "Remettre {{name}}",
+    "putBackTitle": "Remettre {{name}}",
+    "putBackRegionHint": "La région où il revient, une que couvre votre autorisation de résidence des données.",
+    "putBackNoRegion": "Aucune autorisation de résidence des données de vos rôles ne couvre une région où le remettre. Un détenteur de la résidence des données pour la région de destination le remet."
   }
 }
