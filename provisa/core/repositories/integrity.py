@@ -166,6 +166,7 @@ KINDS: dict[str, Kind] = {
     "synthetic_dataset": Kind("synthetic_datasets", "id"),  # REQ-1939
     "reference_document": Kind("reference_documents", "id"),  # REQ-2185
     "term_scan": Kind("glossary_term_scans", "id"),  # REQ-2179
+    "discovery_run": Kind("discovery_runs", "id"),  # REQ-413
     "ontology_import": Kind("glossary_ontology_imports", "id"),  # REQ-2237
     "ontology_item": Kind("glossary_ontology_items", "id"),  # REQ-2237
     "erd_layout": Kind("erd_layouts", "name"),  # REQ-2189
@@ -252,6 +253,8 @@ REFERENCES: tuple[Reference, ...] = (
     # REQ-413: what a discovery run read of a table goes with the table.
     _part("discovery_run_proposals", "source_table_id", "table"),
     _part("discovery_run_proposals", "target_table_id", "table"),
+    # REQ-413: a run's proposals go with the run.
+    _part("discovery_run_proposals", "run_id", "discovery_run"),
     _part("materialized_views", "id", "table", by="view_mv_id", of="materialized_view", owner="id"),
     _part("rls_rules", "table_id", "table"),
     _part("table_write_grants", "table_id", "table"),  # REQ-2074

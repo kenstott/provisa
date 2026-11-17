@@ -2797,6 +2797,27 @@ CREATE TABLE IF NOT EXISTS discovery_runs (
     tenant_id       UUID
 );
 
+-- REQ-413: every proposal a discovery run read, kept with the run. Mirrors
+-- schema_org.discovery_run_proposals.
+CREATE TABLE IF NOT EXISTS discovery_run_proposals (
+    id              SERIAL PRIMARY KEY,
+    run_id          INTEGER NOT NULL REFERENCES discovery_runs(id) ON DELETE CASCADE,
+    kind            TEXT NOT NULL,
+    source_table_id INTEGER REFERENCES registered_tables(id),
+    source_column   TEXT,
+    target_table_id INTEGER REFERENCES registered_tables(id),
+    target_column   TEXT,
+    confidence      DOUBLE PRECISION,
+    scored          DOUBLE PRECISION,
+    reasoning       TEXT,
+    suggested_name  TEXT,
+    left_out        TEXT,
+    answer          TEXT,
+    decision        TEXT,
+    accepted_as     TEXT,
+    tenant_id       UUID
+);
+
 CREATE TABLE IF NOT EXISTS glossary_term_drafts (
     id              SERIAL PRIMARY KEY,
     scan_id         INTEGER NOT NULL REFERENCES glossary_term_scans(id) ON DELETE CASCADE,
