@@ -56,7 +56,8 @@
       "username_exists": "Benutzername existiert bereits",
       "not_permitted": "Nicht erlaubt",
       "token_scopes_required": "Wählen Sie mindestens eine Rolle für das Token aus.",
-      "token_scope_not_held": "Ein Token kann nur Rollen verwenden, die Sie innehaben."
+      "token_scope_not_held": "Ein Token kann nur Rollen verwenden, die Sie innehaben.",
+      "no_role_held": "'{{user}}' hat in dieser Organisation keine Rolle"
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"

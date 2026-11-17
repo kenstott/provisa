@@ -56,7 +56,8 @@
       "username_exists": "Gebruikersnaam bestaat al",
       "not_permitted": "Niet toegestaan",
       "token_scopes_required": "Kies ten minste één rol voor het token.",
-      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt."
+      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt.",
+      "no_role_held": "'{{user}}' heeft geen rol in deze organisatie"
     },
     "authz": {
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"

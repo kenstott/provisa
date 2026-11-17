@@ -56,7 +56,8 @@
       "username_exists": "Имя пользователя уже существует",
       "not_permitted": "Не разрешено",
       "token_scopes_required": "Выберите хотя бы одну роль для токена.",
-      "token_scope_not_held": "Токен может использовать только роли, которые у вас есть."
+      "token_scope_not_held": "Токен может использовать только роли, которые у вас есть.",
+      "no_role_held": "У '{{user}}' нет роли в этой организации"
     },
     "authz": {
       "mutation_not_permitted": "Мутация '{{field_name}}' не разрешена: {{reason}}"

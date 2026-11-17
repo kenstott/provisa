@@ -56,7 +56,8 @@
       "username_exists": "Nome de usuário já existe",
       "not_permitted": "Não permitido",
       "token_scopes_required": "Escolha pelo menos uma função para o token.",
-      "token_scope_not_held": "Um token só pode usar funções que você tem."
+      "token_scope_not_held": "Um token só pode usar funções que você tem.",
+      "no_role_held": "'{{user}}' não tem nenhum papel nesta organização"
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"

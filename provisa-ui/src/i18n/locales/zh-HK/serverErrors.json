@@ -56,7 +56,8 @@
       "username_exists": "使用者名稱已存在",
       "not_permitted": "不允許",
       "token_scopes_required": "請至少為權杖選擇一個角色。",
-      "token_scope_not_held": "權杖只能使用您擁有的角色。"
+      "token_scope_not_held": "權杖只能使用您擁有的角色。",
+      "no_role_held": "'{{user}}' 在此組織中沒有任何角色"
     },
     "authz": {
       "mutation_not_permitted": "不允許執行變更「{{field_name}}」：{{reason}}"

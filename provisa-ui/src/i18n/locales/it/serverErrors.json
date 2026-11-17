@@ -56,7 +56,8 @@
       "username_exists": "Nome utente già esistente",
       "not_permitted": "Non consentito",
       "token_scopes_required": "Scegli almeno un ruolo per il token.",
-      "token_scope_not_held": "Un token può usare solo ruoli che detieni."
+      "token_scope_not_held": "Un token può usare solo ruoli che detieni.",
+      "no_role_held": "'{{user}}' non ha alcun ruolo in questa organizzazione"
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' non consentita: {{reason}}"
