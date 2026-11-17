@@ -30,6 +30,8 @@ so a search table it reads is read under its arguments (REQ-1922).
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
@@ -109,7 +111,11 @@ async def _transformed_rows_sql(state: Any, mv: "MVDefinition", plan: Any, engin
     rows = [dict(zip(result.column_names, row)) for row in result.rows]
     # Where a statement's own landed rows go -- a code table's among them -- not the view store.
     loc = cache_location(mv.id, resolved_cache_catalog(engine), org_cache_schema(state))
-    table = f"mv_columns_{mv.id}"
+    # Named by its columns: the landing creates a table only where none is, and the last build's
+    # stays until its drop. A build of another shape (a definition changed, or a rule that keeps
+    # another input, REQ-2131) lands beside it, never into it.
+    shape = hashlib.sha256(json.dumps(columns).encode()).hexdigest()[:12]
+    table = f"mv_columns_{mv.id}_{shape}"
     with engine.isolated_sync() as conn:
         ensure_cache_schema(conn, loc)
     await engine.land_source_table(schema=loc.schema, table=table, columns=columns, rows=rows)

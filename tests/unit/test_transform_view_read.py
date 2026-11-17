@@ -570,3 +570,49 @@ def test_a_junction_edge_through_the_view_is_no_relationship_to_filter_by():
     state.relationships = [{**SUPPLIER_TO_VIEW, "target_table_id": 1, "via_table_id": 2}]
     with pytest.raises(PermissionError, match="fx.suppliers"):
         _answered(RANKED_STATEMENT, state, _ranked_reader(row_rule=True))
+
+
+# --- a build lands its transformed rows in a table of its own shape -------------------------------
+
+
+def test_a_build_of_another_shape_lands_beside_the_last_never_into_it(monkeypatch):
+    """The landing creates a table only where none is, and the last build's stays until its drop:
+    a rule that keeps another input changes the build's columns, so its rows go to a table of
+    their own (a fixed name failed the rebuild: the old table lacked the new kept column)."""
+    import contextlib
+
+    from provisa.api_source import engine_cache
+    from provisa.mv import governed_build
+
+    landed: list[tuple[str, list]] = []
+
+    class _Engine:
+        dialect = "duckdb"
+
+        @contextlib.contextmanager
+        def isolated_sync(self):
+            yield None
+
+        async def land_source_table(self, *, schema, table, columns, rows):
+            del schema, rows
+            landed.append((table, columns))
+
+    async def _execute(_plan):
+        return SimpleNamespace(column_names=["id"], rows=[(1,)])
+
+    shapes = iter([[("id", "integer")], [("id", "integer"), ("__rule_input_s__id", "integer")]])
+
+    async def _typed(_mv, _plan):
+        return next(shapes)
+
+    monkeypatch.setattr("provisa.pgwire._pipeline._execute_plan", _execute)
+    monkeypatch.setattr(governed_build, "_typed_columns", _typed)
+    monkeypatch.setattr(engine_cache, "resolved_cache_catalog", lambda _e: "mat_store")
+    monkeypatch.setattr(engine_cache, "org_cache_schema", lambda _s: "org_default_api_cache")
+    monkeypatch.setattr(engine_cache, "ensure_cache_schema", lambda _c, _l: None)
+    monkeypatch.setattr(engine_cache, "schedule_drop", lambda *_a: None)
+    mv = _state(MVStatus.FRESH).mv_registry.get("view-clean_suppliers")
+    for _ in range(2):
+        asyncio.run(governed_build._transformed_rows_sql(SimpleNamespace(), mv, None, _Engine()))
+    (first, _), (second, _) = landed
+    assert first.startswith("mv_columns_view-clean_suppliers_") and first != second
