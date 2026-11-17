@@ -183,3 +183,36 @@ def test_first_launch_forwards_exactly_the_plugins_settings():
     text = _FIRST_LAUNCH.read_text()
     forwarded = set(re.findall(r"^\s+(STRIPE_[A-Z_]+): \"\\\$\{\1:-\}\"$", text, re.MULTILINE))
     assert forwarded == _PLUGIN_SETTINGS
+
+
+def _target_steps(target: str) -> list[str]:
+    """The function calls a deploy target runs, in order, from the script's case arm."""
+    text = _SCRIPT.read_text()
+    arm = re.search(
+        rf"^  {re.escape(target)}\)\n(.*?)\n    ;;$|^  {re.escape(target)}\)\n(.*?) ;;$",
+        text,
+        re.MULTILINE | re.DOTALL,
+    )
+    assert arm, target
+    body = arm.group(1) or arm.group(2)
+    calls = [line for line in body.splitlines() if not line.strip().startswith("#")]
+    return [
+        s.strip()
+        for s in " ".join(calls).replace("{", " ").replace("}", " ").split(";")
+        if s.strip()
+    ]
+
+
+@pytest.mark.parametrize("target", ["api", "cfg", "all", "patch"])
+def test_the_preflight_reads_the_container_after_the_compose_that_forwards_the_settings(target):
+    # The container's environment is what the compose file names. A node set up before a billing
+    # setting existed has a compose that does not forward it, so asserting the container before
+    # the current compose is pushed refuses every such node however its provisa.env is set.
+    steps = _target_steps(target)
+    assert "push_cp_compose" in steps, steps
+    compose = steps.index("push_cp_compose")
+    preflight = steps.index("preflight_commerce")
+    assert steps.index("push_commerce_env") < compose < preflight, steps
+    for code in ("push_api", "push_plugins", "push_cfg"):
+        if code in steps:
+            assert preflight < steps.index(code), (code, steps)
