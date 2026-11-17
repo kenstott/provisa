@@ -200,5 +200,19 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
                     id(obj),
                     [type(r).__qualname__ for r in gc.get_referrers(obj)][:6],
                 )
+        for obj in gc.get_objects():
+            if type(obj).__name__ == "generator" and obj.__name__ == "_batches":
+                print(
+                    "=== DIAG live _batches generator",
+                    id(obj),
+                    "running",
+                    obj.gi_running,
+                    "started",
+                    obj.gi_frame is not None and obj.gi_frame.f_lasti >= 0,
+                    [type(r).__qualname__ for r in gc.get_referrers(obj)][:6],
+                )
+        print("=== DIAG gc.collect freed", gc.collect())
+        _time.sleep(2)
+        print("=== DIAG left after gc.collect:", _opened_since(server, started))
     server.dispose()
     assert left == [], f"backends still connected after shutdown: {left}"
