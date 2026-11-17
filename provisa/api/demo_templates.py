@@ -1040,10 +1040,12 @@ async def record_ready(pool, demo: PublishedDemo) -> None:
 async def warm_ready(pool, demo: PublishedDemo) -> bool:
     """Whether ``demo``'s template can be served as it is, right after a start, with no build and
     no wait for its replicas: its org is ready, its readiness record is for this demo version and
-    this Provisa release, and its store on disk holds exactly the rows recorded."""
+    this Provisa release, its folder is on this node, and its store there holds exactly the rows
+    recorded."""
     from sqlalchemy import select
 
     from provisa.api.demo_replicas import store_counts
+    from provisa.core import org_files
     from provisa.core.schema_admin import demo_template_readiness, orgs
 
     async with pool.acquire() as conn:
@@ -1067,6 +1069,11 @@ async def warm_ready(pool, demo: PublishedDemo) -> bool:
         return False
     held = await asyncio.to_thread(store_counts, demo.template_org)
     if held != {"replicas": dict(record.replicas), "views": dict(record.views)}:
+        return False
+    if not org_files.folder(demo.template_org).is_dir():
+        # A node with a fresh disk under a shared control plane: the template's folder is not
+        # here, whatever its record holds -- an empty store's matches the none read here. Served
+        # as built, no runtime build here makes it ready, and an open reads it.
         return False
     # REQ-2052: and the profile runs its bundle carries, which every sandbox of it is cloned with.
     # A template served as built without them gave every sandbox an empty run history; one that
