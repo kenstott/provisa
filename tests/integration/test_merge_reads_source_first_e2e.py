@@ -37,7 +37,7 @@ import pytest
 import yaml
 
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
-from tests.helpers import config_write_grants, registered_id, release_field
+from tests.helpers import config_write_grants
 
 pytestmark = [pytest.mark.integration, pytest.mark.local_platform]
 
@@ -240,12 +240,11 @@ def code(server):
         _column("org", "text", _ROLES),
         _column("secret", "text", [_ADMIN]),
     ]
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "er-code", domainId: "er", schemaName: "default", '
         f'tableName: "matches", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     _admin(
         server,
         f'upsertRlsRule(input: {{tableId: "matches", roleId: "{_CLERK}", '

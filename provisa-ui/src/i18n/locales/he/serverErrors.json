@@ -475,8 +475,6 @@
       "mask_unreachable": "הגדרת מסכה שלא ניתן להגיע אליה: {{entries}}",
       "webhook_not_found": "ה-Webhook '{{webhook}}' לא נמצא",
       "change_streams_unavailable": "המקור '{{source}}' הוא שרת MongoDB עצמאי, שאינו מספק change streams: אות השינוי native דורש replica set או אשכול מפוצל. הפעילו אותו כ-replica set, או השתמשו באות השינוי poll.",
-      "table_draft_set": "הטבלה {{table}} הוגדרה כטיוטה",
-      "table_released": "הטבלה {{table}} שוחררה",
       "openapi_no_rows_field": "הטבלה {{table}}: בתשובה אין מאפיין {{rows_field}} שממנו ניתן לקרוא שורות.",
       "paging_rows_field_fixed": "הטבלה {{table}}: מיקום שורותיה ({{rows_field}}) נקבע בעת רישום הטבלה. רשמו את הטבלה מחדש כדי לקרוא את שורותיה ממקום אחר.",
       "relationship_request_queued": "נכנס לתור כבקשה מס' {{id}}. היא דורשת אישורים מ-{{required}} משתמשים שונים שרשאים ליצור קשרים, כשלפחות אחד מהם מגיע לכל דומיין שהיא נוגעת בו.",
@@ -505,6 +503,8 @@
       "role_updated": "התפקיד '{{role}}' עודכן",
       "relationship_id_taken": "הקשר '{{relationship}}' כבר קיים",
       "relationship_id_reserved": "מזהה הקשר '{{id}}' מתחיל ב-'{{prefix}}', קידומת השמורה לקשרים מובנים. בחרו מזהה אחר.",
+      "relationship_source_column_missing": "הקשר '{{relationship}}' אינו מציין עמודת מקור. קשר מצטרף על עמודה של טבלת המקור שלו.",
+      "relationship_target_column_missing": "הקשר '{{relationship}}' אינו מציין עמודת יעד. קשר מצטרף על עמודה של טבלת היעד שלו, אלא אם היעד שלו הוא פונקציה.",
       "relationship_graphql_alias_taken": "כינוי ה-GraphQL '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "המשימה המתוזמנת '{{task}}' עודכנה",
@@ -545,7 +545,13 @@
       "code_resolver_has_dependents": "לא ניתן להוציא משימוש את מפענח הקוד '{{resolver}}' כל עוד משהו תלוי בו",
       "incremental_no_change": "למקור הקוד אין פונקציית ‎@change‎ עבור {{table}}. יש להצהיר על אחת באמצעות ‎@change table={{table}}‎.",
       "incremental_needs_rebuild_every": "{{table}} מתוחזקת באופן אינקרמנטלי, ולכן היא נבנית מחדש במלואה לפי שעון. יש לקבוע באיזו תדירות, בשניות, בשדה \"בנייה מחדש מלאה כל\".",
-      "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה"
+      "table_derived_from_function": "הטבלה '{{name}}' נגזרת מפונקציה: היא מוסרת על ידי כיבוי הטבלה של הפונקציה, והעמודות והפרמטרים שלה נערכים בפונקציה",
+      "table_withdrawn": "הטבלה {{table}} הוסרה מהייצור",
+      "table_put_back": "הטבלה {{table}} הוחזרה",
+      "source_withdrawn": "המקור {{source}} הוסר מהייצור",
+      "source_put_back": "המקור {{source}} הוחזר",
+      "withdrawn_source_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: המקור שלה {{source}} הוסר מהייצור, ואף מנוע אינו קורא מקור שהוסר.",
+      "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",

@@ -164,14 +164,14 @@ describe("a new single-file source's table, set up with it as a draft", () => {
     renderInForm(<Harness start={{}} />, { mocks: DOMAINS });
     expect(screen.getByTestId("source-draft-table")).toBeChecked();
     expect(draftTable(BASE, [{ id: "shelter" }, { id: "finance" }])).toEqual({
-      registerTableDraft: true,
+      registerTableFromFile: true,
       tableDomainId: "shelter",
     });
     await waitFor(() =>
       expect(screen.getByTestId("source-draft-table-domain")).toHaveValue("shelter"),
     );
     fireEvent.click(screen.getByTestId("source-draft-table"));
-    expect(seen?.registerTableDraft).toBe(false);
+    expect(seen?.registerTableFromFile).toBe(false);
     expect(screen.queryByTestId("source-draft-table-domain")).not.toBeInTheDocument();
   });
 
@@ -179,7 +179,7 @@ describe("a new single-file source's table, set up with it as a draft", () => {
     // meta and ops lead the domains list on a real server; no picker offers them as the domain
     // to put a table into (internalDomains.ts), and neither may this one's default.
     expect(draftTable(BASE, [{ id: "meta" }, { id: "ops" }, { id: "shelter" }])).toEqual({
-      registerTableDraft: true,
+      registerTableFromFile: true,
       tableDomainId: "shelter",
     });
     const [shelter, finance] = DOMAINS[0].result.data.domains;
@@ -187,12 +187,16 @@ describe("a new single-file source's table, set up with it as a draft", () => {
       { ...shelter, id: "meta", isSystem: true },
       { ...shelter, id: "ops", isSystem: true },
     ];
-    const mocks = [{ ...DOMAINS[0], result: { data: { domains: [...internal, shelter, finance] } } }];
+    const mocks = [
+      { ...DOMAINS[0], result: { data: { domains: [...internal, shelter, finance] } } },
+    ];
     renderInForm(<Harness start={{}} />, { mocks });
     const picker = screen.getByTestId("source-draft-table-domain");
     await waitFor(() => expect(picker).toHaveValue("shelter"));
     fireEvent.click(picker);
-    expect(await screen.findByRole("option", { name: "finance", hidden: true })).toBeInTheDocument();
+    expect(
+      await screen.findByRole("option", { name: "finance", hidden: true }),
+    ).toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "meta", hidden: true })).not.toBeInTheDocument();
     expect(screen.queryByRole("option", { name: "ops", hidden: true })).not.toBeInTheDocument();
   });
@@ -201,7 +205,7 @@ describe("a new single-file source's table, set up with it as a draft", () => {
     renderInForm(<Harness start={{}} editing="supplies" />, { mocks: DOMAINS });
     expect(screen.queryByTestId("source-draft-table")).not.toBeInTheDocument();
     expect(draftTable({ ...BASE, type: "sqlite" }, [{ id: "shelter" }])).toEqual({
-      registerTableDraft: false,
+      registerTableFromFile: false,
       tableDomainId: null,
     });
   });

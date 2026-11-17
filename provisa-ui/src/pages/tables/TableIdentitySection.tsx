@@ -12,17 +12,12 @@ import { useCallback, useState } from "react";
 import { Select, TextInput } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import type { RegisteredTable, Source } from "../../types/admin";
-import {
-  FormChecks,
-  FormField,
-  FormIdentifiers,
-  FormLayout,
-} from "../../components/form/FormLayout";
+import { FormField, FormIdentifiers, FormLayout } from "../../components/form/FormLayout";
 import { namingConventionLabel, useNamingConventions } from "../../hooks/useNamingConventions";
 import { DescriptionField } from "./DescriptionField";
 import { FieldLabel } from "./FieldLabel";
 import { UNREGISTERED_ID } from "./draftTable";
-import { TableDraftTick, TableRegionField } from "./TablePlacementFields";
+import { TableRegionField } from "./TablePlacementFields";
 import { FilesGlobFieldset } from "./FilesGlobFieldset";
 import { ImportSetField } from "./ImportSetField";
 import { isFilesSourceType } from "./tableSectionFields";
@@ -195,9 +190,6 @@ export function TableIdentitySection({
           />
         </FormField>
       )}
-      <FormChecks>
-        <TableDraftTick table={editingTable} onChange={setEditingTable} />
-      </FormChecks>
       <FormField size="full">
         <div>
           <FieldLabel

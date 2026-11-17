@@ -32,7 +32,6 @@ import pytest
 import yaml
 
 from tests.embedded_pg import DATABASE, PASSWORD, ROLE, start_local_postgres
-from tests.helpers import registered_id, release_field
 
 pytestmark = [pytest.mark.integration]
 
@@ -130,14 +129,13 @@ def test_a_signal_brings_the_sources_change_into_reads(server, source_pg):
         f'port: {source_pg.port}, database: "{DATABASE}", username: "{ROLE}", '
         f'password: "{PASSWORD}", changeSignal: "signal"}})',
     )
-    registered = _mutate(
+    _mutate(
         server,
         'registerTable(input: {sourceId: "shop_pg", domainId: "shop", schemaName: "public", '
         'tableName: "orders", columns: ['
         '{name: "id", visibleTo: ["org_admin"], dataType: "integer", isPrimaryKey: true}, '
         '{name: "name", visibleTo: ["org_admin"], dataType: "varchar"}]})',
     )
-    _mutate(server, release_field(registered_id(registered["message"])))
     _mutate(server, 'updateSourceReplicate(sourceId: "shop_pg", replicate: 0)')
 
     assert _read(server) == [1]

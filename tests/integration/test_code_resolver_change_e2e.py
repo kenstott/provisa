@@ -30,7 +30,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import _ROLE, _admin, _archive, _config
 from tests.port_lease import lease_ports
 
@@ -163,12 +162,11 @@ def geo(server):
         ("stores", [_column("id", "bigint"), _column("region", "bigint")]),
         ("regions", [_column("id", "bigint")]),
     ):
-        registered = _admin(
+        _admin(
             server,
             'registerTable(input: {sourceId: "geo", domainId: "fx", schemaName: "default", '
             f'tableName: "{table}", cacheTtl: 300, columns: [{", ".join(columns)}]}})',
         )
-        _admin(server, release_field(registered_id(registered["message"])))
     response = httpx.post(
         f"{server.base_url}/admin/actions/functions",
         json={

@@ -38,6 +38,8 @@ def _table(**overrides: Any) -> RegisteredTableType:
         replicate=None,
         region=None,
         draft=False,
+        withdrawn=False,
+        source_withdrawn=False,
         row_materialize=False,
         load_protected=None,
         off_peak_window=None,

@@ -67,7 +67,7 @@ from typing import Any
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
-from tests.helpers import registered_id, release_mutation, write_grants_mutation
+from tests.helpers import registered_id, write_grants_mutation
 
 # The role every test in this bucket registers for and queries as. It must be a role the app
 # actually seeds (config/provisa.yaml:7 makes org_admin the default identity) — a role name that
@@ -356,8 +356,7 @@ async def register_table(
         await _gql(
             client, write_grants_mutation(table_id, writable_by, columns), "setTableWriteGrants"
         )
-    # REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await _gql(client, release_mutation(table_id), "setTableDraft")
+    # REQ-1921: registered, it is live: no step puts it in service.
 
 
 async def rebuild_schemas(client: AsyncClient) -> None:

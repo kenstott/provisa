@@ -43,7 +43,6 @@ import pytest
 import sqlalchemy as sa
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_sources_e2e import _archive
 
 pytestmark = [pytest.mark.integration]
@@ -397,13 +396,6 @@ def quality(server):
         "{ success message } }",
     )["registerTable"]
     assert registered["success"], registered
-    released = _graphql(
-        server,
-        "mutation { "
-        + release_field(registered_id(registered["message"]))
-        + " { success message } }",
-    )
-    assert all(r["success"] for r in released.values()), released
     return "quality"
 
 

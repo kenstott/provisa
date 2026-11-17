@@ -104,6 +104,8 @@ def label_map(monkeypatch):
         rls_rules=[],
         metrics=[],
         draft_tables=[],
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     ctx = role_surface(state, "analyst").context
     return CypherLabelMap.from_schema(

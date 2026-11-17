@@ -76,7 +76,6 @@ const NOT_A_FORM: Readonly<Record<string, string>> = {
   "pages/sql/SqlEditorPanel.tsx": "the SQL editor toolbar",
   "pages/SqlPage.tsx": "the SQL page toolbar",
   "pages/QueryPage.tsx": "the query explorer toolbar",
-  "pages/tables/TableReadView.tsx": "the Draft tick among a table detail's actions",
   "pages/NlPage.tsx": "the question box of the natural-language page",
   "pages/GrpcPage.tsx": "the request builder of the gRPC explorer",
   "pages/JsonApiPage.tsx": "the request builder of the JSON:API explorer",

@@ -1348,6 +1348,13 @@ async def save_relationship(
             return refused.result
         except RetiredNameTaken as taken:  # REQ-2248
             return retired_name_result(taken)
+        except rel_repo.RelationshipWithoutColumns as unjoined:
+            return MutationResult(
+                success=False,
+                message=str(unjoined),
+                code=f"schema.relationship_{unjoined.end}_column_missing",
+                params={"relationship": unjoined.rel_id},
+            )
         except rel_repo.ReservedRelationshipPrefix as reserved:
             return MutationResult(
                 success=False,
@@ -2576,15 +2583,15 @@ async def _delete_source_row(id: str, reader: "DependentsReader", pool) -> Mutat
 async def _publish_new_source(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113, REQ-2006
-    """Rebuild the schemas once for a source just created, with its draft table when one was asked
+    """Rebuild the schemas once for a source just created, with its table when one was asked
     for. Registering that table ends in a rebuild of its own, and typing it from the file needs
     none first: a Save paid for both, the longest steps it has. What keeps the source from being
-    answered as saved is returned, as :func:`_register_draft_table` says it."""
-    if not input.register_table_draft:
+    answered as saved is returned, as :func:`_register_table_from_file` says it."""
+    if not input.register_table_from_file:
         await _rebuild_schemas()
         return None
     try:
-        said = await _register_draft_table(info, input)
+        said = await _register_table_from_file(info, input)
     except BaseException:
         # The source stands, whatever became of its table.
         await _rebuild_schemas()
@@ -2634,12 +2641,12 @@ def default_table_input(
     )
 
 
-async def _register_draft_table(
+async def _register_table_from_file(
     info: StrawberryInfo, input: SourceInput
 ) -> MutationResult | None:  # REQ-2113
-    """A single-file CSV or Parquet source's table, set up with the source as a draft (out
-    of service until a steward takes it out of draft, REQ-1921): named after the source and
-    typed from its file as Register Table proposes it, every role seeing every column. None
+    """A single-file CSV or Parquet source's table, set up with the source and live on
+    registration (REQ-1921): named after the source and typed from its file as Register Table
+    proposes it, every role seeing every column. None
     when it is set up; else the source stands and why its table was not set up is said."""
     from provisa.api.admin.schema_query import resolve_available_columns_metadata
     from provisa.core.source_downloads import DOWNLOAD_TYPES
@@ -2662,6 +2669,122 @@ async def _register_draft_table(
     table = default_table_input(input.id, input.table_domain_id, "main", input.id, columns)
     result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
     return None if result.success else _without(result.message)
+
+
+def _source_not_found(source_id: str) -> MutationResult:
+    return MutationResult(
+        success=False,
+        message=f"Source {source_id!r} not found",
+        code="schema.source_not_found",
+        params={"source": source_id},
+    )
+
+
+async def _set_table_withdrawn(
+    info: StrawberryInfo, table_id: int, withdrawn: bool
+) -> MutationResult:  # REQ-1921
+    """Withdraw the table ``table_id`` or put it back: one action each, guarded by the right that
+    edits it (table registration in its domain)."""
+    from sqlalchemy import update as _update
+
+    from provisa.api.admin.code_resolver import held_by_set
+    from provisa.core import model_change, model_uri
+
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        row = (
+            await conn.execute_core(
+                select(
+                    registered_tables.c.domain_id,
+                    registered_tables.c.table_name,
+                    registered_tables.c.alias,
+                    registered_tables.c.materialize,
+                    registered_tables.c.code_resolver,
+                    registered_tables.c.draft,
+                ).where(registered_tables.c.id == table_id, registered_tables.c.retired.is_(False))
+            )
+        ).fetchone()
+        if row is None:
+            return MutationResult(
+                success=False,
+                message=f"Table {table_id} not found",
+                code="schema.table_not_found",
+                params={"table": table_id},
+            )
+        _held = held_by_set(dict(row._mapping), "table", row.table_name)  # REQ-2249
+        if _held is not None:
+            return _held
+        require_capability(info, "table_registration", domain_id=row.domain_id)
+        _unread = await _table_unread(info, table_id)  # REQ-2152
+        if _unread is not None:
+            return _unread
+        model_change.name(  # REQ-1524
+            "withdraw" if withdrawn else "put back",
+            model_change.uri(model_uri.named_table_uri, row.domain_id, row.alias or row.table_name),
+        )
+        await conn.execute_core(
+            _update(registered_tables)
+            .where(registered_tables.c.id == table_id)
+            .values(withdrawn=withdrawn)
+        )
+    await _rebuild_schemas()
+    if not withdrawn and row.materialize and not row.draft:
+        # Put back: a materialized view is built now, as a newly saved one is.
+        from provisa.api.admin.schema_common import activate_view_mv
+
+        await activate_view_mv(row.table_name)
+    return MutationResult(
+        success=True,
+        message=f"table {row.table_name!r} {'withdrawn' if withdrawn else 'put back'}",
+        code="schema.table_withdrawn" if withdrawn else "schema.table_put_back",
+        params={"table": row.table_name},
+    )
+
+
+async def _set_source_withdrawn(
+    info: StrawberryInfo, source_id: str, withdrawn: bool
+) -> MutationResult:  # REQ-1921
+    """Withdraw the source ``source_id`` or put it back: one action each, guarded by the right
+    that edits it (source registration). This worker's engine detaches or attaches it here; every
+    other worker's does so when its model reload reads the row (model_reload.reconcile_sources)."""
+    from provisa.api.admin.schema_common import _drop_source_on_engine
+    from provisa.api.app import state
+    from provisa.core.models import BUILT_IN_SOURCE_IDS
+    from provisa.core.repositories import source as source_repo
+    from provisa.core.secrets import resolve_secrets
+
+    require_capability(info, "source_registration")
+    if source_id in BUILT_IN_SOURCE_IDS:
+        return _source_not_found(source_id)
+    pool = await _get_pool()
+    async with pool.acquire() as conn:
+        if not await source_repo.set_withdrawn(conn, source_id, withdrawn):
+            return _source_not_found(source_id)
+        row = await source_repo.get(conn, source_id)
+    assert row is not None  # just written
+    if withdrawn:
+        _drop_source_on_engine(state, source_id)
+    else:
+        from provisa.api.app_loaders import catalog_name_for_source
+
+        model = source_repo.source_from_row(row)
+        # Its catalog name as create_source publishes it; the rebuild's reconcile publishes the
+        # rest of its per-source state, as for a source added.
+        state.source_catalogs[source_id] = catalog_name_for_source(
+            state, model.type.value, source_id
+        )
+        state.federation_engine.register_source(
+            model,
+            resolve_secrets(model.password, credential=True) if model.password else "",
+            catalog_name=state.source_catalogs[source_id],
+        )
+    await _rebuild_schemas()
+    return MutationResult(
+        success=True,
+        message=f"source {source_id!r} {'withdrawn' if withdrawn else 'put back'}",
+        code="schema.source_withdrawn" if withdrawn else "schema.source_put_back",
+        params={"source": source_id},
+    )
 
 
 def _single() -> Any:  # REQ-2240
@@ -4655,7 +4778,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
                     from provisa.api.admin.region_defaults import kept_placement
 
-                    model.region, model.draft = await kept_placement(_conn, model)  # REQ-1921
+                    model.region, model.draft, _stored_withdrawn = await kept_placement(
+                        _conn, model
+                    )  # REQ-1921
                     _stored_region, _stored_draft = model.region, model.draft
                     _conflict = await _domain_table_conflict(
                         _conn,
@@ -5028,7 +5153,9 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     allowed_lateness=input.mv_allowed_lateness,  # REQ-961
                     expected_events=input.mv_expected_events,  # REQ-961
                     business_day_grain=input.mv_business_day_grain,  # REQ-962
-                    draft=model.draft,  # REQ-1921
+                    # REQ-1921: built only while in service -- neither a move's waypoint nor
+                    # withdrawn.
+                    draft=model.draft or _stored_withdrawn,
                     region=model.region,  # REQ-1921
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
@@ -5053,7 +5180,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 "Landed-table reconcile failed after update_table", exc_info=True
             )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
-        if input.view_sql and input.materialize and not model.draft:
+        if input.view_sql and input.materialize and not (model.draft or _stored_withdrawn):
             from provisa.api.admin.schema_common import activate_view_mv
 
             await activate_view_mv(input.table_name)
@@ -6353,69 +6480,28 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         )
 
     @strawberry.mutation
-    async def set_table_draft(
-        self, info: StrawberryInfo, table_id: int, draft: bool
-    ) -> MutationResult:  # REQ-1921
-        """Put a table or view out of service (draft) or release it. While draft it is offered
-        to no reader: in no schema, refused to every statement. It keeps the replica it has, and
-        its steward's preview may land one (admin/table_read.py). Its domain's owners set and
-        clear it, and no other right is needed."""
-        from sqlalchemy import update as _update
+    async def withdraw_table(self, info: StrawberryInfo, table_id: int) -> MutationResult:
+        """Take a table or view out of production (REQ-1921): it serves no role on any front
+        door, no engine reads it and its replica is removed; its definition, grants and
+        relationships stay, and its domain's stewards may preview it. ``putBackTable`` returns it."""
+        return await _set_table_withdrawn(info, table_id, True)
 
-        pool = await _get_pool()
-        async with pool.acquire() as conn:
-            row = (
-                await conn.execute_core(
-                    select(
-                        registered_tables.c.domain_id,
-                        registered_tables.c.table_name,
-                        registered_tables.c.alias,
-                        registered_tables.c.materialize,
-                        registered_tables.c.code_resolver,
-                    ).where(registered_tables.c.id == table_id)
-                )
-            ).fetchone()
-            if row is None:
-                return MutationResult(
-                    success=False,
-                    message=f"Table {table_id} not found",
-                    code="schema.table_not_found",
-                    params={"table": table_id},
-                )
-            from provisa.api.admin.code_resolver import held_by_set
+    @strawberry.mutation
+    async def put_back_table(self, info: StrawberryInfo, table_id: int) -> MutationResult:
+        """Return a withdrawn table or view to production (REQ-1921), as it was."""
+        return await _set_table_withdrawn(info, table_id, False)
 
-            _held = held_by_set(dict(row._mapping), "table", row.table_name)  # REQ-2249
-            if _held is not None:
-                return _held
-            require_capability(info, "table_registration", domain_id=row.domain_id)
-            _unread = await _table_unread(info, table_id)  # REQ-2152
-            if _unread is not None:
-                return _unread
-            from provisa.core import model_change, model_uri
+    @strawberry.mutation
+    async def withdraw_source(self, info: StrawberryInfo, source_id: str) -> MutationResult:
+        """Take a source out of production (REQ-1921): none of its tables serves any role, no
+        engine attaches it and none of its tables keeps a replica; its definition, tables and
+        grants stay. ``putBackSource`` returns it."""
+        return await _set_source_withdrawn(info, source_id, True)
 
-            model_change.name(  # REQ-1524
-                "update draft of",
-                model_change.uri(
-                    model_uri.named_table_uri, row.domain_id, row.alias or row.table_name
-                ),
-            )
-            await conn.execute_core(
-                _update(registered_tables)
-                .where(registered_tables.c.id == table_id)
-                .values(draft=draft)
-            )
-        await _rebuild_schemas()
-        if not draft and row.materialize:
-            # Released: a materialized view is built now, as a newly saved one is.
-            from provisa.api.admin.schema_common import activate_view_mv
-
-            await activate_view_mv(row.table_name)
-        return MutationResult(
-            success=True,
-            message=f"table {row.table_name!r} {'set as draft' if draft else 'released'}",
-            code="schema.table_draft_set" if draft else "schema.table_released",
-            params={"table": row.table_name},
-        )
+    @strawberry.mutation
+    async def put_back_source(self, info: StrawberryInfo, source_id: str) -> MutationResult:
+        """Return a withdrawn source to production (REQ-1921), as it was."""
+        return await _set_source_withdrawn(info, source_id, False)
 
     @strawberry.mutation
     async def set_source_region(

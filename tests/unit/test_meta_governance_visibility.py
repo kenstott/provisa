@@ -244,7 +244,7 @@ class TestREQ1132RowScope:
         )
         # REQ-1921: a draft's row is read by a role holding org_admin and by no other.
         assert gov.rls_rules[_RT_META_TID] == rule_of(
-            f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT draft)"
+            f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT (draft OR withdrawn))"
         )
         assert gov.rls_rules[_TC_META_TID] == rule_of(
             f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
@@ -274,7 +274,7 @@ class TestREQ1132RowScope:
             }
         )
         # REQ-1921: the whole catalog's rows but a draft's, which only org_admin reads.
-        assert gov.rls_rules[_RT_META_TID] == rule_of("NOT draft")
+        assert gov.rls_rules[_RT_META_TID] == rule_of("NOT (draft OR withdrawn)")
         assert _TC_META_TID not in gov.rls_rules
 
     def test_no_capability_lifts_the_row_filter(self):
@@ -290,7 +290,7 @@ class TestREQ1132RowScope:
                 }
             )
             assert gov.rls_rules[_RT_META_TID] == rule_of(
-                f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT draft)"
+                f"(id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})) AND (NOT (draft OR withdrawn))"
             )
             assert gov.rls_rules[_TC_META_TID] == rule_of(
                 f"table_id IN ({_SALES_A},{_SALES_B},{_FIN_OPEN})"
@@ -306,7 +306,7 @@ class TestREQ1132RowScope:
                 "domain_access": ["marketing"],
             }
         )
-        assert gov.rls_rules[_RT_META_TID] == rule_of("(id IN (-1)) AND (NOT draft)")
+        assert gov.rls_rules[_RT_META_TID] == rule_of("(id IN (-1)) AND (NOT (draft OR withdrawn))")
 
 
 # --- REQ-2153: listed names, for a reader outside the listed table's domain -----------------------
