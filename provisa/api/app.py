@@ -26,7 +26,6 @@ import sys
 import threading
 import time
 import uuid
-from collections import deque
 from collections.abc import Awaitable, Callable, Collection, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -4344,21 +4343,6 @@ async def _rewire_lifecycle() -> None:
             )
 
 
-class _DebugLogBufferHandler(logging.Handler):
-    """In-memory ring buffer of routing/auth diagnostics, read back via /debug/logs."""
-
-    def __init__(self, capacity: int = 5000) -> None:
-        super().__init__()
-        self.buffer: deque[str] = deque(maxlen=capacity)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        # Routing/auth diagnostics only -- apscheduler/trino background chatter fires every
-        # few seconds and would otherwise evict these entries long before anyone reads them.
-        if not record.name.startswith("provisa.api."):
-            return
-        self.buffer.append(self.format(record))
-
-
 def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
     """The generation this process's once-per-launch boot work belongs to, or ``None`` for a
     process that is not a worker of a launch. Everything that work is derived from is in it — the
@@ -4405,7 +4389,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         raise_open_file_limit(_log)
     # Set up in-memory log buffer for debugging (max 1000 lines)
-    buffer_handler = _DebugLogBufferHandler(capacity=5000)
+    from provisa.api.debug_logs import DebugLogBufferHandler
+
+    buffer_handler = DebugLogBufferHandler(capacity=5000)
     buffer_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
@@ -6003,25 +5989,10 @@ def create_app() -> FastAPI:
 
     _mount_leak_probe(app)
 
-    @app.api_route("/debug/logs", methods=["GET"])
-    async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
-        """Return recent logs, optionally filtered by pattern. For debugging only."""
-        # Get the root logger and look for our custom buffer handler
-        root_logger = logging.getLogger()
-        buffer_handler = next(
-            (h for h in root_logger.handlers if isinstance(h, _DebugLogBufferHandler)), None
-        )
+    # REQ-1327: the process's diagnostics buffer is the platform plane's.
+    from provisa.api.debug_logs import router as _debug_logs_router
 
-        if buffer_handler is None:
-            return {"error": "log buffer not initialized", "logs": []}
-
-        logs = list(buffer_handler.buffer)
-        if pattern:
-            import re
-
-            logs = [log for log in logs if re.search(pattern, log)]
-
-        return {"count": len(logs), "logs": logs[-limit:]}
+    app.include_router(_debug_logs_router)
 
     # REQ-1882 (amended 2026-09-29): every HTTP and WebSocket request — data, admin, UI APIs,
     # discovery, static — runs entirely on its own request thread and loop. Registered LAST so it
