@@ -19,9 +19,19 @@ The view is built once and stored. Each reader reads it through SQL over HTTP, p
 east_reader's row rule on raw_address (no column of the view) filters the stored rows;
 masked_reader sees raw_address masked, so street, city and country (computed from it) are masked
 and id is not; id_masked sees id masked and the transform's outputs in clear; org_admin, with no
-rule, reads the stored rows as they are. No read calls the transform."""
+rule, reads the stored rows as they are. No read calls the transform.
 
-# Requirements: REQ-2131
+A view calling a code command (REQ-2249) is read under the same rule: ``ranked_suppliers`` joins
+``suppliers`` to the rows of ``rank_suppliers``, a code @query given the suppliers table, so
+east_reader's rule filters its stored rows and masked_reader sees the command's output masked (it
+is computed from every column of the table it is given); ``ranks``, which reads the command's rows
+alone, carries no supplier's values, so east_reader is refused naming the table.
+
+A row rule added for late_reader on id, a column the stored rows do not keep, builds the view
+again; until that build publishes late_reader is refused by name while every other reader keeps
+reading, and then it reads the stored rows filtered."""
+
+# Requirements: REQ-2131, REQ-2249
 
 from __future__ import annotations
 
@@ -35,6 +45,7 @@ import yaml
 from tests.helpers import registered_id, release_field
 from tests.integration.test_code_source_llm import _MODEL, _Endpoint
 from tests.integration.test_code_sources_e2e import _archive
+from tests.port_lease import lease_ports
 
 pytestmark = [pytest.mark.integration, pytest.mark.usefixtures("view")]
 
@@ -44,7 +55,8 @@ _ADMIN = "org_admin"
 _EAST = "east_reader"
 _MASKED = "masked_reader"
 _ID_MASKED = "id_masked"
-_READERS = (_ADMIN, _EAST, _MASKED, _ID_MASKED)
+_LATE = "late_reader"
+_READERS = (_ADMIN, _EAST, _MASKED, _ID_MASKED, _LATE)
 _ROWS = 70
 
 _CODE = {
@@ -54,11 +66,19 @@ import os
 import urllib.request
 from dataclasses import dataclass
 
+from provisa_services import TableRef
+
 
 @dataclass
 class Supplier:
     id: int
     raw_address: str
+
+
+@dataclass
+class Ranked:
+    supplier_id: int
+    score: str
 
 
 @dataclass
@@ -71,6 +91,14 @@ class Address:
 def suppliers() -> list[Supplier]:
     """@table"""
     return [Supplier(i, f"{i} Main St, springfield {i % 7}, us") for i in range(70)]
+
+
+def rank_suppliers(suppliers: TableRef[Supplier]) -> list[Ranked]:
+    """A rank for each supplier of the table it is given.
+
+    @query
+    """
+    return [Ranked(i, f"rank {i}") for i in range(70)]
 
 
 def clean_address(raw_address: list[str]) -> list[Address]:
@@ -115,7 +143,7 @@ def _config(endpoint_url: str) -> dict:
                 "capabilities": ["query_development"],
                 "domain_access": ["*"],
             }
-            for role in (_EAST, _MASKED, _ID_MASKED)
+            for role in (_EAST, _MASKED, _ID_MASKED, _LATE)
         ],
         "sources": [],
         "tables": [],
@@ -145,7 +173,11 @@ def server(tmp_path_factory, endpoint):
         control_plane="own",
         enable_pgwire=True,
         materialize_store_url=f"duckdb:///{work / 'store.duckdb'}",
-        env={"PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps"))},
+        env={
+            "PROVISA_RUNTIME_DEPS_CACHE": str(tmp_path_factory.mktemp("runtime-deps")),
+            # REQ-2226: the port a code command given a table reads it through.
+            "PROVISA_MINTED_PGWIRE_PORT": str(lease_ports(1)[0]),
+        },
     )
     srv.start(timeout=240)
     try:
@@ -215,19 +247,7 @@ def view(server):
         "filterExpr: \"raw_address LIKE '%springfield 3,%'\", "
         'description: "East sees the springfield 3 suppliers."})',
     )
-    response = httpx.post(
-        f"{server.base_url}/admin/actions/functions",
-        json={
-            "name": "clean_address",
-            "sourceId": "suppliers-src",
-            "functionName": "clean_address",
-            "domainId": "fx",
-            "visibleTo": list(_READERS),
-        },
-        headers={"X-Provisa-Role": _ADMIN},
-        timeout=server.request_timeout + 120,
-    )
-    assert response.status_code == 200, response.text
+    _register_function(server, "clean_address")
     columns = ", ".join(
         _column(n, t)
         for n, t in (("id", "bigint"), ("street", "text"), ("city", "text"), ("country", "text"))
@@ -240,14 +260,30 @@ def view(server):
         f"materialize: true, mvRefreshInterval: 3600, columns: [{columns}]}})",
     )
     _admin(server, release_field(registered_id(registered["message"])))
-    response = httpx.post(
-        f"{server.base_url}/admin/graphql",
-        json={"query": 'mutation { refreshMv(mvId: "view-clean_suppliers") { success message } }'},
-        headers={"X-Provisa-Role": _ADMIN},
-        timeout=server.request_timeout + 600,
-    )
-    (refreshed,) = response.json()["data"].values()
-    assert refreshed["success"], f"{refreshed}\n{server.dump_stderr_debug()[-12000:]}"
+    _refresh(server, "clean_suppliers")
+    _register_function(server, "rank_suppliers")
+    for name, sql, columns in (
+        (
+            "ranked_suppliers",
+            "SELECT s.id, r.score FROM rank_suppliers('suppliers') AS r "
+            "JOIN suppliers AS s ON s.id = r.supplier_id",
+            (("id", "bigint"), ("score", "text")),
+        ),
+        (
+            "ranks",
+            "SELECT r.supplier_id, r.score FROM rank_suppliers('suppliers') AS r",
+            (("supplier_id", "bigint"), ("score", "text")),
+        ),
+    ):
+        registered = _admin(
+            server,
+            'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
+            f'tableName: "{name}", alias: "{name}", viewSql: {json.dumps(sql)}, '
+            "materialize: true, mvRefreshInterval: 3600, "
+            f"columns: [{', '.join(_column(n, t) for n, t in columns)}]}})",
+        )
+        _admin(server, release_field(registered_id(registered["message"])))
+        _refresh(server, name)
     deadline = time.monotonic() + 300
     while True:
         rows = _http(server, _ADMIN)
@@ -257,16 +293,47 @@ def view(server):
         time.sleep(2)
 
 
+def _register_function(srv, name: str) -> None:
+    response = httpx.post(
+        f"{srv.base_url}/admin/actions/functions",
+        json={
+            "name": name,
+            "sourceId": "suppliers-src",
+            "functionName": name,
+            "domainId": "fx",
+            "visibleTo": list(_READERS),
+        },
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=srv.request_timeout + 120,
+    )
+    assert response.status_code == 200, response.text
+
+
+def _refresh(srv, view: str) -> None:
+    response = httpx.post(
+        f"{srv.base_url}/admin/graphql",
+        json={"query": f'mutation {{ refreshMv(mvId: "view-{view}") {{ success message }} }}'},
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=srv.request_timeout + 600,
+    )
+    (refreshed,) = response.json()["data"].values()
+    assert refreshed["success"], f"{refreshed}\n{srv.dump_stderr_debug()[-12000:]}"
+
+
 _SQL = "SELECT id, street, city, country FROM clean_suppliers ORDER BY id"
 
 
-def _http(srv, role: str) -> list[dict] | None:
-    response = httpx.post(
+def _sql(srv, role: str, sql: str) -> httpx.Response:
+    return httpx.post(
         f"{srv.base_url}/data/sql",
-        json={"sql": _SQL},
+        json={"sql": sql},
         headers={"X-Provisa-Role": role},
         timeout=srv.request_timeout + 120,
     )
+
+
+def _http(srv, role: str, sql: str = _SQL) -> list[dict] | None:
+    response = _sql(srv, role, sql)
     if response.status_code != 200:
         return None
     return response.json()["data"]["sql"]
@@ -354,3 +421,73 @@ def test_a_masked_plain_input_masks_its_own_output_only(server, endpoint, door):
     assert {int(r["id"]) for r in rows} == {0}
     assert sorted(_parts(r) for r in rows) == sorted(_clear(i) for i in range(_ROWS))
     assert len(endpoint.received) == before
+
+
+# --- REQ-2249: a view calling a code command is read under the same rule ---------------------------
+
+_RANKED = "SELECT id, score FROM ranked_suppliers ORDER BY id"
+
+
+def test_a_code_command_view_read_by_a_restricted_role_gets_only_its_rows_masked(server):
+    admin = _http(server, _ADMIN, _RANKED)
+    assert admin is not None, server.dump_stderr_debug()[-4000:]
+    assert [(int(r["id"]), r["score"]) for r in admin] == [(i, f"rank {i}") for i in range(_ROWS)]
+    east = _http(server, _EAST, _RANKED)
+    assert east is not None, server.dump_stderr_debug()[-4000:]
+    expected = [i for i in range(_ROWS) if i % 7 == 3]
+    assert [(int(r["id"]), r["score"]) for r in east] == [(i, f"rank {i}") for i in expected]
+    masked = _http(server, _MASKED, _RANKED)
+    assert masked is not None, server.dump_stderr_debug()[-4000:]
+    assert [int(r["id"]) for r in masked] == list(range(_ROWS))
+    assert {r["score"] for r in masked} == {"***"}
+
+
+def test_a_row_rule_on_a_table_only_the_code_command_is_given_is_refused_by_name(server):
+    sql = "SELECT supplier_id, score FROM ranks ORDER BY supplier_id"
+    admin = _http(server, _ADMIN, sql)
+    assert admin is not None, server.dump_stderr_debug()[-4000:]
+    assert [int(r["supplier_id"]) for r in admin] == list(range(_ROWS))
+    refused = _sql(server, _EAST, sql)
+    assert refused.status_code == 403, refused.text
+    assert "suppliers" in refused.json()["detail"], refused.text
+
+
+# --- REQ-2131: a rule change builds the view again; until it publishes, refused by name ----------
+
+
+def test_a_rule_on_a_column_the_stored_rows_do_not_keep_is_refused_until_the_rebuild(
+    server, endpoint
+):
+    """late_reader's new rule reads id, which no rule read when the view was built. The build
+    that follows is held at its transform's model call, so its readers are seen before it
+    publishes: late_reader is refused by name, the others read on; then it reads filtered."""
+    endpoint.answering.clear()
+    try:
+        _admin(
+            server,
+            f'upsertRlsRule(input: {{tableId: "suppliers", roleId: "{_LATE}", '
+            'filterExpr: "id < 10", description: "Late sees the first ten suppliers."})',
+        )
+        refused = _sql(server, _LATE, _SQL)
+        assert refused.status_code == 503, refused.text
+        assert refused.json()["code"] == "data.view_awaits_rule_rebuild", refused.text
+        assert refused.json()["params"] == {"view": "clean_suppliers"}
+        # A reader the change does not touch keeps reading.
+        assert len(_sql_over_http(server, _ADMIN)) == _ROWS
+        expected = [i for i in range(_ROWS) if i % 7 == 3]
+        assert [int(r["id"]) for r in _sql_over_http(server, _EAST)] == expected
+    finally:
+        endpoint.answering.set()
+    deadline = time.monotonic() + 300
+    while True:
+        response = _sql(server, _LATE, _SQL)
+        if response.status_code == 200:
+            break
+        # Never an engine error, never the rows from before the change: refused by name.
+        assert response.status_code == 503, response.text
+        assert response.json()["code"] == "data.view_awaits_rule_rebuild", response.text
+        assert time.monotonic() < deadline, server.dump_stderr_debug()[-6000:]
+        time.sleep(2)
+    rows = response.json()["data"]["sql"]
+    assert [int(r["id"]) for r in rows] == list(range(10))
+    assert [_parts(r) for r in rows] == [_clear(i) for i in range(10)]
