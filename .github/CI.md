@@ -15,7 +15,7 @@ its setup from the action and never repeats the commands.
 | Action | What the job has afterwards | Inputs |
 | --- | --- | --- |
 | `setup-python` | uv, and the locked environment in `.venv` | `extras`, `client`, `cache`, `sync` (false: uv only) |
-| `setup-ui` | Node, `provisa-ui/node_modules`, optionally Chromium | `node-version`, `install`, `playwright` (`none`, `chromium`) |
+| `setup-ui` | Node at `.nvmrc`, `provisa-ui/node_modules`, optionally Chromium | `install`, `graph-render`, `playwright` (`none`, `chromium`) |
 | `trino-plugins` | the pinned Trino plugin jars, restored or saved under one key | `phase` (`restore`, `save`), `cache-hit`, `key-prefix` |
 | `pyodide-downloads` | every file `provisa_notebook.build` downloads (Pyodide and its packages), from the cache or one download, in the directory `PROVISA_NOTEBOOK_DOWNLOADS` names | `python`; outputs `dir`, `cache-hit` |
 | `mssql-odbc` | ODBC Driver 18, registered | none |
