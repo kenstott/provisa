@@ -79,4 +79,5 @@ export const adminApi = (original: typeof import("../../api/admin")) => ({
   stopDiscoveryRun: vi.fn(),
   fetchRunProposals: vi.fn(),
   applyRunDecisions: vi.fn(),
+  saveDiscoveryThreshold: vi.fn(),
 });

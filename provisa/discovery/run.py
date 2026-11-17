@@ -48,6 +48,7 @@ from provisa.discovery.direction import (
     reduced_tables,
     settle,
 )
+from provisa.discovery.measure import Measurer
 from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import Control, Rescore, Tally, execute
 from provisa.discovery.windows import Request, bound, plan
@@ -83,7 +84,7 @@ async def while_saying_still_going(
         task.cancel()
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, kw_only=True)
 class RunSpec:
     """What a run is asked for. ``*_tables`` None: every table of the chosen domains. With
     ``same_as_source`` the target set is the source set."""
@@ -96,6 +97,9 @@ class RunSpec:
     same_as_source: bool = True
     #: (vendor, model) for this run only; None: the model assigned to relationship inference.
     model: tuple[str, str] | None = None
+    #: The role of the person who started the run: each proposed pair's values are read as it
+    #: (:mod:`provisa.discovery.measure`).
+    role: str
 
 
 @dataclass
@@ -257,8 +261,8 @@ def _candidate(p: Proposal) -> RelationshipCandidate:
         source_column=p.start[1],
         target_table_id=p.end[0],
         target_column=p.end[1],
-        cardinality="many-to-one",
-        confidence=p.confidence,
+        cardinality=p.cardinality,
+        confidence=p.rank,
         reasoning=p.reasoning,
         suggested_name=p.suggested_name,
     )
@@ -381,10 +385,12 @@ async def perform(
             fk_found = await collect_fk_for_tables(
                 state.source_pools, state.source_types, conn, prepared.source_ids
             )
-    fk = _fk_proposals(fk_found)
+    tables = prepared.tables
+    # Every proposed pair is measured on its data, read as the person who started the run.
+    measurer = Measurer(gather.values_reader(state, spec.role), tables)
+    fk = await measurer.all(_fk_proposals(fk_found))
     publisher = Publisher(pool, scope)
     read_sample = _caching(gather.uniqueness_reader(state))
-    tables = prepared.tables
 
     def registered(read: Recorded) -> Recorded:
         """``read``, said to be already registered where it is: a proposal left out as an answer
@@ -472,6 +478,7 @@ async def perform(
         model.output_tokens,
         ask,
         _Control(),
+        measure=measurer.all,
         refine=await _refiner(state, tables),
         to_thread=in_flight,
     )

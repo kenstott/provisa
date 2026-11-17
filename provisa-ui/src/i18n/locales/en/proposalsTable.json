@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "A ticked row is accepted when you apply. Rows scoring {{threshold}}% or more start ticked. A row with neither box ticked stays undecided.",
+    "intro": "A ticked row is accepted when you apply. Rows scoring at least the threshold start ticked. A row with neither box ticked stays undecided.",
     "colScore": "Score",
+    "colModel": "Model",
     "colJev": "Jev",
     "colKind": "Kind",
+    "colMeasure": "Measured",
     "colReasoning": "Reasoning",
     "colNote": "Note",
     "colNotAgain": "Don't recommend again",
@@ -25,7 +27,7 @@
       "invalid_shape": "Not a relationship as asked for: a field is missing or has the wrong form",
       "unknown_column": "Names a table or column the request did not compare",
       "not_comparable": "The two columns have different classes, so they are not compared",
-      "below_threshold": "The model's confidence is below the {{threshold}}% threshold.",
+      "below_threshold": "Scored under the {{threshold}}% a suggestion is kept at.",
       "same_column": "From a column to itself",
       "primary_key_to_primary_key": "Primary key to primary key",
       "both_repeating": "Values repeat on both sides, so neither is the one side",
@@ -34,7 +36,31 @@
       "rejected": "Rejected before",
       "matches_foreign_key": "Matches a foreign key found in this run",
       "out_of_scope": "Outside the chosen source and target tables",
-      "weaker": "A stronger proposal of the same two columns was kept"
-    }
+      "weaker": "A stronger proposal of the same two columns was kept",
+      "many_to_many": "Neither column's values are distinct"
+    },
+    "threshold": "Tick from",
+    "thresholdHint": "Your own threshold, kept for your next runs.",
+    "measure": {
+      "inTarget": "{{found}} of {{values}} source values are in the target.",
+      "inTargetFirst": "{{found}} of the first {{values}} source values are in the target.",
+      "inSource": "{{found}} of {{values}} target values are in the source.",
+      "inSourceFirst": "{{found}} of the first {{values}} target values are in the source.",
+      "both": "Both columns' values are distinct.",
+      "target": "The target's values are distinct.",
+      "source": "The source's values are distinct.",
+      "neither": "Neither column's values are distinct.",
+      "notRead": {
+        "source": "The source was not read: its table requires a parameter.",
+        "target": "The target was not read: its table requires a parameter."
+      },
+      "notReadable": {
+        "source": "You cannot read the source column.",
+        "target": "You cannot read the target column."
+      },
+      "noValues": "The source holds no values.",
+      "modelScore": "Scored by the model: no values were compared."
+    },
+    "manyToMany": "Neither column's values are distinct, so no relationship starts at one and ends at the other's key. It cannot be accepted."
   }
 }

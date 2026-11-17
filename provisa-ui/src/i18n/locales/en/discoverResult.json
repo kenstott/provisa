@@ -38,7 +38,7 @@
     "leftOut": "Not suggested: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "given less than {{threshold}}% confidence by the model",
+      "below_threshold": "scored less than {{threshold}}%",
       "invalid": "not naming two compared columns",
       "not_comparable": "between columns of different classes",
       "same_column": "from a column to itself",
@@ -49,7 +49,8 @@
       "rejected": "rejected before",
       "matches_foreign_key": "matching a foreign key found in this run",
       "out_of_scope": "outside the chosen tables",
-      "weaker": "repeating a pair of columns a stronger proposal was kept for"
+      "weaker": "repeating a pair of columns a stronger proposal was kept for",
+      "many_to_many": "with neither column's values distinct"
     }
   }
 }
