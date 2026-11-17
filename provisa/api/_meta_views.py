@@ -1393,7 +1393,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                -- kind, is in table_columns_meta. Last, so the view is replaced in place.
                EXISTS (SELECT 1 FROM table_columns p
                        WHERE p.table_id = rt.id AND {required_parameter}) AS requires_parameters,
-               -- REQ-1921: withdrawn, itself or through its source; its row is read as a
+               -- withdrawn, itself or through its source; its row is read as a
                -- draft's is (compiler/stage2). Last, so the view is replaced in place.
                (rt.withdrawn OR rt.source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)) AS withdrawn
         FROM registered_tables rt
