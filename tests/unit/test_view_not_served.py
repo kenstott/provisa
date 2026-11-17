@@ -27,9 +27,7 @@ from provisa.compiler.stage2 import GovernanceContext
 from provisa.mv.view_read import semantic_statement
 
 _BODY = "SELECT c.person, c.amount FROM cash AS c"
-_STATE = SimpleNamespace(
-    mv_registry={}, tables=[], role_build_inputs={"draft_tables": [], "withdrawn_tables": []}
-)
+_STATE = SimpleNamespace(mv_registry={}, tables=[], role_build_inputs={"withdrawn_tables": []})
 
 
 def _gov(*, served: bool) -> GovernanceContext:

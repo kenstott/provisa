@@ -486,7 +486,6 @@ def test_a_meta_role_reads_the_union_with_each_member_s_mask_and_the_or_of_their
         role_build_inputs={
             "role_chains": {"east": ["east"], "west": ["west"]},
             "tables": tables,
-            "draft_tables": [],
             "withdrawn_tables": [],
             "metrics": [],
             "functions": [],

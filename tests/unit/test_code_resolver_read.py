@@ -174,7 +174,7 @@ def _state(
         view_sql_map={"order_clips": f"SELECT * FROM {_STORED}"},
         stored_view_reads={"order_clips"},
         mv_registry=registry,
-        role_build_inputs={"draft_tables": [], "withdrawn_tables": []},
+        role_build_inputs={"withdrawn_tables": []},
         tracked_functions={"match_region": copy.deepcopy(_MATCH_REGION)},
         security_high=False,
         schema_boot_id="test-boot",

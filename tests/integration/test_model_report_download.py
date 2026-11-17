@@ -258,7 +258,7 @@ async def served(
         r["id"]: r for r in with_own_domains({"id": rid, **spec} for rid, spec in _ROLES.items())
     }
     # No schema build runs here: no draft table is compiled aside (catalog_scope reads the list).
-    acme.role_build_inputs = {"draft_tables": [], "withdrawn_tables": []}
+    acme.role_build_inputs = {"withdrawn_tables": []}
     registry = OrgRegistry()
     for key in app_module.state.org_registry.all_org_ids():
         rt = app_module.state.org_registry.get(key)

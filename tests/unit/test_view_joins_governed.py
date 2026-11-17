@@ -79,7 +79,7 @@ def _state(role: dict) -> SimpleNamespace:
         ],
         view_sql_map={"orders_customers": _VIEW_SQL},
         mv_registry=SimpleNamespace(get=lambda _key: None),
-        role_build_inputs={"draft_tables": [], "withdrawn_tables": []},
+        role_build_inputs={"withdrawn_tables": []},
         source_types={"pg": "postgresql"},
         source_pools=SimpleNamespace(source_ids=["pg"]),
         source_catalogs={},

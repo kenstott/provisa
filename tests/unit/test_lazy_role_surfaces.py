@@ -40,7 +40,6 @@ class _State:
             "tables": [],
             "metrics": [],
             "field_numbers": {},
-            "draft_tables": [],
             "withdrawn_tables": [],
         }
 
@@ -250,7 +249,6 @@ async def test_the_warm_up_builds_every_role_and_stops_when_superseded(builds, m
         "tables": [],
         "metrics": [],
         "field_numbers": {},
-        "draft_tables": [],
         "withdrawn_tables": [],
     }
     await app_loaders.warm_role_surfaces(runtime, followed, build=None)
@@ -401,7 +399,6 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],
         withdrawn_tables=[],
         withdrawn_relationships=[],
     )
@@ -465,7 +462,6 @@ def test_a_surface_is_built_against_the_runtime_that_registered_it(monkeypatch) 
         "tables": [],
         "metrics": [],
         "field_numbers": {},
-        "draft_tables": [],
         "withdrawn_tables": [],
     }
     with pytest.raises(_Stop):

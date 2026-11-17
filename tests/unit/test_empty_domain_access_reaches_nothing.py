@@ -450,7 +450,6 @@ def _built_roles(monkeypatch, roles: list[dict]) -> Any:
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
         withdrawn_tables=[],
         withdrawn_relationships=[],
     )
@@ -572,7 +571,6 @@ def test_the_build_itself_drops_a_stale_surface(multi_domain, monkeypatch):
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[],  # REQ-1921: none out of service
         withdrawn_tables=[],
         withdrawn_relationships=[],
     )

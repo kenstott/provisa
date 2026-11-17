@@ -177,7 +177,7 @@ def _model(monkeypatch):
     for name, value in (
         ("roles", _ROLES),
         ("contexts", contexts),
-        ("role_build_inputs", {"draft_tables": [], "withdrawn_tables": []}),
+        ("role_build_inputs", {"withdrawn_tables": []}),
         ("tables", _TABLES),  # what the last schema build compiled
     ):
         monkeypatch.setattr(appmod.state, name, value, raising=False)
