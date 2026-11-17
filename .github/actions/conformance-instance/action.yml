@@ -26,10 +26,11 @@ inputs:
     default: ""
   extra-access:
     description: >-
-      The domains, roles and role mapping rules a job's user acts by: a YAML mapping of domains,
-      roles and role_mapping, added to the model's (the Bolt job's, from
-      scripts/conformance/bolt/fixtures.py, whose driver user acts as a role of its own). Empty
-      for none: the job user is org_admin.
+      The domains and roles a job's user acts by: a YAML mapping of domains and roles, added to
+      the model's, and assignments, the roles given to the job user once it is created (the Bolt
+      job's, from scripts/conformance/bolt/fixtures.py, whose driver user acts as a role of its
+      own). The control plane holds the instance's assignments, so a user acts only as a role it
+      holds. Empty for none: the job user is org_admin.
     required: false
     default: ""
   password-cost:
@@ -134,14 +135,28 @@ runs:
         done
         (exec 3<>"/dev/tcp/127.0.0.1/$PROVISA_PGWIRE_PORT") 2>/dev/null || { echo "::error::pgwire never listened on $PROVISA_PGWIRE_PORT"; tail -n 200 "$home/server.log"; exit 1; }
         # The job user: created by the break-glass account, so its SCRAM verifier is written
-        # with it (REQ-1394); org_admin by the model's default assignment, unless a role mapping
-        # rule of the job's (extra-access) maps it to a role of its own.
+        # with it (REQ-1394); org_admin by the model's default assignment, unless the job's
+        # extra-access assigns it roles of its own (given below, once it exists).
         status=$(curl -s -o "$home/user-response.txt" -w '%{http_code}' -u "$su" \
           -X POST -H 'Content-Type: application/json' \
           --data "{\"username\": \"$CONFORMANCE_USER\", \"password\": \"$CONFORMANCE_PASSWORD\"}" \
           "http://127.0.0.1:$PROVISA_API_PORT/admin/users/")
         if [ "${status:0:1}" != "2" ]; then
           echo "::error::POST /admin/users answered $status"; cat "$home/user-response.txt"; tail -n 200 "$home/server.log"; exit 1
+        fi
+        # The job user's own roles (extra-access assignments): held, so they are what it acts as.
+        if [ -n "${{ inputs.extra-access }}" ]; then
+          user_id=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))["id"])' "$home/user-response.txt")
+          .venv/bin/python scripts/conformance/pgwire_catalog_types.py assignments \
+            --extra-access "${{ inputs.extra-access }}" --user "$CONFORMANCE_USER" > "$home/assignments.jsonl"
+          while IFS= read -r assignment; do
+            status=$(curl -s -o "$home/assignment-response.txt" -w '%{http_code}' -u "$su" \
+              -X POST -H 'Content-Type: application/json' --data "$assignment" \
+              "http://127.0.0.1:$PROVISA_API_PORT/admin/users/$user_id/assignments")
+            if [ "${status:0:1}" != "2" ]; then
+              echo "::error::POST /admin/users/$user_id/assignments answered $status"; cat "$home/assignment-response.txt"; exit 1
+            fi
+          done < "$home/assignments.jsonl"
         fi
         # The job user's password re-stored at the job's bcrypt cost: checkpw takes its cost from
         # the stored hash, so a suite signing in once per connection is not paced by it.

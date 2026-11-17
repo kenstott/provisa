@@ -1,11 +1,8 @@
 name: Set up the UI toolchain
 description: >-
-  Node, the UI's locked dependencies (`npm ci` in provisa-ui) and, when asked, Playwright's
+  Node at the repository's pin (.nvmrc), the UI's locked dependencies (`npm ci` in provisa-ui) and, when asked, Playwright's
   Chromium. THE one place a job gets its UI toolchain.
 inputs:
-  node-version:
-    description: Node major version.
-    default: "22"
   install:
     description: >-
       Run `npm ci`. False for a job whose own build script installs (packaging's build-wheel.sh
@@ -26,7 +23,7 @@ runs:
   steps:
     - uses: actions/setup-node@v4
       with:
-        node-version: ${{ inputs.node-version }}
+        node-version-file: .nvmrc
         cache: npm
         cache-dependency-path: |
           provisa-ui/package-lock.json

@@ -1071,12 +1071,14 @@ fi
 
 echo "Starting Provisa UI on port 3000..."
 is_exfat "$SCRIPT_DIR/provisa-ui" && find "$SCRIPT_DIR/provisa-ui" -name "._*" -delete 2>/dev/null || true
-# Load nvm and switch to the Node version specified in .nvmrc (requires Node 20.19+ or 22+)
+# Load nvm and switch to the Node version .nvmrc pins, installing it when it is missing.
 export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
 # shellcheck disable=SC1091
 [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh"
 if command -v nvm >/dev/null 2>&1; then
-  nvm use 2>/dev/null || nvm use 22 2>/dev/null || true
+  (cd "$SCRIPT_DIR" && nvm install >/dev/null) \
+    || { echo "nvm could not install the Node version in $SCRIPT_DIR/.nvmrc" >&2; exit 1; }
+  nvm use "$(cat "$SCRIPT_DIR/.nvmrc")" >/dev/null
 fi
 # REQ-2071: provisa-notebook (the Data Science area's Python) installed and its assets built,
 # before vite serves them. A failure leaves the rest of the app running; the Data Science area

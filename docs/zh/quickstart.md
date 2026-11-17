@@ -10,7 +10,7 @@
 
 - **Docker Desktop**（正在运行）
 - **Python 3.12+**
-- **Node.js 20+**
+- **Node.js 24.12+**
 - **Git**
 
 ---
