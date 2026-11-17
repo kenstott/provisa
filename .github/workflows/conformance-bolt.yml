@@ -16,8 +16,9 @@ name: Conformance (Bolt)
 # scripts/conformance/expected/bolt.json does not list or a listed one passes.
 #
 # The instance is every conformance job's (.github/actions/conformance-instance), with password
-# auth: the driver signs in as the job user, whom a role mapping rule maps to bolt_examples, a role
-# reaching only the examples' domain (Person, Company, Greeting): the examples' MATCH (a) DETACH
+# auth: the driver signs in as the job user, assigned bolt_examples (the control plane holds the
+# instance's assignments, so a sign-in acts only as a role it holds), a role reaching only the
+# examples' domain (Person, Company, Greeting): the examples' MATCH (a) DETACH
 # DELETE a cleanup empties their own graph and never reaches conformance.types_fixture.
 
 on:

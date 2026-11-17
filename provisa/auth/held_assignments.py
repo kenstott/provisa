@@ -249,7 +249,7 @@ async def held_assignments(
 
 async def sign_in_roles(
     state: Any, identity: AuthIdentity, org_id: str | None, *, naming: bool
-) -> tuple[str, list[str]]:  # REQ-273, REQ-1263, REQ-1338
+) -> tuple[str, list[str]]:  # REQ-273, REQ-1263, REQ-120
     """What a sign-in acts as on a transport that is not the HTTP API: the role it acts as when
     it names none, and the roles it may name (that role first). ``naming``: whether the sign-in
     names a role, or may later (a Bolt session picks a database, an MCP call names a role); one
@@ -257,7 +257,8 @@ async def sign_in_roles(
 
     The role an identity's claims map to (``role_mapping``, else ``default_role``) is what it acts
     as, beside the roles it holds. Where Provisa holds the assignments, a mapped role the identity
-    does not hold gives way to one it holds, as on the HTTP API (REQ-1338).
+    does not hold gives way to one it holds, as on the HTTP API: a sign-in acts as a role it holds,
+    on every transport (REQ-120, amended 2026-11-01).
 
     A personal access token acts only as its scopes its owner still holds (REQ-1263): the first of
     them when it names none, never the mapped role. With none held it is refused."""
