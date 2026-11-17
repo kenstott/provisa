@@ -50,6 +50,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.atlas import PURVIEW_SCOPE, AtlasExport
 from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
 from provisa.api.metadata_export.registry import register_provider
@@ -252,7 +253,8 @@ class PurviewExport(AtlasExport):  # REQ-2118
             except httpx.HTTPError as exc:
                 result.errors.append(
                     AssetError(
-                        asset=AssetRefStub("glossary"), message=f"Unified Catalog glossary: {exc}"
+                        asset=AssetRefStub("glossary"),
+                        message=f"Unified Catalog glossary: {describe_http_failure(exc)}",
                     )
                 )
             if not snapshot.data_products:
@@ -272,7 +274,9 @@ class PurviewExport(AtlasExport):  # REQ-2118
                         )
                     )
                 except httpx.HTTPError as exc:
-                    result.errors.append(AssetError(asset=product.ref, message=str(exc)))
+                    result.errors.append(
+                        AssetError(asset=product.ref, message=describe_http_failure(exc))
+                    )
         return result
 
     async def _paged(self, client: httpx.AsyncClient, headers: dict, url: str, **params) -> list:

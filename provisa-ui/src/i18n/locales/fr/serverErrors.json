@@ -164,7 +164,9 @@
       "parameter_unbound_on_branch": "Le paramètre {{parameter}} reçoit une valeur dans une branche d'un OR et aucune dans une autre. Donnez une valeur à {{parameter}} dans chaque branche.",
       "parameter_conflict": "Le paramètre {{parameter}} reçoit deux valeurs différentes à la fois ({{first}} et {{second}}). Donnez-lui une seule valeur, ou énumérez les valeurs avec IN ou OR.",
       "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs.",
-      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}."
+      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}.",
+      "parameter_required": "La table '{{table}}' exige le ou les paramètres {{parameters}} : donnez une valeur à chacun (une condition WHERE sur sa colonne en SQL, un argument en GraphQL).",
+      "parameter_wrong_type": "Le paramètre {{parameter}} prend une valeur de type {{type}} ; '{{value}}' n'en est pas une."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -622,10 +624,14 @@
       "schema_not_avro": "Le schéma {{schema_id}} du registre {{registry}} est {{kind}}, pas Avro",
       "schema_registry_error": "Le registre de schémas {{registry}} a répondu HTTP {{http_status}} : {{error}}",
       "schema_registry_refused_credentials": "Le registre de schémas {{registry}} a refusé les identifiants de la source (HTTP {{http_status}}, authentification '{{method}}')",
-      "schema_registry_unreachable": "Le registre de schémas {{registry}} est injoignable : {{error}}",
+      "schema_registry_unreachable": "Le registre de schémas est injoignable : {{error}}",
       "sse_limit_reached": "nombre maximal d'abonnements SSE simultanés atteint",
       "table_not_found": "Table « {{table}} » introuvable",
-      "unknown_role": "Rôle « {{role}} » inconnu"
+      "unknown_role": "Rôle « {{role}} » inconnu",
+      "owner_role_lost": "L'abonnement a pris fin : son propriétaire n'a plus le rôle sous lequel il a été démarré ({{roles}})",
+      "sink_cap_reached": "Vous avez déjà {{cap}} sinks Kafka en cours d'exécution, le maximum autorisé par l'opérateur ({{setting}})",
+      "sink_needs_write": "Le rôle '{{role}}' n'a pas le droit d'écriture qu'exige un sink Kafka",
+      "owner_sign_in_expired": "L'abonnement a pris fin : la connexion sous laquelle il a été démarré a expiré ; reconnectez-vous et redémarrez-le"
     },
     "users": {
       "assignment_not_found": "Affectation introuvable",
@@ -669,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} n'est pas un nombre entier de lignes : LIMIT attend un nombre supérieur ou égal à 0, par ex. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} n'est pas un nombre entier de lignes : SKIP attend un nombre supérieur ou égal à 0, par ex. SKIP 10.",
       "engine_refused": "Le moteur a refusé la requête : {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
       "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",

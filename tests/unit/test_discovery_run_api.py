@@ -38,7 +38,7 @@ from provisa.api.errors import ApiError
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core import schema_org as so
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.parameters import ParameterRequired, missing_reason
+from provisa.core.parameter_binding import ParameterRequired
 from provisa.core.read_refusal import SourceUnavailable
 from provisa.discovery import context, gather, windows
 from provisa.discovery.columns import NOT_READ, ColumnFacts, TableFacts, classes_meet, type_groups
@@ -107,7 +107,7 @@ class _Reads:
     def refuse(self, table: str) -> None:
         if table in self.never_read:
             self.attempted.append(table)
-            raise ParameterRequired(table, missing_reason(["orderId"]))
+            raise ParameterRequired(table, ["orderId"])
         if table in self.failing:
             raise self.failing[table]
 
@@ -611,7 +611,7 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
             id="source-unavailable",
         ),
         pytest.param(
-            ParameterRequired("pets", missing_reason(["status"])),
+            ParameterRequired("pets", ["status"]),
             "classification",
             "requires the parameter(s) ['status']",
             id="a-parameter-its-registration-does-not-record",

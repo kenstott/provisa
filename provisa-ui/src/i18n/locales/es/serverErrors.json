@@ -164,7 +164,9 @@
       "parameter_unbound_on_branch": "El parámetro {{parameter}} recibe un valor en una rama de un OR y ninguno en otra. Dé un valor a {{parameter}} en cada rama.",
       "parameter_conflict": "El parámetro {{parameter}} recibe dos valores distintos a la vez ({{first}} y {{second}}). Dele un solo valor o enumere los valores con IN u OR.",
       "parameter_calls_over_cap": "La sentencia necesita {{calls}} llamadas a {{table}}, una por cada valor dado a sus parámetros, y se hacen como máximo {{cap}} por sentencia (ajuste {{setting}}). Indique menos valores.",
-      "parameter_not_written": "La relación {{relationship}} se une por el parámetro {{parameter}}, que una instrucción vincula a un valor y nunca escribe. Una escritura no crea {{relationship}}."
+      "parameter_not_written": "La relación {{relationship}} se une por el parámetro {{parameter}}, que una instrucción vincula a un valor y nunca escribe. Una escritura no crea {{relationship}}.",
+      "parameter_required": "La tabla '{{table}}' requiere el parámetro o los parámetros {{parameters}}: dé un valor a cada uno (una condición WHERE sobre su columna en SQL, un argumento en GraphQL).",
+      "parameter_wrong_type": "El parámetro {{parameter}} toma un valor de tipo {{type}}; '{{value}}' no lo es."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -622,10 +624,14 @@
       "schema_not_avro": "El esquema {{schema_id}} del registro {{registry}} es {{kind}}, no Avro",
       "schema_registry_error": "El registro de esquemas {{registry}} respondió HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "El registro de esquemas {{registry}} rechazó las credenciales del origen (HTTP {{http_status}}, autenticación '{{method}}')",
-      "schema_registry_unreachable": "No se puede acceder al registro de esquemas {{registry}}: {{error}}",
+      "schema_registry_unreachable": "No se puede acceder al registro de esquemas: {{error}}",
       "sse_limit_reached": "se alcanzó el máximo de suscripciones SSE simultáneas",
       "table_not_found": "No se encontró la tabla '{{table}}'",
-      "unknown_role": "Rol desconocido: '{{role}}'"
+      "unknown_role": "Rol desconocido: '{{role}}'",
+      "owner_role_lost": "La suscripción terminó: su propietario ya no tiene el rol con el que se inició ({{roles}})",
+      "sink_cap_reached": "Ya tienes {{cap}} sinks de Kafka en ejecución, el máximo que permite el operador ({{setting}})",
+      "sink_needs_write": "El rol '{{role}}' no tiene el permiso de escritura que necesita un sink de Kafka",
+      "owner_sign_in_expired": "La suscripción terminó: el inicio de sesión con el que se inició ha caducado; vuelve a iniciar sesión e iníciala de nuevo"
     },
     "users": {
       "assignment_not_found": "No se encontró la asignación",
@@ -669,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} no es un número entero de filas: LIMIT espera una cantidad de 0 o más, p. ej. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} no es un número entero de filas: SKIP espera una cantidad de 0 o más, p. ej. SKIP 10.",
       "engine_refused": "El motor rechazó la consulta: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lee {{variable}}, pero la sentencia no vincula ninguna variable: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL.",
       "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
       "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}.",

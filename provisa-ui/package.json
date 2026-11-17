@@ -59,7 +59,7 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "idb-keyval": "^6.2.4",
     "lucide-react": "^1.17.0",
-    "mermaid": "^11.17.2",
+    "mermaid": "^12.3.0",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-i18next": "^17.0.0",

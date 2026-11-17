@@ -116,6 +116,7 @@ class LdapAuthProvider(AuthProvider):  # REQ-1265
     """Authenticates a username and password against an LDAP directory."""
 
     provider_name: str = "ldap"
+    rereads = True  # REQ-812: the directory is searched again for the entry and its groups
 
     def __init__(self, settings: LdapSettings, session_secret: str | None = None) -> None:
         self._settings = settings
@@ -285,6 +286,13 @@ class LdapAuthProvider(AuthProvider):  # REQ-1265
             # The login name now resolves to a different account than the one that signed in.
             raise ValueError("Invalid credentials")
         return identity
+
+    async def reread(self, identity: AuthIdentity) -> AuthIdentity:  # REQ-812
+        """The directory entry behind ``identity`` and its groups, read again."""
+        now = await asyncio.to_thread(self._lookup_blocking, identity.raw_claims["username"])
+        if now.user_id != identity.user_id:
+            raise ValueError("Invalid credentials")  # the login name is another account now
+        return now
 
     async def validate_token(self, token: str) -> AuthIdentity:
         """Validate an ``Authorization: Basic`` credential -- b64(username:password)."""

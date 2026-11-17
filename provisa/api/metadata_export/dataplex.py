@@ -54,6 +54,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -266,6 +267,8 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     message = str(exc)
                     if isinstance(exc, httpx.HTTPStatusError):
                         message = f"HTTP {exc.response.status_code}: {exc.response.text[:500]}"
+                    elif isinstance(exc, httpx.HTTPError):
+                        message = describe_http_failure(exc)
                     result.errors.append(
                         AssetError(asset=AssetRefStub("glossary"), message=f"glossary: {message}")
                     )
@@ -309,6 +312,8 @@ class DataplexExport(MetadataExport):  # REQ-2118
                     message = str(exc)
                     if isinstance(exc, httpx.HTTPStatusError):
                         message = f"HTTP {exc.response.status_code}: {exc.response.text[:500]}"
+                    elif isinstance(exc, httpx.HTTPError):
+                        message = describe_http_failure(exc)
                     result.errors.append(AssetError(asset=product.ref, message=message))
                     continue
                 result.published["data_products"] = result.published.get("data_products", 0) + 1

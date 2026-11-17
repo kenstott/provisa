@@ -105,6 +105,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -761,7 +762,7 @@ class CollibraExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(self.glossary_domain),
-                        message=f"term assignments: {error}",
+                        message=f"term assignments: {describe_http_failure(error)}",
                     )
                 )
         for row in rows:

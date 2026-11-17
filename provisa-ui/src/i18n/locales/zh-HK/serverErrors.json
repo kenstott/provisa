@@ -164,7 +164,9 @@
       "parameter_unbound_on_branch": "參數 {{parameter}} 在 OR 的一個分支中有值,在另一個分支中沒有。請在每個分支中為 {{parameter}} 指定值。",
       "parameter_conflict": "參數 {{parameter}} 同時被賦予兩個不同的值({{first}} 和 {{second}})。請只給它一個值,或用 IN 或 OR 列出這些值。",
       "parameter_calls_over_cap": "該語句需要對 {{table}} 發出 {{calls}} 次呼叫(其參數的每個值一次),而一條語句最多發出 {{cap}} 次(設定 {{setting}})。請減少值的數量。",
-      "parameter_not_written": "關係 {{relationship}} 透過參數 {{parameter}} 連接,語句將該參數綁定到一個值,從不寫入它。寫入操作不會建立 {{relationship}}。"
+      "parameter_not_written": "關係 {{relationship}} 透過參數 {{parameter}} 連接,語句將該參數綁定到一個值,從不寫入它。寫入操作不會建立 {{relationship}}。",
+      "parameter_required": "表 '{{table}}' 需要參數 {{parameters}}：為每個參數提供一個值（在 SQL 中是對其欄的 WHERE 條件，在 GraphQL 中是一個引數）。",
+      "parameter_wrong_type": "參數 {{parameter}} 接受 {{type}} 類型的值；'{{value}}' 不是該類型。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -622,10 +624,14 @@
       "schema_not_avro": "註冊表 {{registry}} 中的綱要 {{schema_id}} 是 {{kind}}，不是 Avro",
       "schema_registry_error": "綱要註冊表 {{registry}} 回應 HTTP {{http_status}}：{{error}}",
       "schema_registry_refused_credentials": "綱要註冊表 {{registry}} 拒絕了資料來源的憑證（HTTP {{http_status}}，驗證「{{method}}」）",
-      "schema_registry_unreachable": "無法連線綱要註冊表 {{registry}}：{{error}}",
+      "schema_registry_unreachable": "無法連線綱要註冊表：{{error}}",
       "sse_limit_reached": "已達同時 SSE 訂閱上限",
       "table_not_found": "找不到資料表「{{table}}」",
-      "unknown_role": "未知角色「{{role}}」"
+      "unknown_role": "未知角色「{{role}}」",
+      "owner_role_lost": "訂閱已結束：其擁有者不再擁有啟動時所用的角色 ({{roles}})",
+      "sink_cap_reached": "您已有 {{cap}} 個正在運行的 Kafka 接收器，已達營運方允許的上限 ({{setting}})",
+      "sink_needs_write": "角色 '{{role}}' 缺少 Kafka 接收器所需的寫入權限",
+      "owner_sign_in_expired": "訂閱已結束：啟動它時的登入已過期；請重新登入並再次啟動"
     },
     "users": {
       "assignment_not_found": "找不到指派",
@@ -669,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} 不是整數行數：LIMIT 需要 0 或以上的計數，例如 LIMIT 10。",
       "invalid_skip": "SKIP {{value}} 不是整數行數：SKIP 需要 0 或以上的計數，例如 SKIP 10。",
       "engine_refused": "引擎拒絕了查詢：{{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
       "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",

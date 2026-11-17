@@ -28,6 +28,7 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.rebuild_trace import passes_on
 from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
@@ -369,8 +370,9 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         except (httpx.HTTPError, OSError) as exc:
             # A document out of reach (its host, its file) is that source's alone: named on its
             # tables and logged, the rest listed.
+            reason = describe_http_failure(exc) if isinstance(exc, httpx.HTTPError) else str(exc)
             endpoint_errors[source_id] = (
-                f"the API document of source {source_id!r} could not be read: {exc}"
+                f"the API document of source {source_id!r} could not be read: {reason}"
             )
             log.warning("%s", endpoint_errors[source_id])
             continue
