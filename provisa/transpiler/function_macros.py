@@ -2840,9 +2840,6 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
     rewrite that writes this call. A row that keeps the old table's form, a rewrite that leaves
     this call or refuses it, and a refusal answer nothing: the call is refused as it was."""
     try:
-        first = polyfill.GRID.read_first(node, dialect)  # a rule over every call, before patterns
-        if first is not None and first.rewritten is not None:
-            return True
         applied = polyfill.GRID.read(node, dialect)  # a rule of no pattern runs its rewrite here
         if applied is None or applied.form is None or isinstance(applied.form, polyfill.Refusal):
             return False
@@ -2858,6 +2855,20 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
         return False
 
 
+def _answered_first(node: exp.Expr, dialect: str) -> bool:
+    """Whether a grid rule over every call (Rewrite.first, read before any pattern by the walk)
+    answers ``node``, a call the old table refuses: a bit string's row, whose name bytea's
+    patterns share. Read only for such a call: the rules are many, and the walk reads them again."""
+    try:
+        first = polyfill.GRID.read_first(node, dialect)
+    except polyfill_notation.Refused as refused:
+        if refused.ruling:
+            called = node.name.lower() if isinstance(node, exp.Anonymous) else _feature_of(node)
+            raise RowRefused(called, dialect, refused.refusal) from refused
+        return False
+    return first is not None and first.rewritten is not None
+
+
 def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
     """``tree`` with each call of a function of the table written in its form for ``dialect``.
     Raises :class:`FunctionRefused` for a call of one it has no form of. A call with no overload
@@ -2870,7 +2881,7 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             if _answered_by_a_row(node, dialect):
                 continue  # REQ-2167: an answer within a stated bound comes before a refusal
             refused_call = engine_refusals.refused_call(node, dialect, said_type)
-            if refused_call is not None:
+            if refused_call is not None and not _answered_first(node, dialect):
                 raise FunctionRefused(refused_call, dialect)
     try:
         tree = pg_forms_textsearch.lowered(tree, dialect)
@@ -2914,7 +2925,15 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             target = node.expression
         # A grid rule over every call, before the forms of a substring past its edge: a substring
         # of a bit string is its row's.
-        first = polyfill.GRID.read_first(target, dialect)
+        try:
+            first = polyfill.GRID.read_first(target, dialect)
+        except polyfill_notation.Refused as refused:
+            if not refused.ruling:
+                raise
+            called = (
+                target.name.lower() if isinstance(target, exp.Anonymous) else _feature_of(target)
+            )
+            raise RowRefused(called, dialect, refused.refusal) from refused
         if first is not None and first.rewritten is not None:
             in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
             return first.rewritten if in_select else first.rewritten.unalias()

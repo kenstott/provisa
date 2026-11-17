@@ -99,8 +99,8 @@ def held(value: exp.Expr) -> exp.Expr | None:
     if isinstance(inner, exp.Null):
         return exp.Cast(this=exp.Null(), to=exp.DataType.build("TEXT"))
     if not (isinstance(inner, exp.Literal) and inner.is_string):
-        if varying and length is None:
-            return None  # bit varying of no length: held as text already
+        if varying:
+            return None  # bit varying: held as text already (provisa.transpiler.pg_held_types)
         raise Refused(Refusal("0A000", "a cast to bit of a value that is no literal has no form"))
     bits = _bits_of(inner.this)
     # A cast in a statement is explicit: bit(n) truncates or pads with zeros to n, bit varying(n)
