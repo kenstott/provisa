@@ -15,6 +15,8 @@ it for the reader (``serverErrors.import.*``)."""
 
 from __future__ import annotations
 
+from pathlib import Path
+
 
 class ImportRefused(ValueError):
     """An upload the import will not read; ``code`` and ``params`` word it for the reader."""
@@ -34,6 +36,16 @@ class IncludeOutsideUpload(ImportRefused):
             "import.include_outside_upload",
             path=path,
         )
+
+
+def confined_to_project(path: Path, root: Path, named: str) -> Path:
+    """``path``'s real place, refused by name (``named``, as the project wrote it) unless it is
+    inside the project ``root``: through no ``..``, absolute path or symbolic link out. Callers
+    confine before they look for the file, so whether a file outside the project exists is not told."""
+    real = path.resolve()
+    if not real.is_relative_to(root.resolve()):
+        raise IncludeOutsideUpload(named)
+    return real
 
 
 class FilterValueRefused(ImportRefused):

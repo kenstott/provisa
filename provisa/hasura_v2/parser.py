@@ -33,7 +33,7 @@ from provisa.hasura_v2.models import (
     HasuraSource,
     HasuraTable,
 )
-from provisa.import_shared.refused import IncludeOutsideUpload
+from provisa.import_shared.refused import confined_to_project
 from provisa.import_shared.warnings import WarningCollector
 
 # Requirements: REQ-041, REQ-019, REQ-205, REQ-209, REQ-417
@@ -54,20 +54,13 @@ def _include_ctor(loader: Any, node: Any) -> str:
 _HasuraLoader.add_constructor("!include", _include_ctor)
 
 
-def _confined(path: Path, root: Path, named: str) -> Path:
-    """``path``'s real place, refused by name (``named``, as the project wrote it) unless it is
-    inside the uploaded project ``root``: through no ``..``, absolute path or symbolic link out."""
-    real = path.resolve()
-    if not real.is_relative_to(root.resolve()):
-        raise IncludeOutsideUpload(named)
-    return real
-
-
 def _load_yaml(path: Path, root: Path, named: str | None = None) -> Any:
     """Load a YAML file of the project ``root``, returning None if it doesn't exist. Tolerates the
     Hasura ``!include`` tag. A file whose real path is outside ``root`` is refused by name."""
     # Confined before it is looked for: whether a file outside the project exists is not told.
-    real = _confined(path, root, named if named is not None else str(path.relative_to(root)))
+    real = confined_to_project(
+        path, root, named if named is not None else str(path.relative_to(root))
+    )
     if not real.exists():
         return None
     with open(real, encoding="utf-8") as f:
@@ -364,7 +357,7 @@ def parse_metadata_dir(
 
     # The actions' SDL: each action's arguments and output, and the output types' fields.
     if (md / "actions.graphql").exists():
-        sdl = _confined(md / "actions.graphql", root, "actions.graphql").read_text()
+        sdl = confined_to_project(md / "actions.graphql", root, "actions.graphql").read_text()
         _read_actions_sdl(sdl, metadata)
     if isinstance(actions_data, dict):
         for obj in (actions_data.get("custom_types") or {}).get("objects") or []:
