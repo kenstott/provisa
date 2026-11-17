@@ -344,7 +344,9 @@
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
       "description_missing": "角色 '{{role}}' 需要說明其用途",
-      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它"
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它",
+      "platform_right_requires_platform_admin": "包含 {{rights}} 的角色由平台管理員定義",
+      "rights_not_held": "角色 {{role}} 包含 {{rights}}，而您不持有這些權限"
     },
     "schema": {
       "allowed_domains_updated": "已更新數據來源「{{source}}」的允許領域",

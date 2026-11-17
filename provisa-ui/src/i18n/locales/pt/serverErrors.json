@@ -344,7 +344,9 @@
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
       "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
-      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém",
+      "platform_right_requires_platform_admin": "Uma função com {{rights}} é definida por um administrador da plataforma",
+      "rights_not_held": "A função {{role}} inclui {{rights}}, que você não detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",

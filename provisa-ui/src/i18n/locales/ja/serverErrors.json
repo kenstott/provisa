@@ -344,7 +344,9 @@
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
       "description_missing": "ロール '{{role}}' には目的の説明が必要です",
-      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません",
+      "platform_right_requires_platform_admin": "{{rights}} を含むロールはプラットフォーム管理者が定義します",
+      "rights_not_held": "ロール {{role}} には、あなたが持っていない {{rights}} が含まれています"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",

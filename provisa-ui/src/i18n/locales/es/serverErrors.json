@@ -344,7 +344,9 @@
       "org_selection_required": "Se requiere seleccionar una organización",
       "already_exists": "El rol '{{role}}' ya existe",
       "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
-      "right_not_in_parents": "El rol {{role}} no puede tener {{right}}: ningún padre lo tiene"
+      "right_not_in_parents": "El rol {{role}} no puede tener {{right}}: ningún padre lo tiene",
+      "platform_right_requires_platform_admin": "Un rol que incluye {{rights}} lo define un administrador de la plataforma",
+      "rights_not_held": "El rol {{role}} incluye {{rights}}, que usted no tiene"
     },
     "schema": {
       "allowed_domains_updated": "Dominios permitidos actualizados para el origen '{{source}}'",

@@ -344,7 +344,9 @@
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
       "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
-      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het"
+      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het",
+      "platform_right_requires_platform_admin": "Een rol met {{rights}} wordt gedefinieerd door een platformbeheerder",
+      "rights_not_held": "Rol {{role}} bevat {{rights}}, die u niet hebt"
     },
     "schema": {
       "allowed_domains_updated": "Toegestane domeinen bijgewerkt voor bron '{{source}}'",

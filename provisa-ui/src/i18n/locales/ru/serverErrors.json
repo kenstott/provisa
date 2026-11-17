@@ -344,7 +344,9 @@
       "org_selection_required": "Требуется выбор организации",
       "already_exists": "Роль '{{role}}' уже существует",
       "description_missing": "Роли '{{role}}' нужно описание её назначения",
-      "right_not_in_parents": "Роль {{role}} не может иметь {{right}}: ни один родитель его не имеет"
+      "right_not_in_parents": "Роль {{role}} не может иметь {{right}}: ни один родитель его не имеет",
+      "platform_right_requires_platform_admin": "Роль с правами {{rights}} определяет администратор платформы",
+      "rights_not_held": "Роль {{role}} включает {{rights}}, которых у вас нет"
     },
     "schema": {
       "allowed_domains_updated": "Разрешенные домены обновлены для источника '{{source}}'",
