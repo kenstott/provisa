@@ -687,6 +687,34 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
   });
 });
 
+// The Modal's size, as the dialog sets it: Mantine writes it as the --modal-size variable.
+const modalSize = () => {
+  const sized = document.querySelector<HTMLElement>(".mantine-Modal-root");
+  return sized?.style.getPropertyValue("--modal-size");
+};
+// The setup step's size, the shared modal size "lg".
+const STANDARD = "var(--modal-size-lg)";
+
+describe("Discovery dialog: its size by what it shows", () => {
+  it("takes the standard size while setting up a run", async () => {
+    await openDialog();
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("keeps the standard size while a run is going", async () => {
+    runMock.mockResolvedValue(runOf({ status: "running", requests_total: 4, requests_done: 1 }));
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-stop", {}, SLOW);
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("takes the window's width only to show a run's results", async () => {
+    await endedRun();
+    expect(modalSize()).toBe("100%");
+  });
+});
+
 describe("Discovery dialog: an ended run's layout", () => {
   it("puts New run beside Apply, in the action row above the table", async () => {
     await endedRun();
