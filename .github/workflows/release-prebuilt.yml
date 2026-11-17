@@ -152,10 +152,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set up Node 20 (vite build)
+      - name: Set up Node (vite build)
         uses: ./.github/actions/setup-ui
-        with:
-          node-version: "20"
 
       - name: Install docs-site build deps (mkdocs)
         uses: ./.github/actions/docs-site-deps
@@ -290,10 +288,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set up Node 20 (vite build)
+      - name: Set up Node (vite build)
         uses: ./.github/actions/setup-ui
-        with:
-          node-version: "20"
 
       - name: Install docs-site build deps (mkdocs)
         uses: ./.github/actions/docs-site-deps
