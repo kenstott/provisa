@@ -542,15 +542,15 @@ def metric(grant: ServiceGrant, method: str, body: bytes, span: Any) -> bytes:
 # -- audit --------------------------------------------------------------------------------------
 
 
-def _keys_redacted(value: Any) -> Any:
-    """``value`` with the key of every mapping inside it redacted: the trail's own redaction walks
-    the values, and an event's keys are the code's to choose."""
+def _keys_redacted(value: Any, org_id: str) -> Any:
+    """``value`` with the key of every mapping inside it redacted by ``org_id``'s rules: the
+    trail's own redaction walks the values, and an event's keys are the code's to choose."""
     from provisa.security.redaction import redact
 
     if isinstance(value, dict):
-        return {redact(k): _keys_redacted(v) for k, v in value.items()}
+        return {redact(k, org_id): _keys_redacted(v, org_id) for k, v in value.items()}
     if isinstance(value, list):
-        return [_keys_redacted(v) for v in value]
+        return [_keys_redacted(v, org_id) for v in value]
     return value
 
 
@@ -581,7 +581,7 @@ async def audit(grant: ServiceGrant, method: str, body: bytes, span: Any) -> byt
             400, "an audit event's name is lower-case letters, digits, _ and ., up to 64"
         )
     # The name is the row's subject, which the trail does not redact: one that would be is refused.
-    if redact(event) != event:
+    if redact(event, grant.org_id) != event:
         raise ServiceRefused(400, "an audit event's name matches a redaction rule")
     fields = _audit_fields(request)
     traceparent = current_traceparent()
@@ -594,7 +594,7 @@ async def audit(grant: ServiceGrant, method: str, body: bytes, span: Any) -> byt
             detail={
                 "source": grant.source_id,
                 "trace_id": traceparent.split("-")[1] if traceparent else None,
-                "fields": _keys_redacted(fields),
+                "fields": _keys_redacted(fields, grant.org_id),
             },
         )
     request_event("codesource.audit", source=grant.source_id, event=event)

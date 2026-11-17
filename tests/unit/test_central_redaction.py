@@ -134,14 +134,14 @@ def test_a_reference_that_does_not_resolve_is_named_unresolved(caplog):
     assert redaction.described("acme")["unresolved"] == ["ops"]
 
 
-def test_an_orgs_rules_apply_to_that_org_and_to_what_leaves_the_process():
+def test_an_orgs_rules_apply_to_that_orgs_text_only():
     acme = redaction.parse_rules([{"name": "badge", "pattern": r"B-\d{4}"}], "org")
     redaction.set_org("acme", acme, {}, _resolve({}))
     redaction.set_org("other", [], {}, _resolve({}))
     assert redaction.redact("B-1234", "acme") == "[REDACTED:badge]"
     assert redaction.redact("B-1234", "other") == "B-1234"
-    # Telemetry and errors carry no org: every org's rules apply together.
-    assert redaction.redact("B-1234") == "[REDACTED:badge]"
+    # A record no org produced: the deployment's rules, not any org's.
+    assert redaction.redact("B-1234") == "B-1234"
 
 
 # --- the automatic rule -------------------------------------------------------------------------
