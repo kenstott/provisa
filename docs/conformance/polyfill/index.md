@@ -13,7 +13,7 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [DuckDB](duckdb.md)
 
-200 of the grid's 387 features are native on DuckDB and left out.
+187 of the grid's 387 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -243,6 +243,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -568,6 +580,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -643,7 +688,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-119 of the grid's 387 features are native on Trino and left out.
+106 of the grid's 387 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -957,6 +1002,18 @@ CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
 =&gt;
 function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -1303,6 +1360,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -1378,7 +1468,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-119 of the grid's 387 features are native on Presto and left out.
+106 of the grid's 387 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1692,6 +1782,18 @@ CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
 =&gt;
 function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2038,6 +2140,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -2113,7 +2248,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-119 of the grid's 387 features are native on Athena and left out.
+106 of the grid's 387 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2427,6 +2562,18 @@ CASE WHEN $v &lt; 0 OR $v &gt; 4294967295 THEN fail(&#x27;postgresql-error 22003
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
 =&gt;
 function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2771,6 +2918,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
@@ -3700,7 +3880,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-200 of the grid's 387 features are native on Snowflake and left out.
+187 of the grid's 387 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3941,6 +4121,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -4265,6 +4457,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4340,7 +4565,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-200 of the grid's 387 features are native on Databricks and left out.
+187 of the grid's 387 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4581,6 +4806,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -4905,6 +5142,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4980,7 +5250,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-200 of the grid's 387 features are native on BigQuery and left out.
+187 of the grid's 387 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5221,6 +5491,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -5545,6 +5827,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -5620,7 +5935,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-200 of the grid's 387 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+187 of the grid's 387 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5861,6 +6176,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -6185,6 +6512,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -6260,7 +6620,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-200 of the grid's 387 features are native on Redshift and left out.
+187 of the grid's 387 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6501,6 +6861,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -6825,6 +7197,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -6900,7 +7305,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-200 of the grid's 387 features are native on MySQL and left out.
+187 of the grid's 387 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7141,6 +7546,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -7465,6 +7882,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -7540,7 +7990,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-200 of the grid's 387 features are native on SingleStore and left out.
+187 of the grid's 387 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7781,6 +8231,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -8105,6 +8567,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -8180,7 +8675,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-200 of the grid's 387 features are native on SQLite and left out.
+187 of the grid's 387 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8421,6 +8916,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -8745,6 +9252,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -8820,7 +9360,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-200 of the grid's 387 features are native on Oracle and left out.
+187 of the grid's 387 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9061,6 +9601,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -9385,6 +9937,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -9460,7 +10045,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-200 of the grid's 387 features are native on Hive and left out.
+187 of the grid's 387 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9701,6 +10286,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -10025,6 +10622,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10100,7 +10730,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-200 of the grid's 387 features are native on Exasol and left out.
+187 of the grid's 387 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10341,6 +10971,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -10665,6 +11307,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -10740,7 +11415,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-200 of the grid's 387 features are native on Druid and left out.
+187 of the grid's 387 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10981,6 +11656,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -11303,6 +11990,39 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre><pre><code>varchar($s::name)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)

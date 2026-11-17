@@ -37,7 +37,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_fail
@@ -45,6 +45,12 @@ from provisa.transpiler.polyfill.numbers import ch_fail
 FAMILY = "text functions"
 
 _CH = "clickhouse"
+
+
+def _ch(form: str | Rewrite) -> dict[str, str | Rewrite]:
+    """ClickHouse's ``form``, every other dialect keeping what it had (the old table's form)."""
+    return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, _CH: form}
+
 
 #: The characters of a set, each escaped for a bracket expression.
 _SET = "replaceRegexpAll($c, '([\\\\\\\\\\\\]\\\\[^-])', '\\\\\\\\\\\\1')"
@@ -71,7 +77,7 @@ TRIMS: tuple[Feature, ...] = tuple(
         name,
         FAMILY,
         summary,
-        read=Side(rules=(Rule(f"{name}($t::text, $c::text)", {_CH: _trimmed(pattern)}),)),
+        read=Side(rules=(Rule(f"{name}($t::text, $c::text)", _ch(_trimmed(pattern))),)),
     )
     for name, (summary, pattern) in _TRIMS.items()
 )
@@ -89,7 +95,7 @@ TRANSLATE = Feature(
     "translate",
     FAMILY,
     "Each character found in a set replaced by the one at its place in another, or dropped.",
-    read=Side(rules=(Rule("translate($t::text, $f::text, $r::text)", {_CH: _TRANSLATED}),)),
+    read=Side(rules=(Rule("translate($t::text, $f::text, $r::text)", _ch(_TRANSLATED)),)),
 )
 
 
@@ -125,9 +131,9 @@ OVERLAY = Feature(
         rules=(
             Rule(
                 "overlay($t::text, $r::text, $p::integer, $n::integer)",
-                {_CH: _overlaid("$n")},
+                _ch(_overlaid("$n")),
             ),
-            Rule("overlay($t::text, $r::text, $p::integer)", {_CH: _overlaid("lengthUTF8($r)")}),
+            Rule("overlay($t::text, $r::text, $p::integer)", _ch(_overlaid("lengthUTF8($r)"))),
         )
     ),
 )
@@ -186,8 +192,8 @@ STRING_TO_ARRAY = Feature(
     "Text split at each delimiter into an array; a piece equal to a third argument is NULL.",
     read=Side(
         rules=(
-            Rule("string_to_array($s::text, $d::text)", {_CH: Rewrite(_to_array)}),
-            Rule("string_to_array($s::text, $d::text, $n::text)", {_CH: Rewrite(_to_array)}),
+            Rule("string_to_array($s::text, $d::text)", _ch(Rewrite(_to_array))),
+            Rule("string_to_array($s::text, $d::text, $n::text)", _ch(Rewrite(_to_array))),
         ),
         limitations={
             _CH: (
@@ -270,8 +276,8 @@ LENGTH_CASTS: tuple[Feature, ...] = (
         "Text cast to character varying of a declared length (its typmod).",
         read=Side(
             rules=(
-                Rule("varchar($s, $m, $e)", {_CH: _VARCHAR}),
-                Rule("varchar($s::name)", {_CH: "CAST($s AS Nullable(String))"}),
+                Rule("varchar($s, $m, $e)", _ch(_VARCHAR)),
+                Rule("varchar($s::name)", _ch("CAST($s AS Nullable(String))")),
             )
         ),
     ),
@@ -280,7 +286,7 @@ LENGTH_CASTS: tuple[Feature, ...] = (
         FAMILY,
         "Text cast to character of a declared length (its typmod), padded with spaces.",
         read=Side(
-            rules=(Rule("bpchar($s, $m, $e)", {_CH: Rewrite(_bpchar)}),),
+            rules=(Rule("bpchar($s, $m, $e)", _ch(Rewrite(_bpchar))),),
             limitations={
                 _CH: (
                     Limitation(
@@ -305,11 +311,11 @@ NAMECONCATOID = Feature(
         rules=(
             Rule(
                 "nameconcatoid($n, $o)",
-                {
-                    _CH: f"if($n IS NULL OR $o IS NULL, NULL, concat(arrayStringConcat("
+                _ch(
+                    f"if($n IS NULL OR $o IS NULL, NULL, concat(arrayStringConcat("
                     f"arrayFilter((_c, _b) -> _b <= {_NAME_BYTES} - length({_SUFFIX}), {_NAME_CHARS}, "
                     f"arrayCumSum(arrayMap(_c -> toInt64(length(_c)), {_NAME_CHARS})))), {_SUFFIX}))"
-                },
+                ),
             ),
         )
     ),

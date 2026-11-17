@@ -29,7 +29,7 @@ import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refused, Rewrite, replacement
 
@@ -425,7 +425,15 @@ JSONB_NUMBERS: tuple[Feature, ...] = tuple(
         FAMILY,
         f"A jsonb number as {name}" + (", and an oid as a bigint." if function == "int8" else "."),
         read=Side(
-            rules=(Rule(f"{function}($v)", {"clickhouse": _number_of(function)}),),
+            rules=(
+                Rule(
+                    f"{function}($v)",
+                    {
+                        **{d: trino.KEPT for d in DIALECTS if d not in NATIVE},
+                        "clickhouse": _number_of(function),
+                    },
+                ),
+            ),
             limitations={
                 "clickhouse": (
                     Limitation(

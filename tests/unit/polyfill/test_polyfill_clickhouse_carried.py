@@ -237,8 +237,8 @@ def test_a_call_inside_another_is_carried(runtime):
 @pytest.mark.parametrize(
     "sql",
     [
-        "SELECT pg_catalog.btrim('xxabcxx'::text, ''::text) AS v",
-        "SELECT pg_catalog.regexp_like('Hello'::text, 'h.l'::text, 'i'::text) AS v",
+        # btrim and regexp_like of flags are ClickHouse's own rows now, not DuckDB's carried form
+        # (polyfill.texts, polyfill.regex; tests/unit/polyfill/test_polyfill_clickhouse_texts.py).
         "SELECT pg_catalog.oidvectorlt('10'::oidvector, '9'::oidvector) AS v",
         'SELECT pg_catalog."exp"(710.0::double precision) AS v',
     ],
