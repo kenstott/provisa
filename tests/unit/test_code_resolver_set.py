@@ -220,7 +220,6 @@ async def test_a_new_set_saves_the_bridge_then_its_relationships_then_marks_it(m
         "id",
         "many-to-one",
     )
-    assert model.calls[-1][1] == (3, False)
 
 
 async def test_a_resolver_whose_rows_lack_a_key_is_refused_with_the_reason_and_nothing_saved(

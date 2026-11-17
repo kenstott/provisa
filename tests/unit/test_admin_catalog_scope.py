@@ -125,6 +125,10 @@ class _Conn:
 
     async def execute_core(self, stmt):
         sql = str(stmt)
+        if "sources.withdrawn" in sql and "FROM registered_tables" in sql:
+            return _Rows([])  # REQ-1921: no table here is withdrawn, itself or by its source
+        if "registered_tables.retired IS true" in sql:
+            return _Rows([])  # no table here is retired
         if "table_columns.scope" in sql:
             # REQ-2153: the listed columns, outside the domains the query names as reached.
             reached = [v for v in stmt.compile().params.values() if isinstance(v, list)]
