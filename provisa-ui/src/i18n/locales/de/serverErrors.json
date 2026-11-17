@@ -153,6 +153,7 @@
       "source_starting": "Die Quelle {{source}} wird noch gestartet. Versuchen Sie es gleich noch einmal.",
       "source_unavailable": "Die Quelle {{source}} konnte nicht antworten. Versuchen Sie es in Kürze erneut.",
       "view_outside_load_window": "Die View {{view}} kann nur innerhalb ihres Lesefensters gelesen werden. Es öffnet sich wieder um {{opens_at}}.",
+      "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
       "graphql_body_missing": "Die Anfrage hat keinen Body: Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
       "graphql_body_not_json": "Der Body der Anfrage ist kein JSON: {{error}}",
       "graphql_request_not_object": "Eine GraphQL-Anfrage ist ein JSON-Objekt mit einer Abfrage.",
@@ -201,7 +202,8 @@
       "empty_answer": "Das Modell hat keinen Text zurückgegeben."
     },
     "environments": {
-      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
+      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut.",
+      "owner_not_member": "{{user}} hat die Umgebung {{env}} erstellt, ist aber kein Mitglied von {{org}}; um darin als Eigentümer zu handeln, ist eine Mitgliedschaft erforderlich."
     },
     "front_door": {
       "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa fünf Minuten bereit.",
@@ -324,6 +326,13 @@
       "catalog_view_refused": "{{view}} ist eine Katalogsicht der Meta-Domäne und kann nicht in einer Anweisung zusammen mit einer Tabelle einer Datenquelle gelesen werden: Lesen Sie sie in zwei Anweisungen.",
       "function_unsupported": "{{function}}() hat auf {{dialect}} keine Entsprechung."
     },
+    "redaction": {
+      "rule_invalid": "Schwärzungsregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Schwärzungsregel {{rule}}: Das Muster kann katastrophales Backtracking auslösen (eine Wiederholung innerhalb einer unbegrenzten Wiederholung oder Alternativen darin, die mit demselben Text beginnen können). Formulieren Sie es ohne diese Form.",
+      "pattern_unsupported": "Schwärzungsregel {{rule}}: Die Regel einer Organisation kann keine Rückverweise, Lookahead oder Lookbehind, atomaren Gruppen, possessiven Wiederholungen oder bedingten Gruppen verwenden.",
+      "pattern_too_large": "Schwärzungsregel {{rule}}: Das Muster ist zu groß, wenn seine Wiederholungen ausgezählt werden. Verwenden Sie eine kleinere Wiederholungsanzahl.",
+      "server_reference": "Schwärzungsregel {{rule}}: Eine Organisation auf diesem Server kann nicht auf die Umgebung des Servers verweisen. Verwenden Sie ${secret:NAME} aus dem eigenen Tresor der Organisation."
+    },
     "replication": {
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
       "no_whole_copy": "Für die Tabelle {{schema}}.{{table}} der Quelle {{source}} gibt es keine vollständige Kopie zu bauen: Sie wird zeilenweise repliziert oder hat eine Parameterspalte.",
@@ -344,7 +353,9 @@
       "org_selection_required": "Organisationsauswahl erforderlich",
       "already_exists": "Die Rolle '{{role}}' existiert bereits",
       "description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
-      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es"
+      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es",
+      "platform_right_requires_platform_admin": "Eine Rolle mit {{rights}} wird von einem Plattformadministrator definiert",
+      "rights_not_held": "Rolle {{role}} umfasst {{rights}}, die Sie nicht haben"
     },
     "schema": {
       "allowed_domains_updated": "Zulässige Domänen für Quelle '{{source}}' aktualisiert",
@@ -731,6 +742,10 @@
     "dbt_sources": {
       "unknown_role": "Es gibt keine Rolle namens {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "Das Filtermuster für Protokolle wird abgelehnt: {{why}}",
+      "pattern_exceeded": "Das Filtermuster für Protokolle wird abgelehnt: Es hat sein Schrittlimit ({{steps}} Schritte) bei einer Protokollzeile mit {{length}} Zeichen überschritten."
+    },
     "dbt": {
       "products": {
         "none_offered": "Die Quelle {{source_id}} hat kein öffentliches Modell mit erzwungenem Vertrag.",
@@ -889,6 +904,11 @@
     "preflight": {
       "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
       "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} liegt außerhalb des hochgeladenen Projekts; ein Projekt liest nur seine eigenen Dateien.",
+      "filter_value_refused": "{{value}} kann kein Wert in einem Berechtigungsfilter sein: Ein Wert ist eine Zeichenkette, eine Zahl, true, false, null, eine Liste davon oder eine Sitzungsvariable.",
+      "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     }
   }
 }

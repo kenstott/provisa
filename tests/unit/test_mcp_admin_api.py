@@ -147,6 +147,9 @@ async def test_discovery_runs_for_the_named_table_as_a_stored_run_jev_asked_by_n
         config={"ai_models": {"relationship_inference": {"vendor": "openai", "model": "gpt-t"}}},
         api_keys={"openai": "k"},
     )
+    # customers.id holds both customers orders name and two of the three orders' ids: the first
+    # pair measures contained in a key, the second under the threshold (REQ-413).
+    world.measured.values[("customers", "id")] = [1, 2, 4]
     world.answers = [
         json.dumps(
             [

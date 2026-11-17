@@ -349,9 +349,10 @@ def notice_window() -> timedelta:
     return timedelta(days=int(settings_registry.value(NOTICE_SETTING)))
 
 
-async def sweep(db: "Database", *, notify: bool) -> Sweep:
-    """Remove ``db``'s expired and unused grants and find the ones to give notice of. With
-    ``notify`` False (no mail is configured) no grant is marked as told."""
+async def sweep(db: "Database", *, org_id: str, notify: bool) -> Sweep:
+    """Remove ``db``'s expired and unused grants into the trail of ``org_id``, the org ``db``
+    holds, and find the ones to give notice of. With ``notify`` False (no mail is configured) no
+    grant is marked as told."""
     from provisa.core.org_membership import record_admin_action
 
     async with db.acquire() as conn:
@@ -361,6 +362,7 @@ async def sweep(db: "Database", *, notify: bool) -> Sweep:
     for g in expired:
         await record_admin_action(
             db,
+            org_id=org_id,
             action="role.expired",
             actor_id="platform",
             subject_id=g.user_id,
@@ -369,6 +371,7 @@ async def sweep(db: "Database", *, notify: bool) -> Sweep:
     for g in inactive:
         await record_admin_action(
             db,
+            org_id=org_id,
             action="role.removed_inactive",
             actor_id="platform",
             subject_id=g.user_id,

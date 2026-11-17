@@ -1969,6 +1969,8 @@ user_directory = Table(
     Column("display_name", Text),
     Column("email", Text),
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
+    # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
+    Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -2737,6 +2739,11 @@ discovery_run_proposals = Table(
     Column("target_column", Text, nullable=True),
     Column("confidence", Float, nullable=True),
     Column("scored", Float, nullable=True),
+    # REQ-413: the pair's values measured against each other (JSON), the score that gives it
+    # (None: no values were compared) and the cardinality it decides.
+    Column("score", Float, nullable=True),
+    Column("cardinality", Text, nullable=True),
+    Column("measure", Text, nullable=True),
     Column("reasoning", Text, nullable=True),
     Column("suggested_name", Text, nullable=True),
     Column("left_out", Text, nullable=True),

@@ -11,33 +11,43 @@
 // REQ-413: every proposal an ended discovery run read, and what the reviewer has chosen of them.
 // A row is ticked to accept, ticked not to be recommended again, or neither: left alone it stays
 // undecided and nothing is recorded against it. The two ticks exclude each other. Rows whose
-// score is at the threshold or above start ticked to accept; Apply sends both lists.
+// score is at the threshold or above start ticked to accept; Apply sends both lists. The
+// threshold is the signed-in person's own: set here, it is kept for them and re-ticks the rows.
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applyRunDecisions,
   fetchRunProposals,
+  saveDiscoveryThreshold,
   type DecisionResult,
   type DiscoveryRun,
   type RunProposal,
 } from "../../api/admin";
 
-/** Whether a proposal starts ticked to accept: it can be decided, the run's rules removed it
- *  for nothing but already waiting from an earlier run, and the model's score is at the
- *  threshold. Jev's score is shown beside it and does not decide (REQ-1789). */
+/** Whether a proposal starts ticked to accept: it can be accepted, the run's rules removed it
+ *  for nothing but its score or already waiting from an earlier run, and its score (the
+ *  measure's where its values were compared, else the model's) is at the person's threshold.
+ *  Jev's score is shown beside it and does not decide (REQ-1789). */
 export function startsAccepted(p: RunProposal, threshold: number): boolean {
   return (
-    p.decidable &&
-    (p.reason === null || p.reason === "pending") &&
-    p.confidence !== null &&
-    p.confidence >= threshold
+    p.acceptable &&
+    (p.reason === null || p.reason === "pending" || p.reason === "below_threshold") &&
+    p.score !== null &&
+    p.score >= threshold
   );
 }
+
+const ticked = (proposals: RunProposal[], threshold: number) =>
+  new Set(proposals.filter((p) => startsAccepted(p, threshold)).map((p) => p.id));
 
 export interface RunProposalsState {
   /** The shown run's undecided proposals, the highest score first; null until read. */
   proposals: RunProposal[] | null;
   threshold: number;
+  /** The score the run kept a suggestion at, which a row's below_threshold reason is against. */
+  keptAt: number;
+  /** Set the person's threshold: kept for them, and the rows re-ticked by it. */
+  setThreshold: (threshold: number) => void;
   accept: ReadonlySet<number>;
   notAgain: ReadonlySet<number>;
   toggleAccept: (id: number) => void;
@@ -54,6 +64,9 @@ export interface RunProposalsState {
   error: string;
 }
 
+/** How long the threshold rests before it is kept: typing 65 keeps 65, not 6 and then 65. */
+export const KEEP_THRESHOLD_AFTER_MS = 400;
+
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function useRunProposals(
@@ -65,6 +78,7 @@ export function useRunProposals(
     runId: number;
     proposals: RunProposal[];
     threshold: number;
+    keptAt: number;
   } | null>(null);
   const [accept, setAccept] = useState<ReadonlySet<number>>(new Set());
   const [notAgain, setNotAgain] = useState<ReadonlySet<number>>(new Set());
@@ -72,13 +86,14 @@ export function useRunProposals(
   const [failures, setFailures] = useState<RunProposalsState["failures"]>([]);
   const [applied, setApplied] = useState<RunProposalsState["applied"]>(null);
   const [error, setError] = useState("");
+  const keepTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const runId = run?.id;
   const ended = run !== null && run.status !== "running";
 
   const load = useCallback(async (id: number) => {
-    const { proposals, threshold } = await fetchRunProposals(id);
-    setRead({ runId: id, proposals, threshold });
-    setAccept(new Set(proposals.filter((p) => startsAccepted(p, threshold)).map((p) => p.id)));
+    const { proposals, threshold, kept_at: keptAt } = await fetchRunProposals(id);
+    setRead({ runId: id, proposals, threshold, keptAt });
+    setAccept(ticked(proposals, threshold));
     setNotAgain(new Set());
   }, []);
 
@@ -97,9 +112,25 @@ export function useRunProposals(
   }, [runId, ended, load]);
 
   const shown = read !== null && read.runId === runId && ended ? read : null;
-  const decidable = useMemo(
-    () => (shown ? shown.proposals.filter((p) => p.decidable).map((p) => p.id) : []),
+  const acceptable = useMemo(
+    () => (shown ? shown.proposals.filter((p) => p.acceptable).map((p) => p.id) : []),
     [shown],
+  );
+
+  const setThreshold = useCallback(
+    (threshold: number) => {
+      if (!shown) return;
+      setRead({ ...shown, threshold });
+      // The rows start again from the new threshold; a row marked not to be recommended again
+      // keeps its mark and is not ticked to accept.
+      setAccept(new Set([...ticked(shown.proposals, threshold)].filter((id) => !notAgain.has(id))));
+      if (keepTimer.current !== null) clearTimeout(keepTimer.current);
+      keepTimer.current = setTimeout(() => {
+        keepTimer.current = null;
+        saveDiscoveryThreshold(threshold).catch((e) => setError(errorText(e)));
+      }, KEEP_THRESHOLD_AFTER_MS);
+    },
+    [shown, notAgain],
   );
 
   const flip = (id: number, into: typeof setAccept, outOf: typeof setAccept) => {
@@ -119,10 +150,10 @@ export function useRunProposals(
   const toggleAccept = useCallback((id: number) => flip(id, setAccept, setNotAgain), []);
   const toggleNotAgain = useCallback((id: number) => flip(id, setNotAgain, setAccept), []);
   const toggleAcceptAll = useCallback(() => {
-    const all = decidable.length > 0 && decidable.every((id) => accept.has(id));
-    setAccept(all ? new Set() : new Set(decidable));
-    if (!all) setNotAgain(new Set());
-  }, [decidable, accept]);
+    const all = acceptable.length > 0 && acceptable.every((id) => accept.has(id));
+    setAccept(all ? new Set() : new Set(acceptable));
+    if (!all) setNotAgain((prev) => new Set([...prev].filter((id) => !acceptable.includes(id))));
+  }, [acceptable, accept]);
 
   const apply = useCallback(
     async (nameOf: (p: RunProposal) => string) => {
@@ -134,7 +165,9 @@ export function useRunProposals(
       setError("");
       try {
         const results: DecisionResult[] = await applyRunDecisions(shown.runId, {
-          accept: chosen(accept).map((p) => ({ id: p.id, name: nameOf(p) })),
+          accept: chosen(accept)
+            .filter((p) => p.acceptable)
+            .map((p) => ({ id: p.id, name: nameOf(p) })),
           not_again: chosen(notAgain).map((p) => p.id),
         });
         setFailures(
@@ -160,6 +193,8 @@ export function useRunProposals(
   return {
     proposals: shown ? shown.proposals : null,
     threshold: shown ? shown.threshold : 0,
+    keptAt: shown ? shown.keptAt : 0,
+    setThreshold,
     accept,
     notAgain,
     toggleAccept,

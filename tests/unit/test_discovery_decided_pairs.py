@@ -263,6 +263,8 @@ async def _proposal(
                 target_table_id=edge[2],
                 target_column=edge[3],
                 confidence=0.9,
+                # Every row a run records holds its cardinality (measured, else as proposed).
+                cardinality="many-to-one",
                 reasoning="the visit names its pet",
                 left_out=left_out,
             )
@@ -370,3 +372,84 @@ def test_no_route_lists_or_decides_suggestions_apart_from_a_runs_result():
     ):
         assert gone not in paths
     assert ("/admin/discover/runs/{run_id}/apply", "POST") in paths
+
+
+class _NoReads:
+    """A values reader that fails the test on any read: a known pair is never measured."""
+
+    async def values(self, table: TableFacts, column: str) -> Any:
+        raise AssertionError(f"read {table.table_name}.{column}: a known pair is not measured")
+
+    async def found(self, table: TableFacts, column: str, among: Any) -> frozenset[Any]:
+        raise AssertionError(f"looked up {table.table_name}.{column}: a known pair is not measured")
+
+
+def _measurer(known: Known):
+    from provisa.discovery.measure import Measurer
+
+    tables = {tid: _facts(tid) for tid in _SHAPES}
+    return Measurer(_NoReads(), tables, decided=known.existing | known.rejected)
+
+
+async def test_a_junction_leg_is_never_measured_as_a_new_pair(tmp_path):
+    """A leg of a junction relationship, proposed either way round, is returned as proposed:
+    no column is read, no score or measured cardinality is given, and settling leaves it out as
+    existing."""
+    db = await _store(tmp_path)
+    await _junctions(db)
+    known = await _known(db)
+    forward = from_answer(
+        "semantics", (_PET_VISITS, "vet_id"), (_VETS, "id"), "many-to-one", 0.9, "visit's vet"
+    )
+    backward = from_answer(
+        "semantics", (_PETS, "id"), (_PET_COMPANIONS, "companion_pet_id"), "many-to-one", 0.9, "x"
+    )
+    measured = await _measurer(known).all([forward, backward])
+    assert measured == [forward, backward]
+    assert all(p.measure is None and p.score is None for p in measured)
+
+    async def never(table: TableFacts, column: str) -> Sampled:
+        raise AssertionError(f"read {table.table_name}.{column}: a known pair needs no sample")
+
+    ids = set(_SHAPES)
+    outcome = await settle(measured, {t: _facts(t) for t in _SHAPES}, ids, ids, known, never)
+    assert outcome.kept == []
+    assert [lo.reason for lo in outcome.left_out] == ["existing", "existing"]
+
+
+@pytest.mark.parametrize("first", ["accept", "not_again"])
+async def test_a_measured_pair_already_decided_stays_decided(tmp_path, first):
+    """A pair decided in one run is not measured again in the next; and a later run's row for
+    it that carries a measure (scored under the threshold, so still decidable by its reason)
+    is refused, leaving the pair's decision as it was."""
+    db = await _store(tmp_path)
+    earlier = await _run(db)
+    decided = await _proposal(db, earlier, _EDGE)
+    async with db.acquire() as conn:
+        if first == "accept":
+            await proposals.accept(cast(Any, conn), earlier, decided, "visit-pet")
+        else:
+            await proposals.not_again(cast(Any, conn), earlier, decided)
+    status = await _status(db, _EDGE)
+
+    known = await _known(db)
+    again = from_answer(
+        "semantics", (_PET_VISITS, "pet_id"), (_PETS, "id"), "many-to-one", 0.9, "visit's pet"
+    )
+    assert await _measurer(known).all([again]) == [again]
+
+    later = await _run(db)
+    row = await _proposal(db, later, _EDGE, left_out=proposals.BELOW_THRESHOLD)
+    async with db.acquire() as conn:
+        await conn.execute_core(
+            so.discovery_run_proposals.update()
+            .where(so.discovery_run_proposals.c.id == row)
+            .values(score=0.3)
+        )
+    assert proposals.decidable(proposals.BELOW_THRESHOLD)
+    async with db.acquire() as conn:
+        with pytest.raises(proposals.NotDecidable, match=f"already {status}"):
+            await proposals.accept(cast(Any, conn), later, row, "visit-pet-2")
+        with pytest.raises(proposals.NotDecidable, match=f"already {status}"):
+            await proposals.not_again(cast(Any, conn), later, row)
+    assert await _status(db, _EDGE) == status
