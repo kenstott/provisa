@@ -75168,7 +75168,7 @@
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1921
-  status: complete
+  status: in-progress
   group: 1. Access Governance & Security
   category: Data Residency
   feature: regions-and-residency-residency-rules
@@ -75372,7 +75372,19 @@
     GraphQL and REST surface includes drafts, marked draft, and the admin''s ways-to-reach read marks a
     draft. Catalog listings (the pgwire catalog, the MCP table list) and exports omit drafts. The gate names
     a right, not a role (REQ-1337): org_admin holds it everywhere; a domain steward holding it sees the
-    drafts of their own domains.'
+    drafts of their own domains. (Amended 2026-11-16, A REGISTERED OBJECT IS LIVE; WITHDRAWN TAKES IT OUT
+    OF PRODUCTION; DRAFT IS INTERNAL TO A REGION MOVE:) Maintainer 2026-11-16. Staging before release is
+    done in an isolated environment and promoted, and a live object is seen only by roles granted it, so
+    a source or table registered in production is live on registration: it is never a draft. Taking an object
+    out of production for a while is withdrawing it: a withdrawn table or source serves no role, is not
+    attached by any engine and keeps no replica, keeps its definition, grants and relationships, may be
+    previewed by its domain''s stewards, and is put back by one action; retiring it (REQ-2248) takes it
+    out for good. Draft remains only as the internal waypoint of a move between regions, so no data is held
+    anywhere in between; it is not a state a person chooses. A relationship is withdrawn while either of
+    its ends is withdrawn or retired, a derived state with no setting of its own. Graph views (the ERD,
+    Explore''s graph, the graph schema) leave withdrawn tables and their relationships out, and show them,
+    drawn apart, only to a person who may preview them and asks to; no query language reaches them; relationship
+    discovery never includes them.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
