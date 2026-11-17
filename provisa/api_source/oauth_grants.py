@@ -167,8 +167,13 @@ def _hold(key: str, token: str, expires_in: float | None) -> None:
 
 
 def _exchange(token_url: str, form: dict[str, str], credential: str) -> dict:
-    """The issuer's answer to a grant, or its refusal."""
-    resp = httpx.post(token_url, data=form, timeout=_TIMEOUT)
+    """The issuer's answer to a grant, or its refusal. A held org's issuer is a public
+    destination, each request checked (REQ-2006): the token URL, and a service account key's
+    ``token_uri``, are the org's own."""
+    from provisa.security import sandbox_egress
+
+    with httpx.Client(timeout=_TIMEOUT, event_hooks=sandbox_egress.http_sync_event_hooks()) as c:
+        resp = c.post(token_url, data=form)
     if resp.status_code in _REFUSED:
         raise CredentialRefused(credential, _refusal(resp))
     resp.raise_for_status()

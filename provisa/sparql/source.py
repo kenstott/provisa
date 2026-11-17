@@ -194,7 +194,10 @@ async def probe_endpoint(
 
     headers = {**sparql_headers(), "Content-Type": "application/x-www-form-urlencoded"}
 
-    async with httpx.AsyncClient() as client:
+    from provisa.security import sandbox_egress
+
+    # REQ-2006: a held org's endpoint is checked at each connection, each request.
+    async with httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks()) as client:
         resp = await client.post(
             resolve_secrets(cfg.endpoint_url),  # stored as written; resolved at the call
             data=data,

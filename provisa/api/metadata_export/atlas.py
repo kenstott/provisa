@@ -52,6 +52,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -1167,7 +1168,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
         if snapshot.glossary_terms or self._departed_terms(snapshot):
             # REQ-1387: the glossary publishes even when no entity does — an abstract term
             # is user vocabulary, not physical binding, and exists without a data product.
-            async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            ) as client:
                 headers = await self._headers(client)
                 await self._publish_glossary(client, headers, snapshot, result)
         return result
@@ -1605,7 +1608,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
             # for what is a model state.
             return result
         defs = classification_defs(snapshot)
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
             entities = await self._canonicalize_identity(client, headers, entities, result)
@@ -1788,7 +1793,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
         # A freshly-started Atlas can reset a connection moments after its own Docker
         # healthcheck passes (Tomcat still settling under QEMU emulation) — retry
         # transport-level failures a few times before treating the service as down.
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             response = await self._get_with_retry(client, headers)
         response.raise_for_status()

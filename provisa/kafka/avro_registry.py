@@ -216,7 +216,12 @@ class SchemaRegistry:
         import httpx
 
         if self._client is None:
-            self._client = httpx.AsyncClient(**self.client_options())
+            from provisa.security import sandbox_egress
+
+            # REQ-2006: a held org's registry is checked at each request.
+            self._client = httpx.AsyncClient(
+                **self.client_options(), event_hooks=sandbox_egress.http_event_hooks()
+            )
         try:
             return await self._client.get(f"{self._url}{path}", timeout=self._timeout())
         except (httpx.HTTPError, OSError) as exc:
