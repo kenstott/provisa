@@ -89164,7 +89164,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by the audit session), after the security audit found a stored view answered from its build with no
     check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
     and visibility hold as on any governed read. The stored rows are served as they are only to a reader
-    who sees everything.'
+    who sees everything. (Amended 2026-11-16, A STORED TRANSFORM VIEW: THE READER''S ROW RULES FILTER IT,
+    AND AN OUTPUT DERIVED FROM A MASKED INPUT IS MASKED:) Maintainer 2026-11-16, settling how a reader''s
+    rules hold on a view whose columns a transform computes and whose result is stored. The view is built
+    once and stored; it is never recomputed per reader. A reader''s row rules filter its stored rows: the
+    build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
+    from a column the reader sees masked is masked for that reader, as that column is, since it was derived
+    from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
+    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
