@@ -496,6 +496,8 @@
       "role_updated": "角色「{{role}}」已更新",
       "relationship_id_taken": "關係「{{relationship}}」已存在",
       "relationship_id_reserved": "關係 ID「{{id}}」以「{{prefix}}」開頭，該字首為內建關係保留。請選擇其他 ID。",
+      "relationship_source_column_missing": "關係「{{relationship}}」未指定來源欄。關係透過其來源表的欄進行連接。",
+      "relationship_target_column_missing": "關係「{{relationship}}」未指定目標欄。除非目標是函數，否則關係透過其目標表的欄進行連接。",
       "relationship_graphql_alias_taken": "GraphQL 別名「{{alias}}」已是來自「{{table}}」的關係「{{relationship}}」的別名",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "排程任務「{{task}}」已更新",

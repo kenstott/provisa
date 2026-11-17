@@ -496,6 +496,8 @@
       "role_updated": "Rol '{{role}}' actualizado",
       "relationship_id_taken": "La relación '{{relationship}}' ya existe",
       "relationship_id_reserved": "El id de relación '{{id}}' empieza por '{{prefix}}', un prefijo reservado para las relaciones integradas. Elija otro id.",
+      "relationship_source_column_missing": "La relación '{{relationship}}' no indica ninguna columna de origen. Una relación se une por una columna de su tabla de origen.",
+      "relationship_target_column_missing": "La relación '{{relationship}}' no indica ninguna columna de destino. Una relación se une por una columna de su tabla de destino, salvo que su destino sea una función.",
       "relationship_graphql_alias_taken": "El alias de GraphQL '{{alias}}' ya es el alias de la relación '{{relationship}}' desde '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tarea programada '{{task}}' actualizada",

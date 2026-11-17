@@ -496,6 +496,8 @@
       "role_updated": "Rolle '{{role}}' aktualisiert",
       "relationship_id_taken": "Die Beziehung '{{relationship}}' existiert bereits",
       "relationship_id_reserved": "Die Beziehungs-ID '{{id}}' beginnt mit '{{prefix}}', einem Präfix, das für integrierte Beziehungen reserviert ist. Wählen Sie eine andere ID.",
+      "relationship_source_column_missing": "Die Beziehung '{{relationship}}' nennt keine Quellspalte. Eine Beziehung verknüpft über eine Spalte ihrer Quelltabelle.",
+      "relationship_target_column_missing": "Die Beziehung '{{relationship}}' nennt keine Zielspalte. Eine Beziehung verknüpft über eine Spalte ihrer Zieltabelle, sofern ihr Ziel keine Funktion ist.",
       "relationship_graphql_alias_taken": "Der GraphQL-Alias '{{alias}}' ist bereits der Alias der Beziehung '{{relationship}}' von '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Geplante Aufgabe „{{task}}“ aktualisiert",

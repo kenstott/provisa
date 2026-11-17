@@ -496,6 +496,8 @@
       "role_updated": "ロール「{{role}}」を更新しました",
       "relationship_id_taken": "リレーションシップ「{{relationship}}」はすでに存在します",
       "relationship_id_reserved": "リレーションシップ ID「{{id}}」は、組み込みのリレーションシップ用に予約されている接頭辞「{{prefix}}」で始まっています。別の ID を指定してください。",
+      "relationship_source_column_missing": "リレーションシップ「{{relationship}}」にはソース列が指定されていません。リレーションシップはソーステーブルの列で結合します。",
+      "relationship_target_column_missing": "リレーションシップ「{{relationship}}」にはターゲット列が指定されていません。ターゲットが関数でない限り、リレーションシップはターゲットテーブルの列で結合します。",
       "relationship_graphql_alias_taken": "GraphQL エイリアス「{{alias}}」は、すでに「{{table}}」からのリレーションシップ「{{relationship}}」のエイリアスです",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "スケジュールタスク '{{task}}' を更新しました",

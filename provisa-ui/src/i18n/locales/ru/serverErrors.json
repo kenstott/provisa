@@ -496,6 +496,8 @@
       "role_updated": "Роль '{{role}}' обновлена",
       "relationship_id_taken": "Связь '{{relationship}}' уже существует",
       "relationship_id_reserved": "Идентификатор связи '{{id}}' начинается с '{{prefix}}' — префикса, зарезервированного для встроенных связей. Выберите другой идентификатор.",
+      "relationship_source_column_missing": "Связь '{{relationship}}' не указывает исходный столбец. Связь соединяет по столбцу своей исходной таблицы.",
+      "relationship_target_column_missing": "Связь '{{relationship}}' не указывает целевой столбец. Связь соединяет по столбцу своей целевой таблицы, если её цель не функция.",
       "relationship_graphql_alias_taken": "Псевдоним GraphQL '{{alias}}' уже является псевдонимом связи '{{relationship}}' из '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Запланированная задача '{{task}}' обновлена",
