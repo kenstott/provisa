@@ -766,10 +766,16 @@ def _build_target_pk(ctx_typed: "CompilationContext") -> dict[str, str]:
 
     Both cardinalities resolve to a single target row keyed by target_column, which is
     therefore the target table's actual PK (unlike one-to-many, where target_column is a FK).
+
+    A join onto a parameter of its target binds the parameter (REQ-1986): an argument, never an
+    attribute of the rows returned, so no key of them.
     """
     target_pk: dict[str, str] = {}
     for join_meta in ctx_typed.joins.values():
         tname = join_meta.target.type_name
+        parameters = ctx_typed.native_filter_columns.get(join_meta.target.table_id, {})
+        if any(c in parameters for c in key_list(join_meta.target_column)):
+            continue
         if tname not in target_pk and getattr(join_meta, "cardinality", None) in (
             "many-to-one",
             "one-to-one",
