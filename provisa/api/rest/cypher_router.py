@@ -1187,7 +1187,7 @@ def _with_withdrawn(state: Any, role_id: str, surface: Any) -> tuple[Any, frozen
 
 @router.get("/data/graph-schema")
 async def graph_schema(
-    request: Request, include_withdrawn: bool = Query(False)
+    request: Request, include_withdrawn: bool = False
 ) -> JSONResponse:  # REQ-392, REQ-398
     """Return node labels and relationship types for the current role. REQ-1921: a withdrawn
     table and its relationships are left out; ``include_withdrawn`` returns them, marked
