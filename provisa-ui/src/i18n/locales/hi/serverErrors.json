@@ -20,7 +20,12 @@
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
     },
     "ai": {
+      "endpoint_address_from_server": "AI एंडपॉइंट {{vendor}} अपना पता सर्वर के एनवायरनमेंट से लेता है, जिसका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में इसे अपना पता दें।",
+      "endpoint_key_from_server": "AI एंडपॉइंट {{vendor}} अपनी कुंजी सर्वर के एनवायरनमेंट से लेता है, जिसका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में इसे अपनी कुंजी दें।",
+      "endpoint_key_unset": "AI एंडपॉइंट {{vendor}} की कोई कुंजी नहीं है: {{field}} सेट नहीं है।",
       "key_required": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
+      "local_server_from_environment": "{{vendor}} तक सर्वर के अपने पते पर पहुँचा जाता है, जिसका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में अपने पते पर एक AI एंडपॉइंट घोषित करें।",
+      "server_environment_sets": "{{vendor}} को यहाँ कॉल नहीं किया जा सकता: सर्वर का एनवायरनमेंट {{variable}} सेट करता है, जिसे इसका क्लाइंट हर संगठन के लिए भेजेगा।",
       "vendor_uses_server_credentials": "{{vendor}} तक सर्वर के अपने क्रेडेंशियल से पहुँचा जाता है, जिनका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में कुंजी लेने वाला वेंडर या कोई AI एंडपॉइंट चुनें।"
     },
     "api": {
@@ -157,14 +162,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",
+      "answer_unreadable": "मॉडल के उत्तर में कोई पढ़ने योग्य सूची नहीं थी।",
       "cassandra_discovery_unsupported": "Cassandra स्कीमा खोज के लिए एक सक्रिय CQL सत्र आवश्यक है, जो उपलब्ध नहीं है। इस स्रोत के लिए कॉलम मैन्युअल रूप से परिभाषित करें।",
       "database_not_connected": "डेटाबेस कनेक्ट नहीं है",
+      "decided_both_ways": "कोई प्रस्ताव या तो स्वीकार किया जाता है या दोबारा नहीं सुझाया जाता, दोनों नहीं।",
       "domain_id_required": "domain स्कोप के लिए domain_id आवश्यक है",
       "elasticsearch_index_hint_required": "Elasticsearch खोज के लिए एक 'index' संकेत आवश्यक है।",
       "elasticsearch_mapping_failed": "इंडेक्स '{{index}}' के लिए Elasticsearch मैपिंग पढ़ने में विफलता: {{error}}",
       "endpoint_already_registered": "एंडपॉइंट पहले से पंजीकृत है: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} की कोई कुंजी नहीं है: {{env}} एनवायरनमेंट वेरिएबल सेट करें।",
-      "decided_both_ways": "कोई प्रस्ताव या तो स्वीकार किया जाता है या दोबारा नहीं सुझाया जाता, दोनों नहीं।",
       "model_has_no_room": "मॉडल {{model}} में कोई अनुरोध नहीं समा सकता: {{reason}}",
       "model_incomplete": "चुना गया मॉडल अपने विक्रेता और अपने मॉडल दोनों का नाम देता है।",
       "no_adapter_for_source_type": "स्रोत प्रकार '{{source_type}}' के लिए कोई अडैप्टर पंजीकृत नहीं है",
@@ -183,8 +188,7 @@
       "target_domains_empty": "चुने गए लक्ष्य डोमेन में ऐसी कोई तालिका नहीं है जिसे डिस्कवरी पढ़ती है।",
       "target_tables_not_read": "चुनी गई लक्ष्य तालिकाओं ({{count}}) में से कोई नहीं पढ़ी जाती: डिस्कवरी सिस्टम डोमेन की और सेवा से बाहर की तालिकाएँ छोड़ देती है।",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}",
-      "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।",
-      "answer_unreadable": "मॉडल के उत्तर में कोई पढ़ने योग्य सूची नहीं थी।"
+      "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।"
     },
     "llm": {
       "request_failed": "मॉडल को भेजा गया अनुरोध विफल रहा: {{reason}}",

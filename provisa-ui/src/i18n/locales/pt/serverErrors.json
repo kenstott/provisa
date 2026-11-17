@@ -20,7 +20,12 @@
       "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "endpoint_key_from_server": "O endpoint de IA {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "endpoint_key_unset": "O endpoint de IA {{vendor}} não tem chave: {{field}} não está definido.",
       "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
+      "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
       "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
     },
     "api": {
@@ -157,14 +162,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível.",
       "cassandra_discovery_unsupported": "A descoberta de esquema do Cassandra requer uma sessão CQL ativa, que não está disponível. Defina as colunas manualmente para esta fonte.",
       "database_not_connected": "Banco de dados não conectado",
+      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "domain_id_required": "domain_id obrigatório para escopo de domínio",
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} não tem chave: defina a variável de ambiente {{env}}.",
-      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",
       "model_incomplete": "Um modelo escolhido indica tanto o fornecedor quanto o modelo.",
       "no_adapter_for_source_type": "Nenhum adaptador registrado para o tipo de fonte '{{source_type}}'",
@@ -183,8 +188,7 @@
       "target_domains_empty": "Os domínios de destino escolhidos não contêm nenhuma tabela que a descoberta lê.",
       "target_tables_not_read": "Nenhuma das tabelas de destino escolhidas ({{count}}) é lida: a descoberta deixa de fora as tabelas de um domínio do sistema e as fora de serviço.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
-      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
-      "answer_unreadable": "A resposta do modelo não continha uma lista legível."
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
     },
     "llm": {
       "request_failed": "A solicitação ao modelo falhou: {{reason}}",

@@ -10831,5 +10831,10 @@
   "de/serverErrors.json::serverErrors.discovery.source_domains_empty": "The chosen source domains hold no table discovery reads.",
   "de/serverErrors.json::serverErrors.discovery.target_domains_empty": "The chosen target domains hold no table discovery reads.",
   "de/serverErrors.json::serverErrors.discovery.source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
-  "de/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service."
+  "de/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+  "de/serverErrors.json::serverErrors.ai.endpoint_key_from_server": "The AI endpoint {{vendor}} takes its key from the server's environment, which an organization on this server does not use. Give it a key of your own under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.endpoint_key_unset": "The AI endpoint {{vendor}} has no key: {{field}} is not set.",
+  "de/serverErrors.json::serverErrors.ai.endpoint_address_from_server": "The AI endpoint {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.local_server_from_environment": "{{vendor}} is reached at the server's own address, which an organization on this server does not use. Declare an AI endpoint at your own address under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization."
 }

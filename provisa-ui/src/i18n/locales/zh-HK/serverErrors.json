@@ -20,7 +20,12 @@
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "AI 端點 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
+      "endpoint_key_from_server": "AI 端點 {{vendor}} 從伺服器環境取得金鑰，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的金鑰。",
+      "endpoint_key_unset": "AI 端點 {{vendor}} 沒有金鑰：{{field}} 未設定。",
       "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "local_server_from_environment": "{{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中以您自己的位址宣告一個 AI 端點。",
+      "server_environment_sets": "此處無法呼叫 {{vendor}}：伺服器環境設定了 {{variable}}，其用戶端會為每個組織傳送它。",
       "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
     },
     "api": {
@@ -157,14 +162,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。",
       "cassandra_discovery_unsupported": "Cassandra 結構描述探索需要即時 CQL 工作階段，但目前不可用。請為此數據來源手動定義欄位。",
       "database_not_connected": "數據庫未連線",
+      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "domain_id_required": "領域範圍需要 domain_id",
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} 沒有金鑰：請設定環境變數 {{env}}。",
-      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
       "model_incomplete": "所選模型需同時指明其供應商和模型。",
       "no_adapter_for_source_type": "數據來源類型「{{source_type}}」沒有已註冊的配接器",
@@ -183,8 +188,7 @@
       "target_domains_empty": "所選目標域中沒有探索會讀取的表。",
       "target_tables_not_read": "所選目標表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
-      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
     },
     "llm": {
       "request_failed": "對模型的請求失敗：{{reason}}",

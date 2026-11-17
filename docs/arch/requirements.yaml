@@ -3665,7 +3665,28 @@
     person''s last run, read from that run''s stored scope; a value that no longer holds is left out and
     named; Reset to defaults restores the defaults. A finished run states its scope: the kinds, the model,
     the source and target domains and their table counts. The request states what a confidence value means
-    by the evidence shown, and that a suggestion is kept at 0.7.'
+    by the evidence shown, and that a suggestion is kept at 0.7. (Amended 2026-11-16, ONLY NEW RUN REUSES
+    A RUN''S FIELDS; OPENING DISCOVER STARTS FROM THE DEFAULTS:) Maintainer 2026-11-16, amending the rule
+    of 2026-11-16 that a new run starts from the person''s last run. Opening Discover relationships always
+    starts from the defaults. Only New run, at the end of a run, opens the form with that run''s fields;
+    there a domain chosen with all its tables is restored as all its tables, tables registered since that
+    run outside its scope are named with one action to add them, and Reset to defaults restores the defaults.
+    The pickers offer no table a run would leave out (a draft, a system domain''s table); a run whose source
+    or target holds no table is refused before it starts, saying why, and a run that leaves out some of
+    the tables named says how many and why. (Amended 2026-11-16, A PROPOSED PAIR''S VALUES ARE MEASURED
+    AGAINST EACH OTHER, AND THE THRESHOLD IS THE PERSON''S OWN:) Maintainer 2026-11-16. Every pair a run
+    proposes, foreign key or semantic, is measured on its data, within a stated bound of distinct values
+    read per column: how many of the source column''s distinct values occur in the target column and the
+    reverse, and whether each side''s values are distinct (a key). The measure is shown on the pair''s row,
+    decides its cardinality (many-to-one when the target side is distinct, one-to-one when both are, many-to-many
+    when neither is), and is the evidence the score is given by: a pair whose values are contained in a
+    distinct target scores as a key relationship whatever the model rated it; a pair whose values barely
+    meet scores low however alike its names are. A table that cannot be read in full (a parameterized table)
+    is measured on what it can give and says so. The threshold that decides which rows start ticked is set
+    in the dialog and kept for the person who set it. (Amended 2026-11-16, SUGGESTIONS ARE DECIDED ONLY
+    IN A RUN''S RESULT; THE RELATIONSHIPS PAGE LISTS NONE:) Maintainer 2026-11-16. The Relationships page
+    lists registered relationships only; it has no list of suggestions. A suggestion is decided only in
+    a Discover run''s result table, and a decided one is shown in no list.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -5502,45 +5523,44 @@
   feature: connector-catalog-remote-schemas
   priority: SHOULD
   type: behavioral
-  description: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store
-    on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against
-    it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
+  description: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store on
+    every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.]
+    GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
     `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id
     + operation path + native args`. [SUPERSEDED by REQ-845, 2026-10-03 -- a repeated call is served from
     the engine''s own store, not from Trino. Kept here for history; do not implement against it.] Repeated
     calls within TTL hit Trino directly. [END SUPERSEDED BLOCK] The cache table is dropped after TTL expires.
-    Mutations are never cached, because they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN
-    THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s own store, in the
-    org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds on every engine.
-    The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE
-    SCENARIO READS THE ENGINE''S STORE:) A repeated call with identical args within TTL is served from
-    its cache table in the engine''s own store, with no upstream REST call. The acceptance scenario, which
-    read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine''s store.
-    (Amended 2026-10-08, A LIVE FETCH IS STORED ONCE) When a statement reads an API table that is not
-    in the cache, the rows fetched are stored once, by the statement, under the columns it reads and
-    by name. The fetch itself writes nothing. Before this the fetch also wrote them, into the same
-    table and with the endpoint''s parameter columns, so a table with a parameter that is no response
-    field failed on its first read and one without held its rows twice. Columns promoted from JSON are
-    applied to the table the statement stored.
-
-    (Amended 2026-10-08, AN ANSWER IS KEPT UNDER ITS ARGUMENTS) An API table with a parameter is a
-    function of its arguments, so what is cached is the answer to one argument set and is kept under
-    it: the arguments the statement gives for the table''s own parameters, path and query alike, over
-    the endpoint''s default parameters. A read for other arguments is a miss and calls the API with
-    them; it is never answered with rows fetched for another argument set. Every argument the
-    statement gives is sent, because its condition is taken out of the statement the engine runs. An
-    argument that is another table''s parameter is no part of the name. Rows a GraphQL read filled are
-    read back by the same arguments, one group per argument set. The one exception is a table read by
-    its parent''s keys: when the statement does not give a parameter that a join feeds (a path
-    parameter, or the query parameter a join targets), the table is every key''s fill together, which
-    is what the statement joins to. Before this the cache table was named for the table alone, so
-    the second argument set read within the lifetime of the first was answered with the first''s rows,
-    and a query argument given in SQL was not sent at all.
-
-    (Amended 2026-10-08, DEFAULT PARAMETERS ON EVERY CALL) Every call to an endpoint sends its default
-    parameters under what the statement gives, whichever path makes the call. The fills a GraphQL read
-    makes left them out, so the same table was called one way from GraphQL and another from SQL. The
-    default parameters are no part of a fill''s argument group.'
+    Mutations are never cached, because they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES
+    IN THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s own store, in
+    the org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds on every engine.
+    The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE SCENARIO
+    READS THE ENGINE''S STORE:) A repeated call with identical args within TTL is served from its cache
+    table in the engine''s own store, with no upstream REST call. The acceptance scenario, which read "cached
+    in Trino Iceberg on S3 ... served from Trino directly", names the engine''s store. (Amended 2026-10-08,
+    A LIVE FETCH IS STORED ONCE) When a statement reads an API table that is not in the cache, the rows
+    fetched are stored once, by the statement, under the columns it reads and by name. The fetch itself
+    writes nothing. Before this the fetch also wrote them, into the same table and with the endpoint''s
+    parameter columns, so a table with a parameter that is no response field failed on its first read and
+    one without held its rows twice. Columns promoted from JSON are applied to the table the statement stored.
+    (Amended 2026-10-08, AN ANSWER IS KEPT UNDER ITS ARGUMENTS) An API table with a parameter is a function
+    of its arguments, so what is cached is the answer to one argument set and is kept under it: the arguments
+    the statement gives for the table''s own parameters, path and query alike, over the endpoint''s default
+    parameters. A read for other arguments is a miss and calls the API with them; it is never answered with
+    rows fetched for another argument set. Every argument the statement gives is sent, because its condition
+    is taken out of the statement the engine runs. An argument that is another table''s parameter is no
+    part of the name. Rows a GraphQL read filled are read back by the same arguments, one group per argument
+    set. The one exception is a table read by its parent''s keys: when the statement does not give a parameter
+    that a join feeds (a path parameter, or the query parameter a join targets), the table is every key''s
+    fill together, which is what the statement joins to. Before this the cache table was named for the table
+    alone, so the second argument set read within the lifetime of the first was answered with the first''s
+    rows, and a query argument given in SQL was not sent at all. (Amended 2026-10-08, DEFAULT PARAMETERS
+    ON EVERY CALL) Every call to an endpoint sends its default parameters under what the statement gives,
+    whichever path makes the call. The fills a GraphQL read makes left them out, so the same table was called
+    one way from GraphQL and another from SQL. The default parameters are no part of a fill''s argument
+    group. (Amended 2026-11-16, AN ENDPOINT READ WITHOUT ITS REQUIRED PARAMETER IS REFUSED, NEVER SKIPPED
+    OR DROPPED:) Lead 2026-11-16, following REQ-1986''s parameter binding and the requirements audit of
+    this day: an endpoint whose required path parameter is not given is refused with the catalogued binding
+    refusal; it is never skipped on a miss nor dropped as unmaterializable.'
   use_case: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store on
     every engine, not in S3/Iceberg read through Trino. Kept here for history; do not implement against
     it.] S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and
@@ -41546,8 +41566,8 @@
   - provisa-ui/src/__tests__/LoginPage.test.tsx
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1263
-  status: in-progress
-  since: 2026-08
+  status: complete
+  since: 2026-11
   group: 2. Authentication & Identity
   category: API Token Management
   feature: sign-in-and-identity-credentials
@@ -41628,6 +41648,8 @@
   - tests/unit/test_grpc_auth.py
   - provisa-ui/src/__tests__/PersonalAccessTokens.test.tsx
   - provisa-client/tests/test_client.py
+  - tests/unit/test_pat_scopes_are_roles.py
+  - tests/integration/test_pat_scopes_e2e.py
   docs:
   - admin.md
   - api-reference.md
@@ -56235,7 +56257,8 @@
   docs:
   - environments.md
 - id: REQ-1562
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Deployment
@@ -60609,7 +60632,11 @@
     did. Overlap: REQ-1907 (per-role tolerance, proposed) changes the same decision and must take its inputs
     from the same in-memory state. (Amended 2026-11-09, WITHOUT THE GUARANTEE THE READ DOES NOT WAIT:) Maintainer
     2026-11-09 (REQ-860): a source without the freshness guarantee is landed before the read only when nothing
-    usable is held; a held copy past its freshness is answered and the refresh runs in the background.'
+    usable is held; a held copy past its freshness is answered and the refresh runs in the background. (Amended
+    2026-11-16, AN ENDPOINT READ WITHOUT ITS REQUIRED PARAMETER IS REFUSED, NEVER SKIPPED OR DROPPED:) Lead
+    2026-11-16, following REQ-1986''s parameter binding and the requirements audit of this day: an endpoint
+    whose required path parameter is not given is refused with the catalogued binding refusal; it is never
+    skipped on a miss nor dropped as unmaterializable.'
   use_case: 'API-backed and other unreachable sources materialize lazily: a query that arrives before
     the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty
     or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.'
@@ -75003,7 +75030,29 @@
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: 'A domain is deleted only when nothing refers to it, and the operator is shown everything that does. Asking to delete a domain returns its complete impact list -- the registered tables and their columns, relationships, row filters, masking rules, metrics, materialized views and plain views, commands and webhooks, data products, glossary links, tag assignments, the roles and role assignments that name the domain, the sources that list it as an allowed domain, and the replicas and view storage held for its tables -- each kind with a count and the names, and each item linked to where the operator removes or moves it. While that list is not empty the deletion is refused and nothing is removed. The operator is responsible for the cleanup. Each item is removed or moved through its own existing action, under the right that action already requires and with its own audit record. When the list is empty the deletion succeeds and removes only the domain itself. No deletion of a domain removes any other object. The control plane does not cascade from a domain, and the rule is checked in code so that it holds the same on every control plane. A role that lists the domain is on the impact list like anything else. The operator edits the role, and a data role cannot be left with no domain (a role always lists one or more domains or all of them). Removing an individual object cleans up after itself -- removing a table removes its replica, its rules and its place in relationships, or is itself refused while something reads it -- so that emptying a domain leaves nothing behind. [SUPERSEDED by REQ-1918, 2026-10-02 -- deletion follows the general rule there. Kept here for history; do not implement against it.] A bulk removal built on the same list may be added later; it is not part of this requirement. [END SUPERSEDED BLOCK] (Amended 2026-10-02, GENERAL RULE) Domain deletion follows the general deletion rule of REQ-1918: one object at a time, refused while anything depends on it. There is no bulk removal of a domain''s contents.'
+  description: 'A domain is deleted only when nothing refers to it, and the operator is shown everything
+    that does. Asking to delete a domain returns its complete impact list -- the registered tables and their
+    columns, relationships, row filters, masking rules, metrics, materialized views and plain views, commands
+    and webhooks, data products, glossary links, tag assignments, the roles and role assignments that name
+    the domain, the sources that list it as an allowed domain, and the replicas and view storage held for
+    its tables -- each kind with a count and the names, and each item linked to where the operator removes
+    or moves it. While that list is not empty the deletion is refused and nothing is removed. The operator
+    is responsible for the cleanup. Each item is removed or moved through its own existing action, under
+    the right that action already requires and with its own audit record. When the list is empty the deletion
+    succeeds and removes only the domain itself. No deletion of a domain removes any other object. The control
+    plane does not cascade from a domain, and the rule is checked in code so that it holds the same on every
+    control plane. A role that lists the domain is on the impact list like anything else. The operator edits
+    the role, and a data role cannot be left with no domain (a role always lists one or more domains or
+    all of them). Removing an individual object cleans up after itself -- removing a table removes its replica,
+    its rules and its place in relationships, or is itself refused while something reads it -- so that emptying
+    a domain leaves nothing behind. [SUPERSEDED by REQ-1918, 2026-10-02 -- deletion follows the general
+    rule there. Kept here for history; do not implement against it.] A bulk removal built on the same list
+    may be added later; it is not part of this requirement. [END SUPERSEDED BLOCK] (Amended 2026-10-02,
+    GENERAL RULE) Domain deletion follows the general deletion rule of REQ-1918: one object at a time, refused
+    while anything depends on it. There is no bulk removal of a domain''s contents. (Amended 2026-11-16,
+    A DOMAIN NOTHING REFERS TO IS RETIRED, NOT DELETED:) Lead 2026-11-16, following REQ-2248 (retirement)
+    and the requirements audit of this day: where this requirement says a domain nothing refers to is deleted,
+    it is retired, as every model object is; the guard that refuses while something refers to it is unchanged.'
   use_case: A domain owns tables, rules and data, and many other objects point at it. Deleting it silently
     either destroyed a great deal without warning or left objects pointing at a domain that no longer
     existed, depending on the control plane in use. Refusing until the domain is empty, as relational
@@ -75132,7 +75181,7 @@
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1921
-  status: complete
+  status: in-progress
   group: 1. Access Governance & Security
   category: Data Residency
   feature: regions-and-residency-residency-rules
@@ -75336,7 +75385,19 @@
     GraphQL and REST surface includes drafts, marked draft, and the admin''s ways-to-reach read marks a
     draft. Catalog listings (the pgwire catalog, the MCP table list) and exports omit drafts. The gate names
     a right, not a role (REQ-1337): org_admin holds it everywhere; a domain steward holding it sees the
-    drafts of their own domains.'
+    drafts of their own domains. (Amended 2026-11-16, A REGISTERED OBJECT IS LIVE; WITHDRAWN TAKES IT OUT
+    OF PRODUCTION; DRAFT IS INTERNAL TO A REGION MOVE:) Maintainer 2026-11-16. Staging before release is
+    done in an isolated environment and promoted, and a live object is seen only by roles granted it, so
+    a source or table registered in production is live on registration: it is never a draft. Taking an object
+    out of production for a while is withdrawing it: a withdrawn table or source serves no role, is not
+    attached by any engine and keeps no replica, keeps its definition, grants and relationships, may be
+    previewed by its domain''s stewards, and is put back by one action; retiring it (REQ-2248) takes it
+    out for good. Draft remains only as the internal waypoint of a move between regions, so no data is held
+    anywhere in between; it is not a state a person chooses. A relationship is withdrawn while either of
+    its ends is withdrawn or retired, a derived state with no setting of its own. Graph views (the ERD,
+    Explore''s graph, the graph schema) leave withdrawn tables and their relationships out, and show them,
+    drawn apart, only to a person who may preview them and asks to; no query language reaches them; relationship
+    discovery never includes them.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
@@ -85231,8 +85292,8 @@
   - tests/integration/test_timestamptz_e2e.py
   - tests/integration/test_zoned_timestamp_warehouses_e2e.py
 - id: REQ-2049
-  status: in-progress
-  since: 2026-10
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Provisioning
   feature: product-tour-and-demos-sandbox
@@ -85343,6 +85404,15 @@
     directories, unused images) and turned the shared Elasticsearch red; a version taken down loses its bundle directory and
     the images no container still uses, an older one never brought up its directory, and nothing else is pruned
     (scripts/demo_stores_sync.sh, tests/unit/test_demo_bundle_setup.py).'
+  tests:
+  - tests/unit/test_demo_bundles.py
+  - tests/integration/test_demo_bundle_sandbox_e2e.py
+  - tests/unit/test_demo_stores.py
+  - tests/unit/test_demo_stores_linger.py
+  - tests/unit/test_demo_live_landing.py
+  - tests/unit/test_demo_template_warm_start.py
+  - tests/unit/test_start_ui_install_named_demo.py
+  - tests/unit/test_held_paths_logs_code_download.py
 - id: REQ-2051
   status: in-progress
   since: 2026-10
@@ -86822,8 +86892,8 @@ And a constant naming a secret that does not exist fails the query, naming the c
   docs:
   - security.md
 - id: REQ-2087
-  status: in-progress
-  since: 2026-10
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Security
   feature: encryption-and-secrets-secrets
@@ -86887,6 +86957,9 @@ And the Secrets page lists warehouse_pw under the automatic rule by name, with n
   tests:
   - tests/unit/test_central_redaction.py
   - provisa-ui/src/__tests__/RedactionTab.test.tsx
+  - tests/unit/test_client_redaction_marker.py
+  - tests/unit/pgwire/test_redaction_not_in_data_path.py
+  - tests/unit/test_source_error_text.py
   stakeholders:
   - compliance
   - ops
@@ -89104,7 +89177,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by the audit session), after the security audit found a stored view answered from its build with no
     check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
     and visibility hold as on any governed read. The stored rows are served as they are only to a reader
-    who sees everything.'
+    who sees everything. (Amended 2026-11-16, A STORED TRANSFORM VIEW: THE READER''S ROW RULES FILTER IT,
+    AND AN OUTPUT DERIVED FROM A MASKED INPUT IS MASKED:) Maintainer 2026-11-16, settling how a reader''s
+    rules hold on a view whose columns a transform computes and whose result is stored. The view is built
+    once and stored; it is never recomputed per reader. A reader''s row rules filter its stored rows: the
+    build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
+    from a column the reader sees masked is masked for that reader, as that column is, since it was derived
+    from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
+    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a

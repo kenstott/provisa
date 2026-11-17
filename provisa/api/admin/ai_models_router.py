@@ -174,10 +174,13 @@ async def get_vendor_models(
     the org's custom ``ai_endpoints`` (REQ-1790), listed the same way against its own base_url.
     """
     require_org_settings(request)
-    import os
-
     from provisa.api.app import state
-    from provisa.core.org_secrets import org_ai_key
+    from provisa.core.org_secrets import (
+        endpoint_address,
+        endpoint_key,
+        org_ai_key,
+        read_org_api_keys,
+    )
     from provisa.llm.vendor_models import (
         VENDOR_MODEL_APIS,
         fetch_endpoint_models,
@@ -203,21 +206,9 @@ async def get_vendor_models(
             f"'{vendor}' publishes no list-models API; enter the model name directly",
         )
 
-    api_key = None
-    key_env = endpoint.get("api_key_env")
-    if key_env:
-        from provisa.core.env_reference_guard import refuse_named_by_org
-
-        refuse_named_by_org(key_env)  # REQ-1557: a held organization's own key variable
-        api_key = os.environ.get(key_env)
-        if not api_key:
-            raise ApiError(
-                400,
-                "ai_models.vendor_key_required",
-                f"set the '{key_env}' environment variable to list '{vendor}' models",
-            )
-
-    style, base_url = endpoint["style"], endpoint["base_url"]
+    # The key and address the endpoint's calls are made with (REQ-1395, REQ-1557, REQ-1790).
+    api_key = await endpoint_key(await read_org_api_keys(state.model_db), endpoint)
+    style, base_url = endpoint["style"], endpoint_address(endpoint)
     models = await _run_model_listing(
         vendor, lambda: fetch_endpoint_models(style, base_url, api_key)
     )

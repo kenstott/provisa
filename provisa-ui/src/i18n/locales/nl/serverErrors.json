@@ -20,7 +20,12 @@
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "endpoint_key_from_server": "Het AI-eindpunt {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
+      "endpoint_key_unset": "Het AI-eindpunt {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
       "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "local_server_from_environment": "{{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Leg onder Beheer, AI-modellen een AI-eindpunt op uw eigen adres vast.",
+      "server_environment_sets": "{{vendor}} kan hier niet worden aangeroepen: de omgeving van de server stelt {{variable}} in, die zijn client voor elke organisatie zou meesturen.",
       "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
     },
     "api": {
@@ -157,14 +162,14 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
+      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst.",
       "cassandra_discovery_unsupported": "Cassandra-schemadetectie vereist een actieve CQL-sessie, die niet beschikbaar is. Definieer de kolommen voor deze bron handmatig.",
       "database_not_connected": "Database niet verbonden",
+      "decided_both_ways": "Een voorstel wordt geaccepteerd of niet opnieuw aanbevolen, niet allebei.",
       "domain_id_required": "domain_id vereist voor domeinbereik",
       "elasticsearch_index_hint_required": "Elasticsearch-detectie vereist een 'index'-hint.",
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} heeft geen sleutel: stel de omgevingsvariabele {{env}} in.",
-      "decided_both_ways": "Een voorstel wordt geaccepteerd of niet opnieuw aanbevolen, niet allebei.",
       "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
       "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
       "no_adapter_for_source_type": "Geen adapter geregistreerd voor brontype '{{source_type}}'",
@@ -183,8 +188,7 @@
       "target_domains_empty": "De gekozen doeldomeinen bevatten geen tabel die detectie leest.",
       "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
-      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in.",
-      "answer_unreadable": "Het antwoord van het model bevatte geen leesbare lijst."
+      "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
     },
     "llm": {
       "request_failed": "Het verzoek aan het model is mislukt: {{reason}}",

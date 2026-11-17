@@ -18,6 +18,7 @@ import yaml
 
 from provisa.api.mcp import chat as chat_mod
 from provisa.api.mcp import tools as mcp_tools
+from provisa.core import secrets as secrets_mod
 from provisa.core.request_context import current_org
 from tests.role_state import RoleState
 
@@ -501,7 +502,7 @@ class TestLlmConfiguredPreflight:  # REQ-1794
     async def test_custom_endpoint_secret_reference_is_configured(self, monkeypatch, tmp_path):
         # REQ-1826: api_key_env carrying a ${secret:NAME} reference (the pattern the AI Models UI
         # itself recommends, per REQ-1808) must resolve through the SAME grammar
-        # _resolve_api_key_field uses at actual chat time — a bare os.environ.get(key_env) check
+        # resolve_api_key_field uses at actual chat time — a bare os.environ.get(key_env) check
         # here always failed for this exact string (it is never itself a real env var name),
         # permanently reporting "not configured" for a correctly set-up vault-backed endpoint.
         import os
@@ -520,7 +521,9 @@ class TestLlmConfiguredPreflight:  # REQ-1794
         )
         monkeypatch.setitem(os.environ, "PROVISA_CONFIG", str(cfg))
         monkeypatch.setattr(
-            chat_mod, "_resolve_api_key_field", lambda api_key_env: _async_result("sk-vault-value")
+            secrets_mod,
+            "resolve_api_key_field",
+            lambda api_key_env: _async_result("sk-vault-value"),
         )
         ok, reason = await chat_mod._llm_configured(_state())
         assert ok is True
@@ -545,7 +548,7 @@ class TestLlmConfiguredPreflight:  # REQ-1794
         )
         monkeypatch.setitem(os.environ, "PROVISA_CONFIG", str(cfg))
         monkeypatch.setattr(
-            chat_mod, "_resolve_api_key_field", lambda api_key_env: _async_result(None)
+            secrets_mod, "resolve_api_key_field", lambda api_key_env: _async_result(None)
         )
         ok, reason = await chat_mod._llm_configured(_state())
         assert ok is False

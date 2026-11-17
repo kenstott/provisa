@@ -328,26 +328,31 @@ async def _provider(cfg: dict, model_db: "Database", vendor: str) -> tuple[Any, 
 
     from provisa.core.org_secrets import (
         NO_KEY,
+        endpoint_address,
+        endpoint_key,
         endpoint_provider_key,
         provider_key,
         read_org_api_keys,
+        sdk_config,
     )
-    from provisa.core.request_context import current_org
-    from provisa.core.sandbox_ai import endpoint_key
     from provisa.core.secrets import resolve_secrets
 
+    stored = await read_org_api_keys(model_db)
     endpoints = {ep["id"]: ep for ep in (cfg.get("ai_endpoints") or []) if ep.get("enabled", True)}
     endpoint = endpoints.get(vendor)
     if endpoint is None:
-        key = provider_key(await read_org_api_keys(model_db), vendor)
-        return ProviderFactory.create_provider(vendor, {"api_key": key} if key else {}), vendor
+        key = provider_key(stored, vendor)
+        made = ProviderFactory.create_provider(
+            vendor, sdk_config(vendor, {"api_key": key} if key else {})
+        )
+        return made, vendor
     style = endpoint["style"]
-    config: dict[str, Any] = {"base_url": resolve_secrets(endpoint["base_url"])}
-    key = await endpoint_key(endpoint, current_org.get())
+    config: dict[str, Any] = {"base_url": resolve_secrets(endpoint_address(endpoint))}
+    key = await endpoint_key(stored, endpoint)
     # aisuite's OpenAI provider requires a key even for a server that checks none (a local
     # Ollama): a placeholder satisfies that constructor, and is no credential.
     config["api_key"] = endpoint_provider_key(key) or (NO_KEY if style == "openai" else None)
-    return ProviderFactory.create_provider(style, config), style
+    return ProviderFactory.create_provider(style, sdk_config(style, config)), style
 
 
 def _redacted_messages(messages: Any, org_id: str) -> Any:

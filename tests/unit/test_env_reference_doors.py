@@ -313,6 +313,7 @@ async def test_a_key_variable_a_held_organizations_own_settings_name_is_not_read
     assert refused.value.params == {"name": _VARIABLE}
     client = ProvisaLLMClient.__new__(ProvisaLLMClient)
     client._api_keys = {}
+    client._vault_failures = {}
     client._endpoints = {"mine": endpoint}
     with pytest.raises(EnvReferenceRefused):
         client._vendor_key_problem("mine")

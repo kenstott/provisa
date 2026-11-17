@@ -159,7 +159,9 @@ async def llm_rank(  # REQ-167
     candidates: list[TableCandidate],
     api_keys: dict[str, str] | None = None,
 ) -> list[RankedTable]:
-    """Call LLM to semantically rank candidates. Returns empty list on failure."""
+    """Call LLM to semantically rank candidates. Returns empty list on a failed call; a refusal
+    for want of a key (provisa.core.org_secrets.AiKeyRequired) reaches the caller (REQ-1395)."""
+    from provisa.core.org_secrets import AiKeyRequired
     from provisa.llm.client import ProvisaLLMClient
 
     prompt = build_search_prompt(query, candidates)
@@ -172,6 +174,10 @@ async def llm_rank(  # REQ-167
             system="You are a data catalog assistant.",
             max_tokens=1024,
         )
+    except AiKeyRequired:
+        # REQ-1395: the organization has no AI to rank with; the caller is told so, with where
+        # to add a key, not handed the token ranking as though a model had been asked.
+        raise
     except Exception as exc:
         log.warning("LLM table search failed: %s", exc)
         return []
