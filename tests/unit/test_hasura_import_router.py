@@ -239,6 +239,24 @@ def _wire_apply(monkeypatch) -> dict:
         seen["order"].append("residency")  # REQ-1921: judged before anything is loaded
 
     monkeypatch.setattr(ir, "_require_residency_of_import", _residency)
+
+    # REQ-1327: an imported role is judged against the org's roles and domains as stored; this org
+    # holds the standard roles and no domain yet (test_config_import_roles_checked covers the rule).
+    import provisa.core.repositories.domain as domain_repo
+    import provisa.core.repositories.role as role_repo
+    from provisa.core.db import standard_role_dicts
+
+    async def _stored_roles(conn):  # noqa: ARG001
+        return standard_role_dicts()
+
+    async def _stored_domains(conn, retired=False):  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(role_repo, "list_all", _stored_roles)
+    monkeypatch.setattr(domain_repo, "list_all", _stored_domains)
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "allowed_domains_request", lambda request: None)  # noqa: ARG005
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
     # REQ-2185: the term-embedding trigger reads the org's vector model; its own tests cover it.
     monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())

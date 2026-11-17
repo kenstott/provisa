@@ -351,7 +351,9 @@
       "org_selection_required": "संगठन चयन आवश्यक है",
       "already_exists": "भूमिका '{{role}}' पहले से मौजूद है",
       "description_missing": "भूमिका '{{role}}' को इसके उद्देश्य का विवरण चाहिए",
-      "right_not_in_parents": "भूमिका {{role}} के पास {{right}} नहीं हो सकता: किसी पैरेंट के पास यह नहीं है"
+      "right_not_in_parents": "भूमिका {{role}} के पास {{right}} नहीं हो सकता: किसी पैरेंट के पास यह नहीं है",
+      "platform_right_requires_platform_admin": "{{rights}} वाली भूमिका एक प्लेटफ़ॉर्म व्यवस्थापक परिभाषित करता है",
+      "rights_not_held": "भूमिका {{role}} में {{rights}} हैं, जो आपके पास नहीं हैं"
     },
     "schema": {
       "allowed_domains_updated": "स्रोत '{{source}}' के लिए अनुमत डोमेन अपडेट किए गए",

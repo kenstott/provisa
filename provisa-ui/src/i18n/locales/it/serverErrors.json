@@ -351,7 +351,9 @@
       "org_selection_required": "Selezione dell'organizzazione richiesta",
       "already_exists": "Il ruolo '{{role}}' esiste già",
       "description_missing": "Il ruolo '{{role}}' ha bisogno di una descrizione di a cosa serve",
-      "right_not_in_parents": "Il ruolo {{role}} non può detenere {{right}}: nessun genitore lo detiene"
+      "right_not_in_parents": "Il ruolo {{role}} non può detenere {{right}}: nessun genitore lo detiene",
+      "platform_right_requires_platform_admin": "Un ruolo che include {{rights}} è definito da un amministratore della piattaforma",
+      "rights_not_held": "Il ruolo {{role}} include {{rights}}, che non detieni"
     },
     "schema": {
       "allowed_domains_updated": "Domini consentiti aggiornati per l'origine '{{source}}'",

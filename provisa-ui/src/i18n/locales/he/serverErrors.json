@@ -351,7 +351,9 @@
       "org_selection_required": "נדרשת בחירת ארגון",
       "already_exists": "התפקיד '{{role}}' כבר קיים",
       "description_missing": "התפקיד '{{role}}' צריך תיאור של מטרתו",
-      "right_not_in_parents": "התפקיד {{role}} לא יכול להחזיק ב-{{right}}: אף הורה אינו מחזיק בו"
+      "right_not_in_parents": "התפקיד {{role}} לא יכול להחזיק ב-{{right}}: אף הורה אינו מחזיק בו",
+      "platform_right_requires_platform_admin": "תפקיד הכולל את {{rights}} מוגדר על ידי מנהל פלטפורמה",
+      "rights_not_held": "התפקיד {{role}} כולל את {{rights}}, שאינם בידיך"
     },
     "schema": {
       "allowed_domains_updated": "הדומיינים המותרים עודכנו עבור המקור '{{source}}'",

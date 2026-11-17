@@ -10847,6 +10847,8 @@
   "zh-HK/serverErrors.json::serverErrors.ai.vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
   "zh-HK/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
+  "zh-HK/serverErrors.json::serverErrors.roles.platform_right_requires_platform_admin": "A role carrying {{rights}} is defined by a platform administrator",
+  "zh-HK/serverErrors.json::serverErrors.roles.rights_not_held": "Role {{role}} carries {{rights}}, which you do not hold",
   "zh-HK/serverErrors.json::serverErrors.redaction.rule_invalid": "Redaction rule {{rule}}: {{why}}",
   "zh-HK/serverErrors.json::serverErrors.redaction.pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
   "zh-HK/serverErrors.json::serverErrors.redaction.pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",

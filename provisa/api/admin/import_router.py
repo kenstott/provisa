@@ -34,6 +34,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import has_capability_request
+from provisa.api.admin.roles_router import require_roles_definable
 from provisa.api.errors import ApiError
 from provisa.core.models import ProvisaConfig
 from provisa.security.rights import Capability
@@ -497,6 +498,9 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             raise ApiError(403, "import.sensitive_data_required", refusal(changes))
 
     async with state.model_db.acquire() as conn:
+        # REQ-1327/REQ-1337: an imported role passes what the role forms ask, and carries only
+        # rights its importer holds.
+        await require_roles_definable(conn, request, config)
         await _require_residency_of_import(request, conn, config)  # REQ-1921
     if req.dry_run:  # REQ-2222
         return ImportApplyResponse(

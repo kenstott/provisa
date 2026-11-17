@@ -351,7 +351,9 @@
       "org_selection_required": "Organisationsauswahl erforderlich",
       "already_exists": "Die Rolle '{{role}}' existiert bereits",
       "description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
-      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es"
+      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es",
+      "platform_right_requires_platform_admin": "Eine Rolle mit {{rights}} wird von einem Plattformadministrator definiert",
+      "rights_not_held": "Rolle {{role}} umfasst {{rights}}, die Sie nicht haben"
     },
     "schema": {
       "allowed_domains_updated": "Zulässige Domänen für Quelle '{{source}}' aktualisiert",
