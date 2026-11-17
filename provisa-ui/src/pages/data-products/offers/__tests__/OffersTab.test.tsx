@@ -157,6 +157,17 @@ describe("a product's offers", () => {
     );
   });
 
+  it("say why one is in review, in the catalog's words", async () => {
+    api.offers.mockResolvedValue([offer({ review: "sample_outside_product" })]);
+    tab(false);
+    const badge = await screen.findByTestId("offer-card-1-review");
+    expect(badge).toHaveTextContent("In review");
+    fireEvent.mouseEnter(badge);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      "A view of this offer's sample reads more than the product's datasets, or none of them.",
+    );
+  });
+
   it("carry a quality line that opens Quality", async () => {
     api.offers.mockResolvedValue([offer({})]);
     const h = tab(false);

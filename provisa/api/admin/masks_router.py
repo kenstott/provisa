@@ -24,6 +24,7 @@ from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.security.rights import Capability
+from provisa.api.engine_error_names import client_text, client_value
 
 router = APIRouter(prefix="/admin/masks", tags=["admin"])
 
@@ -48,7 +49,7 @@ def _verdict(entry: int, field: str, exc: Any, *, ok: bool) -> dict:
         "ok": ok,
         "construct": exc.construct,
         "position": exc.position,
-        "message": str(exc),
+        "message": client_text(str(exc)),
     }
 
 
@@ -101,7 +102,7 @@ async def check_masks(body: MasksCheckBody, request: Request) -> dict:
         "refusal": entries
         and {
             "code": "schema.mask_unreachable",
-            "message": UNREACHABLE_MASK + entries,
+            "message": client_value(UNREACHABLE_MASK + entries),
             "params": {"entries": entries},
         },
         **pattern_report(masks),

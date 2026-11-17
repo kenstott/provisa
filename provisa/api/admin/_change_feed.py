@@ -35,6 +35,7 @@ from provisa.mongodb.change_feed import (
     follows_change_feed,
     require_change_feed,
 )
+from provisa.api.engine_error_names import client_text
 
 log = logging.getLogger(__name__)
 
@@ -52,7 +53,7 @@ async def _check(source: Any) -> MutationResult | None:
             success=False,
             message=f"Source {source.id!r}: connection validation failed: {exc}",
             code="schema.source_connection_failed",
-            params={"source": source.id, "error": str(exc)},
+            params={"source": source.id, "error": client_text(str(exc))},
         )
     return None
 

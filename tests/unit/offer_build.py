@@ -13,14 +13,54 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from sqlalchemy import select
 
+from provisa.compiler.names_table import NameRow, NamesTable
+from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import registered_tables
+
+
+def names_table(
+    named: Mapping[int, tuple[str, str]], views: frozenset[int] = frozenset()
+) -> NamesTable:
+    """A build's names table naming each table id ``named`` holds, as (domain id, SQL name); an
+    id in ``views`` is a view."""
+    return NamesTable(
+        rows=tuple(
+            NameRow(
+                object_kind="view" if tid in views else "table",
+                object_id=str(tid),
+                surface="sql",
+                name=name,
+                physical_name=name,
+                label=name,
+                domain_id=domain,
+                table_id=tid,
+            )
+            for tid, (domain, name) in named.items()
+        )
+    )
+
+
+def published(
+    names: NamesTable | None = None,
+    checked: Mapping[int, int] | None = None,
+    views: Mapping[int, set[int]] | None = None,
+) -> offers.Published:
+    """The build a runtime has published, as a request acting on a product reads it: its names
+    table, each checker's checked table, and the tables each view reads."""
+    reads = dict(views or {})
+    return offers.Published(
+        names=names,
+        checked=dict(checked or {}),
+        view_reads=lambda ids: {v: set(reads[v]) for v in ids if v in reads},
+    )
 
 
 class Built:
@@ -32,6 +72,8 @@ class Built:
         self.masked: dict[str, str] = {}
         self.unread: set[str] = set()
         self.draft: set[str] = set()
+        # REQ-2125: each checker's checked table, as the build resolved and published it.
+        self.checked: dict[int, int] = {}
 
     async def state(self, conn) -> Any:
         rows = (
@@ -58,6 +100,7 @@ class Built:
             meta_roles={},
             meta_qualifiers={},
             tables=tables,
+            checked_targets=dict(self.checked),
         )
 
     def view(self, *_args: Any, **kw: Any) -> list[dict]:

@@ -31,6 +31,7 @@ from graphql.language import print_ast
 
 from provisa.api.data.stream_end import graphql_stream_error, new_subscription_id
 from provisa.core.operator_floor import OperatorFloorError
+from provisa.api.engine_error_names import client_text, client_value
 
 log = logging.getLogger(__name__)
 
@@ -120,14 +121,12 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                     sub_fields.append(sel.name.value)
 
     if not sub_fields or not sub_selection:
-        return _error_stream({"errors": [{"message": "No subscription fields"}]})
+        return _error_stream(["No subscription fields"])
 
     # Find table metadata for the first subscription field
     table_meta = ctx.tables.get(sub_fields[0])
     if table_meta is None:
-        return _error_stream(
-            {"errors": [{"message": f"Unknown subscription field: {sub_fields[0]!r}"}]}
-        )
+        return _error_stream([f"Unknown subscription field: {sub_fields[0]!r}"])
 
     table_name = table_meta.table_name
     source_id = table_meta.source_id
@@ -376,7 +375,12 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
     )
 
 
-def _error_stream(payload: dict) -> StreamingResponse:
+def _error_stream(messages: list[str]) -> StreamingResponse:
+    """A stream refused before it starts: one frame of ``errors``, each told as a client is told an
+    error's text -- the stream is answered with a 200, past the error-response middleware
+    (REQ-2087)."""
+    payload = {"errors": client_value([{"message": m} for m in messages])}
+
     async def _gen() -> AsyncGenerator[str, None]:
         yield f"data: {json.dumps(payload)}\n\n"
 
@@ -426,7 +430,7 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
     try:
         broker, topic = _parse_sink_uri(sink_header)
     except ValueError as exc:
-        return JSONResponse(status_code=400, content={"error": str(exc)})
+        return JSONResponse(status_code=400, content={"error": client_text(str(exc))})
 
     async def _run_query() -> dict:
         from provisa.compiler.parser import parse_query as _parse

@@ -82,17 +82,58 @@ def control_plane(embedded_postgres, control_plane_template):
     plane.close()
 
 
+class StoodInPass:
+    """What the stood-in build's after-answer pass does (``model_builds.after``): each phase is
+    recorded in ``ran`` with the build stamp of the build it ran for, after the test's own step
+    for that phase (``before[phase]``, an async callable: a gate to hold it, a failure to raise)."""
+
+    def __init__(self) -> None:
+        self.ran: list[tuple[str, int]] = []
+        self.before: dict = {}
+
+    def settle(self, timeout: float = 30.0) -> None:
+        """Wait until no runtime's pass is running or pending."""
+        from provisa.api import build_after_answer
+
+        while True:
+            with build_after_answer._guard:
+                workers = list(build_after_answer._draining.values())
+            if not workers:
+                return
+            for worker in workers:
+                worker.result(timeout)
+
+
 @pytest.fixture
 def model_builds(monkeypatch, rebuild_recorder):
     """Every call for a schema build made during the test (``rebuild_recorder``), with the model
     build itself stood in for: it reads the stamps a build is loaded at, enters every phase in
-    order and installs the stamps on the runtime, as ``app._rebuild_schemas_impl`` does, and
-    compiles nothing. The entry (``app._rebuild_schemas``: its turn, its cause, its record, the
-    watcher's stamp check) is the real one, so a test asserts how many builds a write caused, by
-    whom and with which phases -- by counting, never by seconds (REQ-1914)."""
+    order, installs the stamps on the runtime and publishes its after-answer pass, as
+    ``app._rebuild_schemas_impl`` does, and compiles nothing. The entry (``app._rebuild_schemas``:
+    its turn, its cause, its record, the watcher's stamp check, the start of the pass) and the
+    pass's runner (``build_after_answer``) are the real ones, so a test asserts how many builds
+    a write caused, by whom and with which phases, and what ran after the answer -- by counting,
+    never by seconds (REQ-1914). ``.after`` is the stood-in pass (:class:`StoodInPass`)."""
+    import asyncio
+
     import provisa.api.app as app
-    from provisa.api import rebuild_trace
+    from provisa.api import build_after_answer, rebuild_trace
+    from provisa.api.org_runtime import runtime_key
     from provisa.core import config_stamp
+    from provisa.core.connection_loop import is_connection_loop
+    from provisa.core.request_context import current_env, require_current_org
+
+    stood_in = StoodInPass()
+    monkeypatch.setattr(build_after_answer, "_latest", {})
+    monkeypatch.setattr(build_after_answer, "_draining", {})
+
+    def _step(phase: str, built_at: int):
+        async def run() -> None:
+            if phase in stood_in.before:
+                await stood_in.before[phase]()
+            stood_in.ran.append((phase, built_at))
+
+        return run
 
     async def _build(raw_config=None, *, announce=True, converge=True):
         del raw_config, announce, converge
@@ -114,9 +155,28 @@ def model_builds(monkeypatch, rebuild_recorder):
                 )
         runtime.model_stamp = stamps[config_stamp.MODEL]
         runtime.build_stamp = stamps[config_stamp.BUILD]
+        after = build_after_answer.Pass(
+            record=rebuild_trace.AfterAnswer(
+                runtime=runtime_key(require_current_org(), current_env.get()),
+                org_id=build.org_id,
+                env=build.env,
+                cause=build.cause,
+                stamps=build.read_stamps,
+            ),
+            steps={
+                phase: _step(phase, stamps[config_stamp.BUILD])
+                for phase in rebuild_trace.AFTER_PHASES
+            },
+        )
+        build.after = after.record
+        build_after_answer.publish(after)
+        if not is_connection_loop(asyncio.get_running_loop()):
+            await build_after_answer.run(after, before=rebuild_trace.WARM_UP)
 
     monkeypatch.setattr(app, "_rebuild_schemas_impl", _build)
-    return rebuild_recorder
+    rebuild_recorder.after = stood_in
+    yield rebuild_recorder
+    stood_in.settle()
 
 
 # The org a fresh AppState serves (AppState._org_id) -- used when the app module is not loaded.
