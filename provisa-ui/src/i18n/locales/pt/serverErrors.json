@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
       "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
       "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
+      "vector_model_address_from_server": "O modelo de embedding {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "vector_model_key_from_server": "O modelo de embedding {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "vector_model_key_unset": "O modelo de embedding {{vendor}} não tem chave: {{field}} não está definido.",
+      "vector_model_local_server": "O modelo de embedding {{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
       "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
     },
     "api": {

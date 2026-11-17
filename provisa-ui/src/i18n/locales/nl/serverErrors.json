@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
       "local_server_from_environment": "{{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Leg onder Beheer, AI-modellen een AI-eindpunt op uw eigen adres vast.",
       "server_environment_sets": "{{vendor}} kan hier niet worden aangeroepen: de omgeving van de server stelt {{variable}} in, die zijn client voor elke organisatie zou meesturen.",
+      "vector_model_address_from_server": "Het embeddingmodel {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "vector_model_key_from_server": "Het embeddingmodel {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
+      "vector_model_key_unset": "Het embeddingmodel {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
+      "vector_model_local_server": "Het embeddingmodel {{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
       "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
     },
     "api": {

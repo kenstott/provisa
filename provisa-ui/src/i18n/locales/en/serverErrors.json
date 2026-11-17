@@ -26,7 +26,11 @@
       "endpoint_key_unset": "The AI endpoint {{vendor}} has no key: {{field}} is not set.",
       "endpoint_address_from_server": "The AI endpoint {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
       "local_server_from_environment": "{{vendor}} is reached at the server's own address, which an organization on this server does not use. Declare an AI endpoint at your own address under Admin, AI Models.",
-      "server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization."
+      "server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization.",
+      "vector_model_key_from_server": "The embedding model {{vendor}} takes its key from the server's environment, which an organization on this server does not use. Give it a key of your own under Admin, AI Models.",
+      "vector_model_key_unset": "The embedding model {{vendor}} has no key: {{field}} is not set.",
+      "vector_model_address_from_server": "The embedding model {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+      "vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models."
     },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",

@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "local_server_from_environment": "{{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中以您自己的地址声明一个 AI 端点。",
       "server_environment_sets": "此处无法调用 {{vendor}}：服务器环境设置了 {{variable}}，其客户端会为每个组织发送它。",
+      "vector_model_address_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
+      "vector_model_key_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取密钥，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的密钥。",
+      "vector_model_key_unset": "嵌入模型 {{vendor}} 没有密钥：{{field}} 未设置。",
+      "vector_model_local_server": "嵌入模型 {{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中为其设置您自己的地址。",
       "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。"
     },
     "api": {

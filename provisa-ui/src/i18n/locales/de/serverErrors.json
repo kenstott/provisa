@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "local_server_from_environment": "{{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Legen Sie unter Admin, KI-Modelle einen KI-Endpunkt mit Ihrer eigenen Adresse an.",
       "server_environment_sets": "{{vendor}} kann hier nicht aufgerufen werden: Die Umgebung des Servers setzt {{variable}}, das sein Client für jede Organisation senden würde.",
+      "vector_model_address_from_server": "Das Embedding-Modell {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
+      "vector_model_key_from_server": "Das Embedding-Modell {{vendor}} bezieht seinen Schlüssel aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle einen eigenen Schlüssel.",
+      "vector_model_key_unset": "Das Embedding-Modell {{vendor}} hat keinen Schlüssel: {{field}} ist nicht gesetzt.",
+      "vector_model_local_server": "Das Embedding-Modell {{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
       "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt."
     },
     "api": {

@@ -227,8 +227,8 @@ async def resolve_api_key_field(value: str | None) -> str | None:  # REQ-1827
 
     The one resolution every "API key env" style config field should share (REQ-1808's actual
     scope: any credential field, not only the MCP chat path that originally generalized it) —
-    provisa.core.org_secrets' AI endpoint key (``endpoint_key``) and provisa/vector/providers.py's
-    embedding-model key both delegate here rather than each reimplementing (and, before this,
+    provisa.core.org_secrets' AI endpoint key (``endpoint_key``) and embedding-model key
+    (``vector_model_key``) both delegate here rather than each reimplementing (and, before this,
     diverging on) the same grammar.
 
     Returns ``None`` for an empty/``None`` value, or when a bare env-var name is not set. Only a

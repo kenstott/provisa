@@ -24,6 +24,11 @@ from provisa.vector.registry import VectorModel
 # Requirements: REQ-420, REQ-431, REQ-1827
 
 
+#: Where each network provider is reached when a model names no ``base_url``.
+_OPENAI = "https://api.openai.com/v1"
+_OLLAMA = "http://localhost:11434"
+
+
 class EmbeddingError(RuntimeError):
     """An embedding request failed or returned an unexpected shape."""
 
@@ -55,18 +60,6 @@ async def model_version(model: VectorModel, provider: EmbeddingProvider) -> str 
     return reported if reported is not None else model.version
 
 
-async def _api_key(model: VectorModel) -> str | None:  # REQ-1827
-    """The vector model's API key from its ``api_key_env`` field — the SAME shared grammar
-    (${secret:NAME}/${env:NAME}/${user:NAME}, or a bare env-var name) provisa/api/mcp/chat.py's
-    custom AI endpoints use, not a separate bare-env-var-only implementation. Before this, a
-    vault-reference value here silently resolved to nothing (a plain os.environ.get on a string
-    that is never itself a real env var name), which the OpenAI-compatible provider then treated
-    as simply "no key" rather than failing loud."""
-    from provisa.core.secrets import resolve_api_key_field
-
-    return await resolve_api_key_field(model.api_key_env)
-
-
 class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
     """Any OpenAI-compatible POST {base_url}/embeddings endpoint."""
 
@@ -78,9 +71,11 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
     ) -> tuple[list[list[float]], int | None]:  # REQ-2105
         import httpx
 
-        base = (model.base_url or "https://api.openai.com/v1").rstrip("/")
+        from provisa.core.org_secrets import vector_model_address, vector_model_key
+
+        base = vector_model_address(model, _OPENAI, local_server=False).rstrip("/")
         headers = {}
-        key = await _api_key(model)
+        key = await vector_model_key(model)
         if key:
             headers["Authorization"] = f"Bearer {key}"
         async with httpx.AsyncClient(timeout=30) as client:
@@ -97,13 +92,19 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
         return vectors, usage.get("prompt_tokens")
 
 
+def _ollama_address(model: VectorModel) -> str:
+    from provisa.core.org_secrets import vector_model_address
+
+    return vector_model_address(model, _OLLAMA, local_server=True).rstrip("/")
+
+
 class OllamaProvider(EmbeddingProvider):  # REQ-420
     """Ollama embeddings — one POST {base_url}/api/embeddings per text."""
 
     async def embed(self, texts: list[str], model: VectorModel) -> list[list[float]]:
         import httpx
 
-        base = (model.base_url or "http://localhost:11434").rstrip("/")
+        base = _ollama_address(model)
         out: list[list[float]] = []
         async with httpx.AsyncClient(timeout=60) as client:
             for text in texts:
@@ -121,7 +122,7 @@ class OllamaProvider(EmbeddingProvider):  # REQ-420
         """The model's digest, as the server's model list gives it."""
         import httpx
 
-        base = (model.base_url or "http://localhost:11434").rstrip("/")
+        base = _ollama_address(model)
         async with httpx.AsyncClient(timeout=30) as client:
             resp = await client.get(f"{base}/api/tags")
             resp.raise_for_status()
@@ -155,7 +156,9 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
             ) from exc
         st = self._cache.get(model.id)
         if st is None:
-            st = SentenceTransformer(model.id)
+            from provisa.core.org_secrets import hub_token
+
+            st = SentenceTransformer(model.id, token=hub_token())
             self._cache[model.id] = st
         return st
 
@@ -186,7 +189,11 @@ class HuggingFaceLocalProvider(EmbeddingProvider):  # REQ-420
             self._loaded(model)
         # local_files_only: the cached snapshot's own name is read, and nothing is downloaded, so
         # there is no revision to pin.
-        return Path(snapshot_download(model.id, local_files_only=True)).name  # nosec B615
+        from provisa.core.org_secrets import hub_token
+
+        return Path(
+            snapshot_download(model.id, local_files_only=True, token=hub_token())  # nosec B615
+        ).name
 
 
 _PROVIDERS: dict[str, type[EmbeddingProvider]] = {
