@@ -26,9 +26,13 @@ runtime serves, so the contracts are derived from a built model:
 
 An offer the build cannot derive -- its role no longer defined, or a dataset of its product not in
 the build (a draft member) -- is listed for review, saying why, and keeps the contracts it had.
+
+Every request that acts on a product reads the build the runtime has published (:func:`published`,
+REQ-194 and REQ-2125 as amended 2026-11-16): its names table, its checker targets and the tables
+its views read. The stored copies are written after the build answers and are the meta domain's.
 """
 
-# Requirements: REQ-2180
+# Requirements: REQ-2180, REQ-194, REQ-2125
 
 from __future__ import annotations
 
@@ -45,6 +49,38 @@ from provisa.core.repositories.data_product_offer import OfferRefused
 REVIEW_ROLE_GONE = "this offer's role is not defined"
 REVIEW_NOT_BUILT = "a dataset of this offer is not in the model build"
 _DERIVATION_REVIEWS = {"role_not_found": REVIEW_ROLE_GONE, "not_built": REVIEW_NOT_BUILT}
+
+
+def published(state: Any) -> offers.Published:
+    """The build ``state``'s runtime has published, as a request acting on a product reads it."""
+    return offers.Published(
+        names=state.names_table,
+        checked=state.checked_targets,
+        view_reads=lambda view_ids: view_reads(state, view_ids),
+    )
+
+
+def view_reads(state: Any, view_ids: list[int]) -> dict[int, set[int]]:
+    """Each of ``view_ids`` that is a view of the published model, with the ids of the registered
+    tables and views its SQL reads, resolved against that model (provisa.mv.view_inputs, as a
+    view's refresh resolves them). A table that is no view is absent. A reference to a
+    materialized view's stored table is the view's storage, which is no registered table; it is
+    not among them."""
+    from provisa.mv.view_inputs import ModelIndex, call_table_refs, table_refs
+
+    built = {int(t["id"]): t for t in state.tables}
+    views = [v for v in view_ids if v in built and built[v].get("view_sql")]
+    if not views:
+        return {}
+    index = ModelIndex(state)
+    out: dict[int, set[int]] = {}
+    for view in views:
+        sql = built[view]["view_sql"]
+        refs = table_refs(sql)
+        refs += [r for r in call_table_refs(sql, state.tracked_functions) if r not in refs]
+        resolved = (index.resolve(built[view]["table_name"], ref) for ref in refs)
+        out[view] = {r.table_id for r in resolved if r.table_id is not None}
+    return out
 
 
 def seen_columns(state: Any, role_id: str, table: dict) -> list[offer_contracts.SeenColumn]:
@@ -94,7 +130,7 @@ async def derive(
     datasets = await offers.dataset_ids(conn, product_id)
     built = {t["id"]: t for t in state.tables}
     stored = await offers.contracts(conn, offer_row["id"])
-    read_by = await offers.views_read(conn, offer.sample_views)
+    read_by = view_reads(state, list(offer.sample_views))
     names = await offers.table_names(conn, offer.sample_views)
     chain = reader_chain(state, offer.role_id)
     now = datetime.now(UTC)
@@ -114,7 +150,7 @@ async def derive(
             seen_columns(state, offer.role_id, table),
             row_rules=await offers.row_rule_words(conn, chain, dataset, table["domain_id"]),
             sample_views=[names[v] for v in offer.sample_views if dataset in read_by.get(v, ())],
-            checks=await data_product_repo.promised_checks(conn, dataset),
+            checks=await data_product_repo.promised_checks(conn, dataset, state.checked_targets),
             profiles=list((await offers.table_names(conn, profiles)).values()),
         )
         derived[dataset] = offer_contracts.recorded(stored.get(dataset), terms, at=now)

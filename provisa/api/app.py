@@ -1183,6 +1183,15 @@ class AppState:
         self._active_runtime().names_table = value
 
     @property
+    def checked_targets(self) -> dict[int, int]:
+        """Each checker's checked table, as this build resolved it (OrgRuntime.checked_targets)."""
+        return self._active_runtime().checked_targets
+
+    @checked_targets.setter
+    def checked_targets(self, value: dict[int, int]) -> None:
+        self._active_runtime().checked_targets = value
+
+    @property
     def view_path_map(self) -> dict | None:
         """The model-wide path map (OrgRuntime.view_path_map)."""
         return self._active_runtime().view_path_map
@@ -3221,6 +3230,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.view_context = prod_rt.view_context
     _rt.view_path_map = prod_rt.view_path_map
     _rt.names_table = prod_rt.names_table
+    _rt.checked_targets = prod_rt.checked_targets
     # view_sql_map is already physical SQL (compiled by _finalize_rebuild_state in PROD's build).
     # Do NOT call _finalize_rebuild_state again — it would corrupt already-compiled physical SQL.
     _rt.view_sql_map = prod_rt.view_sql_map
@@ -4004,6 +4014,10 @@ async def _rebuild_schemas_impl(
         async with state.model_db.acquire() as conn:
             await _model_names.write_refused_clashes(conn, refused.clashes)
         raise
+
+    # REQ-2125: the checker targets a request reads (a grant, a product's promised checks) are
+    # this build's, published with its names table; the stored copy is the after-answer pass's.
+    state.checked_targets = _checked
 
     _build.phase(rebuild_trace.FIELD_NUMBERS)
     # REQ-1903: stored before the answer, so a wire field's number is the same after a restart.
