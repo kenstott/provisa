@@ -39,6 +39,7 @@ from provisa.core import pg_range
 from provisa.core.pg_error import MARK, PostgresError
 from provisa.core.pg_range import MULTIRANGE_TYPES, RANGE_TYPES, Multirange, Range, RangeType
 from provisa.transpiler.pg_literals import array_input, values_cast
+from provisa.transpiler.polyfill import floats as number_rows
 from provisa.transpiler.polyfill import ranges as range_rows
 from provisa.transpiler.native_subtype import (
     COMPARISONS,
@@ -2036,7 +2037,12 @@ class _Rewrite:
                 name[: -len("_subdiff")], self.rewritten(args[0]), self.rewritten(args[1])
             )
         if name == "in_range" and len(args) == 5:  # noqa: PLR2004 -- PostgreSQL's five arguments
-            return self._boolean_value(self._in_range([self.rewritten(a) for a in args]), node)
+            rewritten = [self.rewritten(a) for a in args]
+            # REQ-2236: the grid's row of numbers on its dialect (ClickHouse's NaN and overflow).
+            of_numbers = number_rows.in_range_of_numbers(args, rewritten, self.dialect)
+            if of_numbers is not None:
+                return self._boolean_value(exp.EQ(this=of_numbers, expression=_int(1)), node)
+            return self._boolean_value(self._in_range(rewritten), node)
         if name in ("range_agg", "range_intersect_agg"):
             return self._aggregate(name, args[0])
         family, operator = _operand_name(name)

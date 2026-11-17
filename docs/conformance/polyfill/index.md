@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-443 of the grid's 443 features are native on PostgreSQL and left out.
+450 of the grid's 450 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-191 of the grid's 443 features are native on DuckDB and left out.
+191 of the grid's 450 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -405,6 +405,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -844,7 +865,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-110 of the grid's 443 features are native on Trino and left out.
+110 of the grid's 450 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1320,6 +1341,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -1780,7 +1822,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-110 of the grid's 443 features are native on Presto and left out.
+110 of the grid's 450 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2256,6 +2298,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -2716,7 +2779,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-110 of the grid's 443 features are native on Athena and left out.
+110 of the grid's 450 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3192,6 +3255,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 CAST(date_diff(&#x27;day&#x27;, CAST($b AS DATE), CAST($a AS DATE)) AS INTEGER)</code></pre></td><td></td><td></td><td></td></tr>
@@ -3652,7 +3736,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 443 features are native on ClickHouse and left out.
+36 of the grid's 450 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4096,6 +4180,27 @@ function provisa.transpiler.polyfill.floats.of_no_numeric_lcm: lcm($a, $b) of no
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
 =&gt;
 arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(toInt64(_x) &lt; 0, 0), &#x27;postgresql-error 22023: character number must be positive&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64(_x) = 0, 0), &#x27;postgresql-error 54000: null character not permitted&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64(_x) &gt; 0x10FFFF, 0), &#x27;postgresql-error 54000: requested character too large for encoding&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64(_x) &gt;= 0xD800 AND toInt64(_x) &lt;= 0xDFFF, 0), &#x27;postgresql-error 54000: requested character not valid for encoding&lt;end of postgresql-error&gt;&#x27;) = 0, if(toInt64(_x) &lt; 1 OR toInt64(_x) &gt; 0x10FFFF OR (toInt64(_x) &gt;= 0xD800 AND toInt64(_x) &lt;= 0xDFFF), NULL, multiIf(toInt64(_x) &lt; 0x80, char(toInt64(_x)), toInt64(_x) &lt; 0x800, char(bitOr(0xC0, bitShiftRight(toInt64(_x), 6)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 0), 0x3F))), toInt64(_x) &lt; 0x10000, char(bitOr(0xE0, bitShiftRight(toInt64(_x), 12)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 6), 0x3F)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 0), 0x3F))), char(bitOr(0xF0, bitShiftRight(toInt64(_x), 18)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 12), 0x3F)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 6), 0x3F)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 0), 0x3F))))), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.floats._in_range: in_range of integers or of floats: in_range_of_numbers of the call&#x27;s arguments.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+if(throwIf(ifNull((NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND (isInfinite(sum(if($y IS NULL, NULL, toFloat64($x)))) OR isInfinite(varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND (isInfinite(sum(if($x IS NULL, NULL, toFloat64($y)))) OR isInfinite(varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND isInfinite(covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, if(countIf($y IS NOT NULL AND $x IS NOT NULL) &lt; 1, NULL, if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+if(throwIf(ifNull((NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND (isInfinite(sum(if($y IS NULL, NULL, toFloat64($x)))) OR isInfinite(varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND (isInfinite(sum(if($x IS NULL, NULL, toFloat64($y)))) OR isInfinite(varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND isInfinite(covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, if(countIf($y IS NOT NULL AND $x IS NOT NULL) &lt; 1, NULL, if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+if(throwIf(ifNull((NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND (isInfinite(sum(if($y IS NULL, NULL, toFloat64($x)))) OR isInfinite(varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND (isInfinite(sum(if($x IS NULL, NULL, toFloat64($y)))) OR isInfinite(varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND isInfinite(covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, if(countIf($y IS NOT NULL AND $x IS NOT NULL) &lt; 1, NULL, if(if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) = 0, NULL, if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 OR countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) / if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+if(throwIf(ifNull((NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND (isInfinite(sum(if($y IS NULL, NULL, toFloat64($x)))) OR isInfinite(varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND (isInfinite(sum(if($x IS NULL, NULL, toFloat64($y)))) OR isInfinite(varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND isInfinite(covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, if(countIf($y IS NOT NULL AND $x IS NOT NULL) &lt; 1, NULL, if(if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) = 0, NULL, (sum(if($x IS NULL, NULL, toFloat64($y))) - sum(if($y IS NULL, NULL, toFloat64($x))) * if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 OR countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) / if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL))) / countIf($y IS NOT NULL AND $x IS NOT NULL))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+if(throwIf(ifNull((NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND (isInfinite(sum(if($y IS NULL, NULL, toFloat64($x)))) OR isInfinite(varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND (isInfinite(sum(if($x IS NULL, NULL, toFloat64($y)))) OR isInfinite(varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND isInfinite(covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, if(countIf($y IS NOT NULL AND $x IS NOT NULL) &lt; 1, NULL, if(if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) = 0, NULL, if(if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) = 0, 1, if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 OR countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) * if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 OR countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) / (if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) * if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
+=&gt;
+if(throwIf(ifNull((NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND (isInfinite(sum(if($y IS NULL, NULL, toFloat64($x)))) OR isInfinite(varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND (isInfinite(sum(if($x IS NULL, NULL, toFloat64($y)))) OR isInfinite(varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)))) OR (NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 AND NOT countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0 AND isInfinite(covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, if(countIf($y IS NOT NULL AND $x IS NOT NULL) &lt; 1, NULL, if(if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) = 0 OR if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) = 0, NULL, if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0 OR countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), covarPopStable(if($y IS NULL, NULL, toFloat64($x)), if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) / sqrt(if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($x))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($y IS NULL, NULL, toFloat64($x))) * countIf($y IS NOT NULL AND $x IS NOT NULL)) * if(countIf($y IS NOT NULL AND $x IS NOT NULL AND NOT isFinite(toFloat64($y))) &gt; 0, toFloat64(&#x27;nan&#x27;), varPopStable(if($x IS NULL, NULL, toFloat64($y))) * countIf($y IS NOT NULL AND $x IS NOT NULL))))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -4664,7 +4769,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-191 of the grid's 443 features are native on Snowflake and left out.
+191 of the grid's 450 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5067,6 +5172,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -5505,7 +5631,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-191 of the grid's 443 features are native on Databricks and left out.
+191 of the grid's 450 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5908,6 +6034,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -6346,7 +6493,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-191 of the grid's 443 features are native on BigQuery and left out.
+191 of the grid's 450 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6749,6 +6896,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -7187,7 +7355,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-191 of the grid's 443 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+191 of the grid's 450 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7590,6 +7758,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -8028,7 +8217,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-191 of the grid's 443 features are native on Redshift and left out.
+191 of the grid's 450 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8431,6 +8620,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -8869,7 +9079,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-191 of the grid's 443 features are native on MySQL and left out.
+191 of the grid's 450 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9272,6 +9482,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -9710,7 +9941,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-191 of the grid's 443 features are native on SingleStore and left out.
+191 of the grid's 450 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10113,6 +10344,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -10551,7 +10803,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-191 of the grid's 443 features are native on SQLite and left out.
+191 of the grid's 450 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10954,6 +11206,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -11392,7 +11665,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-191 of the grid's 443 features are native on Oracle and left out.
+191 of the grid's 450 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -11795,6 +12068,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -12233,7 +12527,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-191 of the grid's 443 features are native on Hive and left out.
+191 of the grid's 450 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -12636,6 +12930,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -13074,7 +13389,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-191 of the grid's 443 features are native on Exasol and left out.
+191 of the grid's 450 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -13477,6 +13792,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
@@ -13915,7 +14251,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-191 of the grid's 443 features are native on Druid and left out.
+191 of the grid's 450 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -14318,6 +14654,27 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>in_range</strong><br>Whether a value is within an offset of a base: a window frame&#x27;s bound.</td><td><pre><code>in_range($v, $b, $o, $s, $l)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_sxx</strong><br>The sum of squares of the independent variable.</td><td><pre><code>regr_sxx($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_syy</strong><br>The sum of squares of the dependent variable.</td><td><pre><code>regr_syy($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_slope</strong><br>The slope of the least-squares line.</td><td><pre><code>regr_slope($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_intercept</strong><br>The y-intercept of the least-squares line.</td><td><pre><code>regr_intercept($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>regr_r2</strong><br>The square of the correlation coefficient.</td><td><pre><code>regr_r2($y, $x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>corr</strong><br>The correlation coefficient.</td><td><pre><code>corr($y, $x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)

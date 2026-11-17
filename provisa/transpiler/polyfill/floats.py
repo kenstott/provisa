@@ -399,6 +399,66 @@ CHR = Feature(
     read=Side(rules=(Rule("chr($x)", _ch(_CHR)),)),
 )
 
+#: in_range of numbers (a window frame's bound, int8.c's and float.c's in_range): whether the
+#: value is at or below (less) or at or above the base plus or minus (subtract) the offset. A
+#: negative offset, or a NaN one, is 22013. Integers: the sum is exact in Int128, which answers as
+#: PostgreSQL's overflow rule does (a sum past the type is past every value). Floats: NaN after
+#: every value, an infinite offset from an infinite base of its sign every value.
+_IN_RANGE_NULL = "$v IS NULL OR $b IS NULL OR $o IS NULL OR $s IS NULL OR $l IS NULL"
+_NEGATIVE_OFFSET = ch_fail("22013", "invalid preceding or following size in window function")
+_INTEGER_SUM = "if($s, toInt128($b) - toInt128($o), toInt128($b) + toInt128($o))"
+_IN_RANGE_INTEGERS = ch_checked(
+    [_NEGATIVE_OFFSET.format(condition="$o < 0")],
+    f"if({_IN_RANGE_NULL}, NULL, "
+    f"if($l, toInt128($v) <= {_INTEGER_SUM}, toInt128($v) >= {_INTEGER_SUM}))",
+)
+_FLOAT_SUM = "if($s, toFloat64($b) - toFloat64($o), toFloat64($b) + toFloat64($o))"
+_IN_RANGE_FLOATS = ch_checked(
+    [_NEGATIVE_OFFSET.format(condition="isNaN(toFloat64($o)) OR $o < 0")],
+    f"multiIf({_IN_RANGE_NULL}, NULL, "
+    "isNaN(toFloat64($v)), if(isNaN(toFloat64($b)), true, NOT $l), "
+    "isNaN(toFloat64($b)), $l, "
+    "isInfinite(toFloat64($o)) AND isInfinite(toFloat64($b)) AND if($s, $b > 0, $b < 0), true, "
+    f"if($l, toFloat64($v) <= {_FLOAT_SUM}, toFloat64($v) >= {_FLOAT_SUM}))",
+)
+_IN_RANGE = "in_range($v, $b, $o, $s, $l)"
+_INTEGER_NAMES = frozenset({"smallint", "integer", "bigint"})
+_FLOAT_NAMES = frozenset({"real", "double precision"})
+
+
+def in_range_of_numbers(
+    said: list[exp.Expr], args: list[exp.Expr], dialect: str
+) -> exp.Expr | None:
+    """in_range of integers or of floats on ClickHouse, of ``args``, as the statement says the
+    value's and the offset's types (of ``said``, the arguments as written); None for any other (a
+    date's, a numeric's, a column no statement types), which keeps what it had. pg_ranges lowers
+    every in_range before the grid runs, and asks here first."""
+    if dialect != "clickhouse" or len(args) != 5:  # noqa: PLR2004 -- PostgreSQL's five arguments
+        return None
+    value, _, offset = (function_types.argument_type(a) for a in said[:3])
+    if value in _INTEGER_NAMES and offset in _INTEGER_NAMES:
+        form = _IN_RANGE_INTEGERS
+    elif value in _FLOAT_NAMES and offset in _FLOAT_NAMES:
+        form = _IN_RANGE_FLOATS
+    else:
+        return None
+    bindings = dict(zip("vbosl", args, strict=True))
+    return graft(replacement(ch_once(form), dialect, _IN_RANGE), bindings)
+
+
+def _in_range(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """in_range of integers or of floats: in_range_of_numbers of the call's arguments."""
+    call = trino.called(node)
+    return None if call is None else in_range_of_numbers(call[1], call[1], dialect)
+
+
+IN_RANGE = Feature(
+    "in_range",
+    FAMILY,
+    "Whether a value is within an offset of a base: a window frame's bound.",
+    read=Side(rules=(Rule(_IN_RANGE, ch_only(Rewrite(_in_range))),)),
+)
+
 FEATURES: tuple[Feature, ...] = (
     *COMPARISONS,
     *CHOSEN,
@@ -411,4 +471,5 @@ FEATURES: tuple[Feature, ...] = (
     ABS,
     LCM,
     CHR,
+    IN_RANGE,
 )

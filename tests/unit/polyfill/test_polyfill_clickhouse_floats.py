@@ -720,6 +720,964 @@ ANSWERED = [
     ('SELECT pg_catalog."chr"(NULL::integer) AS v', None),
     ('SELECT pg_catalog."chr"(3::integer) AS v', "\x03"),
     ('SELECT pg_catalog."chr"(42::integer) AS v', "*"),
+    ('SELECT pg_catalog."avg"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "32.75",
+    ),
+    (
+        'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "-Infinity",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."avg"(NULL::real) AS v', None),
+    (
+        'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (0.5::real), ((-2.25)::real), (100::real)) AS t(c1)',
+        "32.75",
+    ),
+    ('SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (NULL::real), (NULL::real)) AS t(c1)', None),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('NaN'::real), ('NaN'::real)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('-Infinity'::real), ('-Infinity'::real)) AS t(c1)",
+        "-Infinity",
+    ),
+    ("SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('-0'::real), ('-0'::real)) AS t(c1)", "0"),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "3.4028234663852886e+38",
+    ),
+    ('SELECT pg_catalog."var_pop"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."var_pop"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "2262.5416666666665",
+    ),
+    (
+        'SELECT pg_catalog."var_pop"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."var_samp"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."var_samp"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "3393.8125",
+    ),
+    (
+        'SELECT pg_catalog."var_samp"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"var_samp\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"var_samp\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"var_samp\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."variance"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."variance"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "3393.8125",
+    ),
+    (
+        'SELECT pg_catalog."variance"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"variance\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"variance\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"variance\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."stddev"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."stddev"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "58.256437412529785",
+    ),
+    (
+        'SELECT pg_catalog."stddev"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."stddev_pop"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."stddev_pop"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "47.56618196436063",
+    ),
+    (
+        'SELECT pg_catalog."stddev_pop"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_pop\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_pop\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_pop\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."stddev_samp"(NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."stddev_samp"(c1) AS v FROM (VALUES (0.5::double precision), ((-2.25)::double precision), (100::double precision)) AS t(c1)',
+        "58.256437412529785",
+    ),
+    (
+        'SELECT pg_catalog."stddev_samp"(c1) AS v FROM (VALUES (NULL::double precision), (NULL::double precision)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_samp\"(c1) AS v FROM (VALUES ('NaN'::double precision), ('NaN'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_samp\"(c1) AS v FROM (VALUES ('-Infinity'::double precision), ('-Infinity'::double precision)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_samp\"(c1) AS v FROM (VALUES ('-0'::double precision), ('-0'::double precision)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."var_pop"(NULL::real) AS v', None),
+    (
+        'SELECT pg_catalog."var_pop"(c1) AS v FROM (VALUES (0.5::real), ((-2.25)::real), (100::real)) AS t(c1)',
+        "2262.5416666666665",
+    ),
+    (
+        'SELECT pg_catalog."var_pop"(c1) AS v FROM (VALUES (NULL::real), (NULL::real)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('NaN'::real), ('NaN'::real)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('-Infinity'::real), ('-Infinity'::real)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('-0'::real), ('-0'::real)) AS t(c1)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."stddev"(NULL::real) AS v', None),
+    (
+        'SELECT pg_catalog."stddev"(c1) AS v FROM (VALUES (0.5::real), ((-2.25)::real), (100::real)) AS t(c1)',
+        "58.256437412529785",
+    ),
+    ('SELECT pg_catalog."stddev"(c1) AS v FROM (VALUES (NULL::real), (NULL::real)) AS t(c1)', None),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('NaN'::real), ('NaN'::real)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('-Infinity'::real), ('-Infinity'::real)) AS t(c1)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('-0'::real), ('-0'::real)) AS t(c1)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('3.4028235e+38'::real), ('3.4028235e+38'::real)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."regr_sxx"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."regr_sxx"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "6787.625",
+    ),
+    (
+        'SELECT pg_catalog."regr_sxx"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_sxx"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_sxx\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_sxx\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_sxx\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_sxx\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_sxx\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_sxx\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    ('SELECT pg_catalog."regr_syy"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."regr_syy"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "6787.625",
+    ),
+    (
+        'SELECT pg_catalog."regr_syy"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_syy"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_syy\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_syy\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_syy\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_syy\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_syy\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_syy\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    ('SELECT pg_catalog."regr_slope"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."regr_slope"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "1",
+    ),
+    (
+        'SELECT pg_catalog."regr_slope"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_slope"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_slope\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_slope\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_slope\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_slope\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_slope\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_slope\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_intercept"(NULL::double precision, NULL::double precision) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_intercept"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "0",
+    ),
+    (
+        'SELECT pg_catalog."regr_intercept"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_intercept"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_intercept\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_intercept\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_intercept\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_intercept\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_intercept\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_intercept\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    ('SELECT pg_catalog."regr_r2"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."regr_r2"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "1",
+    ),
+    (
+        'SELECT pg_catalog."regr_r2"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_r2"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_r2\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_r2\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "1",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_r2\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_r2\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "1",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_r2\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_r2\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    ('SELECT pg_catalog."corr"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."corr"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "1",
+    ),
+    (
+        'SELECT pg_catalog."corr"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."corr"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"corr\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"corr\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"corr\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"corr\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"corr\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"corr\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        None,
+    ),
+    ('SELECT pg_catalog."covar_pop"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."covar_pop"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "2262.5416666666665",
+    ),
+    (
+        'SELECT pg_catalog."covar_pop"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."covar_pop"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"covar_pop\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"covar_pop\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"covar_pop\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"covar_pop\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"covar_pop\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"covar_pop\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    ('SELECT pg_catalog."regr_avgx"(NULL::double precision, NULL::double precision) AS v', None),
+    (
+        'SELECT pg_catalog."regr_avgx"(c1, c2) AS v FROM (VALUES (0.5::double precision, 0.5::double precision), ((-2.25)::double precision, (-2.25)::double precision), (100::double precision, 100::double precision)) AS t(c1, c2)',
+        "32.75",
+    ),
+    (
+        'SELECT pg_catalog."regr_avgx"(c1, c2) AS v FROM (VALUES (NULL::double precision, 0.5::double precision), (NULL::double precision, 0.5::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."regr_avgx"(c1, c2) AS v FROM (VALUES (0.5::double precision, NULL::double precision), (0.5::double precision, NULL::double precision)) AS t(c1, c2)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"regr_avgx\"(c1, c2) AS v FROM (VALUES ('NaN'::double precision, 0.5::double precision), ('NaN'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0.5",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_avgx\"(c1, c2) AS v FROM (VALUES (0.5::double precision, 'NaN'::double precision), (0.5::double precision, 'NaN'::double precision)) AS t(c1, c2)",
+        "NaN",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_avgx\"(c1, c2) AS v FROM (VALUES ('-Infinity'::double precision, 0.5::double precision), ('-Infinity'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0.5",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_avgx\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-Infinity'::double precision), (0.5::double precision, '-Infinity'::double precision)) AS t(c1, c2)",
+        "-Infinity",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_avgx\"(c1, c2) AS v FROM (VALUES ('-0'::double precision, 0.5::double precision), ('-0'::double precision, 0.5::double precision)) AS t(c1, c2)",
+        "0.5",
+    ),
+    (
+        "SELECT pg_catalog.\"regr_avgx\"(c1, c2) AS v FROM (VALUES (0.5::double precision, '-0'::double precision), (0.5::double precision, '-0'::double precision)) AS t(c1, c2)",
+        "0",
+    ),
+    ('SELECT pg_catalog."var_pop"(NULL::integer) AS v', None),
+    (
+        'SELECT pg_catalog."var_pop"(c1) AS v FROM (VALUES (3::integer), ((-7)::integer), (42::integer)) AS t(c1)',
+        "446.8888888888888889",
+    ),
+    (
+        'SELECT pg_catalog."var_pop"(c1) AS v FROM (VALUES (NULL::integer), (NULL::integer)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('-2147483648'::integer), ('-2147483648'::integer)) AS t(c1)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('2147483647'::integer), ('2147483647'::integer)) AS t(c1)",
+        "0",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('0'::integer), ('0'::integer)) AS t(c1)",
+        "0",
+    ),
+    ('SELECT pg_catalog."avg"(NULL::bigint) AS v', None),
+    (
+        'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (3::bigint), ((-7)::bigint), (5000000000::bigint)) AS t(c1)',
+        "1666666665.33333333",
+    ),
+    (
+        'SELECT pg_catalog."avg"(c1) AS v FROM (VALUES (NULL::bigint), (NULL::bigint)) AS t(c1)',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('-9223372036854775808'::bigint), ('-9223372036854775808'::bigint)) AS t(c1)",
+        "-9223372036854775808",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('9223372036854775807'::bigint), ('9223372036854775807'::bigint)) AS t(c1)",
+        "9223372036854775807",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('0'::bigint), ('0'::bigint)) AS t(c1)",
+        "0.00000000000000000000",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::bigint, NULL::bigint, NULL::bigint, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::bigint, 3::bigint, 3::bigint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(5000000000::bigint, 5000000000::bigint, 5000000000::bigint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::bigint, 3::bigint, 3::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::bigint, NULL::bigint, 3::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::bigint, 3::bigint, NULL::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::bigint, 3::bigint, 3::bigint, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::bigint, 3::bigint, 3::bigint, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-9223372036854775808'::bigint, 3::bigint, 3::bigint, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::bigint, '-9223372036854775808'::bigint, 3::bigint, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::integer, NULL::integer, NULL::bigint, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::bigint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(42::integer, 42::integer, 5000000000::bigint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::integer, 3::integer, 3::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, NULL::integer, 3::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, NULL::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::bigint, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::bigint, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-2147483648'::integer, 3::integer, 3::bigint, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::integer, '-2147483648'::integer, 3::bigint, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::integer, NULL::integer, NULL::integer, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::integer, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(42::integer, 42::integer, 42::integer, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::integer, 3::integer, 3::integer, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, NULL::integer, 3::integer, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, NULL::integer, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::integer, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::integer, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-2147483648'::integer, 3::integer, 3::integer, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::integer, '-2147483648'::integer, 3::integer, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::integer, NULL::integer, NULL::smallint, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::smallint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(42::integer, 42::integer, 42::smallint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::integer, 3::integer, 3::smallint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, NULL::integer, 3::smallint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, NULL::smallint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::smallint, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::integer, 3::integer, 3::smallint, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-2147483648'::integer, 3::integer, 3::smallint, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::integer, '-2147483648'::integer, 3::smallint, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::smallint, NULL::smallint, NULL::bigint, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::bigint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(42::smallint, 42::smallint, 5000000000::bigint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::smallint, 3::smallint, 3::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, NULL::smallint, 3::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, NULL::bigint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::bigint, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::bigint, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-32768'::smallint, 3::smallint, 3::bigint, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::smallint, '-32768'::smallint, 3::bigint, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::smallint, NULL::smallint, NULL::integer, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::integer, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(42::smallint, 42::smallint, 42::integer, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::smallint, 3::smallint, 3::integer, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, NULL::smallint, 3::integer, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, NULL::integer, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::integer, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::integer, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-32768'::smallint, 3::smallint, 3::integer, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::smallint, '-32768'::smallint, 3::integer, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::smallint, NULL::smallint, NULL::smallint, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::smallint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(42::smallint, 42::smallint, 42::smallint, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::smallint, 3::smallint, 3::smallint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, NULL::smallint, 3::smallint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, NULL::smallint, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::smallint, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(3::smallint, 3::smallint, 3::smallint, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('-32768'::smallint, 3::smallint, 3::smallint, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::smallint, '-32768'::smallint, 3::smallint, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::double precision, NULL::double precision, NULL::double precision, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::double precision, 0.5::double precision, 0.5::double precision, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(100::double precision, 100::double precision, 100::double precision, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::double precision, 0.5::double precision, 0.5::double precision, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::double precision, NULL::double precision, 0.5::double precision, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::double precision, 0.5::double precision, NULL::double precision, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::double precision, 0.5::double precision, 0.5::double precision, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::double precision, 0.5::double precision, 0.5::double precision, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('NaN'::double precision, 0.5::double precision, 0.5::double precision, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(0.5::double precision, 'NaN'::double precision, 0.5::double precision, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::real, NULL::real, NULL::double precision, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::real, 0.5::real, 0.5::double precision, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(100::real, 100::real, 100::double precision, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::real, 0.5::real, 0.5::double precision, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::real, NULL::real, 0.5::double precision, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::real, 0.5::real, NULL::double precision, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::real, 0.5::real, 0.5::double precision, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(0.5::real, 0.5::real, 0.5::double precision, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('NaN'::real, 0.5::real, 0.5::double precision, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(0.5::real, 'NaN'::real, 0.5::double precision, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::numeric, NULL::numeric, NULL::numeric, NULL::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(2.5::numeric, 2.5::numeric, 2.5::numeric, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(1000::numeric, 1000::numeric, 1000::numeric, true::boolean, true::boolean) AS v',
+        "f",
+    ),
+    (
+        'SELECT pg_catalog."in_range"(NULL::numeric, 2.5::numeric, 2.5::numeric, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(2.5::numeric, NULL::numeric, 2.5::numeric, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(2.5::numeric, 2.5::numeric, NULL::numeric, true::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(2.5::numeric, 2.5::numeric, 2.5::numeric, NULL::boolean, true::boolean) AS v',
+        None,
+    ),
+    (
+        'SELECT pg_catalog."in_range"(2.5::numeric, 2.5::numeric, 2.5::numeric, true::boolean, NULL::boolean) AS v',
+        None,
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"('0'::numeric, 2.5::numeric, 2.5::numeric, true::boolean, true::boolean) AS v",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(2.5::numeric, '0'::numeric, 2.5::numeric, true::boolean, true::boolean) AS v",
+        "f",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(2.5::numeric, 2.5::numeric, '0'::numeric, true::boolean, true::boolean) AS v",
+        "t",
+    ),
     ("SELECT '1.4e-45'::real", "1e-45"),
     ("SELECT 0.1::real", "0.1"),
     ("SELECT '-7.125'::real", "-7.125"),
@@ -746,6 +1704,28 @@ ANSWERED = [
     ("SELECT pg_catalog.factorial(0::bigint)", "1"),
     ("SELECT pg_catalog.lcm((-4)::integer, 6::integer)", "12"),
     ("SELECT pg_catalog.lcm(0::bigint, 0::bigint)", "0"),
+    ("SELECT pg_catalog.var_samp(c1) AS v FROM (VALUES (1::double precision)) AS t(c1)", None),
+    (
+        "SELECT pg_catalog.stddev(c1) AS v FROM (VALUES (1::double precision), (2::double precision), (4::double precision)) AS t(c1)",
+        "1.5275252316519468",
+    ),
+    (
+        "SELECT pg_catalog.corr(c1, c2) AS v FROM (VALUES (1::double precision, 2::double precision), (2::double precision, 4.5::double precision), (3::double precision, 5::double precision)) AS t(c1, c2)",
+        "0.9332565252573827",
+    ),
+    (
+        "SELECT pg_catalog.regr_r2(c1, c2) AS v FROM (VALUES (1::double precision, NULL::double precision), (2::double precision, 4.5::double precision), (3::double precision, 5::double precision)) AS t(c1, c2)",
+        "1",
+    ),
+    (
+        "SELECT pg_catalog.in_range('Infinity'::double precision, '-Infinity'::double precision, 'Infinity'::double precision, false, true)",
+        "t",
+    ),
+    (
+        "SELECT pg_catalog.in_range('NaN'::double precision, 'NaN'::double precision, 1::double precision, true, false)",
+        "t",
+    ),
+    ("SELECT pg_catalog.in_range(5::integer, 2147483647::integer, 3::integer, false, false)", "f"),
 ]
 RAISED = [
     ("SELECT pg_catalog.\"abs\"('-9223372036854775808'::bigint) AS v", "22003"),
@@ -817,6 +1797,118 @@ RAISED = [
     ("SELECT pg_catalog.\"chr\"('2147483647'::integer) AS v", "54000"),
     ("SELECT pg_catalog.\"chr\"('0'::integer) AS v", "54000"),
     ("SELECT pg_catalog.\"chr\"('2147483648'::integer) AS v", "22003"),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"var_samp\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"variance\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_pop\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"stddev_samp\"(c1) AS v FROM (VALUES ('1.7976931348623157e+308'::double precision), ('1.7976931348623157e+308'::double precision)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"var_pop\"(c1) AS v FROM (VALUES ('2147483648'::integer), ('2147483648'::integer)) AS t(c1)",
+        "22003",
+    ),
+    (
+        "SELECT pg_catalog.\"avg\"(c1) AS v FROM (VALUES ('9223372036854775808'::bigint), ('9223372036854775808'::bigint)) AS t(c1)",
+        "22003",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::bigint, (-7)::bigint, (-7)::bigint, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::bigint, 3::bigint, '-9223372036854775808'::bigint, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::integer, (-7)::integer, (-7)::bigint, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::integer, 3::integer, '-9223372036854775808'::bigint, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::integer, (-7)::integer, (-7)::integer, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::integer, 3::integer, '-2147483648'::integer, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::integer, (-7)::integer, (-7)::smallint, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::integer, 3::integer, '-32768'::smallint, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::smallint, (-7)::smallint, (-7)::bigint, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::smallint, 3::smallint, '-9223372036854775808'::bigint, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::smallint, (-7)::smallint, (-7)::integer, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::smallint, 3::smallint, '-2147483648'::integer, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7)::smallint, (-7)::smallint, (-7)::smallint, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(3::smallint, 3::smallint, '-32768'::smallint, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-2.25)::double precision, (-2.25)::double precision, (-2.25)::double precision, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(0.5::double precision, 0.5::double precision, 'NaN'::double precision, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-2.25)::real, (-2.25)::real, (-2.25)::double precision, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
+    (
+        "SELECT pg_catalog.\"in_range\"(0.5::real, 0.5::real, 'NaN'::double precision, true::boolean, true::boolean) AS v",
+        "22013",
+    ),
+    (
+        'SELECT pg_catalog."in_range"((-7.125)::numeric, (-7.125)::numeric, (-7.125)::numeric, false::boolean, false::boolean) AS v',
+        "22013",
+    ),
     ("SELECT '3.4028236e+38'::real", "22003"),
     ("SELECT '1e-46'::real", "22003"),
     ("SELECT pg_catalog.power(0::double precision, (-1)::double precision)", "2201F"),
@@ -829,6 +1921,10 @@ RAISED = [
     ("SELECT pg_catalog.factorial(32178::bigint)", "22003"),
     ("SELECT pg_catalog.lcm(65536::integer, 32769::integer)", "22003"),
     ("SELECT pg_catalog.lcm(3037000499::bigint, 3037000507::bigint)", "22003"),
+    (
+        "SELECT pg_catalog.var_pop(c1) AS v FROM (VALUES ('1e308'::double precision), ('1e308'::double precision)) AS t(c1)",
+        "22003",
+    ),
 ]
 
 #: A numeric NaN or infinity: ClickHouse's Decimal holds neither, and its cast answered NULL.

@@ -30,6 +30,7 @@ from provisa.transpiler.polyfill import (
     clocks,
     collations,
     dates,
+    float_aggregates,
     floats,
     geometric,
     instants,
@@ -81,6 +82,7 @@ GRID = Grid(
     + unheld.FEATURES
     + numbers.FEATURES
     + floats.FEATURES
+    + float_aggregates.FEATURES
     + dates.FEATURES
     + calls.FEATURES
     + casts.FEATURES
