@@ -1406,3 +1406,75 @@ def test_the_npm_gate_ignores_moderate_and_fails_a_stale_allow_entry():
     assert stale == [
         "ALLOW names GHSA-aaaa-bbbb-cccc, which no dev-only advisory matches: remove it"
     ]
+
+
+# Node: the repository's one pin is the root .nvmrc. CI, the image's renderer stage and the NixOS
+# guest build on it, so a bump in one place without the others fails here.
+_NVMRC = REPO / ".nvmrc"
+
+
+def _node_pin() -> str:
+    return _NVMRC.read_text().strip()
+
+
+def _setup_node_steps():
+    for where, step in _steps():
+        yield where, step
+    for action in ACTIONS:
+        for step in yaml.safe_load(action.read_text())["runs"]["steps"]:
+            yield f"{action.parent.name}:{step.get('name') or step.get('uses')}", step
+
+
+def test_node_is_pinned_once_at_the_repository_root():
+    import subprocess
+
+    tracked = subprocess.run(
+        ["git", "-C", str(REPO), "ls-files", "--", "*.nvmrc", ".nvmrc"],
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.split()
+    assert tracked == [".nvmrc"], f"Node pins tracked: {tracked}; the one pin is the root .nvmrc"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", _node_pin()), f".nvmrc is {_node_pin()!r}, not x.y.z"
+
+
+def test_every_setup_node_reads_the_nvmrc_and_hard_codes_no_version():
+    setup_node = 0
+    for where, step in _setup_node_steps():
+        with_ = step.get("with") or {}
+        assert "node-version" not in with_, (
+            f"{where} hard-codes node-version {with_['node-version']}"
+        )
+        if (step.get("uses") or "").startswith("actions/setup-node"):
+            setup_node += 1
+            assert with_.get("node-version-file") == ".nvmrc", (
+                f"{where} sets up Node without node-version-file: .nvmrc"
+            )
+    assert setup_node, "no actions/setup-node step found"
+
+
+def test_no_workflow_or_action_names_a_node_version_anywhere():
+    for path in [*WORKFLOWS, *ACTIONS]:
+        for n, line in enumerate(path.read_text().splitlines(), 1):
+            assert not re.search(r"\bnode-version\s*:", line), f"{path.name}:{n}: {line.strip()}"
+
+
+def test_the_images_node_is_the_nvmrc():
+    tags = re.findall(r"^FROM node:(\S+?)-", (REPO / "Dockerfile").read_text(), flags=re.M)
+    assert tags == [_node_pin()], f"Dockerfile node images {tags}, .nvmrc {_node_pin()}"
+
+
+def test_the_nixos_guests_node_is_the_nvmrc_major():
+    nix = (REPO / "packaging" / "nixos" / "configuration.nix").read_text()
+    majors = re.findall(r"\bnodejs_(\d+)\b", nix)
+    assert majors == [_node_pin().split(".")[0]], f"nix nodejs {majors}, .nvmrc {_node_pin()}"
+
+
+def test_the_uis_engines_admit_the_nvmrc():
+    import json
+
+    engines = json.loads((REPO / "provisa-ui" / "package.json").read_text())["engines"]["node"]
+    floor = re.fullmatch(r">=(\d+)\.(\d+)\.(\d+)", engines)
+    assert floor, f"provisa-ui engines.node is {engines!r}, expected >=x.y.z"
+    pin = tuple(int(x) for x in _node_pin().split("."))
+    assert tuple(int(x) for x in floor.groups()) <= pin, f"engines {engines} refuses .nvmrc {pin}"
