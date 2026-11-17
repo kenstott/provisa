@@ -874,6 +874,12 @@
         "label": "Appels par instruction à une table paramétrée",
         "help": "Le nombre maximal d'appels qu'une instruction adresse à une table paramétrée. Chaque valeur qu'une instruction donne à un paramètre est un appel à la source : chaque valeur d'une liste IN, chaque branche d'un OR, chaque clé distincte d'une jointure. Une instruction qui en demande davantage est refusée."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sinks Kafka en cours d'exécution par personne",
+        "help": "Nombre de sinks Kafka qu'une personne peut exécuter en même temps. Une demande d'en démarrer un autre est refusée jusqu'à ce que l'un des siens s'arrête."
+      }
     }
   }
 }

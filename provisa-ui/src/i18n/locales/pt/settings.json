@@ -874,6 +874,12 @@
         "label": "Chamadas por instrução a uma tabela parametrizada",
         "help": "O máximo de chamadas que uma instrução faz a uma tabela parametrizada. Cada valor que uma instrução dá a um parâmetro é uma chamada à origem: cada valor de uma lista IN, cada ramo de um OR, cada chave distinta de um join. Uma instrução que precise de mais é recusada."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sinks do Kafka em execução por pessoa",
+        "help": "Quantos sinks do Kafka uma pessoa pode ter em execução ao mesmo tempo. Um pedido para iniciar outro é recusado até que um dos seus pare."
+      }
     }
   }
 }

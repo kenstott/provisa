@@ -625,7 +625,11 @@
       "schema_registry_unreachable": "無法連線綱要註冊表 {{registry}}：{{error}}",
       "sse_limit_reached": "已達同時 SSE 訂閱上限",
       "table_not_found": "找不到資料表「{{table}}」",
-      "unknown_role": "未知角色「{{role}}」"
+      "unknown_role": "未知角色「{{role}}」",
+      "owner_role_lost": "訂閱已結束：其擁有者不再擁有啟動時所用的角色 ({{roles}})",
+      "sink_cap_reached": "您已有 {{cap}} 個正在運行的 Kafka 接收器，已達營運方允許的上限 ({{setting}})",
+      "sink_needs_write": "角色 '{{role}}' 缺少 Kafka 接收器所需的寫入權限",
+      "owner_sign_in_expired": "訂閱已結束：啟動它時的登入已過期；請重新登入並再次啟動"
     },
     "users": {
       "assignment_not_found": "找不到指派",

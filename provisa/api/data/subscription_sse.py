@@ -21,6 +21,7 @@ import os
 from typing import TYPE_CHECKING, AsyncGenerator, cast
 
 if TYPE_CHECKING:
+    from provisa.subscriptions.owner import Owner
     from provisa.subscriptions.pg_provider import PgNotificationProvider
 from urllib.parse import urlparse
 
@@ -178,6 +179,12 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
         table_name,
     )
 
+    # REQ-812: a sink or a stream ends when the principal that started it no longer holds the role
+    # it acts as.
+    from provisa.subscriptions.owner import owner_of
+
+    owner = owner_of(raw_request, state, role_id)
+
     # Kafka sink redirect — @sink directive or X-Provisa-Sink header
     sink_topic = (directives.sink_topic if directives else None) or None
     sink_broker = (directives.sink_broker if directives else None) or None
@@ -204,6 +211,7 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
             variables=variables,
             role=role,
             role_id=role_id,
+            owner=owner,
         )
 
     disconnect = asyncio.Event()
@@ -334,7 +342,10 @@ async def handle_subscription_sse(  # REQ-219, REQ-258, REQ-260, REQ-282
                     if use_many
                     else provider.watch(table_name)
                 )
-                async for _ in watcher:
+                from provisa.subscriptions.owner import bounded_by_owner, ensure_held
+
+                # REQ-812: the owner losing its role ends the stream with a last frame saying so.
+                async for _ in bounded_by_owner(watcher, lambda: ensure_held(state, owner)):
                     if disconnect.is_set():
                         break
                     try:
@@ -421,16 +432,52 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
     variables: dict | None,
     role,
     role_id: str,
+    owner: "Owner",
 ) -> JSONResponse:
     """Start a background task that publishes subscription results to Kafka.
 
-    Returns ``202 Accepted`` immediately. The sink runs for the lifetime of
-    the server process (or until shutdown).
+    Returns ``202 Accepted`` immediately. REQ-812: the sink runs until its owner no longer holds the
+    role it was started under (or shutdown), and is refused when that role lacks the write right
+    (REQ-868: a sink writes into a topic of the operator's cluster) or its owner already holds the
+    operator's cap of running sinks.
     """
     try:
         broker, topic = _parse_sink_uri(sink_header)
     except ValueError as exc:
         return JSONResponse(status_code=400, content={"error": client_text(str(exc))})
+
+    from provisa.api.errors import ApiError
+    from provisa.core import settings_registry
+    from provisa.core.platform_state import sinks as running
+    from provisa.security.rights import Capability, has_capability
+    from provisa.subscriptions.owner import bounded_by_owner, ensure_held
+
+    # REQ-812, REQ-868: refused by name before a place is taken or anything is produced.
+    if not has_capability(role, Capability.WRITE):
+        raise ApiError(
+            403,
+            "subscribe.sink_needs_write",
+            f"Role {role_id!r} lacks the write right a Kafka sink needs",
+            role=role_id,
+        )
+
+    sink_db = state.platform_state_db
+    try:
+        sink_id = await running.claim(
+            sink_db,
+            user_id=owner.user_id,
+            org_id=owner.org_id,
+            roles=owner.roles,
+            topic=topic,
+            table_name=table_name,
+            cap=settings_registry.value(running.CAP_SETTING),
+        )
+    except running.SinkCapReached as refused:
+        raise ApiError(429, refused.code, str(refused), **refused.params) from refused
+
+    async def _owner_check() -> None:
+        await ensure_held(state, owner)
+        await running.beat(sink_db, sink_id)
 
     async def _run_query() -> dict:
         from provisa.compiler.parser import parse_query as _parse
@@ -457,6 +504,16 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
         return result  # type: ignore[return-value]
 
     async def _sink_loop() -> None:
+        from provisa.subscriptions.owner import OwnerRightEnded
+
+        try:
+            await _publish()
+        except OwnerRightEnded as ended:
+            log.info("Kafka sink stopped: %s → %s: %s", table_name, topic, ended)
+        finally:
+            await running.release(sink_db, sink_id)
+
+    async def _publish() -> None:
         from provisa.kafka.sink import KafkaProducer
 
         producer = KafkaProducer(bootstrap_servers=broker)
@@ -522,7 +579,9 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
                 if use_many
                 else provider.watch(table_name)
             )
-            async for _ in watcher:
+            async for _ in bounded_by_owner(
+                watcher, _owner_check, running.HEARTBEAT.total_seconds()
+            ):
                 try:
                     data = await _run_query()
                     rows = data.get("data", data) if isinstance(data, dict) else data

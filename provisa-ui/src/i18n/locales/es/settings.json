@@ -874,6 +874,12 @@
         "label": "Llamadas por sentencia a una tabla parametrizada",
         "help": "El máximo de llamadas que una sentencia hace a una tabla parametrizada. Cada valor que una sentencia da a un parámetro es una llamada al origen: cada valor de una lista IN, cada rama de un OR, cada clave distinta de un join. Una sentencia que necesita más se rechaza."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sinks de Kafka en ejecución por persona",
+        "help": "Cuántos sinks de Kafka puede tener una persona en ejecución a la vez. Una solicitud para iniciar otro se rechaza hasta que se detenga uno de los suyos."
+      }
     }
   }
 }

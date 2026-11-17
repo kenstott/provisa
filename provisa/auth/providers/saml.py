@@ -593,5 +593,8 @@ class SamlAuthProvider(AuthProvider):  # REQ-1265
                 "name_id": claims.get("name_id"),
                 "email": claims.get("email"),
                 "groups": list(claims.get("groups", [])),
+                # REQ-812: an assertion cannot be asked again what it holds, so what it grants is
+                # trusted until the session it was exchanged for expires.
+                "exp": claims["exp"],
             },
         )
