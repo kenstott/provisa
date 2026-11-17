@@ -1737,7 +1737,7 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
     }
 
 
-async def test_proposals_jev_scores_under_the_threshold_are_left_out_as_jevs_with_both_scores(
+async def test_a_proposal_jev_scores_under_the_threshold_stays_a_suggestion_on_the_models_score(
     monkeypatch, tmp_path
 ):
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
@@ -1766,15 +1766,15 @@ async def test_proposals_jev_scores_under_the_threshold_are_left_out_as_jevs_wit
     run = await _run(world, _scope())
     assert run["status"] == "done", run
     semantics = run["report"]["semantics"]
-    assert semantics["suggested"] == 0
-    # Not the model's doing: it gave both 0.7 or more, and the result says who scored them lower.
+    # REQ-1789: the model's score decides; Jev's is shown beside it and removes nothing.
+    assert semantics["suggested"] == 2 and semantics["empty_reason"] is None
     assert semantics["below_threshold"] == 0
+    # The summary says how many Jev scored under the threshold.
     assert (semantics["scored"], semantics["scored_below_threshold"]) == (2, 2)
-    assert semantics["empty_reason"] == "scored_below_threshold"
     listed = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
     assert [(r["reason"], r["confidence"], r["scored"], r["decidable"]) for r in listed] == [
-        ("scored_below_threshold", 0.95, 0.31, True),
-        ("scored_below_threshold", 0.9, 0.31, True),
+        (None, 0.95, 0.31, True),
+        (None, 0.9, 0.31, True),
     ]
     # Jev was shown the tables by name, not by id alone.
     ((state, questions),) = asked
