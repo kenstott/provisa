@@ -51,7 +51,7 @@ export interface SourceFormState {
   // REQ-2113: where a CSV or Parquet source's file is downloaded from ("" or absent = read in
   // place), and, for a new one, whether its table is set up with it as a draft and in which domain.
   downloadFrom?: string;
-  registerTableDraft?: boolean;
+  registerFileTable?: boolean;
   tableDomainId?: string | null;
 }
 

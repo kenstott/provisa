@@ -101,6 +101,7 @@ def _build(monkeypatch, *, view: dict, drafts: list[dict], role: dict | None = N
         rls_rules=[],
         metrics=[],
         draft_tables=drafts,
+        withdrawn_tables=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
     monkeypatch.setattr(

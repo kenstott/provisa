@@ -111,6 +111,7 @@ def state(multi_domain, monkeypatch):  # noqa: F811
         rls_rules=[],
         metrics=[],
         draft_tables=[_draft()],
+        withdrawn_tables=[],
     )
     monkeypatch.setattr(built, "tables", _tables(), raising=False)
     return built

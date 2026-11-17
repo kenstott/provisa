@@ -333,6 +333,7 @@ def built(monkeypatch):
         rls_rules=[],
         metrics=[],
         draft_tables=[],
+        withdrawn_tables=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
     monkeypatch.setattr(state, "class_tables", {class_view_key(r): r for r in rows}, raising=False)

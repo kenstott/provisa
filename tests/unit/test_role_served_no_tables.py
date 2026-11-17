@@ -82,6 +82,7 @@ def empty_role(monkeypatch):
         rls_rules=[],
         metrics=[],
         draft_tables=[],
+        withdrawn_tables=[],
     )
     return state
 

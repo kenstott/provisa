@@ -1187,9 +1187,10 @@ class SourceInput:  # REQ-012
     max_live_concurrency: int | None = None  # REQ-1909: None = no cap; else >= 1
     sentinel_path: str | None = None  # REQ-1148
     download_from: str | None = None  # REQ-2113
-    # REQ-2113: a single-file CSV or Parquet source's table set up with it, as a draft, in this
-    # domain, named and typed from the file as Register Table proposes it. Not stored on the source.
-    register_table_draft: bool = False
+    # REQ-2113: a single-file CSV or Parquet source's table set up with it, live (REQ-1921), in
+    # this domain, named and typed from the file as Register Table proposes it. Not stored on the
+    # source.
+    register_file_table: bool = False
     table_domain_id: str | None = None
     freshness_gate: bool = False  # REQ-860
     cdc: SourceCdcConfigInput | None = None  # REQ-824: source-level CDC transport
@@ -1511,7 +1512,6 @@ class TableInput:  # REQ-013, REQ-016, REQ-133, REQ-135, REQ-252
     role_ttl: list[RoleTtlInput] | None = strawberry.UNSET  # REQ-1907: the whole list
     replicate: int | None = strawberry.UNSET  # REQ-826: null inherits the source's value
     write_grants: list[WriteGrantInput] | None = strawberry.UNSET  # REQ-2074: the whole set
-    draft: bool | None = strawberry.UNSET  # REQ-1921: false releases it
     # REQ-1934, REQ-2109: row rules of this table (table_id is the table being saved), saved with
     # it: a profiler result table is registered with the rules its profiled table has.
     row_rules: list[RLSRuleInput] | None = strawberry.UNSET

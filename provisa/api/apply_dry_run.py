@@ -216,6 +216,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
             metrics=metrics,
             field_numbers=None,
             draft_tables=draft_tables,
+            withdrawn_tables=await fetch_tables(conn, withdrawn=True),  # REQ-1921
             remote_sources=remote_sources,
         ),
     )

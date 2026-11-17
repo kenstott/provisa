@@ -400,6 +400,7 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
         rls_rules=[],
         metrics=[],
         draft_tables=[],
+        withdrawn_tables=[],
     )
     held = state.surfaces
     assert {"analyst", "steward"} <= set(held)

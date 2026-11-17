@@ -636,7 +636,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
         "replicate": getattr(table, "replicate", None),  # REQ-826
         "region": getattr(table, "region", None),  # REQ-1921
-        "draft": table.draft,  # REQ-1921
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
         # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
@@ -711,7 +710,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected",  # REQ-1141
         "replicate",  # REQ-826
         "region",  # REQ-1921
-        "draft",  # REQ-1921
+        # REQ-1921: neither ``draft`` (a region move's waypoint, set by the move alone) nor
+        # ``withdrawn`` (one action of its own) is written by a save: a new table is live, and a
+        # save of a held one keeps both.
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865

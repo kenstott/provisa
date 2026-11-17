@@ -95,10 +95,12 @@ async def registered_source_rows(conn: Any) -> dict[str, dict]:
     (:func:`provisa.core.repositories.retirement.retired_key`), which is no source id, and it has
     no pool, catalog or attach. Read through the one reader of the sources in service, so a build
     and the admin reads cannot disagree about which those are. A restored source is back among
-    them at its id, and :func:`reconcile_sources` builds it as added."""
+    them at its id, and :func:`reconcile_sources` builds it as added. A withdrawn source is not
+    one either (REQ-1921): no engine attaches it and it has no pool; put back, it is built as
+    added."""
     from provisa.core.repositories import source as source_repo
 
-    return {row["id"]: row for row in await source_repo.list_all(conn)}
+    return {row["id"]: row for row in await source_repo.list_in_production(conn)}
 
 
 async def reconcile_sources(rows: dict[str, dict]) -> None:

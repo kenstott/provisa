@@ -2109,6 +2109,7 @@ def role_build_inputs(
     metrics: list[dict],
     field_numbers: Any,
     draft_tables: list[dict],
+    withdrawn_tables: list[dict],
     remote_sources: dict,
 ) -> dict[str, Any]:
     """What any role's surface is built from, kept so a role made later in this generation — a
@@ -2145,6 +2146,8 @@ def role_build_inputs(
         "columns_outside_relation": table_columns_outside_relation(remote_sources, table_ids),
         "tables": tables,
         "draft_tables": draft_tables,
+        # REQ-1921: withdrawn -- in no role's schema or context; read only by a steward's preview.
+        "withdrawn_tables": withdrawn_tables,
         "metrics": metrics,
         "rls_rules": rls_rules,
         # REQ-2188: the U and D rules on model tables, which hold the model store's writes.
@@ -2226,6 +2229,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     field_numbers=None,  # FieldNumberAllocator | None (REQ-1903) — the caller owns load/persist
     *,
     draft_tables: list[dict],  # REQ-1921: out of service; named only to be refused
+    withdrawn_tables: list[dict],  # REQ-1921: withdrawn; for the steward's preview alone
 ) -> dict[int, int]:
     """Build and register GraphQL schemas, contexts, and protos for each role.
 
@@ -2252,6 +2256,7 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         metrics=metrics,
         field_numbers=field_numbers,
         draft_tables=draft_tables,
+        withdrawn_tables=withdrawn_tables,
         remote_sources=_remote_sources,
     )
 

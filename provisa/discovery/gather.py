@@ -127,11 +127,19 @@ async def scope_table_ids(
 ) -> list[int]:
     """The tables of one set: those named, else every table of the chosen domains; never a table
     of a system domain (meta, ontology, ops) whatever was asked, nor a draft table (REQ-1921: a
-    draft is read nowhere)."""
+    draft is read nowhere), nor a withdrawn one, itself or through its source (REQ-1921:
+    relationship discovery never includes it)."""
     from provisa.core.schema_org import registered_tables as rt
+    from provisa.core.schema_org import sources as src
 
     system = _system_domains()
-    query = select(rt.c.id).where(rt.c.draft.is_(False), rt.c.domain_id.notin_(sorted(system)))
+    withdrawn_sources = select(src.c.id).where(src.c.withdrawn.is_(True))
+    query = select(rt.c.id).where(
+        rt.c.draft.is_(False),
+        rt.c.withdrawn.is_(False),
+        rt.c.source_id.notin_(withdrawn_sources),
+        rt.c.domain_id.notin_(sorted(system)),
+    )
     if table_ids is not None:
         query = query.where(rt.c.id.in_(sorted(set(table_ids))))
     else:
