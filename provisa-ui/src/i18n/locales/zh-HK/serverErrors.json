@@ -885,6 +885,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
       "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} 位於上傳的項目之外；項目只讀取自身的檔案。",
+      "filter_value_refused": "{{value}} 不能作為權限篩選器中的值：值是字串、數字、true、false、null、它們的列表或工作階段變數。",
+      "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
     }
   }
 }

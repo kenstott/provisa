@@ -885,6 +885,11 @@
     "preflight": {
       "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
       "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
+      "filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
+      "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
     }
   }
 }
