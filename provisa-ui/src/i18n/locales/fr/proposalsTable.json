@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "Une ligne cochée est acceptée à l'application. Les lignes notées {{threshold}} % ou plus sont cochées au départ. Une ligne sans case cochée reste non décidée.",
+    "intro": "Une ligne cochée est acceptée à l'application. Les lignes dont le score atteint au moins le seuil sont cochées au départ. Une ligne sans case cochée reste non décidée.",
     "colScore": "Score",
+    "colModel": "Modèle",
     "colJev": "Jev",
     "colKind": "Type",
+    "colMeasure": "Mesuré",
     "colReasoning": "Raisonnement",
     "colNote": "Remarque",
     "colNotAgain": "Ne plus recommander",
@@ -25,7 +27,7 @@
       "invalid_shape": "Pas une relation sous la forme demandée : un champ manque ou a une forme incorrecte",
       "unknown_column": "Nomme une table ou une colonne que la requête n'a pas comparée",
       "not_comparable": "Les deux colonnes ont des classes différentes, elles ne sont donc pas comparées",
-      "below_threshold": "La confiance du modèle est sous le seuil de {{threshold}} %.",
+      "below_threshold": "Score inférieur aux {{threshold}} % à partir desquels une suggestion est conservée.",
       "same_column": "D'une colonne vers elle-même",
       "primary_key_to_primary_key": "Clé primaire vers clé primaire",
       "both_repeating": "Les valeurs se répètent des deux côtés, aucun n'est donc le côté un",
@@ -34,7 +36,31 @@
       "rejected": "Rejetée auparavant",
       "matches_foreign_key": "Correspond à une clé étrangère trouvée dans cette exécution",
       "out_of_scope": "Hors des tables source et cible choisies",
-      "weaker": "Une proposition plus forte des deux mêmes colonnes a été gardée"
-    }
+      "weaker": "Une proposition plus forte des deux mêmes colonnes a été gardée",
+      "many_to_many": "Aucune des deux colonnes n'est une clé"
+    },
+    "threshold": "Cocher à partir de",
+    "thresholdHint": "Votre propre seuil, conservé pour vos prochaines exécutions.",
+    "measure": {
+      "inTarget": "{{found}} sur {{values}} valeurs de la source dans la cible.",
+      "inTargetFirst": "{{found}} des {{values}} premières valeurs de la source dans la cible.",
+      "inSource": "{{found}} sur {{values}} valeurs de la cible dans la source.",
+      "inSourceFirst": "{{found}} des {{values}} premières valeurs de la cible dans la source.",
+      "both": "Les deux colonnes sont des clés.",
+      "target": "La cible est une clé.",
+      "source": "La source est une clé.",
+      "neither": "Aucune des deux colonnes n'est une clé.",
+      "notRead": {
+        "source": "La source n'a pas été lue : sa table exige un paramètre.",
+        "target": "La cible n'a pas été lue : sa table exige un paramètre."
+      },
+      "notReadable": {
+        "source": "Vous ne pouvez pas lire la colonne source.",
+        "target": "Vous ne pouvez pas lire la colonne cible."
+      },
+      "noValues": "La source ne contient aucune valeur.",
+      "modelScore": "Score du modèle : aucune valeur n'a été comparée."
+    },
+    "manyToMany": "Aucune des deux colonnes n'est une clé, elle ne peut donc pas être acceptée."
   }
 }

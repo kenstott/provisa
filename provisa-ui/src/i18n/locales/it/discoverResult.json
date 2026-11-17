@@ -24,7 +24,7 @@
     "partial": "{{failed}} richiesta su {{count}} non è riuscita, quindi il risultato è parziale.",
     "partial_other": "{{failed}} richieste su {{count}} non sono riuscite, quindi il risultato è parziale.",
     "semanticsNoneProposed": "Semantica: nessuna. Il modello non ha proposto relazioni.",
-    "semanticsBelowThreshold": "Semantica: nessuno. Ogni suggerimento era sotto la soglia di confidenza del {{threshold}}%.",
+    "semanticsBelowThreshold": "Semantica: nessuna. Ogni proposta ha ottenuto un punteggio sotto il {{threshold}}% a cui un suggerimento viene mantenuto.",
     "semanticsFiltered": "Semantica: nessuno. Ogni suggerimento è stato escluso, per i motivi indicati sotto.",
     "split": "{{count}} richiesta è stata divisa a metà e inviata di nuovo.",
     "split_other": "{{count}} richieste sono state divise a metà e inviate di nuovo.",
@@ -38,7 +38,7 @@
     "leftOut": "Non suggeriti: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "con meno del {{threshold}}% di confidenza secondo il modello",
+      "below_threshold": "con punteggio inferiore al {{threshold}}%",
       "invalid": "che non nominano due colonne confrontate",
       "not_comparable": "tra colonne di classi diverse",
       "same_column": "da una colonna a se stessa",
@@ -49,7 +49,8 @@
       "rejected": "rifiutati in precedenza",
       "matches_foreign_key": "corrispondenti a una chiave esterna trovata in questa esecuzione",
       "out_of_scope": "fuori dalle tabelle scelte",
-      "weaker": "che ripetono una coppia di colonne per cui è stata mantenuta una proposta più forte"
+      "weaker": "che ripetono una coppia di colonne per cui è stata mantenuta una proposta più forte",
+      "many_to_many": "senza che nessuna colonna sia una chiave"
     }
   }
 }

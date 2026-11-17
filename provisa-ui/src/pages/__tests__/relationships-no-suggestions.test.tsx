@@ -97,7 +97,7 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   startDiscoveryRun: vi.fn(),
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
-  fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7 }),
+  fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 }),
 }));
 vi.mock("../../api/actions", () => ({
   fetchActions: vi.fn().mockResolvedValue({ functions: [], webhooks: [] }),

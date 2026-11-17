@@ -58,9 +58,9 @@ def test_a_pattern_past_its_step_limit_is_refused_by_name(monkeypatch):
 def test_the_route_filters_through_the_bounded_matcher():
     import inspect
 
-    from provisa.api import app as app_module
+    from provisa.api import debug_logs as route_module
 
-    source = inspect.getsource(app_module)
+    source = inspect.getsource(route_module)
     route = source[source.index('"/debug/logs"') :][:1500]
     assert "lines_matching(pattern" in route
     assert "re.search(pattern" not in route

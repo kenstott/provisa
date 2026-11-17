@@ -1289,7 +1289,8 @@ def _install_tool_groups(mcp: Any, offer: Any, rights: Any, call_command: Any) -
 
     ``mcp.list_tools()`` stays the whole registry. tools/list answers a session the built-in tools
     its principal's rights allow (``offer``: the rights, and the tools of the commands its role
-    sees) within its mode and the groups it added, and each command's tool. tools/call runs a
+    sees) within its mode and the groups it added, and, in full mode, each command's tool.
+    tools/call runs a
     built-in tool the principal's rights allow (``rights``) as before, listed in the mode or not,
     and a command's tool through ``call_command``; any other name is refused by name."""
     import functools as _functools
@@ -1332,7 +1333,11 @@ def _install_tool_groups(mcp: Any, offer: Any, rights: Any, call_command: Any) -
             for t in every
             if tool_groups.offered(t.name, held) and tool_groups.listed(mode, ctx.session, t.name)
         ]
-        return types.ListToolsResult(tools=[*builtins, *commands])
+        # REQ-2246 (amended 2026-11-16): command tools are listed in full mode only; a sip
+        # session reaches commands through list_commands and run_sql, and a call of a command's
+        # tool runs as in full mode, as an unlisted built-in the principal may use does.
+        listed_commands = commands if mode == tool_groups.FULL else []
+        return types.ListToolsResult(tools=[*builtins, *listed_commands])
 
     async def _called(name: str, arguments: dict[str, Any]) -> Any:
         if mcp._tool_manager.get_tool(name) is not None:

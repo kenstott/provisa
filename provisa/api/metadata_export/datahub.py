@@ -93,6 +93,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -1254,7 +1255,9 @@ class DataHubExport(MetadataExport):  # REQ-1069
         proposals.extend(self._term_rename_deprecations(snapshot))  # REQ-1387
         now_ms = int(datetime.now(timezone.utc).timestamp() * 1000)
         provisa_prefix = glossary_term_urn(snapshot.org_id, "")
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             for proposal in proposals:
                 if (
                     self.tag_merge
@@ -1344,6 +1347,8 @@ class DataHubExport(MetadataExport):  # REQ-1069
         return result
 
     async def health(self) -> None:
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()
