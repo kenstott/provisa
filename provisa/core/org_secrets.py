@@ -32,7 +32,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Mapping
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from provisa.core.db import Database
@@ -211,11 +211,11 @@ class AiKeyRequired(Exception):
     """An AI call was asked with no key to make it with. ``code`` and ``params`` are what the
     caller is answered with (HTTP 409, ``provisa.api.app``); nothing was sent to the vendor."""
 
-    def __init__(self, vendor: str, code: str, message: str) -> None:
+    def __init__(self, vendor: str, code: str, message: str, **params: str) -> None:
         super().__init__(message)
         self.vendor = vendor
         self.code = code
-        self.params = {"vendor": vendor}
+        self.params = {"vendor": vendor, **params}
 
 
 def _no_key(vendor: str) -> AiKeyRequired:
@@ -254,11 +254,11 @@ def ai_key(stored: Mapping[str, str], vendor: str) -> str:
 
 
 def provider_key(stored: Mapping[str, str], vendor: str) -> str | None:
-    """The ``api_key`` one of aisuite's named vendors is constructed with. None for a vendor
-    that takes none from here: a local server (:data:`KEYLESS_VENDORS`), and on an install of
-    one organization a vendor reached with the deployment's own credentials (Vertex AI, Bedrock
-    and the like), which aisuite reads itself. On a server of many organizations those
-    credentials are the server's, so such a vendor is refused."""
+    """The ``api_key`` one of aisuite's named vendors is constructed with. On an install of one
+    organization, None for a vendor that takes none from here: a local server
+    (:data:`KEYLESS_VENDORS`), and a vendor reached with the deployment's own credentials (Vertex
+    AI, Bedrock and the like), which aisuite reads itself. On a server of many organizations the
+    local server and those credentials are the server's, so such a vendor is refused."""
     if vendor in AI_KEY_ENV:
         return ai_key(stored, vendor)
     key = stored.get(vendor)
@@ -266,8 +266,19 @@ def provider_key(stored: Mapping[str, str], vendor: str) -> str | None:
         return key
     from provisa.core.secrets_providers import many_organisations
 
-    if vendor in KEYLESS_VENDORS or not many_organisations():
+    if not many_organisations():
         return None
+    if vendor in KEYLESS_VENDORS:
+        # REQ-1395 as amended 2026-11-16: aisuite reaches a local server at the address the
+        # server's environment names (OLLAMA_API_URL, LMSTUDIO_API_URL) or the server's own
+        # localhost; an organization reaches its own through an AI endpoint it declares.
+        raise AiKeyRequired(
+            vendor,
+            "ai.local_server_from_environment",
+            f"{vendor} is reached at the server's own address, which an organization on this "
+            f"server does not use. Declare an AI endpoint at your own address under "
+            f"{WHERE_TO_ADD_AI_KEY}.",
+        )
     raise AiKeyRequired(
         vendor,
         "ai.vendor_uses_server_credentials",
@@ -306,3 +317,186 @@ async def org_ai_key_or_none(model_db: "Database | None", vendor: str) -> str | 
 async def org_ai_key(model_db: "Database | None", vendor: str) -> str:
     """:func:`ai_key` for the organization whose model store this is."""
     return ai_key(await _stored_ai_keys(model_db), vendor)
+
+
+# --- AI endpoints (REQ-1790) ---------------------------------------------------------------------
+
+
+def _many() -> bool:
+    from provisa.core.secrets_providers import many_organisations
+
+    return many_organisations()
+
+
+def _key_field_reads_environment(field: str) -> bool:
+    """Whether an endpoint's ``api_key_env`` is read from the server's environment: a bare
+    variable name (provisa.core.secrets.resolve_api_key_field), or an ``${env:...}`` reference."""
+    return "${" not in field or "${env:" in field
+
+
+def _refuse_endpoint_key_from_environment(endpoint: Mapping[str, object], field: str) -> None:
+    """REQ-1395 as amended 2026-11-16: on a server of many organizations the only AI endpoint that
+    takes its key from the deployment is the sandbox tier's (REQ-2006), whose key the
+    organization's keys already carry (:func:`read_org_api_keys`). Any other endpoint's key read
+    from the server's environment is refused; an organization's own is a ``${secret:...}``."""
+    if _many() and _key_field_reads_environment(field):
+        endpoint_id = str(endpoint["id"])
+        raise AiKeyRequired(
+            endpoint_id,
+            "ai.endpoint_key_from_server",
+            f"The AI endpoint {endpoint_id} takes its key from the server's environment, which an "
+            f"organization on this server does not use. Give it a key of your own under "
+            f"{WHERE_TO_ADD_AI_KEY}.",
+        )
+
+
+def _endpoint_key_unset(endpoint: Mapping[str, object]) -> AiKeyRequired:
+    endpoint_id = str(endpoint["id"])
+    return AiKeyRequired(
+        endpoint_id,
+        "ai.endpoint_key_unset",
+        f"The AI endpoint {endpoint_id} has no key: what it names is not set. Set it under "
+        f"{WHERE_TO_ADD_AI_KEY}.",
+    )
+
+
+def _endpoint_key_field(endpoint: Mapping[str, object]) -> str | None:
+    """The ``api_key_env`` an endpoint's key is resolved from, after the refusals; None when it
+    declares none."""
+    field = endpoint.get("api_key_env")
+    if not field:
+        return None
+    field = str(field)
+    from provisa.core.env_reference_guard import refuse_named_by_org
+
+    refuse_named_by_org(field)  # REQ-1557: a held organization's own key variable is not read
+    _refuse_endpoint_key_from_environment(endpoint, field)
+    return field
+
+
+async def endpoint_key(stored: Mapping[str, str], endpoint: Mapping[str, object]) -> str | None:
+    """The key an AI endpoint is called with, given the organization's keys
+    (:func:`read_org_api_keys`): the one they carry for it by its id (the sandbox tier's); else
+    what its ``api_key_env`` resolves to (provisa.core.secrets.resolve_api_key_field), refused
+    when that is the server's environment on a server of many organizations, and when it is
+    unset. None for an endpoint that declares no key."""
+    held = stored.get(str(endpoint["id"]))
+    if held:
+        return held
+    field = _endpoint_key_field(endpoint)
+    if field is None:
+        return None
+    from provisa.core.secrets import resolve_api_key_field
+
+    key = await resolve_api_key_field(field)
+    if not key:
+        raise _endpoint_key_unset(endpoint)
+    return key
+
+
+def endpoint_key_now(stored: Mapping[str, str], endpoint: Mapping[str, object]) -> str | None:
+    """:func:`endpoint_key` where no organization's vault is bound (the model client's call, on a
+    thread of its own): a variable is read as :func:`endpoint_key` reads it, a reference resolved
+    by provisa.core.secrets.resolve_secrets."""
+    held = stored.get(str(endpoint["id"]))
+    if held:
+        return held
+    field = _endpoint_key_field(endpoint)
+    if field is None:
+        return None
+    if "${" in field:
+        from provisa.core.secrets import resolve_secrets
+
+        key: str | None = resolve_secrets(field)
+    else:
+        # REQ-1790: an endpoint's api_key_env names a variable; on a server of many organizations
+        # it is refused above, so this read is an install of one organization's own (REQ-1395).
+        key = os.environ.get(field)
+    if not key:
+        raise _endpoint_key_unset(endpoint)
+    return key
+
+
+def endpoint_address(endpoint: Mapping[str, object]) -> str:
+    """The ``base_url`` an AI endpoint is reached at, as declared. On a server of many
+    organizations an address taken from the server's environment (``${env:...}``) is refused like
+    a key from it (REQ-1395 as amended 2026-11-16)."""
+    address = str(endpoint["base_url"])
+    if _many() and "${env:" in address:
+        endpoint_id = str(endpoint["id"])
+        raise AiKeyRequired(
+            endpoint_id,
+            "ai.endpoint_address_from_server",
+            f"The AI endpoint {endpoint_id} takes its address from the server's environment, "
+            f"which an organization on this server does not use. Give it an address of its own "
+            f"under {WHERE_TO_ADD_AI_KEY}.",
+        )
+    return address
+
+
+# --- the vendors' own clients ----------------------------------------------------------------------
+
+#: aisuite's providers built on a vendor SDK's client, by the SDK. Each other provider aisuite has
+#: speaks to a fixed address over httpx with the key it is given (xai, together, fireworks), is a
+#: local server (:data:`KEYLESS_VENDORS`), or is reached with the server's own credentials.
+_SDK_OF: dict[str, str] = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "deepseek": "openai",
+    "nebius": "openai",
+    "sambanova": "openai",
+    "inception": "openai",
+}
+
+#: The address each SDK's client is given when no other is: the vendor's own, which the SDK takes
+#: from ANTHROPIC_BASE_URL / OPENAI_BASE_URL when it is given none.
+SDK_ADDRESS: dict[str, str] = {
+    "anthropic": "https://api.anthropic.com",
+    "openai": "https://api.openai.com/v1",
+}
+
+#: What each SDK reads from the environment whatever it is given: headers it sends with every
+#: request (anthropic and openai ``_client.py``). On a server of many organizations no client of
+#: that SDK is built while one is set.
+SDK_HEADER_ENV: dict[str, str] = {
+    "anthropic": "ANTHROPIC_CUSTOM_HEADERS",
+    "openai": "OPENAI_CUSTOM_HEADERS",
+}
+
+
+def sdk_config(provider: str, config: Mapping[str, Any]) -> dict[str, Any]:
+    """The configuration aisuite's ``provider`` (or the vendor SDK's client of that name) is built
+    with: ``config``, and on a server of many organizations every value its SDK otherwise takes
+    from the server's environment given explicitly (REQ-1395 as amended 2026-11-16): the key
+    (anthropic's SDK reads ANTHROPIC_AUTH_TOKEN and its profiles only when given none), the
+    address (ANTHROPIC_BASE_URL, OPENAI_BASE_URL), and OpenAI's organization and project
+    (OPENAI_ORG_ID, OPENAI_PROJECT_ID, sent as headers, which are omitted) and admin key
+    (OPENAI_ADMIN_KEY). Refused while the environment sets the headers the SDK sends whatever it
+    is given (:data:`SDK_HEADER_ENV`). An install of one organization builds with ``config`` as
+    it is."""
+    built = dict(config)
+    sdk = _SDK_OF.get(provider)
+    if sdk is None or not _many():
+        return built
+    variable = SDK_HEADER_ENV[sdk]
+    if variable in os.environ:
+        raise AiKeyRequired(
+            provider,
+            "ai.server_environment_sets",
+            f"{provider} cannot be called here: the server's environment sets {variable}, which "
+            f"its client would send for every organization.",
+            variable=variable,
+        )
+    if not built.get("api_key"):
+        raise _no_key(provider)
+    built.setdefault("base_url", SDK_ADDRESS[sdk])
+    if sdk == "openai":
+        from openai import Omit
+
+        built["admin_api_key"] = ""
+        built["default_headers"] = {
+            **dict(built.get("default_headers") or {}),
+            "OpenAI-Organization": Omit(),
+            "OpenAI-Project": Omit(),
+        }
+    return built

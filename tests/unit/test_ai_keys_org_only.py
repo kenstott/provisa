@@ -127,8 +127,15 @@ def test_such_a_vendor_takes_no_key_from_here_on_an_install_of_one(one):
 
 
 @pytest.mark.parametrize("vendor", sorted(KEYLESS_VENDORS))
-def test_a_local_server_takes_no_key_on_either(many, vendor):
+def test_a_local_server_takes_no_key_on_an_install_of_one(one, vendor):
     assert org_secrets.provider_key({}, vendor) is None
+
+
+@pytest.mark.parametrize("vendor", sorted(KEYLESS_VENDORS))
+def test_a_local_server_is_refused_on_a_server_of_many(many, vendor):
+    with pytest.raises(AiKeyRequired) as refused:
+        org_secrets.provider_key({}, vendor)
+    assert refused.value.code == "ai.local_server_from_environment"
 
 
 def test_an_endpoint_with_no_key_is_given_a_placeholder_on_a_server_of_many(many):
@@ -149,6 +156,30 @@ async def test_the_org_forms_read_the_organizations_store(many, monkeypatch):
 
 
 # --- the LLM client (every model call but the chat's) ------------------------------------------------
+
+
+def _openai_explicit(config: dict[str, Any]) -> dict[str, Any]:
+    """``config`` as provisa.core.org_secrets.sdk_config gives an OpenAI client it on a server of
+    many organizations, with its omitted headers named."""
+    return {
+        "base_url": "https://api.openai.com/v1",
+        **config,
+        "admin_api_key": "",
+        "default_headers": {"OpenAI-Organization": "omitted", "OpenAI-Project": "omitted"},
+    }
+
+
+def _named(configs: Any) -> Any:
+    """``configs`` with each of the OpenAI SDK's Omit markers named, so two compare."""
+    from openai import Omit
+
+    if isinstance(configs, dict):
+        return {k: _named(v) for k, v in configs.items()}
+    if isinstance(configs, list):
+        return [_named(v) for v in configs]
+    if isinstance(configs, tuple):
+        return tuple(_named(v) for v in configs)
+    return "omitted" if isinstance(configs, Omit) else configs
 
 
 class _Aisuite:
@@ -202,7 +233,7 @@ def test_the_client_sends_the_stored_key_on_a_server_of_many(many, monkeypatch):
     client = _client("openai", {"openai": "stored"})
     assert client.key_problem() is None
     assert client.complete_sync("q") == "answer"
-    assert sent.configs == [{"openai": {"api_key": "stored"}}]
+    assert _named(sent.configs) == [{"openai": _openai_explicit({"api_key": "stored"})}]
 
 
 def test_the_client_sends_the_deployments_key_on_an_install_of_one(one, monkeypatch):
@@ -236,17 +267,19 @@ def test_the_client_never_lets_an_endpoint_with_no_key_read_the_vendors(many, mo
     sent = _Aisuite(monkeypatch)
     endpoint = {"id": "gateway", "style": "openai", "base_url": "https://gateway.example/v1"}
     assert _client("gateway", {}, [endpoint]).complete_sync("q") == "answer"
-    assert sent.configs == [
-        {"openai": {"base_url": "https://gateway.example/v1", "api_key": NO_KEY}}
+    assert _named(sent.configs) == [
+        {"openai": _openai_explicit({"base_url": "https://gateway.example/v1", "api_key": NO_KEY})}
     ]
 
 
-async def test_table_search_ranks_with_no_model_call_on_a_server_of_many(many, monkeypatch):
+async def test_table_search_is_refused_with_no_model_call_on_a_server_of_many(many, monkeypatch):
     from provisa.discovery.table_search import TableCandidate, llm_rank
 
     sent = _Aisuite(monkeypatch)
     candidates = [TableCandidate(name="orders", comment=None, columns=[], schema_name="public")]
-    assert await llm_rank("orders", candidates, api_keys={}) == []
+    with pytest.raises(AiKeyRequired) as refused:
+        await llm_rank("orders", candidates, api_keys={})
+    assert refused.value.code == "ai.key_required"
     assert sent.configs == []
 
 
@@ -560,7 +593,7 @@ async def test_the_code_sources_provider_is_given_the_stored_key(many, monkeypat
     _stored(monkeypatch, {"openai": "stored"})
     made = _providers(monkeypatch)
     await llm_service._provider({}, _DB, "openai")  # type: ignore[arg-type]
-    assert made == [("openai", {"api_key": "stored"})]
+    assert _named(made) == [("openai", _openai_explicit({"api_key": "stored"}))]
 
 
 async def test_the_code_sources_provider_is_given_the_deployments_key_on_an_install_of_one(
@@ -576,8 +609,11 @@ async def test_the_code_sources_provider_is_given_the_deployments_key_on_an_inst
 
 # --- the walk --------------------------------------------------------------------------------------
 
-#: The vendors' own clients, which constructed with no key read one from the environment.
+#: What builds a vendor's client: the SDKs' own clients, and aisuite's client and provider factory,
+#: which build them. Each reads from the environment whatever it is not given (a key, an
+#: address, an organization id).
 _SDK_CLIENTS = frozenset({"Anthropic", "AsyncAnthropic", "OpenAI", "AsyncOpenAI"})
+_AISUITE_BUILDERS = frozenset({"Client", "create_provider"})
 
 
 def _sources() -> list[Path]:
@@ -597,20 +633,47 @@ def test_no_ai_key_variable_is_named_outside_the_resolver():
     )
 
 
-def test_no_vendor_client_is_constructed_without_a_key():
+def _builds_a_vendor_client(node: ast.Call) -> str | None:
+    called = node.func
+    if isinstance(called, ast.Attribute):
+        if called.attr in _SDK_CLIENTS:
+            return called.attr
+        owner = called.value
+        owner_name = owner.id if isinstance(owner, ast.Name) else getattr(owner, "attr", None)
+        if called.attr == "Client" and owner_name in {"ai", "aisuite"}:
+            return f"{owner_name}.Client"
+        if called.attr == "create_provider":
+            return "create_provider"
+        return None
+    name = getattr(called, "id", None)
+    return name if name in _SDK_CLIENTS else None
+
+
+def _given_sdk_config(node: ast.Call) -> bool:
+    """Whether the call's arguments are built by provisa.core.org_secrets.sdk_config."""
+    for argument in [*node.args, *(k.value for k in node.keywords)]:
+        for inner in ast.walk(argument):
+            if isinstance(inner, ast.Call) and getattr(inner.func, "id", None) == "sdk_config":
+                return True
+    return False
+
+
+def test_no_vendor_client_is_built_without_every_value_explicit():
+    """REQ-1395 as amended 2026-11-16: every vendor client is built from the resolver's
+    configuration (provisa.core.org_secrets.sdk_config), so on a server of many organizations no
+    key, token, address or organization id is picked up from the server's environment."""
     bare = []
     for path in _sources():
         text = path.read_text(encoding="utf-8")
-        if not any(name in text for name in _SDK_CLIENTS):
+        if not any(name in text for name in (*_SDK_CLIENTS, *_AISUITE_BUILDERS)):
             continue
         for node in ast.walk(ast.parse(text)):
             if not isinstance(node, ast.Call):
                 continue
-            called = node.func
-            name = called.attr if isinstance(called, ast.Attribute) else getattr(called, "id", None)
-            if name in _SDK_CLIENTS and "api_key" not in {k.arg for k in node.keywords}:
+            name = _builds_a_vendor_client(node)
+            if name is not None and not _given_sdk_config(node):
                 bare.append(f"{path.relative_to(_PACKAGE.parent)}:{node.lineno}: {name}()")
     assert bare == [], (
-        "A vendor's client constructed with no api_key reads the key from the server's "
-        f"environment; hand it the resolver's (provisa.core.org_secrets): {bare}"
+        "A vendor's client built from anything but provisa.core.org_secrets.sdk_config takes "
+        f"what it is not given from the server's environment: {bare}"
     )
