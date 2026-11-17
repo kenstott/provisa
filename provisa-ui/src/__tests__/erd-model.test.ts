@@ -561,7 +561,9 @@ describe("buildErdElements — junction relationships", () => {
     const sheet = graphStylesheet(graphTokens(false));
     const diamonds = sheet.filter((r) => (r.style as Record<string, unknown>).shape === "diamond");
     expect(diamonds.map((r) => r.selector)).toEqual(['node[kind = "node"][shape = "diamond"]']);
-    const shaped = (Object.keys(NODE_TYPES) as NodeType[]).filter((t) => typeShape(t) === "diamond");
+    const shaped = (Object.keys(NODE_TYPES) as NodeType[]).filter(
+      (t) => typeShape(t) === "diamond",
+    );
     expect(shaped).toEqual(["junction"]);
   });
 
@@ -741,5 +743,55 @@ describe("erdJson", () => {
     const all = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "all"));
     const none = erdJson(buildErdElements(tables, rels, domains, new Set(), NO_HIDDEN, "none"));
     expect(none).toEqual(all);
+  });
+});
+
+// REQ-1921: a withdrawn table (by itself or through its source) and a withdrawn relationship are
+// drawn dashed; a table in production keeps its solid border.
+describe("buildErdElements — withdrawn tables and relationships", () => {
+  const live = makeTable({ id: 1, domainId: "sales", tableName: "orders" });
+  const withdrawn = makeTable({ id: 2, domainId: "sales", tableName: "staging", withdrawn: true });
+  const viaSource = makeTable({
+    id: 3,
+    domainId: "sales",
+    tableName: "landing",
+    sourceWithdrawn: true,
+  });
+  const rels = [
+    makeRel({ id: 1, sourceTableId: 1, targetTableId: 2, withdrawn: true }),
+    makeRel({ id: 2, sourceTableId: 3, targetTableId: 1, withdrawn: true }),
+    makeRel({ id: 3, sourceTableId: 1, targetTableId: 1 }),
+  ];
+  const build = () =>
+    buildErdElements(
+      [live, withdrawn, viaSource],
+      rels,
+      [DOMAIN_SALES],
+      new Set(),
+      new Set(),
+      "all",
+    );
+
+  it("marks a table withdrawn by itself or through its source, and its relationships", () => {
+    const erd = build();
+    const node = (id: string) => erd.nodes.find((n) => n.data.id === id)?.data;
+    expect(node("t:1")).toMatchObject({ withdrawn: false });
+    expect(node("t:2")).toMatchObject({ withdrawn: true });
+    expect(node("t:3")).toMatchObject({ withdrawn: true });
+    expect(erd.edges.find((e) => e.data.relationshipId === "1")?.data.withdrawn).toBe(true);
+  });
+
+  it("draws a withdrawn table's border dashed and a withdrawn relationship's line dashed", () => {
+    const spec = erdGraph(build(), [live, withdrawn, viaSource]);
+    expect(spec.nodes.find((n) => n.id === "t:2")?.withdrawn).toBe(true);
+    expect(spec.nodes.find((n) => n.id === "t:1")?.withdrawn).toBeUndefined();
+    expect(spec.edges.find((e) => e.data?.relationshipId === "1")?.dashed).toBe(true);
+    const els = graphElements(spec, (type) => type, "all");
+    expect(els.find((e) => e.data.id === "t:2")?.data.withdrawn).toBe("yes");
+    expect(els.find((e) => e.data.id === "t:3")?.data.withdrawn).toBe("yes");
+    expect(els.find((e) => e.data.id === "t:1")?.data.withdrawn).toBeUndefined();
+    const sheet = graphStylesheet(graphTokens(false));
+    const rule = sheet.find((r) => r.selector === 'node[withdrawn = "yes"]');
+    expect((rule?.style as Record<string, unknown>)["border-style"]).toBe("dashed");
   });
 });

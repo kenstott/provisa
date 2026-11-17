@@ -12,7 +12,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import type { ListedTable, Relationship, Domain } from "../../../types/admin";
 import type { SavedLayout } from "../../../api/erdLayouts";
 import type { ErdPlaces } from "../erd-saved-layout";
-import type { ShowWithdrawn } from "../useShowWithdrawn";
+import type { ShowWithdrawn } from "../../provisa-graph/GraphOptionsBar";
 
 export interface ErdPanelProps {
   /** The domains a link asks to collapse, "all" for every one; null when it asks nothing. */

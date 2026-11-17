@@ -175,7 +175,11 @@ describe("a table's preview in its detail panel, for a withdrawn table", () => {
   it("says nothing of withdrawal over a table in production", async () => {
     vi.mocked(runSql).mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
     render(
-      <TablePreviewPane table={{ ...WITHDRAWN, withdrawn: false }} role="steward" onBack={vi.fn()} />,
+      <TablePreviewPane
+        table={{ ...WITHDRAWN, withdrawn: false }}
+        role="steward"
+        onBack={vi.fn()}
+      />,
     );
     await waitFor(() => expect(runSql).toHaveBeenCalled());
     expect(screen.queryByTestId("table-preview-withdrawn-note")).not.toBeInTheDocument();

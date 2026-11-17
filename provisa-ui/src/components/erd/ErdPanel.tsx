@@ -14,7 +14,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Group, Switch } from "@mantine/core";
 import { buildErdElements, erdJson } from "./erd-model";
 import type { ErdNodeDomain, ErdNodeTable } from "./erd-model";
 import { erdGraph } from "./erd-graph";
@@ -200,22 +199,8 @@ export function ErdPanel({
           <GraphOptionsBar
             testId="erd"
             tourId="rels-erd-modal"
-            lead={
-              <>
-                {layoutMenu}
-                {withdrawn && (
-                  <Group gap="xs" h={30} align="center" wrap="nowrap">
-                    <Switch
-                      size="xs"
-                      label={t("erdModal.showWithdrawn")}
-                      checked={withdrawn.shown}
-                      onChange={(e) => withdrawn.onChange(e.currentTarget.checked)}
-                      data-testid="erd-show-withdrawn"
-                    />
-                  </Group>
-                )}
-              </>
-            }
+            lead={layoutMenu}
+            showWithdrawn={withdrawn}
             options={graphOptions}
             onOptions={setOptions}
             groupIds={visibleDomainIds.map(groupOf)}

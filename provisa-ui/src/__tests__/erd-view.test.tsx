@@ -200,6 +200,22 @@ const RELS = {
 // What the ERD draws: the system's own relationships too (allRelationships), which the page's list
 // (relationships) leaves out.
 const ALL_RELS = { ...RELS };
+// REQ-1921: what Show withdrawn reads besides: a withdrawn table and its relationship, marked.
+const WITHDRAWN_TABLE = { ...table(7, "staging", "sales"), withdrawn: true };
+const WITHDRAWN_REL = { ...relationship("orders-staging", 1, 7), withdrawn: true };
+const asked = vi.hoisted(() => ({ tables: [] as unknown[], relationships: [] as unknown[] }));
+const tablesRead = (opts?: { includeWithdrawn?: boolean }) => {
+  asked.tables.push(opts);
+  return opts?.includeWithdrawn
+    ? { ...TABLES, tables: [...TABLES.tables, WITHDRAWN_TABLE] }
+    : TABLES;
+};
+const relationshipsRead = (opts?: { includeWithdrawn?: boolean }) => {
+  asked.relationships.push(opts);
+  return opts?.includeWithdrawn
+    ? { ...ALL_RELS, relationships: [...ALL_RELS.relationships, WITHDRAWN_REL] }
+    : ALL_RELS;
+};
 const DOMAINS = {
   domains: [
     { id: "sales", description: "" },
@@ -256,14 +272,14 @@ vi.mock("../hooks/useAdminOpsQueries", async (importOriginal) => ({
 }));
 vi.mock("../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../hooks/useAdminQueries")>()),
-  useTables: () => TABLES,
+  useTables: (opts?: { includeWithdrawn?: boolean }) => tablesRead(opts),
   useTableDetails: () => TABLES,
   useSources: () => ({ sources: NONE, loading: false, refetch: REFETCH }),
   useDomains: () => DOMAINS,
   useRoles: () => ({ roles: NONE, loading: false, refetch: REFETCH }),
   useDataProducts: () => ({ dataProducts: NONE, loading: false, refetch: REFETCH }),
   useRelationships: () => RELS,
-  useAllRelationships: () => ALL_RELS,
+  useAllRelationships: (opts?: { includeWithdrawn?: boolean }) => relationshipsRead(opts),
   useUpsertRelationship: () => ({ upsertRelationship: vi.fn() }),
   useDeleteRelationship: () => ({ deleteRelationship: vi.fn() }),
   useAvailableColumnsMetadataLazy: () => ({
@@ -927,5 +943,63 @@ describe("Polly on the ERD and + Model", () => {
     expect(out.steps).toEqual(['Pressed the element with test id "wizard-next".']);
     expect(confirm).not.toHaveBeenCalled();
     expect((await inputs("/tables"))?.modeling).toBe("vault");
+  });
+});
+
+// REQ-1921: Show withdrawn, for a person who may preview withdrawn objects: the withdrawn tables
+// and their relationships are read and drawn dashed.
+describe("Show withdrawn", () => {
+  const style = (id: string, key: string) =>
+    (drawn.cy as unknown as { getElementById(id: string): { style(k: string): string } })
+      .getElementById(id)
+      .style(key);
+
+  beforeEach(() => {
+    asked.tables = [];
+    asked.relationships = [];
+  });
+
+  it.each(["tables", "relationships"] as const)(
+    "on the %s ERD is offered to a holder of table registration, off, reading nothing withdrawn",
+    async (page) => {
+      open(`/${page}?view=erd`);
+      const control = await screen.findByTestId("erd-show-withdrawn");
+      expect(control).not.toBeChecked();
+      await diagramHolds("t:1");
+      expect(drawnHas("t:7")).toBe(false);
+      expect(asked.tables.at(-1)).toEqual({ includeWithdrawn: false });
+      expect(asked.relationships.at(-1)).toEqual({ includeWithdrawn: false });
+    },
+  );
+
+  it("on reads the withdrawn tables and relationships and draws them dashed", async () => {
+    open("/tables?view=erd");
+    await diagramHolds("t:1");
+    fireEvent.click(await screen.findByTestId("erd-show-withdrawn"));
+    await diagramHolds("t:7");
+    expect(asked.tables.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(asked.relationships.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(style("t:7", "border-style")).toBe("dashed");
+    expect(style("t:1", "border-style")).toBe("solid");
+    await diagramHolds("r:orders-staging");
+    expect(style("r:orders-staging", "line-style")).toBe("dashed");
+    expect(style("r:orders-customers", "line-style")).toBe("solid");
+  });
+
+  it("is not offered to a person without table registration", async () => {
+    const held = AUTH.capabilities;
+    AUTH.capabilities = ["admin", "create_relationship"];
+    try {
+      open("/relationships?view=erd");
+      await diagramHolds("t:1");
+      expect(screen.queryByTestId("erd-show-withdrawn")).not.toBeInTheDocument();
+      expect(
+        asked.tables.some(
+          (o) => (o as { includeWithdrawn?: boolean } | undefined)?.includeWithdrawn,
+        ),
+      ).toBe(false);
+    } finally {
+      AUTH.capabilities = held;
+    }
   });
 });

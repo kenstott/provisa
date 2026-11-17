@@ -14,11 +14,7 @@
 
 import { useState } from "react";
 import { useCapability } from "../../hooks/useCapability";
-
-export interface ShowWithdrawn {
-  shown: boolean;
-  onChange: (shown: boolean) => void;
-}
+import type { ShowWithdrawn } from "../provisa-graph/GraphOptionsBar";
 
 export function useShowWithdrawn(): {
   /** Whether the view reads the withdrawn tables and relationships. */

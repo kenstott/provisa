@@ -12,7 +12,7 @@
 // previews it, but is not offered the table editor's acts -- deploy, profile, delete.
 
 import { describe, it, expect, vi } from "vitest";
-import { fireEvent, render, screen, within } from "../../../test-utils/render";
+import { fireEvent, render, screen, waitFor, within } from "../../../test-utils/render";
 // The glossary terms that name the table's columns, as the server answers: one rooted term, and an
 // abstract one reachable from it (which names no column).
 // The table's class term reads the meta domain as the user: its own tests (termGrounding) hold it.
@@ -208,6 +208,45 @@ describe("TableReadView and a draft", () => {
   it("says nothing of withdrawal on a table in production", () => {
     renderView(false, makeTable({ id: 7 }));
     expect(screen.queryByTestId("table-read-view-withdrawn-note")).not.toBeInTheDocument();
+  });
+});
+
+// REQ-1921: Withdraw among the table's actions, confirmed naming what stops; Put back once withdrawn.
+describe("TableReadView — Withdraw and Put back", () => {
+  it("withdraws the table once confirmed, the confirmation naming what stops", async () => {
+    const onWithdraw = vi.fn().mockResolvedValue(undefined);
+    renderView(false, TABLE, { onWithdraw });
+    fireEvent.click(screen.getByTestId("table-read-view-withdraw"));
+    const dialog = await screen.findByRole("dialog");
+    expect(dialog).toHaveTextContent("Withdraw orders?");
+    expect(dialog).toHaveTextContent(
+      "No role reads it on any front door, no engine attaches it, and its replica is removed.",
+    );
+    fireEvent.click(screen.getByTestId("table-read-view-confirm-dialog-confirm"));
+    await waitFor(() => expect(onWithdraw).toHaveBeenCalledWith(7));
+    expect(screen.queryByTestId("table-read-view-put-back")).not.toBeInTheDocument();
+  });
+
+  it("puts a withdrawn table back, and says it is withdrawn", async () => {
+    const onPutBack = vi.fn().mockResolvedValue(undefined);
+    renderView(false, makeTable({ id: 7, withdrawn: true }), { onPutBack });
+    expect(screen.queryByTestId("table-read-view-withdraw")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("table-read-view-put-back"));
+    await waitFor(() => expect(onPutBack).toHaveBeenCalledWith(7));
+  });
+
+  it("names the withdrawn source of a table withdrawn through it, and still offers Withdraw", () => {
+    renderView(false, makeTable({ id: 7, sourceId: "pg", sourceWithdrawn: true }));
+    expect(screen.getByTestId("table-read-view-withdrawn-note")).toHaveTextContent(
+      "Its source pg is withdrawn: no role reads this table until the source is put back.",
+    );
+    expect(screen.getByTestId("table-read-view-withdraw")).toBeInTheDocument();
+  });
+
+  it("is not offered to a governance-only viewer", () => {
+    renderView(true);
+    expect(screen.queryByTestId("table-read-view-withdraw")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("table-read-view-put-back")).not.toBeInTheDocument();
   });
 });
 

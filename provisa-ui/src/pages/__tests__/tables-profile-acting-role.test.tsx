@@ -150,7 +150,7 @@ function table(
 
 const TABLES = [
   table(7, "orders", [], { region: "eu" }),
-  table(8, "staging", [], { region: "eu", draft: true }),
+  table(8, "staging", [], { region: "eu", withdrawn: true }),
 ];
 const SOURCES = [
   {
@@ -238,10 +238,10 @@ describe("TablesPage — profiling acts as the roles the user acts as (REQ-1620)
   });
 });
 
-describe("TablesPage — a draft's preview acts as the roles the user acts as (REQ-1620, REQ-1921)", () => {
+describe("TablesPage — a withdrawn table's preview acts as the roles the user acts as (REQ-1620, REQ-1921)", () => {
   beforeEach(() => localStorage.clear());
 
-  it("previews a draft under Role: All as the set, asking for no single role", async () => {
+  it("previews a withdrawn table under Role: All as the set, asking for no single role", async () => {
     render(<TablesPage />);
     const list = await screen.findByTestId("tables-list");
     const row = (await within(list).findByText("staging")).closest("tr") as HTMLElement;
