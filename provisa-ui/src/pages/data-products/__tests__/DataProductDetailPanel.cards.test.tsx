@@ -101,7 +101,7 @@ const offer = (id: number, name: string, tables: number[], over: Partial<Offer> 
 const OFFERS: Offer[] = [
   offer(1, "Everything", [ORDERS, CUSTOMERS]),
   offer(2, "Orders only", [ORDERS], { open: true }),
-  offer(3, "Customers, no results", [CUSTOMERS], { dq_results: false, review: "role gone" }),
+  offer(3, "Customers, no results", [CUSTOMERS], { dq_results: false, review: "role_gone" }),
 ];
 const bid = (id: number, status: Bid["status"]): Bid => ({
   id,

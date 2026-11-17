@@ -75,6 +75,13 @@ class Operation:
     arguments: tuple[str, ...]
     reads: bool = False
     binary: bool = False
+    # REQ-1986: an operation that reads rows and requires a parameter is a function returning the
+    # rows of its table: ``table`` names that table as the source offers it, ``argument_types``
+    # the type of each argument (by position), ``returns_type`` the row's type as the source's
+    # schema names it (None where it names none).
+    table: str | None = None
+    argument_types: tuple[str, ...] = ()
+    returns_type: str | None = None
 
 
 # What a command that answers with a file returns: one row holding the file, a bytea.
@@ -88,27 +95,63 @@ def _source_type(state, source_id: str) -> str:
 # --- what a source offers ----------------------------------------------------------------------
 
 
-# The commands of each source's spec, by operation, with the spec they were read from: a spec is
-# read once and again only when the source's spec is replaced (a refresh, a new registration).
-_COMMANDS: dict[str, tuple[dict, dict[str, Any]]] = {}
+# The commands of each source's spec, by operation, and its queries, with the spec they were read
+# from: a spec is read once and again only when the source's spec is replaced (a refresh, a new
+# registration).
+_COMMANDS: dict[str, tuple[dict, dict[str, Any], list[Any]]] = {}
 
 
-def _commands(state, source_id: str) -> dict[str, Any]:
+def _read_spec(state, source_id: str) -> tuple[dict, dict[str, Any], list[Any]]:
     spec = state.openapi_specs[source_id]["spec"]
     held = _COMMANDS.get(source_id)
     if held is None or held[0] is not spec:
         from provisa.openapi.mapper import parse_spec
 
-        _, mutations = parse_spec(spec)
-        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations})
-    return held[1]
+        queries, mutations = parse_spec(spec)
+        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations}, queries)
+    return held
+
+
+def _commands(state, source_id: str) -> dict[str, Any]:
+    return _read_spec(state, source_id)[1]
+
+
+# An OpenAPI parameter's type as a function's argument type.
+_OPENAPI_ARGUMENT_TYPE = {
+    "integer": "integer",
+    "number": "float",
+    "boolean": "boolean",
+    "string": "varchar",
+}
+
+
+def _openapi_reads(state, source_id: str) -> list[Operation]:
+    """REQ-1986: each GET that answers rows and requires a parameter, as the function returning
+    the rows of its table (named by its operation id)."""
+    found = []
+    for q in _read_spec(state, source_id)[2]:
+        params = [*q.path_params, *q.query_params]
+        if q.columns_declared or not any(p["required"] for p in params):
+            continue
+        found.append(
+            Operation(
+                name=q.operation_id,
+                comment=f"[{q.method}] {q.path}" + (f" — {q.summary}" if q.summary else ""),
+                arguments=tuple(p["name"] for p in params),
+                reads=True,
+                table=q.operation_id,
+                argument_types=tuple(_OPENAPI_ARGUMENT_TYPE.get(p["type"], "json") for p in params),
+                returns_type=q.returns_type,
+            )
+        )
+    return found
 
 
 def _openapi_operations(state, source_id: str) -> list[Operation] | None:
     if source_id not in (getattr(state, "openapi_specs", None) or {}):
         return None
     mutations = _commands(state, source_id).values()
-    return [
+    return _openapi_reads(state, source_id) + [
         Operation(
             name=m.operation_id,
             comment=f"[{m.method.upper()}] {m.path}" + (f" — {m.summary}" if m.summary else ""),
@@ -135,12 +178,42 @@ async def _graphql_schema(state, source_id: str) -> dict | None:
     return None if offered is None else offered[0].schema()
 
 
+async def _graphql_reads(state, source_id: str) -> list[Operation]:
+    """REQ-1986: each root query field that requires an argument, as the function returning the
+    rows of its table (named by its SQL name)."""
+    from provisa.api.admin._graphql_table_registration import source_offer
+    from provisa.graphql_remote.brands import available_tables
+
+    offered = await source_offer(state, source_id)
+    if offered is None:
+        return []
+    offer, reg = offered
+    found = []
+    for t in available_tables(offer, reg["namespace"]):
+        required = t.get("required_args") or []
+        if not required:
+            continue
+        args = [*required, *(t.get("optional_args") or [])]
+        found.append(
+            Operation(
+                name=t["sql_name"],
+                comment=t.get("description"),
+                arguments=tuple(a["name"] for a in args),
+                reads=True,
+                table=t["sql_name"],
+                argument_types=tuple(a["provisa_type"] for a in args),
+                returns_type=t.get("gql_type_name"),
+            )
+        )
+    return found
+
+
 async def _graphql_operations(state, source_id: str) -> list[Operation] | None:
     schema = await _graphql_schema(state, source_id)
     if schema is None:
         return None
     root = _mutation_root(schema)
-    return [
+    return await _graphql_reads(state, source_id) + [
         Operation(
             name=f["name"],
             comment=f.get("description"),
@@ -468,6 +541,25 @@ async def call_operation(
     if source_type == "graphql_remote":
         return await _call_graphql(state, source_id, operation, args)
     return await _call_grpc(state, source_id, operation, args)
+
+
+def operation_table(state, source_id: str, operation: Operation) -> dict | None:
+    """REQ-1986: the registered table of ``source_id`` an operation that reads rows is read
+    through -- the one registered under its name (an OpenAPI table is matched on its operation
+    id as its endpoint is) -- or None when none is registered."""
+    from provisa.api_source.openapi_endpoint import normalize_op_id
+
+    if operation.table is None:
+        return None
+    wanted = normalize_op_id(operation.table)
+    return next(
+        (
+            t
+            for t in getattr(state, "tables", None) or []
+            if t["source_id"] == source_id and normalize_op_id(t["table_name"]) == wanted
+        ),
+        None,
+    )
 
 
 def written_table(state, source_id: str, schema_table: str) -> dict | None:

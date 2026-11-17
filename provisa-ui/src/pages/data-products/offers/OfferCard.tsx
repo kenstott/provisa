@@ -250,7 +250,7 @@ export function OfferCard({
               </Badge>
             )}
             {offer.review && (
-              <Tip text={offer.review}>
+              <Tip text={t(`dataProductOffers.reviewReason.${offer.review}`)}>
                 <Badge size="sm" color="yellow" variant="light" data-testid={`${testId}-review`}>
                   {t("dataProductOffers.inReview")}
                 </Badge>

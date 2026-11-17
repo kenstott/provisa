@@ -34,8 +34,9 @@ from provisa.entitlements.index import WILDCARD
 
 #: The entitlement list an offer's datasets are reached through (provisa.core.offer_grant.TABLES).
 TABLES = "tables"
-#: Why an open offer is listed for review.
-REVIEW_NOT_PUBLIC = "this open offer's data is no longer public"
+#: Why an open offer is listed for review: a reason the UI's catalog states
+#: (dataProductOffers.reviewReason).
+REVIEW_NOT_PUBLIC = "not_public"
 
 
 def _narrows(identifiers: Collection[str], names: Iterable[str]) -> list[str]:

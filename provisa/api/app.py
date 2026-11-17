@@ -18,6 +18,7 @@ from __future__ import annotations
 
 
 import asyncio
+import functools
 import logging
 import hashlib
 import os
@@ -26,7 +27,7 @@ import threading
 import time
 import uuid
 from collections import deque
-from collections.abc import Collection, MutableMapping
+from collections.abc import Awaitable, Callable, Collection, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -37,9 +38,14 @@ from provisa.api.engine_error_names import client_text
 from provisa.federation.colocation import colocation_key
 from provisa.core import model_change
 from provisa.core.config_location import config_path_str
-from provisa.core.connection_loop import CrossLoopLock, LongLived, run_lifecycle_work
+from provisa.core.connection_loop import (
+    CrossLoopLock,
+    LongLived,
+    is_connection_loop,
+    run_lifecycle_work,
+)
 from provisa.api.role_surface import LazySurface, RoleSurface
-from provisa.api import rebuild_trace
+from provisa.api import build_after_answer, rebuild_trace
 from provisa.api.data.endpoint import router as data_router
 from provisa.api.data.redirect_file import router as redirect_file_router
 from provisa.api.data.signal import router as signal_router
@@ -1177,6 +1183,15 @@ class AppState:
     @names_table.setter
     def names_table(self, value: "NamesTable | None") -> None:
         self._active_runtime().names_table = value
+
+    @property
+    def checked_targets(self) -> dict[int, int]:
+        """Each checker's checked table, as this build resolved it (OrgRuntime.checked_targets)."""
+        return self._active_runtime().checked_targets
+
+    @checked_targets.setter
+    def checked_targets(self, value: dict[int, int]) -> None:
+        self._active_runtime().checked_targets = value
 
     @property
     def view_path_map(self) -> dict | None:
@@ -3217,6 +3232,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.view_context = prod_rt.view_context
     _rt.view_path_map = prod_rt.view_path_map
     _rt.names_table = prod_rt.names_table
+    _rt.checked_targets = prod_rt.checked_targets
     # view_sql_map is already physical SQL (compiled by _finalize_rebuild_state in PROD's build).
     # Do NOT call _finalize_rebuild_state again — it would corrupt already-compiled physical SQL.
     _rt.view_sql_map = prod_rt.view_sql_map
@@ -3392,6 +3408,13 @@ async def _rebuild_schemas(
         # which a hosted tier logs at: how its operator sees what a slow save or open spent, and
         # whether it was waiting for another build of the same runtime (REQ-2006).
         rebuild_trace.finished(record, slow_s=_SLOW_REBUILD_S)
+        if record.after is not None:
+            # REQ-1914: the caller has its answer; what nobody waits on runs after it, once per
+            # runtime, in the pass of the newest build published (build_after_answer). Started
+            # whether or not the build ended well: a build that published and then failed left
+            # its pass the runtime's.
+            record.after.answered_s = record.waited_s + record.took_s
+            build_after_answer.start(record.after.runtime)
     return False
 
 
@@ -3994,19 +4017,14 @@ async def _rebuild_schemas_impl(
             await _model_names.write_refused_clashes(conn, refused.clashes)
         raise
 
-    _build.phase(rebuild_trace.DERIVED_WRITES)
+    # REQ-2125: the checker targets a request reads (a grant, a product's promised checks) are
+    # this build's, published with its names table; the stored copy is the after-answer pass's.
+    state.checked_targets = _checked
+
+    _build.phase(rebuild_trace.FIELD_NUMBERS)
+    # REQ-1903: stored before the answer, so a wire field's number is the same after a restart.
     async with state.model_db.acquire() as conn:
         await persist_field_numbers(conn, _field_numbers)
-
-        # REQ-2129: this build's column lineage edges, read by the meta domain's lineage views.
-        from provisa.api.admin.lineage_router import write_lineage_edges
-
-        await write_lineage_edges(conn, state)
-
-        # REQ-2125: the table each checker checks, as this build resolved it, for the meta domain.
-        from provisa.dq.registration import write_checker_targets
-
-        await write_checker_targets(conn, _checked)
 
     _build.phase(rebuild_trace.PUBLISH)
     # REQ-2176: a graph session whose principal's rights this build changed (a grant of one of
@@ -4064,18 +4082,15 @@ async def _rebuild_schemas_impl(
         state.schema_version += 1
     _stamped_runtime.model_stamp = _stamps[_config_stamp.MODEL]  # REQ-1914
     _stamped_runtime.build_stamp = _stamps[_config_stamp.BUILD]
-    _build.phase(rebuild_trace.NAMES_TABLE)
-    # REQ-194: the prod build's names table and frozen aliases, written after the schema version
-    # advances so a concurrent read cannot see a stale home-region for a table while the
-    # SHARE ROW EXCLUSIVE MODE lock write_names_table holds is in contention (REQ-1882,
-    # REQ-1915). An env build (a sandbox environment's runtime, REQ-2006) skips both: its model
-    # is the prod's, the prod has already written it, and the lock it acquires would delay
-    # unrelated env-runtime rebuilds for every concurrent sandbox open.
+    # REQ-194: the names the prod build's clash policy derived are frozen as aliases before the
+    # answer: they are model rows, and a later build must find them whether or not this build's
+    # after-answer pass has run. The stored names table itself is the pass's. An env build (a
+    # sandbox environment's runtime, REQ-2006) writes neither: its model is the prod's.
+    _names_built = state.names_table
     if _env == PROD:
-        assert state.names_table is not None, "the build stores the names table it built"
+        assert _names_built is not None, "the build stores the names table it built"
         async with state.model_db.acquire() as conn:
-            await _model_names.write_names_table(conn, state.names_table.rows)
-            await _model_names.freeze_aliases(conn, state.names_table.frozen_aliases)
+            await _model_names.freeze_aliases(conn, _names_built.frozen_aliases)
     _build.phase(rebuild_trace.FINALIZE)
     await _finalize_rebuild_state(_rebuild_log)
     _build.phase(rebuild_trace.MEASURE)
@@ -4083,7 +4098,7 @@ async def _rebuild_schemas_impl(
     from provisa.fakes.measured import measure_model
 
     await measure_model(state)
-    _build.phase(rebuild_trace.ANNOUNCE)
+    _build.phase(rebuild_trace.CONVERGE)
     # REQ-1915: replicas converge to the model just built — a build is requested for every
     # declared replica that has none (or whose definition changed), and a replica the model no
     # longer declares is retired. This is the one place: the boot build, the build after this
@@ -4093,29 +4108,151 @@ async def _rebuild_schemas_impl(
     # itself (``converge=False``), once its template's seed is adopted.
     if converge:
         start_replica_convergence()
-    # REQ-1072: the governed model just changed, so the external catalog is now stale. This is
-    # the one chokepoint every model mutation passes through, which is why the event is posted
-    # here rather than at each mutation — a new mutation cannot forget to publish.
-    from provisa.api.metadata_export.publishing import notify_model_changed
 
-    if announce:
-        # REQ-2180: a product's contracts are derived from its offers applied to the model just
+    # REQ-1914: the compiled model is published and a request reads it. What this build derives
+    # that no request is governed by is its after-answer pass, which supersedes the pass of
+    # every build of this runtime before it.
+    _after = build_after_answer.Pass(
+        record=rebuild_trace.AfterAnswer(
+            runtime=runtime_key(require_current_org(), current_env.get()),
+            org_id=_build.org_id,
+            env=_build.env,
+            cause=_build.cause,
+            stamps=_build.read_stamps,
+        ),
+        steps=_after_answer_steps(
+            runtime=_stamped_runtime,
+            env=_env,
+            announce=announce,
+            checked=_checked,
+            names=_names_built,
+            build=_build,
+        ),
+    )
+    _build.after = _after.record
+    build_after_answer.publish(_after)
+    if not is_connection_loop(asyncio.get_running_loop()):
+        # REQ-1882 (amended 2026-09-29), ``run_lifecycle_work``'s rule: at lifespan startup, on
+        # the process loop before any request is served, the pass runs here so boot is ordered
+        # (listeners, ingest engines and scheduler jobs are wired before the next startup step)
+        # and a step that fails is the boot build's failure (J743). The warm-up is never waited
+        # for: the entry hands it to a background worker with every other build's pass.
+        await build_after_answer.run(_after, before=rebuild_trace.WARM_UP)
+
+
+def _after_answer_steps(
+    *,
+    runtime: "OrgRuntime",
+    env: str,
+    announce: bool,
+    checked: Mapping[int, int],
+    names: "NamesTable | None",
+    build: rebuild_trace.BuildRecord,
+) -> dict[str, Callable[[], Awaitable[None]]]:
+    """The after-answer pass of one build (REQ-1914): a step per phase of
+    ``rebuild_trace.AFTER_PHASES``, in order. Each holds what it writes of the build it follows
+    (``checked``, ``names``, the runtime's build inputs); the rest it reads from the runtime as
+    it stands when the step runs, which a newer build may have replaced -- that build's pass
+    then writes every one of these again.
+
+    WHAT A REQUEST READS BETWEEN A BUILD'S ANSWER AND ITS PASS. Nothing here governs a request:
+    visibility, row rules, masks, view text, names and the schema's version are published before
+    the answer. Each step's output shows the build before until the step has run:
+
+    * the lineage edge table -- the meta domain's lineage views (REQ-2129: it may lag one pass);
+    * the checker targets -- the meta domain's ``checked_table_id`` and a product's promised
+      checks name the table each checker checked as of the build before;
+    * the stored names table -- read only by the meta domain's names report and the names its
+      views label objects with. Every name a query, a catalog listing or an introspection is
+      answered by is the in-memory names table of the published model, never the stored one;
+    * the offers' contracts and the catalog notice -- derived from the three above, in that
+      order, so a contract is never derived from a names table older than its lineage;
+    * the lifecycle wiring -- a listener, ingest engine or poll job of a source just registered
+      starts with the pass;
+    * the warm-up -- a role's surface is built by the first request that reads it.
+    """
+    from provisa.core.repositories import model_names as _model_names
+
+    async def derived_writes() -> None:
+        assert state.model_db is not None
+        async with state.model_db.acquire() as conn:
+            # REQ-2129: the model's column lineage edges, read by the meta domain's lineage views.
+            from provisa.api.admin.lineage_router import write_lineage_edges
+
+            await write_lineage_edges(conn, state)
+
+            # REQ-2125: the table each checker checks, as the build resolved it, for the meta
+            # domain.
+            from provisa.dq.registration import write_checker_targets
+
+            await write_checker_targets(conn, checked)
+
+    async def names_table() -> None:
+        # REQ-194: the prod build's names table. An env build (a sandbox environment's runtime,
+        # REQ-2006) skips it: its model is the prod's, the prod's pass writes it, and the
+        # SHARE ROW EXCLUSIVE lock the write takes would hold up every concurrent sandbox open.
+        if env != PROD:
+            return
+        assert state.model_db is not None
+        assert names is not None, "the build stores the names table it built"
+        async with state.model_db.acquire() as conn:
+            await _model_names.write_names_table(conn, names.rows)
+
+    async def announce_change() -> None:
+        # ``announce=False`` (REQ-1914) is a reload: the worker that made the change derives and
+        # tells.
+        if not announce:
+            return
+        # REQ-2180: a product's contracts are derived from its offers applied to the model
         # built -- its members, their columns, the masks and row rules its offers' roles read
         # under -- so the process that made the change derives them again, before the catalogs
         # hear of it. An env build's model is the prod's, whose build derived them.
-        if _env == PROD:
+        if env == PROD:
             from provisa.api.offer_derivation import rederive_all
 
-            async with state.model_db.acquire() as _offers_conn:
-                await rederive_all(cast("Connection", _offers_conn), state)
+            assert state.model_db is not None
+            # Detached from the request that made the change, whose model change has closed:
+            # an offer listed for review is a change of its own (REQ-1524). Inline (boot), it
+            # joins the change already open.
+            async with (
+                model_change.scope("offers' contracts derived again from the model built"),
+                state.model_db.acquire() as conn,
+            ):
+                await rederive_all(cast("Connection", conn), state)
+        # REQ-1072: the governed model changed, so the external catalog is now stale. Every
+        # model change is followed by a build and every build by its pass, which is why the
+        # event is posted here rather than at each mutation — a new mutation cannot forget to.
+        from provisa.api.metadata_export.publishing import notify_model_changed
+
         await notify_model_changed(state.active_org_id, reason="schema rebuild")
 
-    _build.phase(rebuild_trace.LIFECYCLE)
-    # REQ-1882 (amended 2026-09-29): the re-wiring below starts process-lifetime listeners, ingest
-    # engines and scheduler jobs. Run inline on the process loop; from a connection-thread loop (an
-    # org runtime built on first pgwire/Bolt/Flight access) it is started on the process loop,
-    # since the connection loop stops running when its request ends.
-    await run_lifecycle_work(_rewire_lifecycle(), name="schema-rebuild-lifecycle")
+    async def lifecycle() -> None:
+        # REQ-1882 (amended 2026-09-29): process-lifetime listeners, ingest engines and
+        # scheduler jobs. On the pass's background worker for every build but the boot's, as
+        # the connection loop a request built on stops running when its request ends.
+        await _rewire_lifecycle()
+
+    warm_inputs = runtime.role_build_inputs
+
+    async def warm_up() -> None:
+        from provisa.api.app_loaders import warm_role_surfaces
+
+        await warm_role_surfaces(runtime, warm_inputs, build=build)
+
+    return {
+        rebuild_trace.DERIVED_WRITES: functools.partial(_as_the_system, derived_writes),
+        rebuild_trace.NAMES_TABLE: functools.partial(_as_the_system, names_table),
+        rebuild_trace.ANNOUNCE: functools.partial(_as_the_system, announce_change),
+        rebuild_trace.LIFECYCLE: functools.partial(_as_the_system, lifecycle),
+        rebuild_trace.WARM_UP: functools.partial(_as_the_system, warm_up),
+    }
+
+
+async def _as_the_system(step: Callable[[], Awaitable[None]]) -> None:
+    """One phase of a build's after-answer pass. REQ-2188: a build's writes are the system's,
+    whoever's request ran it: no row rule holds them, in the pass as in the build."""
+    with model_row_rules.unnarrowed():
+        await step()
 
 
 async def _rewire_lifecycle() -> None:
@@ -4131,8 +4268,8 @@ async def _rewire_lifecycle() -> None:
     # here is never harmful, only occasionally redundant with register_runtime's own call.
     from provisa.events.push_wiring import wire_push_listeners
 
-    # A step that fails is the rebuild's failure (J743): inline at boot it fails the rebuild;
-    # detached, spawn_background reports it by the task's name.
+    # A step that fails is the pass's failure (J743): inline at boot it fails the boot build;
+    # detached, it is recorded on the pass and logged with the phase (build_after_answer).
     await wire_push_listeners(state=state, log=logging.getLogger(__name__))
     await _init_ingest_engines()
     # REQ-1770: a table on a poll-only adapter-fetch source (rss is the current example) only got

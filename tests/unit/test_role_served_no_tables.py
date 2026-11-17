@@ -37,7 +37,6 @@ def empty_role(monkeypatch):
     from provisa.core import domain_policy
 
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
-    monkeypatch.setattr(app_loaders, "warm_role_surfaces", lambda _state: None)
     state = appmod.state
     for name in ("roles", "schemas", "contexts", "rls_contexts", "table_path_maps", "proto_files"):
         monkeypatch.setattr(state, name, {}, raising=False)

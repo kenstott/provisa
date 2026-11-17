@@ -13,13 +13,19 @@ declares a data product's offers on the product, as it declares its members. Loa
 offer, or replaces the product's offer of its name; an apply removes nothing, so an offer the file
 does not declare is kept, the default every product starts with among them. A sample names its
 views as the product names its tables. The model written back out as a configuration declares the
-offers the store holds, and no contract: those are derived."""
+offers the store holds, and no contract: those are derived.
+
+REQ-2180 (amended 2026-11-16, A SAMPLE DECLARED IN A LOADED FILE IS CHECKED BY THE BUILD AFTER THE
+LOAD): the load saves a declared offer without checking its sample against a build; the build that
+follows the load checks it, and lists one that does not hold for review with the reason, the load
+succeeding. An offer saved through the API is checked when it is saved."""
 
 # Requirements: REQ-2180, REQ-1919
 
 from __future__ import annotations
 
 import contextlib
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -31,9 +37,13 @@ import provisa.api.app  # noqa: F401
 from provisa.core import secrets_store
 from provisa.core.config_loader import apply_config, parse_config_dict
 from provisa.core.database import Database
+from provisa.core.models import DataProductOffer
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.schema_org import metadata
+from provisa.core.repositories import table as table_repo
 from provisa.core.store_config import store_model
+from tests.unit.offer_build import installed
+from tests.unit.offer_build import published as built_with
 
 
 @pytest.fixture(autouse=True)
@@ -58,7 +68,7 @@ async def db(control_plane) -> Database:
     return plane
 
 
-def _config(*offers_: dict[str, Any]) -> Any:
+def _config(*offers_: dict[str, Any], views: tuple[dict[str, Any], ...] = ()) -> Any:
     product: dict[str, Any] = {
         "id": "core",
         "domain_id": "sales",
@@ -88,7 +98,15 @@ def _config(*offers_: dict[str, Any]) -> Any:
                     "schema": "public",
                     "table": "orders",
                     "columns": [{"name": "id", "data_type": "integer", "visible_to": ["seller"]}],
-                }
+                },
+                {
+                    "source_id": "cfg",
+                    "domain_id": "sales",
+                    "schema": "public",
+                    "table": "customers",
+                    "columns": [{"name": "id", "data_type": "integer", "visible_to": ["seller"]}],
+                },
+                *views,
             ],
             "relationships": [],
             "data_products": [product],
@@ -181,3 +199,102 @@ async def test_the_model_written_out_declares_its_offers_and_no_contract(db):
     from provisa.core.models import DataProduct
 
     assert [o.name for o in DataProduct.model_validate(product).offers] == ["default", "sellers"]
+
+
+# -- a declared sample is checked by the build after the load (amended 2026-11-16) ----------------
+
+
+def _view(name: str, sql: str) -> dict[str, Any]:
+    return {
+        "source_id": "__derived__",
+        "domain_id": "sales",
+        "schema": "public",
+        "table": name,
+        "view_sql": sql,
+        "columns": [{"name": "id", "data_type": "integer", "visible_to": ["seller"]}],
+    }
+
+
+_TASTE = {
+    "name": "taste",
+    "role_id": "seller",
+    "data_level": "sample",
+    "sample_views": ["orders_sample"],
+}
+
+
+async def _build(db: Database, monkeypatch) -> dict[str, dict]:
+    """What the build after the load does to the offers: each derived again from the model it
+    published, the tables and views the load wrote. The offers afterwards, by name."""
+    from provisa.api.offer_derivation import rederive_all
+    from provisa.mv.registry import MVRegistry
+
+    installed(monkeypatch)
+    async with db.acquire() as conn:
+        state = SimpleNamespace(
+            roles={"viewer": {"capabilities": []}, "seller": {"capabilities": []}},
+            role_chains={"viewer": ["viewer"], "seller": ["seller"]},
+            meta_roles={},
+            meta_qualifiers={},
+            tables=await table_repo.list_all(conn),
+            checked_targets={},
+            names_table=None,
+            view_context=None,
+            source_catalogs={},
+            mv_registry=MVRegistry(),
+            tracked_functions={},
+        )
+        await rederive_all(conn, state)
+    return await _offers(db)
+
+
+async def test_a_sample_over_a_view_the_same_file_declares_loads_and_the_build_accepts_it(
+    db, monkeypatch
+):
+    sample_view = _view("orders_sample", "SELECT id FROM sales.orders LIMIT 10")
+    await _apply(db, _config(_TASTE, views=(sample_view,)))
+    assert (await _offers(db))["taste"]["review"] is None
+    taste = (await _build(db, monkeypatch))["taste"]
+    assert taste["review"] is None
+    async with db.acquire() as conn:
+        contracts = await offers.contracts(conn, taste["id"])
+    (contract,) = contracts.values()
+    assert contract.terms.sample_views == ["orders_sample"]
+
+
+async def test_a_sample_that_does_not_hold_is_listed_for_review_and_the_load_succeeds(
+    db, monkeypatch
+):
+    from provisa.api.offer_derivation import REVIEW_SAMPLE_OUTSIDE_PRODUCT
+
+    wide = _view(
+        "orders_sample",
+        "SELECT o.id FROM sales.orders o JOIN sales.customers c ON o.id = c.id",
+    )
+    await _apply(db, _config(_TASTE, views=(wide,)))
+    held = await _build(db, monkeypatch)
+    assert held["taste"]["review"] == REVIEW_SAMPLE_OUTSIDE_PRODUCT
+    async with db.acquire() as conn:
+        assert await offers.contracts(conn, held["taste"]["id"]) == {}
+    # The default offer, which holds, is not listed.
+    assert held["default"]["review"] is None
+    # Declared again over a view that holds, the next build takes it off the list.
+    narrow = _view("orders_sample", "SELECT id FROM sales.orders")
+    await _apply(db, _config(_TASTE, views=(narrow,)))
+    assert (await _build(db, monkeypatch))["taste"]["review"] is None
+
+
+async def test_an_api_save_of_a_sample_that_does_not_hold_is_still_refused(db):
+    wide = _view(
+        "orders_sample",
+        "SELECT o.id FROM sales.orders o JOIN sales.customers c ON o.id = c.id",
+    )
+    await _apply(db, _config(views=(wide,)))
+    async with db.acquire() as conn:
+        ids = {t["table_name"]: int(t["id"]) for t in await table_repo.list_all(conn)}
+        offer = DataProductOffer.model_validate({**_TASTE, "sample_views": [ids["orders_sample"]]})
+        build = built_with(views={ids["orders_sample"]: {ids["orders"], ids["customers"]}})
+        with pytest.raises(offers.OfferRefused) as refused:
+            await offers.save(conn, "core", offer, offer_id=None, by="o", published=build)
+    assert refused.value.code == "sample_outside_product"
+    assert "taste" not in await _offers(db)

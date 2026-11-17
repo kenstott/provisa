@@ -264,6 +264,10 @@ _WHOLE_MODEL: dict[tuple[str, str], tuple[str | None, str]] = {
         None,
         "an organization's creation: the operator's demo and standard rows",
     ),
+    ("provisa/api/app.py", "_as_the_system"): (
+        None,
+        "a build's after-answer pass: what the build derived from the stored model",
+    ),
     ("provisa/api/app.py", "_ensure_environment_baselines"): (None, "boot: stored models"),
     ("provisa/api/app.py", "_rebuild_schemas"): (None, "a runtime's build from the stored model"),
     ("provisa/api/demo_sandbox.py", "_build"): (None, "a sandbox's creation from its template"),

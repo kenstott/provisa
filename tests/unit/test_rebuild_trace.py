@@ -285,7 +285,7 @@ def test_a_record_holds_its_phases_in_the_order_entered_and_refuses_an_unlisted_
     with rebuild_trace.building(record):
         record.phase(rebuild_trace.TABLES)
         record.phase(rebuild_trace.COMPILE)
-        with pytest.raises(ValueError, match="not a build phase"):
+        with pytest.raises(ValueError, match="not a phase of the build before its answer"):
             record.phase("something else")
     assert record.phase_names == [rebuild_trace.TABLES, rebuild_trace.COMPILE]
     assert record.outcome == rebuild_trace.BUILT
@@ -430,16 +430,11 @@ class _Lazy:
 
 @pytest.fixture
 def warm_up(monkeypatch):
-    """The warm-up a build scheduled, to be run by the test; and a runtime of two unbuilt roles."""
+    """A runtime of two unbuilt roles, for the warm-up of a build's pass to build."""
     from types import SimpleNamespace
 
     from provisa.api import app_loaders, role_surface
 
-    scheduled: list = []
-    monkeypatch.setattr(
-        "provisa.core.connection_loop.spawn_after",
-        lambda _delay, coro, name: scheduled.append(coro),
-    )
     monkeypatch.setattr(app_loaders, "_WARM_PAUSE_S", 0)
     monkeypatch.setattr(role_surface, "LazySurface", _Lazy)
     runtime = SimpleNamespace(
@@ -447,8 +442,7 @@ def warm_up(monkeypatch):
         role_build_inputs={"tables": []},
         surfaces={"analyst": _Lazy(), "steward": _Lazy()},
     )
-    state = SimpleNamespace(_active_runtime=lambda: runtime)
-    return SimpleNamespace(scheduled=scheduled, state=state, runtime=runtime)
+    return SimpleNamespace(runtime=runtime)
 
 
 async def test_the_warm_up_after_a_build_is_recorded_on_that_build(warm_up, caplog) -> None:
@@ -458,11 +452,11 @@ async def test_the_warm_up_after_a_build_is_recorded_on_that_build(warm_up, capl
 
     record = rebuild_trace.BuildRecord(org_id="acme", env="prod", cause="a test")
     with rebuild_trace.building(record):
-        app_loaders.warm_role_surfaces(warm_up.state)
+        followed = warm_up.runtime.role_build_inputs
     assert record.warmed is None, "it has not run yet: the build's own time ends before it"
 
     with caplog.at_level(logging.INFO, logger="provisa.api.rebuild_trace"):
-        await warm_up.scheduled.pop()
+        await app_loaders.warm_role_surfaces(warm_up.runtime, followed, build=record)
 
     assert record.warmed is not None
     assert (record.warmed.roles, record.warmed.superseded) == (2, False)
@@ -477,10 +471,9 @@ async def test_a_warm_up_a_newer_build_superseded_says_so(warm_up) -> None:
     from provisa.api import app_loaders
 
     record = rebuild_trace.BuildRecord(org_id="acme", env="prod", cause="a test")
-    with rebuild_trace.building(record):
-        app_loaders.warm_role_surfaces(warm_up.state)
+    followed = warm_up.runtime.role_build_inputs
     warm_up.runtime.role_build_inputs = {"tables": []}  # a newer build's
-    await warm_up.scheduled.pop()
+    await app_loaders.warm_role_surfaces(warm_up.runtime, followed, build=record)
 
     assert record.warmed is not None
     assert (record.warmed.roles, record.warmed.superseded) == (0, True)

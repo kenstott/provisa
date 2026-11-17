@@ -10797,5 +10797,13 @@
   "de/aiModelsTab.json::aiModelsTab.apiKeyNotSetOrgOnly": "No key set.",
   "de/aiModelsTab.json::aiModelsTab.jevIntroOrgOnly": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. With no key set, those features use the model's confidence alone.",
   "de/serverErrors.json::serverErrors.ai.key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
-  "de/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+  "de/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.role_gone": "This offer's role is not defined.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.not_built": "A dataset of this offer is not in the model build.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.sample_not_a_view": "A sample of this offer names a table that is not a view of the model. A sample is one or more views over the product's datasets.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.sample_outside_product": "A view of this offer's sample reads more than the product's datasets, or none of them.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.sample_misses_dataset": "No view of this offer's sample reads one of the product's datasets. An offer covers every dataset of the product.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.not_public": "This open offer's data is no longer public.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.profiler_gone": "A dataset of this synthetic offer has no profiler.",
+  "de/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake."
 }

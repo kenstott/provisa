@@ -24,6 +24,7 @@ import logging
 from dataclasses import dataclass
 
 
+from provisa.api import rebuild_trace
 from provisa.api.startup_resilience import tolerate_startup_failure
 from provisa.compiler.introspect import ColumnMetadata
 from provisa.compiler.naming import apply_convention, prefixed_field_name, source_to_catalog
@@ -2049,56 +2050,46 @@ class _RoleParts:
             )
 
 
-#: How long after a rebuild the background warm-up starts: a burst of changes supersedes it first.
-_WARM_DELAY_S = 2.0
 #: The pause between two roles' builds in the warm-up, so it yields to requests.
 _WARM_PAUSE_S = 0.05
 #: A warm-up that held the loop this long is logged at WARNING, as a slow build is.
 _WARM_SLOW_S = 2.0
 
 
-def warm_role_surfaces(state: Any) -> None:
-    """After a rebuild, build every role's surface in the background, at low priority: a role
-    whose build fails is found (logged as an ERROR naming it) within seconds of the change, not at
-    someone's first request, and later requests find their role built. A newer rebuild
-    supersedes it: it stops as soon as the runtime's build inputs are no longer the ones it was
-    started for, so a burst of changes queues no warm-up per change."""
+async def warm_role_surfaces(
+    runtime: Any, inputs: Any, *, build: "rebuild_trace.BuildRecord | None"
+) -> None:
+    """Build every role's surface, at low priority: the last phase of a build's after-answer pass
+    (``build_after_answer``). A role whose build fails is found (logged as an ERROR naming it)
+    within seconds of the change, not at someone's first request, and later requests find their
+    role built. Until it has run a role's surface is built by the first request that reads it.
+    A newer rebuild supersedes it: it stops as soon as the runtime's build inputs are no longer
+    ``inputs``, the ones of the build it follows. What it spent goes on ``build``'s record
+    (REQ-1914): the build's own time ended before this began."""
     import asyncio
     import time
 
-    from provisa.api import rebuild_trace
-    from provisa.core.connection_loop import spawn_after
+    from provisa.api.role_surface import LazySurface, RoleSurfaceUnbuilt
 
-    runtime = state._active_runtime()
-    inputs = runtime.role_build_inputs
-    # REQ-1914: the build that started this warm-up, whose record takes what it spent: the
-    # build's own time ends before this begins.
-    build = rebuild_trace.build_if_any()
-
-    async def _warm() -> None:
-        from provisa.api.role_surface import LazySurface, RoleSurfaceUnbuilt
-
-        warmed = rebuild_trace.Warmed(roles=0, busy_s=0.0, superseded=False)
-        try:
-            for held in list(runtime.surfaces.values()):
-                if runtime.role_build_inputs is not inputs:
-                    warmed.superseded = True
-                    return  # superseded by a newer rebuild
-                if not isinstance(held, LazySurface) or held.built:
-                    continue
-                began = time.perf_counter()
-                try:
-                    held.resolve()
-                except RoleSurfaceUnbuilt:
-                    pass  # held and logged by the surface itself; its requests raise it
-                finally:
-                    warmed.roles += 1
-                    warmed.busy_s += time.perf_counter() - began
-                await asyncio.sleep(_WARM_PAUSE_S)
-        finally:
-            rebuild_trace.warm_up_ended(build, runtime.org_id, warmed, slow_s=_WARM_SLOW_S)
-
-    spawn_after(_WARM_DELAY_S, _warm(), name=f"warm role surfaces {runtime.org_id}")
+    warmed = rebuild_trace.Warmed(roles=0, busy_s=0.0, superseded=False)
+    try:
+        for held in list(runtime.surfaces.values()):
+            if runtime.role_build_inputs is not inputs:
+                warmed.superseded = True
+                return  # superseded by a newer rebuild
+            if not isinstance(held, LazySurface) or held.built:
+                continue
+            began = time.perf_counter()
+            try:
+                held.resolve()
+            except RoleSurfaceUnbuilt:
+                pass  # held and logged by the surface itself; its requests raise it
+            finally:
+                warmed.roles += 1
+                warmed.busy_s += time.perf_counter() - began
+            await asyncio.sleep(_WARM_PAUSE_S)
+    finally:
+        rebuild_trace.warm_up_ended(build, runtime.org_id, warmed, slow_s=_WARM_SLOW_S)
 
 
 def role_build_inputs(
@@ -2372,11 +2363,9 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
 
     # REQ-1443: a YAML-registered checker table's contract names pgwire (semantic) names, which
     # exist only now that the contexts are compiled — config load could not check them.
-    checked = checker_contract_targets(state, tables)
-    # Every role's surface is built lazily, on first read; this finds a role that cannot be built
-    # within seconds, in the background, and stops if a newer rebuild supersedes it.
-    warm_role_surfaces(state)
-    return checked
+    # Every role's surface is built lazily, on first read; the build's after-answer pass warms
+    # them (warm_role_surfaces), which finds a role that cannot be built within seconds.
+    return checker_contract_targets(state, tables)
 
 
 def _setup_approval_hook(st: AppState) -> None:
