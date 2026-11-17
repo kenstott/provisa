@@ -63,3 +63,58 @@ def libpq_dsn(**params: str | int) -> str:
     """A libpq ``keyword=value`` connection string of ``params``, in the order given. It is the
     string only: where it goes into a statement it is written with :func:`lit`."""
     return " ".join(f"{keyword}={libpq_value(value)}" for keyword, value in params.items())
+
+
+# -- connection strings a DuckDB extension parses again -----------------------------------------
+#
+# Each is the string only: where it goes into a statement it is written with :func:`lit`. The
+# grammars are the extensions' own parsers, read at their source and checked live in CI
+# (tests/integration/test_duckdb_connection_string_grammar_e2e.py).
+
+# An ADO.NET value written bare: no ';', no brace, no whitespace at either end, not empty.
+_ADO_BARE = re.compile(r"[^;{}\s](?:[^;{}]*[^;{}\s])?")
+
+
+def ado_value(value: str | int) -> str:
+    """``value`` as one value of the mssql extension's ADO.NET ``Key=Value;`` string: as it is
+    when it holds no ``;`` or brace and no space at either end, else in braces with ``}`` doubled
+    (the extension's TokenizeConnectionString: ``{...}`` quoting, ``}}`` a literal ``}``)."""
+    text = str(value)
+    if _ADO_BARE.fullmatch(text):
+        return text
+    return "{" + text.replace("}", "}}") + "}"
+
+
+def ado_dsn(*pairs: tuple[str, str | int]) -> str:
+    """The mssql extension's ``Key=Value;...`` string of ``pairs``, in the order given."""
+    return ";".join(f"{key}={ado_value(value)}" for key, value in pairs)
+
+
+def firebird_url(user: str, password: str, host: str, port: str | int, path: str) -> str:
+    """The firebird extension's ``firebird://user:password@host:port/path`` URL. The extension
+    percent-decodes the user and the password, so they are percent-encoded; it decodes neither
+    the host nor the path and splits its options off at the first ``?``, so a host or a path
+    holding ``?`` has no spelling in it and is refused."""
+    from urllib.parse import quote
+
+    for name, value in (("host", host), ("path", path)):
+        if "?" in str(value):
+            raise ValueError(
+                f"a Firebird {name} cannot hold '?': the firebird extension reads what follows "
+                "it as connection options"
+            )
+    return (
+        f"firebird://{quote(str(user), safe='')}:{quote(str(password), safe='')}"
+        f"@{host}:{port}/{path}"
+    )
+
+
+def bigquery_dsn(project: str) -> str:
+    """The bigquery extension's ``project=<id>`` string. The extension splits it at each space
+    with no quoting, so a project holding whitespace has no spelling in it and is refused."""
+    if not project or any(ch.isspace() for ch in project):
+        raise ValueError(
+            f"BigQuery project {project!r}: a project id is one word; the bigquery extension "
+            "reads each space-separated word as another setting"
+        )
+    return f"project={project}"

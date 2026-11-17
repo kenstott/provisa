@@ -36,7 +36,15 @@ from provisa.federation.connector_base import (
 )
 from provisa.federation.duckdb_extensions import bring_up_statements
 from provisa.federation.duckdb_extensions import connect as _duckdb_connect
-from provisa.federation.duckdb_quoting import ident, libpq_dsn, lit
+from provisa.federation.duckdb_quoting import (
+    ado_dsn,
+    bigquery_dsn,
+    firebird_url,
+    ident,
+    libpq_dsn,
+    lit,
+)
+from provisa.federation.pg_quoting import pg_ident, pg_lit
 
 if TYPE_CHECKING:
     from provisa.core.models import Source
@@ -574,9 +582,11 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
     def details(self, source: Source) -> dict:
         alias = f"_src_{source.id}"
         if self.source_type not in self.ENTRA_TYPES:
-            dsn = (
-                f"Server={source.host},{source.port};Database={source.database};"
-                f"User Id={source.username};Password={source.password}"
+            dsn = ado_dsn(
+                ("Server", f"{source.host},{source.port}"),
+                ("Database", source.database),
+                ("User Id", source.username),
+                ("Password", source.password),
             )
             # The mssql extension for DuckDB 2.0 verifies the server's TLS certificate: a
             # self-signed one is accepted only where the source pins it (federation_hints), as
@@ -604,7 +614,9 @@ class DuckDBMssqlConnector(_DuckDBExtensionConnector):  # REQ-899
             # 'env;cli' with no AZURE_* variables set it fails on 'env' (verified live), so the
             # ambient identity is the Azure CLI's signed-in one.
             provider = "PROVIDER credential_chain, CHAIN 'cli'"
-        dsn = f"Server={source.host},{source.port or 1433};Database={source.database}"
+        dsn = ado_dsn(
+            ("Server", f"{source.host},{source.port or 1433}"), ("Database", source.database)
+        )
         return {
             "attach": (
                 f"CREATE OR REPLACE SECRET {ident(secret)} (TYPE azure, {provider}); "
@@ -734,7 +746,7 @@ class DuckDBBigQueryConnector(_DuckDBExtensionConnector):  # REQ-899
         project = source.federation_hints["project"]
         return {
             "attach": (
-                f"ATTACH {lit('project=' + project)} AS {ident('_src_' + source.id)} "
+                f"ATTACH {lit(bigquery_dsn(project))} AS {ident('_src_' + source.id)} "
                 "(TYPE bigquery, READ_ONLY)"
             ),
             "raw_alias": f"_src_{source.id}",
@@ -750,10 +762,9 @@ class DuckDBFirebirdConnector(_DuckDBExtensionConnector):  # REQ-899
     probe_symbol = "firebird_scan"
 
     def details(self, source: Source) -> dict:
-        dsn = (
-            f"firebird://{source.username}:{source.password}"
-            f"@{source.host}:{source.port}/{source.path}"
-        )
+        if source.path is None:
+            raise ValueError(f"firebird source {source.id!r} has no path (the database file)")
+        dsn = firebird_url(source.username, source.password, source.host, source.port, source.path)
         return {
             "attach": f"ATTACH {lit(dsn)} AS {ident('_src_' + source.id)} (TYPE firebird)",
             "raw_alias": f"_src_{source.id}",
@@ -999,13 +1010,14 @@ class PostgresFdwConnector(Connector):  # REQ-893
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-                f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER "{server}" '
-                f'INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
+                f"OPTIONS (host {pg_lit(source.host)}, port {pg_lit(source.port)}, "
+                f"dbname {pg_lit(source.database)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
             # What an engine-side copy of ONE table needs (replica_target.pg_statement_copy):
@@ -1013,11 +1025,12 @@ class PostgresFdwConnector(Connector):  # REQ-893
             # foreign table by.
             "server_ddl_for_copy": [
                 "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-                f"OPTIONS (host '{source.host}', port '{source.port}', dbname '{source.database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
+                f"OPTIONS (host {pg_lit(source.host)}, port {pg_lit(source.port)}, "
+                f"dbname {pg_lit(source.database)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
             ],
             "server": server,
             "remote_schema": remote_schema,
@@ -1066,14 +1079,15 @@ class PgClickHouseFdwConnector(Connector):  # REQ-1870
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS pg_clickhouse",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER clickhouse_fdw '
-                f"OPTIONS (driver 'http', host '{source.host}', port '{port}', "
-                f"secure '{'on' if secure else 'off'}', dbname '{remote_database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username or 'default'}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA "{remote_database}" FROM SERVER "{server}" '
-                f'INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER clickhouse_fdw "
+                f"OPTIONS (driver 'http', host {pg_lit(source.host)}, port {pg_lit(port)}, "
+                f"secure {pg_lit('on' if secure else 'off')}, dbname {pg_lit(remote_database)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username or 'default')}, "
+                f"password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_database)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1205,15 +1219,15 @@ class _PgPgwireConnector(Connector):  # REQ-1730
 
         ports = ensure_endpoint(source)  # starts (once) the source's bundled Calcite pgwire server
         password = sign_in_password(source)
-        pw = f", password '{password}'" if password else ""
+        pw = f", password {pg_lit(password)}" if password else ""
         server = engine_attach_name("fdw_pgwire", attach_catalog(source))
         local_schema = engine_attach_name("fdw_pgwire", attach_catalog(source))
         server_ddl = [
             "CREATE EXTENSION IF NOT EXISTS postgres_fdw",
-            f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER postgres_fdw '
-            f"OPTIONS (host '{ports.pgwire_host}', port '{ports.pgwire_port}', "
+            f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER postgres_fdw "
+            f"OPTIONS (host {pg_lit(ports.pgwire_host)}, port {pg_lit(ports.pgwire_port)}, "
             f"dbname 'provisa')",
-            f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
+            f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
             f"OPTIONS (user 'provisa'{pw})",
         ]
         if serves_table_schemas(source):
@@ -1224,12 +1238,12 @@ class _PgPgwireConnector(Connector):  # REQ-1730
 
             schema = remote_schema(source, getattr(source, "schema_name", None))
             local_schema = f"{local_schema}_{schema}"
-            server_ddl.append(f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"')
+            server_ddl.append(f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}")
             return {
                 "attach_ddl": [
                     *server_ddl,
-                    f'IMPORT FOREIGN SCHEMA "{schema}" FROM SERVER "{server}" '
-                    f'INTO "{local_schema}"',
+                    f"IMPORT FOREIGN SCHEMA {pg_ident(schema)} FROM SERVER {pg_ident(server)} "
+                    f"INTO {pg_ident(local_schema)}",
                 ],
                 "local_schema": local_schema,
                 "server_ddl_for_copy": server_ddl,
@@ -1239,9 +1253,9 @@ class _PgPgwireConnector(Connector):  # REQ-1730
         return {
             "attach_ddl": [
                 *server_ddl,
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA {schema_name(source)} FROM SERVER "{server}" '
-                f'INTO "{local_schema}"',
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(schema_name(source))} "
+                f"FROM SERVER {pg_ident(server)} INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1303,10 +1317,12 @@ class FileFdwConnector(Connector):  # REQ-893
         return {
             "server_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS file_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER file_fdw',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER file_fdw",
             ],
             "server": server,
-            "table_options": f"OPTIONS (filename '{_located(source)}', format 'csv', header 'true')",
+            "table_options": (
+                f"OPTIONS (filename {pg_lit(_located(source))}, format 'csv', header 'true')"
+            ),
         }
 
 
@@ -1337,10 +1353,11 @@ class SqliteFdwConnector(Connector):  # REQ-907
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS sqlite_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER sqlite_fdw '
-                f"OPTIONS (database '{_located(source)}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA public FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER sqlite_fdw "
+                f"OPTIONS (database {pg_lit(_located(source))})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA public FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1376,12 +1393,13 @@ class MysqlFdwConnector(Connector):  # REQ-907
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS mysql_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER mysql_fdw '
-                f"OPTIONS (host '{source.host}', port '{source.port}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (username '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER mysql_fdw "
+                f"OPTIONS (host {pg_lit(source.host)}, port {pg_lit(source.port)})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (username {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1416,13 +1434,14 @@ class TdsFdwConnector(Connector):  # REQ-900
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS tds_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER tds_fdw '
-                f"OPTIONS (servername '{source.host}', port '{source.port}', "
-                f"database '{source.database}', msg_handler 'notice')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (username '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA {remote_schema} FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER tds_fdw "
+                f"OPTIONS (servername {pg_lit(source.host)}, port {pg_lit(source.port)}, "
+                f"database {pg_lit(source.database)}, msg_handler 'notice')",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (username {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1458,12 +1477,13 @@ class OracleFdwConnector(Connector):  # REQ-900
         return {
             "attach_ddl": [
                 "CREATE EXTENSION IF NOT EXISTS oracle_fdw",
-                f'CREATE SERVER IF NOT EXISTS "{server}" FOREIGN DATA WRAPPER oracle_fdw '
-                f"OPTIONS (dbserver '//{source.host}:{source.port}/{source.database}')",
-                f'CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER "{server}" '
-                f"OPTIONS (user '{source.username}', password '{source.password}')",
-                f'CREATE SCHEMA IF NOT EXISTS "{local_schema}"',
-                f'IMPORT FOREIGN SCHEMA "{remote_schema}" FROM SERVER "{server}" INTO "{local_schema}"',
+                f"CREATE SERVER IF NOT EXISTS {pg_ident(server)} FOREIGN DATA WRAPPER oracle_fdw "
+                f"OPTIONS (dbserver {pg_lit(f'//{source.host}:{source.port}/{source.database}')})",
+                f"CREATE USER MAPPING IF NOT EXISTS FOR CURRENT_USER SERVER {pg_ident(server)} "
+                f"OPTIONS (user {pg_lit(source.username)}, password {pg_lit(source.password)})",
+                f"CREATE SCHEMA IF NOT EXISTS {pg_ident(local_schema)}",
+                f"IMPORT FOREIGN SCHEMA {pg_ident(remote_schema)} FROM SERVER {pg_ident(server)} "
+                f"INTO {pg_ident(local_schema)}",
             ],
             "local_schema": local_schema,
         }
@@ -1516,7 +1536,7 @@ class _PgDuckdbScanConnector(Connector):  # REQ-901
         return {
             "requires_preload": "pg_duckdb",
             "reader": self._reader,
-            "scan": f"{self._reader}('{_located(source)}'{self._scan_args})",
+            "scan": f"{self._reader}({pg_lit(_located(source))}{self._scan_args})",
         }
 
 
