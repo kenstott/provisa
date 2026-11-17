@@ -108,7 +108,7 @@ def _role_grant_refusal(state: Any, role_id: str, granter: frozenset[str]) -> st
     """Why the bound person, granting with ``granter`` (their capabilities), may not grant
     ``role_id``, or None: the role is defined, their ``roles`` list reaches it through a role
     they act as that holds a granting right, and it carries no platform right they lack."""
-    from provisa.security.rights import PlatformRoleGrantError, check_role_grant
+    from provisa.security.rights import OrgAdminGrantError, PlatformRoleGrantError, check_role_grant
 
     role = state.roles.get(role_id)
     if role is None:
@@ -119,6 +119,8 @@ def _role_grant_refusal(state: Any, role_id: str, granter: frozenset[str]) -> st
         check_role_grant(role_id, role.get("capabilities"), granter)
     except PlatformRoleGrantError:
         return f"role {role_id!r} carries platform rights, which you do not hold"
+    except OrgAdminGrantError as exc:  # REQ-1327
+        return f"role {role_id!r} is granted by an org_admin; you lack " + ", ".join(exc.missing)
     return None
 
 
