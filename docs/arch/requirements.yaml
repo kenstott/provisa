@@ -3713,7 +3713,13 @@
     MEASURE:) Maintainer 2026-11-16. A run''s checks go in order of cost: declared foreign keys; the model''s
     semantic proposals; Jev''s re-score of them where a Jev key is configured, kept beside the model''s
     confidence; then the key-value measure, of only the pairs in the band between the measure cutoff and
-    the threshold. The band is judged on the model''s confidence, never Jev''s.'
+    the threshold. The band is judged on the model''s confidence, never Jev''s. (Amended 2026-11-16, KEY
+    VALUE OVERLAP IS A THIRD CHOICE IN THE DIALOG, DEPENDING ON SEMANTIC:) Maintainer 2026-11-16. The discovery
+    dialog offers Key value overlap beside Foreign keys and Semantic. It measures the pairs the semantic
+    check proposed, so it is available only while Semantic is chosen; the measure cutoff is set with it
+    and applies only while it is chosen. It is chosen by default and remembered as the threshold is. The
+    run''s summary lists it among what it looked for. Without it, a pair below the threshold is left out
+    as below the threshold, unmeasured.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
