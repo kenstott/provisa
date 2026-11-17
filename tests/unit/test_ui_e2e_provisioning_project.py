@@ -189,7 +189,10 @@ def test_the_lane_runs_the_provisioning_project_alone_with_one_worker():
     assert "needs" not in jobs["provisioning"]  # side by side, not after
     # Each keeps a report of its own.
     names = {body["with"]["artifact-name"] for body in jobs.values()}
-    assert names == {"playwright-report-core", "playwright-report-core-provisioning"}
+    assert names == {
+        "playwright-report-core-${{ matrix.shard }}of2",
+        "playwright-report-core-provisioning",
+    }
     # The provisioning job is the one that starts SQL Server's primer.
     assert jobs["provisioning"]["with"]["odbc"] is True
 
@@ -197,6 +200,44 @@ def test_the_lane_runs_the_provisioning_project_alone_with_one_worker():
     first = re.search(r"--project=core(?!-)", script)
     second = script.index("--project=core-provisioning")
     assert first and first.start() < second and "--workers=1" in script[second:]
+
+
+def test_the_core_job_runs_one_worker_per_runner_in_shards():
+    """Two workers on one 4-vCPU runner held it at a load of about 10 (run 43995449668): schema
+    rebuilds took a median 11.1 s against 3.3 s in the one-worker provisioning job of the same run,
+    and the longest specs ran out of their bounds. The "core" job is two shards, each one worker
+    (a backend and a browser) on a runner of its own."""
+    job = yaml.safe_load((REPO / ".github/workflows/ui-e2e-core.yml").read_text())["jobs"][
+        "playwright"
+    ]
+    assert job["strategy"]["matrix"]["shard"] == [1, 2]
+    assert job["strategy"]["fail-fast"] is False
+    given = job["with"]
+    env = dict(line.split("=", 1) for line in given["env"].splitlines() if line)
+    assert env["PROVISA_E2E_WORKERS"] == "1"
+    assert env["PROVISA_E2E_SHARD"] == "${{ matrix.shard }}/2"
+    assert "--project=core --shard=$PROVISA_E2E_SHARD " in given["run"]
+    # Each shard is named, cached and reported as its own lane.
+    assert given["name"] == "ui-core ${{ matrix.shard }}/2"
+
+
+def test_each_embedded_control_plane_stops_after_its_backend():
+    """Playwright stops its webServers after globalTeardown, in the reverse of their order. Stopped
+    by globalTeardown, the control planes went while their backends still ran, whose replica
+    housekeeping then failed on the gone socket (run 43995449668). Each is stopped by a webServer
+    entry listed before every other, so torn down after them, on its graceful-shutdown signal."""
+    config = (UI / "playwright.config.ts").read_text()
+    servers = config[config.index("webServer: ONLY_REGIONS_DEMO") :]
+    first = servers[servers.index(": [") + 3 :].lstrip()
+    assert first.startswith("...embeddedControlPlaneStops,")
+    stops = config[config.index("const embeddedControlPlaneStops") :]
+    stops = stops[: stops.index(": [];")]
+    assert "provisa.core.control_plane_pg stop" in stops
+    assert "trap " in stops and " TERM;" in stops
+    assert 'gracefulShutdown: { signal: "SIGTERM"' in stops
+    teardown = (UI / "e2e" / "global-teardown.ts").read_text()
+    assert "control_plane_pg" not in teardown
+    assert "PROVISA_E2E_EMBEDDED_CONTROL_PLANES" not in config + teardown
 
 
 def test_each_core_job_starts_only_the_demo_sources_its_project_reads():

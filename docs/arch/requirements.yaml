@@ -3673,7 +3673,17 @@
     run outside its scope are named with one action to add them, and Reset to defaults restores the defaults.
     The pickers offer no table a run would leave out (a draft, a system domain''s table); a run whose source
     or target holds no table is refused before it starts, saying why, and a run that leaves out some of
-    the tables named says how many and why.'
+    the tables named says how many and why. (Amended 2026-11-16, A PROPOSED PAIR''S VALUES ARE MEASURED
+    AGAINST EACH OTHER, AND THE THRESHOLD IS THE PERSON''S OWN:) Maintainer 2026-11-16. Every pair a run
+    proposes, foreign key or semantic, is measured on its data, within a stated bound of distinct values
+    read per column: how many of the source column''s distinct values occur in the target column and the
+    reverse, and whether each side''s values are distinct (a key). The measure is shown on the pair''s row,
+    decides its cardinality (many-to-one when the target side is distinct, one-to-one when both are, many-to-many
+    when neither is), and is the evidence the score is given by: a pair whose values are contained in a
+    distinct target scores as a key relationship whatever the model rated it; a pair whose values barely
+    meet scores low however alike its names are. A table that cannot be read in full (a parameterized table)
+    is measured on what it can give and says so. The threshold that decides which rows start ticked is set
+    in the dialog and kept for the person who set it.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -75168,7 +75178,7 @@
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1921
-  status: complete
+  status: in-progress
   group: 1. Access Governance & Security
   category: Data Residency
   feature: regions-and-residency-residency-rules
@@ -75372,7 +75382,19 @@
     GraphQL and REST surface includes drafts, marked draft, and the admin''s ways-to-reach read marks a
     draft. Catalog listings (the pgwire catalog, the MCP table list) and exports omit drafts. The gate names
     a right, not a role (REQ-1337): org_admin holds it everywhere; a domain steward holding it sees the
-    drafts of their own domains.'
+    drafts of their own domains. (Amended 2026-11-16, A REGISTERED OBJECT IS LIVE; WITHDRAWN TAKES IT OUT
+    OF PRODUCTION; DRAFT IS INTERNAL TO A REGION MOVE:) Maintainer 2026-11-16. Staging before release is
+    done in an isolated environment and promoted, and a live object is seen only by roles granted it, so
+    a source or table registered in production is live on registration: it is never a draft. Taking an object
+    out of production for a while is withdrawing it: a withdrawn table or source serves no role, is not
+    attached by any engine and keeps no replica, keeps its definition, grants and relationships, may be
+    previewed by its domain''s stewards, and is put back by one action; retiring it (REQ-2248) takes it
+    out for good. Draft remains only as the internal waypoint of a move between regions, so no data is held
+    anywhere in between; it is not a state a person chooses. A relationship is withdrawn while either of
+    its ends is withdrawn or retired, a derived state with no setting of its own. Graph views (the ERD,
+    Explore''s graph, the graph schema) leave withdrawn tables and their relationships out, and show them,
+    drawn apart, only to a person who may preview them and asks to; no query language reaches them; relationship
+    discovery never includes them.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
@@ -89152,7 +89174,14 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by the audit session), after the security audit found a stored view answered from its build with no
     check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
     and visibility hold as on any governed read. The stored rows are served as they are only to a reader
-    who sees everything.'
+    who sees everything. (Amended 2026-11-16, A STORED TRANSFORM VIEW: THE READER''S ROW RULES FILTER IT,
+    AND AN OUTPUT DERIVED FROM A MASKED INPUT IS MASKED:) Maintainer 2026-11-16, settling how a reader''s
+    rules hold on a view whose columns a transform computes and whose result is stored. The view is built
+    once and stored; it is never recomputed per reader. A reader''s row rules filter its stored rows: the
+    build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
+    from a column the reader sees masked is masked for that reader, as that column is, since it was derived
+    from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
+    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
