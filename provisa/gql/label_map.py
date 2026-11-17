@@ -134,6 +134,20 @@ class NodeMapping:
         its own for a path to walk (REQ-2135)."""
         return bool(self.native_filter_columns)
 
+    def parameter_column(self, name: str) -> str | None:
+        """The parameter column a property ``name`` binds (REQ-1986), or None for no parameter:
+        a parameter is named by its column (``_nf_petId``) or as a caller names it (``petId``,
+        published so by graph-schema), in any spelling of that name (``pet_id``, ``_petId``)."""
+        from provisa.core.parameters import canonical_name, parameter_name
+
+        if name in self.native_filter_columns:
+            return name
+        wanted = canonical_name(name)
+        for column in self.native_filter_columns:
+            if canonical_name(parameter_name({"column_name": column})) == wanted:
+                return column
+        return None
+
     @property
     def required_parameters(self) -> list[str]:
         """The parameters its table's metadata states as required (REQ-1986), by the name a caller

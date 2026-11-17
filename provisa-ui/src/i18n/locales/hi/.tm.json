@@ -10676,6 +10676,7 @@
   "hi/serverErrors.json::serverErrors.data.parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
   "hi/serverErrors.json::serverErrors.data.parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
   "hi/serverErrors.json::serverErrors.data.parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
+  "hi/serverErrors.json::serverErrors.data.parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}.",
   "hi/serverErrors.json::serverErrors.discovery.table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
   "hi/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
   "hi/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",

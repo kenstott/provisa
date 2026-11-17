@@ -153,7 +153,8 @@
       "parameter_by_equality_only": "पैरामीटर {{parameter}} समानता से मान लेता है: {{parameter}} = कोई मान, {{parameter}} IN (मान), या {{parameter}} पर join। {{form}} उसे कोई मान नहीं देता।",
       "parameter_unbound_on_branch": "पैरामीटर {{parameter}} को OR की एक शाखा में मान दिया गया है और दूसरी में नहीं। हर शाखा में {{parameter}} को मान दें।",
       "parameter_conflict": "पैरामीटर {{parameter}} को एक साथ दो अलग मान दिए गए हैं ({{first}} और {{second}})। उसे एक मान दें, या IN या OR से मानों की सूची दें।",
-      "parameter_calls_over_cap": "स्टेटमेंट को {{table}} के लिए {{calls}} कॉल चाहिए, उसके पैरामीटरों को दिए गए हर मान के लिए एक, और एक स्टेटमेंट के लिए अधिकतम {{cap}} किए जाते हैं (सेटिंग {{setting}})। कम मान दें।"
+      "parameter_calls_over_cap": "स्टेटमेंट को {{table}} के लिए {{calls}} कॉल चाहिए, उसके पैरामीटरों को दिए गए हर मान के लिए एक, और एक स्टेटमेंट के लिए अधिकतम {{cap}} किए जाते हैं (सेटिंग {{setting}})। कम मान दें।",
+      "parameter_not_written": "संबंध {{relationship}} पैरामीटर {{parameter}} पर जुड़ता है, जिसे एक स्टेटमेंट किसी मान से बाँधता है और कभी नहीं लिखता। कोई लेखन {{relationship}} नहीं बनाता।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",

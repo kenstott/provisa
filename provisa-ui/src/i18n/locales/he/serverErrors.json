@@ -153,7 +153,8 @@
       "parameter_by_equality_only": "הפרמטר {{parameter}} מקבל ערך בשוויון: {{parameter}} = ערך, {{parameter}} IN (ערכים), או join על {{parameter}}. {{form}} אינו נותן לו ערך.",
       "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
       "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
-      "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים."
+      "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים.",
+      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
