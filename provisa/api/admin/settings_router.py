@@ -43,6 +43,7 @@ from provisa.core import deployment_settings as _deployment_settings
 from provisa.core import settings_registry as _settings_registry
 from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.request_context import acting_org_overrides
+from provisa.api.engine_error_names import client_text, client_value
 
 router = APIRouter()
 
@@ -215,7 +216,7 @@ async def upload_config(request: Request):  # REQ-164, REQ-1919
         await apply_configuration(parse_config_dict(read_config_with_includes(path)))
         return {"success": True, "message": "Config uploaded and applied"}
     except Exception as e:
-        return {"success": False, "message": str(e)}
+        return {"success": False, "message": client_text(str(e))}
 
 
 # The blocks whose subject is the DEPLOYMENT, not the org: engine sizing, the row-limit and
@@ -859,7 +860,7 @@ async def update_settings(request: Request):  # REQ-165, REQ-253, REQ-303, REQ-4
         require_deployment_settings(request)  # REQ-1913: platform administrators, everywhere
     refused = _invalid_convention(body.get("naming") or {})
     if refused is not None:
-        return {"success": False, "message": refused}
+        return {"success": False, "message": client_value(refused)}
     await _apply_org_blocks(request, body, updated)
     # REQ-1327: the hot tier is built when the org's runtime is (as its deployment half is).
     if "hot_tables" in body:

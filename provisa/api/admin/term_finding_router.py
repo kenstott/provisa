@@ -50,6 +50,7 @@ from provisa.core.repositories import glossary as glossary_repo
 from provisa.llm.client import CALL_TIMEOUT_S
 from provisa.reference_library import library, store
 from provisa.term_finding import model, queue, review, scan
+from provisa.api.engine_error_names import client_value
 
 if TYPE_CHECKING:
     from collections.abc import Coroutine
@@ -124,7 +125,7 @@ def _scan(s: queue.ScanRow, counts: dict[str, int] | None = None) -> dict[str, A
         "source_table": s.source_table,
         "domains": s.domains,
         "status": s.status,
-        "error": s.error,
+        "error": client_value(s.error),
         "summary": s.summary,
         "started_by": s.started_by,
         "started_at": _iso(s.started_at),
@@ -786,7 +787,7 @@ async def bulk_accept(scan_id: int, request: Request) -> dict:
                         decided.append(await _accept(conn, draft_id, request))
             except (review.ReviewRefused, ValueError, ApiError) as exc:
                 message = exc.detail if isinstance(exc, ApiError) else str(exc)
-                refused.append({"id": draft_id, "message": message})
+                refused.append({"id": draft_id, "message": client_value(message)})
     if decided:
         await glossary._notify(org_id, "ontology terms accepted from a document")
         await glossary.embed_terms(org_id)

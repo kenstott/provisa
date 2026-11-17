@@ -292,5 +292,14 @@ async def neo4j_export(body: Neo4jExportRequest) -> JSONResponse:
     for err in data.get("errors", []):
         errors.append(err.get("message", str(err)))
 
-    imported = len(statements) - len(errors)
-    return JSONResponse(content={"imported": imported, "errors": errors})
+    return _import_answer(len(statements), errors)
+
+
+def _import_answer(statements: int, errors: list[str]) -> JSONResponse:
+    """How many of ``statements`` were imported, and why each other one was not: told as a client
+    is told an error's text, in this 200 (REQ-2087)."""
+    from provisa.api.engine_error_names import client_value
+
+    return JSONResponse(
+        content={"imported": statements - len(errors), "errors": client_value(errors)}
+    )

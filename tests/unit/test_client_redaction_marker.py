@@ -450,4 +450,255 @@ def test_every_client_surface_answers_through_the_one_function():
     ):
         assert "client_text(" in (PROVISA / surface).read_text(), surface
     assert "client_redact(" in (PROVISA / "api/engine_error_names.py").read_text()
-    assert "client_redact_value(" in (PROVISA / "api/data/stream_end.py").read_text()
+    assert "client_value(" in (PROVISA / "api/data/stream_end.py").read_text()
+
+
+# --- an error told inside a successful answer (amended 2026-11-16) ------------------------------
+# A 200 passes the error-response middleware untouched, so each answer that carries an error's
+# text tells it as a client is told it where the body is built.
+
+
+def _gql_error():
+    from graphql import GraphQLError
+
+    return GraphQLError(EVENT, extensions={"code": "SOURCE_FAILED", "why": EVENT})
+
+
+def _assert_bare(told: object) -> None:
+    text = json.dumps(told)
+    assert BARE in text
+    for named in (SECRET, EMPLOYEE, VARIABLE, "REDACTED:", "auto:"):
+        assert named not in text
+
+
+def test_a_graphql_answer_with_data_and_errors_tells_each_error_bare():
+    from graphql import ExecutionResult
+
+    from provisa.api.graphql_answer import graphql_body
+
+    body = graphql_body(ExecutionResult(data={"ok": EVENT}, errors=[_gql_error()]))
+    assert body["data"] == {"ok": EVENT}  # a result row is never redacted
+    assert body["errors"][0]["message"] == BARE
+    assert body["errors"][0]["extensions"] == {"code": "SOURCE_FAILED", "why": BARE}
+
+
+def test_a_document_error_answered_200_is_told_bare():
+    from provisa.api.data.graphql_http import GraphQLDocumentError, document_error_response
+
+    answered = document_error_response(GraphQLDocumentError([EVENT]), "application/json")
+    assert answered.status_code == 200
+    assert json.loads(bytes(answered.body))["errors"][0]["message"] == BARE
+
+
+def test_the_admin_graphql_api_tells_a_resolver_error_bare_in_its_200():
+    import strawberry
+    from fastapi import FastAPI
+    from fastapi.testclient import TestClient
+
+    from provisa.api.admin.graphql_router import AdminGraphQLRouter
+
+    @strawberry.type
+    class Query:
+        @strawberry.field
+        def ok(self) -> str:
+            return EVENT
+
+        @strawberry.field
+        def boom(self) -> str | None:
+            raise ValueError(EVENT)
+
+    app = FastAPI()
+    app.include_router(AdminGraphQLRouter(strawberry.Schema(query=Query)), prefix="/g")
+    answered = TestClient(app).post("/g", json={"query": "{ ok boom }"})
+    assert answered.status_code == 200
+    body = answered.json()
+    assert body["data"] == {"ok": EVENT, "boom": None}
+    assert body["errors"][0]["message"] == BARE
+
+
+def test_an_admin_result_tells_its_message_and_error_bare():
+    from provisa.api.admin.types import MutationResult, QueryPreviewType
+
+    assert MutationResult(success=False, message=EVENT).message == BARE
+    assert QueryPreviewType(error=EVENT).error == BARE
+
+
+def test_a_subscription_refused_before_it_starts_is_told_bare():
+    import asyncio
+
+    from provisa.api.data.subscription_sse import _error_stream
+
+    async def _first() -> str:
+        async for chunk in _error_stream([EVENT]).body_iterator:
+            return chunk if isinstance(chunk, str) else bytes(chunk).decode()
+        raise AssertionError("no frame")
+
+    frame = asyncio.run(_first())
+    assert json.loads(frame.split("data: ", 1)[1])["errors"][0]["message"] == BARE
+
+
+def test_a_graph_import_tells_each_failed_statement_bare():
+    from provisa.api.rest.graph_tools_router import _import_answer
+
+    answered = _import_answer(3, [EVENT])
+    assert answered.status_code == 200
+    assert json.loads(bytes(answered.body)) == {"imported": 2, "errors": [BARE]}
+
+
+def test_the_assistants_admin_query_tells_each_error_bare():
+    from types import SimpleNamespace
+
+    from provisa.api.mcp.admin_api import _query_answer
+
+    answered = _query_answer(SimpleNamespace(data={"ok": EVENT}, errors=[_gql_error()]))
+    assert answered == {"data": {"ok": EVENT}, "errors": [BARE]}
+
+
+def test_a_failed_tool_is_told_to_the_model_bare():
+    from provisa.api.mcp.chat import _tool_error
+
+    assert _tool_error(RuntimeError(EVENT)) == f"Error: {BARE}"
+
+
+def test_a_catalog_publish_tells_each_refused_asset_bare():
+    from provisa.api.admin.syncing_router import _outcome
+    from provisa.api.metadata_export.provider import AssetError, AssetRefStub, PublishResult
+
+    result = PublishResult(provider_name="atlas")
+    result.errors.append(AssetError(asset=AssetRefStub("glossary"), message=EVENT))
+    assert _outcome("e1", result)["errors"][0]["message"] == BARE
+
+
+# --- the walk: an answer body that carries an error's text tells it through client_text ---------
+
+#: The keys an answer body carries an error's text under. ``detail`` is the HTTP error bodies'
+#: key, answered with a status of 400 or above and so told by the error-response middleware.
+_ERROR_KEYS = {"message", "errors", "error"}
+_TOLD_BY = {"client_text", "client_value"}
+_LITERAL_NODES = (ast.Constant, ast.List, ast.Tuple, ast.Set, ast.Dict, ast.JoinedStr, ast.Load)
+
+
+def _literal(node: ast.AST) -> bool:
+    """A value fixed in the source: no name, call or interpolation, so it carries no error's text."""
+    return all(isinstance(n, _LITERAL_NODES) for n in ast.walk(node))
+
+
+def _told(node: ast.AST) -> bool:
+    """Told through client_text or client_value."""
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Name | ast.Attribute)
+        and (node.func.id if isinstance(node.func, ast.Name) else node.func.attr) in _TOLD_BY
+    )
+
+
+def _said(node: ast.AST) -> bool:
+    """Fixed text, or told; a literal list holds only such items, and a literal dict such values
+    under its error keys (its other keys -- a code, an id -- carry no error's text)."""
+    if _literal(node) or _told(node):
+        return True
+    if isinstance(node, ast.List | ast.Tuple | ast.Set):
+        return all(_said(e) for e in node.elts)
+    if isinstance(node, ast.Dict):
+        return all(
+            _said(v)
+            for k, v in zip(node.keys, node.values)
+            if isinstance(k, ast.Constant) and k.value in _ERROR_KEYS
+        )
+    return False
+
+
+def _untold_error_text(source: str, where: str) -> list[str]:
+    tree = ast.parse(source)
+    # A dict built inside a call to client_text or client_value is told by that call.
+    inside = {
+        id(n)
+        for call in ast.walk(tree)
+        if isinstance(call, ast.Call) and _told(call)
+        for n in ast.walk(call)
+    }
+    found = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Dict) or id(node) in inside:
+            continue
+        for key, value in zip(node.keys, node.values):
+            if isinstance(key, ast.Constant) and key.value in _ERROR_KEYS and not _said(value):
+                found.append(f"{where}:{node.lineno} {key.value!r}")
+    return found
+
+
+def test_every_answer_body_tells_an_error_text_through_client_text():
+    """A dict an HTTP, MCP or assistant answer is built from: each message, errors or error entry
+    that is not fixed text passes client_text (or client_value, for a list or an error object), so
+    a 200 tells it as a 400 does."""
+    untold = [
+        f
+        for path in sorted((PROVISA / "api").rglob("*.py"))
+        for f in _untold_error_text(path.read_text(), path.relative_to(PROVISA).as_posix())
+    ]
+    assert untold == [], (
+        "an answer body sets an error's text without engine_error_names.client_text / "
+        f"client_value: {untold}"
+    )
+
+
+def test_the_walk_finds_an_error_text_set_without_client_text():
+    """The rule above fails a builder that sets a message from an exception, and passes the same
+    builder through client_text, and fixed text."""
+    probe = (
+        "def bad(exc):\n    return {'success': False, 'message': str(exc)}\n"
+        "def bad_list(errs):\n    return {'errors': [{'message': m} for m in errs]}\n"
+        "def good(exc):\n    return {'success': False, 'message': client_text(str(exc))}\n"
+        "def fixed():\n    return {'errors': [{'message': 'No subscription fields'}]}\n"
+        "def good_list(errs):\n    return {'errors': client_value([{'message': m} for m in errs])}\n"
+    )
+    assert _untold_error_text(probe, "probe.py") == [
+        "probe.py:2 'message'",
+        "probe.py:4 'errors'",
+        "probe.py:4 'message'",
+    ]
+
+
+def _strawberry_classes() -> list[tuple[str, ast.ClassDef]]:
+    found = []
+    for path in sorted(PROVISA.rglob("*.py")):
+        source = path.read_text()
+        if "strawberry" not in source:
+            continue
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.ClassDef) and any(
+                "strawberry" in ast.unparse(d) for d in node.decorator_list
+            ):
+                found.append((path.relative_to(PROVISA).as_posix(), node))
+    return found
+
+
+def test_every_admin_type_with_a_message_or_an_error_tells_it_through_client_text():
+    """A typed admin answer's ``message`` or ``error`` field is an error's text in a 200: the type
+    takes ClientText, which tells it through client_text when the object is made."""
+    untold = []
+    for where, cls in _strawberry_classes():
+        fields = {
+            b.target.id
+            for b in cls.body
+            if isinstance(b, ast.AnnAssign) and isinstance(b.target, ast.Name)
+        }
+        if fields & {"message", "error"} and "ClientText" not in {
+            ast.unparse(b) for b in cls.bases
+        }:
+            untold.append(f"{where}:{cls.lineno} {cls.name}")
+    assert untold == [], f"these types do not take ClientText: {untold}"
+
+
+def test_a_graphql_router_is_built_only_as_the_one_that_tells_errors_bare():
+    """Strawberry's own router writes each resolver error's text into its 200 as it is."""
+    built = []
+    for path in sorted(PROVISA.rglob("*.py")):
+        source = path.read_text()
+        if "GraphQLRouter" not in source:
+            continue
+        for node in ast.walk(ast.parse(source)):
+            if isinstance(node, ast.Call) and ast.unparse(node.func).endswith("GraphQLRouter"):
+                if ast.unparse(node.func) != "AdminGraphQLRouter":
+                    built.append(f"{path.relative_to(PROVISA).as_posix()}:{node.lineno}")
+    assert built == [], f"a bare strawberry GraphQLRouter is built at {built}"
