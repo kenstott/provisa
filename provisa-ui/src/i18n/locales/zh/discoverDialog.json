@@ -61,7 +61,10 @@
       "tablesGone": "有 {{count}} 个表已不在其中注册。",
       "tablesGone_other": "有 {{count}} 个表已不在其中注册。",
       "vendorNoKey": "{{vendor}} 没有密钥，因此使用已分配的模型。",
-      "modelGone": "{{vendor}} 不再提供 {{model}}，因此使用已分配的模型。"
+      "modelGone": "{{vendor}} 不再提供 {{model}}，因此使用已分配的模型。",
+      "newTables": "自您上次运行以来注册的 {{count}} 个表位于 {{domains}} 中，那次运行没有查看这些域。",
+      "newTables_other": "自您上次运行以来注册的 {{count}} 个表位于 {{domains}} 中，那次运行没有查看这些域。",
+      "addNewTables": "添加到本次运行"
     }
   }
 }

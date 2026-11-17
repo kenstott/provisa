@@ -108,6 +108,7 @@ export function draftFromRegistration(r: Registration): RegisteredTable {
     tableName: i.tableName as string,
     alias: str(i.alias),
     description: str(i.description),
+    registeredAt: null, // not registered yet
     cacheTtl: typeof i.cacheTtl === "number" ? i.cacheTtl : null,
     roleTtl: [],
     pagingKind: r.pagingKind,

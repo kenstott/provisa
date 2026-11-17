@@ -34,6 +34,7 @@ from provisa.discovery.run import (
     count,
     perform,
     prepare,
+    table_sets,
 )
 from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
@@ -284,6 +285,41 @@ async def discovery_model_limits(request: Request, vendor: str, model: str):  # 
     return describe(vendor, model, await resolve_org_config(pool))
 
 
+def _refuse_empty(
+    side: str, resolved: list[int], named: list[int] | tuple[int, ...] | None
+) -> None:
+    """A set that resolves to no table is refused, saying why: chosen tables none of which
+    discovery reads (gather.scope_table_ids leaves out a table of a system domain and one out of
+    service), or chosen domains that hold none it reads."""
+    if resolved:
+        return
+    if named is not None:
+        chosen = len(set(named))
+        raise ApiError(
+            400,
+            f"discovery.{side}_tables_not_read",
+            f"None of the {chosen} chosen {side} tables is read: discovery leaves out a table of "
+            "a system domain or one out of service",
+            count=chosen,
+        )
+    raise ApiError(
+        400,
+        f"discovery.{side}_domains_empty",
+        f"The chosen {side} domains hold no table discovery reads",
+    )
+
+
+async def _require_tables(spec: RunSpec) -> None:  # REQ-413
+    """Refuse, before anything runs, a scope whose source or target resolves to no table."""
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        source, target = await table_sets(cast("Connection", _conn), spec)
+    _refuse_empty("source", source, spec.source_tables)
+    if target is not None:
+        _refuse_empty("target", target, spec.target_tables)
+
+
 @router.post("/runs/count")
 async def count_run(request: Request, body: RunScope):  # REQ-413
     """Before Run: at most how many requests the run would make, by type group, for the chosen
@@ -293,6 +329,7 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
     require_capability_request(request, "create_relationship")
     spec = body.spec()
     model = await _run_model(spec)
+    await _require_tables(spec)
     try:
         return await count(state, spec, model)
     except NoRoomError as exc:
@@ -376,6 +413,7 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
     require_capability_request(request, "create_relationship")
     spec = body.spec()
     model = await _run_model(spec)
+    await _require_tables(spec)
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:

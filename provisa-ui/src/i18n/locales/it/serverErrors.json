@@ -180,9 +180,13 @@
       "run_still_going": "L'esecuzione di rilevamento {{run_id}} è ancora in corso. Decidi sulle sue proposte quando sarà terminata.",
       "schema_discovery_unsupported": "Il tipo di origine '{{source_type}}' non supporta l'individuazione dello schema. Definire le colonne manualmente.",
       "semantics_unavailable": "La semantica non può essere eseguita: {{model}}, il modello assegnato all'inferenza delle relazioni, non ha una chiave. Impostane una in Amministrazione, Modelli AI.",
+      "source_domains_empty": "I domini di origine scelti non contengono alcuna tabella che il rilevamento legge.",
       "source_not_found": "Origine '{{source_id}}' non trovata",
+      "source_tables_not_read": "Nessuna delle tabelle di origine scelte ({{count}}) viene letta: il rilevamento esclude le tabelle di un dominio di sistema e quelle fuori servizio.",
       "table_id_required": "table_id richiesto per l'ambito tabella",
       "table_not_found": "La tabella {{table_id}} non è registrata.",
+      "target_domains_empty": "I domini di destinazione scelti non contengono alcuna tabella che il rilevamento legge.",
+      "target_tables_not_read": "Nessuna delle tabelle di destinazione scelte ({{count}}) viene letta: il rilevamento esclude le tabelle di un dominio di sistema e quelle fuori servizio.",
       "unknown_source_type": "Tipo di origine sconosciuto: {{type}}",
       "vendor_unknown": "{{vendor}} non elenca modelli qui; inserisci il nome del modello."
     },

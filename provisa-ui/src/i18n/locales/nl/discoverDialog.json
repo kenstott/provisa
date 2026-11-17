@@ -61,7 +61,10 @@
       "tablesGone": "{{count}} tabel is daar niet meer geregistreerd.",
       "tablesGone_other": "{{count}} tabellen zijn daar niet meer geregistreerd.",
       "vendorNoKey": "{{vendor}} heeft geen sleutel, dus het model is het toegewezen model.",
-      "modelGone": "{{vendor}} biedt {{model}} niet meer aan, dus het model is het toegewezen model."
+      "modelGone": "{{vendor}} biedt {{model}} niet meer aan, dus het model is het toegewezen model.",
+      "newTables": "{{count}} tabel die sinds uw laatste run is geregistreerd, staat in {{domains}}, dat die run niet heeft bekeken.",
+      "newTables_other": "{{count}} tabellen die sinds uw laatste run zijn geregistreerd, staan in {{domains}}, dat die run niet heeft bekeken.",
+      "addNewTables": "Aan deze run toevoegen"
     }
   }
 }

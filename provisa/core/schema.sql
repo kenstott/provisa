@@ -299,6 +299,8 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     status_reason TEXT,
     status_by     TEXT,
     status_at     TIMESTAMPTZ,
+    -- REQ-413: when it was registered; an upsert by identity keeps it.
+    created_at    TIMESTAMPTZ NOT NULL DEFAULT now(),
     UNIQUE (source_id, schema_name, table_name)
 );
 -- REQ-2248: the retirement columns, for a table created before them.

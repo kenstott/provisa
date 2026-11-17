@@ -61,7 +61,10 @@
       "tablesGone": "有 {{count}} 個表已不在其中登記。",
       "tablesGone_other": "有 {{count}} 個表已不在其中登記。",
       "vendorNoKey": "{{vendor}} 沒有金鑰，因此使用已指派的模型。",
-      "modelGone": "{{vendor}} 不再提供 {{model}}，因此使用已指派的模型。"
+      "modelGone": "{{vendor}} 不再提供 {{model}}，因此使用已指派的模型。",
+      "newTables": "自你上次執行以來登記的 {{count}} 個表位於 {{domains}} 中，那次執行沒有查看這些域。",
+      "newTables_other": "自你上次執行以來登記的 {{count}} 個表位於 {{domains}} 中，那次執行沒有查看這些域。",
+      "addNewTables": "加入本次執行"
     }
   }
 }
