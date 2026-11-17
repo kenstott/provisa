@@ -324,6 +324,13 @@
       "catalog_view_refused": "{{view}} ist eine Katalogsicht der Meta-Domäne und kann nicht in einer Anweisung zusammen mit einer Tabelle einer Datenquelle gelesen werden: Lesen Sie sie in zwei Anweisungen.",
       "function_unsupported": "{{function}}() hat auf {{dialect}} keine Entsprechung."
     },
+    "redaction": {
+      "rule_invalid": "Schwärzungsregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Schwärzungsregel {{rule}}: Das Muster kann katastrophales Backtracking auslösen (eine Wiederholung innerhalb einer unbegrenzten Wiederholung oder Alternativen darin, die mit demselben Text beginnen können). Formulieren Sie es ohne diese Form.",
+      "pattern_unsupported": "Schwärzungsregel {{rule}}: Die Regel einer Organisation kann keine Rückverweise, Lookahead oder Lookbehind, atomaren Gruppen, possessiven Wiederholungen oder bedingten Gruppen verwenden.",
+      "pattern_too_large": "Schwärzungsregel {{rule}}: Das Muster ist zu groß, wenn seine Wiederholungen ausgezählt werden. Verwenden Sie eine kleinere Wiederholungsanzahl.",
+      "server_reference": "Schwärzungsregel {{rule}}: Eine Organisation auf diesem Server kann nicht auf die Umgebung des Servers verweisen. Verwenden Sie ${secret:NAME} aus dem eigenen Tresor der Organisation."
+    },
     "replication": {
       "answer_not_json": "Die für das Replikat von {{table}} gelesene Antwort ist kein gültiges JSON: [{{content_type}}] {{cause}} (in den {{kib}} KiB vor Byte {{before_byte}} der Antwort).",
       "no_whole_copy": "Für die Tabelle {{schema}}.{{table}} der Quelle {{source}} gibt es keine vollständige Kopie zu bauen: Sie wird zeilenweise repliziert oder hat eine Parameterspalte.",
@@ -728,6 +735,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Es gibt keine Rolle namens {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "Das Filtermuster für Protokolle wird abgelehnt: {{why}}",
+      "pattern_exceeded": "Das Filtermuster für Protokolle wird abgelehnt: Es hat sein Schrittlimit ({{steps}} Schritte) bei einer Protokollzeile mit {{length}} Zeichen überschritten."
     },
     "dbt": {
       "products": {

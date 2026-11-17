@@ -324,6 +324,13 @@
       "catalog_view_refused": "{{view}} é uma exibição de catálogo do domínio meta e não pode ser lida em uma instrução junto com uma tabela de uma fonte de dados: leia-as em duas instruções.",
       "function_unsupported": "{{function}}() não tem equivalente em {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
+      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
+      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
+      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
+      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
+    },
     "replication": {
       "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
       "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
@@ -728,6 +735,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Não existe nenhuma função chamada {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
     },
     "dbt": {
       "products": {

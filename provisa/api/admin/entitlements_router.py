@@ -338,7 +338,7 @@ def _pending_view(grant: pending.PendingGrant) -> dict:
     }
 
 
-async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
+async def _set_pending(state: Any, org_id: str, body: SetListBody, actor: str) -> dict:
     assert body.email is not None
     db = _db(state)
     async with db.acquire() as conn:
@@ -354,6 +354,7 @@ async def _set_pending(state: Any, body: SetListBody, actor: str) -> dict:
         )
     await record_admin_action(
         db,
+        org_id=org_id,
         action="entitlements.set_pending",
         actor_id=actor,
         subject_id=grant.email,
@@ -378,7 +379,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
     _check_set(state, body)
     actor = _caller(request) or _ANONYMOUS
     if principal is None:
-        return await _set_pending(state, body, actor)
+        return await _set_pending(state, require_active_org_id(request), body, actor)
     await _refuse_past_grant(state, principal, body.role_id, body.expires_at)
     db = _db(state)
     async with db.acquire() as conn:
@@ -397,6 +398,7 @@ async def set_list(body: SetListBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.set",
         actor_id=actor,
         subject_id=principal,
@@ -437,6 +439,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
             )
         await record_admin_action(
             db,
+            org_id=require_active_org_id(request),
             action="entitlements.end_pending",
             actor_id=actor,
             subject_id=grant.email,
@@ -454,6 +457,7 @@ async def end_list(body: EndListBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.end",
         actor_id=actor,
         subject_id=principal,
@@ -681,6 +685,7 @@ async def add_access(body: AddAccessBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.add",
         actor_id=actor,
         subject_id=body.principal,
@@ -807,6 +812,7 @@ async def _end_grant(
         )
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="role.expiry_set",
         actor_id=actor,
         subject_id=principal,
@@ -863,6 +869,7 @@ async def add_expiry(body: ExpiryBody, request: Request) -> dict:
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_added",
         actor_id=actor,
         subject_id=body.principal,
@@ -906,6 +913,7 @@ async def change_expiry(rule_key: str, body: ChangeExpiryBody, request: Request)
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_changed",
         actor_id=actor,
         subject_id=principal,
@@ -935,6 +943,7 @@ async def withdraw_expiry(rule_key: str, body: EndExpiryBody, request: Request) 
         state.held_entitlements = await store.load_held(conn)
     await record_admin_action(
         db,
+        org_id=require_active_org_id(request),
         action="entitlements.expiry_withdrawn",
         actor_id=actor,
         subject_id=principal,

@@ -277,6 +277,7 @@ def incomplete_refusal(
 async def record(
     model_db: Any,
     *,
+    org_id: str,
     action: str,
     request: dict,
     actor: str | None,
@@ -300,6 +301,7 @@ async def record(
         detail["refusal"] = refusal.code
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action=f"{request['request_type']}_request.{action}",
         # The trail's actor column is NOT NULL; a decision nobody signed is recorded as the
         # anonymous principal, as the other administrative entries record it.

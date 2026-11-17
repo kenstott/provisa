@@ -324,6 +324,13 @@
       "catalog_view_refused": "{{view}} is een catalogusview van het meta-domein en kan niet in één instructie samen met een tabel van een databron worden gelezen: lees ze in twee instructies.",
       "function_unsupported": "{{function}}() heeft geen equivalent op {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Redactieregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Redactieregel {{rule}}: het patroon kan catastrofaal terugzoeken (een herhaling genest in een onbegrensde herhaling, of alternatieven daarin die met dezelfde tekst kunnen beginnen). Herschrijf het zonder die vorm.",
+      "pattern_unsupported": "Redactieregel {{rule}}: de regel van een organisatie kan geen terugverwijzingen, lookahead of lookbehind, atomaire groepen, bezittelijke herhalingen of voorwaardelijke groepen gebruiken.",
+      "pattern_too_large": "Redactieregel {{rule}}: het patroon is te groot als de herhalingen worden uitgeschreven. Gebruik een kleiner aantal herhalingen.",
+      "server_reference": "Redactieregel {{rule}}: een organisatie op deze server kan niet verwijzen naar de omgeving van de server. Gebruik ${secret:NAME} uit de eigen kluis van de organisatie."
+    },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
       "no_whole_copy": "Tabel {{schema}}.{{table}} van bron {{source}} heeft geen volledige kopie om te bouwen: ze wordt rij voor rij gerepliceerd of heeft een parameterkolom.",
@@ -728,6 +735,10 @@
     },
     "dbt_sources": {
       "unknown_role": "Er bestaat geen rol met de naam {{role}}."
+    },
+    "debug_logs": {
+      "pattern_refused": "Het filterpatroon voor logboeken wordt geweigerd: {{why}}",
+      "pattern_exceeded": "Het filterpatroon voor logboeken wordt geweigerd: het overschreed zijn stappenlimiet ({{steps}} stappen) op een logregel van {{length}} tekens."
     },
     "dbt": {
       "products": {
