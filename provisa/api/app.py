@@ -114,7 +114,7 @@ from provisa.core.config_loader import (
     read_config_with_includes,
 )
 from provisa.core.database import Database
-from provisa.core import domain_policy, secrets_store
+from provisa.core import domain_policy, org_secrets, secrets_store
 from provisa.executor import redirect as _redirect
 from provisa.core.schema_org import (
     domains as _domains_t,
@@ -1478,6 +1478,9 @@ def _request_org_for_secrets() -> tuple[Database, str]:
 
 
 secrets_store.set_request_org_resolver(_request_org_for_secrets)
+# The model store an embedding model's stored vendor key is read from (org_secrets.vector_model_key):
+# the acting org's, as every other read of its stored keys takes it.
+org_secrets.set_request_model_db_resolver(lambda: state.model_db)
 
 # REQ-1557: a central secrets service is read inside the bound organisation's namespace where the
 # deployment holds many organisations. The provider asks this state each time, so there is one
@@ -1737,6 +1740,12 @@ async def _load_and_build(
     # REQ-2095: a ${secret:NAME} its demo declares, before the org's vault is bound.
     with resolving(launched_directory(_launch_config), state.org_id):
         config = parse_config_dict(raw_config)
+    # A configured embedding model whose provider library is not installed stops the start here,
+    # naming the model and the extra, rather than failing at its first embedding in a background
+    # task (the glossary's term embeddings, catalog search, the reference library).
+    from provisa.vector.providers import require_provider_libraries
+
+    require_provider_libraries(config.vector_models)
     state.config = config
     state.multitenancy = config.multitenancy
     # REQ-1337: org_admin holds the platform_settings right only in a single-tenant deployment.

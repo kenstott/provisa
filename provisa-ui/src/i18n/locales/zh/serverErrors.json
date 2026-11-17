@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook '{{name}}' 已存在"
     },
     "ai_models": {
-      "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
+      "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions",
+      "embedding_library_missing": "嵌入模型 {{model}} 使用 {{provider}} 提供方，需要 {{extra}} 扩展（模块 {{module}} 未安装）：pip install 'provisa[{{extra}}]'。"
     },
     "ai": {
       "endpoint_address_from_server": "AI 端点 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",

@@ -874,6 +874,12 @@
         "label": "Llamadas por sentencia a una tabla parametrizada",
         "help": "El máximo de llamadas que una sentencia hace a una tabla parametrizada. Cada valor que una sentencia da a un parámetro es una llamada al origen: cada valor de una lista IN, cada rama de un OR, cada clave distinta de un join. Una sentencia que necesita más se rechaza."
       }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Dirección del hub de Hugging Face",
+        "help": "El hub de Hugging Face desde el que se descarga un modelo de embeddings local, como un espejo dentro de su red. Se aplica a la próxima descarga de un modelo."
+      }
     }
   }
 }

@@ -874,6 +874,12 @@
         "label": "Aufrufe pro Anweisung an eine parametrisierte Tabelle",
         "help": "Die Höchstzahl der Aufrufe, die eine Anweisung an eine parametrisierte Tabelle richtet. Jeder Wert, den eine Anweisung einem Parameter gibt, ist ein Aufruf der Quelle: jeder Wert einer IN-Liste, jeder Zweig eines OR, jeder eindeutige Schlüssel eines Joins. Eine Anweisung, die mehr benötigt, wird abgelehnt."
       }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adresse des Hugging Face Hub",
+        "help": "Der Hugging Face Hub, von dem ein lokales Embedding-Modell heruntergeladen wird, etwa ein Spiegel in Ihrem Netzwerk. Gilt ab dem nächsten Modell-Download."
+      }
     }
   }
 }

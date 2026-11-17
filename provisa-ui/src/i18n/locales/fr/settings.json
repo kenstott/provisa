@@ -874,6 +874,12 @@
         "label": "Appels par instruction à une table paramétrée",
         "help": "Le nombre maximal d'appels qu'une instruction adresse à une table paramétrée. Chaque valeur qu'une instruction donne à un paramètre est un appel à la source : chaque valeur d'une liste IN, chaque branche d'un OR, chaque clé distincte d'une jointure. Une instruction qui en demande davantage est refusée."
       }
+    },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Adresse du hub Hugging Face",
+        "help": "Le hub Hugging Face depuis lequel un modèle d'embeddings local est téléchargé, par exemple un miroir dans votre réseau. S'applique au prochain téléchargement de modèle."
+      }
     }
   }
 }

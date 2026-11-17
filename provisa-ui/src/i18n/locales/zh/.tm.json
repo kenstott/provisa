@@ -10852,5 +10852,8 @@
   "zh/serverErrors.json::serverErrors.redaction.pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
   "zh/serverErrors.json::serverErrors.redaction.server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault.",
   "zh/serverErrors.json::serverErrors.debug_logs.pattern_refused": "The log filter pattern is refused: {{why}}",
-  "zh/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
+  "zh/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters.",
+  "zh/serverErrors.json::serverErrors.ai_models.embedding_library_missing": "The embedding model {{model}} uses the {{provider}} provider, which needs the {{extra}} extra (module {{module}} is not installed): pip install 'provisa[{{extra}}]'.",
+  "zh/settings.json::settings.embedding.hub_endpoint.label": "Hugging Face hub address",
+  "zh/settings.json::settings.embedding.hub_endpoint.help": "The Hugging Face hub a local embedding model is downloaded from, such as a mirror inside your network. Applies to the next model download."
 }

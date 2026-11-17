@@ -293,6 +293,12 @@
         "help": "The address clients reach this node at. A coordinator's UI lists it as a data node when the region lists none. The launcher sets it for each node; unset, the node is not listed."
       }
     },
+    "embedding": {
+      "hub_endpoint": {
+        "label": "Hugging Face hub address",
+        "help": "The Hugging Face hub a local embedding model is downloaded from, such as a mirror inside your network. Applies to the next model download."
+      }
+    },
     "tls": {
       "cert": {
         "label": "TLS certificate",
