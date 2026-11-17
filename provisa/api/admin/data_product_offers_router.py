@@ -60,9 +60,10 @@ router = APIRouter(prefix="/admin/data-products", tags=["admin"])
 _ANONYMOUS = "anonymous"
 #: The rights that let a person grant a role, within the roles their ``roles`` list reaches.
 GRANTING = frozenset({Capability.ASSIGN_ENTITLEMENTS.value, Capability.USER_MANAGEMENT.value})
-#: Why an offer is listed for review.
-REVIEW_PROFILER_GONE = "a dataset of this synthetic offer has no profiler"
-REVIEW_FAKE_GONE = "a column of a dataset of this synthetic offer has no fake"
+#: Why an offer is listed for review: each a reason the UI's catalog states
+#: (dataProductOffers.reviewReason).
+REVIEW_PROFILER_GONE = "profiler_gone"
+REVIEW_FAKE_GONE = "fake_gone"
 
 
 class BidBody(BaseModel):

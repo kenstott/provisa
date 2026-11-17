@@ -60,6 +60,16 @@
     "resultsNotIncluded": "resultaten niet inbegrepen.",
     "seeQuality": "Kwaliteit bekijken",
     "inReview": "In beoordeling",
+    "reviewReason": {
+      "role_gone": "De rol van deze aanbieding is niet gedefinieerd.",
+      "not_built": "Een dataset van deze aanbieding staat niet in de modelbuild.",
+      "sample_not_a_view": "Een steekproef van deze aanbieding noemt een tabel die geen view van het model is. Een steekproef is een of meer views over de datasets van het product.",
+      "sample_outside_product": "Een view van de steekproef van deze aanbieding leest meer dan de datasets van het product, of geen ervan.",
+      "sample_misses_dataset": "Geen view van de steekproef van deze aanbieding leest een van de datasets van het product. Een aanbieding omvat elke dataset van het product.",
+      "not_public": "De data van deze open aanbieding is niet meer openbaar.",
+      "profiler_gone": "Een dataset van deze synthetische aanbieding heeft geen profiler.",
+      "fake_gone": "Een kolom van een dataset van deze synthetische aanbieding heeft geen nepwaarde."
+    },
     "contracts_one": "{{count}} contract",
     "contracts_other": "{{count}} contracten",
     "noContracts": "Nog geen contracten afgeleid.",

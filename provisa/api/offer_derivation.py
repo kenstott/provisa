@@ -24,8 +24,13 @@ runtime serves, so the contracts are derived from a built model:
   (provisa.core.offer_contracts). A reload of another process's change derives nothing: the
   process that made it did.
 
-An offer the build cannot derive -- its role no longer defined, or a dataset of its product not in
-the build (a draft member) -- is listed for review, saying why, and keeps the contracts it had.
+An offer the build cannot derive -- its role no longer defined, a dataset of its product not in
+the build (a draft member), or a sample whose views are not views over the product's datasets
+alone, together all of them -- is listed for review, saying why, and keeps the contracts it had.
+The sample is checked here because an offer a configuration declares is saved by the load
+unchecked against the build (REQ-2180, amended 2026-11-16): the views it names may be declared in
+the same file, and only the build that follows the load has published them. Every build checks
+every sample offer, so one an API save checked is listed too when a later build breaks it.
 
 Every request that acts on a product reads the build the runtime has published (:func:`published`,
 REQ-194 and REQ-2125 as amended 2026-11-16): its names table, its checker targets and the tables
@@ -45,10 +50,20 @@ from provisa.core.repositories import data_product as data_product_repo
 from provisa.core.repositories import data_product_offer as offers
 from provisa.core.repositories.data_product_offer import OfferRefused
 
-#: Why an offer is listed for review when the build cannot derive its contracts.
-REVIEW_ROLE_GONE = "this offer's role is not defined"
-REVIEW_NOT_BUILT = "a dataset of this offer is not in the model build"
-_DERIVATION_REVIEWS = {"role_not_found": REVIEW_ROLE_GONE, "not_built": REVIEW_NOT_BUILT}
+#: Why an offer is listed for review when the build cannot derive its contracts: each a reason
+#: the UI's catalog states (dataProductOffers.reviewReason).
+REVIEW_ROLE_GONE = "role_gone"
+REVIEW_NOT_BUILT = "not_built"
+REVIEW_SAMPLE_NOT_A_VIEW = "sample_not_a_view"
+REVIEW_SAMPLE_OUTSIDE_PRODUCT = "sample_outside_product"
+REVIEW_SAMPLE_MISSES_DATASET = "sample_misses_dataset"
+_DERIVATION_REVIEWS = {
+    "role_not_found": REVIEW_ROLE_GONE,
+    "not_built": REVIEW_NOT_BUILT,
+    "sample_not_a_view": REVIEW_SAMPLE_NOT_A_VIEW,
+    "sample_outside_product": REVIEW_SAMPLE_OUTSIDE_PRODUCT,
+    "sample_misses_dataset": REVIEW_SAMPLE_MISSES_DATASET,
+}
 
 
 def published(state: Any) -> offers.Published:
@@ -119,7 +134,8 @@ async def derive(
 ) -> dict[int, OfferContract]:
     """The offer's contract on each of the product's datasets, as its role reads them now, each
     the next version of the one stored where its terms changed. Stored, and returned. Refused
-    (:class:`OfferRefused`) when the offer's role is not defined or a dataset is not built."""
+    (:class:`OfferRefused`) when the offer's role is not defined, a sample's views do not hold
+    against the build (:func:`offers.check_sample`) or a dataset is not built."""
     from provisa.security.meta_role import reader_chain
 
     offer = offers.as_offer(offer_row)
@@ -128,6 +144,8 @@ async def derive(
             "role_not_found", f"role {offer.role_id!r} is not defined", role=offer.role_id
         )
     datasets = await offers.dataset_ids(conn, product_id)
+    if offer.data_level == "sample":
+        await offers.check_sample(conn, datasets, list(offer.sample_views), published(state))
     built = {t["id"]: t for t in state.tables}
     stored = await offers.contracts(conn, offer_row["id"])
     read_by = view_reads(state, list(offer.sample_views))

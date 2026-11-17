@@ -20,7 +20,9 @@ at all.
 
 What is checked here is what the store and the published build answer: a sample's views exist,
 are views and read only the product's datasets, together all of them; a synthetic offer's datasets
-each have a profiler.
+each have a profiler. An offer saved through the API is checked when it is saved; one a
+configuration declares is saved by the load, its sample checked by the build after the load
+(REQ-2180, amended 2026-11-16).
 
 THE PUBLISHED BUILD (REQ-194, REQ-2125, both amended 2026-11-16). The names a request uses (an
 offer's grant, a bid, an offer's public check), a product's quality checks and the tables a sample
@@ -144,11 +146,13 @@ async def table_names(conn: "Connection", table_ids: Iterable[int]) -> dict[int,
     return {int(r.id): r.alias or r.table_name for r in rows.fetchall()}
 
 
-async def _check_sample(
+async def check_sample(
     conn: "Connection", datasets: list[int], views: list[int], published: Published
 ) -> None:
     """A sample's views each exist in the published model as a view over the product's datasets
-    alone, and together they read every dataset: an offer covers all of them."""
+    alone, and together they read every dataset: an offer covers all of them. Checked when an
+    offer is saved through the API, and by every build of an offer a configuration declared
+    (provisa.api.offer_derivation)."""
     read = published.view_reads(list(views))
     names = await table_names(conn, [*views, *datasets])
     for view in views:
@@ -356,18 +360,28 @@ async def add_default(conn: "Connection", product_id: str, *, by: str | None) ->
     )
 
 
+async def check_declared(conn: "Connection", product_id: str, offer: DataProductOffer) -> list[int]:
+    """Refuse ``offer`` by name where the store says it cannot be given: its product does not
+    exist, or a synthetic offer's dataset has no profiler. The product's datasets.
+
+    A sample's views are not checked here: an offer a configuration declares is checked against
+    the published build by the build that follows the load (REQ-2180, amended 2026-11-16)."""
+    await _product(conn, product_id)
+    datasets = await dataset_ids(conn, product_id)
+    if offer.data_level == "synthetic":
+        await _check_synthetic(conn, datasets)
+    return datasets
+
+
 async def check(
     conn: "Connection", product_id: str, offer: DataProductOffer, published: Published
 ) -> None:
-    """Refuse ``offer`` by name where the store says it cannot be given: its product does not
-    exist, a sample's views are not views over the product's datasets alone, together all of them,
-    or a synthetic offer's dataset has no profiler."""
-    await _product(conn, product_id)
-    datasets = await dataset_ids(conn, product_id)
+    """Refuse ``offer`` by name where the store or the published build says it cannot be given:
+    :func:`check_declared`, and a sample's views are not views over the product's datasets alone,
+    together all of them (:func:`check_sample`)."""
+    datasets = await check_declared(conn, product_id, offer)
     if offer.data_level == "sample":
-        await _check_sample(conn, datasets, offer.sample_views, published)
-    elif offer.data_level == "synthetic":
-        await _check_synthetic(conn, datasets)
+        await check_sample(conn, datasets, offer.sample_views, published)
 
 
 async def _name_change(conn: "Connection", action: str, product_id: str) -> None:  # REQ-1524
@@ -392,43 +406,67 @@ async def save(
     publisher ``by`` and its review cleared. The offer as stored."""
     async with conn.transaction():
         await check(conn, product_id, offer, published)
-        await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
-        clash = (
-            await conn.execute_core(
-                select(data_product_offers.c.id)
-                .where(data_product_offers.c.product_id == product_id)
-                .where(data_product_offers.c.name == offer.name)
+        return await _store(conn, product_id, offer, offer_id=offer_id, by=by)
+
+
+async def save_declared(
+    conn: "Connection", product_id: str, offer: DataProductOffer, *, offer_id: int | None
+) -> dict:
+    """Save an offer a configuration declares, as :func:`save` does with no publisher, checked
+    by :func:`check_declared`: its sample is checked by the build that follows the load, which
+    lists it for review when it does not hold (REQ-2180, amended 2026-11-16). The offer as
+    stored."""
+    async with conn.transaction():
+        await check_declared(conn, product_id, offer)
+        return await _store(conn, product_id, offer, offer_id=offer_id, by=None)
+
+
+async def _store(
+    conn: "Connection",
+    product_id: str,
+    offer: DataProductOffer,
+    *,
+    offer_id: int | None,
+    by: str | None,
+) -> dict:
+    """Write ``offer``, its checks passed, in the caller's transaction."""
+    await conn.require_admitted(update(data_products).where(data_products.c.id == product_id))
+    clash = (
+        await conn.execute_core(
+            select(data_product_offers.c.id)
+            .where(data_product_offers.c.product_id == product_id)
+            .where(data_product_offers.c.name == offer.name)
+        )
+    ).fetchone()
+    if clash is not None and clash.id != offer_id:
+        raise OfferRefused(
+            "name_taken",
+            f"data product {product_id!r} already has an offer named {offer.name!r}",
+            status=409,
+            name=offer.name,
+        )
+    await _name_change(conn, f"upsert offer {offer.name} of", product_id)  # REQ-1524
+    values = {**offer.model_dump(), "published_by": by, "review": None}
+    if offer_id is None:
+        saved_id = int(
+            await conn.insert_returning(
+                data_product_offers, {"product_id": product_id, **values}, "id"
             )
-        ).fetchone()
-        if clash is not None and clash.id != offer_id:
-            raise OfferRefused(
-                "name_taken",
-                f"data product {product_id!r} already has an offer named {offer.name!r}",
-                status=409,
-                name=offer.name,
+        )
+    else:
+        saved_id = offer_id
+        held = await require_offer(conn, product_id, offer_id)
+        changed = as_offer(held) != offer
+        await conn.execute_core(
+            update(data_product_offers)
+            .where(data_product_offers.c.id == offer_id)
+            .values(
+                **values,
+                version=held["version"] + (1 if changed else 0),
+                updated_at=func.now(),
             )
-        await _name_change(conn, f"upsert offer {offer.name} of", product_id)  # REQ-1524
-        values = {**offer.model_dump(), "published_by": by, "review": None}
-        if offer_id is None:
-            saved_id = int(
-                await conn.insert_returning(
-                    data_product_offers, {"product_id": product_id, **values}, "id"
-                )
-            )
-        else:
-            saved_id = offer_id
-            held = await require_offer(conn, product_id, offer_id)
-            changed = as_offer(held) != offer
-            await conn.execute_core(
-                update(data_product_offers)
-                .where(data_product_offers.c.id == offer_id)
-                .values(
-                    **values,
-                    version=held["version"] + (1 if changed else 0),
-                    updated_at=func.now(),
-                )
-            )
-        stored = await get_offer(conn, saved_id)
+        )
+    stored = await get_offer(conn, saved_id)
     assert stored is not None
     return stored
 
