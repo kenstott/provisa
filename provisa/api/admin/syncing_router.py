@@ -48,6 +48,7 @@ from provisa.control_plane.entitlements import (
 )
 from provisa.core.models import CatalogConnection, CatalogsConfig, MetadataExportConfig
 from provisa.core.org_forget import on_forget
+from provisa.api.engine_error_names import client_text, client_value
 
 router = APIRouter()
 
@@ -221,7 +222,9 @@ def _outcome(entry_id: str, result: PublishResult) -> dict[str, Any]:
         "ok": result.ok,
         "published": dict(result.published),
         "total_published": result.total_published(),
-        "errors": [{"asset": e.asset.fqn(), "message": e.message} for e in result.errors],
+        "errors": client_value(
+            [{"asset": e.asset.fqn(), "message": e.message} for e in result.errors]
+        ),
     }
 
 
@@ -339,7 +342,7 @@ async def check_entry(request: Request, entry_id: str) -> dict:  # REQ-2122
             "id": entry_id,
             "provider": entry.provider,
             "ok": False,
-            "error": f"{type(exc).__name__}: {exc}",
+            "error": client_text(f"{type(exc).__name__}: {exc}"),
         }
     return {"id": entry_id, "provider": entry.provider, "ok": True}
 

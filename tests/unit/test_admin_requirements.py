@@ -399,11 +399,11 @@ class TestREQ167LLMRelationshipDiscovery:
         # REQ-167, amended by REQ-413: foreign keys are collected when the run asks for them
         # (behaviour: tests/unit/test_discovery_kinds.py).
         import inspect
-        from provisa.api.admin import discovery
+        from provisa.discovery import run
 
-        src = inspect.getsource(discovery.trigger_discovery)
-        fk_pos = src.index("collect_fk_candidates")
-        asked_pos = src.index('if "foreign_keys" in kinds:')
+        src = inspect.getsource(run.perform)
+        fk_pos = src.index("collect_fk_for_tables")
+        asked_pos = src.index('if "foreign_keys" in spec.kinds:')
         assert asked_pos < fk_pos
 
 
@@ -557,5 +557,10 @@ class TestREQ622GraphiQLAccessible:
         import inspect
         import provisa.api.app as app_mod
 
+        from strawberry.fastapi import GraphQLRouter
+
+        from provisa.api.admin.graphql_router import AdminGraphQLRouter
+
         src = inspect.getsource(app_mod)
-        assert "from strawberry.fastapi import GraphQLRouter" in src
+        assert "from provisa.api.admin.graphql_router import AdminGraphQLRouter" in src
+        assert issubclass(AdminGraphQLRouter, GraphQLRouter)

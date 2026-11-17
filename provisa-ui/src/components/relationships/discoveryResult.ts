@@ -48,10 +48,6 @@ function emptyLine(s: SemanticsReport, t: TFunction): string {
       return t("discoverResult.semanticsBelowThreshold", {
         threshold: Math.round(s.threshold * 100),
       });
-    case "scored_below_threshold":
-      return t("discoverResult.semanticsScoredBelowThreshold", {
-        threshold: Math.round(s.threshold * 100),
-      });
     default:
       return t("discoverResult.semanticsFiltered");
   }
@@ -68,6 +64,15 @@ function semanticsLines(s: SemanticsReport, t: TFunction): string[] {
       : []),
     ...(s.split > 0 ? [t("discoverResult.split", { count: s.split })] : []),
     ...(s.cut_short > 0 ? [t("discoverResult.cutShort", { count: s.cut_short })] : []),
+    // Jev's score is shown beside the model's and removes none (REQ-1789): its count is said.
+    ...(s.scored_below_threshold !== undefined && s.scored_below_threshold > 0
+      ? [
+          t("discoverResult.jevBelow", {
+            count: s.scored_below_threshold,
+            threshold: Math.round(s.threshold * 100),
+          }),
+        ]
+      : []),
     ...(s.scoring_failed !== undefined && s.scoring_failed > 0
       ? [t("discoverResult.scoringFailed", { count: s.scoring_failed })]
       : []),
@@ -91,16 +96,6 @@ function leftOut(report: DiscoveryReport, t: TFunction): string | null {
               threshold: Math.round(s.threshold * 100),
             }),
             s.below_threshold,
-          ),
-        ]
-      : []),
-    ...(s && s.scored_below_threshold !== undefined && s.scored_below_threshold > 0
-      ? [
-          item(
-            t("discoverResult.removed.scored_below_threshold", {
-              threshold: Math.round(s.threshold * 100),
-            }),
-            s.scored_below_threshold,
           ),
         ]
       : []),

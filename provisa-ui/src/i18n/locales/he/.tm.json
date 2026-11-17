@@ -10803,5 +10803,18 @@
   "he/serverErrors.json::serverErrors.functions.no_plain_list": "No operation of source '{{source_id}}' without a required parameter returns the rows of '{{operation}}', so its table stays on",
   "he/serverErrors.json::serverErrors.functions.plain_list_unregistered": "'{{operation}}' of source '{{source_id}}' returns the rows of its list {{lists}}; register that list as a table first",
   "he/serverErrors.json::serverErrors.functions.table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first",
-  "he/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function"
+  "he/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
+  "he/discoverResult.json::discoverResult.jevBelow": "Jev scored {{count}} proposal under {{threshold}}%. It is shown beside the model's score, which decides.",
+  "he/discoverResult.json::discoverResult.jevBelow_other": "Jev scored {{count}} proposals under {{threshold}}%. Each is shown beside the model's score, which decides.",
+  "he/proposalsTable.json::proposalsTable.colJev": "Jev",
+  "he/serverErrors.json::serverErrors.discovery.run_failed": "Discovery run {{run_id}} failed: {{error}}",
+  "he/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.role_gone": "This offer's role is not defined.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.not_built": "A dataset of this offer is not in the model build.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.sample_not_a_view": "A sample of this offer names a table that is not a view of the model. A sample is one or more views over the product's datasets.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.sample_outside_product": "A view of this offer's sample reads more than the product's datasets, or none of them.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.sample_misses_dataset": "No view of this offer's sample reads one of the product's datasets. An offer covers every dataset of the product.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.not_public": "This open offer's data is no longer public.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.profiler_gone": "A dataset of this synthetic offer has no profiler.",
+  "he/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake."
 }

@@ -48,7 +48,7 @@ from provisa.discovery.direction import (
     reduced_tables,
     settle,
 )
-from provisa.discovery.proposals import BELOW_THRESHOLD, SCORED_BELOW_THRESHOLD, Recorded
+from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
 from provisa.discovery.runner import Control, Rescore, Tally, execute
 from provisa.discovery.windows import Request, bound, plan
 
@@ -325,10 +325,6 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
         empty = "unreadable"
     elif tally.proposed == 0:
         empty = "none_proposed"
-    elif tally.scored_below_threshold and not tally.below_threshold and not tally.not_comparable:
-        # Every proposal that named two compared columns met the threshold on the model's own
-        # confidence and fell under it on the second scorer's.
-        empty = SCORED_BELOW_THRESHOLD
     elif tally.below_threshold and tally.below_threshold + tally.invalid == tally.proposed:
         empty = BELOW_THRESHOLD
     else:
@@ -337,8 +333,8 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
 
 
 async def _refiner(state: Any, tables: dict[int, TableFacts]) -> Rescore | None:
-    """REQ-1789: with a Jev key configured, each proposal's confidence is Jev's calibrated score,
-    given on what the run knows of its tables and columns."""
+    """REQ-1789: with a Jev key configured, each proposal is also scored by Jev, on what the run
+    knows of its tables and columns; Jev's score is shown beside the model's."""
     from provisa.core.org_secrets import JEV, org_ai_key_or_none
 
     jev_key = await org_ai_key_or_none(state.model_db, JEV)

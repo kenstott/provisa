@@ -45,6 +45,7 @@ from provisa.api.admin._table_ops import (
     _build_column_models,
     _ensure_view_column_types,
 )
+from provisa.api.engine_error_names import client_text, client_value
 
 # Public re-export surface: these underscore-prefixed helpers were relocated here in the
 # god-file split and are imported by other modules/tests from schema_common. Listing them in
@@ -246,7 +247,7 @@ async def _validate_govdata_api_key(input: SourceInput) -> Optional[MutationResu
             success=False,
             message=f"Invalid AskAmerica API Key: {refused.detail}",
             code="schema.invalid_askamerica_key",
-            params={"error": refused.detail},
+            params={"error": client_value(refused.detail)},
         )
     return None
 
@@ -308,7 +309,7 @@ async def _stage_kaggle_if_needed(input: SourceInput) -> Optional[MutationResult
             success=False,
             message=f"Kaggle dataset {owner}/{ref} could not be staged: {exc}",
             code="schema.kaggle_stage_failed",
-            params={"owner": owner, "ref": ref, "error": str(exc)},
+            params={"owner": owner, "ref": ref, "error": client_text(str(exc))},
         )
     input.path = str(staged_root)
     return None
@@ -332,7 +333,7 @@ def google_workspace_refusal(input: SourceInput) -> Optional[MutationResult]:  #
             success=False,
             message=f"Google Workspace source {input.id!r}: {exc}",
             code="schema.google_workspace_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     return None
 
@@ -359,7 +360,7 @@ def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
             success=False,
             message=f"Source {input.id!r}: {exc}",
             code="schema.jdbc_file_refused",
-            params={"source": input.id, "path": exc.path, "error": str(exc)},
+            params={"source": input.id, "path": exc.path, "error": client_text(str(exc))},
         )
     except JdbcRefused as exc:
         return MutationResult(
@@ -380,7 +381,7 @@ def jdbc_source_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-
             success=False,
             message=f"Source {input.id!r}: {exc}",
             code="schema.jdbc_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     # Attach turned on is kept: the source attaches as the built-in type its URL names where the
     # engine has that type's attach, and lands where it has not (provisa.jdbc_source.attach).
@@ -509,7 +510,7 @@ def logs_refusal(input: SourceInput) -> Optional[MutationResult]:  # REQ-1996
             success=False,
             message=f"Logs source {input.id!r}: {exc}",
             code="schema.logs_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     except LogPathRefused as exc:
         return MutationResult(
@@ -537,7 +538,7 @@ def excel_hints_refusal(input: SourceInput) -> Optional[MutationResult]:
             success=False,
             message=str(exc),
             code="schema.excel_hints_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     return None
 
@@ -560,7 +561,7 @@ def microsoft_365_refusal(input: SourceInput) -> Optional[MutationResult]:  # RE
             success=False,
             message=f"Microsoft 365 source {input.id!r}: {exc}",
             code="schema.microsoft_365_invalid",
-            params={"source": input.id, "error": str(exc)},
+            params={"source": input.id, "error": client_text(str(exc))},
         )
     return None
 

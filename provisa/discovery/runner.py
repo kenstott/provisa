@@ -39,7 +39,6 @@ from provisa.discovery.proposals import (
     BELOW_THRESHOLD,
     INVALID_SHAPE,
     NOT_COMPARABLE,
-    SCORED_BELOW_THRESHOLD,
     UNKNOWN_COLUMN,
     Recorded,
 )
@@ -96,7 +95,7 @@ class Tally:
     #: Proposals the model itself gave less than :data:`MIN_CONFIDENCE`.
     below_threshold: int = 0
     #: Proposals a second scorer was asked about, and those of them it scored under
-    #: :data:`MIN_CONFIDENCE` though the model had not.
+    #: :data:`MIN_CONFIDENCE`. Its score removes none (REQ-1789).
     scored: int = 0
     scored_below_threshold: int = 0
     #: Requests whose proposals the second scorer could not score: they kept the model's.
@@ -211,27 +210,23 @@ def read_items(request: Request, items: list, tally: Tally) -> list[Proposal]:
 Rescore = Callable[[list[Proposal]], Awaitable[list[float | None] | None]]
 
 
-def rescored(found: list[Proposal], scores: list[float | None] | None, tally: Tally) -> list:
-    """``found`` with the second scorer's confidence in place of the model's: a proposal it
-    scored under :data:`MIN_CONFIDENCE` is left out, both confidences kept; one it gave no score
-    keeps the model's."""
+def rescored(
+    found: list[Proposal], scores: list[float | None] | None, tally: Tally
+) -> list[Proposal]:
+    """``found``, each with the second scorer's confidence beside the model's (REQ-1789). The
+    model's decides which are suggestions; those the scorer put under :data:`MIN_CONFIDENCE` are
+    counted, and none is removed."""
     if scores is None:
         tally.scoring_failed += 1
         return found
-    kept: list[Proposal] = []
+    out: list[Proposal] = []
     for proposal, score in zip(found, scores, strict=True):
-        if score is None:
-            kept.append(proposal)
-            continue
-        tally.scored += 1
-        if score < MIN_CONFIDENCE:
-            tally.scored_below_threshold += 1
-            tally.left_out.append(
-                Recorded("semantics", SCORED_BELOW_THRESHOLD, proposal, scored=score)
-            )
-        else:
-            kept.append(replace(proposal, confidence=score))
-    return kept
+        if score is not None:
+            tally.scored += 1
+            if score < MIN_CONFIDENCE:
+                tally.scored_below_threshold += 1
+        out.append(replace(proposal, scored=score))
+    return out
 
 
 async def execute(
@@ -245,8 +240,8 @@ async def execute(
     to_thread: Callable[..., Awaitable[Any]] = asyncio.to_thread,
 ) -> tuple[Tally, list[Proposal]]:
     """Ask every request in order, splitting as it must; stop when the control asks. ``refine``
-    re-scores a request's proposals (REQ-1789, when a Jev key is configured): its confidence
-    replaces the model's (:func:`rescored`)."""
+    re-scores a request's proposals (REQ-1789, when a Jev key is configured): its confidence is
+    kept beside the model's (:func:`rescored`)."""
     queue = list(requests)
     tally = Tally(total=len(queue))
     proposals: list[Proposal] = []

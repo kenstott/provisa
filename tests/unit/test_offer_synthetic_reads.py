@@ -44,6 +44,7 @@ from provisa.core.schema_org import (
 from provisa.fakes import digest as digest_mod
 from provisa.fakes.duckdb_functions import register
 from provisa.security.masking import MaskType
+from tests.unit.offer_build import published
 
 _KEY = b"k" * 32
 #: orders (1), a dataset of product c360: column, type, declared fake.
@@ -114,6 +115,7 @@ async def _model(control_plane, *, synthetic_role: str | None) -> None:
                     DataProductOffer(name="syn", role_id=synthetic_role, data_level="synthetic"),
                     offer_id=None,
                     by="o1",
+                    published=published(),
                 )
             await app_loaders._load_masking_rules(
                 conn,

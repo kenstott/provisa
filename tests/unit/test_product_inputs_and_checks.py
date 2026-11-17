@@ -85,15 +85,17 @@ async def _seed(conn) -> None:
         )
 
 
+#: Each checker's checked table, as the build resolved it: published on the runtime and stored.
+_CHECKED = {K_PROMISE: M, K_EXPECTATION: S, K_ORPHAN: S, K_UNASSIGNED: S}
+
+
 async def _build(conn) -> None:
     """The model build's two writes, then the views over them."""
     from provisa.api.admin.lineage_router import write_lineage_edges
     from provisa.api.startup_seed import _adapt_view_ddl
 
     await write_lineage_edges(conn, SimpleNamespace(tracked_functions={}))
-    await write_checker_targets(
-        conn, {K_PROMISE: M, K_EXPECTATION: S, K_ORPHAN: S, K_UNASSIGNED: S}
-    )
+    await write_checker_targets(conn, _CHECKED)
     for name in ("table_inputs", "data_product_edges"):
         await conn.execute(_adapt_view_ddl(_META_TABLE_VIEWS[name]))
 
@@ -143,7 +145,7 @@ async def test_each_product_shows_each_check_by_what_it_checks_and_who_owns_it(c
                 product: {i.table_id for i in await nearest_physical_inputs(conn, member)}
                 for product, member in (("q", M), ("r", RV))
             }
-        checkers = await _fetch_checkers(SimpleNamespace(model_db=db))
+        checkers = await _fetch_checkers(SimpleNamespace(model_db=db, checked_targets=_CHECKED))
     finally:
         await db.close()
 
@@ -210,7 +212,10 @@ async def test_a_checkers_latest_scan_names_the_checks_that_did_not_pass(control
             await conn.execute_core_many(relation.insert(), first + second)
             await record_latest_run(conn, K_PROMISE, "s1", earlier, first)
             await record_latest_run(conn, K_PROMISE, "s2", latest, second)
-        checkers = {c["id"]: c for c in await _fetch_checkers(SimpleNamespace(model_db=db))}
+        checkers = {
+            c["id"]: c
+            for c in await _fetch_checkers(SimpleNamespace(model_db=db, checked_targets=_CHECKED))
+        }
     finally:
         await db.close()
 

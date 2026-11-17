@@ -8,153 +8,37 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Relationship discovery runs only the kinds asked for, judges semantics by the assigned model's
-own key whatever its vendor, and says what each kind found (REQ-413)."""
+"""Relationship discovery done while the caller waits (POST /admin/discover/relationships) is a
+run, as the dialog's is (REQ-413): it runs only the kinds asked for, judges semantics by the
+assigned model's own key whatever its vendor, keeps every proposal it read, and says what each
+kind found. On a real model store (SQLite), the model faked at its client boundary."""
 
-# Requirements: REQ-413
+# Requirements: REQ-167, REQ-413, REQ-1789
 
 from __future__ import annotations
 
 import json
-from contextlib import asynccontextmanager
-from types import SimpleNamespace
-from typing import Any, cast
+from typing import Any
 
 import pytest
 from pydantic import ValidationError
+from sqlalchemy import insert, select
 
 from provisa.api.admin import discovery
 from provisa.api.errors import ApiError
+from provisa.core import schema_org as so
+from provisa.core.database import Database
 from provisa.discovery.analyzer import RelationshipCandidate
-from provisa.discovery.collector import DiscoveryInput, TableMeta
 from provisa.llm.client import Completion
-
-#: The request the router reads only for its capability check, which these tests stand in for.
-_REQUEST = cast(Any, object())
-
-_KEY_ENVS = ("ANTHROPIC_API_KEY", "OPENAI_API_KEY", "MISTRAL_API_KEY")
-
-
-def _table(table_id: int, name: str, columns: list[str]) -> TableMeta:
-    return TableMeta(
-        table_id=table_id,
-        source_id="src1",
-        domain_id="d1",
-        schema_name="public",
-        table_name=name,
-        columns=[{"name": c, "type": "integer"} for c in columns],
-        sample_values=[],
-    )
-
-
-def _suggestion(confidence: float = 0.9, src_col: str = "customer_id") -> dict:
-    return {
-        "source_table_id": 1,
-        "source_column": src_col,
-        "target_table_id": 2,
-        "target_column": "id",
-        "cardinality": "many-to-one",
-        "confidence": confidence,
-        "reasoning": "orders name their customer",
-        "suggested_name": "purchase-history",
-    }
-
-
-class _Conn:
-    def __init__(self, rejected: list[dict]):
-        self._rejected = rejected
-
-    async def fetch(self, sql: str, *args: Any) -> list[dict]:
-        assert "relationship_candidates" in sql and "rejected" in sql, sql
-        return self._rejected
-
-
-class _Pool:
-    def __init__(self, conn: _Conn):
-        self._conn = conn
-
-    @asynccontextmanager
-    async def acquire(self):
-        yield self._conn
-
-
-class _World:
-    """The discovery router's surroundings, with what each part was asked recorded."""
-
-    def __init__(self, monkeypatch, *, config: dict, api_keys: dict[str, str]):
-        self.model_calls: list[tuple[str, str]] = []
-        self.fk_calls = 0
-        self.metadata_calls = 0
-        self.stored: list[RelationshipCandidate] = []
-        self.answer: str | Exception = "[]"
-        self.rejected: list[dict] = []
-        self.existing: list[dict] = []
-        self.fk_found: list[RelationshipCandidate] = []
-        #: The answer stopped at its token limit, as the vendor reports it.
-        self.cut_off = False
-
-        for env in _KEY_ENVS:
-            monkeypatch.delenv(env, raising=False)
-        monkeypatch.setattr(discovery, "require_capability_request", lambda request, cap: None)
-        monkeypatch.setattr(
-            discovery,
-            "state",
-            SimpleNamespace(
-                model_db=_Pool(_Conn(self.rejected)),
-                federation_engine=object(),
-                source_pools={},
-                source_types={},
-            ),
-        )
-
-        async def fk(*args, **kwargs):
-            self.fk_calls += 1
-            return list(self.fk_found)
-
-        async def metadata(*args, **kwargs):
-            self.metadata_calls += 1
-            return DiscoveryInput(
-                tables=[
-                    _table(1, "orders", ["id", "customer_id"]),
-                    _table(2, "customers", ["id", "name"]),
-                ],
-                existing_relationships=list(self.existing),
-                rejected_pairs=[],
-            )
-
-        async def store(conn, candidates, scope):
-            self.stored.extend(candidates)
-            return list(range(1, len(candidates) + 1))
-
-        async def org_config(pool):
-            return config
-
-        async def org_keys(pool):
-            return dict(api_keys)
-
-        async def no_jev(pool, vendor):
-            return None
-
-        def complete(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
-            self.model_calls.append((vendor, model))
-            if isinstance(self.answer, Exception):
-                raise self.answer
-            return Completion(self.answer, vendor, model, None, self.cut_off)
-
-        monkeypatch.setattr(discovery, "collect_fk_candidates", fk)
-        monkeypatch.setattr(discovery, "collect_metadata", metadata)
-        monkeypatch.setattr(discovery.candidates_repo, "store_candidates", store)
-        monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
-        monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
-        monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)
-        monkeypatch.setattr("provisa.llm.client.ProvisaLLMClient._respond", complete)
-
-    async def run(self, *kinds: str) -> dict:
-        body = discovery.DiscoverRequest.model_validate(
-            {"scope": "cross-domain", "kinds": list(kinds)}
-        )
-        return await discovery.trigger_discovery(_REQUEST, body)
-
+from tests.unit.test_discovery_run_api import (
+    _REQUEST,
+    _World,
+    _candidates,
+    _nothing_published,  # noqa: F401 -- the autouse fixture the store's tables rely on
+    _store,
+    _suggestion,
+    _table,
+)
 
 _OPENAI = {"ai_models": {"relationship_inference": {"vendor": "openai", "model": "gpt-test"}}}
 _ANTHROPIC = {
@@ -162,64 +46,149 @@ _ANTHROPIC = {
 }
 
 
+async def _sales(db: Database) -> None:
+    """orders and customers, both of the sales domain."""
+    await _table(
+        db, 1, "sales", "orders", [("id", "integer", True), ("customer_id", "integer", False)]
+    )
+    await _table(db, 2, "sales", "customers", [("id", "integer", True), ("name", "text", False)])
+
+
+class _Discovery:
+    """The route's surroundings: a store holding orders and customers, the model's answer and
+    whether the vendor said it stopped at its limit, and how often foreign keys were read."""
+
+    def __init__(self, monkeypatch, db: Database, *, config: dict, api_keys: dict[str, str]):
+        self.db = db
+        self.world = _World(monkeypatch, db, config=config, api_keys=api_keys)
+        self.answer: str | Exception = "[]"
+        self.cut_off = False
+        self.fk_calls = 0
+        world = self.world
+
+        def respond(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
+            world.model_calls.append((vendor, model, max_tokens))
+            if isinstance(self.answer, Exception):
+                raise self.answer
+            answer, self.answer = self.answer, "[]"  # a split request's halves propose none
+            return Completion(answer, vendor, model, None, self.cut_off)
+
+        async def fk(source_pools, source_types, conn, table_ids):
+            self.fk_calls += 1
+            return [c for c in world.fk_found if c.source_table_id in table_ids]
+
+        monkeypatch.setattr("provisa.llm.client.ProvisaLLMClient._respond", respond)
+        monkeypatch.setattr("provisa.discovery.run.collect_fk_for_tables", fk)
+
+    async def run(self, *kinds: str, scope: str = "cross-domain", **over: Any) -> dict:
+        body = discovery.DiscoverRequest.model_validate(
+            {"scope": scope, "kinds": list(kinds), **over}
+        )
+        return await discovery.trigger_discovery(_REQUEST, body)
+
+    async def runs(self) -> int:
+        async with self.db.acquire() as conn:
+            return len((await conn.execute_core(select(so.discovery_runs.c.id))).fetchall())
+
+
+async def _discovery(monkeypatch, tmp_path, *, config: dict, api_keys: dict) -> _Discovery:
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _sales(db)
+    return _Discovery(monkeypatch, db, config=config, api_keys=api_keys)
+
+
 def _fk() -> RelationshipCandidate:
-    return RelationshipCandidate(1, "customer_id", 2, "id", "many_to_one", 1.0, "Foreign key")
+    return RelationshipCandidate(1, "customer_id", 2, "id", "many-to-one", 1.0, "Foreign key")
+
+
+async def _listed(run: dict) -> list[dict]:
+    return (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+
+
+# --- a run, stored as the dialog's ------------------------------------------------------------
+
+
+async def test_the_route_is_a_run_whose_proposals_are_stored(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = json.dumps(
+        [_suggestion((1, "customer_id"), (2, "id")), _suggestion((1, "id"), (2, "id"), 0.3)]
+    )
+    found = await d.run("semantics", scope="table", table_id=1)
+    run = found["run"]
+    assert run["status"] == "done"
+    assert run["scope"]["source_domains"] == ["sales"]
+    assert found["candidates_found"] == 1 and len(found["stored_ids"]) == 1
+    # Every proposal read is kept with the run, the one under the threshold with why.
+    assert [(r["source_column"], r["reason"]) for r in await _listed(run)] == [
+        ("customer_id", None),
+        ("id", "below_threshold"),
+    ]
+    assert [c["id"] for c in await _candidates(d.db)] == found["stored_ids"]
+
+
+async def test_a_table_not_registered_is_refused(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    with pytest.raises(ApiError) as refused:
+        await d.run("foreign_keys", scope="table", table_id=99)
+    assert (refused.value.status_code, refused.value.code) == (404, "discovery.table_not_found")
+    assert await d.runs() == 0
 
 
 # --- kinds honoured -----------------------------------------------------------------------------
 
 
-async def test_foreign_keys_only_makes_no_model_call(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.fk_found = [_fk()]
-    found = await world.run("foreign_keys")
-    assert world.model_calls == []
-    assert world.metadata_calls == 0
-    assert world.fk_calls == 1
-    assert found["foreign_keys"] == {"found": 1}
+async def test_foreign_keys_only_makes_no_model_call(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.world.fk_found = [_fk()]
+    found = await d.run("foreign_keys")
+    assert d.world.model_calls == []
+    assert d.fk_calls == 1
+    assert found["foreign_keys"] == {"found": 1, "suggested": 1}
     assert "semantics" not in found
 
 
-async def test_foreign_keys_only_runs_with_no_model_configured(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={})
-    found = await world.run("foreign_keys")
-    assert found["foreign_keys"] == {"found": 0}
-    assert world.model_calls == []
+async def test_foreign_keys_only_runs_with_no_model_configured(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={})
+    found = await d.run("foreign_keys")
+    assert found["foreign_keys"] == {"found": 0, "suggested": 0}
+    assert d.world.model_calls == []
 
 
-async def test_semantics_only_collects_no_foreign_keys(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = json.dumps([_suggestion()])
-    found = await world.run("semantics")
-    assert world.fk_calls == 0
+async def test_semantics_only_collects_no_foreign_keys(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
+    found = await d.run("semantics")
+    assert d.fk_calls == 0
     assert "foreign_keys" not in found
     assert found["semantics"]["suggested"] == 1
     assert found["semantics"]["empty_reason"] is None
-    assert [c.suggested_name for c in world.stored] == ["purchase-history"]
+    assert [c["suggested_name"] for c in await _candidates(d.db)] == ["purchase-history"]
 
 
-def test_a_run_names_at_least_one_kind():
+def test_a_run_names_at_least_one_kind_and_a_known_scope():
     with pytest.raises(ValidationError):
         discovery.DiscoverRequest.model_validate({"scope": "cross-domain", "kinds": []})
     with pytest.raises(ValidationError):
         discovery.DiscoverRequest.model_validate({"scope": "cross-domain"})
     with pytest.raises(ValidationError):
         discovery.DiscoverRequest.model_validate({"scope": "cross-domain", "kinds": ["guesses"]})
+    with pytest.raises(ValidationError):
+        discovery.DiscoverRequest.model_validate({"scope": "galaxy", "kinds": ["foreign_keys"]})
 
 
 # --- the assigned model, whatever its vendor ----------------------------------------------------
 
 
-async def test_a_non_anthropic_assigned_model_with_its_key_runs(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = json.dumps([_suggestion()])
-    found = await world.run("foreign_keys", "semantics")
-    assert world.model_calls == [("openai", "gpt-test")]
+async def test_a_non_anthropic_assigned_model_with_its_key_runs(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
+    found = await d.run("foreign_keys", "semantics")
+    assert [call[:2] for call in d.world.model_calls] == [("openai", "gpt-test")]
     assert found["semantics"]["suggested"] == 1
 
 
-async def test_an_anthropic_key_does_not_make_another_vendors_model_runnable(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"anthropic": "k"})
+async def test_an_anthropic_key_does_not_make_another_vendors_model_runnable(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"anthropic": "k"})
     kinds = await discovery.discovery_kinds(_REQUEST)
     assert kinds["semantics"] == {
         "available": False,
@@ -227,119 +196,133 @@ async def test_an_anthropic_key_does_not_make_another_vendors_model_runnable(mon
         "reason": "no_key",
     }
     with pytest.raises(ApiError) as refused:
-        await world.run("semantics")
+        await d.run("semantics")
     assert refused.value.code == "discovery.semantics_unavailable"
-    assert world.model_calls == []
+    assert d.world.model_calls == []
 
 
-async def test_the_assigned_models_key_from_the_environment_counts(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={})
+async def test_the_assigned_models_key_from_the_environment_counts(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={})
     monkeypatch.setenv("OPENAI_API_KEY", "k")
     kinds = await discovery.discovery_kinds(_REQUEST)
     assert kinds["semantics"]["available"] is True
-    world.answer = "[]"
-    await world.run("semantics")
-    assert world.model_calls == [("openai", "gpt-test")]
+    await d.run("semantics")
+    assert [call[:2] for call in d.world.model_calls] == [("openai", "gpt-test")]
 
 
-async def test_no_model_configured_reports_semantics_unavailable(monkeypatch):
-    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={})
+async def test_no_model_configured_reports_semantics_unavailable(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={})
     kinds = await discovery.discovery_kinds(_REQUEST)
     assert kinds == {
         "foreign_keys": {"available": True},
         "semantics": {"available": False, "model": "anthropic:claude-test", "reason": "no_key"},
     }
     with pytest.raises(ApiError) as refused:
-        await world.run("foreign_keys", "semantics")
+        await d.run("foreign_keys", "semantics")
     assert refused.value.status_code == 409
     assert refused.value.params["model"] == "anthropic:claude-test"
-    # Refused before anything ran.
-    assert world.fk_calls == 0
-    assert world.stored == []
+    # Refused before anything ran: no run, no foreign keys read, nothing stored.
+    assert d.fk_calls == 0
+    assert await d.runs() == 0
+    assert await _candidates(d.db) == []
 
 
 # --- why semantics found none -------------------------------------------------------------------
 
 
-async def test_an_unreadable_answer_is_reported(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = '[{"source_table_id": 1, oops'
-    found = await world.run("semantics")
+async def test_an_unreadable_answer_is_reported(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = '[{"source_table_id": 1, oops'
+    found = await d.run("semantics")
     assert found["semantics"]["suggested"] == 0
     assert found["semantics"]["empty_reason"] == "unreadable"
 
 
-async def test_all_below_the_confidence_threshold_is_reported_with_the_count(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = json.dumps([_suggestion(0.3), _suggestion(0.5, src_col="id")])
-    found = await world.run("semantics")
+async def test_all_below_the_confidence_threshold_is_reported_with_the_count(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = json.dumps(
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.3),
+            _suggestion((1, "id"), (2, "id"), 0.5),
+        ]
+    )
+    found = await d.run("semantics")
     sem = found["semantics"]
     assert sem["suggested"] == 0
-    assert sem["empty_reason"] == "filtered"
+    assert sem["empty_reason"] == "below_threshold"
     assert sem["below_threshold"] == 2
     assert sem["proposed"] == 2
     assert abs(sem["threshold"] - 0.7) <= 1e-14 * 0.7
+    # Kept with the run all the same, for a reviewer to tick.
+    assert {r["reason"] for r in await _listed(found["run"])} == {"below_threshold"}
 
 
-async def test_all_already_rejected_is_reported(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.rejected.append(
-        {
-            "source_table_id": 1,
-            "source_column": "customer_id",
-            "target_table_id": 2,
-            "target_column": "id",
-        }
-    )
-    world.answer = json.dumps([_suggestion()])
-    found = await world.run("semantics")
+async def test_all_already_rejected_is_reported(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    async with d.db.acquire() as conn:
+        await conn.execute_core(
+            insert(so.relationship_candidates).values(
+                source_table_id=1,
+                source_column="customer_id",
+                target_table_id=2,
+                target_column="id",
+                cardinality="many-to-one",
+                confidence=0.9,
+                status="rejected",
+                scope="earlier",
+            )
+        )
+    d.answer = json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
+    found = await d.run("semantics")
     assert found["semantics"]["suggested"] == 0
     assert found["semantics"]["empty_reason"] == "filtered"
-    assert found["semantics"]["already_known"] == 1
-    assert world.stored == []
+    assert found["run"]["report"]["removed"]["rejected"] == 1
+    assert found["stored_ids"] == []
 
 
-async def test_all_already_present_is_reported(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.existing.append(
-        {
-            "source_table_id": 1,
-            "source_column": "customer_id",
-            "target_table_id": 2,
-            "target_column": "id",
-            "cardinality": "many-to-one",
-        }
-    )
-    world.answer = json.dumps([_suggestion()])
-    found = await world.run("semantics")
+async def test_all_already_present_is_reported(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    async with d.db.acquire() as conn:
+        await conn.execute_core(
+            insert(so.relationships).values(
+                id="orders-customer",
+                source_table_id=1,
+                source_column="customer_id",
+                target_table_id=2,
+                target_column="id",
+                cardinality="many-to-one",
+            )
+        )
+    d.answer = json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
+    found = await d.run("semantics")
     assert found["semantics"]["empty_reason"] == "filtered"
-    assert found["semantics"]["already_known"] == 1
+    assert found["run"]["report"]["removed"]["existing"] == 1
 
 
-async def test_a_suggestion_the_foreign_keys_found_is_already_present(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.fk_found = [_fk()]
-    world.answer = json.dumps([_suggestion()])
-    found = await world.run("foreign_keys", "semantics")
-    assert found["foreign_keys"] == {"found": 1}
-    assert found["semantics"]["already_known"] == 1
+async def test_a_suggestion_the_foreign_keys_found_is_already_present(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.world.fk_found = [_fk()]
+    d.answer = json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
+    found = await d.run("foreign_keys", "semantics")
+    assert found["foreign_keys"] == {"found": 1, "suggested": 1}
+    assert found["run"]["report"]["removed"]["matches_foreign_key"] == 1
     assert found["semantics"]["suggested"] == 0
-    assert len(world.stored) == 1
+    assert len(found["stored_ids"]) == 1
 
 
-async def test_an_empty_list_from_the_model_is_reported(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = "[]"
-    found = await world.run("semantics")
+async def test_an_empty_list_from_the_model_is_reported(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    found = await d.run("semantics")
     assert found["semantics"]["empty_reason"] == "none_proposed"
 
 
-async def test_suggestions_naming_columns_that_do_not_exist_are_counted(monkeypatch):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = json.dumps([_suggestion(src_col="no_such_column")])
-    found = await world.run("semantics")
-    assert found["semantics"]["empty_reason"] == "filtered"
+async def test_suggestions_naming_columns_that_do_not_exist_are_counted(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = json.dumps([_suggestion((1, "no_such_column"), (2, "id"))])
+    found = await d.run("semantics")
+    assert found["semantics"]["suggested"] == 0
     assert found["semantics"]["invalid"] == 1
+    assert [r["reason"] for r in await _listed(found["run"])] == ["unknown_column"]
 
 
 # --- a model failure surfaces -------------------------------------------------------------------
@@ -350,31 +333,35 @@ async def test_suggestions_naming_columns_that_do_not_exist_are_counted(monkeypa
     [
         (RuntimeError("401 invalid x-api-key"), "401 invalid x-api-key"),
         (TimeoutError("openai:gpt-test gave no answer within 300 seconds"), "no answer within"),
-        ("", "empty answer"),
-        ("I can't help with that request.", "I can't help with that request."),
     ],
-    ids=["bad-key", "timeout", "empty", "refusal"],
+    ids=["bad-key", "timeout"],
 )
-async def test_a_model_failure_is_returned_as_an_error(monkeypatch, answer, said):
-    world = _World(monkeypatch, config=_OPENAI, api_keys={"openai": "k"})
-    world.answer = answer
-    with pytest.raises(ApiError) as failed:
-        await world.run("foreign_keys", "semantics")
-    assert failed.value.status_code == 502
-    assert failed.value.code == "discovery.model_failed"
-    assert failed.value.params["model"] == "openai:gpt-test"
-    assert said in failed.value.params["error"]
-    assert said in str(failed.value.detail)
-    assert world.stored == []
+async def test_a_model_failure_is_reported_with_its_message(monkeypatch, tmp_path, answer, said):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = answer
+    found = await d.run("foreign_keys", "semantics")
+    semantics = found["semantics"]
+    assert semantics["empty_reason"] == "requests_failed"
+    assert [said in f["message"] for f in semantics["failed"]] == [True]
+    assert found["stored_ids"] == []
+
+
+@pytest.mark.parametrize(
+    "answer", ["", "I can't help with that request."], ids=["empty", "refusal"]
+)
+async def test_an_answer_that_is_no_list_is_reported_unreadable(monkeypatch, tmp_path, answer):
+    d = await _discovery(monkeypatch, tmp_path, config=_OPENAI, api_keys={"openai": "k"})
+    d.answer = answer
+    found = await d.run("semantics")
+    assert found["semantics"]["empty_reason"] == "unreadable"
+    assert found["stored_ids"] == []
 
 
 # --- an answer cut off at the model's token limit -----------------------------------------------
 #
 # The shape of the answer the default demo's cross-domain run got from claude-haiku-4-5 (captured
 # 2026-11-14 on an isolated instance): a ```json fence, a pretty-printed list, and the answer stopped
-# at max_tokens (4096 of 4096 completion tokens) in the middle of an element, so neither the list
-# nor the fence ever closed. Read as a whole it was "could not be read", and every complete
-# suggestion before the cut was lost.
+# at max_tokens in the middle of an element, so neither the list nor the fence ever closed.
 
 
 def _pretty(element: dict) -> str:
@@ -383,70 +370,52 @@ def _pretty(element: dict) -> str:
 
 _CUT_OFF_ANSWER = (
     "```json\n[\n"
-    + _pretty(_suggestion())
-    + ",\n"
-    + _pretty({**_suggestion(0.8, "id"), "cardinality": "one-to-many", "suggested_name": "orders"})
+    + _pretty(_suggestion((1, "customer_id"), (2, "id")))
     + ',\n  {\n    "source_table_id": 2,\n    "source_column": "name",\n'
     '    "target_table_id": 1,\n    "target_column": "id",\n    "cardin'
 )
 
 
-async def test_a_cut_off_answer_keeps_its_complete_suggestions_and_says_it_was_cut_short(
-    monkeypatch,
-):
-    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    world.answer = _CUT_OFF_ANSWER
-    world.cut_off = True
-    found = await world.run("semantics")
-    semantics = found["semantics"]
-    assert semantics["cut_short"] is True
-    assert semantics["proposed"] == 2
-    assert semantics["suggested"] == 2
-    assert semantics["empty_reason"] is None
-    assert [(c.source_column, c.cardinality) for c in world.stored] == [
-        ("customer_id", "many-to-one"),
-        ("id", "one-to-many"),
+async def test_a_cut_off_answer_keeps_its_complete_suggestions(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    d.answer = _CUT_OFF_ANSWER
+    d.cut_off = True
+    found = await d.run("semantics")
+    assert found["semantics"]["proposed"] == 1
+    assert found["semantics"]["suggested"] == 1
+    assert [(c["source_column"], c["target_column"]) for c in await _candidates(d.db)] == [
+        ("customer_id", "id")
     ]
 
 
-async def test_a_cut_off_answer_with_no_complete_suggestion_says_so(monkeypatch):
-    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    world.answer = '```json\n[\n  {\n    "source_table_id": 1,\n    "source_col'
-    world.cut_off = True
-    found = await world.run("semantics")
-    semantics = found["semantics"]
-    assert semantics["suggested"] == 0
-    assert semantics["cut_short"] is True
-    assert semantics["empty_reason"] == "cut_short"
-    assert world.stored == []
-
-
-async def test_an_unclosed_list_the_model_did_not_cut_off_is_unreadable(monkeypatch):
+async def test_an_unclosed_list_the_model_did_not_cut_off_is_unreadable(monkeypatch, tmp_path):
     # Only an answer the vendor says stopped at its limit is read element by element; any other
     # broken list is reported as unreadable, never partly kept.
-    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    world.answer = _CUT_OFF_ANSWER
-    found = await world.run("semantics")
+    d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    d.answer = _CUT_OFF_ANSWER
+    found = await d.run("semantics")
     assert found["semantics"]["empty_reason"] == "unreadable"
-    assert found["semantics"]["cut_short"] is False
-    assert world.stored == []
+    assert found["semantics"]["cut_short"] == 0
+    assert found["stored_ids"] == []
 
 
-async def test_a_complete_answer_is_not_cut_short(monkeypatch):
-    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    world.answer = "```json\n" + json.dumps([_suggestion()], indent=2) + "\n```"
-    found = await world.run("semantics")
+async def test_a_complete_answer_is_not_cut_short(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    d.answer = (
+        "```json\n" + json.dumps([_suggestion((1, "customer_id"), (2, "id"))], indent=2) + "\n```"
+    )
+    found = await d.run("semantics")
     assert found["semantics"]["suggested"] == 1
-    assert found["semantics"]["cut_short"] is False
+    assert found["semantics"]["cut_short"] == 0
 
 
-async def test_a_bracket_in_the_text_after_the_list_is_not_taken_for_its_end(monkeypatch):
-    world = _World(monkeypatch, config=_ANTHROPIC, api_keys={"anthropic": "k"})
-    world.answer = (
+async def test_a_bracket_in_the_text_after_the_list_is_not_taken_for_its_end(monkeypatch, tmp_path):
+    d = await _discovery(monkeypatch, tmp_path, config=_ANTHROPIC, api_keys={"anthropic": "k"})
+    d.answer = (
         "Here are the relationships:\n"
-        + json.dumps([_suggestion()])
+        + json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
         + "\n\nThe ids follow the schema [see the table list] above."
     )
-    found = await world.run("semantics")
+    found = await d.run("semantics")
     assert found["semantics"]["suggested"] == 1
     assert found["semantics"]["empty_reason"] is None

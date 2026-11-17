@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "Een aangevinkte rij wordt bij toepassen geaccepteerd. Rijen met een score van {{threshold}}% of meer zijn vooraf aangevinkt. Een rij zonder vinkje blijft onbeslist.",
     "colScore": "Score",
+    "colJev": "Jev",
     "colKind": "Soort",
     "colReasoning": "Redenering",
     "colNote": "Opmerking",
@@ -25,7 +26,6 @@
       "unknown_column": "Noemt een tabel of kolom die het verzoek niet vergeleek",
       "not_comparable": "De twee kolommen hebben verschillende klassen en worden dus niet vergeleken",
       "below_threshold": "De betrouwbaarheid van het model ligt onder de drempel van {{threshold}}%.",
-      "scored_below_threshold": "Jev beoordeelde het met {{scored}}%, onder de drempel van {{threshold}}%. Het model gaf {{confidence}}%.",
       "same_column": "Van een kolom naar zichzelf",
       "primary_key_to_primary_key": "Primaire sleutel naar primaire sleutel",
       "both_repeating": "Waarden herhalen zich aan beide kanten, dus geen van beide is de één-kant",

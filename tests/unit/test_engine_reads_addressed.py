@@ -256,7 +256,9 @@ async def test_refreshing_statistics_analyzes_a_replica_served_table_at_its_repl
     from provisa.core.request_context import current_acting_role
 
     rt = _Runtime()
-    state = SimpleNamespace(federation_engine=rt, catalog_for=lambda sid: sid, model_stamp=1)
+    state = SimpleNamespace(
+        federation_engine=rt, catalog_for=lambda sid: sid, model_stamp=1, org_registry={}
+    )
     info, _ = grant(monkeypatch, "source_registration", state=state)
     monkeypatch.setattr("provisa.api.app.state", state)
 

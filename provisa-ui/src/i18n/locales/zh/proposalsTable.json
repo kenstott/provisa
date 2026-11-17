@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "应用时会接受已勾选的行。评分为 {{threshold}}% 或以上的行默认勾选。两个框都未勾选的行保持未决定。",
     "colScore": "评分",
+    "colJev": "Jev",
     "colKind": "类型",
     "colReasoning": "理由",
     "colNote": "备注",
@@ -25,7 +26,6 @@
       "unknown_column": "引用了请求未比较的表或列",
       "not_comparable": "两列的类别不同，因此不作比较",
       "below_threshold": "模型的置信度低于 {{threshold}}% 的阈值。",
-      "scored_below_threshold": "Jev 的评分为 {{scored}}%，低于 {{threshold}}% 的阈值。模型给出的是 {{confidence}}%。",
       "same_column": "从某列指向其自身",
       "primary_key_to_primary_key": "主键到主键",
       "both_repeating": "两侧均有重复值，因此任何一侧都不是“一”的一方",

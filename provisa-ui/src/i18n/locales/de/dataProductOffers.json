@@ -60,6 +60,16 @@
     "resultsNotIncluded": "Ergebnisse nicht eingeschlossen.",
     "seeQuality": "Qualität ansehen",
     "inReview": "In Prüfung",
+    "reviewReason": {
+      "role_gone": "Die Rolle dieses Angebots ist nicht definiert.",
+      "not_built": "Ein Datensatz dieses Angebots ist nicht im Modell-Build.",
+      "sample_not_a_view": "Eine Stichprobe dieses Angebots nennt eine Tabelle, die keine View des Modells ist. Eine Stichprobe besteht aus einer oder mehreren Views über den Datensätzen des Produkts.",
+      "sample_outside_product": "Eine View der Stichprobe dieses Angebots liest mehr als die Datensätze des Produkts oder keinen davon.",
+      "sample_misses_dataset": "Keine View der Stichprobe dieses Angebots liest einen der Datensätze des Produkts. Ein Angebot umfasst jeden Datensatz des Produkts.",
+      "not_public": "Die Daten dieses offenen Angebots sind nicht mehr öffentlich.",
+      "profiler_gone": "Ein Datensatz dieses synthetischen Angebots hat keinen Profiler.",
+      "fake_gone": "Eine Spalte eines Datensatzes dieses synthetischen Angebots hat keinen Fake-Wert."
+    },
     "contracts_one": "{{count}} Contract",
     "contracts_other": "{{count}} Contracts",
     "noContracts": "Noch keine Contracts abgeleitet.",

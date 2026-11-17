@@ -222,8 +222,8 @@ const proposal = (over: Partial<RunProposal>): RunProposal => ({
   reduced_information: false,
   ...over,
 });
-/** A run's table: a constraint, a suggestion, one under the threshold, one Jev scored down, one
- *  already waiting, one repeating the constraint, and one that named no two compared columns. */
+/** A run's table: a constraint, a suggestion, one the model scored high and Jev low, one
+ *  already waiting, one under the threshold, one repeating the constraint, and one that named no two compared columns. */
 const PROPOSALS: RunProposal[] = [
   proposal({
     id: 500,
@@ -234,6 +234,14 @@ const PROPOSALS: RunProposal[] = [
     suggested_name: "order-store",
   }),
   proposal({}),
+  // The model gave it 92% and Jev 31%: a suggestion, the model's score deciding.
+  proposal({
+    id: 504,
+    source_column: "ref",
+    confidence: 0.92,
+    scored: 0.31,
+    suggested_name: "order-ref",
+  }),
   proposal({
     id: 502,
     source_column: "payer_id",
@@ -248,14 +256,6 @@ const PROPOSALS: RunProposal[] = [
     reason: "below_threshold",
     reasoning: "Perhaps the agent is a customer",
     suggested_name: "order-agent",
-  }),
-  proposal({
-    id: 504,
-    source_column: "ref",
-    confidence: 0.92,
-    scored: 0.31,
-    reason: "scored_below_threshold",
-    suggested_name: "order-ref",
   }),
   proposal({
     id: 505,
@@ -792,11 +792,12 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     expect(screen.getByTestId("proposal-503")).toHaveTextContent(
       "The model's confidence is below the 70% threshold.",
     );
-    // Jev's score is the row's; the note says both.
-    expect(screen.getByTestId("proposal-504")).toHaveTextContent("31%");
-    expect(screen.getByTestId("proposal-504")).toHaveTextContent(
-      "Jev scored it 31%, below the 70% threshold. The model gave 92%.",
-    );
+    // The model's score is the row's; Jev's is shown beside it, in its own column.
+    expect(screen.getByTestId("discover-proposals")).toHaveTextContent("Jev");
+    expect(screen.getByTestId("proposal-504")).toHaveTextContent("92%");
+    expect(screen.getByTestId("proposal-jev-504")).toHaveTextContent("31%");
+    expect(screen.getByTestId("proposal-jev-501")).toHaveTextContent(/^$/);
+    expect(screen.getByTestId("proposal-504")).not.toHaveTextContent("threshold");
   });
 
   it("starts the rows scoring 70% or more ticked to accept, and none marked", async () => {
@@ -806,10 +807,10 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     // Already waiting from an earlier run: an ordinary row.
     expect(acceptBox(502).checked).toBe(true);
     expect(acceptBox(503).checked).toBe(false);
-    // The score is Jev's where Jev gave one.
-    expect(acceptBox(504).checked).toBe(false);
+    // The model's score decides: Jev's 31% beside its 92% does not untick it.
+    expect(acceptBox(504).checked).toBe(true);
     for (const id of [500, 501, 502, 503, 504]) expect(notAgainBox(id).checked).toBe(false);
-    expect(applyButton()).toHaveTextContent("Accept 3");
+    expect(applyButton()).toHaveTextContent("Accept 4");
     expect(applyButton()).toBeEnabled();
   });
 
@@ -832,11 +833,11 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     fireEvent.click(notAgainBox(501));
     expect(notAgainBox(501).checked).toBe(true);
     expect(acceptBox(501).checked).toBe(false);
-    expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
+    expect(applyButton()).toHaveTextContent("Accept 3, don't recommend 1 again");
     fireEvent.click(acceptBox(501));
     expect(acceptBox(501).checked).toBe(true);
     expect(notAgainBox(501).checked).toBe(false);
-    expect(applyButton()).toHaveTextContent("Accept 3");
+    expect(applyButton()).toHaveTextContent("Accept 4");
   });
 
   it("the header's box ticks every row that can be decided, or none", async () => {
@@ -856,7 +857,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
 
   it("with nothing ticked Apply is disabled, and with only marks it says so", async () => {
     await endedRun();
-    for (const id of [500, 501, 502]) fireEvent.click(acceptBox(id));
+    for (const id of [500, 501, 502, 504]) fireEvent.click(acceptBox(id));
     expect(applyButton()).toBeDisabled();
     expect(applyButton()).toHaveTextContent("Apply");
     fireEvent.click(notAgainBox(503));
@@ -912,8 +913,14 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     const rows = within(screen.getByTestId("discover-proposals"))
       .getAllByTestId(/^proposal-\d+$/)
       .map((row) => row.getAttribute("data-testid"));
-    // Ascending: the one with no score, then the lowest.
-    expect(rows.slice(0, 3)).toEqual(["proposal-506", "proposal-504", "proposal-503"]);
+    // Ascending by the model's score: the one with no score, then the lowest.
+    expect(rows.slice(0, 2)).toEqual(["proposal-506", "proposal-503"]);
+    fireEvent.click(screen.getByTestId("discover-proposals-sort-jev"));
+    const byJev = within(screen.getByTestId("discover-proposals"))
+      .getAllByTestId(/^proposal-\d+$/)
+      .map((row) => row.getAttribute("data-testid"));
+    // Jev's column sorts too: the one Jev scored comes last, ascending.
+    expect(byJev[byJev.length - 1]).toBe("proposal-504");
   });
 
   it("says the scope the run ran with in its result", async () => {

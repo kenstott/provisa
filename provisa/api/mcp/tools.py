@@ -28,6 +28,7 @@ from typing import Any
 
 from provisa.api.flight.catalog import CatalogTable, _build_catalog_tables_async
 from provisa.kaggle.downloader import api_token as kaggle_api_token  # the operator's setting
+from provisa.api.engine_error_names import client_text, client_value
 
 
 # Row ceiling for run_sql. An agent context must never absorb an unbounded
@@ -470,7 +471,7 @@ async def generate_explore_queries(state: Any, role: str, question: str) -> dict
     if job is None:
         raise ValueError("NL job vanished from its own job store")
     queries: dict[str, dict] = {
-        target: {"query": branch.query, "error": branch.error}
+        target: {"query": branch.query, "error": client_value(branch.error)}
         for target, branch in job.branches.items()
     }
     return {**queries, **science_surfaces(question, queries.get("sql"))}
@@ -483,8 +484,8 @@ def science_surfaces(question: str, sql: dict | None) -> dict[str, dict]:
     statement = (sql or {}).get("query")
     error = (sql or {}).get("error") or (None if statement else "no SQL was built for it")
     if error:
-        surfaces["python"] = {"query": None, "error": error}
-        surfaces["notebook"] = {"cells": None, "error": error}
+        surfaces["python"] = {"query": None, "error": client_value(error)}
+        surfaces["notebook"] = {"cells": None, "error": client_value(error)}
         return surfaces
     surfaces["python"] = {
         "query": (
@@ -1816,8 +1817,10 @@ async def _queue_mcp_proposal(
         "request_id": request_id,
         "status": "pending",
         "message": (
-            f"Queued as creation request #{request_id} — awaiting a user holding "
-            f"{capability!r} to review and approve on the Requests page."
+            client_text(
+                f"Queued as creation request #{request_id} — awaiting a user holding "
+                f"{capability!r} to review and approve on the Requests page."
+            )
         ),
     }
 
@@ -1982,7 +1985,7 @@ async def create_source_now(
     # pyright mistypes strawberry.mutation-decorated methods' call signature (confirmed correct at
     # runtime via inspect.signature: (self, info, input) -> MutationResult).
     result = await Mutation().create_source(info, source_input)  # pyright: ignore[reportCallIssue]
-    return {"success": result.success, "message": result.message, "code": result.code}
+    return {"success": result.success, "message": client_value(result.message), "code": result.code}
 
 
 async def register_table_now(
@@ -2007,7 +2010,7 @@ async def register_table_now(
     info = types.SimpleNamespace(context={"request": request})
     # pyright mistypes strawberry.mutation-decorated methods' call signature — see create_source_now.
     result = await Mutation().register_table(info, table_input)  # pyright: ignore[reportCallIssue]
-    return {"success": result.success, "message": result.message, "code": result.code}
+    return {"success": result.success, "message": client_value(result.message), "code": result.code}
 
 
 async def search_govdata_subjects(state: Any, role: str, query: str) -> list[dict]:  # REQ-1798

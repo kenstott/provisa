@@ -23,7 +23,7 @@ import { ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable
 import type { ListSelection } from "../list/listSelection";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
 import { candidateName } from "./relationship-types";
-import { scoreOf, type RunProposalsState } from "./useRunProposals";
+import type { RunProposalsState } from "./useRunProposals";
 
 interface ProposalsTableProps {
   state: RunProposalsState;
@@ -62,9 +62,21 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
           tableNameById,
         );
 
+  // Jev's column is shown where Jev scored a proposal of the run: its score beside the model's,
+  // which is the row's (REQ-1789).
+  const jevScored = proposals.some((p) => p.scored !== null);
   const columns: ListColumn<RunProposal>[] = [
     // A proposal with no score sorts below every scored one.
-    { key: "score", label: t("proposalsTable.colScore"), sortValue: (p) => scoreOf(p) ?? -1 },
+    { key: "score", label: t("proposalsTable.colScore"), sortValue: (p) => p.confidence ?? -1 },
+    ...(jevScored
+      ? [
+          {
+            key: "jev",
+            label: t("proposalsTable.colJev"),
+            sortValue: (p: RunProposal) => p.scored ?? -1,
+          },
+        ]
+      : []),
     {
       key: "source",
       label: t("candidatesTable.colSource"),
@@ -114,9 +126,6 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
         ? ""
         : t(`proposalsTable.reason.${p.reason}`, {
             threshold: Math.round(state.threshold * 100),
-            // Where Jev scored it: both scores, Jev's being the row's.
-            scored: p.scored === null ? "" : percent(p.scored),
-            confidence: p.confidence === null ? "" : percent(p.confidence),
           }),
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
     ]
@@ -182,6 +191,7 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
                 sortGroup={sort}
                 columns={[
                   { col: "score" },
+                  ...(jevScored ? [{ col: "jev" }] : []),
                   { col: "source" },
                   { col: "target" },
                   t("candidatesTable.colCardinality"),
@@ -199,7 +209,6 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
                 {sort.items.map((item) => {
                   if (item.type !== "row") return null;
                   const p = item.row;
-                  const score = scoreOf(p);
                   const name = nameOf(p);
                   return (
                     <ListRow
@@ -207,7 +216,14 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
                       testId={`proposal-${p.id}`}
                       itemKey={p.decidable ? p.id : undefined}
                     >
-                      <Table.Td>{score === null ? "" : `${percent(score)}%`}</Table.Td>
+                      <Table.Td>
+                        {p.confidence === null ? "" : `${percent(p.confidence)}%`}
+                      </Table.Td>
+                      {jevScored && (
+                        <Table.Td data-testid={`proposal-jev-${p.id}`}>
+                          {p.scored === null ? "" : `${percent(p.scored)}%`}
+                        </Table.Td>
+                      )}
                       <Table.Td>
                         <BreakableName name={label(p.source_table_id, p.source_column)} />
                       </Table.Td>
