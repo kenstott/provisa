@@ -224,7 +224,10 @@
       "unknown_command": "Comando sconosciuto: '{{name}}'",
       "unknown_impl_kind": "impl_kind della funzione sconosciuto: '{{impl_kind}}'",
       "written_table_missing": "il comando '{{name}}' scrive '{{table}}', che non è registrata",
-      "host_code_refused": "Il comando '{{name}}' è di tipo {{impl_kind}}, che esegue codice sull'host del server. Il codice host è disattivato in questo deployment; usa invece un resolver di codice."
+      "host_code_refused": "Il comando '{{name}}' è di tipo {{impl_kind}}, che esegue codice sull'host del server. Il codice host è disattivato in questo deployment; usa invece un resolver di codice.",
+      "no_plain_list": "Nessuna operazione della sorgente '{{source_id}}' senza un parametro obbligatorio restituisce le righe di '{{operation}}', quindi la sua tabella resta attiva",
+      "plain_list_unregistered": "'{{operation}}' della sorgente '{{source_id}}' restituisce le righe del suo elenco {{lists}}; registrare prima quell'elenco come tabella",
+      "table_has_dependents": "La tabella '{{table}}' della funzione '{{name}}' è ancora referenziata da altri oggetti; rimuovere prima quei riferimenti"
     },
     "graphql_remote": {
       "introspection_failed": "Introspezione non riuscita: {{error}}",
@@ -533,7 +536,8 @@
       "code_resolver_retired": "Resolver di codice '{{resolver}}' ritirato",
       "code_resolver_has_dependents": "Il resolver di codice '{{resolver}}' non può essere ritirato finché qualcosa dipende da esso",
       "incremental_no_change": "L'origine di codice non ha alcuna funzione @change per {{table}}. Dichiarane una con @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\"."
+      "incremental_needs_rebuild_every": "{{table}} è mantenuta in modo incrementale, quindi viene ricostruita per intero a orario. Indica ogni quanto, in secondi, in \"Ricostruzione completa ogni\".",
+      "table_derived_from_function": "La tabella '{{name}}' è derivata da una funzione: viene rimossa disattivando la tabella della funzione, e le sue colonne e i suoi parametri si modificano sulla funzione"
     },
     "secrets": {
       "env_reference_object_locked": "Questo oggetto è dell'operatore: legge l'ambiente proprio del server e non può essere modificato qui. Aggiungine invece uno tuo.",

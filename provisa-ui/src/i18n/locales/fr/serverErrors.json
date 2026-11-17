@@ -224,7 +224,10 @@
       "unknown_command": "Commande inconnue : '{{name}}'",
       "unknown_impl_kind": "impl_kind de fonction inconnu : « {{impl_kind}} »",
       "written_table_missing": "la commande '{{name}}' écrit '{{table}}', qui n'est pas enregistrée",
-      "host_code_refused": "La commande '{{name}}' est de type {{impl_kind}}, qui exécute du code sur l'hôte du serveur. Le code hôte est désactivé sur ce déploiement ; utilisez plutôt un résolveur de code."
+      "host_code_refused": "La commande '{{name}}' est de type {{impl_kind}}, qui exécute du code sur l'hôte du serveur. Le code hôte est désactivé sur ce déploiement ; utilisez plutôt un résolveur de code.",
+      "no_plain_list": "Aucune opération de la source '{{source_id}}' sans paramètre obligatoire ne renvoie les lignes de '{{operation}}' ; sa table reste donc activée",
+      "plain_list_unregistered": "'{{operation}}' de la source '{{source_id}}' renvoie les lignes de sa liste {{lists}} ; enregistrez d'abord cette liste comme table",
+      "table_has_dependents": "La table '{{table}}' de la fonction '{{name}}' est encore référencée par d'autres objets ; supprimez d'abord ces références"
     },
     "graphql_remote": {
       "introspection_failed": "Échec de l'introspection : {{error}}",
@@ -533,7 +536,8 @@
       "code_resolver_retired": "Resolver de code « {{resolver}} » retiré",
       "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend",
       "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les »."
+      "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les ».",
+      "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction"
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",

@@ -117,9 +117,10 @@ async def connector_client():
         prior_engine = app_mod.state.federation_engine
         prior_catalogs = dict(app_mod.state.source_catalogs)
         prior_types = dict(app_mod.state.source_types)
-        # The boot below opens the deployment org's stores on its runtime (startup_seed); they are
-        # put back after, or a later module inherits a store this app opened and then closed.
-        prior_stores = (app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db)
+        # The boot below opens the control-plane stores (startup_seed._init_control_planes): the
+        # platform's on the state, the deployment org's on its runtime. Its shutdown closes them, so
+        # they are put back after, or a later module inherits a store this app opened and closed.
+        prior_stores = _store_handles(app_mod.state)
         app_mod.state.federation_engine = EngineRuntime(build_engine(), app_mod.state)
         app_mod.state.federation_engine.bind_terminal()
     try:
@@ -131,7 +132,7 @@ async def connector_client():
     finally:
         with as_deployment_org():
             app_mod.state.federation_engine = prior_engine
-            app_mod.state.model_db, app_mod.state.tenant_db, app_mod.state.record_db = prior_stores
+            _put_back(app_mod.state, prior_stores)
             for live, prior in (
                 (app_mod.state.source_catalogs, prior_catalogs),
                 (app_mod.state.source_types, prior_types),
@@ -142,6 +143,43 @@ async def connector_client():
             os.environ.pop("PROVISA_ENGINE", None)
         else:
             os.environ["PROVISA_ENGINE"] = prior_env
+
+
+#: The store handles the app's boot sets (startup_seed._init_control_planes): on the state, and on
+#: the deployment org's runtime (through the state's routed setters, with that org bound).
+_STATE_STORES = ("admin_db", "platform_state_db", "tenant_engine")
+_RUNTIME_STORES = ("model_db", "tenant_db", "record_db")
+
+
+def _store_handles(state: Any) -> dict[str, Any]:
+    """Every store handle the state and the deployment org's runtime hold, by name: each
+    ``Database`` on either, and the tenant plane's engine. Read with the deployment org bound."""
+    from provisa.core.database import Database
+
+    runtime = state.org_registry.get(state.org_id)
+    assert runtime is not None, f"no runtime for the deployment org {state.org_id!r}"
+    handles = {"state.tenant_engine": state.tenant_engine}
+    for owner, holder in (("state", state), ("runtime", runtime)):
+        handles.update(
+            {f"{owner}.{k}": v for k, v in vars(holder).items() if isinstance(v, Database)}
+        )
+    for name in _STATE_STORES:
+        handles.setdefault(f"state.{name}", getattr(state, name))
+    for name in _RUNTIME_STORES:
+        handles.setdefault(f"runtime.{name}", getattr(runtime, name))
+    return handles
+
+
+def _put_back(state: Any, prior: dict[str, Any]) -> None:
+    """Put back the store handles ``prior`` read, then check the state holds exactly those: a boot
+    that sets a store handle not put back here fails the module that ran it, not the next one."""
+    for name in _STATE_STORES:
+        setattr(state, name, prior[f"state.{name}"])
+    for name in _RUNTIME_STORES:
+        setattr(state, name, prior[f"runtime.{name}"])
+    now = _store_handles(state)
+    changed = sorted(k for k in prior.keys() | now.keys() if prior.get(k) is not now.get(k))
+    assert not changed, f"the in-process boot left store handles changed: {changed}"
 
 
 def host_address_both_reach() -> str:

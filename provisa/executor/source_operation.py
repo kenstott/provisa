@@ -270,6 +270,42 @@ async def _dbt_operations(state, source_id: str) -> list[Operation] | None:  # R
     ]
 
 
+@dataclass(frozen=True)
+class PlainList:  # REQ-1986
+    """A source operation that reads rows and requires no parameter: the table it is offered as
+    (named as the source's parameterized operations name theirs) and the type of one of its rows
+    as the source's schema names it (None where it names none)."""
+
+    table: str
+    returns_type: str | None
+
+
+async def plain_lists(state, source_id: str) -> list[PlainList]:
+    """REQ-1986: every operation of ``source_id`` that reads rows without a required parameter,
+    in the source's own order. Empty for a source that offers no such operations."""
+    source_type = _source_type(state, source_id)
+    if source_type == "openapi" and source_id in (getattr(state, "openapi_specs", None) or {}):
+        return [
+            PlainList(q.operation_id, q.returns_type)
+            for q in _read_spec(state, source_id)[2]
+            if not any(p["required"] for p in [*q.path_params, *q.query_params])
+        ]
+    if source_type == "graphql_remote":
+        from provisa.api.admin._graphql_table_registration import source_offer
+        from provisa.graphql_remote.brands import available_tables
+
+        offered = await source_offer(state, source_id)
+        if offered is None:
+            return []
+        offer, reg = offered
+        return [
+            PlainList(t["sql_name"], t.get("gql_type_name"))
+            for t in available_tables(offer, reg["namespace"])
+            if not t.get("required_args")
+        ]
+    return []
+
+
 async def offered_operations(
     state, source_id: str, schema_name: str | None = None
 ) -> list[Operation] | None:

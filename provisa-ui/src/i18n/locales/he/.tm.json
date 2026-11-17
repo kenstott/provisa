@@ -10815,5 +10815,11 @@
   "he/discoverResult.json::discoverResult.jevBelow_other": "Jev scored {{count}} proposals under {{threshold}}%. Each is shown beside the model's score, which decides.",
   "he/proposalsTable.json::proposalsTable.colJev": "Jev",
   "he/serverErrors.json::serverErrors.discovery.run_failed": "Discovery run {{run_id}} failed: {{error}}",
-  "he/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered."
+  "he/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered.",
+  "he/commandFormFields.json::commandFormFields.exposedAsTable": "Also a table",
+  "he/commandFormFields.json::commandFormFields.exposedAsTableHint": "Clients that read tables, such as BI tools, read this function as a table with its parameters as columns. Turned off, it returns the rows of the source's list of the same type, and the table is removed.",
+  "he/serverErrors.json::serverErrors.functions.no_plain_list": "No operation of source '{{source_id}}' without a required parameter returns the rows of '{{operation}}', so its table stays on",
+  "he/serverErrors.json::serverErrors.functions.plain_list_unregistered": "'{{operation}}' of source '{{source_id}}' returns the rows of its list {{lists}}; register that list as a table first",
+  "he/serverErrors.json::serverErrors.functions.table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first",
+  "he/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function"
 }

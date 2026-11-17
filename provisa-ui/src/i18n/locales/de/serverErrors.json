@@ -224,7 +224,10 @@
       "unknown_command": "Unbekannter Befehl: '{{name}}'",
       "unknown_impl_kind": "Unbekanntes Funktions-impl_kind: '{{impl_kind}}'",
       "written_table_missing": "Befehl '{{name}}' schreibt '{{table}}', die nicht registriert ist",
-      "host_code_refused": "Befehl '{{name}}' ist vom Typ {{impl_kind}} und führt Code auf dem Host des Servers aus. Host-Code ist in dieser Bereitstellung ausgeschaltet; verwenden Sie stattdessen einen Code-Resolver."
+      "host_code_refused": "Befehl '{{name}}' ist vom Typ {{impl_kind}} und führt Code auf dem Host des Servers aus. Host-Code ist in dieser Bereitstellung ausgeschaltet; verwenden Sie stattdessen einen Code-Resolver.",
+      "no_plain_list": "Keine Operation der Quelle '{{source_id}}' ohne Pflichtparameter liefert die Zeilen von '{{operation}}', daher bleibt ihre Tabelle eingeschaltet",
+      "plain_list_unregistered": "'{{operation}}' der Quelle '{{source_id}}' liefert die Zeilen ihrer Liste {{lists}}; registrieren Sie diese Liste zuerst als Tabelle",
+      "table_has_dependents": "Auf die Tabelle '{{table}}' der Funktion '{{name}}' verweisen noch andere Objekte; entfernen Sie zuerst diese Verweise"
     },
     "graphql_remote": {
       "introspection_failed": "Introspektion fehlgeschlagen: {{error}}",
@@ -533,7 +536,8 @@
       "code_resolver_retired": "Code-Resolver „{{resolver}}“ stillgelegt",
       "code_resolver_has_dependents": "Code-Resolver „{{resolver}}“ kann nicht stillgelegt werden, solange etwas von ihm abhängt",
       "incremental_no_change": "Die Codequelle hat keine @change-Funktion für {{table}}. Deklarieren Sie eine mit @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden)."
+      "incremental_needs_rebuild_every": "{{table}} wird inkrementell gepflegt und daher nach Zeitplan vollständig neu aufgebaut. Legen Sie unter „Vollständiger Neuaufbau alle“ fest, wie oft (in Sekunden).",
+      "table_derived_from_function": "Die Tabelle '{{name}}' ist von einer Funktion abgeleitet: Sie wird entfernt, indem die Tabelle der Funktion ausgeschaltet wird, und ihre Spalten und Parameter werden an der Funktion bearbeitet"
     },
     "secrets": {
       "env_reference_object_locked": "Dieses Objekt gehört dem Betreiber: Es liest die eigene Umgebung des Servers und kann hier nicht geändert werden. Legen Sie stattdessen ein eigenes an.",

@@ -224,7 +224,10 @@
       "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
       "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊",
-      "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。"
+      "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。",
+      "no_plain_list": "來源 '{{source_id}}' 中沒有不帶必需參數的操作傳回 '{{operation}}' 的列，因此其表保持開啟",
+      "plain_list_unregistered": "來源 '{{source_id}}' 的 '{{operation}}' 傳回其清單 {{lists}} 的列；請先將該清單註冊為表",
+      "table_has_dependents": "函數 '{{name}}' 的表 '{{table}}' 仍被其他物件引用；請先移除這些引用"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",
@@ -533,7 +536,8 @@
       "code_resolver_retired": "已停用代碼解析器 '{{resolver}}'",
       "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用",
       "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
-      "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。"
+      "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。",
+      "table_derived_from_function": "表 '{{name}}' 衍生自函數：透過關閉該函數的表來刪除它，其欄和參數在函數上編輯"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",

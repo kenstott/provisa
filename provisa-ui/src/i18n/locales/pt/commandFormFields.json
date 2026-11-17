@@ -52,6 +52,8 @@
     "colVisibleTo": "Visível para (funções, separadas por vírgula; vazio = todos)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Máscara",
+    "exposedAsTable": "Também como tabela",
+    "exposedAsTableHint": "Os clientes que leem tabelas, como as ferramentas de BI, leem esta função como uma tabela com os parâmetros como colunas. Desativada, ela devolve as linhas da lista da fonte do mesmo tipo, e a tabela é removida.",
     "requiresApproval": "Requer aprovação",
     "requiresApprovalHint": "Cada chamada só é executada depois que o hook de aprovação a aprova. Sem um hook configurado, as chamadas são recusadas.",
     "writesTable": "Escreve na tabela",

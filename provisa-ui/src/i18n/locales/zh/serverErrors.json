@@ -224,7 +224,10 @@
       "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函数 impl_kind：'{{impl_kind}}'",
       "written_table_missing": "命令 '{{name}}' 写入 '{{table}}'，但该表未注册",
-      "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。"
+      "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。",
+      "no_plain_list": "源 '{{source_id}}' 中没有不带必需参数的操作返回 '{{operation}}' 的行，因此其表保持开启",
+      "plain_list_unregistered": "源 '{{source_id}}' 的 '{{operation}}' 返回其列表 {{lists}} 的行；请先将该列表注册为表",
+      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用"
     },
     "graphql_remote": {
       "introspection_failed": "内省失败：{{error}}",
@@ -533,7 +536,8 @@
       "code_resolver_retired": "已停用代码解析器 '{{resolver}}'",
       "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用",
       "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
-      "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。"
+      "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。",
+      "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",
