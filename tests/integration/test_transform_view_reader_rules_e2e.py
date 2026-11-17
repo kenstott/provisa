@@ -42,7 +42,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 from tests.integration.test_code_source_llm import _MODEL, _Endpoint
 from tests.integration.test_code_sources_e2e import _archive
 from tests.port_lease import lease_ports
@@ -234,13 +233,12 @@ def view(server):
     address_mask = (
         f'{{to: ["{_MASKED}"], mask: {{type: "constant", value: "***"}}}}, {{mask: null}}'
     )
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "suppliers-src", domainId: "fx", schemaName: "default", '
         f'tableName: "suppliers", cacheTtl: 300, columns: [{_column("id", "bigint", id_mask)}, '
         f"{_column('raw_address', 'text', address_mask)}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     _admin(
         server,
         f'upsertRlsRule(input: {{tableId: "suppliers", roleId: "{_EAST}", '
@@ -252,14 +250,13 @@ def view(server):
         _column(n, t)
         for n, t in (("id", "bigint"), ("street", "text"), ("city", "text"), ("country", "text"))
     )
-    registered = _admin(
+    _admin(
         server,
         'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
         'tableName: "clean_suppliers", alias: "clean_suppliers", '
         f"viewSql: {json.dumps('SELECT id, clean_address(raw_address) FROM suppliers')}, "
         f"materialize: true, mvRefreshInterval: 3600, columns: [{columns}]}})",
     )
-    _admin(server, release_field(registered_id(registered["message"])))
     _refresh(server, "clean_suppliers")
     _register_function(server, "rank_suppliers")
     for name, sql, columns in (
@@ -275,14 +272,13 @@ def view(server):
             (("supplier_id", "bigint"), ("score", "text")),
         ),
     ):
-        registered = _admin(
+        _admin(
             server,
             'registerTable(input: {sourceId: "__derived__", domainId: "fx", schemaName: "views", '
             f'tableName: "{name}", alias: "{name}", viewSql: {json.dumps(sql)}, '
             "materialize: true, mvRefreshInterval: 3600, "
             f"columns: [{', '.join(_column(n, t) for n, t in columns)}]}})",
         )
-        _admin(server, release_field(registered_id(registered["message"])))
         _refresh(server, name)
     deadline = time.monotonic() + 300
     while True:

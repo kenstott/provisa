@@ -174,7 +174,16 @@ def _state(
         view_sql_map={"order_clips": f"SELECT * FROM {_STORED}"},
         stored_view_reads={"order_clips"},
         mv_registry=registry,
-        role_build_inputs={"draft_tables": [], "withdrawn_tables": []},
+        role_build_inputs={
+            "draft_tables": [],
+            "withdrawn_tables": [],
+            # Every role's row rules, as stored (transform_view_rules.roles_rules).
+            "rls_rules": [
+                {"role_id": "analyst", "table_id": t, "filter_expr": read_rule(r)}
+                for t, r in (rules or {}).items()
+            ],
+            "tables": copy.deepcopy(tables),
+        },
         tracked_functions={"match_region": copy.deepcopy(_MATCH_REGION)},
         security_high=False,
         schema_boot_id="test-boot",
