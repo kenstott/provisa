@@ -64,6 +64,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -141,6 +143,7 @@ function makeRel(overrides: Partial<Relationship> = {}): Relationship {
     autoSuggested: false,
     disableCypher: false,
     sameEntity: false,
+    withdrawn: false,
     // REQ-1586: an FK/PK relationship declares no junction.
     viaTableId: null,
     viaTableName: null,

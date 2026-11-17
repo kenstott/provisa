@@ -88,6 +88,8 @@ function table(
     replicate: null,
     region: null,
     draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,

@@ -35,6 +35,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -118,6 +120,8 @@ function Harness({ initial = {} }: { initial?: Record<number, unknown> }) {
       reload={vi.fn()}
       startEditing={vi.fn()}
       handleDelete={vi.fn()}
+      onWithdraw={vi.fn()}
+      onPutBack={vi.fn()}
       handleProfile={() => setProfiles((p) => ({ ...p, 7: PROFILE }))}
       onPreview={vi.fn()}
       relationships={[]}

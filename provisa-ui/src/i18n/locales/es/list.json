@@ -19,6 +19,11 @@
     "bulkRefused_other": "{{count}} no se eliminaron:",
     "dismiss": "Descartar",
     "duplicate": "Duplicar",
-    "duplicateNamed": "Duplicar {{name}}"
+    "duplicateNamed": "Duplicar {{name}}",
+    "withdraw": "Retirar",
+    "withdrawNamed": "Retirar {{name}}",
+    "withdrawTitle": "¿Retirar {{name}}?",
+    "putBack": "Restituir",
+    "putBackNamed": "Restituir {{name}}"
   }
 }

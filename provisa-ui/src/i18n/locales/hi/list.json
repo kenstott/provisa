@@ -19,6 +19,11 @@
     "bulkRefused_other": "{{count}} नहीं हटाई गईं:",
     "dismiss": "बंद करें",
     "duplicate": "डुप्लिकेट करें",
-    "duplicateNamed": "{{name}} डुप्लिकेट करें"
+    "duplicateNamed": "{{name}} डुप्लिकेट करें",
+    "withdraw": "वापस लें",
+    "withdrawNamed": "{{name}} वापस लें",
+    "withdrawTitle": "{{name}} वापस लें?",
+    "putBack": "फिर से लागू करें",
+    "putBackNamed": "{{name}} फिर से लागू करें"
   }
 }

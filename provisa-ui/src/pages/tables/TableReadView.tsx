@@ -29,6 +29,7 @@ import { ProfileRunsButton } from "./ProfileRunsButton";
 import { PanelActions } from "../../components/list/SplitPane";
 import { PanelDuplicate } from "../../components/list/PanelDuplicate";
 import { PanelDelete } from "../../components/list/PanelDelete";
+import { PanelWithdraw } from "../../components/list/PanelWithdraw";
 import { ColumnTabs } from "./ColumnTabs";
 import { COLUMN_TABS, useColumnTab, type ColumnTab } from "./columnTopics";
 import { shownType } from "../../irTypes";
@@ -68,11 +69,12 @@ interface TableReadViewProps {
   onDuplicate?: (t: RegisteredTable) => void;
   /** REQ-2198: resolves once the table is deleted and the list read again (PanelDelete). */
   handleDelete: (id: number) => Promise<boolean | void>;
+  /** REQ-1921: take the table out of production, and return it; each rejects with the refusal. */
+  onWithdraw: (id: number) => Promise<void>;
+  onPutBack: (id: number) => Promise<void>;
   handleProfile: (id: number) => void;
   /** REQ-1944: a governance-only viewer: no registration, deploy, profiling or delete. */
   hidingOnly?: boolean;
-  // REQ-1921: put the table out of service (draft) or release it. The view shows the stored
-  // state: the box follows `table.draft` once the change is saved and the table reloaded.
   // REQ-1386: opens the governed SELECT * preview modal.
   onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
@@ -117,6 +119,8 @@ export function TableReadView({
   startEditing,
   onDuplicate,
   handleDelete,
+  onWithdraw,
+  onPutBack,
   handleProfile,
   hidingOnly = false,
   onPreview,
@@ -303,6 +307,16 @@ export function TableReadView({
               name={table.tableName}
               onDuplicate={() => onDuplicate(table)}
               testId="table-read-view-duplicate"
+            />
+          )}
+          {!hidingOnly && (
+            <PanelWithdraw
+              name={table.tableName}
+              withdrawn={table.withdrawn}
+              consequence={t("tableReadView.withdrawConsequence")}
+              onWithdraw={() => onWithdraw(table.id)}
+              onPutBack={() => onPutBack(table.id)}
+              testId="table-read-view"
             />
           )}
           {!hidingOnly && (
@@ -805,15 +819,19 @@ export function TableReadView({
           </div>
         )}
         {actions}
-        {table.draft && (
+        {/* REQ-1921: out of production, by itself or through its source; its preview still
+            reads it, for its domain's stewards. */}
+        {(table.withdrawn || table.sourceWithdrawn) && (
           <Text
             size="xs"
             c="dimmed"
             px="0.5rem"
             pb="0.25rem"
-            data-testid="table-read-view-draft-note"
+            data-testid="table-read-view-withdrawn-note"
           >
-            {t("tableReadView.draftPreviewNote")}
+            {table.withdrawn
+              ? t("tableReadView.withdrawnNote")
+              : t("tableReadView.sourceWithdrawnNote", { source: table.sourceId })}
           </Text>
         )}
         {/* REQ-2162: who can read or write each column. */}

@@ -45,6 +45,8 @@
     "purposeAdd": "Añadir una fuente no registra ninguna tabla por sí solo. Use Descubrir en la fila para explorar sus esquemas y registrar las tablas que quiera gobernar.",
     "purposeAria": "Acerca de las fuentes de datos",
     "registrationMissing": "{{list}} no contiene ningún registro de la fuente {{source}}.",
-    "duplicateCredentialsNote": "Las credenciales de {{source}} no se copian: introdúzcalas aquí, o una referencia a un secreto."
+    "duplicateCredentialsNote": "Las credenciales de {{source}} no se copian: introdúzcalas aquí, o una referencia a un secreto.",
+    "withdrawn": "Retirado",
+    "withdrawnTitle": "Fuera de producción: ninguna de sus tablas sirve a ningún rol hasta que se restituya"
   }
 }

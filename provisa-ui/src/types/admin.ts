@@ -40,6 +40,7 @@ export interface Source {
   username: string | null;
   dialect: string | null;
   isSystem: boolean; // a source Provisa runs for itself: not offered by Register table
+  withdrawn: boolean; // REQ-1921: out of production until put back
   cacheEnabled: boolean;
   cacheTtl: number | null;
   replicate: number | null; // REQ-826: null = Default; -1 never, N hot, 0 always
@@ -493,6 +494,9 @@ export interface RegisteredTable {
   replicate: number | null; // REQ-826: null = inherit source
   region: string | null; // REQ-1921: where its data lives; null = no region
   draft: boolean; // REQ-1921: out of service until its domain's owners release it
+  // REQ-1921: out of production until put back: the table itself, and its source.
+  withdrawn: boolean;
+  sourceWithdrawn: boolean;
   rowMaterialize: boolean; // REQ-1865: replicated row by row, fetched by key
   loadProtected: boolean | null; // REQ-1141: null = inherit source
   offPeakWindow: string | null; // REQ-1141: "HH:MM-HH:MM" window override
@@ -585,6 +589,8 @@ export const LISTED_TABLE_FIELDS = [
   "alias",
   "description",
   "draft",
+  "withdrawn",
+  "sourceWithdrawn",
   "viewSql",
   "materialize",
   "productIds",
@@ -841,6 +847,8 @@ export interface Relationship {
   parameters: RelationshipParameter[];
   /** REQ-2249: the code resolver set this edge is part of; changed and retired only through it. */
   codeResolver?: string | null;
+  /** REQ-1921: an end or its junction is withdrawn (listed only with includeWithdrawn). */
+  withdrawn: boolean;
 }
 
 /** REQ-2249: a code resolver set as the form saves and shows it. */

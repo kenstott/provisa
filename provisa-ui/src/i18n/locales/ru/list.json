@@ -19,6 +19,11 @@
     "bulkRefused_other": "Не удалено: {{count}}",
     "dismiss": "Закрыть",
     "duplicate": "Дублировать",
-    "duplicateNamed": "Дублировать {{name}}"
+    "duplicateNamed": "Дублировать {{name}}",
+    "withdraw": "Отозвать",
+    "withdrawNamed": "Отозвать {{name}}",
+    "withdrawTitle": "Отозвать {{name}}?",
+    "putBack": "Вернуть",
+    "putBackNamed": "Вернуть {{name}}"
   }
 }

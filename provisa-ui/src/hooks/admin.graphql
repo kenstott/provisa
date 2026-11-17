@@ -143,6 +143,7 @@ query SourcesQuery {
     changeSignal
     rowFetchByKeys
     isSystem
+    withdrawn
     cdc {
       bootstrapServers
       topicPrefix
@@ -305,6 +306,8 @@ fragment ListedTableFields on RegisteredTableType {
   alias
   description
   draft
+  withdrawn
+  sourceWithdrawn
   viewSql
   materialize
   productIds
@@ -331,8 +334,8 @@ query TableRowsQuery {
 
 # The registered tables with the columns the pages that list them read. TablesQuery is the
 # editor's, every field of every table.
-query TableListQuery {
-  tables {
+query TableListQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
     columns {
       id
@@ -350,8 +353,8 @@ query TableListQuery {
   }
 }
 
-query TablesQuery {
-  tables {
+query TablesQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     id
     sourceId
     domainId
@@ -381,6 +384,8 @@ query TablesQuery {
     replicate
     region
     draft
+    withdrawn
+    sourceWithdrawn
     rowMaterialize
     loadProtected
     offPeakWindow
@@ -771,6 +776,7 @@ query RelationshipsQuery {
       sourceColumn
     }
     codeResolver
+    withdrawn
   }
 }
 
@@ -803,8 +809,8 @@ query CodeResolverIncrementalQuery($resolver: String!, $id: String!) {
   }
 }
 
-query AllRelationshipsQuery {
-  allRelationships {
+query AllRelationshipsQuery($includeWithdrawn: Boolean! = false) {
+  allRelationships(includeWithdrawn: $includeWithdrawn) {
     id
     sourceTableId
     targetTableId
@@ -833,6 +839,7 @@ query AllRelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    withdrawn
     parameters {
       parameter
       sourceColumn
@@ -1507,6 +1514,31 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
 
 mutation RefreshKaggleSource($sourceId: String!) {
   refreshKaggleSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: a table or view out of production and back; the same for a source.
+mutation WithdrawTable($tableId: Int!) {
+  withdrawTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation PutBackTable($tableId: Int!) {
+  putBackTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+mutation WithdrawSource($sourceId: String!) {
+  withdrawSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+mutation PutBackSource($sourceId: String!) {
+  putBackSource(sourceId: $sourceId) {
     ...MutationResult
   }
 }

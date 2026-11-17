@@ -34,6 +34,8 @@ export interface ErdNodeTable {
   // REQ-1588: this table is declared as the junction of at least one relationship, so it is drawn
   // as an edge waypoint (diamond) rather than an entity.
   junction: boolean;
+  // REQ-1921: out of production, by itself or through its source (listed only on Show withdrawn).
+  withdrawn: boolean;
 }
 
 export interface ErdEdge {
@@ -62,6 +64,8 @@ export interface ErdEdge {
   bidirectional: boolean;
   via: boolean;
   proxy: boolean;
+  // REQ-1921: an end of it, or its junction, is withdrawn.
+  withdrawn: boolean;
 }
 
 export interface ErdElements {
@@ -189,6 +193,7 @@ export function buildErdElements(
           description: table.description ?? "",
           columns: table.columns,
           junction,
+          withdrawn: table.withdrawn || table.sourceWithdrawn,
         } as ErdNodeTable,
         classes: junction ? "erd-table erd-junction" : "erd-table",
       };
@@ -251,6 +256,7 @@ export function buildErdElements(
       bidirectional: false,
       via: opts.leg !== "",
       proxy: isProxy,
+      withdrawn: r.withdrawn,
     } as ErdEdge;
     drawn.set(`${src}→${tgt}:${opts.label}:${opts.pathType}:${r.cardinality}`, data);
     edges.push({ data, classes: classes.join(" ") });

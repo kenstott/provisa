@@ -19,6 +19,11 @@
     "bulkRefused_other": "לא נמחקו: {{count}}",
     "dismiss": "סגירה",
     "duplicate": "שכפול",
-    "duplicateNamed": "שכפול {{name}}"
+    "duplicateNamed": "שכפול {{name}}",
+    "withdraw": "משיכה",
+    "withdrawNamed": "משיכת {{name}}",
+    "withdrawTitle": "למשוך את {{name}}?",
+    "putBack": "החזרה",
+    "putBackNamed": "החזרת {{name}}"
   }
 }

@@ -45,6 +45,8 @@
     "purposeAdd": "Adding a source registers no tables on its own. Use Discover on the row to browse its schemas and register the tables you want governed.",
     "purposeAria": "About data sources",
     "registrationMissing": "{{list}} holds no registration for source {{source}}.",
-    "duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret."
+    "duplicateCredentialsNote": "The credentials of {{source}} are not copied: enter them here, or a reference to a secret.",
+    "withdrawn": "Withdrawn",
+    "withdrawnTitle": "Out of production: none of its tables serves any role until it is put back"
   }
 }

@@ -19,6 +19,11 @@
     "bulkRefused_other": "{{count}} 項未刪除：",
     "dismiss": "關閉",
     "duplicate": "複製",
-    "duplicateNamed": "複製 {{name}}"
+    "duplicateNamed": "複製 {{name}}",
+    "withdraw": "撤回",
+    "withdrawNamed": "撤回 {{name}}",
+    "withdrawTitle": "撤回 {{name}}？",
+    "putBack": "恢復",
+    "putBackNamed": "恢復 {{name}}"
   }
 }

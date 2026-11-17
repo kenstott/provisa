@@ -46,14 +46,24 @@ interface TablesRead<T> {
  * mutation or a schema-version bump refetches it while it is shown. Without it, every tab and
  * sub-form mounting under the page re-read the whole catalog. */
 export function useTables(opts: { inPage?: boolean; columns: false }): TablesRead<TableRow>;
-export function useTables(opts?: { inPage?: boolean; columns?: true }): TablesRead<ListedTable>;
+export function useTables(opts?: {
+  inPage?: boolean;
+  columns?: true;
+  includeWithdrawn?: boolean;
+}): TablesRead<ListedTable>;
+/** `includeWithdrawn` (REQ-1921, with the columns): the withdrawn tables too, marked, in the domains
+ * the caller may preview them; a graph view's Show withdrawn. */
 export function useTables({
   inPage = false,
   columns = true,
-}: { inPage?: boolean; columns?: boolean } = {}): TablesRead<TableRow> {
+  includeWithdrawn = false,
+}: { inPage?: boolean; columns?: boolean; includeWithdrawn?: boolean } = {}): TablesRead<TableRow> {
   const { data, loading, error, refetch } = useQuery<{ tables: TableRow[] }>(
     columns ? TABLE_LIST_QUERY : TABLE_ROWS_QUERY,
-    { fetchPolicy: inPage ? "cache-first" : "cache-and-network" },
+    {
+      fetchPolicy: inPage ? "cache-first" : "cache-and-network",
+      ...(columns ? { variables: { includeWithdrawn } } : {}),
+    },
   );
   return {
     tables: data?.tables ?? NO_LISTED_TABLES,
@@ -63,10 +73,13 @@ export function useTables({
   };
 }
 
-/** The registered tables with every field the table editor reads (TablesQuery). */
-export function useTableDetails() {
+/** The registered tables with every field the table editor reads (TablesQuery). `includeWithdrawn`
+ * (REQ-1921): the withdrawn ones too, marked, in the domains the caller may preview them -- the
+ * Tables page lists them, so they can be put back. */
+export function useTableDetails({ includeWithdrawn = false }: { includeWithdrawn?: boolean } = {}) {
   const { data, loading, error, refetch } = useQuery<{ tables: RegisteredTable[] }>(TABLES_QUERY, {
     fetchPolicy: "cache-and-network",
+    variables: { includeWithdrawn },
   });
   return {
     tables: data?.tables ?? NO_TABLES,
@@ -227,3 +240,4 @@ export function useDeleteTable() {
     loading,
   };
 }
+

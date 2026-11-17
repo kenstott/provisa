@@ -58,6 +58,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     replicate: null,
     region: null,
     draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -132,6 +134,8 @@ function renderView(hidingOnly: boolean, shown: RegisteredTable = TABLE, acts = 
       reload={vi.fn()}
       startEditing={vi.fn()}
       handleDelete={vi.fn()}
+      onWithdraw={vi.fn()}
+      onPutBack={vi.fn()}
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
       relationships={[]}
@@ -183,8 +187,8 @@ describe("TableReadView for a table with a required parameter", () => {
   });
 });
 
-// REQ-1921: draft is the internal waypoint of a region move, never a person's choice: the read
-// view offers no control to set or clear it, and still marks a draft's preview.
+// REQ-1921: there is no draft state: the read view offers no control to set or clear it, and
+// marks a withdrawn table instead.
 describe("TableReadView and a draft", () => {
   it.each([true, false])("offers no control to set or clear draft (draft: %s)", (draft) => {
     renderView(false, makeTable({ id: 7, draft }));
@@ -192,18 +196,18 @@ describe("TableReadView and a draft", () => {
     expect(screen.queryByLabelText("Draft")).not.toBeInTheDocument();
   });
 
-  it("says a draft's preview is a draft preview, and keeps Preview and Profile offered", () => {
-    renderView(false, makeTable({ id: 7, draft: true }));
-    expect(screen.getByTestId("table-read-view-draft-note")).toHaveTextContent(
-      "Draft preview: readers cannot see this table yet.",
+  it("says a withdrawn table is read by no role, and keeps Preview and Profile offered", () => {
+    renderView(false, makeTable({ id: 7, withdrawn: true }));
+    expect(screen.getByTestId("table-read-view-withdrawn-note")).toHaveTextContent(
+      "Withdrawn: no role reads this table until it is put back. Its preview still reads it.",
     );
     expect(screen.getByTestId("table-read-view-preview")).toBeEnabled();
     expect(screen.getByTestId("table-read-view-profile")).toBeEnabled();
   });
 
-  it("says nothing of drafts on a table in service", () => {
-    renderView(false, makeTable({ id: 7, draft: false }));
-    expect(screen.queryByTestId("table-read-view-draft-note")).not.toBeInTheDocument();
+  it("says nothing of withdrawal on a table in production", () => {
+    renderView(false, makeTable({ id: 7 }));
+    expect(screen.queryByTestId("table-read-view-withdrawn-note")).not.toBeInTheDocument();
   });
 });
 

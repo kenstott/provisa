@@ -19,6 +19,11 @@
     "bulkRefused_other": "{{count}} zijn niet verwijderd:",
     "dismiss": "Sluiten",
     "duplicate": "Dupliceren",
-    "duplicateNamed": "{{name}} dupliceren"
+    "duplicateNamed": "{{name}} dupliceren",
+    "withdraw": "Terugtrekken",
+    "withdrawNamed": "{{name}} terugtrekken",
+    "withdrawTitle": "{{name}} terugtrekken?",
+    "putBack": "Terugzetten",
+    "putBackNamed": "{{name}} terugzetten"
   }
 }

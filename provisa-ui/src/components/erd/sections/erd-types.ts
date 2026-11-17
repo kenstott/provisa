@@ -12,6 +12,7 @@ import type { MutableRefObject, ReactNode } from "react";
 import type { ListedTable, Relationship, Domain } from "../../../types/admin";
 import type { SavedLayout } from "../../../api/erdLayouts";
 import type { ErdPlaces } from "../erd-saved-layout";
+import type { ShowWithdrawn } from "../useShowWithdrawn";
 
 export interface ErdPanelProps {
   /** The domains a link asks to collapse, "all" for every one; null when it asks nothing. */
@@ -43,4 +44,6 @@ export interface ErdPanelProps {
   layoutMenu?: ReactNode;
   // REQ-2189: drawn over the canvas (the tables new since the layout was saved).
   overlay?: ReactNode;
+  // REQ-1921: the Show withdrawn switch, for a person who may preview withdrawn objects.
+  withdrawn?: ShowWithdrawn;
 }
