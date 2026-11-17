@@ -279,7 +279,7 @@ def _ch_form(function: str, count: int, re2: str) -> str:
     if function == "regexp_split_to_array":
         null = ch_fail(
             "0A000",
-            "regexp_split_to_array of a NULL text that is no literal has no form on clickhouse",
+            "regexp_split_to_array() of a NULL text that is no literal has no form on clickhouse",
         )
         pieces = f"splitByRegexp({pattern}, ifNull($s, ''))"
         return f"if({null.format(condition='$s IS NULL')} + {empty} = 0, {pieces}, {pieces})"
@@ -330,7 +330,7 @@ def _ch_regexp(node: exp.Expr, dialect: str) -> exp.Expr | None:
     if function == "regexp_split_to_array" and node.find_ancestor(exp.Unnest) is not None:
         # The rows of its pieces (a server form's, oidvectortypes'): ClickHouse runs no UNNEST
         # WITH ORDINALITY of them, so the call is refused by name, as it was.
-        raise Refused(_ch_refusal(function, "whose pieces are a set of rows"), ruling=True)
+        raise Refused(_ch_refusal(function, "of pieces read as a set of rows"), ruling=True)
     if function in ("regexp_count", "regexp_like") and len(args) == 2:
         return None  # ClickHouse's own countMatches and match, sqlglot's forms of them
     if any(_is_null(a) for a in args[:2]) or any(_is_null(a) for a in said.values()):

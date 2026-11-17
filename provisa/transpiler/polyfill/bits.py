@@ -101,7 +101,9 @@ def held(value: exp.Expr) -> exp.Expr | None:
     if not (isinstance(inner, exp.Literal) and inner.is_string):
         if varying:
             return None  # bit varying: held as text already (provisa.transpiler.pg_held_types)
-        raise Refused(Refusal("0A000", "a cast to bit of a value that is no literal has no form"))
+        raise Refused(
+            Refusal("0A000", "bit() of a value that is no literal has no form on clickhouse")
+        )
     bits = _bits_of(inner.this)
     # A cast in a statement is explicit: bit(n) truncates or pads with zeros to n, bit varying(n)
     # truncates to n (PostgreSQL's bit() and varbit() of an explicit cast).
@@ -134,7 +136,9 @@ LITERAL = Feature(
                     "A bit string is held as its text of 0s and 1s. A literal is read as bit_in "
                     "reads it (22P02 of a digit it does not read), cut or padded to the cast's "
                     "length; a cast to bit of a value that is no literal is refused by name.",
-                    Refusal("0A000", "a cast to bit of a value that is no literal has no form"),
+                    Refusal(
+                        "0A000", "bit() of a value that is no literal has no form on clickhouse"
+                    ),
                 ),
             )
         },

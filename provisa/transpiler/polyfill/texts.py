@@ -155,7 +155,7 @@ def _constant(value: exp.Expr) -> str | None:
 
 
 _NULL_TEXT = ch_fail(
-    "0A000", "string_to_array of a NULL text that is no literal has no form on clickhouse"
+    "0A000", "string_to_array() of a NULL text that is no literal has no form on clickhouse"
 )
 _TEXT = "ifNull($s, '')"
 _PIECES = (
