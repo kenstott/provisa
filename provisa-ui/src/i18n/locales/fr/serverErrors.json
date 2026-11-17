@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "Aucun rôle nommé {{role}} n’existe."
     },
+    "debug_logs": {
+      "pattern_refused": "Le motif de filtrage des journaux est refusé : {{why}}",
+      "pattern_exceeded": "Le motif de filtrage des journaux est refusé : il a dépassé sa limite d'étapes ({{steps}} étapes) sur une ligne de journal de {{length}} caractères."
+    },
     "dbt": {
       "products": {
         "none_offered": "La source {{source_id}} n'a aucun modèle public au contrat appliqué.",

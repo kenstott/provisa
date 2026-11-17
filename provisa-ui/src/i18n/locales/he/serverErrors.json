@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "אין תפקיד בשם {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "תבנית סינון היומן נדחתה: {{why}}",
+      "pattern_exceeded": "תבנית סינון היומן נדחתה: היא חרגה ממגבלת הצעדים שלה ({{steps}} צעדים) בשורת יומן של {{length}} תווים."
+    },
     "dbt": {
       "products": {
         "none_offered": "למקור {{source_id}} אין מודל ציבורי עם חוזה נאכף.",

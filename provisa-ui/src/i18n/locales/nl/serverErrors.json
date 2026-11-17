@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "Er bestaat geen rol met de naam {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "Het filterpatroon voor logboeken wordt geweigerd: {{why}}",
+      "pattern_exceeded": "Het filterpatroon voor logboeken wordt geweigerd: het overschreed zijn stappenlimiet ({{steps}} stappen) op een logregel van {{length}} tekens."
+    },
     "dbt": {
       "products": {
         "none_offered": "Bron {{source_id}} heeft geen openbaar model met een afgedwongen contract.",

@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "Não existe nenhuma função chamada {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
+    },
     "dbt": {
       "products": {
         "none_offered": "A fonte {{source_id}} não tem nenhum modelo público com contrato aplicado.",

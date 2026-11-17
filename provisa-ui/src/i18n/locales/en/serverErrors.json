@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "No role named {{role}} exists."
     },
+    "debug_logs": {
+      "pattern_refused": "The log filter pattern is refused: {{why}}",
+      "pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
+    },
     "dbt": {
       "products": {
         "none_offered": "Source {{source_id}} has no public model with an enforced contract.",

@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "Non esiste alcun ruolo chiamato {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "Il modello di filtro dei log è rifiutato: {{why}}",
+      "pattern_exceeded": "Il modello di filtro dei log è rifiutato: ha superato il suo limite di passi ({{steps}} passi) su una riga di log di {{length}} caratteri."
+    },
     "dbt": {
       "products": {
         "none_offered": "L'origine {{source_id}} non ha alcun modello pubblico con contratto applicato.",

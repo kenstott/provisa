@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "Es gibt keine Rolle namens {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "Das Filtermuster für Protokolle wird abgelehnt: {{why}}",
+      "pattern_exceeded": "Das Filtermuster für Protokolle wird abgelehnt: Es hat sein Schrittlimit ({{steps}} Schritte) bei einer Protokollzeile mit {{length}} Zeichen überschritten."
+    },
     "dbt": {
       "products": {
         "none_offered": "Die Quelle {{source_id}} hat kein öffentliches Modell mit erzwungenem Vertrag.",

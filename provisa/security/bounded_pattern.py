@@ -440,6 +440,12 @@ class BoundedPattern:
             raise StepLimitExceeded(limit, n)
         return matched
 
+    def search(self, text: str) -> bool:
+        """Whether the pattern matches anywhere in ``text``, as ``re.search``; raises
+        :class:`StepLimitExceeded` past its step limit (:data:`STEP_FACTOR`)."""
+        limit = STEP_FACTOR * self.size * (len(text) + 1)
+        return self._search(text, 0, [limit], limit) is not None
+
     def sub(self, repl: Callable[[str], str], text: str) -> str:
         """``text`` with each non-overlapping match replaced by ``repl(match text)``, leftmost
         first; raises :class:`StepLimitExceeded` past its step limit (:data:`STEP_FACTOR`)."""

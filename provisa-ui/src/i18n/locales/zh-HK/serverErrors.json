@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "沒有名為 {{role}} 的角色。"
     },
+    "debug_logs": {
+      "pattern_refused": "日誌篩選模式被拒絕：{{why}}",
+      "pattern_exceeded": "日誌篩選模式被拒絕：在一行 {{length}} 個字元的日誌上超出了其步數上限（{{steps}} 步）。"
+    },
     "dbt": {
       "products": {
         "none_offered": "數據來源 {{source_id}} 沒有強制執行契約的公開模型。",

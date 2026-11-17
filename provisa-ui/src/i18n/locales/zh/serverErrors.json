@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "不存在名为 {{role}} 的角色。"
     },
+    "debug_logs": {
+      "pattern_refused": "日志筛选模式被拒绝：{{why}}",
+      "pattern_exceeded": "日志筛选模式被拒绝：在一行 {{length}} 个字符的日志上超出了其步数上限（{{steps}} 步）。"
+    },
     "dbt": {
       "products": {
         "none_offered": "数据源 {{source_id}} 没有强制执行契约的公开模型。",

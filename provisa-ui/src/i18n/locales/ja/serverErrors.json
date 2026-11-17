@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
     },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
+    },
     "dbt": {
       "products": {
         "none_offered": "ソース {{source_id}} には、契約が適用された公開モデルがありません。",

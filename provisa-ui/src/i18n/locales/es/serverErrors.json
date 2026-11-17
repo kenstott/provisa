@@ -734,6 +734,10 @@
     "dbt_sources": {
       "unknown_role": "No existe ningún rol llamado {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "Se rechaza el patrón de filtro de registros: {{why}}",
+      "pattern_exceeded": "Se rechaza el patrón de filtro de registros: superó su límite de pasos ({{steps}} pasos) en una línea de registro de {{length}} caracteres."
+    },
     "dbt": {
       "products": {
         "none_offered": "El origen {{source_id}} no tiene ningún modelo público con contrato obligatorio.",
