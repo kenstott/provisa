@@ -15,7 +15,7 @@ import { Fragment, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { ChartColumn, DatabaseZap, Eye, Pencil, ShieldCheck } from "lucide-react";
 import { Tip } from "../../components/Tip";
-import { ActionIcon, Badge, Box, Button, Checkbox, Group, Table, Text } from "@mantine/core";
+import { ActionIcon, Badge, Box, Button, Group, Table, Text } from "@mantine/core";
 import type { NavigateFunction } from "react-router-dom";
 import type { RegisteredTable, DataProduct, Relationship, Source } from "../../types/admin";
 import type { ReplicaBuild } from "../../api/admin";
@@ -73,7 +73,6 @@ interface TableReadViewProps {
   hidingOnly?: boolean;
   // REQ-1921: put the table out of service (draft) or release it. The view shows the stored
   // state: the box follows `table.draft` once the change is saved and the table reloaded.
-  onSetDraft?: (table: RegisteredTable, draft: boolean) => void;
   // REQ-1386: opens the governed SELECT * preview modal.
   onPreview: (t: RegisteredTable) => void;
   // REQ-1318: opens the Views-page definition-mode editor (SQL | Metrics toggle).
@@ -120,7 +119,6 @@ export function TableReadView({
   handleDelete,
   handleProfile,
   hidingOnly = false,
-  onSetDraft,
   onPreview,
   onEditDefinition,
   profileColumnsTable,
@@ -317,26 +315,6 @@ export function TableReadView({
               onDelete={() => handleDelete(table.id)}
             />
           )}
-          {/* REQ-1921: draft is set and cleared here, beside the table's other actions. It needs
-              the right to register tables in the table's domain; without it the box only shows
-              the state. */}
-          <Tip
-            text={
-              hidingOnly || !onSetDraft
-                ? t("tableReadView.draftNoRightTooltip")
-                : t("tableReadView.draftTooltip")
-            }
-          >
-            <Checkbox
-              size="xs"
-              label={t("tableReadView.draftLabel")}
-              checked={table.draft}
-              disabled={hidingOnly || !onSetDraft}
-              data-testid="table-read-view-draft"
-              onClick={(e) => e.stopPropagation()}
-              onChange={(e) => onSetDraft?.(table, e.currentTarget.checked)}
-            />
-          </Tip>
         </Group>
       </fieldset>
     </PanelActions>

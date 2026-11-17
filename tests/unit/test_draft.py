@@ -10,8 +10,8 @@
 
 """A draft table or view is out of service (REQ-1921, "draft is its own setting"): the data
 plane's registry leaves it out, so no schema offers it and nothing copies it; a statement naming
-it is refused naming it as draft, on SQL and GraphQL alike; its domain's owners set and clear it.
-A table registered through the admin starts as draft; a config table only when the file says so."""
+it is refused naming it as draft, on SQL and GraphQL alike. Draft is the waypoint of a move between
+regions (amended 2026-11-16): a registered table is live, never a draft."""
 
 # Requirements: REQ-1921
 
@@ -274,15 +274,19 @@ async def test_the_data_planes_registry_leaves_drafts_out(model):
         assert [t["table_name"] for t in await fetch_tables(conn, draft=True)] == ["staging"]
 
 
-async def test_a_bulk_registration_starts_new_tables_as_draft_and_keeps_a_resyncs(model):
-    from provisa.api.admin.region_defaults import admin_registration_draft
+async def test_a_bulk_registration_writes_new_tables_live_and_keeps_a_resyncs_draft(model):
+    """REQ-1921: a table a bulk registration creates is live; a re-sync keeps a held table's
+    draft (a region move's waypoint) as it is."""
+    from provisa.api.admin.region_defaults import kept_draft
     from provisa.core.repositories import table as table_repo
 
     async with model.acquire() as conn:
         await _seed(conn)
-        assert await admin_registration_draft(conn, "crm", "public", "new_one") is True
+        assert await kept_draft(conn, "crm", "public", "new_one") is False
         await table_repo.upsert(conn, _table("orders", draft=False))
-        assert await admin_registration_draft(conn, "crm", "public", "orders") is False
+        assert await kept_draft(conn, "crm", "public", "orders") is False
+        await table_repo.upsert(conn, _table("staging", draft=True))
+        assert await kept_draft(conn, "crm", "public", "staging") is True
 
 
 def test_a_config_table_is_draft_only_when_the_file_says_so():

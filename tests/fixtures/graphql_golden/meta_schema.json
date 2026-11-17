@@ -811,6 +811,13 @@
        }
       },
       {
+       "name": "withdrawn",
+       "type": {
+        "kind": "SCALAR",
+        "name": "Boolean"
+       }
+      },
+      {
        "name": "_name_",
        "type": {
         "kind": "NON_NULL",

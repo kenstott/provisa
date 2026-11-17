@@ -260,8 +260,6 @@
       "query": "Consulta delta (opcional, nativa da fonte)",
       "queryHelp": "Uma consulta nativa da fonte com os marcadores $wm (cursor) e {{fields}}. Deixe em branco para uma fonte SQL: o Provisa gera SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
-    "draftLabel": "Rascunho",
-    "draftHelp": "Fora de serviço enquanto marcado: não é lida nem escrita em lugar algum, não é oferecida em nenhum esquema e não é copiada — as cópias existentes em todas as regiões são removidas. Uma tabela ou visão registrada aqui começa como rascunho; desmarque para liberá-la.",
     "pagingRowsFieldHelp": "A propriedade da resposta que contém as linhas, como values ou data em um invólucro de página. Deixe vazio quando a própria resposta são as linhas. As colunas da tabela são as dos objetos que estão ali.",
     "pagingRowsFieldFixed": "Definido quando a tabela foi registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
     "scopeHelp": "domain: servida às funções que alcançam o domínio desta tabela, inclusive por um domínio pai. listed: o mesmo, e toda função vê o nome da coluna no catálogo. public: também servida às funções fora do domínio. own-domain: servida apenas às funções cujo acesso de domínio próprio lista o domínio desta tabela; uma função que o alcança só por um domínio pai não a recebe, mesmo que “Permissões de leitura” a nomeie.",

@@ -101,6 +101,8 @@ def _build(monkeypatch, *, view: dict, drafts: list[dict], role: dict | None = N
         rls_rules=[],
         metrics=[],
         draft_tables=drafts,
+        withdrawn_tables=[],
+        withdrawn_relationships=[],
     )
     monkeypatch.setattr(state, "tables", tables, raising=False)
     monkeypatch.setattr(
@@ -147,14 +149,18 @@ async def test_the_view_is_answered_again_once_its_input_is_released(monkeypatch
     ['"sales"."refunds"', "sales.refunds", "public.refunds", "refunds", '"refunds" AS r'],
 )
 def test_a_table_out_of_service_is_refused_by_every_name_a_view_could_give_it(said):
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [_refunds()]})
+    state = SimpleNamespace(
+        tables=_tables(), role_build_inputs={"draft_tables": [_refunds()], "withdrawn_tables": []}
+    )
     with pytest.raises(TableIsDraft) as refused:
         require_inputs_in_service(f"SELECT id FROM {said}", state)
     assert refused.value.table == "refunds"
 
 
 def test_it_is_found_wherever_the_views_sql_reads_it():
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [_refunds()]})
+    state = SimpleNamespace(
+        tables=_tables(), role_build_inputs={"draft_tables": [_refunds()], "withdrawn_tables": []}
+    )
     for sql in (
         'SELECT o.id FROM "sales"."orders" o JOIN "sales"."refunds" r ON r.id = o.id',
         'SELECT id FROM "sales"."orders" WHERE id IN (SELECT id FROM sales.refunds)',
@@ -165,7 +171,9 @@ def test_it_is_found_wherever_the_views_sql_reads_it():
 
 
 def test_a_view_whose_inputs_are_all_in_service_is_not_refused():
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [_refunds()]})
+    state = SimpleNamespace(
+        tables=_tables(), role_build_inputs={"draft_tables": [_refunds()], "withdrawn_tables": []}
+    )
     require_inputs_in_service('SELECT id FROM "sales"."orders"', state)
     require_inputs_in_service("SELECT 1", state)
 
@@ -173,7 +181,9 @@ def test_a_view_whose_inputs_are_all_in_service_is_not_refused():
 def test_a_name_a_table_in_service_answers_to_is_that_tables():
     """A draft in another domain with a served table's name takes nothing from the served one."""
     twin = _refunds(id=11, domain_id="finance", table_name="orders")
-    state = SimpleNamespace(tables=_tables(), role_build_inputs={"draft_tables": [twin]})
+    state = SimpleNamespace(
+        tables=_tables(), role_build_inputs={"draft_tables": [twin], "withdrawn_tables": []}
+    )
     require_inputs_in_service('SELECT id FROM "sales"."orders"', state)
     require_inputs_in_service("SELECT id FROM orders", state)
     with pytest.raises(TableIsDraft):

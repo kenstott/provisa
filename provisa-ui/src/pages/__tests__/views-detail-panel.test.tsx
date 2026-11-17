@@ -176,10 +176,6 @@ const updateTableLoadProtection = vi.fn();
 const updateTableRoleTtl = vi.fn();
 
 const calls: string[] = [];
-const setTableDraft = vi.fn(async (id: number, draft: boolean) => {
-  calls.push(`draft ${id} ${draft}`);
-  return ok;
-});
 const setTableRegion = vi.fn(async (id: number, region: string | null) => {
   calls.push(`region ${id} ${region}`);
   return ok;
@@ -188,7 +184,6 @@ const setTableRegion = vi.fn(async (id: number, region: string | null) => {
 vi.mock("../../hooks/useRegionQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useRegionQueries")>()),
   useRegionChoices: () => ({ regions: ["eu", "us"], connected: "eu" }),
-  useSetTableDraft: () => setTableDraft,
   useSetTableRegion: () => setTableRegion,
 }));
 
@@ -405,7 +400,7 @@ describe("the Tables page's register step", () => {
       tableName: "returns",
       enableAggregates: true,
     });
-    // Registered through the admin a table starts as draft; nothing releases it unasked.
-    expect(setTableDraft).not.toHaveBeenCalled();
+    // REQ-1921: registered, the table is live; the registration carries no draft.
+    expect(registerTable.mock.calls[0][0]).not.toHaveProperty("draft");
   });
 });

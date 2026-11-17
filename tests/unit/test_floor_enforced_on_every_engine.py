@@ -117,7 +117,7 @@ def _state(
     monkeypatch.setattr("provisa.synthetic.datasets.synthetic_sources", no_synthetic_tables)
     monkeypatch.setattr("provisa.federation.replica_state.promotion", no_promoted_tables)
     monkeypatch.setattr("provisa.federation.replica_builds.store_identity", no_engine_store)
-    monkeypatch.setattr("provisa.core.repositories.source.list_all", _source_rows)
+    monkeypatch.setattr("provisa.core.repositories.source.list_in_production", _source_rows)
     # The org's runtime is built, as it is before any work is bound to it (REQ-1266); it keeps no
     # store of its own (REQ-1048), so its replicas are on the platform's.
     import provisa.api.app as app_mod

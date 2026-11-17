@@ -475,8 +475,6 @@
       "mask_unreachable": "Vous avez défini un masque qui n'est pas accessible : {{entries}}",
       "webhook_not_found": "Webhook « {{webhook}} » introuvable",
       "change_streams_unavailable": "La source '{{source}}' est un serveur MongoDB autonome, qui ne fournit pas de change streams : le signal de modification native exige un replica set ou un cluster shardé. Exécutez-le en replica set ou utilisez le signal de modification poll.",
-      "table_draft_set": "Table {{table}} mise en brouillon",
-      "table_released": "Table {{table}} publiée",
       "openapi_no_rows_field": "Table {{table}} : la réponse n'a aucune propriété {{rows_field}} où lire des lignes.",
       "paging_rows_field_fixed": "Table {{table}} : l'endroit où se trouvent ses lignes ({{rows_field}}) est défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
       "relationship_request_queued": "Mis en file comme demande n° {{id}}. Elle requiert les approbations de {{required}} utilisateurs différents autorisés à créer des relations, dont au moins un atteint chaque domaine concerné.",
@@ -547,7 +545,13 @@
       "code_resolver_has_dependents": "Le resolver de code « {{resolver}} » ne peut pas être retiré tant que quelque chose en dépend",
       "incremental_no_change": "La source de code n'a aucune fonction @change pour {{table}}. Déclarez-en une avec @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} est maintenue de façon incrémentale ; elle est donc reconstruite entièrement selon une horloge. Indiquez la fréquence, en secondes, dans « Reconstruction complète toutes les ».",
-      "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction"
+      "table_derived_from_function": "La table '{{name}}' est dérivée d'une fonction : elle est supprimée en désactivant la table de la fonction, et ses colonnes et paramètres se modifient sur la fonction",
+      "table_withdrawn": "Table {{table}} retirée",
+      "table_put_back": "Table {{table}} remise en service",
+      "source_withdrawn": "Source {{source}} retirée",
+      "source_put_back": "Source {{source}} remise en service",
+      "withdrawn_source_not_previewable": "Impossible de prévisualiser la table {{table}} : sa source {{source}} est retirée, et aucun moteur ne lit une source retirée.",
+      "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
