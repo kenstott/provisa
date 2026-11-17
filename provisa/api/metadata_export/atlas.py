@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -1160,7 +1161,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         resp.raise_for_status()
             except httpx.HTTPError as exc:
                 result.errors.append(
-                    AssetError(asset=entity.asset, message=f"classification merge: {exc}")
+                    AssetError(
+                        asset=entity.asset,
+                        message=f"classification merge: {describe_http_failure(exc)}",
+                    )
                 )
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
@@ -1362,7 +1366,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
             glossary_guid = await self._ensure_glossary(client, headers, snapshot.org_id, result)
         except httpx.HTTPError as exc:
             result.errors.append(
-                AssetError(asset=AssetRefStub(GLOSSARY_NAME), message=f"glossary: {exc}")
+                AssetError(
+                    asset=AssetRefStub(GLOSSARY_NAME),
+                    message=f"glossary: {describe_http_failure(exc)}",
+                )
             )
             return
         result.published["glossary"] = 1
@@ -1380,7 +1387,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(term.semantic_uri),
-                        message=f"glossary term: {exc}",
+                        message=f"glossary term: {describe_http_failure(exc)}",
                     )
                 )
                 continue
@@ -1470,7 +1477,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             try:
                 await self._sync_assignments(client, headers, term_guid, entities, result)
             except httpx.HTTPError as exc:
-                message = str(exc)
+                message = describe_http_failure(exc)
                 if isinstance(exc, httpx.HTTPStatusError):
                     # Atlas's errorCode and message are in the body; the status line alone
                     # does not say which guid or check it refused.
@@ -1588,7 +1595,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(f"term:{from_id}"),
-                        message=f"term relations: {exc}",
+                        message=f"term relations: {describe_http_failure(exc)}",
                     )
                 )
 
@@ -1629,7 +1636,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         AssetError(
                             asset=AssetRefStub("classificationDefs"),
                             message=(
-                                f"classification typedefs: {exc}. Governance signals were not "
+                                f"classification typedefs: {describe_http_failure(exc)}. Governance signals were not "
                                 "published; every asset was."
                             ),
                         )

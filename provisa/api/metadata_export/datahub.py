@@ -85,6 +85,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -916,7 +917,7 @@ class DataHubExport(MetadataExport):  # REQ-1069
                     asset=proposal.asset,
                     message=(
                         f"globalTags: not written: the live read the people's tags are kept "
-                        f"from failed ({exc})"
+                        f"from failed ({describe_http_failure(exc)})"
                     ),
                 )
             )
@@ -968,7 +969,7 @@ class DataHubExport(MetadataExport):  # REQ-1069
             result.errors.append(
                 AssetError(
                     asset=proposal.asset,
-                    message=f"{proposal.aspect_name}: live aspect read failed ({exc})",
+                    message=f"{proposal.aspect_name}: live aspect read failed ({describe_http_failure(exc)})",
                 )
             )
             return False, None

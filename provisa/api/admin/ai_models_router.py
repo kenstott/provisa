@@ -24,6 +24,7 @@ server-side gate at all and wrote the deployment config file directly.
 
 from fastapi import APIRouter, Request
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.admin._platform_guard import require_org_settings
 from provisa.api.errors import ApiError
 
@@ -159,7 +160,7 @@ async def _run_model_listing(vendor: str, fetch) -> list[str]:
         raise ApiError(
             502,
             "ai_models.vendor_unreachable",
-            f"{vendor} model listing is unreachable: {exc}",
+            f"{vendor} model listing is unreachable: {describe_http_failure(exc)}",
         ) from exc
 
 

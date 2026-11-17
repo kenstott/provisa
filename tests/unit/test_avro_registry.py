@@ -179,7 +179,9 @@ async def test_a_registry_that_hangs_is_bounded_and_named():
     with pytest.raises(SchemaRegistryRefusal) as refused:
         await registry.schema(1)
     assert refused.value.code == "subscribe.schema_registry_unreachable"
-    assert "ReadTimeout" in refused.value.params["error"]
+    assert refused.value.params["error"].startswith(
+        "timed out waiting for a response from GET http://registry:8081/schemas/ids/1"
+    )
 
 
 async def test_the_registrys_bounds_are_its_own_and_a_requests_deadline_shortens_them(monkeypatch):

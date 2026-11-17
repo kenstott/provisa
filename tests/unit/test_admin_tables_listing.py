@@ -224,7 +224,10 @@ async def test_an_api_source_whose_document_cannot_be_read_lists_its_tables_sayi
     import provisa.openapi.exclusions as exclusions
 
     def _unreachable(path, mapping, source_id=None):
-        raise httpx.ConnectError("[Errno -3] Temporary failure in name resolution")
+        raise httpx.ConnectError(
+            "[Errno -3] Temporary failure in name resolution",
+            request=httpx.Request("GET", "https://api.example.test/openapi.json"),
+        )
 
     monkeypatch.setattr(exclusions, "load_source_spec", _unreachable)
     tables, _statements = await _listed(plane)
@@ -232,8 +235,8 @@ async def test_an_api_source_whose_document_cannot_be_read_lists_its_tables_sayi
     by_name = {t.table_name: t for t in tables}
     assert by_name["items3"].api_endpoint is None
     assert by_name["items3"].api_endpoint_error == (
-        "the API document of source 'api' could not be read: "
-        "[Errno -3] Temporary failure in name resolution"
+        "the API document of source 'api' could not be read: could not connect to GET "
+        "https://api.example.test/openapi.json ([Errno -3] Temporary failure in name resolution)"
     )
     assert by_name["t1"].api_endpoint_error is None
 
