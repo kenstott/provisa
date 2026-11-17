@@ -3701,7 +3701,29 @@
     in its own column. A many-to-many pair (neither side a key) is accepted as a shared dimension: accepting
     it creates a derived table of the pair''s distinct values and a many-to-one relationship from each side
     to it, so both sides join through it on every front door; the dimension is an ordinary view that can
-    be renamed or extended.'
+    be renamed or extended. (Amended 2026-11-16, ONLY PAIRS BETWEEN THE MEASURE CUTOFF AND THE THRESHOLD
+    ARE MEASURED:) Maintainer 2026-11-16. A proposed pair is measured on its data only when the model''s
+    confidence lies between the measure cutoff and the acceptance threshold. Below the cutoff it is never
+    measured and is left out as before; at or above the threshold it is suggested on the model''s confidence
+    and is never measured. A pair in that band whose measure shows matching key values is admitted as a
+    suggestion, and its reason says it was admitted on key values matching in the data, with the measure
+    beside the model''s confidence. The cutoff is set in the discovery dialog beside the threshold, remembered
+    the same way, and defaults to 20%. A run measures every pair in the band; stopping the run is how a
+    person bounds it. (Amended 2026-11-16, THE CHECKS RUN FOREIGN KEYS, SEMANTIC, JEV, THEN THE KEY-VALUE
+    MEASURE:) Maintainer 2026-11-16. A run''s checks go in order of cost: declared foreign keys; the model''s
+    semantic proposals; Jev''s re-score of them where a Jev key is configured, kept beside the model''s
+    confidence; then the key-value measure, of only the pairs in the band between the measure cutoff and
+    the threshold. The band is judged on the model''s confidence, never Jev''s. (Amended 2026-11-16, KEY
+    VALUE OVERLAP IS A THIRD CHOICE IN THE DIALOG, DEPENDING ON SEMANTIC:) Maintainer 2026-11-16. The discovery
+    dialog offers Key value overlap beside Foreign keys and Semantic. It measures the pairs the semantic
+    check proposed, so it is available only while Semantic is chosen; the measure cutoff is set with it
+    and applies only while it is chosen. It is chosen by default and remembered as the threshold is. The
+    run''s summary lists it among what it looked for. Without it, a pair below the threshold is left out
+    as below the threshold, unmeasured. (Amended 2026-11-16, KEY VALUE OVERLAP SHOWS UNDER SEMANTIC, WITH
+    ITS CUTOFF AND SAMPLE SIZE:) Maintainer 2026-11-16. The Key value overlap choice appears in the dialog
+    once Semantic is chosen. Chosen, it shows its two settings: the measure cutoff (default 20%) and the
+    sample size, the most distinct values read of each column for a pair''s measure (default 10,000, the
+    bound used today). Both are remembered as the threshold is, and the run''s summary states them.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -3778,7 +3800,16 @@
   feature: hasura-migration-converters
   priority: MAY
   type: behavioral
-  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.'
+  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use
+    Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.
+    (Amended 2026-11-16, EVERY GENERATED RELATIONSHIP NAME IS DISAMBIGUATED AUTOMATICALLY:) Maintainer 2026-11-16.
+    When two generated relationships would carry the same name (the relationship''s name, its GraphQL field
+    or its Cypher type, wherever that name must be unique) but join different source and target columns,
+    the names are disambiguated automatically, as foreign-key aliases already are (_by_<column>, then the
+    table where the column alone does not separate them). This holds for every way a relationship is generated:
+    declared foreign keys, discovery''s semantic and measured suggestions, and accepting several suggestions
+    at once, judged against the relationships already registered and the others accepted with it. A name
+    a person typed is never changed; a clash with one is refused by name.'
   use_case: V2-compatible relationship naming enables teams to adopt Hasura conventions without schema
     migration.
   code:
@@ -6720,9 +6751,14 @@
   feature: vector-search-models
   priority: MUST
   type: structural
-  description: A model registry must be declared in Provisa config listing available embedding models
-    with id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
-    cannot be used for embedding generation or query vectorization.
+  description: A model registry must be declared in Provisa config listing available embedding models with
+    id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
+    cannot be used for embedding generation or query vectorization. (Amended 2026-11-16, EVERY INSTALL SHIPS
+    THE EMBEDDING LIBRARY FOR THE DEFAULT MODEL:) Maintainer 2026-11-16 ('Ship it in every install'). Every
+    install (DMG, AppImage, Windows, the container image, pip provisa[embedded]) carries the library the
+    default embedding model needs (sentence-transformers on a CPU-only torch, never a CUDA build), so the
+    default model works with no added step. A configured model whose library is missing is refused by name
+    at startup, never failing later in a background task.
   use_case: Explicit model registry enables air-gapped deployments and audit trails for embedding model
     usage.
   code:
@@ -96903,7 +96939,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     where its MCP binding offers it, is listed as its own typed tool (its name from the binding, its input
     schema from the command''s arguments) and runs the command under that role. Over remote HTTP the role
     is resolved from the bearer token when the list is asked for; over stdio it is the pinned mcp.role.
-    A call to a tool the list does not offer is refused by name, as before.'
+    A call to a tool the list does not offer is refused by name, as before. (Amended 2026-11-16, COMMAND
+    TOOLS ARE LISTED IN FULL MODE ONLY:) Maintainer 2026-11-16. A session in sip mode keeps its short list:
+    commands are not listed as their own tools there and stay reachable through list_commands and run_sql.
+    A session in full mode lists each command visible to its role as its own tool.'
   scenario: 'Given an MCP client that connects in sip mode
 
     When it lists the tools

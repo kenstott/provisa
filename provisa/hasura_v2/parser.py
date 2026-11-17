@@ -33,6 +33,7 @@ from provisa.hasura_v2.models import (
     HasuraSource,
     HasuraTable,
 )
+from provisa.import_shared.refused import confined_to_project
 from provisa.import_shared.warnings import WarningCollector
 
 # Requirements: REQ-041, REQ-019, REQ-205, REQ-209, REQ-417
@@ -53,22 +54,29 @@ def _include_ctor(loader: Any, node: Any) -> str:
 _HasuraLoader.add_constructor("!include", _include_ctor)
 
 
-def _load_yaml(path: Path) -> Any:
-    """Load a YAML file, returning None if it doesn't exist. Tolerates the Hasura ``!include`` tag."""
-    if not path.exists():
+def _load_yaml(path: Path, root: Path, named: str | None = None) -> Any:
+    """Load a YAML file of the project ``root``, returning None if it doesn't exist. Tolerates the
+    Hasura ``!include`` tag. A file whose real path is outside ``root`` is refused by name."""
+    # Confined before it is looked for: whether a file outside the project exists is not told.
+    real = confined_to_project(
+        path, root, named if named is not None else str(path.relative_to(root))
+    )
+    if not real.exists():
         return None
-    with open(path, encoding="utf-8") as f:
+    with open(real, encoding="utf-8") as f:
         # S506/B506 read any yaml.load as unsafe: _HasuraLoader derives from SafeLoader, so no
         # arbitrary object is constructible; it only adds the tags Hasura metadata uses.
         return yaml.load(f, Loader=_HasuraLoader)  # noqa: S506  # nosec B506
 
 
-def _resolve_include(entry: Any, base_dir: Path) -> Any:
+def _resolve_include(entry: Any, base_dir: Path, root: Path) -> Any:
     """If ``entry`` is a Hasura ``!include <file>`` reference (string), load and return that file's
-    content (relative to ``base_dir``); otherwise return ``entry`` unchanged. This is how real Hasura
-    exports point an index (tables.yaml / functions.yaml) at per-object files."""
+    content (relative to ``base_dir``, inside the project ``root``); otherwise return ``entry``
+    unchanged. This is how real Hasura exports point an index (tables.yaml / functions.yaml) at
+    per-object files."""
     if isinstance(entry, str) and entry.startswith("!include "):
-        return _load_yaml(base_dir / entry[len("!include ") :].strip())
+        named = entry[len("!include ") :].strip()
+        return _load_yaml(base_dir / named, root, named)
     return entry
 
 
@@ -310,35 +318,36 @@ def parse_metadata_dir(
 
     metadata = HasuraMetadata()
     md = metadata_dir
+    root = metadata_dir
 
     # Try v3-style databases/ layout first
     databases_dir = md / "databases"
     if (databases_dir / "databases.yaml").exists():
         # What the CLI writes: databases.yaml lists each source with its kind and connection,
         # and its tables and functions behind !include indexes.
-        for raw_src in _load_yaml(databases_dir / "databases.yaml") or []:
-            metadata.sources.append(_parse_listed_source(raw_src, databases_dir))
+        for raw_src in _load_yaml(databases_dir / "databases.yaml", root) or []:
+            metadata.sources.append(_parse_listed_source(raw_src, databases_dir, root))
     elif databases_dir.exists():
         for db_dir in sorted(databases_dir.iterdir()):
             if not db_dir.is_dir():
                 continue
-            source = _parse_database_dir(db_dir, collector)
+            source = _parse_database_dir(db_dir, collector, root)
             metadata.sources.append(source)
     else:
         # Flat layout: single default source
         source = HasuraSource(name="default", kind="postgres")
-        tables_data = _load_yaml(md / "tables.yaml")
+        tables_data = _load_yaml(md / "tables.yaml", root)
         if isinstance(tables_data, list):
             for raw_tbl in tables_data:
                 source.tables.append(_parse_table(raw_tbl))
-        functions_data = _load_yaml(md / "functions.yaml")
+        functions_data = _load_yaml(md / "functions.yaml", root)
         if isinstance(functions_data, list):
             for raw_fn in functions_data:
                 source.functions.append(_parse_function(raw_fn))
         metadata.sources.append(source)
 
     # Actions
-    actions_data = _load_yaml(md / "actions.yaml")
+    actions_data = _load_yaml(md / "actions.yaml", root)
     if isinstance(actions_data, dict):
         for raw_action in actions_data.get("actions", []):
             metadata.actions.append(_parse_action(raw_action))
@@ -348,7 +357,8 @@ def parse_metadata_dir(
 
     # The actions' SDL: each action's arguments and output, and the output types' fields.
     if (md / "actions.graphql").exists():
-        _read_actions_sdl((md / "actions.graphql").read_text(), metadata)
+        sdl = confined_to_project(md / "actions.graphql", root, "actions.graphql").read_text()
+        _read_actions_sdl(sdl, metadata)
     if isinstance(actions_data, dict):
         for obj in (actions_data.get("custom_types") or {}).get("objects") or []:
             metadata.custom_types.setdefault(obj["name"], [])
@@ -356,19 +366,19 @@ def parse_metadata_dir(
             metadata.input_types.add(obj["name"])
 
     # Cron triggers
-    cron_data = _load_yaml(md / "cron_triggers.yaml")
+    cron_data = _load_yaml(md / "cron_triggers.yaml", root)
     if isinstance(cron_data, list):
         for raw_cron in cron_data:
             metadata.cron_triggers.append(_parse_cron_trigger(raw_cron))
 
     # Inherited roles
-    ir_data = _load_yaml(md / "inherited_roles.yaml")
+    ir_data = _load_yaml(md / "inherited_roles.yaml", root)
     if isinstance(ir_data, list):
         for raw_ir in ir_data:
             metadata.inherited_roles.append(_parse_inherited_role(raw_ir))
 
     # Remote schemas
-    rs_data = _load_yaml(md / "remote_schemas.yaml")
+    rs_data = _load_yaml(md / "remote_schemas.yaml", root)
     if isinstance(rs_data, list):
         for raw_rs in rs_data:
             name = raw_rs.get("name", "unknown")
@@ -382,7 +392,7 @@ def parse_metadata_dir(
             # REQ-417: remote schemas are mapped to graphql_remote sources by the mapper.
 
     # REQ-1174: api_limits.yaml → per-role rate + query-complexity limits (mapped by the mapper).
-    api_limits = _load_yaml(md / "api_limits.yaml")
+    api_limits = _load_yaml(md / "api_limits.yaml", root)
     if isinstance(api_limits, dict):
         metadata.api_limits = api_limits
 
@@ -457,30 +467,33 @@ def parse_metadata_document(
     return metadata
 
 
-def _included(entry: Any, base: Path) -> tuple[list, Path]:
-    """A list an index gives inline, or behind ``!include <file>`` (relative to ``base``), with
-    the directory its own includes are relative to."""
+def _included(entry: Any, base: Path, root: Path) -> tuple[list, Path]:
+    """A list an index gives inline, or behind ``!include <file>`` (relative to ``base``, inside
+    the project ``root``), with the directory its own includes are relative to."""
     if isinstance(entry, str) and entry.startswith("!include "):
-        path = base / entry[len("!include ") :].strip()
-        return list(_load_yaml(path) or []), path.parent
+        named = entry[len("!include ") :].strip()
+        path = base / named
+        return list(_load_yaml(path, root, named) or []), path.parent
     return list(entry or []), base
 
 
-def _parse_listed_source(raw: dict[str, Any], databases_dir: Path) -> HasuraSource:  # REQ-417
+def _parse_listed_source(  # REQ-417
+    raw: dict[str, Any], databases_dir: Path, root: Path
+) -> HasuraSource:
     """One source as databases.yaml lists it."""
     source = HasuraSource(
         name=raw.get("name", "default"),
         kind=raw.get("kind", "postgres"),
         connection_info=(raw.get("configuration") or {}).get("connection_info") or {},
     )
-    tables, base = _included(raw.get("tables"), databases_dir)
+    tables, base = _included(raw.get("tables"), databases_dir, root)
     for entry in tables:
-        resolved = _resolve_include(entry, base)
+        resolved = _resolve_include(entry, base, root)
         if isinstance(resolved, dict):
             source.tables.append(_parse_table(resolved))
-    functions, base = _included(raw.get("functions"), databases_dir)
+    functions, base = _included(raw.get("functions"), databases_dir, root)
     for entry in functions:
-        resolved = _resolve_include(entry, base)
+        resolved = _resolve_include(entry, base, root)
         if isinstance(resolved, dict):
             source.functions.append(_parse_function(resolved))
     return source
@@ -526,7 +539,9 @@ def _read_actions_sdl(sdl: str, metadata: HasuraMetadata) -> None:
                 )
 
 
-def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSource:  # REQ-417
+def _parse_database_dir(  # REQ-417
+    db_dir: Path, collector: WarningCollector, root: Path
+) -> HasuraSource:
     """Parse a databases/<name>/ directory."""
     source = HasuraSource(name=db_dir.name, kind="postgres")
 
@@ -536,17 +551,17 @@ def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSour
         # Check for tables.yaml index
         tables_index = tables_dir / "tables.yaml"
         if tables_index.exists():
-            data = _load_yaml(tables_index)
+            data = _load_yaml(tables_index, root)
             if isinstance(data, list):
                 for raw_tbl in data:
                     # Real Hasura exports list per-table files as `!include public_x.yaml`.
-                    resolved = _resolve_include(raw_tbl, tables_dir)
+                    resolved = _resolve_include(raw_tbl, tables_dir, root)
                     if isinstance(resolved, dict):
                         source.tables.append(_parse_table(resolved))
         else:
             # Individual table files
             for tbl_file in sorted(tables_dir.glob("*.yaml")):
-                data = _load_yaml(tbl_file)
+                data = _load_yaml(tbl_file, root)
                 if isinstance(data, dict):
                     source.tables.append(_parse_table(data))
                 elif isinstance(data, list):
@@ -556,7 +571,7 @@ def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSour
     # Single tables.yaml at db level
     tables_yaml = db_dir / "tables.yaml"
     if tables_yaml.exists() and not tables_dir.exists():
-        data = _load_yaml(tables_yaml)
+        data = _load_yaml(tables_yaml, root)
         if isinstance(data, list):
             for raw_tbl in data:
                 source.tables.append(_parse_table(raw_tbl))
@@ -567,22 +582,22 @@ def _parse_database_dir(db_dir: Path, collector: WarningCollector) -> HasuraSour
         index = functions_dir / "functions.yaml"
         files = [index] if index.exists() else sorted(functions_dir.glob("*.yaml"))
         for fn_file in files:
-            data = _load_yaml(fn_file)
+            data = _load_yaml(fn_file, root)
             if isinstance(data, dict):
                 source.functions.append(_parse_function(data))
             elif isinstance(data, list):
                 for raw_fn in data:
                     # An index lists per-function files as `!include public_x.yaml`.
-                    resolved = _resolve_include(raw_fn, functions_dir)
+                    resolved = _resolve_include(raw_fn, functions_dir, root)
                     if isinstance(resolved, dict):
                         source.functions.append(_parse_function(resolved))
 
     functions_yaml = db_dir / "functions.yaml"
     if functions_yaml.exists() and not functions_dir.exists():
-        data = _load_yaml(functions_yaml)
+        data = _load_yaml(functions_yaml, root)
         if isinstance(data, list):
             for raw_fn in data:
-                resolved = _resolve_include(raw_fn, db_dir)
+                resolved = _resolve_include(raw_fn, db_dir, root)
                 if isinstance(resolved, dict):
                     source.functions.append(_parse_function(resolved))
 
