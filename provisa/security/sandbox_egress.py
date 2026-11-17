@@ -163,7 +163,7 @@ _DEFAULT_HOST = "localhost"
 _URL_FIELDS = ("path", "base_url", "download_from")
 
 
-def _plain(value: object) -> str | None:
+def _plain(value: object) -> str | None:  # object-ok: any field value a source holds
     """``value`` with any secret reference resolved -- a source may name its host as
     ``${secret:NAME}``, and the address it reaches is the resolved one."""
     if not isinstance(value, str) or not value:
@@ -219,7 +219,9 @@ def destinations(fields: dict) -> list[tuple[str, int | None]]:
     return found
 
 
-def _sql_url_destination(hints: object) -> tuple[str, int | None] | None:
+def _sql_url_destination(
+    hints: object,
+) -> tuple[str, int | None] | None:  # object-ok: a source's federation_hints as stored
     """REQ-2191: where a JDBC source's connection URL points. Its scheme is any SQLAlchemy
     dialect's (``mssql+pyodbc://...``), which :func:`_url_destination` does not know as a network
     scheme; a file database's URL points nowhere."""
@@ -237,7 +239,7 @@ def _sql_url_destination(hints: object) -> tuple[str, int | None] | None:
         return None  # no URL at all: nothing can be connected to, and the save refuses it
 
 
-def _strings(node: object) -> list[str]:
+def _strings(node: object) -> list[str]:  # object-ok: any JSON node
     if isinstance(node, str):
         return [node]
     if isinstance(node, dict):
@@ -333,6 +335,26 @@ def require_allowed(host: str, port: int | None, org_id: str | None = None) -> N
     require_public_destination(host, port)
 
 
+def require_url_allowed(url: str, org_id: str | None = None) -> None:
+    """:func:`require_allowed` for the host and port ``url`` names, any secret reference in it
+    resolved first: what a held org's webhook, scheduled trigger, Syncing or metadata-export
+    endpoint calls is held to public destinations as a source's is (REQ-2006, amended
+    2026-11-16), when it is saved and at each call (:func:`http_event_hooks`). A URL that names no
+    host cannot be shown to be public, so a held org is refused it."""
+    org = _org(org_id)
+    if not held(org):
+        return
+    plain = _plain(url) or ""
+    parts = urlsplit(plain)
+    try:
+        host, port = parts.hostname, parts.port
+    except ValueError:
+        raise PrivateDestinationRefused(plain, "a URL with no valid port") from None
+    if not host:
+        raise PrivateDestinationRefused(plain, "a URL that names no host")
+    require_allowed(host, port, org)
+
+
 def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
     """:func:`require_allowed` for every destination a source names (:func:`destinations`)."""
     org = _org(org_id)
@@ -342,7 +364,7 @@ def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
         require_allowed(host, port, org)
 
 
-def source_fields(source: object) -> dict:
+def source_fields(source: object) -> dict:  # object-ok: a Source (models import cycle)
     """The address-bearing fields of a registered :class:`provisa.core.models.Source`, with
     its type and its sentinel marker: what says where it reads from (REQ-2006, REQ-1997)."""
     return {
@@ -368,7 +390,7 @@ def http_event_hooks(org_id: str | None = None) -> dict:
 
     assert org is not None
 
-    async def _acheck(request: object) -> None:
+    async def _acheck(request: "httpx.Request") -> None:
         _pin_request(request, org)
 
     return {"request": [_acheck]}
@@ -382,7 +404,7 @@ def http_sync_event_hooks(org_id: str | None = None) -> dict:
 
     assert org is not None
 
-    def _check(request: object) -> None:
+    def _check(request: "httpx.Request") -> None:
         _pin_request(request, org)
 
     return {"request": [_check]}
@@ -528,7 +550,9 @@ def require_connectable(
     return pin(host, port, org)
 
 
-def pinned_source(source: object, org_id: str | None = None) -> object:
+def pinned_source(
+    source: object, org_id: str | None = None
+) -> object:  # object-ok: a Source (models import cycle)
     """``source`` as a sandbox org connects to it: its host replaced by its checked address
     (:func:`require_connectable`). Any other org's source is itself."""
     org = _org(org_id)
@@ -547,13 +571,13 @@ def pinned_source(source: object, org_id: str | None = None) -> object:
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]
 
 
-def _pin_request(request: object, org: str) -> None:
+def _pin_request(request: "httpx.Request", org: str) -> None:
     """Send ``request`` to its host's checked address, keeping the name for Host and TLS."""
-    url = request.url  # type: ignore[attr-defined]
+    url = request.url
     host, port = url.host, url.port
     address = pin(host, port, org)
     if address == host:
         return
-    request.headers["Host"] = url.netloc.decode("ascii")  # type: ignore[attr-defined]
-    request.extensions["sni_hostname"] = host  # type: ignore[attr-defined]
-    request.url = url.copy_with(host=address)  # type: ignore[attr-defined]
+    request.headers["Host"] = url.netloc.decode("ascii")
+    request.extensions["sni_hostname"] = host
+    request.url = url.copy_with(host=address)

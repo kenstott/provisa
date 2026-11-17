@@ -80,6 +80,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import AssetKind, GlossaryTermAsset, junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 from provisa.core.glossary import NOT_GROUNDED
 
 if TYPE_CHECKING:
@@ -1670,7 +1671,9 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         # steward id -> server-assigned UUID, harvested from the user upserts and consumed by
         # the domains they steward.
         user_ids: dict[str, str] = {}
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             # REQ-1387: business-glossary terms, scoped to the Provisa-owned glossary -- first,
             # so the tables can carry Provisa's term assignments (REQ-1389).
             glossary = await self._publish_glossary(client, snapshot, result)
@@ -1832,7 +1835,9 @@ class OpenMetadataExport(MetadataExport):  # REQ-1069
         return result
 
     async def health(self) -> None:
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             response = await client.get(
                 self._url("/api/v1/system/version"), headers=self._headers()
             )
