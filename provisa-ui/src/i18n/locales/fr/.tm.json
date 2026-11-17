@@ -10852,5 +10852,12 @@
   "fr/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
   "fr/serverErrors.json::serverErrors.import.include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
   "fr/serverErrors.json::serverErrors.import.filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
-  "fr/serverErrors.json::serverErrors.import.filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
+  "fr/serverErrors.json::serverErrors.import.filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with.",
+  "fr/serverErrors.json::serverErrors.redaction.rule_invalid": "Redaction rule {{rule}}: {{why}}",
+  "fr/serverErrors.json::serverErrors.redaction.pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
+  "fr/serverErrors.json::serverErrors.redaction.pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
+  "fr/serverErrors.json::serverErrors.redaction.pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
+  "fr/serverErrors.json::serverErrors.redaction.server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault.",
+  "fr/serverErrors.json::serverErrors.debug_logs.pattern_refused": "The log filter pattern is refused: {{why}}",
+  "fr/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
 }
