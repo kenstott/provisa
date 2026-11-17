@@ -3673,7 +3673,17 @@
     run outside its scope are named with one action to add them, and Reset to defaults restores the defaults.
     The pickers offer no table a run would leave out (a draft, a system domain''s table); a run whose source
     or target holds no table is refused before it starts, saying why, and a run that leaves out some of
-    the tables named says how many and why.'
+    the tables named says how many and why. (Amended 2026-11-16, A PROPOSED PAIR''S VALUES ARE MEASURED
+    AGAINST EACH OTHER, AND THE THRESHOLD IS THE PERSON''S OWN:) Maintainer 2026-11-16. Every pair a run
+    proposes, foreign key or semantic, is measured on its data, within a stated bound of distinct values
+    read per column: how many of the source column''s distinct values occur in the target column and the
+    reverse, and whether each side''s values are distinct (a key). The measure is shown on the pair''s row,
+    decides its cardinality (many-to-one when the target side is distinct, one-to-one when both are, many-to-many
+    when neither is), and is the evidence the score is given by: a pair whose values are contained in a
+    distinct target scores as a key relationship whatever the model rated it; a pair whose values barely
+    meet scores low however alike its names are. A table that cannot be read in full (a parameterized table)
+    is measured on what it can give and says so. The threshold that decides which rows start ticked is set
+    in the dialog and kept for the person who set it.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
