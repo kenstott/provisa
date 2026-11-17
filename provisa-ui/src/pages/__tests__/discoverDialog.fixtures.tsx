@@ -24,6 +24,7 @@ import {
   fetchDiscoveryRuns,
   fetchModelLimits,
   fetchRunProposals,
+  saveDiscoveryThreshold,
   fetchVendorModels,
   startDiscoveryRun,
   stopDiscoveryRun,
@@ -135,7 +136,14 @@ export const runsMock = vi.mocked(fetchDiscoveryRuns);
 export const stopMock = vi.mocked(stopDiscoveryRun);
 export const proposalsMock = vi.mocked(fetchRunProposals);
 export const applyMock = vi.mocked(applyRunDecisions);
+export const saveThresholdMock = vi.mocked(saveDiscoveryThreshold);
+/** A proposal as a run lists it. Unless given, its score is the model's (no values compared)
+ *  and it can be accepted where it can be decided. */
 export const proposal = (over: Partial<RunProposal>): RunProposal => ({
+  score: over.confidence === undefined ? 0.95 : over.confidence,
+  measured: false,
+  measure: null,
+  acceptable: over.decidable ?? true,
   id: 501,
   run_id: 7,
   kind: "semantics",
@@ -218,7 +226,7 @@ export const notAgainBox = (id: number) =>
 export const applyButton = () => screen.getByTestId("discover-apply");
 export async function endedRun() {
   runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
-  proposalsMock.mockResolvedValue({ proposals: PROPOSALS, threshold: 0.7 });
+  proposalsMock.mockResolvedValue({ proposals: PROPOSALS, threshold: 0.7, kept_at: 0.7 });
   await openDialog();
   fireEvent.click(runButton());
   await screen.findByTestId("proposal-501", {}, SLOW);
@@ -278,8 +286,9 @@ export function resetDiscoveryMocks() {
   runMock.mockReset().mockResolvedValue(runOf({}));
   runsMock.mockReset().mockResolvedValue([]);
   stopMock.mockReset().mockResolvedValue(runOf({ stop_requested: true }));
-  proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7 });
+  proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
   applyMock.mockReset().mockResolvedValue([]);
+  saveThresholdMock.mockReset().mockImplementation(async (threshold) => ({ threshold }));
 }
 
 export const LAST: DiscoveryScope = {

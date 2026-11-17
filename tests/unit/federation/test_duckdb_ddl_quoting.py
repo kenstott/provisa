@@ -12,14 +12,12 @@ value must come back as data. Where the statement runs with no network it is run
 in-memory DuckDB; elsewhere DuckDB's own parser counts the statements and the literal is read
 back from the text.
 
-The last tests hold the two modules to the helper: a statement text built from an interpolated
-value that is not written by ``duckdb_quoting`` fails them.
+The structure test that holds every federation module to the quoting helpers is in
+test_engine_ddl_quoting.py.
 """
 
 from __future__ import annotations
 
-import ast
-import re
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -162,13 +160,20 @@ def test_a_fabric_attach_is_its_secret_and_its_attach(field, value):
 @pytest.mark.parametrize("value", HOSTILE)
 @pytest.mark.parametrize("field", ["host", "username", "password", "path"])
 def test_a_firebird_attach_is_one_statement(field, value):
-    source = _source(**{field: value})
-    _one_statement(cd.DuckDBFirebirdConnector().details(source)["attach"], value)
+    # The user and the password are percent-encoded in the URL: read back by the extension's
+    # grammar in test_engine_ddl_quoting.py.
+    source = _source(**{"path": "/db/x.fdb", field: value})
+    verbatim = field not in ("username", "password")
+    _one_statement(cd.DuckDBFirebirdConnector().details(source)["attach"], value, verbatim=verbatim)
 
 
 @pytest.mark.parametrize("value", HOSTILE)
 def test_a_bigquery_attach_is_one_statement(value):
     source = _source(federation_hints={"project": value})
+    if any(ch.isspace() for ch in value):  # the extension's string has no spelling for it
+        with pytest.raises(ValueError, match="one word"):
+            cd.DuckDBBigQueryConnector().details(source)
+        return
     _one_statement(cd.DuckDBBigQueryConnector().details(source)["attach"], value)
 
 
@@ -390,184 +395,3 @@ def test_a_control_character_in_a_name_is_refused(where, bad):
 
 
 # --- structure: statement text is built through the helper -----------------------------------
-
-FEDERATION = Path(cd.__file__).parent
-#: The modules that give the DuckDB engine statements carrying registered values.
-DUCKDB_DDL_MODULES = ("connector_duckdb.py", "duckdb_runtime.py")
-#: What may write an interpolated value into statement text.
-QUOTERS = frozenset({"lit", "ident", "libpq_dsn", "libpq_value", "sql_literal", "int"})
-_SQL_TEXT = re.compile(
-    r"\b(ATTACH|DETACH|CREATE|DROP|ALTER|SELECT|INSERT|UPDATE|DELETE|COPY|INSTALL|LOAD|FROM|CALL|"
-    r"DESCRIBE|TYPE|SECRET|KEY_ID|ENDPOINT|REGION|SCOPE|FILEPATH|ACCOUNT|USER|PASSWORD|DATABASE|"
-    r"WAREHOUSE|ROLE|TENANT_ID|CLIENT_ID|CLIENT_SECRET|CONNECTION_STRING)\b"
-)
-
-#: Interpolations that are not a registered value, each read and found to be one of: statement
-#: text already built through the helper (a quoted name, a clause list, a whole scan), a constant
-#: of the module, or a name of DuckDB's own. (module, function, expression).
-REVIEWED: frozenset[tuple[str, str, str]] = frozenset(
-    {
-        # connector_duckdb.py
-        ("connector_duckdb.py", "_attach_options", "kind"),  # "sqlite" or "duckdb", from the caller
-        ("connector_duckdb.py", "details", "_attach_options(source, 'sqlite')"),  # option keywords
-        ("connector_duckdb.py", "details", "_attach_options(source, 'duckdb')"),  # option keywords
-        ("connector_duckdb.py", "_scan_view_ddl", "scanner"),  # the connector's table function
-        ("connector_duckdb.py", "_s3_secret_ddl", "', '.join(clauses)"),  # clauses of lit()
-        (
-            "connector_duckdb.py",
-            "object_store_secret_ddl",
-            "', '.join(clauses)",
-        ),  # clauses of lit()
-        ("connector_duckdb.py", "object_store_secret_ddl", "name"),  # ident()
-        ("connector_duckdb.py", "details", "', '.join(options)"),  # snowflake: options of lit()
-        ("connector_duckdb.py", "details", "provider"),  # azure: keywords and lit()
-        # duckdb_runtime.py
-        ("duckdb_runtime.py", "_attach_databricks", "ext"),  # "httpfs" or "iceberg"
-        ("duckdb_runtime.py", "_point_databricks_view", "options"),  # DuckDB's option names, lit()
-        ("duckdb_runtime.py", "_point_databricks_view", "phys"),  # _phys_name: ident()
-        ("duckdb_runtime.py", "_point_databricks_view", "scan_args"),  # the connector's constant
-        ("duckdb_runtime.py", "attach_source", "phys"),  # _phys_name: ident()
-        ("duckdb_runtime.py", "attach_source", "remote"),  # ident()
-        ("duckdb_runtime.py", "attach_source", "renamed"),  # ident() pairs
-        ("duckdb_runtime.py", "attach_source", "scan"),  # the connector's scan: _scan_view_ddl
-        ("duckdb_runtime.py", "attach_region_ops", "select"),  # an ops view's own SELECT
-        ("duckdb_runtime.py", "attach_region_store", "store_type"),  # _ATTACH_TYPE_BY_SCHEME
-        ("duckdb_runtime.py", "ensure_materialize_attached", "store_type"),  # the same
-        ("duckdb_runtime.py", "ensure_materialize_attached", "self._MAT_STORE"),  # "mat_store"
-        ("duckdb_runtime.py", "_attach_motherduck_store", "self._MAT_STORE"),  # "mat_store"
-        ("duckdb_runtime.py", "_copy_store_table", "target"),  # _local_store_name: ident()
-        ("duckdb_runtime.py", "_copy_store_table", "_typed_back(arrow_tbl.schema)"),  # ident()
-        ("duckdb_runtime.py", "_index_replica_vectors", "target"),  # _local_store_name: ident()
-        ("duckdb_runtime.py", "_index_replica_vectors", "quoted"),  # ident()
-        ("duckdb_runtime.py", "introspect_columns", "phys"),  # _phys_name: ident()
-        ("duckdb_runtime.py", "introspect_columns", "target"),  # phys, or the ClickHouse read
-        ("duckdb_runtime.py", "describe_sync", "duck_sql"),  # the governed statement itself
-    }
-)
-
-
-def _postgres_engine_classes(tree: ast.Module) -> set[str]:
-    """The classes of ``tree`` that are connectors of the PostgreSQL engine: their statements go
-    to PostgreSQL, not DuckDB."""
-    engine: dict[str, str | None] = {}
-    bases: dict[str, list[str]] = {}
-    for node in tree.body:
-        if not isinstance(node, ast.ClassDef):
-            continue
-        bases[node.name] = [b.id for b in node.bases if isinstance(b, ast.Name)]
-        engine[node.name] = next(
-            (
-                stmt.value.value
-                for stmt in node.body
-                if isinstance(stmt, ast.Assign)
-                and any(isinstance(t, ast.Name) and t.id == "engine" for t in stmt.targets)
-                and isinstance(stmt.value, ast.Constant)
-            ),
-            None,
-        )
-
-    def resolved(name: str) -> str | None:
-        if engine.get(name) is not None:
-            return engine[name]
-        return next((e for e in map(resolved, bases.get(name, [])) if e is not None), None)
-
-    return {name for name in engine if resolved(name) == "postgres"}
-
-
-def _is_quoted(value: ast.expr) -> bool:
-    if isinstance(value, ast.Constant):
-        return True
-    if not isinstance(value, ast.Call):
-        return False
-    func = value.func
-    name = func.id if isinstance(func, ast.Name) else getattr(func, "attr", None)
-    return name in QUOTERS
-
-
-def _unquoted_interpolations(module: str, source: str) -> set[tuple[str, str, str]]:
-    """Every value written into statement text of ``source`` by something other than a quoter:
-    an f-string field, an operand of ``+`` or ``%``, an argument of ``.format``."""
-    tree = ast.parse(source)
-    skipped = _postgres_engine_classes(tree)
-    found: set[tuple[str, str, str]] = set()
-
-    def text_of(node: ast.expr) -> str | None:
-        if isinstance(node, ast.Constant) and isinstance(node.value, str):
-            return node.value
-        if isinstance(node, ast.JoinedStr):
-            return "".join(
-                v.value
-                for v in node.values
-                if isinstance(v, ast.Constant) and isinstance(v.value, str)
-            )
-        return None
-
-    def visit(node: ast.AST, function: str) -> None:
-        if isinstance(node, ast.ClassDef) and node.name in skipped:
-            return
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-            function = node.name
-        values: list[ast.expr] = []
-        if isinstance(node, ast.JoinedStr) and _SQL_TEXT.search(text_of(node) or ""):
-            values = [v.value for v in node.values if isinstance(v, ast.FormattedValue)]
-        elif isinstance(node, ast.BinOp) and isinstance(node.op, (ast.Add, ast.Mod)):
-            sides = [node.left, node.right]
-            if any(_SQL_TEXT.search(text_of(s) or "") for s in sides):
-                values = [s for s in sides if text_of(s) is None]
-        elif (
-            isinstance(node, ast.Call)
-            and isinstance(node.func, ast.Attribute)
-            and node.func.attr == "format"
-            and _SQL_TEXT.search(text_of(node.func.value) or "")
-        ):
-            values = [*node.args, *(k.value for k in node.keywords)]
-        for value in values:
-            if not _is_quoted(value):
-                found.add((module, function, ast.unparse(value)))
-        for child in ast.iter_child_nodes(node):
-            visit(child, function)
-
-    visit(tree, "<module>")
-    return found
-
-
-def test_the_detector_sees_each_way_a_value_is_spliced():
-    spliced = """
-def f(source):
-    a = f"ATTACH '{source.path}' AS x"
-    b = "SELECT * FROM " + source.table_name
-    c = "DROP VIEW %s" % source.table_name
-    d = "CREATE SCHEMA {}".format(source.schema_name)
-    e = f"ATTACH {lit(source.path)} AS {ident(source.id)}"
-    return f"no statement here: {source.id}"
-"""
-    assert _unquoted_interpolations("m.py", spliced) == {
-        ("m.py", "f", "source.path"),
-        ("m.py", "f", "source.table_name"),
-        ("m.py", "f", "source.schema_name"),
-    }
-
-
-def test_duckdb_sql_is_built_through_the_quoting_helper():
-    """A new interpolation in these modules is written with ``lit`` or ``ident``; one that is
-    not a registered value is added to ``REVIEWED`` with what it is."""
-    found: set[tuple[str, str, str]] = set()
-    for module in DUCKDB_DDL_MODULES:
-        found |= _unquoted_interpolations(module, (FEDERATION / module).read_text())
-    unreviewed = sorted(found - REVIEWED)
-    assert not unreviewed, "statement text built from an unquoted value:\n" + "\n".join(
-        f"  {m}:{f}: {{{e}}}" for m, f, e in unreviewed
-    )
-    stale = sorted(REVIEWED - found)
-    assert not stale, f"REVIEWED names interpolations that are gone: {stale}"
-
-
-def test_the_two_modules_keep_no_quoter_of_their_own():
-    for module in DUCKDB_DDL_MODULES:
-        tree = ast.parse((FEDERATION / module).read_text())
-        own = [
-            n.name
-            for n in ast.walk(tree)
-            if isinstance(n, ast.FunctionDef) and n.name in ("_quoted", "_sql_text")
-        ]
-        assert not own, f"{module} defines {own}: use provisa.federation.duckdb_quoting"

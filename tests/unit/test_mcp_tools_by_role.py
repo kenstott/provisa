@@ -288,7 +288,7 @@ async def test_the_tool_list_follows_the_model(bearer):
     assert retired == before
 
 
-async def test_a_sip_session_lists_its_mode_within_its_rights_and_its_commands(bearer):
+async def test_a_sip_session_lists_its_mode_within_its_rights_and_no_command_tools(bearer):
     state = _state(top_regions=_command("top_regions", ["analyst", "steward"]))
     async with _serving(state) as (mcp, connect):
         async with connect("?tools=sip", token="as-analyst") as session:
@@ -296,11 +296,58 @@ async def test_a_sip_session_lists_its_mode_within_its_rights_and_its_commands(b
             catalog = _payload(await session.call_tool(tool_groups.CATALOG_TOOL, {}))
         offered = _registered_offered(mcp, set(_ROLES["analyst"]["capabilities"]))
     sip = {t for t in offered if tool_groups.GROUP_OF[t] in tool_groups.SIP_GROUPS}
-    assert names == sip | {"top_regions"}
+    assert names == sip
     groups = {g["group"]: g for g in catalog["groups"]}
     # The analyst curates nothing: the groups whose every tool needs a right it lacks are not named.
     assert "metric_management" not in groups and "test_data" not in groups
     assert groups["glossary"]["tools"] == ["list_glossary_findings"]
+
+
+async def test_command_tools_are_listed_in_full_mode_only(bearer):
+    state = _state(top_regions=_command("top_regions", ["analyst"]))
+    async with _serving(state) as (_mcp, connect):
+        async with connect("?tools=full", token="as-analyst") as session:
+            full = await _names(session)
+        async with connect("?tools=sip", token="as-analyst") as session:
+            sip = await _names(session)
+            await session.call_tool(tool_groups.CATALOG_TOOL, {"add": "statistics"})
+            sip_added = await _names(session)
+    assert "top_regions" in full
+    assert "top_regions" not in sip
+    assert "top_regions" not in sip_added
+
+
+async def test_a_command_tool_called_in_sip_is_decided_as_in_full_mode(bearer, monkeypatch):
+    """As an unlisted built-in the principal may use: a sip session lists no command tools, and a
+    call of one runs, or is refused, exactly as in full mode."""
+    from provisa.api.data import action_exec
+
+    ran: list[tuple[str, dict, str]] = []
+
+    async def _dispatch(fn: dict, args: dict, _state: Any, role_id: str) -> list[dict]:
+        ran.append((fn["name"], dict(args), role_id))
+        return [{"region": args["region"]}]
+
+    monkeypatch.setattr(action_exec, "dispatch_function", _dispatch)
+    monkeypatch.setattr(action_exec, "_record_call", lambda *_a: None)
+    state = _state(
+        top_regions=_command("top_regions", ["analyst"]),
+        restock=_command("restock", ["steward"]),
+    )
+    outcomes: dict[str, tuple[Any, Any]] = {}
+    async with _serving(state) as (_mcp, connect):
+        for mode in ("full", "sip"):
+            async with connect(f"?tools={mode}", token="as-analyst") as session:
+                seen = await session.call_tool("top_regions", {"region": "eu"})
+                unseen = await session.call_tool("restock", {"region": "eu"})
+            outcomes[mode] = (
+                (seen.isError, _payload(seen) if not seen.isError else seen.content[0].text),
+                (unseen.isError, unseen.content[0].text),
+            )
+    assert outcomes["sip"] == outcomes["full"]
+    assert outcomes["sip"][0] == (False, {"rows": [{"region": "eu"}]})
+    assert outcomes["sip"][1] == (True, "Unknown tool: restock")
+    assert ran == [("top_regions", {"region": "eu", "top": 5}, "analyst")] * 2
 
 
 # -- local: the role is the pinned mcp.role --------------------------------------------------
