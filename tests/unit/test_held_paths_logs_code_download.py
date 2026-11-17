@@ -19,9 +19,12 @@ deployment's own org on an install of one reads what the operator's directories 
 
 from __future__ import annotations
 
+import socket
 from types import SimpleNamespace
 
+import httpx
 import pytest
+import respx
 
 import provisa.core.settings_catalog  # noqa: F401 -- declares the settings read here
 from provisa.codesource import source as code_source
@@ -142,15 +145,106 @@ def test_a_sandbox_org_reads_a_code_directory_and_a_download_its_demo_declares(d
     assert download.value.code == "files.download_mount_refused"
 
 
-def test_a_sandbox_org_reads_its_own_demos_logs(disk, bound, monkeypatch):
-    """REQ-2049: a demo's logs are read live from its directory by its sandboxes."""
+def _logs(glob: str) -> dict:
+    return {"id": "access", "type": "logs", "mapping": {"glob": glob, "format": "jsonl"}}
+
+
+def test_a_sandbox_org_reads_the_logs_its_demo_declares(disk, bound):
+    """REQ-1997, REQ-2049: a demo's Logs source names the files it reads, as its other sources
+    name theirs (set_demo_destinations); the glob and each file it matches read, and nothing
+    else of the server's."""
+    bound(_SANDBOX)
+    glob = f"{disk.server}/logs/*.log"
+    egress.set_demo_destinations(_SANDBOX, [_logs(glob)])
+    assert checked_glob(glob) == glob
+    log = disk.server / "logs" / "app.log"
+    assert checked_file(str(log)) == str(log.resolve())
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
+        checked_glob(f"{disk.server}/*.log")
+    (disk.server / "logs" / "app.txt").write_text("x\n")
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
+        checked_file(str(disk.server / "logs" / "app.txt"))
+    # A file the glob matches by name that links out of the declared directory is not declared.
+    (disk.server / "secret").write_text("x\n")
+    (disk.server / "logs" / "out.log").symlink_to(disk.server / "secret")
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
+        checked_file(str(disk.server / "logs" / "out.log"))
+    # A wildcard matches within one directory, as the glob reads it.
+    (disk.server / "logs" / "deep").mkdir()
+    (disk.server / "logs" / "deep" / "a.log").write_text("x\n")
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
+        checked_file(str(disk.server / "logs" / "deep" / "a.log"))
+
+
+def test_a_sandbox_org_is_refused_its_demos_directory_where_its_demo_declares_no_logs(
+    disk, bound, monkeypatch
+):
+    """The demo's directory is no exemption of its own: only what its sources declare reads."""
     bound(_SANDBOX)
     monkeypatch.setattr(
         "provisa.core.demo_bundles.own_demo_directory", lambda _org: disk.server / "logs"
     )
-    assert checked_glob(f"{disk.server}/logs/*.log") == f"{disk.server}/logs/*.log"
+    egress.set_demo_destinations(_SANDBOX, [])
     with pytest.raises(LogPathRefused, match="outside its own folder"):
-        checked_glob(f"{disk.server}/*.log")
+        checked_glob(f"{disk.server}/logs/*.log")
+
+
+@pytest.fixture
+def forgotten():
+    """The download tests run on their own event loop's context, so they name the org rather
+    than bind it; what a test's demo declares is forgotten after it."""
+    yield
+    egress.forget(_SANDBOX)
+
+
+def _resolving(monkeypatch, table: dict[str, str]) -> None:
+    def _getaddrinfo(host, *_args, **_kw):
+        return [(None, None, None, "", (table[host], 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", _getaddrinfo)
+
+
+@respx.mock
+async def test_a_sandbox_org_on_an_install_of_one_downloads_nothing_from_an_internal_address(
+    disk, forgotten, monkeypatch
+):
+    """REQ-1557: a held org's https or s3 download reaches only public addresses, as its sources
+    do (sandbox_egress.require_allowed), on an install of one organization too."""
+    _resolving(monkeypatch, {"metadata.internal": "169.254.169.254", "minio.internal": "10.0.0.7"})
+    with pytest.raises(source_downloads.DownloadRefused) as refused:
+        await source_downloads.download("s", "https://metadata.internal/token", org_id=_SANDBOX)
+    assert refused.value.code == "files.download_internal_address"
+    assert refused.value.params["host"] == "metadata.internal"
+    with pytest.raises(source_downloads.DownloadRefused) as refused:
+        source_downloads._s3_body(
+            "s3://bucket/a.csv", {"endpoint": "http://minio.internal:9000"}, _SANDBOX
+        )
+    assert refused.value.code == "files.download_internal_address"
+
+
+@respx.mock
+async def test_a_sandbox_org_downloads_from_an_internal_host_its_demo_declares(
+    disk, forgotten, monkeypatch
+):
+    _resolving(monkeypatch, {"files.internal": "10.0.0.8"})
+    egress.set_demo_destinations(
+        _SANDBOX, [{"id": "s", "type": "csv", "download_from": "https://files.internal/a.csv"}]
+    )
+    respx.get("https://files.internal/a.csv").mock(return_value=httpx.Response(200, content=b"a\n"))
+    path, _ = await source_downloads.download("s", "https://files.internal/a.csv", org_id=_SANDBOX)
+    assert path.read_bytes() == b"a\n"
+
+
+@respx.mock
+async def test_the_deployments_own_org_on_an_install_of_one_downloads_from_an_internal_address(
+    disk, forgotten, monkeypatch
+):
+    _resolving(monkeypatch, {"files.internal": "10.0.0.8"})
+    respx.get("https://files.internal/a.csv").mock(return_value=httpx.Response(200, content=b"a\n"))
+    path, _ = await source_downloads.download(
+        "s", "https://files.internal/a.csv", org_id=_DEPLOYMENT
+    )
+    assert path.read_bytes() == b"a\n"
 
 
 def test_the_deployments_own_org_on_an_install_of_one_reads_what_the_operator_allows(disk, bound):

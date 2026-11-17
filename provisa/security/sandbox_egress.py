@@ -34,7 +34,10 @@ dedicated platform) holds only its sandboxes to it: its own org may have private
 
 from __future__ import annotations
 
+import fnmatch
 import ipaddress
+import os
+import re
 import socket
 from typing import TYPE_CHECKING
 from urllib.parse import urlsplit
@@ -151,10 +154,13 @@ _seeded_demo_sources: dict[str, frozenset[str]] = {}
 # their real paths. A held org reads those and its own folder, and nothing else on this disk
 # (provisa.core.source_uploads.require_own_disk).
 _demo_locations: dict[str, frozenset[str]] = {}
+#: A glob's wildcard characters, as ``glob.glob`` reads them.
+_WILDCARD = re.compile(r"[*?\[]")
 
 #: A network-host source with no host given is reached at this host (schema_common._add_source_pool).
 _DEFAULT_HOST = "localhost"
-_URL_FIELDS = ("path", "base_url")
+#: A file source's download_from (REQ-2113) is a URL it reads from, as a path or base_url is.
+_URL_FIELDS = ("path", "base_url", "download_from")
 
 
 def _plain(value: object) -> str | None:
@@ -255,9 +261,32 @@ def set_demo_destinations(org_id: str, sources: list[dict]) -> None:
     )
 
 
+def _glob_names(pattern: str, real_path: str) -> bool:
+    """Whether ``real_path`` is a path the glob ``pattern`` matches as ``glob.glob`` reads it: a
+    wildcard matches within one directory, and a name starting with '.' only where the pattern's
+    segment starts with one too."""
+    wanted = pattern.split(os.sep)
+    parts = real_path.split(os.sep)
+    if len(wanted) != len(parts):
+        return False
+    for want, part in zip(wanted, parts, strict=True):
+        if not _WILDCARD.search(want):
+            if want != part:
+                return False
+        elif not fnmatch.fnmatchcase(part, want) or (
+            part.startswith(".") and not want.startswith(".")
+        ):
+            return False
+    return True
+
+
 def declared_location(org_id: str, real_path: str) -> bool:
-    """Whether ``real_path`` is a place on the server's own disk ``org_id``'s demo declares."""
-    return real_path in _demo_locations.get(org_id, frozenset())
+    """Whether ``real_path`` is a place on the server's own disk ``org_id``'s demo declares: one
+    of its declared places, or a file a declared glob matches (a Logs source's, REQ-1996)."""
+    declared = _demo_locations.get(org_id, frozenset())
+    return real_path in declared or any(
+        _glob_names(place, real_path) for place in declared if _WILDCARD.search(place)
+    )
 
 
 def set_seeded_demo(org_id: str, sources: list) -> None:

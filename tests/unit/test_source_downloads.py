@@ -16,19 +16,22 @@ nothing is copied."""
 
 from __future__ import annotations
 
+import socket
+
 import httpx
 import pytest
 import respx
 
 import provisa.core.settings_catalog  # noqa: F401 -- declares the settings read here
-from provisa.core import org_files, source_downloads, source_uploads
+from provisa.core import org_files, secrets_providers, source_downloads, source_uploads
+from provisa.security import sandbox_egress
 
 
 @pytest.fixture
 def org(tmp_path, monkeypatch):
     monkeypatch.setenv("PROVISA_DATA_DIR", str(tmp_path / "data"))
     # A server of one organization; the test of many sets it so.
-    monkeypatch.setattr(source_downloads, "many_organisations", lambda: False)
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: False)
     org_files.folder("acme").mkdir(parents=True)
     return "acme"
 
@@ -144,8 +147,8 @@ async def test_an_s3_file_is_read_with_the_source_s_credentials(org, monkeypatch
         def close(self):
             seen["closed"] = True
 
-    def _body(address, hints):
-        seen["address"], seen["hints"] = address, hints
+    def _body(address, hints, org_id):
+        seen["address"], seen["hints"], seen["org"] = address, hints, org_id
         return _Body(), 6
 
     monkeypatch.setattr(source_downloads, "_s3_body", _body)
@@ -154,19 +157,26 @@ async def test_an_s3_file_is_read_with_the_source_s_credentials(org, monkeypatch
         "s", "s3://bucket/data/a.parquet", hints=hints, org_id=org
     )
     assert path.read_bytes() == b"PAR1s3" and size == 6
-    assert seen == {"address": "s3://bucket/data/a.parquet", "hints": hints, "closed": True}
+    assert seen == {
+        "address": "s3://bucket/data/a.parquet",
+        "hints": hints,
+        "org": org,
+        "closed": True,
+    }
 
 
 @pytest.fixture
 def many(monkeypatch):
-    monkeypatch.setattr(source_downloads, "many_organisations", lambda: True)
+    """A server of many organizations, whose own org is another: acme is held."""
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
 
 
 def _resolving(monkeypatch, table: dict[str, str]) -> None:
     def _getaddrinfo(host, *_args, **_kw):
         return [(None, None, None, "", (table[host], 0))]
 
-    monkeypatch.setattr(source_downloads.socket, "getaddrinfo", _getaddrinfo)
+    monkeypatch.setattr(socket, "getaddrinfo", _getaddrinfo)
 
 
 @respx.mock
@@ -221,7 +231,9 @@ def test_on_many_organizations_an_s3_compatible_endpoint_inside_the_network_is_r
 ):
     _resolving(monkeypatch, {"minio.internal": "192.168.1.20"})
     with pytest.raises(source_downloads.DownloadRefused) as refused:
-        source_downloads._s3_body("s3://bucket/a.csv", {"endpoint": "http://minio.internal:9000"})
+        source_downloads._s3_body(
+            "s3://bucket/a.csv", {"endpoint": "http://minio.internal:9000"}, "acme"
+        )
     assert refused.value.code == "files.download_internal_address"
 
 
