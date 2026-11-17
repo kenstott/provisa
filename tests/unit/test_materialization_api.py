@@ -786,7 +786,7 @@ class TestMatApiEpTable:
     async def test_a_path_param_not_given_is_refused_never_skipped(self):
         """REQ-1986: a read that reaches the endpoint without its path parameter is refused
         naming it. It was once logged and skipped, and the table answered as if it held no row."""
-        from provisa.core.parameters import ParameterRequired
+        from provisa.core.parameter_binding import ParameterRequired
 
         state = SimpleNamespace(
             api_sources={},
@@ -1526,7 +1526,7 @@ class TestMaterializeApiToEngineCache:
 
     async def test_an_endpoint_read_without_its_path_param_is_refused_not_dropped(self):
         """REQ-1986: it was once dropped from the statement as "could not be materialized"."""
-        from provisa.core.parameters import ParameterRequired
+        from provisa.core.parameter_binding import ParameterRequired
 
         ep = _ep([_col("id"), _col("owner_id", param_type=ParamType.path)])
         state = SimpleNamespace(

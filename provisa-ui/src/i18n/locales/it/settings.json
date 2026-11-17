@@ -874,6 +874,12 @@
         "label": "Chiamate per istruzione a una tabella parametrizzata",
         "help": "Il numero massimo di chiamate che un'istruzione fa a una tabella parametrizzata. Ogni valore che un'istruzione dà a un parametro è una chiamata alla sorgente: ogni valore di una lista IN, ogni ramo di un OR, ogni chiave distinta di un join. Un'istruzione che ne richiede di più viene rifiutata."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sink Kafka in esecuzione per persona",
+        "help": "Quanti sink Kafka una persona può avere in esecuzione contemporaneamente. Una richiesta di avviarne un altro viene rifiutata finché uno dei suoi non si ferma."
+      }
     }
   }
 }

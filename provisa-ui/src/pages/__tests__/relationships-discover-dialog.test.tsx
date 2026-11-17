@@ -687,6 +687,45 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
   });
 });
 
+describe("Discovery dialog: an ended run's layout", () => {
+  it("puts New run beside Apply, in the action row above the table", async () => {
+    await endedRun();
+    const newRun = screen.getByTestId("discover-new-run");
+    expect(newRun.parentElement).toBe(applyButton().parentElement);
+    expect(newRun.compareDocumentPosition(applyButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      applyButton().compareDocumentPosition(screen.getByTestId("discover-proposals")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("scrolls only the table, beneath its pinned header, in the height the dialog leaves", async () => {
+    await endedRun();
+    const region = screen.getByTestId("discover-proposals-scroll");
+    // The list's pinned header (REQ-1587): the region holds the list's own scrollport.
+    expect(region).toHaveClass("page-sticky-head");
+    expect(region.firstElementChild).toHaveClass("table-scroll");
+    expect(within(region).getByTestId("discover-proposals")).toBeInTheDocument();
+    const body = dialog().querySelector(".mantine-Modal-body") as HTMLElement;
+    expect(body.style.display).toBe("flex");
+    expect(body.style.flexDirection).toBe("column");
+    expect(body.style.minHeight).toBe("0px");
+    expect(screen.getByTestId("discover-result").style.flexShrink).toBe("0");
+  });
+
+  it("shows New run when the run proposed nothing", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-no-proposals", {}, SLOW);
+    expect(screen.getByTestId("discover-new-run")).toBeVisible();
+    expect(screen.queryByTestId("discover-apply")).toBeNull();
+  });
+});
+
 describe("Discovery dialog: each pair measured on its data, ticked from the person's threshold", () => {
   const side = (values: number, distinct: boolean) => ({
     values,

@@ -11,6 +11,7 @@ resolves the scoped leaves (property/param/function) exactly as the old regex pa
 quoted column name, unquoted table alias).
 """
 
+from provisa.core.parameters import parameter_names
 from provisa.gql.expr_context import TranslatorExprContext
 from provisa.cypher.expr_parser import parse_expression as P
 from provisa.gql.expr_visitor import ExprLowering
@@ -35,6 +36,14 @@ def _label_map(parameterized: bool = True) -> CypherLabelMap:
         table_name="persons",
         properties={"name": "name", "age": "age_col"},
         native_filter_columns={"_nf_status": "varchar"} if parameterized else {},
+        # What the compilation context holds for it (CompilationContext.parameter_names).
+        parameter_names=tuple(
+            parameter_names(
+                [{"column_name": "_nf_status", "native_filter_type": "query_param"}]
+            ).items()
+        )
+        if parameterized
+        else (),
     )
     knows = RelationshipMapping(
         rel_type="KNOWS",

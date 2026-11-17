@@ -36,16 +36,24 @@ This module is carried, as it is, by every built image's front end
 # Requirements: REQ-066, REQ-2100
 from __future__ import annotations
 
-import duckdb
+import functools
+
 from sqlglot import exp
 
-#: DuckDB's exceptions by the kind its message opens with, spaced and cased as there ("Out of Range
-#: Error: ..." is an OutOfRangeException).
-_ENGINE_ERRORS: dict[str, type[duckdb.Error]] = {
-    name.removesuffix("Exception").lower(): cls
-    for name, cls in vars(duckdb).items()
-    if name.endswith("Exception") and isinstance(cls, type) and issubclass(cls, duckdb.Error)
-}
+
+@functools.cache
+def _engine_errors() -> dict[str, type[Exception]]:
+    """DuckDB's exceptions by the kind its message opens with, spaced and cased as there ("Out of
+    Range Error: ..." is an OutOfRangeException). DuckDB is imported here, not by the module: the
+    transpiler's rewrites (null_order_as_key) read no DuckDB, and a process that only translates
+    does not load it; one that streams DuckDB's answers has it loaded already."""
+    import duckdb
+
+    return {
+        name.removesuffix("Exception").lower(): cls
+        for name, cls in vars(duckdb).items()
+        if name.endswith("Exception") and isinstance(cls, type) and issubclass(cls, duckdb.Error)
+    }
 
 
 def engine_error(error: OSError) -> Exception:
@@ -53,7 +61,7 @@ def engine_error(error: OSError) -> Exception:
     itself where its message names no kind DuckDB has an exception for."""
     message = str(error)
     kind, sep, _ = message.partition(" Error: ")
-    raised = _ENGINE_ERRORS.get(kind.replace(" ", "").lower()) if sep else None
+    raised = _engine_errors().get(kind.replace(" ", "").lower()) if sep else None
     return error if raised is None else raised(message)
 
 
