@@ -53,11 +53,17 @@
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy हस्ताक्षर अमान्य है",
-      "tenant_no_ls_customer": "टेनेंट का कोई Lemon Squeezy ग्राहक नहीं है",
-      "tenant_not_found": "टेनेंट नहीं मिला",
-      "webhook_missing_customer_id": "वेबहुक में ग्राहक id नहीं है",
-      "webhook_missing_tenant_linkage": "वेबहुक में टेनेंट लिंकेज नहीं है"
+      "checkout_not_complete": "यह चेकआउट पूरा नहीं हुआ है, इसलिए जोड़ने के लिए अभी कोई सदस्यता नहीं है।",
+      "invalid_signature": "अमान्य webhook हस्ताक्षर",
+      "no_trial": "इस संगठन का कोई ट्रायल नहीं है",
+      "org_no_customer": "इस संगठन का अभी कोई बिलिंग खाता नहीं है।",
+      "org_not_found": "संगठन नहीं मिला",
+      "reconcile_not_creator": "केवल संगठन का निर्माता ही यह कर सकता है",
+      "session_org_mismatch": "यह चेकआउट इस संगठन के लिए नहीं खोला गया था।",
+      "subscription_items_unrecognized": "इस सदस्यता में इस डिप्लॉयमेंट द्वारा बेचा जाने वाला प्लान मूल्य और डेटा ट्रांसफ़र मूल्य दोनों नहीं हैं, इसलिए इसे बदला नहीं जा सकता।",
+      "trial_already_started": "इस संगठन ने अपना ट्रायल पहले ही शुरू कर दिया है। ट्रायल प्रति संगठन एक बार दिया जाता है।",
+      "webhook_missing_org_linkage": "webhook सदस्यता किसी संगठन का नाम नहीं बताती",
+      "webhook_missing_subscription": "webhook किसी सदस्यता का नाम नहीं बताता"
     },
     "control_plane": {
       "multitenancy_disabled": "मल्टीटेनेंसी सक्षम नहीं है"

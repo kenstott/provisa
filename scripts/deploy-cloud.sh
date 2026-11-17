@@ -112,25 +112,42 @@ preflight_engine() {
     | sed 's/^/   /'
 }
 
-# REQ-1455/REQ-1514: on a HOSTED node the plan catalog is the first thing the signup page asks for,
-# and variant_id_for_plan raises rather than inventing an id, so a node missing these answers
-# GET /billing/catalog with a 500 and "Get started" cannot create an organization at all. The
-# variant ids ARE the billing configuration -- there is no default to fall back to -- so the deploy
-# asserts them the way it asserts the engine pin, from the RUNNING container.
-COMMERCE_KEYS="LEMONSQUEEZY_VARIANT_STARTER LEMONSQUEEZY_VARIANT_PRO_S \
-LEMONSQUEEZY_VARIANT_PRO_M LEMONSQUEEZY_VARIANT_PRO_L \
-LEMONSQUEEZY_VARIANT_EGRESS_STARTER LEMONSQUEEZY_VARIANT_EGRESS_PRO_S \
-LEMONSQUEEZY_VARIANT_EGRESS_PRO_M LEMONSQUEEZY_VARIANT_EGRESS_PRO_L \
-LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
+# REQ-1455/REQ-1514, REQ-1562: on a HOSTED node the plan catalog is the first thing the signup page
+# asks for, and the plugin raises rather than inventing a Stripe price id, so a node missing these
+# answers GET /billing/catalog with a 500 and "Get started" cannot create an organization. The
+# price ids ARE the billing configuration -- there is no default to fall back to -- so the deploy
+# asserts them the way it asserts the engine pin, from the RUNNING container. Each plan has two
+# prices on its one subscription: its active hour and its data transfer.
+COMMERCE_KEYS="STRIPE_PRICE_STARTER STRIPE_PRICE_PRO_S STRIPE_PRICE_PRO_M STRIPE_PRICE_PRO_L \
+STRIPE_PRICE_EGRESS_STARTER STRIPE_PRICE_EGRESS_PRO_S \
+STRIPE_PRICE_EGRESS_PRO_M STRIPE_PRICE_EGRESS_PRO_L \
+STRIPE_WEBHOOK_SECRET"
+# REQ-1564: STRIPE_MODE picks the credentials. Every one of them is carried to the node; which pair
+# is asserted is the mode's (commerce_mode_keys).
+COMMERCE_CREDENTIAL_KEYS="STRIPE_MODE STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY \
+STRIPE_TEST_SECRET_KEY STRIPE_TEST_PUBLISHABLE_KEY"
+
+# REQ-1564: the secret and publishable key STRIPE_MODE selects, from a `printenv` dump. The plugin
+# reads "test" (any case, surrounding space ignored) as the sandbox and anything else, unset
+# included, as live; this reads the mode the same way.
+commerce_mode_keys() {
+  local mode
+  mode="$(printf '%s\n' "$1" | sed -n 's/^STRIPE_MODE=//p' | tr -d ' \r' | tr '[:upper:]' '[:lower:]')"
+  if [ "$mode" = "test" ]; then
+    echo "STRIPE_TEST_SECRET_KEY STRIPE_TEST_PUBLISHABLE_KEY"
+  else
+    echo "STRIPE_SECRET_KEY STRIPE_PUBLISHABLE_KEY"
+  fi
+}
 
 # REQ-1455/REQ-1514 continued: provisa.env is the systemd EnvironmentFile first-launch.sh writes
 # ONCE, at first boot (ENV_FILE's own comment) -- but the GCE instance metadata startup-script
 # re-runs that ENTIRE first-boot install on every instance START, not just true first boot (this
 # node scales to zero on idle and wakes on the next hit), and that startup-script's own exported
 # env only covers the engine/auth/mail keys it was written with. Any key added to this deploy
-# AFTER a node's first boot -- exactly what LEMONSQUEEZY_* was -- gets silently regenerated away
-# every time the node idle-stops and restarts, so a preflight that only ASSERTS (and tells a human
-# to SSH in and fix it) turns into repeat manual surgery on every cold start. Verified live
+# AFTER a node's first boot -- exactly what the billing settings are -- gets silently regenerated
+# away every time the node idle-stops and restarts, so a preflight that only ASSERTS (and tells a
+# human to SSH in and fix it) turns into repeat manual surgery on every cold start. Verified live
 # 2026-09-17: a value set by hand via set_node_env was gone after the very next idle-stop/restart
 # cycle, mid-deploy. Self-heal from the repo .env instead, the same shape push_mail_env already
 # uses for PROVISA_EMAIL_API_KEY -- this is the fix, not a workaround: preflight_commerce below
@@ -138,9 +155,9 @@ LEMONSQUEEZY_API_KEY LEMONSQUEEZY_STORE_ID LEMONSQUEEZY_SIGNING_SECRET"
 push_commerce_env() {
   echo "== commerce env"
   local env_dump changed=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(TEST_)?LEMONSQUEEZY' || true" | tr -d '\r')"
-  for k in $COMMERCE_KEYS LEMONSQUEEZY_MODE TEST_LEMONSQUEEZY_API_KEY; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." && continue
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
+  for k in $COMMERCE_KEYS $COMMERCE_CREDENTIAL_KEYS; do
+    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" && continue
     local want
     want="$(sed -n "s/^$k=//p" "$REPO/.env" 2>/dev/null | tail -1)"
     [ -n "$want" ] || continue
@@ -156,29 +173,35 @@ push_commerce_env() {
   fi
 }
 
+# REQ-1562, REQ-1564: the eight price ids, the webhook secret, and the secret and publishable key
+# the mode selects. Run AFTER push_cp_compose: the container's environment is what the compose file
+# names, and a node set up before a setting existed forwards nothing until its compose is current.
+# Still before any code is pushed, so a node that cannot bill is refused before it changes.
+# A blank value is a missing value: compose forwards every declared variable, so an unset key
+# reaches the container as "" and the plugin would refuse it on first use. The publishable key is
+# asserted with the secret one because the embedded checkout cannot mount without it. Names and
+# "<set>" are printed; values never are.
 preflight_commerce() {
   echo "== commerce preflight"
-  local env_dump missing=""
-  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^(TEST_)?LEMONSQUEEZY' || true" | tr -d '\r')"
+  local env_dump missing="" k
+  env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" || missing="$missing $k"
   done
-  # REQ-1564: LEMONSQUEEZY_MODE picks WHICH key signs the request, so the key to assert is not a
-  # constant. In test mode the sandbox key is the one read and LEMONSQUEEZY_API_KEY is inert --
-  # a node with the live key set and the test key blank passes a fixed-list check and still sends
-  # "Authorization: Bearer " on every call. Compose forwards every declared variable, so the blank
-  # key arrives as "" rather than absent, which is why "=." (at least one character) is the test.
-  case "$(printf '%s\n' "$env_dump" | sed -n 's/^LEMONSQUEEZY_MODE=//p' | tr -d " \r")" in
-    test) printf '%s\n' "$env_dump" | grep -q "^TEST_LEMONSQUEEZY_API_KEY=." \
-            || missing="$missing TEST_LEMONSQUEEZY_API_KEY(LEMONSQUEEZY_MODE=test)" ;;
-  esac
+  local mode
+  mode="$(printf '%s\n' "$env_dump" | sed -n 's/^STRIPE_MODE=//p' | tr -d ' \r')"
+  for k in $(commerce_mode_keys "$env_dump"); do
+    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" \
+      || missing="$missing $k(STRIPE_MODE=${mode:-<unset>})"
+  done
   if [ -n "$missing" ]; then
     echo "$API_CONTAINER is missing commerce settings:$missing" >&2
     echo "Without them /billing/catalog 500s and nobody can sign up." >&2
     echo "Add them to the node's /root/.provisa/provisa.env and recreate the containers." >&2
     exit 1
   fi
-  printf '%s\n' "$env_dump" | sed -n 's/^\(TEST_\)\{0,1\}\(LEMONSQUEEZY_[A-Z_]*\)=.*/   \1\2=<set>/p'
+  printf '%s\n' "$env_dump" | grep -E '^STRIPE_[A-Z_]*=.*[^[:space:]]' \
+    | sed -n 's/^\(STRIPE_[A-Z_]*\)=.*/   \1=<set>/p'
 }
 
 # REQ-1276/REQ-1348: the base domain org subdomains live under. The control plane is
@@ -1385,12 +1408,12 @@ case "$TARGET" in
   api)
     # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
     # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_api; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs
@@ -1402,6 +1425,6 @@ case "$TARGET" in
   patch)
     # verify_demo is skipped, not weakened: it asserts zero accounts, which is a statement
     # about the reset, and 'patch' exists precisely to keep the accounts that are there.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; preflight_commerce; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
 esac
 echo "== deployed $TARGET"

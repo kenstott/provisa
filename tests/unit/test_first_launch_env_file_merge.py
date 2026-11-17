@@ -64,8 +64,8 @@ def test_a_rerun_keeps_the_keys_it_does_not_generate_and_updates_the_ones_it_doe
         "PROVISA_STORE_BIND_IP=10.0.0.5\n"
         "PROVISA_OTEL_S3_ENDPOINT=https://storage.googleapis.com\n"
         "PROVISA_OTEL_S3_BUCKET=otel-signals\n"
-        "LEMONSQUEEZY_API_KEY=ls-key\n"
-        "LEMONSQUEEZY_STORE_ID=4711\n"
+        "STRIPE_SECRET_KEY=sk_live_kept\n"
+        "STRIPE_PRICE_STARTER=price_kept\n"
         "PROVISA_GRAFANA_ADMIN_PASSWORD=kept-from-before\n"
     )
     env_file.chmod(0o600)
@@ -84,8 +84,8 @@ def test_a_rerun_keeps_the_keys_it_does_not_generate_and_updates_the_ones_it_doe
     # Not known to first launch: kept as they were.
     assert keys["PROVISA_OTEL_S3_ENDPOINT"] == "https://storage.googleapis.com"
     assert keys["PROVISA_OTEL_S3_BUCKET"] == "otel-signals"
-    assert keys["LEMONSQUEEZY_API_KEY"] == "ls-key"
-    assert keys["LEMONSQUEEZY_STORE_ID"] == "4711"
+    assert keys["STRIPE_SECRET_KEY"] == "sk_live_kept"
+    assert keys["STRIPE_PRICE_STARTER"] == "price_kept"
     # Known to first launch but not given this run: kept, never blanked.
     assert keys["PROVISA_STORE_BIND_IP"] == "10.0.0.5"
     assert keys["PROVISA_GRAFANA_ADMIN_PASSWORD"] == "kept-from-before"

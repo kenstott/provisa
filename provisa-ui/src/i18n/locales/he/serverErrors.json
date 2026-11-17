@@ -53,11 +53,17 @@
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "חתימת Lemon Squeezy לא תקינה",
-      "tenant_no_ls_customer": "לדייר אין לקוח Lemon Squeezy",
-      "tenant_not_found": "הדייר לא נמצא",
-      "webhook_missing_customer_id": "ל-Webhook חסר מזהה לקוח",
-      "webhook_missing_tenant_linkage": "ל-Webhook חסר קישור לדייר"
+      "checkout_not_complete": "התשלום הזה לא הושלם, ולכן עדיין אין מינוי לשייך.",
+      "invalid_signature": "חתימת webhook לא חוקית",
+      "no_trial": "לארגון הזה אין תקופת ניסיון",
+      "org_no_customer": "לארגון הזה עדיין אין חשבון חיוב.",
+      "org_not_found": "הארגון לא נמצא",
+      "reconcile_not_creator": "רק יוצר הארגון יכול לעשות זאת",
+      "session_org_mismatch": "התשלום הזה לא נפתח עבור הארגון הזה.",
+      "subscription_items_unrecognized": "המינוי הזה אינו כולל גם מחיר תוכנית וגם מחיר העברת נתונים שהפריסה הזו מוכרת, ולכן לא ניתן להעביר אותו.",
+      "trial_already_started": "הארגון הזה כבר התחיל את תקופת הניסיון שלו. תקופת ניסיון מוצעת פעם אחת לכל ארגון.",
+      "webhook_missing_org_linkage": "מינוי ה־webhook אינו מציין ארגון",
+      "webhook_missing_subscription": "ה־webhook אינו מציין מינוי"
     },
     "control_plane": {
       "multitenancy_disabled": "ריבוי דיירים אינו מופעל"

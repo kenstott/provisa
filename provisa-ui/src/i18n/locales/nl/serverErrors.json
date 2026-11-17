@@ -53,11 +53,17 @@
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Ongeldige Lemon Squeezy-handtekening",
-      "tenant_no_ls_customer": "Tenant heeft geen Lemon Squeezy-klant",
-      "tenant_not_found": "Tenant niet gevonden",
-      "webhook_missing_customer_id": "Webhook mist klant-id",
-      "webhook_missing_tenant_linkage": "Webhook mist tenantkoppeling"
+      "checkout_not_complete": "Deze checkout is niet voltooid, dus er is nog geen abonnement om te koppelen.",
+      "invalid_signature": "Ongeldige webhook-handtekening",
+      "no_trial": "Deze organisatie heeft geen proefperiode",
+      "org_no_customer": "Deze organisatie heeft nog geen factureringsaccount.",
+      "org_not_found": "Organisatie niet gevonden",
+      "reconcile_not_creator": "Alleen de maker van de organisatie kan dit doen",
+      "session_org_mismatch": "Deze checkout is niet voor deze organisatie geopend.",
+      "subscription_items_unrecognized": "Dit abonnement bevat niet zowel een abonnementsprijs als een prijs voor gegevensoverdracht die deze implementatie verkoopt, dus het kan niet worden omgezet.",
+      "trial_already_started": "Deze organisatie is al aan haar proefperiode begonnen. Een proefperiode wordt één keer per organisatie aangeboden.",
+      "webhook_missing_org_linkage": "Het webhook-abonnement noemt geen organisatie",
+      "webhook_missing_subscription": "De webhook noemt geen abonnement"
     },
     "control_plane": {
       "multitenancy_disabled": "multitenancy is niet ingeschakeld"

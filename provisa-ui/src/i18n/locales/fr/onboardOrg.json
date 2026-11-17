@@ -31,7 +31,6 @@
     "createFailed": "Impossible de créer l'organisation",
     "provisionFailed": "Le provisionnement a échoué",
     "provisionTimeout": "Le provisionnement ne s'est pas terminé à temps",
-    "egressCheckoutFailed": "Impossible d'ouvrir le paiement de l'abonnement au transfert de données. Vous pourrez l'ajouter plus tard depuis Facturation.",
     "welcomeTitle": "Bienvenue dans {{name}} !",
     "welcomeAdmin": "Félicitations — votre organisation est prête et vous en êtes l'administrateur.",
     "welcomeInviteHeading": "Inviter d'autres personnes",
@@ -67,10 +66,10 @@
     "resumeTitle": "Terminer l'inscription",
     "resumeBody": "Vous avez commencé l'inscription de {{name}} sans terminer le paiement. Le nom est réservé jusqu'au {{expires}}.",
     "resumeButton": "Reprendre le paiement",
-    "checkoutNotSettled": "Votre paiement ne nous est pas encore parvenu. Rechargez cette page dans une minute pour terminer la configuration de votre organisation.",
     "autoJoinChoiceTitle": "Plus d'une organisation correspond à votre e-mail",
     "autoJoinChoiceBody": "Votre adresse e-mail correspond aux règles d'adhésion de plusieurs organisations. Choisissez celle à laquelle vous appartenez, ou déclinez-les toutes et créez la vôtre.",
     "joinOfferedOrg": "Rejoindre",
-    "declineAutoJoin": "Aucune de celles-ci"
+    "declineAutoJoin": "Aucune de celles-ci",
+    "checkoutReturnNoOrg": "Cette page a été atteinte depuis un paiement qui n'indiquait pas son organisation. Reprenez le paiement ci-dessous."
   }
 }
