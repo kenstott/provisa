@@ -3719,7 +3719,11 @@
     check proposed, so it is available only while Semantic is chosen; the measure cutoff is set with it
     and applies only while it is chosen. It is chosen by default and remembered as the threshold is. The
     run''s summary lists it among what it looked for. Without it, a pair below the threshold is left out
-    as below the threshold, unmeasured.'
+    as below the threshold, unmeasured. (Amended 2026-11-16, KEY VALUE OVERLAP SHOWS UNDER SEMANTIC, WITH
+    ITS CUTOFF AND SAMPLE SIZE:) Maintainer 2026-11-16. The Key value overlap choice appears in the dialog
+    once Semantic is chosen. Chosen, it shows its two settings: the measure cutoff (default 20%) and the
+    sample size, the most distinct values read of each column for a pair''s measure (default 10,000, the
+    bound used today). Both are remembered as the threshold is, and the run''s summary states them.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
