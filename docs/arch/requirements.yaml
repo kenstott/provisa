@@ -86968,7 +86968,16 @@ And a constant naming a secret that does not exist fails the query, naming the c
     message returned inside a successful HTTP answer (a GraphQL errors list in a 200 body) is redacted the
     same way as one in a 400 or above: where the text travels does not change the rule. Text sent to a model
     (a prompt, an embedding input) carries the bare marker too. The named marker [REDACTED:<rule>] is kept
-    only in logs, spans and audit records.'
+    only in logs, spans and audit records. (Amended 2026-11-16, AN ORGANIZATION''S REDACTION RULES APPLY
+    TO ITS OWN TEXT ONLY, AND CANNOT STALL OR READ THE SERVER:) Lead 2026-11-16, following the security
+    audit (item T4); this supersedes the earlier wording that telemetry and errors are redacted by every
+    organization''s rules together. An organization''s patterns and reference values apply only to text
+    that organization produced (its spans, its log records, its audit entries, its client text); a record
+    no organization produced gets the deployment''s rules and every secret value. An organization''s pattern
+    is refused when saved if it could backtrack catastrophically (nested or overlapping repeats, lookaround,
+    back references) or is too large, and runs with a step limit linear in the text''s length; past the
+    limit the text is withheld and the rule is named to its administrators. A held organization''s rule
+    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax.'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
