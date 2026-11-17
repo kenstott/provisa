@@ -249,6 +249,40 @@ async def list_all(conn: "Connection", *, retired: bool = False) -> list[dict]: 
     return [dict(r._mapping) for r in result.fetchall()]
 
 
+async def list_in_production(conn: "Connection") -> list[dict]:  # REQ-1921
+    """Every source in service that is not withdrawn: the ones an engine attaches, a pool
+    connects to and a schema build reads. A withdrawn source is still listed by
+    :func:`list_all` -- its definition and grants stay -- but nothing reaches it."""
+    result = await conn.execute_core(
+        select(sources)
+        .where(sources.c.retired.is_(False), sources.c.withdrawn.is_(False))
+        .order_by(sources.c.id)
+    )
+    return [dict(r._mapping) for r in result.fetchall()]
+
+
+async def withdrawn_ids(conn: "Connection") -> frozenset[str]:  # REQ-1921
+    """The ids of the withdrawn sources in service: attached by no engine, given no pool."""
+    result = await conn.execute_core(
+        select(sources.c.id).where(sources.c.retired.is_(False), sources.c.withdrawn.is_(True))
+    )
+    return frozenset(r.id for r in result.fetchall())
+
+
+async def set_withdrawn(conn: "Connection", source_id: str, withdrawn: bool) -> bool:  # REQ-1921
+    """Withdraw the source in service at ``source_id`` (True) or put it back (False). False when
+    there is no such source."""
+    model_change.name(  # REQ-1524
+        "withdraw" if withdrawn else "put back", model_change.uri(model_uri.source_uri, source_id)
+    )
+    done = await conn.execute_core(
+        update(sources)
+        .where(sources.c.id == source_id, sources.c.retired.is_(False))
+        .values(withdrawn=withdrawn)
+    )
+    return (done.rowcount or 0) > 0
+
+
 class SourceDeleteRefused(Exception):
     """A source that may not be deleted, and why. ``reason`` is ``"system"`` (a source the
     deployment keeps) or ``"dependents"`` (objects refer to it; ``dependents`` lists them)."""

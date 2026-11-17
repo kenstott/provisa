@@ -127,11 +127,19 @@ async def scope_table_ids(
 ) -> list[int]:
     """The tables of one set: those named, else every table of the chosen domains; never a table
     of a system domain (meta, ontology, ops) whatever was asked, nor a draft table (REQ-1921: a
-    draft is read nowhere)."""
+    draft is read nowhere), nor a withdrawn one, itself or through its source (REQ-1921:
+    relationship discovery never includes it)."""
     from provisa.core.schema_org import registered_tables as rt
+    from provisa.core.schema_org import sources as src
 
     system = _system_domains()
-    query = select(rt.c.id).where(rt.c.draft.is_(False), rt.c.domain_id.notin_(sorted(system)))
+    withdrawn_sources = select(src.c.id).where(src.c.withdrawn.is_(True))
+    query = select(rt.c.id).where(
+        rt.c.draft.is_(False),
+        rt.c.withdrawn.is_(False),
+        rt.c.source_id.notin_(withdrawn_sources),
+        rt.c.domain_id.notin_(sorted(system)),
+    )
     if table_ids is not None:
         query = query.where(rt.c.id.in_(sorted(set(table_ids))))
     else:
@@ -436,7 +444,10 @@ async def table_facts(
 
 
 async def known(conn: "Connection") -> Known:
-    """Existing relationships, pending and rejected suggestions."""
+    """Existing relationships, pending and rejected suggestions. REQ-413 (amended 2026-11-16):
+    a junction relationship's two legs (the junction's key to each end's key) count as existing,
+    and so does a pair once accepted: a decided pair is never proposed again."""
+    from provisa.compiler.sql_types import key_list
     from provisa.core.schema_org import relationship_candidates as rc
     from provisa.core.schema_org import relationships as rel
 
@@ -450,6 +461,9 @@ async def known(conn: "Connection") -> Known:
                 rel.c.source_column,
                 rel.c.target_table_id,
                 rel.c.target_column,
+                rel.c.via_table_id,
+                rel.c.via_source_column,
+                rel.c.via_target_column,
             )
         )
     ).fetchall()
@@ -464,8 +478,17 @@ async def known(conn: "Connection") -> Known:
             )
         )
     ).fetchall()
+    legs: set[Edge] = set()
+    for r in existing:
+        if r[4] is None:
+            continue
+        for via_cols, end_id, end_cols in ((r[5], r[0], r[1]), (r[6], r[2], r[3])):
+            pairs = zip(key_list(via_cols), key_list(end_cols), strict=True)
+            legs |= {(int(r[4]), via_col, int(end_id), end_col) for via_col, end_col in pairs}
     return Known(
-        existing={edge(r) for r in existing if r[2] is not None and r[3] is not None},
+        existing={edge(r) for r in existing if r[2] is not None and r[3] is not None}
+        | legs
+        | {edge(r) for r in candidates if r[4] == "accepted"},
         pending={edge(r) for r in candidates if r[4] == "suggested"},
         rejected={edge(r) for r in candidates if r[4] == "rejected"},
         relationships_ending={int(r[2]) for r in existing if r[2] is not None},

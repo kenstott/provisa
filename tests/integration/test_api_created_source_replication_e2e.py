@@ -32,7 +32,6 @@ import httpx
 import pytest
 import yaml
 
-from tests.helpers import registered_id, release_field
 
 from tests.integration.test_pg_engine_landing_never_writes_source_e2e import (
     _ROLE,
@@ -179,7 +178,7 @@ def test_a_source_created_through_the_admin_api_is_replicated_and_read(
             )
             # Saving the source put nothing in the vault and took nothing out of it.
             assert _secret_names(srv) == ([] if secret is None else [secret])
-            registered = _admin(
+            _admin(
                 srv,
                 'registerTable(input: {sourceId: "src", domainId: "shop", schemaName: "public", '
                 'tableName: "orders", columns: ['
@@ -187,7 +186,6 @@ def test_a_source_created_through_the_admin_api_is_replicated_and_read(
                 '{name: "amount", visibleTo: ["org_admin"], dataType: "double"}]})',
             )
             # REQ-1921: registered through the admin, it starts as draft; released, it is read.
-            _admin(srv, release_field(registered_id(registered["message"])))
             live = _read(srv)
             assert live.status_code == 200, live.text
             assert sorted(live.json()["data"]["orders"], key=lambda r: r["id"]) == _ID_AMOUNT

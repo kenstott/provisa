@@ -10452,6 +10452,10 @@ tables:
     data_type: text
     visible_to:
     - viewer
+  - name: withdrawn
+    data_type: boolean
+    visible_to:
+    - viewer
 - source_id: provisa-admin
   domain_id: meta
   schema: org_default

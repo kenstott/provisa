@@ -477,8 +477,6 @@
       "mask_unreachable": "Você definiu uma máscara que não é alcançável: {{entries}}",
       "webhook_not_found": "Webhook '{{webhook}}' não encontrado",
       "change_streams_unavailable": "A origem '{{source}}' é um servidor MongoDB autônomo, que não oferece change streams: o sinal de alteração native exige um replica set ou um cluster fragmentado. Execute-o como replica set ou use o sinal de alteração poll.",
-      "table_draft_set": "Tabela {{table}} definida como rascunho",
-      "table_released": "Tabela {{table}} liberada",
       "openapi_no_rows_field": "Tabela {{table}}: a resposta não tem nenhuma propriedade {{rows_field}} de onde ler linhas.",
       "paging_rows_field_fixed": "Tabela {{table}}: onde estão suas linhas ({{rows_field}}) é definido quando a tabela é registrada. Registre a tabela novamente para ler suas linhas de outro lugar.",
       "relationship_request_queued": "Enfileirado como solicitação nº {{id}}. Ela precisa de aprovações de {{required}} usuários diferentes que possam criar relacionamentos, com pelo menos um alcançando cada domínio tocado.",
@@ -507,6 +505,8 @@
       "role_updated": "Função '{{role}}' atualizada",
       "relationship_id_taken": "O relacionamento '{{relationship}}' já existe",
       "relationship_id_reserved": "O id do relacionamento '{{id}}' começa com '{{prefix}}', um prefixo reservado para relacionamentos integrados. Escolha outro id.",
+      "relationship_source_column_missing": "O relacionamento '{{relationship}}' não indica nenhuma coluna de origem. Um relacionamento se une por uma coluna de sua tabela de origem.",
+      "relationship_target_column_missing": "O relacionamento '{{relationship}}' não indica nenhuma coluna de destino. Um relacionamento se une por uma coluna de sua tabela de destino, a menos que seu destino seja uma função.",
       "relationship_graphql_alias_taken": "O alias GraphQL '{{alias}}' já é o alias do relacionamento '{{relationship}}' a partir de '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tarefa agendada '{{task}}' atualizada",
@@ -547,7 +547,13 @@
       "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele",
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
       "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
-      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função"
+      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função",
+      "table_withdrawn": "Tabela {{table}} retirada",
+      "table_put_back": "Tabela {{table}} reposta",
+      "source_withdrawn": "Fonte {{source}} retirada",
+      "source_put_back": "Fonte {{source}} reposta",
+      "withdrawn_source_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: a sua fonte {{source}} está retirada e nenhum motor lê uma fonte retirada.",
+      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",

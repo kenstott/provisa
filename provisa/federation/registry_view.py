@@ -42,6 +42,8 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     reference (REQ-1695, REQ-1919). Built-in sources (provisa-admin, provisa-otel, the
     derived-view source) are never landed and stay out.
 
+    REQ-1921: a withdrawn source is not one: nothing lands, routes to or attaches it.
+
     REQ-1892: cached (TTL + schema-generation-keyed) when called on the pool-acquire path
     (``conn`` unset) -- this is read 2-3 times per governed call (`ensure_rows_resident`,
     `ensure_resident`, the replica build) with no cache before this, the same shape of finding
@@ -55,7 +57,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     if db is None:
         return []
     if conn is not None:
-        rows = await source_repo.list_all(conn)
+        rows = await source_repo.list_in_production(conn)
         merged = _source_rows(rows)
         await _attach_file_glob_tables(merged, conn)
         return merged
@@ -70,7 +72,7 @@ async def registered_sources(state: Any, conn: Any | None = None) -> list[Source
     if cached is not None:
         return cached
     async with db.acquire() as _conn:
-        rows = await source_repo.list_all(_conn)
+        rows = await source_repo.list_in_production(_conn)
         out = _source_rows(rows)
         await _attach_file_glob_tables(out, _conn)
     rs_cache.put(generation, out)

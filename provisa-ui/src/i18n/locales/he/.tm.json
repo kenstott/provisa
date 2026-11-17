@@ -10842,5 +10842,14 @@
   "he/serverErrors.json::serverErrors.discovery.source_domains_empty": "The chosen source domains hold no table discovery reads.",
   "he/serverErrors.json::serverErrors.discovery.target_domains_empty": "The chosen target domains hold no table discovery reads.",
   "he/serverErrors.json::serverErrors.discovery.source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
-  "he/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service."
+  "he/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+  "he/serverErrors.json::serverErrors.cypher.parameter_required": "{{reason}}",
+  "he/serverErrors.json::serverErrors.schema.table_withdrawn": "Table {{table}} withdrawn",
+  "he/serverErrors.json::serverErrors.schema.table_put_back": "Table {{table}} put back",
+  "he/serverErrors.json::serverErrors.schema.source_withdrawn": "Source {{source}} withdrawn",
+  "he/serverErrors.json::serverErrors.schema.source_put_back": "Source {{source}} put back",
+  "he/serverErrors.json::serverErrors.schema.withdrawn_source_not_previewable": "Table {{table}} cannot be previewed: its source {{source}} is withdrawn, and no engine reads a withdrawn source.",
+  "he/serverErrors.json::serverErrors.schema.withdrawn_table_not_previewable": "Table {{table}} cannot be previewed: it is withdrawn and keeps no replica, and the engine reads its source only through one.",
+  "he/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
+  "he/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
 }

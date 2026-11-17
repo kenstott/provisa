@@ -477,8 +477,6 @@
       "mask_unreachable": "您定义了不可到达的脱敏规则：{{entries}}",
       "webhook_not_found": "未找到 Webhook '{{webhook}}'",
       "change_streams_unavailable": "源 '{{source}}' 是独立的 MongoDB 服务器，不提供 change streams：native 变更信号需要副本集或分片集群。请将其作为副本集运行，或使用 poll 变更信号。",
-      "table_draft_set": "表 {{table}} 已设为草稿",
-      "table_released": "表 {{table}} 已发布",
       "openapi_no_rows_field": "表 {{table}}：响应中没有可用于读取行的属性 {{rows_field}}。",
       "paging_rows_field_fixed": "表 {{table}}：行所在的位置（{{rows_field}}）在注册表时设置。要从其他位置读取行，请重新注册该表。",
       "relationship_request_queued": "已排入请求 #{{id}}。它需要 {{required}} 位有权创建关系的不同用户批准，且每个涉及的域至少有一位批准者的权限覆盖。",
@@ -507,6 +505,8 @@
       "role_updated": "角色 '{{role}}' 已更新",
       "relationship_id_taken": "关系 '{{relationship}}' 已存在",
       "relationship_id_reserved": "关系 ID '{{id}}' 以 '{{prefix}}' 开头，该前缀为内置关系保留。请选择其他 ID。",
+      "relationship_source_column_missing": "关系 '{{relationship}}' 未指定源列。关系通过其源表的列进行连接。",
+      "relationship_target_column_missing": "关系 '{{relationship}}' 未指定目标列。除非目标是函数，否则关系通过其目标表的列进行连接。",
       "relationship_graphql_alias_taken": "GraphQL 别名 '{{alias}}' 已是来自 '{{table}}' 的关系 '{{relationship}}' 的别名",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "计划任务“{{task}}”已更新",
@@ -547,7 +547,13 @@
       "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用",
       "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
       "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。",
-      "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑"
+      "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑",
+      "table_withdrawn": "表 {{table}} 已撤下",
+      "table_put_back": "表 {{table}} 已恢复",
+      "source_withdrawn": "源 {{source}} 已撤下",
+      "source_put_back": "源 {{source}} 已恢复",
+      "withdrawn_source_not_previewable": "无法预览表 {{table}}：其源 {{source}} 已撤下，任何引擎都不会读取已撤下的源。",
+      "withdrawn_table_not_previewable": "无法预览表 {{table}}：它已撤下且不保留副本，而引擎只能通过副本读取其源。"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",

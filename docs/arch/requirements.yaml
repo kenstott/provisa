@@ -3691,7 +3691,17 @@
     following the maintainer''s report that discovery asked again about relationships he had accepted. A
     pair of columns already joined by a registered relationship, directly or as a leg of a many-to-many
     relationship through its junction table, is not proposed as a new one. A pair once accepted or marked
-    not to be recommended again keeps that decision: a later run never reopens it as pending.'
+    not to be recommended again keeps that decision: a later run never reopens it as pending. (Amended 2026-11-16,
+    THE MEASURE''S BOUND AND RULE; A MANY-TO-MANY PAIR IS ACCEPTED AS A SHARED DIMENSION:) Maintainer 2026-11-16,
+    with the lead recording the stated values. A pair is measured on at most 10,000 distinct values per
+    column, read through the governed pipeline as the person who started the run; whether a column is a
+    key is decided exactly. The score is: a key target holding 95% or more of the source''s values scores
+    0.95; a key target otherwise scores 0.95 times the share held; a pair where neither side is a key scores
+    0.6 times the larger share; a pair with no values compared keeps the model''s score, which is shown
+    in its own column. A many-to-many pair (neither side a key) is accepted as a shared dimension: accepting
+    it creates a derived table of the pair''s distinct values and a many-to-one relationship from each side
+    to it, so both sides join through it on every front door; the dimension is an ordinary view that can
+    be renamed or extended.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -24706,18 +24716,23 @@
   priority: MUST
   type: behavioral
   description: Bolt protocol (Neo4j binary protocol) TCP server at port 5251 accepts Cypher queries and
-    mutations, transpiles through Provisa query pipeline (compile, govern, route, execute). PackStream
-    codec encodes/decodes scalars, lists, dicts, nodes, relationships, and messages. Framing layer chunks
-    messages for TCP transport. Bolt authenticates under every configured auth provider. The driver's
-    HELLO/LOGON `scheme` field selects the provider validator (`basic` presents principal+credentials,
-    `bearer` presents a token), an unaccepted presentation is refused outright rather than retried against
-    another validator, and a personal access token is accepted as an ordinary bearer credential (REQ-124,
-    REQ-1263). Selectable roles derive from the validated identity — the claim-mapped role plus the identity's
-    own assignments, intersected with compiled contexts (REQ-273, REQ-551) — never from a user record
-    read behind the provider. Auth state is read fail-closed, so active auth middleware with no auth_config
-    raises rather than degrading to trust mode. The WebSocket upgrade enforces a browser Origin allowlist
-    from PROVISA_BOLT_ALLOWED_ORIGINS; an upgrade carrying an unlisted Origin gets 403, and with nothing
-    listed every browser origin is refused (a header-less driver upgrade is unaffected).
+    mutations, transpiles through Provisa query pipeline (compile, govern, route, execute). PackStream codec
+    encodes/decodes scalars, lists, dicts, nodes, relationships, and messages. Framing layer chunks messages
+    for TCP transport. Bolt authenticates under every configured auth provider. The driver's HELLO/LOGON
+    `scheme` field selects the provider validator (`basic` presents principal+credentials, `bearer` presents
+    a token), an unaccepted presentation is refused outright rather than retried against another validator,
+    and a personal access token is accepted as an ordinary bearer credential (REQ-124, REQ-1263). Selectable
+    roles derive from the validated identity — the claim-mapped role plus the identity's own assignments,
+    intersected with compiled contexts (REQ-273, REQ-551) — never from a user record read behind the provider.
+    Auth state is read fail-closed, so active auth middleware with no auth_config raises rather than degrading
+    to trust mode. The WebSocket upgrade enforces a browser Origin allowlist from PROVISA_BOLT_ALLOWED_ORIGINS;
+    an upgrade carrying an unlisted Origin gets 403, and with nothing listed every browser origin is refused
+    (a header-less driver upgrade is unaffected). (Amended 2026-11-16, WITH ASSIGNMENTS HELD IN PROVISA,
+    THE ROLES A SIGN-IN MAY ACT AS ARE ONLY THOSE IT HOLDS:) Lead 2026-11-16, aligning this requirement
+    with REQ-120 (a sign-in acts as a role it holds, on every transport) as enforced by SEC-H1. Where role
+    assignments are held in Provisa, the roles a Bolt or any other session may select are the identity's
+    own assignments; a role a token's claims map to is selectable only when assignments come from the identity
+    provider's claims.
   use_case: Neo4j-compatible clients (DBeaver, Cypher shells, drivers) can execute Cypher queries against
     Provisa schema with full governance applied, expanding query language surface beyond GraphQL/SQL/gRPC/REST.
     An OIDC- or basic-secured deployment is reachable from a Neo4j driver instead of getting a blanket
@@ -83030,7 +83045,12 @@
     TO PUBLIC DESTINATIONS:) Maintainer 2026-11-16 (relayed by the audit session). On a server of many organizations
     the endpoint a catalog sync or a metadata export sends to is held to public destinations as a webhook
     is, although it is not a source: when it is saved and at each call. A single-organization install is
-    not held.'
+    not held. (Amended 2026-11-16, THE SANDBOX TIER''S PUBLIC INVITE IS PART OF THE DEPLOYMENT; ONLY A RESET
+    WIPES ACCOUNTS:) Maintainer 2026-11-16 (''fix cloud dev'', after a deploy wiped the cloud deployment''s
+    accounts and its public sandbox invite). The sandbox org''s public visitor invite is part of the deployment''s
+    configuration, with a stable token, re-created by every start and every reset, so no deploy removes
+    the link the public site publishes. Deploying code or configuration keeps accounts, orgs, invites and
+    the platform-admin claim; only an explicit reset returns a deployment to its first start.'
   use_case: A visitor to provisa.dev picks a scenario close to their own (a web shop's logs, say) and is querying it in Provisa
     a few seconds later, without an account.
   scenario: 'Given demo/named/weblogs/demo.yaml says published: true

@@ -52,6 +52,26 @@ class ReservedRelationshipPrefix(ValueError):
         )
 
 
+class RelationshipWithoutColumns(ValueError):
+    """A relationship names no column at one end (``end``: "source" or "target"). Every
+    relationship joins on a source column, and on a target column unless its target is a
+    function; one without them joins nothing and is never served (REQ-019)."""
+
+    def __init__(self, rel_id: str, end: str) -> None:
+        self.rel_id = rel_id
+        self.end = end
+        super().__init__(f"relationship {rel_id!r} names no {end} column")
+
+
+def missing_column_end(rel: Relationship) -> str | None:
+    """The end of ``rel`` that names no column, or None when both do."""
+    if not rel.source_column:
+        return "source"
+    if not rel.target_function_name and not rel.target_column:
+        return "target"
+    return None
+
+
 def reserved_prefix_of(rel_id: str) -> str | None:
     """The reserved built-in prefix ``rel_id`` starts with, or None. The prefixes are the one
     definition in core that the seed's removal of undeclared rows uses too."""
@@ -68,12 +88,16 @@ async def upsert(
     another): an accepted discovery suggestion passes False, marking the foreign key alone
     (REQ-413: no column is marked a key from a sample or an accepted suggestion).
 
+    Refuses (:class:`RelationshipWithoutColumns`) a relationship naming no column at an end.
     Refuses (:class:`ReservedRelationshipPrefix`) an id with a built-in prefix: the seed writes
     its own relationships directly (``startup_seed._seed_meta_relationships``) and is the only
     writer of those ids; every caller of this function is not the seed."""
     prefix = reserved_prefix_of(rel.id)
     if prefix is not None:
         raise ReservedRelationshipPrefix(rel.id, prefix)
+    missing = missing_column_end(rel)
+    if missing is not None:
+        raise RelationshipWithoutColumns(rel.id, missing)
     source_tbl = await table_repo.find_by_table_name(conn, rel.source_table_id)
     if source_tbl is None:
         raise TableNotRegistered("Source", rel.source_table_id)
