@@ -417,6 +417,7 @@ async def test_the_registration_names_shopify_and_its_numbers_and_registers_noth
         graphql_remote_sources={"my-shop": _reg()},
         config=SimpleNamespace(graphql_remote=SimpleNamespace(max_list_items=100)),
         multitenancy=False,
+        org_registry={},
     )
     monkeypatch.setattr(app, "state", state)
     respx.post(STORE_URL).mock(return_value=httpx.Response(200, json={"errors": [COST_REFUSAL]}))

@@ -234,29 +234,24 @@ def test_a_build_whose_runtime_is_gone_is_not_held_or_logged_as_a_failure(caplog
 async def test_the_warm_up_builds_every_role_and_stops_when_superseded(builds, monkeypatch) -> None:
     from provisa.api import app_loaders
 
-    scheduled: list = []
-    monkeypatch.setattr(
-        "provisa.core.connection_loop.spawn_after",
-        lambda _delay, coro, name: scheduled.append(coro),
-    )
     monkeypatch.setattr(app_loaders, "_WARM_PAUSE_S", 0)
     state = _State()
     _register(state, "analyst", "steward", "broken")
-    app_loaders.warm_role_surfaces(state)
-    await scheduled.pop()
+    runtime = state._runtime
+    await app_loaders.warm_role_surfaces(runtime, runtime.role_build_inputs, build=None)
     assert sorted(builds.counted) == ["analyst", "broken", "steward"]
 
     # A newer rebuild (new build inputs) before the warm-up runs: it builds nothing.
     builds.counted.clear()
     _register(state, "analyst", "steward")
-    app_loaders.warm_role_surfaces(state)
-    state._runtime.role_build_inputs = {
+    followed = runtime.role_build_inputs
+    runtime.role_build_inputs = {
         "tables": [],
         "metrics": [],
         "field_numbers": {},
         "draft_tables": [],
     }
-    await scheduled.pop()
+    await app_loaders.warm_role_surfaces(runtime, followed, build=None)
     assert builds.counted == []
 
 
@@ -268,7 +263,6 @@ _PROVISA = __import__("pathlib").Path(__file__).resolve().parents[2] / "provisa"
 # plan's ``schemas`` is database schemas, not a role's part.
 _ALLOWED = {
     "provisa/api/app_loaders.py::warm_role_surfaces",
-    "provisa/api/app_loaders.py::_warm",
     "provisa/api/role_surface.py",
     "provisa/core/region_purge.py::_drop_schemas",
 }
@@ -354,7 +348,6 @@ def test_a_lazily_built_role_serves_what_an_eager_build_served(monkeypatch) -> N
     from provisa.grpc.proto_gen import generate_proto
 
     monkeypatch.setattr(domain_policy, "single_domain", lambda: False)
-    monkeypatch.setattr(app_loaders, "warm_role_surfaces", lambda _state: None)
     state = appmod.state
     for name in ("roles", "schemas", "contexts", "rls_contexts", "table_path_maps", "proto_files"):
         monkeypatch.setattr(state, name, {}, raising=False)

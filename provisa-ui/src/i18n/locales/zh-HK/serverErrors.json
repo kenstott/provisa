@@ -157,29 +157,30 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
+      "answer_unreadable": "模型的回答中沒有可讀取的清單。",
       "cassandra_discovery_unsupported": "Cassandra 結構描述探索需要即時 CQL 工作階段，但目前不可用。請為此數據來源手動定義欄位。",
       "database_not_connected": "數據庫未連線",
+      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "domain_id_required": "領域範圍需要 domain_id",
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
       "endpoint_has_no_key": "{{vendor}} 沒有金鑰：請設定環境變數 {{env}}。",
-      "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
-      "model_failed": "模型 {{model}} 失敗：{{error}}",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
       "model_incomplete": "所選模型需同時指明其供應商和模型。",
       "no_adapter_for_source_type": "數據來源類型「{{source_type}}」沒有已註冊的配接器",
       "no_live_connection": "數據來源「{{source_id}}」沒有即時連線。MongoDB 結構描述探索需要來源集區中的作用中連線。請確認數據來源已連線且伺服器可連通。",
       "run_ended": "探索執行 {{run_id}} 已結束：{{status}}",
+      "run_failed": "探索執行 {{run_id}} 失敗：{{error}}",
       "run_not_found": "找不到探索執行 {{run_id}}",
       "run_still_going": "探索執行 {{run_id}} 仍在進行。請在其結束後再決定其提議。",
       "schema_discovery_unsupported": "數據來源類型「{{source_type}}」不支援結構描述探索。請手動定義欄位。",
       "semantics_unavailable": "無法執行語意推斷：指派給關係推斷的模型 {{model}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "table_id_required": "資料表範圍需要 table_id",
+      "table_not_found": "表格 {{table_id}} 未登記。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
-      "answer_unreadable": "模型的回答中沒有可讀取的清單。"
+      "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
     },
     "llm": {
       "request_failed": "對模型的請求失敗：{{reason}}",
@@ -218,7 +219,10 @@
       "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函數 impl_kind：「{{impl_kind}}」",
       "written_table_missing": "命令 '{{name}}' 寫入 '{{table}}'，但該表未註冊",
-      "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。"
+      "host_code_refused": "指令 '{{name}}' 的類型為 {{impl_kind}}，會在伺服器主機上執行代碼。此部署已關閉主機代碼；請改用代碼解析器。",
+      "no_plain_list": "來源 '{{source_id}}' 中沒有不帶必需參數的操作傳回 '{{operation}}' 的列，因此其表保持開啟",
+      "plain_list_unregistered": "來源 '{{source_id}}' 的 '{{operation}}' 傳回其清單 {{lists}} 的列；請先將該清單註冊為表",
+      "table_has_dependents": "函數 '{{name}}' 的表 '{{table}}' 仍被其他物件引用；請先移除這些引用"
     },
     "graphql_remote": {
       "introspection_failed": "內省失敗：{{error}}",
@@ -527,7 +531,8 @@
       "code_resolver_retired": "已停用代碼解析器 '{{resolver}}'",
       "code_resolver_has_dependents": "仍有物件依賴代碼解析器 '{{resolver}}' 時無法停用",
       "incremental_no_change": "代碼來源沒有針對 {{table}} 的 @change 函數。請使用 @change table={{table}} 宣告一個。",
-      "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。"
+      "incremental_needs_rebuild_every": "{{table}} 採用增量維護，因此會依時鐘完整重建。請在「完整重建間隔」中設定間隔（秒）。",
+      "table_derived_from_function": "表 '{{name}}' 衍生自函數：透過關閉該函數的表來刪除它，其欄和參數在函數上編輯"
     },
     "secrets": {
       "env_reference_object_locked": "此物件屬於營運方：它讀取伺服器自身的環境，無法在此更改。請改為新增您自己的物件。",

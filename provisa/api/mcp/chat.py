@@ -55,6 +55,7 @@ from provisa.core.org_secrets import (
     read_org_api_keys,
 )
 from provisa.core.secrets_providers import many_organisations
+from provisa.api.engine_error_names import client_text, client_value
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
 # caller's identity and injected at execution, so the model can never select or escalate it.
@@ -1901,6 +1902,12 @@ def _prepare_client_call(call: dict, confirmation: str | None = None) -> tuple[d
     return prepared, None if error is None else _unquoted_note(error)
 
 
+def _tool_error(exc: BaseException) -> str:
+    """A failed tool's result, as the model is told it: its text told as a client is told an
+    error's, since the model's answer returns to the caller (REQ-2087)."""
+    return client_text(f"Error: {exc}")
+
+
 async def _checked_graph_navigates(
     state: Any, role: str, calls: list[dict]
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -1929,7 +1936,7 @@ async def _checked_graph_navigates(
             continue
         read = await check_graph_read(state, role, query)
         if read.problem is not None:
-            refused[call["id"]] = (
+            refused[call["id"]] = client_text(
                 "Not navigated: this Cypher statement does not run, so it was not put on the "
                 f"Graph page. {read.problem}. Correct the statement and navigate again."
             )
@@ -2186,7 +2193,7 @@ async def _run_chat_anthropic(
             usage = usage + polly_usage.from_anthropic(resp.usage)
             over = budget.over_cap(usage, model)  # REQ-1174: the turn ends at its role's cap
             if over is not None:
-                yield {"type": "error", "error": over}
+                yield {"type": "error", "error": client_value(over)}
                 yield polly_usage.usage_event(model, usage)
                 yield {"type": "done"}
                 return
@@ -2230,7 +2237,7 @@ async def _run_chat_anthropic(
                 content = json.dumps(result, default=str)
                 is_error = False
             except Exception as exc:  # noqa: BLE001 - reported back to the model, see pragma
-                content = f"Error: {exc}"
+                content = _tool_error(exc)
                 is_error = True
                 artifact = None
             if artifact is not None:
@@ -2515,7 +2522,7 @@ async def _run_chat_aisuite(
             billed = (billed or 0.0) + float(call_cost)
         over = budget.over_cap(usage, model_name)  # REQ-1174: the turn ends at its role's cap
         if over is not None:
-            yield {"type": "error", "error": over}
+            yield {"type": "error", "error": client_value(over)}
             yield polly_usage.usage_event(model_name, usage, billed)
             yield {"type": "done"}
             return
@@ -2557,7 +2564,7 @@ async def _run_chat_aisuite(
                 content = json.dumps(result, default=str)
                 is_error = False
             except Exception as exc:  # noqa: BLE001 - reported back to the model, see pragma
-                content = f"Error: {exc}"
+                content = _tool_error(exc)
                 is_error = True
                 artifact = None
             if artifact is not None:
@@ -2651,9 +2658,11 @@ async def run_chat(
         yield {
             "type": "error",
             "error": (
-                "Polly isn't configured yet"
-                + (f" ({reason})" if reason else "")
-                + ". Set a vendor, model, and API key in Settings, then try again."
+                client_value(
+                    "Polly isn't configured yet"
+                    + (f" ({reason})" if reason else "")
+                    + ". Set a vendor, model, and API key in Settings, then try again."
+                )
             ),
             "action": {"label": "Open AI Models settings", "route": "/admin/ai-models"},
         }
@@ -2713,5 +2722,5 @@ async def _budget_refusal(budget: Any, model: str) -> dict | None:
     try:
         await budget.admit(model)
     except BudgetRefused as exc:
-        return {"type": "error", "error": str(exc)}
+        return {"type": "error", "error": client_text(str(exc))}
     return None

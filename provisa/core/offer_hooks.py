@@ -133,14 +133,16 @@ async def payload(
     offer_row: Mapping[str, Any],
     reason: str,
     consumer_kind: str,
+    published: offers.Published,
 ) -> dict[str, Any]:
     """The bid the outbound hook carries: who asks, the offer and its terms (role, data level,
     sample views, data quality results, profiles, duration, and the terms of use the requester
     agreed to), the version of each contract the offer gives, the reason (the bid's purpose), the
     kind of consumer it is for, and the request's id. Datasets and views are named as an
-    entitlement list names them, as what accepting grants is."""
+    entitlement list names them, as what accepting grants is: by the runtime's published build
+    (REQ-194)."""
     contracts = await offers.contracts(conn, int(offer_row["id"]))
-    names = await offers.sql_names(conn, [*contracts, *offer_row["sample_views"]])
+    names = await offers.sql_names(conn, [*contracts, *offer_row["sample_views"]], published)
     return {
         "id": request_id,
         "kind": "bid",
@@ -242,11 +244,13 @@ GrantRefusal = Callable[[str], Awaitable[str | None]]
 
 @dataclass(frozen=True)
 class Grants:
-    """What applying an accepted decision needs where Provisa holds access: the product's domain
-    and the role defaults of the offer's role (``role_defaults(state.roles[role])``)."""
+    """What applying an accepted decision needs where Provisa holds access: the product's domain,
+    the role defaults of the offer's role (``role_defaults(state.roles[role])``) and the build the
+    runtime has published, whose names the entries are written with (REQ-194)."""
 
     domain_id: str
     role_defaults: Mapping[str, Any]
+    published: offers.Published
 
 
 async def decide(
@@ -298,7 +302,9 @@ async def decide(
             principal=held["requester"],
             offer=offer,
             domain_id=held_grants.domain_id,
-            identifiers=await offer_grant.entries(conn, held["product_id"], offer),
+            identifiers=await offer_grant.entries(
+                conn, held["product_id"], offer, held_grants.published
+            ),
             role_defaults=held_grants.role_defaults,
             set_by=decision.decider,
             reason=f"accepted request {held['request_id']} for offer {offer.name!r} of data "

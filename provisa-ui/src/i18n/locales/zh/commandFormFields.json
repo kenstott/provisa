@@ -52,6 +52,8 @@
     "colVisibleTo": "可见角色（以逗号分隔；留空 = 所有人）",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "脱敏",
+    "exposedAsTable": "同时作为表",
+    "exposedAsTableHint": "读取表的客户端（如 BI 工具）将此函数读取为一张表，其参数为列。关闭后，它返回该源同一类型列表的行，并删除该表。",
     "requiresApproval": "需要审批",
     "requiresApprovalHint": "每次调用仅在审批钩子批准后执行。未配置钩子时，调用将被拒绝。",
     "writesTable": "写入表",

@@ -1168,7 +1168,9 @@ async def _product_table(conn: "Connection", name: str) -> dict | None:
 async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  # REQ-2180
     """Each offer ``dp`` declares added, or replacing the product's offer of its name; a sample's
     views named as the product's tables are. An offer the store refuses fails the load, naming the
-    product. Their contracts are derived by the build the load is followed by."""
+    product. A sample's views are checked against the published build by the build the load is
+    followed by, which lists a sample that does not hold for review (REQ-2180, amended
+    2026-11-16), and derives their contracts."""
     from provisa.core.models import DataProductOffer
     from provisa.core.repositories import data_product_offer as offer_repo
 
@@ -1185,7 +1187,7 @@ async def _save_declared_offers(conn: "Connection", dp: DataProduct) -> None:  #
             views.append(int(row["id"]))
         offer = DataProductOffer.model_validate({**declared.model_dump(), "sample_views": views})
         try:
-            await offer_repo.save(conn, dp.id, offer, offer_id=held.get(offer.name), by=None)
+            await offer_repo.save_declared(conn, dp.id, offer, offer_id=held.get(offer.name))
         except offer_repo.OfferRefused as refused:
             raise ValueError(
                 f"data product {dp.id!r}: offer {declared.name!r}: {refused}"

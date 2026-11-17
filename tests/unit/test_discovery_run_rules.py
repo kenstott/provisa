@@ -881,7 +881,7 @@ def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
     assert tally.left_out[5].answer == '"orders.customer_id -> customers.id"'
 
 
-def test_a_second_scorers_confidence_replaces_the_models_and_its_drops_are_kept_as_its_own():
+def test_a_second_scorers_confidence_is_kept_beside_the_models_and_removes_nothing():
     from provisa.discovery.runner import rescored
 
     found = [
@@ -891,14 +891,13 @@ def test_a_second_scorers_confidence_replaces_the_models_and_its_drops_are_kept_
     ]
     tally = Tally(total=1)
     kept = rescored(found, [0.75, 0.31, None], tally)
-    assert [(p.edge, p.confidence) for p in kept] == [
-        ((1, "customer_id", 2, "id"), 0.75),
-        ((1, "note", 2, "name"), 0.8),  # given no score: the model's stands
+    assert [(p.edge, p.confidence, p.scored) for p in kept] == [
+        ((1, "customer_id", 2, "id"), 0.95, 0.75),
+        ((1, "store_id", 2, "region_id"), 0.9, 0.31),
+        ((1, "note", 2, "name"), 0.8, None),  # given no score
     ]
     assert (tally.scored, tally.scored_below_threshold, tally.below_threshold) == (2, 1, 0)
-    (dropped,) = tally.left_out
-    assert dropped.left_out == "scored_below_threshold" and dropped.scored == 0.31
-    assert dropped.proposal is not None and dropped.proposal.confidence == 0.9
+    assert tally.left_out == []
 
 
 def test_a_second_scorer_that_could_not_be_asked_keeps_the_models_confidence_and_is_counted():

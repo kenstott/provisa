@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import logging
 from datetime import date
+from provisa.api.engine_error_names import client_text, client_value
 from provisa.codesource.languages import CODE_SOURCE_TYPES
 from provisa.compiler.naming import (
     LabelClash,
@@ -2364,7 +2365,7 @@ def _parsed_off_peak(off_peak_window: str | None, tz: str) -> "MutationResult | 
             success=False,
             message=f"invalid off-peak window: {e}",
             code="schema.invalid_off_peak_window",
-            params={"error": str(e)},
+            params={"error": client_text(str(e))},
         )
     return None
 
@@ -2624,6 +2625,9 @@ def default_table_input(
                 alias=_column_alias(c.name),
                 data_type=c.data_type,
                 description=c.comment,
+                # REQ-1986: a parameter is registered as the source describes it.
+                native_filter_type=c.native_filter_type,
+                native_filter_required=c.native_filter_required,
             )
             for c in columns
         ],
@@ -2842,7 +2846,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=str(e),
                 code="schema.invalid_calendar",
-                params={"error": e.reason},
+                params={"error": client_value(e.reason)},
             )
         pool = await _get_pool()
         async with pool.acquire() as conn:
@@ -3039,7 +3043,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=f"Source {input.id!r}: connection validation failed: {_conn_err}",
                 code="schema.source_connection_failed",
-                params={"source": input.id, "error": str(_conn_err)},
+                params={"source": input.id, "error": client_text(str(_conn_err))},
             )
 
         from provisa.api.admin._change_feed import source_change_feed_refusal
@@ -4607,6 +4611,18 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                                 params={"table": model.table_name},
                             )
                         )
+                    from provisa.api.admin._function_table import derived_edit_refusal
+
+                    _derived_refusal = await derived_edit_refusal(_conn, model)  # REQ-1986
+                    if _derived_refusal is not None:
+                        raise TableSaveRefused(
+                            MutationResult(
+                                success=False,
+                                message=_derived_refusal,
+                                code="schema.table_derived_from_function",
+                                params={"table": model.table_name},
+                            )
+                        )
                     from provisa.api.admin._query_api_registration import pipeline_table_refusal
 
                     _pipeline_refusal = await pipeline_table_refusal(_conn, model)  # REQ-1980
@@ -5079,6 +5095,20 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
             _held = held_by_set(_stored, "table", (_stored or {}).get("table_name", str(id)))
             if _held is not None:  # REQ-2249
                 return _held
+            from provisa.api.admin._function_table import derived_delete_refusal
+
+            _derived = (
+                None
+                if _stored is None
+                else await derived_delete_refusal(cast("Connection", conn), _stored)
+            )
+            if _derived is not None:  # REQ-1986
+                return MutationResult(
+                    success=False,
+                    message=_derived,
+                    code="schema.table_derived_from_function",
+                    params={"table": id, "name": (_stored or {}).get("table_name")},
+                )
             try:
                 deleted = await table_repo.delete(cast("Connection", conn), id)
             except table_repo.TableDeleteRefused as refused:
@@ -7260,7 +7290,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 success=False,
                 message=f"ANALYZE completed with errors. OK={len(analyzed)} errors={errors}",
                 code="schema.analyze_errors",
-                params={"ok": len(analyzed), "errors": str(errors)},
+                params={"ok": len(analyzed), "errors": client_text(str(errors))},
             )
         return MutationResult(
             success=True,

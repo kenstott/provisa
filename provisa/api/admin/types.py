@@ -32,6 +32,19 @@ else:
 # Requirements: REQ-012, REQ-013, REQ-019, REQ-040, REQ-041, REQ-042, REQ-135, REQ-247, REQ-252, REQ-262, REQ-402
 
 
+class ClientText:  # REQ-2087
+    """A typed answer's ``message`` and ``error``, told as a client is told an error's text: the
+    admin API answers them in a 200, past the error-response middleware."""
+
+    def __post_init__(self) -> None:
+        from provisa.api.engine_error_names import client_text
+
+        for name in ("message", "error"):
+            said = getattr(self, name, None)
+            if isinstance(said, str):
+                setattr(self, name, client_text(said))
+
+
 @strawberry.type
 class CalendarType:  # REQ-962: a named, versioned snapshot-boundary calendar
     name: str
@@ -215,7 +228,7 @@ class DataProductType:  # REQ-1634, REQ-1660
 
 
 @strawberry.type
-class DataProductFindingType:  # REQ-2146
+class DataProductFindingType(ClientText):  # REQ-2146
     kind: str
     code: str
     message: str
@@ -880,7 +893,7 @@ class CombinedFileType:  # REQ-788
 
 
 @strawberry.type
-class FileColumnsDifferType:  # REQ-788
+class FileColumnsDifferType(ClientText):  # REQ-788
     """A file whose columns differ from the others': what it lacks, what it adds, or why it could
     not be read."""
 
@@ -917,7 +930,7 @@ class KaggleDatasetType:  # REQ-1783
 
 
 @strawberry.type
-class KaggleStageResultType:  # REQ-1780/1781/1782
+class KaggleStageResultType(ClientText):  # REQ-1780/1781/1782
     """A staged dataset bundle, ready to register as ONE `files`-type Source pointed at
     `directory` (Amended 2026-09-19: was one plain csv/parquet Source PER FILE — see
     KaggleStageResultType's history in requirements.yaml for why that changed). v1 scope:
@@ -1724,7 +1737,9 @@ class DqCheckColumnType:  # REQ-1443 clause 7
 
 
 @strawberry.type
-class DqCheckCatalogType:  # REQ-1443 clause 7: the picker's offer, scoped to the real dataset
+class DqCheckCatalogType(
+    ClientText
+):  # REQ-1443 clause 7: the picker's offer, scoped to the real dataset
     """``columns`` is empty and ``error`` non-null when the contract's dataset resolves to no
     governed table — the same failure the registration reports, surfaced while the operator is still
     editing rather than at scan time."""
@@ -1753,7 +1768,7 @@ class DqCheckBuildInput:  # REQ-1443 clause 7
 
 
 @strawberry.type
-class DqCheckDefinitionType:  # REQ-1443 clause 7
+class DqCheckDefinitionType(ClientText):  # REQ-1443 clause 7
     """One built check's own text, or the reason it could not be built."""
 
     definition: str = ""
@@ -1769,7 +1784,9 @@ class QueryPreviewColumnType:  # REQ-1670, REQ-1683
 
 
 @strawberry.type
-class QueryPreviewType:  # REQ-1670/REQ-1683: a query preview for Register Table on a query-API source
+class QueryPreviewType(
+    ClientText
+):  # REQ-1670/REQ-1683: a query preview for Register Table on a query-API source
     """``error`` is non-null when the source is unreachable, the query fails, or a column returns
     a node/list instead of a scalar; the form keeps the operator's text and shows the message."""
 
@@ -1788,7 +1805,7 @@ class QdrantVectorType:  # REQ-1983: one vector of a Qdrant collection
 
 
 @strawberry.type
-class DqContractType:  # REQ-1443: the parsed contract behind the builder panel
+class DqContractType(ClientText):  # REQ-1443: the parsed contract behind the builder panel
     """``error`` is non-null when the raw text does not parse or names no dataset; the panel keeps
     the operator's text and shows the message rather than replacing it with an empty builder."""
 
@@ -1799,7 +1816,9 @@ class DqContractType:  # REQ-1443: the parsed contract behind the builder panel
 
 
 @strawberry.type
-class DqContractTextType:  # REQ-1443: edited rows serialized back into the contract's own dialect
+class DqContractTextType(
+    ClientText
+):  # REQ-1443: edited rows serialized back into the contract's own dialect
     """The inverse of :class:`DqContractType`. Serialization is a server call so the dialect has one
     implementation; ``error`` carries a rejected build (an unparseable check body, a dataset that is
     not the three-part form) rather than emitting text the checker would refuse."""
@@ -1809,7 +1828,7 @@ class DqContractTextType:  # REQ-1443: edited rows serialized back into the cont
 
 
 @strawberry.type
-class DqDryRunType:  # REQ-1443 clause 7: outcomes WITHOUT landing them
+class DqDryRunType(ClientText):  # REQ-1443 clause 7: outcomes WITHOUT landing them
     """The failure mode this prevents is a contract that lands nothing but passing rows because its
     dataset name resolved somewhere else — so ``rows_tested`` and the per-check outcomes are shown as
     the checker reported them, not summarized to a verdict."""
@@ -2027,7 +2046,7 @@ class HotTableStatType:
 
 
 @strawberry.type
-class ReplicaIndexType:  # REQ-2015
+class ReplicaIndexType(ClientText):  # REQ-2015
     """One index a replica's standing landing asked for, and how it stands."""
 
     name: str
@@ -2202,7 +2221,7 @@ class RegionChoicesType:  # REQ-1921
 
 
 @strawberry.type
-class MutationResult:  # REQ-533
+class MutationResult(ClientText):  # REQ-533
     success: bool
     message: str
     # Hybrid server i18n (REQ-1350): stable code + params let the UI render

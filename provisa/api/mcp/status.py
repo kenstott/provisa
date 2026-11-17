@@ -29,6 +29,7 @@ import os
 from fastapi import APIRouter, HTTPException, Request
 from provisa.api.admin.capabilities import has_capability_request, require_capability_request
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
+from provisa.api.engine_error_names import client_text
 
 router = APIRouter()
 
@@ -248,8 +249,8 @@ async def mcp_chat(request: Request):  # REQ-1008
             ):
                 yield f"data: {_json.dumps(event)}\n\n"
         except (PermissionError, ValueError) as exc:
-            yield f"data: {_json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+            yield f"data: {_json.dumps({'type': 'error', 'error': client_text(str(exc))})}\n\n"
         except Exception as exc:  # noqa: BLE001 - surface any LLM/transport failure to the client
-            yield f"data: {_json.dumps({'type': 'error', 'error': str(exc)})}\n\n"
+            yield f"data: {_json.dumps({'type': 'error', 'error': client_text(str(exc))})}\n\n"
 
     return StreamingResponse(_events(), media_type="text/event-stream")

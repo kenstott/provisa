@@ -157,29 +157,30 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
+      "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible.",
       "cassandra_discovery_unsupported": "El descubrimiento de esquemas de Cassandra requiere una sesión CQL activa, que no está disponible. Defina las columnas manualmente para este origen.",
       "database_not_connected": "Base de datos no conectada",
+      "decided_both_ways": "Una propuesta se acepta o no se vuelve a recomendar, no ambas cosas.",
       "domain_id_required": "domain_id es obligatorio para el ámbito de dominio",
       "elasticsearch_index_hint_required": "El descubrimiento de Elasticsearch requiere una indicación 'index'.",
       "elasticsearch_mapping_failed": "Error al leer el mapping de Elasticsearch para el índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint ya registrado: {{error}}",
       "endpoint_has_no_key": "{{vendor}} no tiene clave: defina la variable de entorno {{env}}.",
-      "decided_both_ways": "Una propuesta se acepta o no se vuelve a recomendar, no ambas cosas.",
-      "model_failed": "El modelo {{model}} falló: {{error}}",
       "model_has_no_room": "El modelo {{model}} no puede contener una solicitud: {{reason}}",
       "model_incomplete": "Un modelo elegido indica tanto su proveedor como su modelo.",
       "no_adapter_for_source_type": "No hay adaptador registrado para el tipo de origen '{{source_type}}'",
       "no_live_connection": "No hay conexión activa para el origen '{{source_id}}'. El descubrimiento de esquemas de MongoDB requiere una conexión activa en el pool de orígenes. Verifique que el origen esté conectado y que el servidor sea accesible.",
       "run_ended": "La ejecución de descubrimiento {{run_id}} ya ha terminado: {{status}}",
+      "run_failed": "La ejecución de descubrimiento {{run_id}} falló: {{error}}",
       "run_not_found": "No se encontró la ejecución de descubrimiento {{run_id}}",
       "run_still_going": "La ejecución de descubrimiento {{run_id}} sigue en curso. Decida sobre sus propuestas cuando haya terminado.",
       "schema_discovery_unsupported": "El tipo de origen '{{source_type}}' no admite el descubrimiento de esquemas. Defina las columnas manualmente.",
       "semantics_unavailable": "La semántica no puede ejecutarse: {{model}}, el modelo asignado a la inferencia de relaciones, no tiene clave. Configure una en Administración, Modelos de IA.",
       "source_not_found": "No se encontró el origen '{{source_id}}'",
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
+      "table_not_found": "La tabla {{table_id}} no está registrada.",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
-      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo.",
-      "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible."
+      "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo."
     },
     "llm": {
       "request_failed": "La solicitud al modelo falló: {{reason}}",
@@ -218,7 +219,10 @@
       "unknown_command": "Comando desconocido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de función desconocido: '{{impl_kind}}'",
       "written_table_missing": "el comando '{{name}}' escribe '{{table}}', que no está registrada",
-      "host_code_refused": "El comando '{{name}}' es de tipo {{impl_kind}}, que ejecuta código en el host del servidor. El código del host está desactivado en esta implementación; use un resolutor de código en su lugar."
+      "host_code_refused": "El comando '{{name}}' es de tipo {{impl_kind}}, que ejecuta código en el host del servidor. El código del host está desactivado en esta implementación; use un resolutor de código en su lugar.",
+      "no_plain_list": "Ninguna operación del origen '{{source_id}}' sin un parámetro obligatorio devuelve las filas de '{{operation}}', así que su tabla sigue activada",
+      "plain_list_unregistered": "'{{operation}}' del origen '{{source_id}}' devuelve las filas de su lista {{lists}}; registre primero esa lista como tabla",
+      "table_has_dependents": "Otros objetos aún hacen referencia a la tabla '{{table}}' de la función '{{name}}'; elimine primero esas referencias"
     },
     "graphql_remote": {
       "introspection_failed": "Error en la introspección: {{error}}",
@@ -527,7 +531,8 @@
       "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
       "code_resolver_has_dependents": "El resolver de código '{{resolver}}' no puede retirarse mientras algo dependa de él",
       "incremental_no_change": "El origen de código no tiene ninguna función @change para {{table}}. Declare una con @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada»."
+      "incremental_needs_rebuild_every": "{{table}} se mantiene de forma incremental, por lo que se recompila completa por reloj. Indique cada cuánto, en segundos, en «Recompilación completa cada».",
+      "table_derived_from_function": "La tabla '{{name}}' se deriva de una función: se elimina desactivando la tabla de la función, y sus columnas y parámetros se editan en la función"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",

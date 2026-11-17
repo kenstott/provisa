@@ -534,6 +534,20 @@ export function CommandFormFields({
                 {/* REQ-1924: a call runs only once the deployment's approval hook approves it. */}
                 <FormLayout>
                   <FormChecks>
+                    {/* REQ-1986: a registered source operation that reads rows is also a table
+                        while this is on; the table is derived from the function. */}
+                    {form.exposedAsTable !== null && (
+                      <FormField help={t("commandFormFields.exposedAsTableHint")} size="short">
+                        <Switch
+                          label={t("commandFormFields.exposedAsTable")}
+                          checked={form.exposedAsTable}
+                          onChange={(e) =>
+                            setForm({ ...form, exposedAsTable: e.currentTarget.checked })
+                          }
+                          data-testid="command-exposed-as-table-switch"
+                        />
+                      </FormField>
+                    )}
                     <FormField help={t("commandFormFields.requiresApprovalHint")} size="short">
                       <Switch
                         label={t("commandFormFields.requiresApproval")}

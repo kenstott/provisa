@@ -436,8 +436,16 @@ def _json_arguments_from_sql(fn: dict, args: dict) -> dict:
     return decoded
 
 
-async def _exec_source_operation(fn: dict, args: dict, state, _payload, _session) -> list[dict]:
-    """REQ-1924: a source's write operation, called with the arguments as given."""
+async def _exec_source_operation(fn: dict, args: dict, state, _payload, session) -> list[dict]:
+    """REQ-1924: a source's write operation, called with the arguments as given. REQ-1986: an
+    operation that returns the rows of its table is read as that table with the arguments
+    assigned, through the one pipeline as the caller's role."""
+    from provisa.compiler.operation_function import is_operation_function
+
+    if is_operation_function(fn):
+        from provisa.executor.operation_call import run
+
+        return await run(fn, _bind_arg_names(fn, args), state, session.role_id)
     from provisa.executor.source_operation import call_operation
 
     return await call_operation(

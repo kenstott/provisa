@@ -22,6 +22,7 @@ import logging
 from typing import Any
 
 from provisa.api.admin.types import MutationResult
+from provisa.api.engine_error_names import client_text
 
 log = logging.getLogger(__name__)
 
@@ -63,7 +64,11 @@ async def table_file_glob_refusal(conn: Any, model: Any) -> MutationResult | Non
             success=False,
             message=f"table {model.table_name!r}: {exc}",
             code="schema.file_glob_unreadable",
-            params={"table": model.table_name, "source": model.source_id, "error": str(exc)},
+            params={
+                "table": model.table_name,
+                "source": model.source_id,
+                "error": client_text(str(exc)),
+            },
         )
     return None
 
@@ -147,7 +152,9 @@ def file_glob_preview(
         try:
             per_file[r] = columns_of_file(full)
         except (ValueError, OSError) as exc:
-            unreadable.append({"file": r, "missing": [], "extra": [], "error": str(exc)})
+            unreadable.append(
+                {"file": r, "missing": [], "extra": [], "error": client_text(str(exc))}
+            )
     shared, differing = column_agreement(per_file)
     differing_files = {d["file"] for d in differing}
     reference = next((r for r in per_file if r not in differing_files), None)

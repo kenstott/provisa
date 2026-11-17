@@ -436,11 +436,9 @@ async def graphql_endpoint(  # REQ-001, REQ-002, REQ-043, REQ-047, REQ-049, REQ-
             if result.errors and result.data is None:
                 # Variables that do not coerce, or no operation to run: nothing was executed.
                 raise GraphQLDocumentError([err.message for err in result.errors])
-            if result.errors:
-                return JSONResponse(
-                    {"data": result.data, "errors": [err.formatted for err in result.errors]}
-                )
-            return JSONResponse({"data": result.data})
+            from provisa.api.graphql_answer import graphql_body
+
+            return JSONResponse(graphql_body(result))
 
     steward_hint = directives.steward_hint
 
