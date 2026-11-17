@@ -31,7 +31,6 @@
     "createFailed": "Could not create the organization",
     "provisionFailed": "Provisioning failed",
     "provisionTimeout": "Provisioning did not complete in time",
-    "egressCheckoutFailed": "Could not open the data transfer subscription checkout. Add it later from Billing.",
     "welcomeTitle": "Welcome to {{name}}!",
     "welcomeAdmin": "Your organization is ready and you are its administrator.",
     "welcomeInviteHeading": "Invite others",
@@ -67,10 +66,10 @@
     "resumeTitle": "Finish signing up",
     "resumeBody": "You started signing up for {{name}} but did not finish checkout. The name is held until {{expires}}.",
     "resumeButton": "Resume checkout",
-    "checkoutNotSettled": "Your payment has not reached us yet. Reload this page in a minute to finish setting up your organization.",
     "autoJoinChoiceTitle": "More than one org matches your email",
     "autoJoinChoiceBody": "Your email address matches the join rules of several organizations. Pick the one you belong to, or turn them all down and create your own.",
     "joinOfferedOrg": "Join",
-    "declineAutoJoin": "None of these"
+    "declineAutoJoin": "None of these",
+    "checkoutReturnNoOrg": "This page was reached from a checkout that did not name its organization. Resume the checkout below."
   }
 }

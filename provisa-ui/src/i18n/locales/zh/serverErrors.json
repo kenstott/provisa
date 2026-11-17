@@ -53,11 +53,17 @@
       "mutation_not_permitted": "不允许执行变更 '{{field_name}}'：{{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy 签名无效",
-      "tenant_no_ls_customer": "租户没有 Lemon Squeezy 客户",
-      "tenant_not_found": "未找到租户",
-      "webhook_missing_customer_id": "Webhook 缺少客户 ID",
-      "webhook_missing_tenant_linkage": "Webhook 缺少租户关联"
+      "checkout_not_complete": "此结账尚未完成，因此还没有可关联的订阅。",
+      "invalid_signature": "webhook 签名无效",
+      "no_trial": "此组织没有试用",
+      "org_no_customer": "此组织还没有计费账户。",
+      "org_not_found": "未找到组织",
+      "reconcile_not_creator": "只有组织的创建者可以执行此操作",
+      "session_org_mismatch": "此结账不是为此组织打开的。",
+      "subscription_items_unrecognized": "此订阅未同时包含本部署销售的套餐价格和数据传输价格，因此无法变更。",
+      "trial_already_started": "此组织已开始试用。每个组织只提供一次试用。",
+      "webhook_missing_org_linkage": "webhook 订阅未注明任何组织",
+      "webhook_missing_subscription": "webhook 未注明任何订阅"
     },
     "control_plane": {
       "multitenancy_disabled": "多租户功能未启用"

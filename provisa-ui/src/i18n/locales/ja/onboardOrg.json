@@ -31,7 +31,6 @@
     "createFailed": "組織を作成できませんでした",
     "provisionFailed": "プロビジョニングに失敗しました",
     "provisionTimeout": "プロビジョニングが時間内に完了しませんでした",
-    "egressCheckoutFailed": "データ転送サブスクリプションのチェックアウトを開けませんでした。後から請求ページで追加できます。",
     "welcomeTitle": "{{name}} へようこそ！",
     "welcomeAdmin": "おめでとうございます — 組織の準備が整い、あなたがその管理者です。",
     "welcomeInviteHeading": "他のメンバーを招待",
@@ -67,10 +66,10 @@
     "resumeTitle": "サインアップを完了する",
     "resumeBody": "{{name}} のサインアップを開始しましたが、チェックアウトが完了していません。この名前は {{expires}} まで確保されます。",
     "resumeButton": "チェックアウトを再開",
-    "checkoutNotSettled": "お支払いがまだ確認できていません。1 分後にこのページを再読み込みして、組織のセットアップを完了してください。",
     "autoJoinChoiceTitle": "メールアドレスに一致する組織が複数あります",
     "autoJoinChoiceBody": "あなたのメールアドレスは複数の組織の参加ルールに一致します。所属する組織を選択するか、すべて辞退して自分の組織を作成してください。",
     "joinOfferedOrg": "参加",
-    "declineAutoJoin": "いずれも該当しない"
+    "declineAutoJoin": "いずれも該当しない",
+    "checkoutReturnNoOrg": "このページは組織を示さないチェックアウトから開かれました。下からチェックアウトを再開してください。"
   }
 }

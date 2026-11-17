@@ -900,25 +900,27 @@ services:
       PROVISA_EMAIL_API_KEY: "\${PROVISA_EMAIL_API_KEY:-}"
       PROVISA_MAIL_FROM: "\${PROVISA_MAIL_FROM:-}"
       PROVISA_MAIL_BASE_URL: "\${PROVISA_MAIL_BASE_URL:-}"
-      # REQ-1455/REQ-1474: the merchant of record. This base REPLACES docker-compose.app.yml
-      # and forwards no variable it does not name, so the commercial plugin's credentials have
-      # to be listed here or they never enter the container — provisa.env holding them is not
-      # enough. LEMONSQUEEZY_MODE selects the store: "test" reads TEST_LEMONSQUEEZY_API_KEY,
-      # anything else the live key, so both are forwarded and the mode decides which is read.
-      LEMONSQUEEZY_MODE: "\${LEMONSQUEEZY_MODE:-}"
-      LEMONSQUEEZY_API_KEY: "\${LEMONSQUEEZY_API_KEY:-}"
-      TEST_LEMONSQUEEZY_API_KEY: "\${TEST_LEMONSQUEEZY_API_KEY:-}"
-      LEMONSQUEEZY_STORE_ID: "\${LEMONSQUEEZY_STORE_ID:-}"
-      LEMONSQUEEZY_VARIANT_STARTER: "\${LEMONSQUEEZY_VARIANT_STARTER:-}"
-      LEMONSQUEEZY_VARIANT_PRO_S: "\${LEMONSQUEEZY_VARIANT_PRO_S:-}"
-      LEMONSQUEEZY_VARIANT_PRO_M: "\${LEMONSQUEEZY_VARIANT_PRO_M:-}"
-      LEMONSQUEEZY_VARIANT_PRO_L: "\${LEMONSQUEEZY_VARIANT_PRO_L:-}"
-      # REQ-1482: egress rides a second subscription, so each plan names a second variant too.
-      LEMONSQUEEZY_VARIANT_EGRESS_STARTER: "\${LEMONSQUEEZY_VARIANT_EGRESS_STARTER:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_S: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_S:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_M: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_M:-}"
-      LEMONSQUEEZY_VARIANT_EGRESS_PRO_L: "\${LEMONSQUEEZY_VARIANT_EGRESS_PRO_L:-}"
-      LEMONSQUEEZY_SIGNING_SECRET: "\${LEMONSQUEEZY_SIGNING_SECRET:-}"
+      # REQ-1455/REQ-1474: the merchant of record, Stripe. This base REPLACES docker-compose.app.yml
+      # and forwards no variable it does not name, so the commercial plugin's settings have to be
+      # listed here or they never enter the container — provisa.env holding them is not enough.
+      # STRIPE_MODE selects the credentials: "test" reads the STRIPE_TEST_ pair, anything else the
+      # live pair, so both are forwarded and the mode decides which is read. STRIPE_BASE_URL is
+      # not forwarded: it points the plugin at a stub in tests and has no production value.
+      STRIPE_MODE: "\${STRIPE_MODE:-}"
+      STRIPE_SECRET_KEY: "\${STRIPE_SECRET_KEY:-}"
+      STRIPE_PUBLISHABLE_KEY: "\${STRIPE_PUBLISHABLE_KEY:-}"
+      STRIPE_TEST_SECRET_KEY: "\${STRIPE_TEST_SECRET_KEY:-}"
+      STRIPE_TEST_PUBLISHABLE_KEY: "\${STRIPE_TEST_PUBLISHABLE_KEY:-}"
+      STRIPE_WEBHOOK_SECRET: "\${STRIPE_WEBHOOK_SECRET:-}"
+      STRIPE_PRICE_STARTER: "\${STRIPE_PRICE_STARTER:-}"
+      STRIPE_PRICE_PRO_S: "\${STRIPE_PRICE_PRO_S:-}"
+      STRIPE_PRICE_PRO_M: "\${STRIPE_PRICE_PRO_M:-}"
+      STRIPE_PRICE_PRO_L: "\${STRIPE_PRICE_PRO_L:-}"
+      # REQ-1482: each plan's one subscription carries a second, data transfer price.
+      STRIPE_PRICE_EGRESS_STARTER: "\${STRIPE_PRICE_EGRESS_STARTER:-}"
+      STRIPE_PRICE_EGRESS_PRO_S: "\${STRIPE_PRICE_EGRESS_PRO_S:-}"
+      STRIPE_PRICE_EGRESS_PRO_M: "\${STRIPE_PRICE_EGRESS_PRO_M:-}"
+      STRIPE_PRICE_EGRESS_PRO_L: "\${STRIPE_PRICE_EGRESS_PRO_L:-}"
     depends_on: &provisa_depends
       redis:
         condition: service_healthy

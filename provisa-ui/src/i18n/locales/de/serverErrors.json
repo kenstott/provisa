@@ -53,11 +53,17 @@
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Ungültige Lemon-Squeezy-Signatur",
-      "tenant_no_ls_customer": "Mandant hat keinen Lemon-Squeezy-Kunden",
-      "tenant_not_found": "Mandant nicht gefunden",
-      "webhook_missing_customer_id": "Webhook ohne Kunden-ID",
-      "webhook_missing_tenant_linkage": "Webhook ohne Mandantenzuordnung"
+      "checkout_not_complete": "Dieser Checkout ist nicht abgeschlossen, daher gibt es noch kein Abonnement zum Zuordnen.",
+      "invalid_signature": "Ungültige Webhook-Signatur",
+      "no_trial": "Diese Organisation hat keine Testphase",
+      "org_no_customer": "Diese Organisation hat noch kein Abrechnungskonto.",
+      "org_not_found": "Organisation nicht gefunden",
+      "reconcile_not_creator": "Nur der Ersteller der Organisation kann dies tun",
+      "session_org_mismatch": "Dieser Checkout wurde nicht für diese Organisation geöffnet.",
+      "subscription_items_unrecognized": "Dieses Abonnement enthält nicht sowohl einen Tarifpreis als auch einen Datenübertragungspreis, die diese Bereitstellung verkauft, und kann daher nicht umgestellt werden.",
+      "trial_already_started": "Diese Organisation hat ihre Testphase bereits begonnen. Eine Testphase wird einmal pro Organisation angeboten.",
+      "webhook_missing_org_linkage": "Das Webhook-Abonnement nennt keine Organisation",
+      "webhook_missing_subscription": "Der Webhook nennt kein Abonnement"
     },
     "control_plane": {
       "multitenancy_disabled": "Mandantenfähigkeit ist nicht aktiviert"
