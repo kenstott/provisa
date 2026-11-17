@@ -874,6 +874,12 @@
         "label": "Aufrufe pro Anweisung an eine parametrisierte Tabelle",
         "help": "Die Höchstzahl der Aufrufe, die eine Anweisung an eine parametrisierte Tabelle richtet. Jeder Wert, den eine Anweisung einem Parameter gibt, ist ein Aufruf der Quelle: jeder Wert einer IN-Liste, jeder Zweig eines OR, jeder eindeutige Schlüssel eines Joins. Eine Anweisung, die mehr benötigt, wird abgelehnt."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Laufende Kafka-Sinks pro Person",
+        "help": "Wie viele Kafka-Sinks eine Person gleichzeitig laufen lassen darf. Eine Anfrage, einen weiteren zu starten, wird abgelehnt, bis einer ihrer Sinks stoppt."
+      }
     }
   }
 }

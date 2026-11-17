@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "无法连接模式注册表 {{registry}}：{{error}}",
       "sse_limit_reached": "已达到并发 SSE 订阅上限",
       "table_not_found": "未找到表 '{{table}}'",
-      "unknown_role": "未知角色 '{{role}}'"
+      "unknown_role": "未知角色 '{{role}}'",
+      "owner_role_lost": "订阅已结束：其所有者不再拥有启动它时所用的角色 ({{roles}})",
+      "sink_cap_reached": "您已有 {{cap}} 个正在运行的 Kafka 接收器，已达运营方允许的上限 ({{setting}})"
     },
     "users": {
       "assignment_not_found": "未找到分配",

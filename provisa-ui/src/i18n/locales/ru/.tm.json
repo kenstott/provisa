@@ -10845,5 +10845,9 @@
   "ru/serverErrors.json::serverErrors.ai.vector_model_address_from_server": "The embedding model {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "ru/serverErrors.json::serverErrors.ai.vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
   "ru/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
-  "ru/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
+  "ru/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
+  "ru/serverErrors.json::serverErrors.subscribe.owner_role_lost": "The subscription ended: its owner no longer holds the role it was started under ({{roles}})",
+  "ru/serverErrors.json::serverErrors.subscribe.sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})",
+  "ru/settings.json::settings.subscriptions.max_sinks_per_principal.label": "Running Kafka sinks per person",
+  "ru/settings.json::settings.subscriptions.max_sinks_per_principal.help": "How many Kafka sinks one person may have running at once. A request to start another is refused until one of theirs stops."
 }

@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "Die Schema-Registry {{registry}} ist nicht erreichbar: {{error}}",
       "sse_limit_reached": "Maximale Anzahl gleichzeitiger SSE-Abonnements erreicht",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
-      "unknown_role": "Unbekannte Rolle '{{role}}'"
+      "unknown_role": "Unbekannte Rolle '{{role}}'",
+      "owner_role_lost": "Das Abonnement wurde beendet: Sein Eigentümer hat die Rolle nicht mehr, unter der es gestartet wurde ({{roles}})",
+      "sink_cap_reached": "Sie haben bereits {{cap}} laufende Kafka-Sinks, das Maximum, das der Betreiber erlaubt ({{setting}})"
     },
     "users": {
       "assignment_not_found": "Zuweisung nicht gefunden",

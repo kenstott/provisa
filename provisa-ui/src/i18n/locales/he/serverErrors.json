@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות {{registry}}: {{error}}",
       "sse_limit_reached": "הגעת למספר המרבי של מנויי SSE במקביל",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
-      "unknown_role": "תפקיד לא מוכר '{{role}}'"
+      "unknown_role": "תפקיד לא מוכר '{{role}}'",
+      "owner_role_lost": "המנוי הסתיים: לבעליו אין עוד את התפקיד שתחתיו הוא הופעל ({{roles}})",
+      "sink_cap_reached": "כבר יש לך {{cap}} יעדי Kafka פעילים, המספר המרבי שהמפעיל מתיר ({{setting}})"
     },
     "users": {
       "assignment_not_found": "ההקצאה לא נמצאה",

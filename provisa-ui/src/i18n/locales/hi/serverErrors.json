@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "स्कीमा रजिस्ट्री {{registry}} तक पहुँचा नहीं जा सकता: {{error}}",
       "sse_limit_reached": "अधिकतम समवर्ती SSE सब्सक्रिप्शन सीमा पूरी हो गई",
       "table_not_found": "टेबल '{{table}}' नहीं मिली",
-      "unknown_role": "अज्ञात भूमिका '{{role}}'"
+      "unknown_role": "अज्ञात भूमिका '{{role}}'",
+      "owner_role_lost": "सब्सक्रिप्शन समाप्त हो गया: इसके स्वामी के पास अब वह भूमिका नहीं है जिसके अंतर्गत इसे शुरू किया गया था ({{roles}})",
+      "sink_cap_reached": "आपके पास पहले से {{cap}} चल रहे Kafka सिंक हैं, जो ऑपरेटर द्वारा अनुमत अधिकतम संख्या है ({{setting}})"
     },
     "users": {
       "assignment_not_found": "असाइनमेंट नहीं मिला",

@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "No se puede acceder al registro de esquemas {{registry}}: {{error}}",
       "sse_limit_reached": "se alcanzó el máximo de suscripciones SSE simultáneas",
       "table_not_found": "No se encontró la tabla '{{table}}'",
-      "unknown_role": "Rol desconocido: '{{role}}'"
+      "unknown_role": "Rol desconocido: '{{role}}'",
+      "owner_role_lost": "La suscripción terminó: su propietario ya no tiene el rol con el que se inició ({{roles}})",
+      "sink_cap_reached": "Ya tienes {{cap}} sinks de Kafka en ejecución, el máximo que permite el operador ({{setting}})"
     },
     "users": {
       "assignment_not_found": "No se encontró la asignación",

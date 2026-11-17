@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "Schema registry {{registry}} cannot be reached: {{error}}",
       "sse_limit_reached": "max concurrent SSE subscriptions reached",
       "table_not_found": "Table '{{table}}' not found",
-      "unknown_role": "Unknown role '{{role}}'"
+      "unknown_role": "Unknown role '{{role}}'",
+      "owner_role_lost": "The subscription ended: its owner no longer holds the role it was started under ({{roles}})",
+      "sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})"
     },
     "users": {
       "assignment_not_found": "Assignment not found",

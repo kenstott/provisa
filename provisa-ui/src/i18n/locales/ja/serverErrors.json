@@ -614,7 +614,9 @@
       "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
-      "unknown_role": "不明なロール「{{role}}」です"
+      "unknown_role": "不明なロール「{{role}}」です",
+      "owner_role_lost": "サブスクリプションは終了しました: 所有者が、開始時のロールを保持していません ({{roles}})",
+      "sink_cap_reached": "実行中の Kafka シンクはすでに {{cap}} 個あり、オペレーターが許可する上限です ({{setting}})"
     },
     "users": {
       "assignment_not_found": "割り当てが見つかりません",
