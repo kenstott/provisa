@@ -26,6 +26,10 @@
       "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "local_server_from_environment": "הגישה אל {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו נקודת קצה של AI בכתובת משלכם תחת ניהול, מודלי AI.",
       "server_environment_sets": "לא ניתן לקרוא ל-{{vendor}} כאן: סביבת השרת מגדירה את {{variable}}, שהלקוח שלו היה שולח עבור כל ארגון.",
+      "vector_model_address_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את הכתובת שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
+      "vector_model_key_from_server": "מודל ה-embedding‏ {{vendor}} לוקח את המפתח שלו מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לו מפתח משלכם תחת ניהול, מודלי AI.",
+      "vector_model_key_unset": "למודל ה-embedding‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
+      "vector_model_local_server": "הגישה אל מודל ה-embedding‏ {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו לו כתובת משלכם תחת ניהול, מודלי AI.",
       "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
     },
     "api": {
@@ -158,7 +162,8 @@
       "parameter_by_equality_only": "הפרמטר {{parameter}} מקבל ערך בשוויון: {{parameter}} = ערך, {{parameter}} IN (ערכים), או join על {{parameter}}. {{form}} אינו נותן לו ערך.",
       "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
       "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
-      "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים."
+      "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים.",
+      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -498,6 +503,8 @@
       "role_updated": "התפקיד '{{role}}' עודכן",
       "relationship_id_taken": "הקשר '{{relationship}}' כבר קיים",
       "relationship_id_reserved": "מזהה הקשר '{{id}}' מתחיל ב-'{{prefix}}', קידומת השמורה לקשרים מובנים. בחרו מזהה אחר.",
+      "relationship_source_column_missing": "הקשר '{{relationship}}' אינו מציין עמודת מקור. קשר מצטרף על עמודה של טבלת המקור שלו.",
+      "relationship_target_column_missing": "הקשר '{{relationship}}' אינו מציין עמודת יעד. קשר מצטרף על עמודה של טבלת היעד שלו, אלא אם היעד שלו הוא פונקציה.",
       "relationship_graphql_alias_taken": "כינוי ה-GraphQL '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "המשימה המתוזמנת '{{task}}' עודכנה",

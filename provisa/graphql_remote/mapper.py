@@ -378,8 +378,10 @@ def _detect_relationships(  # REQ-313
     """Emit relationships for intra-source OBJECT column references.
 
     For many-to-one fields, infers source_column/target_column from naming
-    conventions (e.g. breedName → breed.name). Falls back to empty columns
-    for list (one-to-many) object fields where the FK lives on the target side.
+    conventions (e.g. breedName → breed.name). A field that names no join column -- a nested
+    object with no key scalar beside it, or a list whose key lives on the target side -- offers
+    no relationship: a relationship joins on columns (rel_repo.RelationshipWithoutColumns), and
+    the nested object is read as its own column.
     """
     relationships = []
     for table in tables:
@@ -391,18 +393,12 @@ def _detect_relationships(  # REQ-313
             target_table = type_to_table.get(gql_type)
             if not target_table or target_table == table["name"]:
                 continue
-            cardinality = "one-to-many" if col.get("gql_is_list") else "many-to-one"
+            if col.get("gql_is_list"):
+                continue  # its key lives on the target side: no column of this table joins
+            src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
+            if not src_col:
+                continue  # no key scalar beside the nested object: nothing to join on
             rel_id = f"{REMOTE_OFFERED_PREFIX}{table['source_id']}__{table['name']}__{col['name']}"
-            if cardinality == "many-to-one":
-                src_col, tgt_col = _infer_fk_columns(col["name"], gql_type, src_scalars, types)
-                # The columns are named as they are registered too (apply_sql_name): FK/PK marking
-                # in rel_repo.upsert matches source_column/target_column against the registered
-                # column names, so a camelCase GQL field (breedName) must become breed_name here or
-                # the is_foreign_key/is_primary_key flag lands on no row.
-                src_col = apply_sql_name(src_col) if src_col else ""
-                tgt_col = apply_sql_name(tgt_col) if tgt_col else ""
-            else:
-                src_col, tgt_col = "", ""
             relationships.append(
                 {
                     "id": rel_id,
@@ -411,9 +407,12 @@ def _detect_relationships(  # REQ-313
                     # "assignmentsByEmployee" is registered as "assignments_by_employee".
                     "source_table_id": apply_sql_name(table["name"]),
                     "target_table_id": apply_sql_name(target_table),
-                    "source_column": src_col,
-                    "target_column": tgt_col,
-                    "cardinality": cardinality,
+                    # The columns are named as they are registered (apply_sql_name): FK/PK
+                    # marking in rel_repo.upsert matches them against the registered column
+                    # names, so a camelCase GQL field (breedName) must become breed_name here.
+                    "source_column": apply_sql_name(src_col),
+                    "target_column": apply_sql_name(tgt_col),
+                    "cardinality": "many-to-one",
                     "remote_managed": True,
                 }
             )

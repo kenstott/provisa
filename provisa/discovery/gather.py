@@ -444,7 +444,10 @@ async def table_facts(
 
 
 async def known(conn: "Connection") -> Known:
-    """Existing relationships, pending and rejected suggestions."""
+    """Existing relationships, pending and rejected suggestions. REQ-413 (amended 2026-11-16):
+    a junction relationship's two legs (the junction's key to each end's key) count as existing,
+    and so does a pair once accepted: a decided pair is never proposed again."""
+    from provisa.compiler.sql_types import key_list
     from provisa.core.schema_org import relationship_candidates as rc
     from provisa.core.schema_org import relationships as rel
 
@@ -458,6 +461,9 @@ async def known(conn: "Connection") -> Known:
                 rel.c.source_column,
                 rel.c.target_table_id,
                 rel.c.target_column,
+                rel.c.via_table_id,
+                rel.c.via_source_column,
+                rel.c.via_target_column,
             )
         )
     ).fetchall()
@@ -472,8 +478,17 @@ async def known(conn: "Connection") -> Known:
             )
         )
     ).fetchall()
+    legs: set[Edge] = set()
+    for r in existing:
+        if r[4] is None:
+            continue
+        for via_cols, end_id, end_cols in ((r[5], r[0], r[1]), (r[6], r[2], r[3])):
+            pairs = zip(key_list(via_cols), key_list(end_cols), strict=True)
+            legs |= {(int(r[4]), via_col, int(end_id), end_col) for via_col, end_col in pairs}
     return Known(
-        existing={edge(r) for r in existing if r[2] is not None and r[3] is not None},
+        existing={edge(r) for r in existing if r[2] is not None and r[3] is not None}
+        | legs
+        | {edge(r) for r in candidates if r[4] == "accepted"},
         pending={edge(r) for r in candidates if r[4] == "suggested"},
         rejected={edge(r) for r in candidates if r[4] == "rejected"},
         relationships_ending={int(r[2]) for r in existing if r[2] is not None},

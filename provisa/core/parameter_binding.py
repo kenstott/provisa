@@ -95,3 +95,17 @@ class ParameterCallsOverCap(ParameterBindingRefused):
             "cap": str(cap),
             "setting": CALLS_SETTING,
         }
+
+
+class ParameterNotWritten(ParameterBindingRefused):
+    """A write of a relationship that joins on a parameter of one of its ends: a parameter is
+    bound to a value for the source's call, never written."""
+
+    code = "data.parameter_not_written"
+
+    def __init__(self, parameter: str, relationship: str) -> None:
+        super().__init__(
+            f"The relationship {relationship} joins on the parameter {parameter}, which a "
+            f"statement binds to a value and never writes. A write does not make {relationship}."
+        )
+        self.params = {"parameter": parameter, "relationship": relationship}

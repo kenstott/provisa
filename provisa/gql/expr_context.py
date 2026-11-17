@@ -208,7 +208,10 @@ def _cut_refused(inner: exp.Expression) -> None:  # REQ-348
     inner.set("expressions", guarded)
 
 
-def _rename_variables(node: object, names: dict[str, str]) -> None:
+def _rename_variables(
+    node: object,  # object-ok: any IR value walked (dataclass, list, dict, scalar)
+    names: dict[str, str],
+) -> None:
     """Each node variable of ``node`` (an IR tree) that ``names`` holds named its new name, in its
     patterns and its expressions alike."""
     from dataclasses import fields, is_dataclass
@@ -435,8 +438,11 @@ class TranslatorExprContext:
                 sql_alias = nm.properties.get(name)
                 if sql_alias:
                     return _col(sql_alias, info[0])
-                if name in nm.native_filter_columns:
-                    return _col(f"_nf_{name}", info[0])
+                parameter = nm.parameter_column(name)
+                if parameter is not None:
+                    # REQ-1986: the parameter's column, which the statement's binding step
+                    # assigns by equality or IN and refuses under any other condition.
+                    return _col(parameter, info[0])
                 # A property the label has not -- one it does not publish, or the role may not
                 # see -- is null, as a graph's missing property is: a column is never read by a
                 # name the label does not give it.

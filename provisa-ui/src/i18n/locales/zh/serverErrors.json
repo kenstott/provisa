@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "local_server_from_environment": "{{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中以您自己的地址声明一个 AI 端点。",
       "server_environment_sets": "此处无法调用 {{vendor}}：服务器环境设置了 {{variable}}，其客户端会为每个组织发送它。",
+      "vector_model_address_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
+      "vector_model_key_from_server": "嵌入模型 {{vendor}} 从服务器环境中获取密钥，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的密钥。",
+      "vector_model_key_unset": "嵌入模型 {{vendor}} 没有密钥：{{field}} 未设置。",
+      "vector_model_local_server": "嵌入模型 {{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中为其设置您自己的地址。",
       "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。"
     },
     "api": {
@@ -158,7 +162,8 @@
       "parameter_by_equality_only": "参数 {{parameter}} 通过等值取值:{{parameter}} = 值、{{parameter}} IN (值列表),或在 {{parameter}} 上联接。{{form}} 不会给它任何值。",
       "parameter_unbound_on_branch": "参数 {{parameter}} 在 OR 的一个分支中有值,在另一个分支中没有。请在每个分支中为 {{parameter}} 指定值。",
       "parameter_conflict": "参数 {{parameter}} 同时被赋予两个不同的值({{first}} 和 {{second}})。请只给它一个值,或用 IN 或 OR 列出这些值。",
-      "parameter_calls_over_cap": "该语句需要对 {{table}} 发起 {{calls}} 次调用(其参数的每个值一次),而一条语句最多发起 {{cap}} 次(设置 {{setting}})。请减少值的数量。"
+      "parameter_calls_over_cap": "该语句需要对 {{table}} 发起 {{calls}} 次调用(其参数的每个值一次),而一条语句最多发起 {{cap}} 次(设置 {{setting}})。请减少值的数量。",
+      "parameter_not_written": "关系 {{relationship}} 通过参数 {{parameter}} 连接,语句将该参数绑定到一个值,从不写入它。写入操作不会创建 {{relationship}}。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -498,6 +503,8 @@
       "role_updated": "角色 '{{role}}' 已更新",
       "relationship_id_taken": "关系 '{{relationship}}' 已存在",
       "relationship_id_reserved": "关系 ID '{{id}}' 以 '{{prefix}}' 开头，该前缀为内置关系保留。请选择其他 ID。",
+      "relationship_source_column_missing": "关系 '{{relationship}}' 未指定源列。关系通过其源表的列进行连接。",
+      "relationship_target_column_missing": "关系 '{{relationship}}' 未指定目标列。除非目标是函数，否则关系通过其目标表的列进行连接。",
       "relationship_graphql_alias_taken": "GraphQL 别名 '{{alias}}' 已是来自 '{{table}}' 的关系 '{{relationship}}' 的别名",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "计划任务“{{task}}”已更新",

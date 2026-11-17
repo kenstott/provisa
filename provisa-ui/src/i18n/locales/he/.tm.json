@@ -10842,5 +10842,12 @@
   "he/serverErrors.json::serverErrors.discovery.source_domains_empty": "The chosen source domains hold no table discovery reads.",
   "he/serverErrors.json::serverErrors.discovery.target_domains_empty": "The chosen target domains hold no table discovery reads.",
   "he/serverErrors.json::serverErrors.discovery.source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
-  "he/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service."
+  "he/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+  "he/serverErrors.json::serverErrors.data.parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}.",
+  "he/serverErrors.json::serverErrors.ai.vector_model_key_from_server": "The embedding model {{vendor}} takes its key from the server's environment, which an organization on this server does not use. Give it a key of your own under Admin, AI Models.",
+  "he/serverErrors.json::serverErrors.ai.vector_model_key_unset": "The embedding model {{vendor}} has no key: {{field}} is not set.",
+  "he/serverErrors.json::serverErrors.ai.vector_model_address_from_server": "The embedding model {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+  "he/serverErrors.json::serverErrors.ai.vector_model_local_server": "The embedding model {{vendor}} is reached at the server's own address, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+  "he/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
+  "he/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
 }

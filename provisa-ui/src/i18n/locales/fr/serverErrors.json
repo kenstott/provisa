@@ -26,6 +26,10 @@
       "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "local_server_from_environment": "{{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Déclarez un point de terminaison IA à votre propre adresse dans Admin, Modèles IA.",
       "server_environment_sets": "{{vendor}} ne peut pas être appelé ici : l'environnement du serveur définit {{variable}}, que son client enverrait pour chaque organisation.",
+      "vector_model_address_from_server": "Le modèle d'embedding {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
+      "vector_model_key_from_server": "Le modèle d'embedding {{vendor}} prend sa clé dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une clé qui vous est propre dans Admin, Modèles IA.",
+      "vector_model_key_unset": "Le modèle d'embedding {{vendor}} n'a pas de clé : {{field}} n'est pas défini.",
+      "vector_model_local_server": "Le modèle d'embedding {{vendor}} est joint à l'adresse propre au serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
       "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
     },
     "api": {
@@ -158,7 +162,8 @@
       "parameter_by_equality_only": "Le paramètre {{parameter}} reçoit sa valeur par égalité : {{parameter}} = une valeur, {{parameter}} IN (valeurs) ou une jointure sur {{parameter}}. {{form}} ne lui donne aucune valeur.",
       "parameter_unbound_on_branch": "Le paramètre {{parameter}} reçoit une valeur dans une branche d'un OR et aucune dans une autre. Donnez une valeur à {{parameter}} dans chaque branche.",
       "parameter_conflict": "Le paramètre {{parameter}} reçoit deux valeurs différentes à la fois ({{first}} et {{second}}). Donnez-lui une seule valeur, ou énumérez les valeurs avec IN ou OR.",
-      "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs."
+      "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs.",
+      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -498,6 +503,8 @@
       "role_updated": "Rôle « {{role}} » mis à jour",
       "relationship_id_taken": "La relation « {{relationship}} » existe déjà",
       "relationship_id_reserved": "L'identifiant de relation « {{id}} » commence par « {{prefix}} », un préfixe réservé aux relations intégrées. Choisissez un autre identifiant.",
+      "relationship_source_column_missing": "La relation « {{relationship}} » ne nomme aucune colonne source. Une relation joint sur une colonne de sa table source.",
+      "relationship_target_column_missing": "La relation « {{relationship}} » ne nomme aucune colonne cible. Une relation joint sur une colonne de sa table cible, sauf si sa cible est une fonction.",
       "relationship_graphql_alias_taken": "L'alias GraphQL « {{alias}} » est déjà l'alias de la relation « {{relationship}} » depuis « {{table}} »",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Tâche planifiée « {{task}} » mise à jour",
