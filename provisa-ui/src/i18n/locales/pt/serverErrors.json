@@ -158,7 +158,8 @@
       "parameter_by_equality_only": "O parâmetro {{parameter}} recebe o valor por igualdade: {{parameter}} = um valor, {{parameter}} IN (valores) ou um join em {{parameter}}. {{form}} não lhe dá nenhum valor.",
       "parameter_unbound_on_branch": "O parâmetro {{parameter}} recebe um valor num ramo de um OR e nenhum noutro. Dê um valor a {{parameter}} em todos os ramos.",
       "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
-      "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores."
+      "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores.",
+      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",

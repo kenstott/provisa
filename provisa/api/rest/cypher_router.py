@@ -833,6 +833,9 @@ async def _answer(
             # admission's new-row check and the source see the values, never their names.
             with counting() as counted:
                 await written(_write_ast, _WT(_label_map), body.params, _read, _write)
+        except ParameterBindingRefused as exc:
+            # REQ-1986: a relationship joined on a parameter is not written, under its own code.
+            return cypher_error(400, exc.code, str(exc), **exc.params)
         except (_CWPE, CypherParamError) as exc:
             return cypher_error(400, "cypher.refused", str(exc), reason=str(exc))
         except _ReadRefused:

@@ -65,7 +65,7 @@ def _label_map() -> CypherLabelMap:
         schema_name="public",
         table_name="persons",
         properties={"name": "name", "age": "age_col"},
-        native_filter_columns={"status": "varchar"},
+        native_filter_columns={"_nf_status": "varchar"},
     )
     knows = RelationshipMapping(
         rel_type="KNOWS",

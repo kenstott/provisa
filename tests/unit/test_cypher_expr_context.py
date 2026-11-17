@@ -34,7 +34,7 @@ def _label_map(parameterized: bool = True) -> CypherLabelMap:
         schema_name="public",
         table_name="persons",
         properties={"name": "name", "age": "age_col"},
-        native_filter_columns={"status": "varchar"} if parameterized else {},
+        native_filter_columns={"_nf_status": "varchar"} if parameterized else {},
     )
     knows = RelationshipMapping(
         rel_type="KNOWS",

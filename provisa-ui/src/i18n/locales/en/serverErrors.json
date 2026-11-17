@@ -158,7 +158,8 @@
       "parameter_by_equality_only": "The parameter {{parameter}} takes a value by equality: {{parameter}} = a value, {{parameter}} IN (values), or a join on {{parameter}}. {{form}} gives it no value.",
       "parameter_unbound_on_branch": "The parameter {{parameter}} is given a value on one branch of an OR and none on another. Give {{parameter}} a value on every branch.",
       "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
-      "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values."
+      "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
+      "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
