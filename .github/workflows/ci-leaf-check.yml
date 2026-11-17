@@ -219,68 +219,55 @@ jobs:
             if [ -e "$dir" ]; then echo "::error::$dir is still there"; exit 1; fi
           done
 
-  # A round trip on a key of this run's own (key-prefix): the real cache is never touched.
-  # One job, one round trip through the cache service: a key nobody saved misses; the jars are
-  # saved under it; the local copies are removed; the same key then hits and brings them back.
-  # It was two jobs (save, then a fresh runner restores). Run 38046755990 showed why it cannot
-  # be: the second job waited 33 minutes for a runner, main's suite saved 13 GB of image caches
-  # in that time, the repository went past its 10 GB of cache and GitHub evicted this one.
+  # The real key, primed (a hit asks Maven Central for nothing; a miss downloads every jar once,
+  # each checked by sha256, and saves it), then a lane's restore of it: the jars come back and
+  # verify. A lane's restore of a key nobody saved fails the step rather than downloading. The
+  # leaf lane's java case (level-0 needs this job) restores the key primed here.
   trino-plugins:
-    name: action / trino-plugins (miss, save, hit)
+    name: action / trino-plugins (prime, restore, a miss refused)
     needs: scope
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+      - name: Prime
+        id: prime
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+      - name: Remove the local jars
+        env:
+          JARS: ${{ steps.prime.outputs.jars }}
+        run: |
+          [ -n "$JARS" ]
+          for jar in $JARS; do
+            case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
+            rm "$jar"
+          done
       - name: Restore
         id: restore
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
-          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
-      - name: A key nobody saved misses, and the pin names its jars
+      - name: The primed key hits and every jar is back
         env:
           HIT: ${{ steps.restore.outputs.cache-hit }}
           JARS: ${{ steps.restore.outputs.jars }}
         run: |
-          [ "$HIT" != "true" ]
-          [ -n "$JARS" ]
-          for jar in $JARS; do
-            case "$jar" in trino/plugins/trino-*/trino-*.jar) ;; *) echo "unexpected: $jar"; exit 1 ;; esac
-            mkdir -p "$(dirname "$jar")"
-            echo "stand-in for $jar" > "$jar"
-          done
-      - name: Save
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.restore.outputs.cache-hit }}
-          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
-      - name: Remove the local jars
-        env:
-          JARS: ${{ steps.restore.outputs.jars }}
-        run: |
-          for jar in $JARS; do rm "$jar"; done
-      - name: Restore again
-        id: again
+          [ "$HIT" = "true" ]
+          for jar in $JARS; do [ -s "$jar" ]; done
+      # A key of this run's own, which nobody saved: a lane's restore fails on it.
+      - name: Restore a key nobody saved
+        id: miss
+        continue-on-error: true
         uses: ./.github/actions/trino-plugins
         with:
           phase: restore
           key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
-      - name: The saved key hits and every jar is back
+      - name: The miss failed the restore
         env:
-          HIT: ${{ steps.again.outputs.cache-hit }}
-          JARS: ${{ steps.again.outputs.jars }}
-        run: |
-          [ "$HIT" = "true" ]
-          for jar in $JARS; do grep -q "stand-in for $jar" "$jar"; done
-      # A hit is not saved again: the save phase does nothing, and says so by doing nothing.
-      - name: Save after a hit
-        uses: ./.github/actions/trino-plugins
-        with:
-          phase: save
-          cache-hit: ${{ steps.again.outputs.cache-hit }}
-          key-prefix: leafcheck-${{ github.run_id }}-${{ github.run_attempt }}-
+          OUTCOME: ${{ steps.miss.outcome }}
+        run: '[ "$OUTCOME" = "failure" ]'
 
   # The real key, not one of this run's own: what the action keeps is the pinned files themselves,
   # each checked against its recorded sha256, so a save from here is the entry any job would save.
