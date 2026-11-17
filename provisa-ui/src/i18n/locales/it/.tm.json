@@ -10842,5 +10842,7 @@
   "it/serverErrors.json::serverErrors.discovery.source_domains_empty": "The chosen source domains hold no table discovery reads.",
   "it/serverErrors.json::serverErrors.discovery.target_domains_empty": "The chosen target domains hold no table discovery reads.",
   "it/serverErrors.json::serverErrors.discovery.source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
-  "it/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service."
+  "it/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+  "it/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
+  "it/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
 }

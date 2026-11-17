@@ -505,6 +505,8 @@
       "role_updated": "भूमिका '{{role}}' अपडेट की गई",
       "relationship_id_taken": "संबंध '{{relationship}}' पहले से मौजूद है",
       "relationship_id_reserved": "संबंध आईडी '{{id}}' '{{prefix}}' से शुरू होती है, जो अंतर्निहित संबंधों के लिए आरक्षित उपसर्ग है। कोई दूसरी आईडी चुनें।",
+      "relationship_source_column_missing": "संबंध '{{relationship}}' कोई स्रोत कॉलम नहीं बताता। संबंध अपनी स्रोत तालिका के किसी कॉलम पर जुड़ता है।",
+      "relationship_target_column_missing": "संबंध '{{relationship}}' कोई लक्ष्य कॉलम नहीं बताता। संबंध अपनी लक्ष्य तालिका के किसी कॉलम पर जुड़ता है, जब तक उसका लक्ष्य कोई फ़ंक्शन न हो।",
       "relationship_graphql_alias_taken": "GraphQL उपनाम '{{alias}}' पहले से '{{table}}' से संबंध '{{relationship}}' का उपनाम है",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "शेड्यूल किया गया कार्य '{{task}}' अपडेट किया गया",

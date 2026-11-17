@@ -505,6 +505,8 @@
       "role_updated": "Rol '{{role}}' bijgewerkt",
       "relationship_id_taken": "Relatie '{{relationship}}' bestaat al",
       "relationship_id_reserved": "De relatie-id '{{id}}' begint met '{{prefix}}', een voorvoegsel dat is gereserveerd voor ingebouwde relaties. Kies een andere id.",
+      "relationship_source_column_missing": "De relatie '{{relationship}}' noemt geen bronkolom. Een relatie koppelt op een kolom van haar brontabel.",
+      "relationship_target_column_missing": "De relatie '{{relationship}}' noemt geen doelkolom. Een relatie koppelt op een kolom van haar doeltabel, tenzij haar doel een functie is.",
       "relationship_graphql_alias_taken": "De GraphQL-alias '{{alias}}' is al de alias van relatie '{{relationship}}' vanuit '{{table}}'",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "Geplande taak '{{task}}' bijgewerkt",

@@ -235,7 +235,6 @@ vi.mock("../api/admin", async (importOriginal) => ({
     cache: { default_ttl: 300 },
     naming: { domain_prefix: false, convention: "none" },
   }),
-  fetchCandidates: vi.fn().mockResolvedValue([]),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
 }));
 vi.mock("../api/actions", () => ({

@@ -505,6 +505,8 @@
       "role_updated": "角色 '{{role}}' 已更新",
       "relationship_id_taken": "关系 '{{relationship}}' 已存在",
       "relationship_id_reserved": "关系 ID '{{id}}' 以 '{{prefix}}' 开头，该前缀为内置关系保留。请选择其他 ID。",
+      "relationship_source_column_missing": "关系 '{{relationship}}' 未指定源列。关系通过其源表的列进行连接。",
+      "relationship_target_column_missing": "关系 '{{relationship}}' 未指定目标列。除非目标是函数，否则关系通过其目标表的列进行连接。",
       "relationship_graphql_alias_taken": "GraphQL 别名 '{{alias}}' 已是来自 '{{table}}' 的关系 '{{relationship}}' 的别名",
       "trigger_refused": "{{reason}}",
       "scheduled_task_updated": "计划任务“{{task}}”已更新",
