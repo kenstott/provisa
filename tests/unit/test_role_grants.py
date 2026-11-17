@@ -31,6 +31,7 @@ from provisa.auth import role_grants
 from provisa.auth.middleware import AuthMiddleware
 from provisa.auth.models import AuthIdentity
 from provisa.core.schema_org import admin_audit_log, roles, user_role_assignments
+from tests.pg_control_plane import ORG
 
 pytestmark = pytest.mark.unit
 
@@ -139,7 +140,7 @@ async def test_the_sweep_removes_expired_and_unused_grants_into_the_trail(org):
         org, "di", "contractor", created_at=long_ago, last_used_at=_NOW - timedelta(days=2)
     )
     await _grant(org, "ed", "reader", created_at=_NOW - timedelta(days=400))
-    outcome = await role_grants.sweep(org, notify=False)
+    outcome = await role_grants.sweep(org, org_id=ORG, notify=False)
     assert [(g.user_id, g.role_id) for g in outcome.expired] == [("ada", "reader")]
     assert sorted(g.user_id for g in outcome.inactive) == ["bo", "cy"]
     assert sorted(await _grants(org)) == [
@@ -166,10 +167,10 @@ async def test_notice_is_given_once_before_expiry_and_again_after_each_use(org, 
     await _grant(
         org, "cy", "contractor", created_at=long_ago, last_used_at=_NOW - timedelta(days=2)
     )
-    first = await role_grants.sweep(org, notify=True)
+    first = await role_grants.sweep(org, org_id=ORG, notify=True)
     assert [(g.user_id, g.role_id) for g in first.expiring] == [("ada", "checker")]
     assert [g.user_id for g in first.going_unused] == ["bo"]
-    second = await role_grants.sweep(org, notify=True)
+    second = await role_grants.sweep(org, org_id=ORG, notify=True)
     assert second.expiring == [] and second.going_unused == []
     async with org.acquire() as conn:  # bo uses the grant again, and later falls idle again
         await conn.execute_core(
@@ -180,7 +181,7 @@ async def test_notice_is_given_once_before_expiry_and_again_after_each_use(org, 
                 inactive_notified_at=_NOW - timedelta(days=25),
             )
         )
-    third = await role_grants.sweep(org, notify=True)
+    third = await role_grants.sweep(org, org_id=ORG, notify=True)
     assert [g.user_id for g in third.going_unused] == ["bo"]
 
 

@@ -436,6 +436,7 @@ async def http(grant: ServiceGrant, method: str, body: bytes, span: Any) -> byte
     async with org_bound(grant) as (model_db, _cfg):
         await record_admin_action(
             model_db,
+            org_id=grant.org_id,
             action=HTTP_CALL,
             actor_id=f"source:{grant.source_id}",
             subject_id=parts.hostname,
@@ -588,6 +589,7 @@ async def audit(grant: ServiceGrant, method: str, body: bytes, span: Any) -> byt
     async with org_bound(grant) as (model_db, _cfg):
         await record_admin_action(
             model_db,
+            org_id=grant.org_id,
             action=CODE_AUDIT,
             actor_id=f"source:{grant.source_id}",
             subject_id=event,

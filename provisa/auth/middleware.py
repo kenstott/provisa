@@ -319,7 +319,7 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
     address stays waiting for a sign-in that proves it."""
     from provisa.api.app import state
     from provisa.core.org_membership import record_admin_action
-    from provisa.core.request_context import current_env, current_org
+    from provisa.core.request_context import current_env, current_org, require_current_org
     from provisa.entitlements import pending, store
 
     email = verified_email(identity)
@@ -338,9 +338,12 @@ async def _attach_pending_entitlements(db_pool, identity: AuthIdentity, lists) -
             outcomes = await pending.attach(conn, identity.user_id, email, lists)
         if any(outcome == pending.ATTACHED for _grant, outcome in outcomes):
             state.held_entitlements = await store.load_held(conn)
+    # The pool resolves to the bound org's model store, so the entries are that org's.
+    org_id = require_current_org()
     for grant, outcome in outcomes:
         await record_admin_action(
             db_pool,
+            org_id=org_id,
             action=f"entitlements.pending_{outcome}",
             actor_id=grant.set_by,
             subject_id=identity.user_id,
