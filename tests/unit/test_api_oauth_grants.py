@@ -15,6 +15,7 @@ the issuer is a stand-in; nothing is sent anywhere."""
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from unittest.mock import patch
 
 import httpx
@@ -37,8 +38,10 @@ from provisa.api_source.oauth_grants import (
 from provisa.core.auth_models import (
     ApiAuth,
     ApiAuthGoogleServiceAccount,
+    ApiAuthOAuth2ClientCredentials,
     ApiAuthOAuth2RefreshToken,
 )
+from provisa.core.request_context import reset_current_org, set_current_org
 
 TOKEN_URL = "https://issuer.test/token"
 SCOPE = "https://www.googleapis.com/auth/gmail.readonly"
@@ -381,3 +384,115 @@ class TestApplied:
                 _apply_auth(auth, headers, params)
             assert headers == {"Authorization": "Bearer access-1"}
             assert params == {}
+
+
+def _client_credentials(**changed) -> ApiAuthOAuth2ClientCredentials:
+    fields = {
+        "client_id": "client-1",
+        "client_secret": "made-up-client-secret",
+        "token_url": TOKEN_URL,
+    }
+    return ApiAuthOAuth2ClientCredentials(**{**fields, **changed})
+
+
+def _client_credentials_token(auth: ApiAuthOAuth2ClientCredentials) -> str:
+    headers: dict = {}
+    _apply_auth(auth, headers, {})
+    return headers["Authorization"].removeprefix("Bearer ")
+
+
+@contextmanager
+def _in_org(org_id: str):
+    token = set_current_org(org_id)
+    try:
+        yield
+    finally:
+        reset_current_org(token)
+
+
+class TestHeldPerOrganizationAndCredential:
+    """A token one organization's source obtained is never sent for another organization, and a
+    credential that changed behind the same reference is exchanged again (security audit S6)."""
+
+    def _kinds(self, key_file, secret: str):
+        # Each kind of credential, with ``secret`` as the part of it that is secret.
+        other_key = json.dumps({**json.loads(key_file), "private_key_id": secret})
+        return [
+            ("refresh", lambda: access_token(_refresh(client_secret=secret)), "httpx.post"),
+            ("service account", lambda: access_token(_service_account(other_key)), "httpx.post"),
+            (
+                "client credentials",
+                lambda: _client_credentials_token(_client_credentials(client_secret=secret)),
+                "httpx.Client.post",
+            ),
+        ]
+
+    @pytest.mark.parametrize("kind", ["refresh", "service account", "client credentials"])
+    def test_two_orgs_naming_the_same_endpoint_and_client_get_separate_tokens(self, key_file, kind):
+        fetch, target = next((f, t) for k, f, t in self._kinds(key_file, "s-1") if k == kind)
+        answers = [_granted("token-of-org-a"), _granted("token-of-org-b")]
+        with patch(target, side_effect=answers) as post:
+            with _in_org("org-a"):
+                assert fetch() == "token-of-org-a"
+            with _in_org("org-b"):
+                assert fetch() == "token-of-org-b"
+            with _in_org("org-a"):
+                assert fetch() == "token-of-org-a"
+        assert post.call_count == 2
+
+    @pytest.mark.parametrize("kind", ["refresh", "service account", "client credentials"])
+    def test_a_rotated_secret_behind_the_same_reference_gets_a_new_token(
+        self, key_file, kind, monkeypatch
+    ):
+        reference = "${env:TEST_ROTATED_SECRET}"
+        if kind == "service account":
+            monkeypatch.setenv("TEST_ROTATED_SECRET", key_file)
+            fetch = lambda: access_token(_service_account(reference))  # noqa: E731
+        else:
+            monkeypatch.setenv("TEST_ROTATED_SECRET", "made-up-secret-1")
+            fetch = next(f for k, f, _ in self._kinds(key_file, reference) if k == kind)
+        target = "httpx.Client.post" if kind == "client credentials" else "httpx.post"
+        with patch(target, side_effect=[_granted("token-1"), _granted("token-2")]) as post:
+            assert fetch() == "token-1"
+            assert fetch() == "token-1"
+            if kind == "service account":
+                rotated = json.dumps({**json.loads(key_file), "private_key_id": "rotated"})
+                monkeypatch.setenv("TEST_ROTATED_SECRET", rotated)
+            else:
+                monkeypatch.setenv("TEST_ROTATED_SECRET", "made-up-secret-2")
+            assert fetch() == "token-2"
+        assert post.call_count == 2
+
+    def test_the_hold_is_keyed_by_a_digest_never_the_secret(self, key_file, monkeypatch):
+        monkeypatch.setenv("TEST_HELD_SECRET", "made-up-resolved-secret")
+        auths = [
+            (lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")), "httpx.post"),
+            (
+                lambda: _client_credentials_token(
+                    _client_credentials(client_secret="${env:TEST_HELD_SECRET}")
+                ),
+                "httpx.Client.post",
+            ),
+        ]
+        for fetch, target in auths:
+            with patch(target, return_value=_granted()):
+                fetch()
+        assert len(oauth_grants._tokens) == 2
+        for key in oauth_grants._tokens:
+            assert len(key) == 64 and all(c in "0123456789abcdef" for c in key)
+            assert "made-up" not in key and "TEST_HELD_SECRET" not in key
+            assert "client-1" not in key and TOKEN_URL not in key
+
+    def test_no_org_bound_is_refused_not_shared(self):
+        from provisa.core.request_context import current_org
+
+        token = current_org.set(None)
+        try:
+            with (
+                patch("httpx.post", return_value=_granted()) as post,
+                pytest.raises(RuntimeError, match="No active org bound"),
+            ):
+                access_token(_refresh())
+        finally:
+            current_org.reset(token)
+        post.assert_not_called()
