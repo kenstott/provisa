@@ -27,6 +27,10 @@ platform_admin confers NOTHING inside a tenant org -- it is stripped there (REQ-
 operators included, is confined to orgs they are a member of (REQ-1327). So the deployment's
 administrators are seated in it the ordinary way, with a membership and a role granted inside its
 schema.
+
+The public invite itself is seeded the same way, with the one token the marketing site links. An
+invite minted by hand is an invite a reset deletes: on 2026-11-16 a deploy wiped ``org_invites`` and
+the site's link answered "Invite not found". So every boot writes it back, terms and all.
 """
 
 # Requirements: REQ-1598, REQ-1599
@@ -34,6 +38,7 @@ schema.
 from __future__ import annotations
 
 import concurrent.futures
+import datetime
 import logging
 
 from sqlalchemy import select, update
@@ -44,6 +49,18 @@ log = logging.getLogger(__name__)
 
 SANDBOX_ORG_ID = "sandbox"
 SANDBOX_ORG_NAME = "Sandbox"
+
+#: The token of the public "Try it Out" invite: the one the marketing site links
+#: (site/index.html, site/how-it-works.html, site/why/*.html). Fixed, because the site is static and
+#: a token minted per deployment is one the site does not carry.
+SANDBOX_PUBLIC_INVITE_TOKEN = "eca0374b-fce8-45bd-8347-5f9d6e7931c3"
+#: A visitor's environment is reaped after this much disuse (REQ-1600).
+SANDBOX_INVITE_IDLE_TTL_SECONDS = 86400
+#: Who issued it: the deployment, which is no account. ``created_by`` is NOT NULL, and REQ-1308
+#: refuses a user redeeming an invite they issued, so it names something no user id is.
+SANDBOX_INVITE_ISSUER = "deployment"
+#: How far out each boot moves its expiry. Configuration does not expire; the column needs a date.
+_SANDBOX_INVITE_LIFETIME = datetime.timedelta(days=36500)
 
 
 async def ensure_sandbox_org(pool) -> str:
@@ -83,6 +100,10 @@ async def ensure_sandbox_org(pool) -> str:
                 .values(provisioning_state="provisioning", provisioning_error=None)
             )
 
+    # After the org row, which it references; before any build, which a visitor does not wait for:
+    # a redemption that arrives mid-build is answered by the org's own provisioning state.
+    await ensure_public_invite(pool)
+
     if ready:
         # REQ-1599: nothing to build, but an administrator conferred before this org existed is
         # still owed a seat in it, and this boot is where they get one.
@@ -93,6 +114,34 @@ async def ensure_sandbox_org(pool) -> str:
     _spawn_build(pool)
     log.info("sandbox org %s: provisioning", SANDBOX_ORG_ID)
     return "building"
+
+
+async def ensure_public_invite(pool) -> None:
+    """Write the public sandbox invite with its configured terms, whatever this boot finds.
+
+    Absent (a reset deleted it) is re-created; present has its terms put back, so neither an edit
+    nor an expiry outlives a boot. ``uses`` and the last redemption are history and are kept.
+    The terms are the open per-visitor invitation REQ-1594/REQ-1595 describe: the ``sandbox`` role,
+    a fresh environment per visitor deployed from prod, no ceiling on redemptions.
+    """
+    from provisa.core.environments import PROD
+    from provisa.core.org_invite import ENV_POLICY_PER_VISITOR, SANDBOX_ROLE
+    from provisa.core.schema_admin import org_invites
+
+    terms = {
+        "token": SANDBOX_PUBLIC_INVITE_TOKEN,
+        "org_id": SANDBOX_ORG_ID,
+        "role_id": SANDBOX_ROLE,
+        "email": None,
+        "created_by": SANDBOX_INVITE_ISSUER,
+        "expires_at": datetime.datetime.now(tz=datetime.timezone.utc) + _SANDBOX_INVITE_LIFETIME,
+        "max_uses": None,
+        "env_policy": ENV_POLICY_PER_VISITOR,
+        "env_ttl_seconds": SANDBOX_INVITE_IDLE_TTL_SECONDS,
+        "env_name": PROD,
+    }
+    async with pool.acquire() as conn:
+        await conn.upsert(org_invites, terms, index_elements=["token"])
 
 
 # In-flight sandbox builds (REQ-1882: each runs on a background worker, not the caller's loop).

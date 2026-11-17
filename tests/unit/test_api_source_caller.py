@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import httpx
 import pytest
 
-from provisa.api_source import caller
+from provisa.api_source import caller, oauth_grants
 from provisa.api_source.caller import (
     ApiAnswerNotJson,
     ApiCallError,
@@ -667,17 +667,14 @@ class TestApplyAuth:
 
 class TestFetchOauth2Token:
     def setup_method(self):
-        caller._oauth2_cache.clear()
+        oauth_grants._tokens.clear()
 
     def teardown_method(self):
-        caller._oauth2_cache.clear()
+        oauth_grants._tokens.clear()
 
     def test_fetches_and_caches(self):
-        oauth = MagicMock(
-            client_id="cid1",
-            client_secret="secret1",
-            token_url="http://token",
-            scope=None,
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid1", client_secret="secret1", token_url="http://token"
         )
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
@@ -691,11 +688,8 @@ class TestFetchOauth2Token:
         assert "scope" not in sent_data
 
     def test_uses_cache_on_second_call(self):
-        oauth = MagicMock(
-            client_id="cid2",
-            client_secret="secret2",
-            token_url="http://token2",
-            scope="read",
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid2", client_secret="secret2", token_url="http://token2", scope="read"
         )
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
@@ -707,13 +701,11 @@ class TestFetchOauth2Token:
         post_mock.assert_called_once()
 
     def test_expired_cache_refetches(self):
-        oauth = MagicMock(
-            client_id="cid3",
-            client_secret="secret3",
-            token_url="http://token3",
-            scope=None,
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid3", client_secret="secret3", token_url="http://token3"
         )
-        caller._oauth2_cache["cid3:http://token3"] = ("stale-tok", 0.0)
+        key = oauth_grants.held_key(oauth.type, "http://token3", "cid3", "secret3", "")
+        oauth_grants._tokens[key] = ("stale-tok", 0.0)
         resp = MagicMock()
         resp.raise_for_status = MagicMock()
         resp.json.return_value = {"access_token": "fresh-tok", "expires_in": 3600}
@@ -721,6 +713,18 @@ class TestFetchOauth2Token:
             token = _fetch_oauth2_token(oauth)
         assert token == "fresh-tok"
         post_mock.assert_called_once()
+
+    def test_a_token_with_no_stated_life_is_not_held(self):
+        oauth = ApiAuthOAuth2ClientCredentials(
+            client_id="cid4", client_secret="secret4", token_url="http://token4"
+        )
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json.side_effect = [{"access_token": "tok-1"}, {"access_token": "tok-2"}]
+        with patch("httpx.Client.post", return_value=resp):
+            assert _fetch_oauth2_token(oauth) == "tok-1"
+            assert _fetch_oauth2_token(oauth) == "tok-2"
+        assert oauth_grants._tokens == {}
 
 
 # ---------------------------------------------------------------------------

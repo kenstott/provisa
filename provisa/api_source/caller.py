@@ -20,12 +20,15 @@ from collections.abc import AsyncGenerator
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from provisa.api_source.models import ApiEndpoint
 from provisa.core.paging import PaginationConfig, PaginationType
+
+if TYPE_CHECKING:
+    from provisa.core.auth_models import ApiAuthOAuth2ClientCredentials
 
 # Requirements: REQ-295, REQ-297, REQ-298, REQ-316, REQ-320, REQ-322, REQ-325
 
@@ -459,27 +462,25 @@ def _apply_auth(auth, headers: dict, query_params: dict) -> None:  # REQ-320
                 headers[k] = resolve_secrets(v)
 
 
-# Simple token cache for OAuth2 client credentials
-_oauth2_cache: dict[str, tuple[str, float]] = {}
-
-
-def _fetch_oauth2_token(oauth) -> str:  # REQ-320
-    """Fetch and cache an OAuth2 client credentials token."""
-    import time
+def _fetch_oauth2_token(oauth: ApiAuthOAuth2ClientCredentials) -> str:  # REQ-320
+    """An OAuth2 client credentials token, held as the delegated grants' are
+    (``oauth_grants.held_key``): per organization and per credential as it resolves now."""
     import httpx as _httpx
+
+    from provisa.api_source.oauth_grants import held_key, held_token, hold_token
     from provisa.core.secrets import resolve_secrets
 
-    cache_key = f"{oauth.client_id}:{oauth.token_url}"
-    cached = _oauth2_cache.get(cache_key)
-    if cached:
-        token, expires_at = cached
-        if time.time() < expires_at - 30:  # 30s buffer
-            return token
+    client_id = resolve_secrets(oauth.client_id)
+    client_secret = resolve_secrets(oauth.client_secret, credential=True)
+    key = held_key(oauth.type, oauth.token_url, client_id, client_secret, oauth.scope or "")
+    held = held_token(key)
+    if held is not None:
+        return held
 
     data = {
         "grant_type": "client_credentials",
-        "client_id": resolve_secrets(oauth.client_id),
-        "client_secret": resolve_secrets(oauth.client_secret, credential=True),
+        "client_id": client_id,
+        "client_secret": client_secret,
     }
     if oauth.scope:
         data["scope"] = oauth.scope
@@ -490,8 +491,9 @@ def _fetch_oauth2_token(oauth) -> str:  # REQ-320
     resp.raise_for_status()
     body = resp.json()
     token = body["access_token"]
-    expires_in = body.get("expires_in", 3600)
-    _oauth2_cache[cache_key] = (token, time.time() + expires_in)
+    # An issuer that states no life gives nothing to hold the token by: it is used for this call
+    # and asked for again at the next (as ``oauth_grants.hold_token``).
+    hold_token(key, token, float(body["expires_in"]) if "expires_in" in body else None)
     return token
 
 
