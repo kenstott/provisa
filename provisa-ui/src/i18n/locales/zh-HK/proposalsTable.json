@@ -61,6 +61,8 @@
       "noValues": "來源沒有值。",
       "modelScore": "模型評分：未有比較任何值。"
     },
-    "manyToMany": "兩欄都不是鍵，因此無法接受。"
+    "dimensionMade": "接受後會建立共用維度 {{name}}，兩欄都與其關聯。",
+    "dimensionJoined": "接受後，兩欄都會關聯到共用維度 {{name}}。",
+    "twoDimensions": "其欄位已關聯到兩個不同的共用維度，因此無法接受。"
   }
 }

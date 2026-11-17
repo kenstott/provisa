@@ -61,6 +61,8 @@
       "noValues": "El origen no contiene valores.",
       "modelScore": "Puntuado por el modelo: no se compararon valores."
     },
-    "manyToMany": "Ninguna de las dos columnas es una clave, así que no se puede aceptar."
+    "dimensionMade": "Al aceptarla se crea la dimensión compartida {{name}}, a la que se unen ambas columnas.",
+    "dimensionJoined": "Al aceptarla, ambas columnas se unen a la dimensión compartida {{name}}.",
+    "twoDimensions": "Sus columnas ya se unen a dos dimensiones compartidas distintas, así que no se puede aceptar."
   }
 }

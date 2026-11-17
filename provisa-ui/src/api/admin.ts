@@ -846,10 +846,13 @@ export interface RunProposal {
   answer: string | null;
   /** Whether a reviewer may accept it or mark it not to be recommended again. */
   decidable: boolean;
-  /** Whether a reviewer may accept it: decidable, and its measure found a key on one side. */
+  /** Whether a reviewer may accept it: decidable, and a many-to-many pair names its dimension. */
   acceptable: boolean;
   /** One of its tables requires a parameter, so it is never read: no values were compared. */
   reduced_information: boolean;
+  /** A many-to-many pair: the shared dimension accepting it makes, or the registered one it
+   *  joins (``reused``). Null for any other pair. */
+  dimension: { name: string; reused: boolean } | null;
 }
 
 /** A run's report once semantics is under way or the run has ended. */

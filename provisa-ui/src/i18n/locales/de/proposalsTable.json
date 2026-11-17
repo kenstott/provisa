@@ -61,6 +61,8 @@
       "noValues": "Die Quelle enthält keine Werte.",
       "modelScore": "Vom Modell bewertet: Es wurden keine Werte verglichen."
     },
-    "manyToMany": "Keine der beiden Spalten ist ein Schlüssel, daher kann sie nicht akzeptiert werden."
+    "dimensionMade": "Beim Akzeptieren entsteht die gemeinsame Dimension {{name}}, mit der beide Spalten verknüpft werden.",
+    "dimensionJoined": "Beim Akzeptieren werden beide Spalten mit der gemeinsamen Dimension {{name}} verknüpft.",
+    "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden."
   }
 }
