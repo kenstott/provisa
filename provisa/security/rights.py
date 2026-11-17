@@ -684,6 +684,51 @@ def unknown_capabilities(capabilities: Iterable[str] | None) -> list[str]:  # RE
     return sorted({c for c in (capabilities or ()) if c not in known})
 
 
+class OrgAdminGrantError(Exception):
+    """An org administrator's role was granted by someone who does not hold every right it carries
+    (REQ-1327)."""
+
+    def __init__(self, role_id: str, missing: Iterable[str]):
+        self.role_id = role_id
+        self.missing = sorted(missing)
+        super().__init__(
+            f"role {role_id!r} is granted only by a holder of every right it carries; the granter "
+            "lacks: " + ", ".join(self.missing)
+        )
+
+
+def org_admin_rights_missing(
+    org_admin_capabilities: Iterable[str] | None, held: Iterable[str]
+) -> set[str]:  # REQ-1327
+    """The rights of org_admin that ``held`` lacks: empty when ``held`` is an org_admin's.
+
+    REQ-1327 (amended 2026-11-16): deleting an organization and granting org_admin are an
+    org_admin's acts; user_management alone allows neither. Holding org_admin is read as rights
+    (REQ-1337): every right the org_admin role carries in that org. The platform administrator
+    (``cross_org``) keeps an org's lifecycle and the appointment of its admins, so it lacks nothing.
+    """
+    caps = set(held)
+    if Capability.CROSS_ORG.value in caps:
+        return set()
+    return set(org_admin_capabilities or ()) - caps
+
+
+def admin_role_grant_missing(
+    role_capabilities: Iterable[str] | None, granter_capabilities: Iterable[str]
+) -> set[str]:  # REQ-1327
+    """The rights a granter lacks to confer an org administrator's role: empty when it may.
+
+    An org administrator's role is one carrying ``user_management`` -- read off its rights, never
+    its name (REQ-1337), as the platform's invitation of an org's admin is. Granting org_admin is
+    an org_admin's act (REQ-1327, amended 2026-11-16), so such a role is conferred only by a holder
+    of every right it carries, or by the platform (``cross_org``), which appoints an org's admins.
+    """
+    rights = set(role_capabilities or ())
+    if Capability.USER_MANAGEMENT.value not in rights:
+        return set()
+    return org_admin_rights_missing(rights, granter_capabilities)
+
+
 class PlatformRoleGrantError(Exception):
     """A role carrying platform rights was granted by someone who does not hold them."""
 
@@ -709,11 +754,19 @@ def check_role_grant(  # REQ-1337
     deployment, which they do not hold. A role carrying no platform right passes for any granter:
     whether the granter may manage users at all is the calling surface's gate, not this one.
 
-    Raises :class:`PlatformRoleGrantError` naming the rights the granter lacks.
+    REQ-1327: an org administrator's role (one carrying user_management, org_admin among them) is
+    granted only by a holder of every right it carries, or by a holder of ``cross_org``;
+    user_management alone does not confer org_admin (:func:`admin_role_grant_missing`).
+
+    Raises :class:`PlatformRoleGrantError` or :class:`OrgAdminGrantError` naming the rights the
+    granter lacks.
     """
     missing = platform_rights_in(role_capabilities) - set(granter_capabilities)
     if missing:
         raise PlatformRoleGrantError(role_id, missing)
+    lacking = admin_role_grant_missing(role_capabilities, granter_capabilities)
+    if lacking:
+        raise OrgAdminGrantError(role_id, lacking)
 
 
 def carries_platform_right(role_id: str, roles: dict[str, dict] | None) -> bool:  # REQ-1337

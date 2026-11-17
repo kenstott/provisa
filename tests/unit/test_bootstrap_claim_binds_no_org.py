@@ -150,6 +150,7 @@ class _NoOrgBoundRoles(_NoOrgBound):
     platform_roles = {
         "platform_admin": {"capabilities": ["cross_org"]},
         "org_admin": {"capabilities": ["user_management"]},
+        "analyst": {"capabilities": ["query_development"]},
     }
 
     @property
@@ -198,7 +199,12 @@ def test_an_auto_join_role_is_judged_by_the_deployment_orgs_definitions(monkeypa
     from provisa.api.errors import ApiError
 
     monkeypatch.setattr("provisa.api.app.state", _NoOrgBoundRoles())
-    orgs_router._validate_org_policy(_RULE, True, "org_admin")  # noqa: SLF001
+    orgs_router._validate_org_policy(_RULE, True, "analyst")  # noqa: SLF001
+    # REQ-1327 (amended 2026-11-16): an auto-join grants with no rights, so it never confers an
+    # org administrator's role (one carrying user_management), judged by the same definitions.
+    with pytest.raises(ApiError) as admin_refused:
+        orgs_router._validate_org_policy(_RULE, True, "org_admin")  # noqa: SLF001
+    assert admin_refused.value.code == "platform.right_required"
     with pytest.raises(ApiError) as refused:
         orgs_router._validate_org_policy(_RULE, True, "platform_admin")  # noqa: SLF001
     assert refused.value.status_code == 403
