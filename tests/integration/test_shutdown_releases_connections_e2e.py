@@ -59,71 +59,6 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
     from provisa.api.app import _load_and_build, create_app
     from provisa.core import model_change
 
-    # DIAGNOSTIC (R510-U, reverted before landing): the stack that opened, and last checked out,
-    # each pooled connection, by backend pid.
-    import threading
-    import traceback
-
-    from sqlalchemy import event
-    from sqlalchemy.pool import Pool
-
-    opened: dict = {}
-    checked: dict = {}
-
-    def _pid(dbapi_conn):
-        info = getattr(dbapi_conn, "info", None)
-        return getattr(info, "backend_pid", None)
-
-    def _on_connect(dbapi_conn, rec):
-        opened[_pid(dbapi_conn)] = (
-            threading.current_thread().name,
-            "".join(traceback.format_stack(limit=40)),
-        )
-
-    def _on_checkout(dbapi_conn, rec, proxy):
-        checked[_pid(dbapi_conn)] = (
-            threading.current_thread().name,
-            "".join(traceback.format_stack(limit=40)),
-        )
-
-    import time as _time
-
-    from provisa.federation import duckdb_runtime as _dr
-
-    runtimes: list = []
-    _orig_init, _orig_close = (
-        _dr.DuckDBFederationRuntime.__init__,
-        _dr.DuckDBFederationRuntime.close,
-    )
-
-    def _init(self, *a, **k):
-        runtimes.append(
-            (
-                _time.monotonic(),
-                "BUILT",
-                id(self),
-                threading.current_thread().name,
-                "".join(traceback.format_stack(limit=30)),
-            )
-        )
-        _orig_init(self, *a, **k)
-
-    def _close(self):
-        runtimes.append(
-            (
-                _time.monotonic(),
-                "CLOSED",
-                id(self),
-                threading.current_thread().name,
-                "".join(traceback.format_stack(limit=12)),
-            )
-        )
-        _orig_close(self)
-
-    _dr.DuckDBFederationRuntime.__init__ = _init
-    _dr.DuckDBFederationRuntime.close = _close
-    event.listen(Pool, "connect", _on_connect)
-    event.listen(Pool, "checkout", _on_checkout)
     server = _server()
     with server.connect() as conn:
         started = conn.execute(sa.text("SELECT now()")).scalar()
@@ -134,64 +69,6 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
         # scope (ModelChangeMiddleware), since loading the config writes the model.
         async with model_change.scope("PUT /admin/config", actor=lambda: "test"):
             await _load_and_build()
-    shut = _time.monotonic()
     left = _opened_since(server, started)
-    _dr.DuckDBFederationRuntime.__init__, _dr.DuckDBFederationRuntime.close = (
-        _orig_init,
-        _orig_close,
-    )
-    if left:
-        for t, what, rid, thread, stack in runtimes:
-            print(f"=== DIAG runtime {what} {rid} at shutdown{t - shut:+.2f}s on {thread}")
-            print(stack)
-    for pid, *_ in left:
-        print(f"=== DIAG leaked pid {pid}: opened by {opened.get(pid, ('not SQLAlchemy', ''))[0]}")
-        print(opened.get(pid, ("", ""))[1])
-        print(f"=== DIAG leaked pid {pid}: last checkout by {checked.get(pid, ('none', ''))[0]}")
-        print(checked.get(pid, ("", ""))[1])
-    if left:
-        print("=== DIAG threads alive:", sorted(t.name for t in threading.enumerate()))
-        print(
-            "=== DIAG pids SQLAlchemy opened:",
-            sorted(k for k in opened if k is not None)[:50],
-            len(opened),
-        )
-        import gc
-
-        import duckdb
-
-        def _owner_chain(obj, depth=0, seen=None):
-            seen = seen if seen is not None else set()
-            if depth > 3:
-                return
-            for ref in gc.get_referrers(obj):
-                if id(ref) in seen or ref is opened or ref is checked:
-                    continue
-                seen.add(id(ref))
-                if isinstance(ref, dict):
-                    for owner in gc.get_referrers(ref):
-                        if getattr(owner, "__dict__", None) is ref:
-                            keys = [k for k, v in ref.items() if v is obj]
-                            print(
-                                "  " * depth,
-                                "held by",
-                                type(owner).__module__,
-                                type(owner).__qualname__,
-                                keys,
-                            )
-                            _owner_chain(owner, depth + 1, seen)
-                elif type(ref).__name__ not in ("frame", "list", "tuple", "cell", "function"):
-                    print("  " * depth, "ref", type(ref).__module__, type(ref).__qualname__)
-
-        for obj in gc.get_objects():
-            if isinstance(obj, duckdb.DuckDBPyConnection):
-                try:
-                    dbs = obj.execute(
-                        "SELECT database_name, type, path FROM duckdb_databases() WHERE NOT internal"
-                    ).fetchall()
-                except Exception as exc:  # diagnostic only
-                    dbs = f"closed? {exc}"
-                print("=== DIAG duckdb connection", id(obj), dbs)
-                _owner_chain(obj)
     server.dispose()
     assert left == [], f"backends still connected after shutdown: {left}"
