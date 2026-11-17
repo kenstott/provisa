@@ -5,14 +5,15 @@
 """Where a Logs source may read (REQ-1996). The maintainer's ruling: an operator setting
 ``logs.allowed_roots``, by default ``["/var/log"]``, lists the directories a glob may resolve
 into; a glob, or a file it matches, that resolves outside them after following symlinks is
-refused by name; on the multi-organisation SaaS plane a server-local log path is refused
-entirely, by name.
+refused by name. A held organization (``sandbox_egress.held``: a sandbox org on any install, every
+org but the deployment's own on a server of many) reads no log file on the server's own disk
+outside its own folder (REQ-1997, through ``source_uploads.require_own_disk``).
 
-Two reads of log files of a many-organisation server's own are allowed (REQ-2049), each still only
-inside the allowed roots: a demo bundle's seeding run (the bundle build's throwaway sandbox tier),
-and a sandbox-tier demo org -- a demo's template or a sandbox of it -- reading its own demo's
-files, inside that demo's directory and nowhere else: a demo's logs are its own source, read live
-from its bundle."""
+Two reads of log files outside a held org's folder are allowed (REQ-2049), each still only inside
+the allowed roots: a demo bundle's seeding run (the bundle build's throwaway sandbox tier), and a
+sandbox-tier demo org -- a demo's template or a sandbox of it -- reading its own demo's files,
+inside that demo's directory and nowhere else: a demo's logs are its own source, read live from
+its bundle."""
 
 from __future__ import annotations
 
@@ -20,7 +21,6 @@ import os
 import re
 
 from provisa.core import settings_registry
-from provisa.core.secrets_providers import many_organisations
 
 _WILDCARD = re.compile(r"[*?\[]")
 
@@ -53,19 +53,27 @@ def _own_demos(path: str) -> bool:
     return _inside(os.path.realpath(os.path.expanduser(path)), [os.path.realpath(directory)])
 
 
-def _refuse_on_saas(path: str) -> None:
+def _refuse_if_held(path: str) -> None:
+    """Refuse ``path`` for a held org when it is outside the org's folder (REQ-1997), unless it is
+    a seeding run's or the org's own demo's (REQ-2049)."""
     from provisa.core.demo_bundles import seeding_run
+    from provisa.core.source_uploads import LocalPathRefused, require_own_disk
 
-    if many_organisations() and not seeding_run() and not _own_demos(path):
+    if seeding_run() or _own_demos(path):
+        return
+    try:
+        require_own_disk(path)
+    except LocalPathRefused as exc:
         raise LogPathRefused(
-            f"{path}: a server that holds many organizations reads no log file of its own"
-        )
+            f"{path}: this organization reads no log file on the server's own disk outside its "
+            "own folder"
+        ) from exc
 
 
 def checked_glob(glob: str) -> str:
     """``glob`` with ``~`` expanded, when the directory it starts from resolves inside an
-    allowed root; refused by name otherwise, and always on a server of many organizations."""
-    _refuse_on_saas(glob)
+    allowed root; refused by name otherwise, and for a held org outside its own folder."""
+    _refuse_if_held(glob)
     expanded = os.path.expanduser(glob)
     if not os.path.isabs(expanded):
         raise LogPathRefused(f"{glob}: name the files by their full path")
@@ -83,9 +91,9 @@ def checked_glob(glob: str) -> str:
 
 
 def checked_file(path: str) -> str:
-    """``path`` resolved, when it is inside an allowed root once its symlinks are followed;
-    refused by name otherwise."""
-    _refuse_on_saas(path)
+    """``path`` resolved, when it is inside an allowed root once its symlinks are followed (and,
+    for a held org, inside its own folder); refused by name otherwise."""
+    _refuse_if_held(path)
     real = os.path.realpath(path)
     roots = allowed_roots()
     if not _inside(real, roots):
