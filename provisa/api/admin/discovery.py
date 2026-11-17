@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from provisa.api.app import state
 from provisa.api.errors import ApiError
@@ -63,13 +63,15 @@ WHERE_TO_SET = "Admin, AI Models"
 class DiscoverRequest(BaseModel):
     """A discovery done while the caller waits, as a run (REQ-413): ``table`` compares the tables
     of the table's domain, ``domain`` those of the domain, ``cross-domain`` those of every
-    domain."""
+    domain. A field the route does not read is refused, never ignored; chosen domains or tables
+    are a run's (``RunScope``, ``POST /admin/discover/runs``)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     scope: Literal["table", "domain", "cross-domain"]
     kinds: list[DiscoveryKind] = Field(min_length=1)
     table_id: int | None = None
     domain_id: str | None = None
-    domain_ids: list[str] | None = None
 
 
 class RejectRequest(BaseModel):
