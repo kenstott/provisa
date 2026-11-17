@@ -44,7 +44,7 @@ CREATE TABLE glossary_term_experts (
     id TEXT PRIMARY KEY, term_id TEXT, user_id TEXT, kind TEXT, tenant_id TEXT);
 CREATE TABLE registered_tables (
     id INTEGER PRIMARY KEY, source_id TEXT, schema_name TEXT, table_name TEXT,
-    domain_id TEXT, tenant_id TEXT, draft BOOLEAN NOT NULL DEFAULT 0, class_term_id TEXT,
+    domain_id TEXT, tenant_id TEXT, class_term_id TEXT,
     retired BOOLEAN NOT NULL DEFAULT 0, withdrawn BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE sources (id TEXT PRIMARY KEY, withdrawn BOOLEAN NOT NULL DEFAULT 0);
 CREATE TABLE table_columns (
