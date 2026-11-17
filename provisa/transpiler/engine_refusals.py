@@ -199,10 +199,6 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "unix_to_time": _NUMBERS,
         "length": _BYTES,
         "concat_ws": _NUMBERS,
-        # Its server form (metadata_server_forms) splits the vector with regexp_split_to_array,
-        # which reached ClickHouse refused by that name; ClickHouse's own row of it reads a
-        # literal pattern of a call the statement writes, and the server form is no such call.
-        "oidvectortypes": _ANY,
         # A time of day where no grid row reads the call (polyfill.clocks holds a time as its
         # microseconds; a row answers a date and a time, and overlaps of times it reads).
         "datetime_pl": _TIME,

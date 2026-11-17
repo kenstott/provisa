@@ -20,6 +20,7 @@ from __future__ import annotations
 
 from provisa.transpiler.polyfill import (
     aggregates,
+    array_sets,
     arrays,
     bits,
     bytea,
@@ -67,6 +68,7 @@ from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, ho
 #: The one grid: every family's features.
 GRID = Grid(
     arrays.FEATURES
+    + array_sets.FEATURES
     + zones.FEATURES
     + records.FEATURES
     + money.FEATURES

@@ -13,18 +13,6 @@ Rules on this page: 399, of which 291 are only the name of a rewrite function. A
 36 of the grid's 396 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
-<tr><td><strong>arraycontains</strong><br>Whether an array holds every element of another; a NULL element of the other is held by none.</td><td><pre><code>arraycontains($a::anyarray, $b::anyarray)
-=&gt;
-CAST(hasAll(arrayFlatten($a), arrayFlatten($b)) AND NOT has(arrayFlatten($b), NULL) AS Nullable(Bool))</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>arraycontained</strong><br>Whether every element of an array is held by another; a NULL element is held by none.</td><td><pre><code>arraycontained($a::anyarray, $b::anyarray)
-=&gt;
-CAST(hasAll(arrayFlatten($b), arrayFlatten($a)) AND NOT has(arrayFlatten($a), NULL) AS Nullable(Bool))</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>arrayoverlap</strong><br>Whether two arrays hold an element in common; a NULL element is in common with none.</td><td><pre><code>arrayoverlap($a::anyarray, $b::anyarray)
-=&gt;
-CAST(hasAny(arrayFilter(_x -&gt; _x IS NOT NULL, arrayFlatten($a)), arrayFilter(_x -&gt; _x IS NOT NULL, arrayFlatten($b))) AS Nullable(Bool))</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>array_remove</strong><br>An array without each element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_remove($a::anycompatiblearray, $v::anycompatible)
-=&gt;
-function provisa.transpiler.polyfill.arrays._removed: array_remove of a one-dimensional array: each element not equal to the value, a NULL equal</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
 =&gt;
 CAST(CASE WHEN length($a) &gt; 0 THEN countSubstrings(toTypeName($a), &#x27;Array(&#x27;) END AS Nullable(Int32))</code></pre></td><td></td><td></td><td></td></tr>
@@ -110,6 +98,18 @@ CASE WHEN $a &lt; $b THEN $a WHEN $a &gt;= $b THEN $b END</code></pre></td><td><
 <tr><td><strong>btarraycmp</strong><br>btree&#x27;s comparison of two arrays: -1, 0 or 1, a NULL element after any value.</td><td><pre><code>btarraycmp($a::anyarray, $b::anyarray)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>arraycontains</strong><br>Whether an array holds every element of another; a NULL element of the other is held by none.</td><td><pre><code>arraycontains($a::anyarray, $b::anyarray)
+=&gt;
+CAST(hasAll(arrayFlatten($a), arrayFlatten($b)) AND NOT has(arrayFlatten($b), NULL) AS Nullable(Bool))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>arraycontained</strong><br>Whether every element of an array is held by another; a NULL element is held by none.</td><td><pre><code>arraycontained($a::anyarray, $b::anyarray)
+=&gt;
+CAST(hasAll(arrayFlatten($b), arrayFlatten($a)) AND NOT has(arrayFlatten($a), NULL) AS Nullable(Bool))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>arrayoverlap</strong><br>Whether two arrays hold an element in common; a NULL element is in common with none.</td><td><pre><code>arrayoverlap($a::anyarray, $b::anyarray)
+=&gt;
+CAST(hasAny(arrayFilter(_x -&gt; _x IS NOT NULL, arrayFlatten($a)), arrayFilter(_x -&gt; _x IS NOT NULL, arrayFlatten($b))) AS Nullable(Bool))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>array_remove</strong><br>An array without each element equal to a value, a NULL equal to a NULL.</td><td><pre><code>array_remove($a::anycompatiblearray, $v::anycompatible)
+=&gt;
+function provisa.transpiler.polyfill.array_sets._removed: array_remove of a one-dimensional array: each element not equal to the value, a NULL equal</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>pg_timezone_names</strong><br>The zones of the tz database, each with its abbreviation, offset and daylight flag now.</td><td><pre><code>pg_timezone_names()
 =&gt;
 refused (its error is under the limitations)</code></pre></td><td><ul><li>Refused: pg_timezone_names(). <code>0A000</code> pg_timezone_names() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
