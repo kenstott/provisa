@@ -86,3 +86,47 @@ def test_a_transform_view_keeps_its_reference_through_governance(status):
 def test_a_transform_view_is_answered_from_its_stored_table(status):
     bodies = unnarrowed_view_bodies(STATEMENT, {"clean_suppliers": READ}, _state(status))
     assert bodies == {"clean_suppliers": READ}
+
+
+# --- REQ-2131 (amended 2026-11-16): the stored build is read under the reader's role -------------
+
+
+def _answered(statement: str, state: SimpleNamespace, gov: GovernanceContext) -> str:
+    """The statement as it runs for the reader: governed, then each view it still references put
+    in at optimization."""
+    from provisa.compiler.view_expand import expand_view_refs
+
+    governed, _ = semantic_statement(statement, {"clean_suppliers": READ}, state, gov)
+    bodies = unnarrowed_view_bodies(governed, {"clean_suppliers": READ}, state)
+    return expand_view_refs(governed, bodies)
+
+
+def _narrowed_gov(*, row_rule: bool, mask: bool) -> GovernanceContext:
+    from provisa.compiler.rls import read_rule
+
+    gov = _gov()
+    gov.all_columns = {1: [("id", "integer"), ("raw_address", "varchar"), ("region", "varchar")]}
+    if row_rule:
+        gov.rls_rules = {1: read_rule("region = 'east'")}
+    if mask:
+        gov.masking_rules = {(1, "raw_address"): ("***",)}
+    return gov
+
+
+@pytest.mark.parametrize(
+    ("row_rule", "mask"), [(True, False), (False, True), (True, True)], ids=["rows", "mask", "both"]
+)
+@pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
+def test_a_reader_with_a_rule_on_the_views_inputs_is_not_answered_from_the_stored_build(
+    status, row_rule, mask
+):
+    """The stored table holds what the administrator's build read: every row, in clear. A reader
+    whose row rule or mask narrows the view's inputs is never answered from it as it is."""
+    answered = _answered(STATEMENT, _state(status), _narrowed_gov(row_rule=row_rule, mask=mask))
+    assert STORED not in answered
+
+
+@pytest.mark.parametrize("status", [MVStatus.FRESH, MVStatus.STALE])
+def test_a_reader_who_sees_every_input_whole_is_answered_from_the_stored_build(status):
+    answered = _answered(STATEMENT, _state(status), _narrowed_gov(row_rule=False, mask=False))
+    assert _relations(answered) == {"mat_store.org_default_mv_cache.mv_clean_suppliers"}
