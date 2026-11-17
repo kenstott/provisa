@@ -127,6 +127,8 @@ class _State:
         self.openapi_specs = {"api": {"spec": dict(_SPEC)}}
         self.tables: list[dict] = []
         self.model_db = model_db
+        # Read by client_text when a refusal's text is shaped for the client: no runtime here.
+        self.org_registry: dict = {}
 
 
 async def _operation(state, name: str):

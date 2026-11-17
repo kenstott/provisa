@@ -16,8 +16,9 @@ into the org's folder under ``files/<source id>/<name>``: the same size limit, t
 source reads that file.
 
 A file mount path may name only a file under a directory the operator lists in
-``sources.download_roots``, once its symlinks are followed; on a server of many organizations a
-file mount path is refused whatever the setting holds -- the server's disk is the platform's."""
+``sources.download_roots``, once its symlinks are followed; a held organization
+(``sandbox_egress.held``) is refused one outside its own folder that its demo does not declare,
+whatever the setting holds (REQ-1997, ``source_uploads.require_own_disk``)."""
 
 # Requirements: REQ-2113
 
@@ -79,17 +80,19 @@ def _kind(address: str) -> str:
     )
 
 
-def checked_mount(address: str) -> Path:
+def checked_mount(address: str, org_id: str | None = None) -> Path:
     """The file ``address`` names on this server, when it is a file under an allowed directory
-    once its symlinks are followed; refused by name otherwise, and always on a server of many
-    organizations."""
-    if many_organisations():
+    once its symlinks are followed; refused by name otherwise, and for a held org (``org_id``,
+    the bound org when None) outside its own folder."""
+    try:
+        source_uploads.require_own_disk(address, org_id)
+    except source_uploads.LocalPathRefused as exc:
         raise DownloadRefused(
-            f"{address}: a server of many organizations copies no file of its own; "
-            "give an https:// or s3:// address",
+            f"{address}: this organization copies no file from the server's own disk outside "
+            "its own folder; give an https:// or s3:// address",
             "files.download_mount_refused",
             address=address,
-        )
+        ) from exc
     path = address.removeprefix("file://")
     expanded = os.path.expanduser(path)
     if not os.path.isabs(expanded):
@@ -244,7 +247,7 @@ async def download(
     kind = _kind(address)
     name = file_name(address)
     if kind == "mount":
-        path = checked_mount(address)
+        path = checked_mount(address, org_id)
         return await source_uploads.receive(
             source_id, name, _mount_chunks(path), path.stat().st_size, org_id
         )

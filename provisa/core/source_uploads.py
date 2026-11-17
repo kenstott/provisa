@@ -243,8 +243,9 @@ def require_own_disk(location: str | None, org_id: str | None = None) -> None:
 
 def locations(source_type: str, fields: dict[str, Any]) -> list[str]:
     """Every location a source of ``source_type`` names that could be on the server's own disk,
-    as written: its path, when its type reads one (:data:`PATH_TYPES`), and the files its other
-    fields name (:data:`_OTHER_LOCATIONS`)."""
+    as written: its path, when its type reads one (:data:`PATH_TYPES`), the files its other
+    fields name (:data:`_OTHER_LOCATIONS`), the place its file is downloaded from and its code
+    directory."""
     found: list[str] = []
     path = fields.get("path")
     if source_type in PATH_TYPES and isinstance(path, str) and path:
@@ -259,6 +260,18 @@ def locations(source_type: str, fields: dict[str, Any]) -> list[str]:
             found.extend(value.split(",") if key == "import_paths" else [value])
         elif isinstance(value, (list, tuple)):
             found.extend(v for v in value if isinstance(v, str) and v)
+    # A CSV or Parquet source's download_from (REQ-2113) and a code source's directory
+    # (REQ-2121): each read from where it names, by source_downloads.checked_mount and
+    # codesource.source.checked_directory.
+    download = fields.get("download_from")
+    if isinstance(download, str) and download:
+        found.append(download)
+    mapping = fields.get("mapping")
+    code = mapping.get("code") if isinstance(mapping, dict) else None
+    if isinstance(code, dict) and code.get("kind") == "directory":
+        directory = code.get("path")
+        if isinstance(directory, str) and directory:
+            found.append(directory)
     return found
 
 

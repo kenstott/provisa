@@ -11,8 +11,8 @@
 """REQ-2113: a CSV or Parquet source's file, given by download -- from a file mount path under a
 directory the operator allows, an https:// URL or an s3:// URL -- kept in the org's folder under
 files/<source>/ through the upload path, with its limit; a mount path outside the allowed
-directories, or any mount path on a server of many organizations, is refused by name and nothing
-is copied."""
+directories, or one outside a held organization's folder (REQ-1997), is refused by name and
+nothing is copied."""
 
 from __future__ import annotations
 
@@ -79,13 +79,21 @@ async def test_no_directory_is_allowed_until_the_operator_lists_one(org, tmp_pat
         await source_downloads.download("s", str(tmp_path / "a.csv"), org_id=org)
 
 
-async def test_a_mount_path_is_refused_on_a_server_of_many_organizations(org, shared, monkeypatch):
+async def test_a_mount_path_is_refused_to_a_held_org_on_a_server_of_many_organizations(
+    org, shared, monkeypatch
+):
+    """REQ-1997: an org that is not the deployment's own on a server of many is held: a mount
+    path outside its folder is refused whatever the operator's directories allow."""
+    from provisa.core import secrets_providers
+    from provisa.security import sandbox_egress
+
     (shared / "a.csv").write_text("a\n1\n")
-    monkeypatch.setattr(source_downloads, "many_organisations", lambda: True)
+    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
     with pytest.raises(source_downloads.DownloadRefused) as refused:
         await source_downloads.download("s", str(shared / "a.csv"), org_id=org)
     assert refused.value.code == "files.download_mount_refused"
-    assert "many organizations" in str(refused.value)
+    assert "outside its own folder" in str(refused.value)
     assert _kept(org, "s") == []
 
 

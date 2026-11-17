@@ -112,21 +112,33 @@ def test_a_symlink_escaping_the_root_is_refused_by_name(root, tmp_path):
         checked_glob(f"{root}/away/*.log")
 
 
-def test_a_server_of_many_organizations_reads_no_log_file_of_its_own(root, monkeypatch):
+@pytest.fixture
+def many(monkeypatch):
+    """A server of many organizations whose deployment's own org is ``default``; ``acme`` is
+    bound, an org it holds (REQ-1997)."""
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.security import sandbox_egress
+
     monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
-    with pytest.raises(LogPathRefused, match="many organizations reads no log file of its own"):
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
+    token = set_current_org("acme")
+    yield
+    reset_current_org(token)
+
+
+def test_a_held_org_on_a_server_of_many_reads_no_log_file_of_the_servers_own(root, many):
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
         checked_glob(f"{root}/system.log*")
-    with pytest.raises(LogPathRefused, match="many organizations"):
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
         checked_file(str(root / "system.log"))
 
 
 def test_a_demo_bundles_seeding_run_reads_its_demos_logs_inside_the_allowed_roots_only(
-    root, monkeypatch, tmp_path
+    root, many, monkeypatch, tmp_path
 ):
     """REQ-2049: the bundle build's throwaway sandbox tier lands a demo's Logs sources from the
-    files its traffic wrote; the roots still bound it, and no other server of many organizations
-    reads a log file."""
-    monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    files its traffic wrote; the roots still bound it, and no held org outside a seeding run
+    reads a log file of the server's own."""
     monkeypatch.setenv("PROVISA_DEMO_SEED_EXPORT", "true")
     assert checked_glob(f"{root}/system.log*") == f"{root}/system.log*"
     (root / "system.log").write_text("x\n")
@@ -134,7 +146,7 @@ def test_a_demo_bundles_seeding_run_reads_its_demos_logs_inside_the_allowed_root
     with pytest.raises(LogPathRefused, match="outside the directories log files may be read"):
         checked_glob(f"{tmp_path}/*.log")
     monkeypatch.setenv("PROVISA_DEMO_SEED_EXPORT", "false")
-    with pytest.raises(LogPathRefused, match="many organizations reads no log file of its own"):
+    with pytest.raises(LogPathRefused, match="outside its own folder"):
         checked_glob(f"{root}/system.log*")
 
 
@@ -142,12 +154,14 @@ def test_a_sandbox_tier_demo_org_reads_its_own_demos_logs_and_nothing_else(
     root, monkeypatch, tmp_path
 ):
     """REQ-2049: a demo's logs are its own source, read live from its bundle -- by its template
-    and its sandboxes, inside that demo's directory only; any other org of a many-organization
-    server still reads no log file of its own."""
+    and its sandboxes, inside that demo's directory only; any other held org of a
+    many-organization server still reads no log file of the server's own."""
     from provisa.core import org_files
     from provisa.core.request_context import current_org
+    from provisa.security import sandbox_egress
 
     monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
     monkeypatch.setenv("PROVISA_DEMO_SEED_EXPORT", "false")
     monkeypatch.setenv("PROVISA_DEMO_BUNDLES", "weblogs")
     demo = root / "demo-bundles" / "weblogs" / "202610141747-0a3ad1932"
@@ -163,13 +177,13 @@ def test_a_sandbox_tier_demo_org_reads_its_own_demos_logs_and_nothing_else(
         token = current_org.set(org)
         try:
             assert checked_glob(f"{demo}/logs/*.json") == f"{demo}/logs/*.json"
-            with pytest.raises(LogPathRefused, match="many organizations"):
+            with pytest.raises(LogPathRefused, match="outside its own folder"):
                 checked_glob(f"{root}/demo-bundles/other/1/logs/*.json")
         finally:
             current_org.reset(token)
     token = current_org.set("acme")
     try:
-        with pytest.raises(LogPathRefused, match="many organizations"):
+        with pytest.raises(LogPathRefused, match="outside its own folder"):
             checked_glob(f"{demo}/logs/*.json")
     finally:
         current_org.reset(token)
@@ -188,10 +202,18 @@ def test_the_save_refuses_a_logs_source_by_name_and_on_the_saas_plane(root, monk
     assert str(tmp_path) in refused.params["reason"]
     invalid = refusal({"glob": f"{root}/x"})
     assert invalid is not None and invalid.code == "schema.logs_invalid"
+    from provisa.core.request_context import reset_current_org, set_current_org
+    from provisa.security import sandbox_egress
+
     monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
-    saas = refusal({"glob": f"{root}/system.log*", "format": "rfc3164"})
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
+    token = set_current_org("acme")
+    try:
+        saas = refusal({"glob": f"{root}/system.log*", "format": "rfc3164"})
+    finally:
+        reset_current_org(token)
     assert saas is not None and saas.code == "schema.logs_path_refused"
-    assert "many organizations" in saas.params["reason"]
+    assert "outside its own folder" in saas.params["reason"]
 
 
 def test_the_settings_name_a_glob_and_a_format():
