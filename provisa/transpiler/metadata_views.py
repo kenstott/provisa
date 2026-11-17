@@ -51,6 +51,9 @@ SCOPED_BY_COLUMN: frozenset[str] = frozenset(
         "catalog_pg_tables",
         "catalog_pg_indexes",
         "catalog_pg_stat_user_tables",
+        # REQ-1986: a source operation's function is about the table whose rows it returns.
+        "catalog_pg_proc",
+        "is_routines",
         "is_tables",
         "is_columns",
         "is_table_constraints",

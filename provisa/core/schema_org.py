@@ -1396,6 +1396,8 @@ tracked_functions = Table(
     Column("writes_table", Text),
     # REQ-2168: the command's name per language {language: {name?, exclude?}}.
     Column("language_bindings", JSON, nullable=False, default=dict, server_default="{}"),
+    # REQ-1986: the type of one returned row as the source's schema names it, where it names one.
+    Column("source_type", Text),
 )
 
 
