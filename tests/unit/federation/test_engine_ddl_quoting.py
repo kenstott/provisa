@@ -891,7 +891,9 @@ def _unquoted_interpolations(module: str, source: str) -> set[tuple[str, str, st
             values = [*node.args, *(k.value for k in node.keywords)]
         for value in values:
             if not _is_quoted(value):
-                found.add((module, function, ast.unparse(value)))
+                # Quotes folded to one kind: ast.unparse picks them differently across 3.12
+                # patch releases (a nested f-string).
+                found.add((module, function, ast.unparse(value).replace('"', "'")))
         for child in ast.iter_child_nodes(node):
             visit(child, function)
 
@@ -1106,7 +1108,7 @@ PENDING: frozenset[tuple[str, str, str]] = frozenset(
         (
             "mail_write.py",
             "holds",
-            "', '.join((f'\"{name}\" {_DUCK_TYPES[kind]}' for name, kind in columns))",
+            "', '.join((f''{name}' {_DUCK_TYPES[kind]}' for name, kind in columns))",
         ),
         ("mail_write.py", "holds", "predicate"),
         # materialize_broker.py

@@ -114,6 +114,8 @@ def test_a_sql_server_password_and_database_holding_separators_sign_in(mssql_log
 
 
 def _firebird_isql_as_sysdba(container_id: str, db_path: str, script: str) -> None:
+    # Through the container's server (localhost:), not embedded: the server holds the security
+    # database, and an embedded isql cannot open it beside the server.
     subprocess.run(
         [
             "docker",
@@ -125,7 +127,7 @@ def _firebird_isql_as_sysdba(container_id: str, db_path: str, script: str) -> No
             "SYSDBA",
             "-password",
             "masterkey",
-            db_path,
+            f"localhost:{db_path}",
         ],  # fmt: skip
         input=script,
         capture_output=True,
