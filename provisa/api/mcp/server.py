@@ -46,6 +46,7 @@ from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import in_request_span as _in_request_span
 from provisa.otel_compat import request_span as _request_span
 from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+from provisa.api.engine_error_names import client_text
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -1369,7 +1370,7 @@ def _wrap_role_auth(app: Any, state: Any, *, require_token: bool) -> Any:
             # REQ-2246: the tools this connection is listed, by the mode its address names.
             mode = tool_groups.mode_of_address(scope.get("query_string") or b"")
         except ValueError as exc:
-            body = _json.dumps({"error": str(exc)}).encode("utf-8")
+            body = _json.dumps({"error": client_text(str(exc))}).encode("utf-8")
             await send(
                 {
                     "type": "http.response.start",

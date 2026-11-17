@@ -10798,5 +10798,17 @@
   "nl/discoverResult.json::discoverResult.jevBelow_other": "Jev scored {{count}} proposals under {{threshold}}%. Each is shown beside the model's score, which decides.",
   "nl/proposalsTable.json::proposalsTable.colJev": "Jev",
   "nl/serverErrors.json::serverErrors.discovery.run_failed": "Discovery run {{run_id}} failed: {{error}}",
-  "nl/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered."
+  "nl/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered.",
+  "nl/serverErrors.json::serverErrors.discovery.model_failed": "The model {{model}} failed: {{error}}",
+  "nl/discoverResult.json::discoverResult.removed.scored_below_threshold": "scored below {{threshold}}% by Jev",
+  "nl/discoverResult.json::discoverResult.semanticsScoredBelowThreshold": "Semantics: none. The model gave every proposal {{threshold}}% or more, and Jev scored each below that.",
+  "nl/proposalsTable.json::proposalsTable.reason.scored_below_threshold": "Jev scored it {{scored}}%, below the {{threshold}}% threshold. The model gave {{confidence}}%.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.role_gone": "This offer's role is not defined.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.not_built": "A dataset of this offer is not in the model build.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.sample_not_a_view": "A sample of this offer names a table that is not a view of the model. A sample is one or more views over the product's datasets.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.sample_outside_product": "A view of this offer's sample reads more than the product's datasets, or none of them.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.sample_misses_dataset": "No view of this offer's sample reads one of the product's datasets. An offer covers every dataset of the product.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.not_public": "This open offer's data is no longer public.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.profiler_gone": "A dataset of this synthetic offer has no profiler.",
+  "nl/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake."
 }

@@ -557,5 +557,10 @@ class TestREQ622GraphiQLAccessible:
         import inspect
         import provisa.api.app as app_mod
 
+        from strawberry.fastapi import GraphQLRouter
+
+        from provisa.api.admin.graphql_router import AdminGraphQLRouter
+
         src = inspect.getsource(app_mod)
-        assert "from strawberry.fastapi import GraphQLRouter" in src
+        assert "from provisa.api.admin.graphql_router import AdminGraphQLRouter" in src
+        assert issubclass(AdminGraphQLRouter, GraphQLRouter)

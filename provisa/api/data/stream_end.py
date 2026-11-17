@@ -31,6 +31,7 @@ from __future__ import annotations
 import json
 import logging
 import uuid
+from provisa.api.engine_error_names import client_value
 
 log = logging.getLogger(__name__)
 
@@ -45,9 +46,7 @@ def new_subscription_id() -> str:
 def failure_body(exc: BaseException) -> dict:
     """What the HTTP error handlers answer for ``exc``, as a body, redacted (REQ-2087): a
     stream's last frame is sent with a 200, past the error-response middleware."""
-    from provisa.security.redaction import client_redact_value
-
-    return client_redact_value(_failure_body(exc))
+    return client_value(_failure_body(exc))
 
 
 def _failure_body(exc: BaseException) -> dict:
@@ -89,8 +88,8 @@ def graphql_stream_error(exc: BaseException, subscription_id: str, what: str) ->
     """A GraphQL subscription's frame for ``exc``: the GraphQL ``errors`` shape, the code and
     params under ``extensions``."""
     body = _logged(exc, subscription_id, what)
-    message = body.pop("detail")
-    return f"data: {json.dumps({'errors': [{'message': message, 'extensions': body}]}, default=str)}\n\n"
+    told = {"errors": client_value([{"message": body.pop("detail"), "extensions": body}])}
+    return f"data: {json.dumps(told, default=str)}\n\n"
 
 
 async def ending_by_name(chunks, subscription_id: str, what: str, frame=table_stream_error):

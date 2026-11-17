@@ -2537,6 +2537,10 @@ tables:
     data_type: oid
     visible_to:
     - viewer
+  - name: provisa_table_id
+    data_type: integer
+    visible_to:
+    - viewer
   - name: provolatile
     data_type: varchar
     visible_to:
@@ -9031,6 +9035,10 @@ tables:
     - viewer
   - name: parameter_style
     data_type: domain
+    visible_to:
+    - viewer
+  - name: provisa_table_id
+    data_type: integer
     visible_to:
     - viewer
   - name: result_cast_as_locator

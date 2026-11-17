@@ -45,6 +45,7 @@ from provisa.core import env_data, model_change
 from provisa.core.env_classes import COPIED, TEST_FAKE, TEST_SYNTHETIC, UNBOUND
 from provisa.core.env_store import set_data
 from provisa.core.environments import PROD, org_schema
+from provisa.api.engine_error_names import client_value
 
 router = APIRouter(prefix="/admin/orgs/{org_id}/environments", tags=["admin"])
 
@@ -144,7 +145,7 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
             "synthetic": {
                 "dataset": row["synthetic_dataset"],
                 "status": row["data_status"],
-                "error": row["data_error"],
+                "error": client_value(row["data_error"]),
                 # REQ-1942: the report on the generated rows is its own outcome -- failed, with
                 # why, while the environment is Ready and serves them; ready; or none yet.
                 "report": {
@@ -155,7 +156,7 @@ async def environment_detail(request: Request, org_id: str, name: str) -> dict:
                         if row["data_status"] == "ready"
                         else None
                     ),
-                    "error": report_error,
+                    "error": client_value(report_error),
                 },
             },
         },

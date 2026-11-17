@@ -134,9 +134,16 @@ async def run_query(query: str, variables: dict | None, *, request: Any) -> dict
     result = await admin_schema.execute(
         query, variable_values=variables or {}, context_value={"request": request}
     )
+    return _query_answer(result)
+
+
+def _query_answer(result: Any) -> dict:
+    """An admin query's data, and each error's message told as a client is told it (REQ-2087)."""
+    from provisa.api.engine_error_names import client_value
+
     return {
         "data": result.data,
-        "errors": [e.message for e in result.errors] if result.errors else [],
+        "errors": client_value([e.message for e in result.errors] if result.errors else []),
     }
 
 

@@ -192,6 +192,7 @@ def _state() -> SimpleNamespace:
             "derived_roles": [{"attribute": "region", "description": "The member's region."}]
         },
         config=SimpleNamespace(derived_roles=[]),
+        org_registry={},
     )
 
 
