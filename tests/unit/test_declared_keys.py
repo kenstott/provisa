@@ -200,7 +200,7 @@ async def test_a_registration_that_read_no_declaration_records_what_its_input_de
 async def test_a_declared_foreign_key_is_offered_as_a_relationship_candidate(
     org_plane, sqlite_pool
 ):
-    from provisa.discovery.collector import collect_fk_candidates
+    from provisa.discovery.collector import collect_fk_for_tables
 
     async with org_plane.acquire() as conn:
         for name in ("pets", "owners"):
@@ -209,9 +209,6 @@ async def test_a_declared_foreign_key_is_offered_as_a_relationship_candidate(
                     source_id="pets", domain_id="zoo", schema_name="main", table_name=name
                 )
             )
-        candidates = await collect_fk_candidates(
-            sqlite_pool, {"pets": "sqlite"}, conn, "domain", "zoo"
-        )
         ids = {
             r.table_name: r.id
             for r in (
@@ -220,6 +217,9 @@ async def test_a_declared_foreign_key_is_offered_as_a_relationship_candidate(
                 )
             ).fetchall()
         }
+        candidates = await collect_fk_for_tables(
+            sqlite_pool, {"pets": "sqlite"}, conn, set(ids.values())
+        )
     assert [
         (c.source_table_id, c.source_column, c.target_table_id, c.target_column, c.cardinality)
         for c in candidates

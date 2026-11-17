@@ -646,11 +646,12 @@ Return the acting org's AI-model assignments, vector-model registry, and NL rate
   },
   "vector_models": [...],
   "nl": {"rate_limit": 20},
-  "api_keys_set": {"anthropic": true, "openai": false}
+  "api_keys_set": {"anthropic": true, "openai": false},
+  "deployment_keys": true
 }
 ```
 
-API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. Changes apply from the next request, with no restart.
+API keys are never sent back. `api_keys_set` says only whether each vendor has a key configured. `deployment_keys` is `true` on an install of one organization, where a vendor with no key set falls back to the deployment's environment variable. On a server of many organizations it is `false`. See [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from). Changes apply from the next request, with no restart.
 
 #### `PUT /admin/ai-models`
 
@@ -660,9 +661,9 @@ Update the org's AI-model assignments, vector-model registry, or NL rate limit. 
 
 Return the model names a vendor currently serves, for the model picker.
 
-The list is read live from the vendor's own list-models API, with the org's configured key, or with the deployment credential when the org has no key. A model released after this build shipped can be selected the same day the vendor starts serving it.
+The list is read live from the vendor's own list-models API, with the same key the org's calls to that vendor use ([Where an AI key comes from](secrets.md#where-an-ai-key-comes-from)). A model released after this build shipped can be selected the same day the vendor starts serving it.
 
-Returns `400` when the vendor publishes no list-models API (enter the model name directly in that case) or when no key is available.
+Returns `400` when the vendor publishes no list-models API; enter the model name directly in that case. Returns `409` with code `ai.key_required` when there is no key to use.
 
 ---
 
@@ -757,20 +758,29 @@ Restart the federation engine container (single-node dev only).
 
 #### `POST /admin/discover/relationships`
 
-Trigger relationship discovery. Always runs FK introspection from the federation engine. Runs LLM inference if `ANTHROPIC_API_KEY` is set.
+Run relationship discovery while you wait. The run is stored like one started from the discovery dialog, and its proposals are kept as candidates.
 
 **Request body:**
 
 ```json
 {
   "scope": "domain",
-  "domain_id": "sales"
+  "domain_id": "sales",
+  "kinds": ["foreign_keys", "semantics"]
 }
 ```
 
-`scope` must be one of `"table"`, `"domain"`, `"cross-domain"`. For `"table"` scope, `table_id` (integer) is required. For `"domain"` scope, `domain_id` is required.
+`scope` is one of `"table"`, `"domain"` or `"cross-domain"`. A `"table"` scope compares the tables of that table's domain and needs `table_id` (integer). A `"domain"` scope needs `domain_id`. A `"cross-domain"` scope compares the tables of every domain.
 
-**Response.** `{"candidates_found": 12, "stored_ids": [1, 2, 3, ...]}`
+`kinds` names at least one of `"foreign_keys"` and `"semantics"`. The `semantics` kind asks the model your organization assigns to relationship inference. When that model's vendor has no key to use, the request is refused with `409` and code `discovery.semantics_unavailable`.
+
+**Response.** The run, the number of candidates found, their ids, and a report for each kind that ran:
+
+```json
+{"run": {...}, "candidates_found": 12, "stored_ids": [1, 2, 3], "foreign_keys": {...}, "semantics": {...}}
+```
+
+A run that fails answers `502` with code `discovery.run_failed`.
 
 #### `GET /admin/discover/candidates`
 

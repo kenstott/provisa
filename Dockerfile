@@ -106,7 +106,7 @@ RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
 # bundled with the packages provisa-ui/graph-render's lockfile pins, drawn by Node into a PNG.
 # npm and the build tools stay in this stage; the runtime takes node, the bundle and the two
 # packages the bundle loads at run time (jsdom, and canvas with its native build for this arch).
-FROM node:22.22.3-bookworm-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752 AS graph-render
+FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS graph-render
 WORKDIR /build/provisa-ui
 COPY provisa-ui/graph-render/package.json provisa-ui/graph-render/package-lock.json ./graph-render/
 RUN cd graph-render && npm ci --no-audit --no-fund
