@@ -41,6 +41,7 @@ from provisa.transpiler.polyfill import (
     regex,
     server,
     snapshots,
+    texts,
     textsearch,
     type_io,
     unheld,
@@ -89,6 +90,8 @@ GRID = Grid(
     + intervals.FEATURES
     + instants.FEATURES
     + geometric.FEATURES
+    # a text's rows are read before bytea's, whose rows of one name keep what is no bytea
+    + texts.FEATURES
     + bytea.FEATURES
     + ported.FEATURES
 )

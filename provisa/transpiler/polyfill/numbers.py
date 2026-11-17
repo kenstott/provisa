@@ -308,6 +308,149 @@ _CLICKHOUSE_JSONB = {
 }
 
 
+#: Each integer of a jsonb number: PostgreSQL's name of it, ClickHouse's type, its bits.
+_JSONB_INTEGERS = {"int2": ("smallint", "Int16", 16), "int4": ("integer", "Int32", 32),
+                   "int8": ("bigint", "Int64", 64)}  # fmt: skip
+#: Each float of a jsonb number: PostgreSQL's name of it and ClickHouse's type.
+#: float4 has no row: ClickHouse reads a decimal text to a Float32 through a Float64, which can
+#: round twice where PostgreSQL's strtof rounds once.
+_JSONB_FLOATS = {"float8": ("double precision", "Float64")}
+
+
+def _ch_jsonb_number(function: str) -> str:
+    """An integer or a float of a jsonb value ClickHouse holds as its text (numeric_int2 and its
+    kin, numeric_float8 and float4 of the number's numeric): NULL of NULL. Of a JSON number, an
+    integer is its value rounded half away from zero, PostgreSQL's 22003 past the type, and one
+    written with an exponent raises 0A000; a float is its digits read to the nearest float (as
+    PostgreSQL's float input reads the numeric's text), a negative zero zero, 22003 where that
+    overflows or underflows. Every other kind raises PostgreSQL's 22023, and text that is no JSON
+    22P02, as _ch_jsonb_cast does."""
+    number = f"match($v, '{_JSON_NUMBER}')"
+    valid = "isValidJSON($v)"
+    name = (_JSONB_INTEGERS.get(function) or _JSONB_FLOATS[function])[0]
+    raises = [
+        ch_fail("22P02", "invalid input syntax for type json").format(
+            condition=f"NOT {number} AND NOT {valid}"
+        )
+    ]
+    for kind, said in _JSON_KINDS.items():
+        raises.append(
+            ch_fail("22023", f"cannot cast jsonb {said} to type {name}").format(
+                condition=f"NOT {number} AND {valid} AND toString(JSONType($v)) = '{kind}'"
+            )
+        )
+    text = "replaceRegexpAll($v, '[[:space:]]', '')"
+    if function in _JSONB_INTEGERS:
+        _, ch_type, bits = _JSONB_INTEGERS[function]
+        body = f"replaceRegexpOne({text}, '^-', '')"
+        whole = f"extract({body}, '^[0-9]+')"
+        digits = f"concat({whole}, extract({body}, '^[0-9]+[.]([0-9]+)'))"
+        significant = f"replaceRegexpOne({digits}, '^0+', '')"
+        exponent = f"extract({body}, '[eE]([-+]?[0-9]+)$')"
+        # The digits before the point, of the number written without its leading zeros.
+        point = (
+            f"(toInt64(length({whole})) + toInt64OrZero({exponent}) "
+            f"- toInt64(length({digits}) - length({significant})))"
+        )
+        # A point past 40 digits is past each of these integers (and past Int256).
+        wide = f"({significant} != '' AND {point} > 40)"
+        # Each branch is read whatever the condition: a negative point is held at 0 within them.
+        held = f"toUInt64(greatest(least({point}, 41), 0))"
+        kept = f"if({point} <= 0 OR {wide}, '0', rightPad(substring({significant}, 1, {held}), {held}, '0'))"
+        rounding = f"if({point} < 0 OR {wide}, 0, substring({significant}, {held} + 1, 1) >= '5')"
+        magnitude = f"(toInt256OrZero({kept}) + {rounding})"
+        value = f"if(startsWith({text}, '-'), -{magnitude}, {magnitude})"
+        lowest, highest = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
+        past = f"{wide} OR {value} < {lowest} OR {value} > {highest}"
+        raises.append(
+            ch_fail("0A000", f"{function} does not read this value").format(
+                condition=f"{number} AND length({exponent}) > 6"
+            )
+        )
+        raises.append(
+            ch_fail("22003", f"{name} out of range").format(
+                condition=f"{number} AND length({exponent}) <= 6 AND ({past})"
+            )
+        )
+        answer = f"CAST(if({past}, 0, {value}) AS Nullable({ch_type}))"
+        typed = f"Nullable({ch_type})"
+    else:
+        ch_type = _JSONB_FLOATS[function][1]
+        # JSONExtractFloat reads digits to the nearest double (toFloat64 does not, without
+        # precise_float_parsing); a number of no point or exponent is read as a float, not an
+        # integer past 64 bits. A number past a double's range is its 0.
+        as_float = f"if(match({text}, '[.eE]'), {text}, concat({text}, '.0'))"
+        read = f"JSONExtractFloat({as_float})"
+        mantissa = f"replaceRegexpOne({text}, '[eE].*$', '')"
+        raises.append(
+            ch_fail("22003", f"value out of range for type {name}").format(
+                condition=f"{number} AND {read} = 0 AND match({mantissa}, '[1-9]')"
+            )
+        )
+        answer = f"CAST({read} + 0 AS Nullable({ch_type}))"  # + 0: a negative zero is zero
+        typed = f"Nullable({ch_type})"
+    checked = " + ".join(raises)
+    nothing = f"CAST(NULL AS {typed})"
+    return f"CASE WHEN $v IS NULL THEN {nothing} ELSE if({checked} = 0, {answer}, {nothing}) END"
+
+
+def _number_of(function: str):
+    """``function`` of a value: of a jsonb value on ClickHouse, :func:`_ch_jsonb_number`; of a
+    json value there, refused by name; int8 of an oid, held as a bigint, that bigint; of anything
+    else, kept."""
+
+    def number(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        call = trino.called(node)
+        if call is None or len(call[1]) != 1:
+            return None
+        type_said = trino.said(call[1][0])
+        if type_said == "jsonb":
+            form = _ch_jsonb_number(function)
+        elif type_said == "oid" and function == "int8":
+            form = "CAST($v AS Nullable(Int64))"
+        elif type_said in _JSON:
+            raise Refused(trino.no_form(function, dialect))
+        else:
+            return None
+        return graft(replacement(form, dialect, f"{function}($v)"), {"v": call[1][0]})
+
+    number.__doc__ = f"{function} of a jsonb value, its JSON number; of a json value, refused."
+    number.__qualname__ = number.__name__ = f"{function}_of_jsonb"
+    return Rewrite(number)
+
+
+JSONB_NUMBERS: tuple[Feature, ...] = tuple(
+    Feature(
+        function,
+        FAMILY,
+        f"A jsonb number as {name}" + (", and an oid as a bigint." if function == "int8" else "."),
+        read=Side(
+            rules=(Rule(f"{function}($v)", {"clickhouse": _number_of(function)}),),
+            limitations={
+                "clickhouse": (
+                    Limitation(
+                        "Of a jsonb value: a JSON number answers its value"
+                        + (
+                            " rounded half away from zero, 22003 past the type; one whose "
+                            "exponent has more than six digits is refused with 0A000."
+                            if function in _JSONB_INTEGERS
+                            else " read to the nearest float, 22003 where it overflows or "
+                            "underflows."
+                        )
+                        + " NULL answers NULL, and any other kind raises PostgreSQL's error "
+                        "(22023). " + _UNCHECKED + " Of a json value, refused by name."
+                    ),
+                )
+            },
+        ),
+    )
+    for function, name in (
+        *((f, v[0]) for f, v in _JSONB_INTEGERS.items()),
+        *((f, v[0]) for f, v in _JSONB_FLOATS.items()),
+    )
+)
+
+
 NUMERIC = _cast_feature(
     "numeric", "An integer as a numeric.", _INTEGERS, "DECIMAL(38, 0)"
 )  # fmt: skip
@@ -426,4 +569,5 @@ FEATURES: tuple[Feature, ...] = (
     BOOL,
     OID,
     RANDOM,
+    *JSONB_NUMBERS,
 )

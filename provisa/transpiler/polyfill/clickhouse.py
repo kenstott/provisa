@@ -690,6 +690,54 @@ INTEGER = Feature(
     ),
 )
 
+#: An oid's text as PostgreSQL 16's oidin reads it (uint32in_subr): white space, a sign, decimal
+#: digits, white space.
+_OID_TEXT = re.compile(r"\s*([+-]?\d+)\s*", re.ASCII)
+
+
+def oid_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative
+    value its 32 bits unsigned; PostgreSQL's 22003 past them and 22P02 of a text it does not read,
+    where ClickHouse's cast of the text to the bigint an oid is held as answers any number."""
+    if not (
+        isinstance(node, exp.Cast)
+        and not isinstance(node, exp.TryCast)
+        and isinstance(node.to, exp.ObjectIdentifier)
+        and node.to.name.lower() == "oid"
+    ):
+        return None
+    text = _text_of(node.this)
+    if text is None:
+        return None
+    read = _OID_TEXT.fullmatch(text)
+    if read is None:
+        raise Refused(Refusal("22P02", f'invalid input syntax for type oid: "{text}"'))
+    value = int(read[1])
+    if not -(1 << 31) <= value < (1 << 32):
+        raise Refused(Refusal("22003", f'value "{text}" is out of range for type oid'))
+    return exp.Cast(this=exp.Literal.number(value % (1 << 32)), to=node.to.copy())
+
+
+OID_LITERAL = Feature(
+    "an oid literal",
+    FAMILY,
+    "A text cast to an oid.",
+    read=Side(
+        rules=(Rule(None, {"clickhouse": Rewrite(oid_read, mentions=r"(?:::|\bas)\s*\"?oid\b")}),),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A text the statement writes is read as PostgreSQL reads it: past -2147483648 "
+                    "to 4294967295 it raises 22003, a text the input does not read 22P02, and a "
+                    "negative value is its 32 bits unsigned. A column's cast keeps ClickHouse's "
+                    "own."
+                ),
+            )
+        },
+    ),
+)
+
+
 #: The digits of a decimal ClickHouse holds where a literal says none (numeric with no precision).
 _MOST_DIGITS = 38
 _NUMERIC_OUT_OF_BOUND = (
@@ -1258,6 +1306,7 @@ FEATURES: tuple[Feature, ...] = (
     DATE,
     TIME,
     INTEGER,
+    OID_LITERAL,
     NUMERIC,
     DATE_DAYS,
     STAMP,
