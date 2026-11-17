@@ -202,7 +202,7 @@ async def test_a_tool_the_list_does_not_offer_is_refused_by_name(bearer):
         async with connect("?tools=full", token="as-analyst") as session:
             result = await session.call_tool("upsert_metric", {"name": "m", "expression": "x"})
     assert result.isError
-    assert "upsert_metric" in result.content[0].text
+    assert result.content[0].text == "Tool upsert_metric is not offered to your roles"
 
 
 async def test_a_token_is_listed_the_commands_its_role_sees_as_typed_tools(bearer):
@@ -346,7 +346,7 @@ async def test_a_local_session_runs_a_command_tool_as_the_pinned_role(monkeypatc
         async with connect("?tools=full") as session:
             result = await session.call_tool("restock", {"region": "eu"})
     assert refused.isError and refused.content[0].text == "Unknown tool: restock"
-    assert unoffered.isError and "find_table_id" in unoffered.content[0].text
+    assert unoffered.content[0].text == "Tool find_table_id is not offered to your roles"
     assert not result.isError, result.content[0].text
     assert ran == ["steward"]
 
