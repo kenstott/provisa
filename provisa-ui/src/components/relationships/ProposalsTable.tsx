@@ -138,22 +138,22 @@ export function ProposalsTable({
           ? t("proposalsTable.applyNotAgain", { count: marking })
           : t("proposalsTable.apply");
 
+  // What accepting a many-to-many row does comes first: the cell shows three lines, and the
+  // dimension's name must be among them.
   const note = (p: RunProposal) =>
     [
+      p.dimension
+        ? t(
+            p.dimension.reused ? "proposalsTable.dimensionJoined" : "proposalsTable.dimensionMade",
+            { name: p.dimension.name },
+          )
+        : "",
+      p.decidable && !p.acceptable ? t("proposalsTable.twoDimensions") : "",
       p.reason === null
         ? ""
         : t(`proposalsTable.reason.${p.reason}`, {
             threshold: Math.round(state.keptAt * 100),
           }),
-      p.dimension
-        ? t(
-            p.dimension.reused ? "proposalsTable.dimensionJoined" : "proposalsTable.dimensionMade",
-            {
-              name: p.dimension.name,
-            },
-          )
-        : "",
-      p.decidable && !p.acceptable ? t("proposalsTable.twoDimensions") : "",
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
     ]
       .filter(Boolean)
