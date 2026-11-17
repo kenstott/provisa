@@ -154,6 +154,7 @@
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
       "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
@@ -325,6 +326,13 @@
       "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
       "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
     },
+    "redaction": {
+      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
+      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
+      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
+      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
+      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
+    },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
       "no_whole_copy": "ソース {{source}} のテーブル {{schema}}.{{table}} にはビルドする全体コピーがありません: 行単位でレプリケートされているか、パラメータ列があります。",
@@ -345,7 +353,9 @@
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
       "description_missing": "ロール '{{role}}' には目的の説明が必要です",
-      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません",
+      "platform_right_requires_platform_admin": "{{rights}} を含むロールはプラットフォーム管理者が定義します",
+      "rights_not_held": "ロール {{role}} には、あなたが持っていない {{rights}} が含まれています"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",
@@ -728,6 +738,10 @@
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
     },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
+    },
     "dbt": {
       "products": {
         "none_offered": "ソース {{source_id}} には、契約が適用された公開モデルがありません。",
@@ -886,6 +900,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
       "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} はアップロードされたプロジェクトの外にあります。プロジェクトは自身のファイルのみを読み取ります。",
+      "filter_value_refused": "{{value}} は権限フィルターの値にできません。値は文字列、数値、true、false、null、それらのリスト、またはセッション変数です。",
+      "filter_operator_refused": "{{operator}} は権限フィルターを変換できる演算子ではありません。"
     }
   }
 }

@@ -342,6 +342,7 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
         raise ApiError(404, "users.user_not_found", "User not found")
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="remove_member",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id,
