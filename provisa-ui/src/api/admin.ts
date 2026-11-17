@@ -827,6 +827,9 @@ export interface DiscoveryReport {
   source_tables?: number;
   target_tables?: number;
   target_same_as_source?: boolean;
+  // Tables chosen by name that the run left out; absent from a run recorded before it said so.
+  source_left_out?: number;
+  target_left_out?: number;
 }
 
 /** A run's report while it still reads its tables. */
@@ -889,13 +892,10 @@ export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
   return (await discoveryRequest<{ run: DiscoveryRun }>(`/runs/${id}`, "Discovery run")).run;
 }
 
-/** The latest runs, newest first; with `mine`, only those the signed-in person started. */
-export async function fetchDiscoveryRuns(limit: number, mine = false): Promise<DiscoveryRun[]> {
+/** The latest runs, newest first. */
+export async function fetchDiscoveryRuns(limit: number): Promise<DiscoveryRun[]> {
   return (
-    await discoveryRequest<{ runs: DiscoveryRun[] }>(
-      `/runs?limit=${limit}${mine ? "&mine=true" : ""}`,
-      "Discovery runs",
-    )
+    await discoveryRequest<{ runs: DiscoveryRun[] }>(`/runs?limit=${limit}`, "Discovery runs")
   ).runs;
 }
 

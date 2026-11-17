@@ -66,6 +66,7 @@ function view(
     tableName,
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: 60,
     roleTtl: [],
     pagingKind: null,

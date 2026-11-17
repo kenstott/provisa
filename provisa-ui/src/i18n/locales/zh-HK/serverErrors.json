@@ -184,9 +184,13 @@
       "run_still_going": "探索執行 {{run_id}} 仍在進行。請在其結束後再決定其提議。",
       "schema_discovery_unsupported": "數據來源類型「{{source_type}}」不支援結構描述探索。請手動定義欄位。",
       "semantics_unavailable": "無法執行語意推斷：指派給關係推斷的模型 {{model}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "source_domains_empty": "所選來源域中沒有探索會讀取的表。",
       "source_not_found": "找不到數據來源「{{source_id}}」",
+      "source_tables_not_read": "所選來源表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
       "table_id_required": "資料表範圍需要 table_id",
       "table_not_found": "表格 {{table_id}} 未登記。",
+      "target_domains_empty": "所選目標域中沒有探索會讀取的表。",
+      "target_tables_not_read": "所選目標表（{{count}} 個）都不會被讀取：探索會略過系統域的表和已停用的表。",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
       "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。"
     },

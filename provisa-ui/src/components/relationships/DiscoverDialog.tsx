@@ -9,8 +9,10 @@
 // permission from the copyright holder.
 
 // REQ-413: discovery asks before it runs. With no run to show, the dialog sets up a run's scope;
-// with one going, or the one last watched, it shows that run. Closing the dialog leaves a run
-// going: the run is the server's, and opening the dialog again shows it.
+// with one going, or the one ended while it was watched, it shows that run. Closing the dialog
+// leaves a run going: the run is the server's, and opening the dialog again shows it.
+// The form starts from the defaults when the dialog opens; only "New run" at the end of a run
+// opens it with that run's fields.
 
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -18,6 +20,7 @@ import { Modal } from "@mantine/core";
 import type { DiscoveryScope } from "../../api/admin";
 import { DiscoverRunView, type SuggestionActions } from "./DiscoverRunView";
 import { DiscoverScopeForm, type ScopeTable } from "./DiscoverScopeForm";
+import type { LastRun } from "./restoreScope";
 import type { DiscoveryRunState } from "./useDiscoveryRun";
 import { useRunProposals } from "./useRunProposals";
 
@@ -26,8 +29,7 @@ interface DiscoverDialogProps {
   onClose: () => void;
   discovery: DiscoveryRunState;
   tables: ScopeTable[];
-  /** The domains ticked in the Domains picker: the source domains a run starts with when the
-   *  signed-in person has run none. */
+  /** The domains ticked in the Domains picker: the source domains of the defaults. */
   defaultDomains: string[];
   suggestions: SuggestionActions;
 }
@@ -41,14 +43,18 @@ export function DiscoverDialog({
   suggestions,
 }: DiscoverDialogProps) {
   const { t } = useTranslation();
-  const { run, previous } = discovery;
+  // An ended run the dialog was closed on is left: it opens again on the form, while the page's
+  // banner keeps the run's result. A run still going, or one that ended while the dialog was
+  // closed, is shown.
+  const [left, setLeft] = useState<number | null>(null);
+  const run = discovery.run !== null && discovery.run.id !== left ? discovery.run : null;
   const proposals = useRunProposals(run, suggestions.onApplied);
-  // "Reset to defaults" sets up the next run from the defaults, until one is run or the dialog
-  // is closed: opened again, it starts from the last run again.
-  const [defaults, setDefaults] = useState(false);
-  const initial = defaults ? null : previous;
+  // The run "New run" left, whose fields the form starts from; null: the defaults. "Reset to
+  // defaults" and closing the dialog clear it.
+  const [initial, setInitial] = useState<LastRun | null>(null);
   const close = () => {
-    setDefaults(false);
+    setInitial(null);
+    if (run !== null && run.status !== "running") setLeft(run.id);
     onClose();
   };
   return (
@@ -56,8 +62,10 @@ export function DiscoverDialog({
       opened={opened}
       onClose={close}
       title={t("discoverDialog.title")}
-      // A run lists its proposals in one table, whose columns need the room.
-      size={run ? "min(90rem, calc(100vw - 2rem))" : "lg"}
+      // A run lists its proposals in one table, whose columns need the room: the window's width
+      // less the page gutter the lists keep.
+      size={run ? "100%" : "lg"}
+      xOffset={run ? "var(--page-gutter)" : undefined}
       centered
       data-testid="discover-dialog"
     >
@@ -69,7 +77,10 @@ export function DiscoverDialog({
             run={run}
             readError={discovery.error}
             onStop={() => void discovery.stop()}
-            onNewRun={discovery.dismiss}
+            onNewRun={() => {
+              setInitial({ scope: run.scope, startedAt: run.started_at });
+              discovery.dismiss();
+            }}
             suggestions={suggestions}
             proposals={proposals}
           />
@@ -79,11 +90,10 @@ export function DiscoverDialog({
             tables={tables}
             defaultDomains={defaultDomains}
             initial={initial}
-            onReset={() => setDefaults(true)}
+            onReset={() => setInitial(null)}
             onCancel={close}
             onRun={async (scope: DiscoveryScope) => {
               await discovery.start(scope);
-              setDefaults(false);
             }}
           />
         ))}

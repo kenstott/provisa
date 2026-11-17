@@ -184,9 +184,13 @@
       "run_still_going": "Detectierun {{run_id}} loopt nog. Beslis over de voorstellen zodra de run is afgelopen.",
       "schema_discovery_unsupported": "Brontype '{{source_type}}' ondersteunt geen schemadetectie. Definieer de kolommen handmatig.",
       "semantics_unavailable": "Semantiek kan niet worden uitgevoerd: {{model}}, het model dat aan relatie-inferentie is toegewezen, heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "source_domains_empty": "De gekozen brondomeinen bevatten geen tabel die detectie leest.",
       "source_not_found": "Bron '{{source_id}}' niet gevonden",
+      "source_tables_not_read": "Geen van de gekozen brontabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
       "table_id_required": "table_id vereist voor tabelbereik",
       "table_not_found": "Tabel {{table_id}} is niet geregistreerd.",
+      "target_domains_empty": "De gekozen doeldomeinen bevatten geen tabel die detectie leest.",
+      "target_tables_not_read": "Geen van de gekozen doeltabellen ({{count}}) wordt gelezen: detectie laat tabellen van een systeemdomein en tabellen buiten gebruik weg.",
       "unknown_source_type": "Onbekend brontype: {{type}}",
       "vendor_unknown": "{{vendor}} toont hier geen modellen; voer de modelnaam in."
     },

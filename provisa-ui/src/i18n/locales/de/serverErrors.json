@@ -184,9 +184,13 @@
       "run_still_going": "Der Discovery-Lauf {{run_id}} läuft noch. Entscheiden Sie über seine Vorschläge, sobald er beendet ist.",
       "schema_discovery_unsupported": "Quellentyp '{{source_type}}' unterstützt keine Schemaerkennung. Definieren Sie die Spalten manuell.",
       "semantics_unavailable": "Semantik kann nicht ausgeführt werden: {{model}}, das der Beziehungsableitung zugewiesene Modell, hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+      "source_domains_empty": "Die gewählten Quelldomänen enthalten keine Tabelle, die die Erkennung liest.",
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
+      "source_tables_not_read": "Keine der gewählten Quelltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "table_not_found": "Die Tabelle {{table_id}} ist nicht registriert.",
+      "target_domains_empty": "Die gewählten Zieldomänen enthalten keine Tabelle, die die Erkennung liest.",
+      "target_tables_not_read": "Keine der gewählten Zieltabellen ({{count}}) wird gelesen: Die Erkennung lässt Tabellen einer Systemdomäne und Tabellen außer Betrieb aus.",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
       "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein."
     },

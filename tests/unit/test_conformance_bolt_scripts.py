@@ -116,7 +116,8 @@ def test_the_model_maps_the_drivers_user_to_its_role_beside_the_shared_fixture(
     assert {d["id"] for d in config["domains"]} >= {"conformance", "bolt_examples"}
     mapped = {m["value"]: m["role"] for m in config["auth"]["role_mapping"]}
     assert mapped["conformance"] == "bolt_examples"
-    assert mapped[pgwire_catalog_types.TCK_SESSION_USER] == "tck_empty"
+    # The Cypher TCK's session user holds tck_empty by assignment, not by a mapping rule.
+    assert pgwire_catalog_types.TCK_SESSION_USER not in mapped
 
 
 def test_an_access_file_with_another_field_is_refused_by_name(tmp_path, monkeypatch):
