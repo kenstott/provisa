@@ -236,8 +236,14 @@ def view(server):
         f"materialize: true, mvRefreshInterval: 3600, columns: [{columns}]}})",
     )
     _admin(server, release_field(registered_id(registered["message"])))
-    refreshed = _admin(server, 'refreshMv(mvId: "view-clean_suppliers")')
-    assert refreshed["success"], refreshed
+    response = httpx.post(
+        f"{server.base_url}/admin/graphql",
+        json={"query": 'mutation { refreshMv(mvId: "view-clean_suppliers") { success message } }'},
+        headers={"X-Provisa-Role": _ADMIN},
+        timeout=server.request_timeout + 600,
+    )
+    (refreshed,) = response.json()["data"].values()
+    assert refreshed["success"], f"{refreshed}\n{server.dump_stderr_debug()[-12000:]}"
     deadline = time.monotonic() + 300
     while True:
         rows = _http(server, _ADMIN)
