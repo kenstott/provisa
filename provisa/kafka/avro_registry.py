@@ -223,21 +223,22 @@ class SchemaRegistry:
             self._client = httpx.AsyncClient(
                 **self.client_options(), event_hooks=sandbox_egress.http_event_hooks()
             )
+        url = f"{self._url}{path}"
         try:
-            return await self._client.get(f"{self._url}{path}", timeout=self._timeout())
+            return await self._client.get(url, timeout=self._timeout())
         except sandbox_egress.PrivateDestinationRefused:
             raise  # REQ-2006: refused by name, not reported as a registry that cannot be reached
         except httpx.HTTPError as exc:
             raise self._unreachable(describe_http_failure(exc)) from exc
         except OSError as exc:
-            raise self._unreachable(f"{type(exc).__name__}: {exc}") from exc
+            raise self._unreachable(f"{type(exc).__name__} reaching GET {url}: {exc}") from exc
 
     def _unreachable(self, error: str) -> SchemaRegistryRefusal:
+        """``error`` names the address the request went to, so the message does not again."""
         return SchemaRegistryRefusal(
             503,
             "subscribe.schema_registry_unreachable",
-            f"Schema registry {self._url} cannot be reached: {error}",
-            registry=self._url,
+            f"Schema registry cannot be reached: {error}",
             error=error,
         )
 

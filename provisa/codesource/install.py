@@ -170,7 +170,7 @@ def http_get(url: str, headers: dict[str, str], ca_bundle: str | None = None) ->
         )
     except httpx.HTTPError as exc:
         raise BundleRefused(
-            "fetch_failed", f"could not fetch {url}: {describe_http_failure(exc)}", url=url
+            "fetch_failed", f"could not fetch: {describe_http_failure(exc)}", url=url
         ) from exc
     if response.status_code != 200:
         raise BundleRefused(
