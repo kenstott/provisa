@@ -3646,7 +3646,19 @@
     and types, its names and descriptions, the glossary terms bound to it, and its required parameters.
     A relationship proposed for it is marked as found on reduced information, since no values were compared.
     A test of relationship generation for such a table works from that reduced information only and fails
-    if the table is read.'
+    if the table is read. (Amended 2026-11-16, A DISCOVERY RUN KEEPS EVERY PROPOSAL AND THE READER DECIDES
+    FROM ONE TABLE:) Maintainer 2026-11-16. A discovery run discards nothing: every proposal it read is
+    kept with its confidence, its reasoning and, where it is not a suggestion, the reason. The result is
+    one table of them, the highest score first. A row is ticked to accept it; rows scoring 0.70 or more
+    start ticked, so the threshold is only the default selection. A second tick, "Don''t recommend again",
+    records the proposal as rejected so later runs do not raise it; the two ticks exclude each other. A
+    row with neither tick is undecided and nothing is recorded against it: a pending suggestion stays pending,
+    and a later run may propose it again. A proposal that cannot be decided has neither tick and says why.
+    One Apply states both counts and sends both lists. A new run starts from the fields of the signed-in
+    person''s last run, read from that run''s stored scope; a value that no longer holds is left out and
+    named; Reset to defaults restores the defaults. A finished run states its scope: the kinds, the model,
+    the source and target domains and their table counts. The request states what a confidence value means
+    by the evidence shown, and that a suggestion is kept at 0.7.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -66611,13 +66623,18 @@
   feature: mcp-server-tools
   priority: MAY
   type: behavioral
-  description: 'MCP tool jev_evaluate exposes TypeSafe AI''s Jev "System One" decision-evaluation API
-    to Provisa''s MCP clients. It evaluates typed decision questions (noul/choice/score primitives) with
-    confidence scores. The tool is conditionally registered: it appears in mcp.list_tools() only when
-    the TYPESAFEAI_API_KEY environment variable is set; absent the key, the tool is not listed or callable
-    (not a runtime error, an absent capability). tools.jev_evaluate() also raises ValueError independently
-    if the key is missing (defense-in-depth for direct callers). Role is required on every call for audit
-    attribution (a private commercial requirement), per standard MCP tool governance.'
+  description: 'MCP tool jev_evaluate exposes TypeSafe AI''s Jev "System One" decision-evaluation API to
+    Provisa''s MCP clients. It evaluates typed decision questions (noul/choice/score primitives) with confidence
+    scores. The tool is conditionally registered: it appears in mcp.list_tools() only when the TYPESAFEAI_API_KEY
+    environment variable is set; absent the key, the tool is not listed or callable (not a runtime error,
+    an absent capability). tools.jev_evaluate() also raises ValueError independently if the key is missing
+    (defense-in-depth for direct callers). Role is required on every call for audit attribution (a private
+    commercial requirement), per standard MCP tool governance. (Amended 2026-11-16, A SECOND SCORER IS ASKED
+    WITH THE EVIDENCE AND ITS VERDICT IS SHOWN AS ITS OWN:) Lead 2026-11-16, with REQ-413''s amendment of
+    the same day. When Jev re-scores a discovery run''s proposals it is asked about the tables and columns
+    by name, with their descriptions, classes, tags and glossary terms; what it scores under the threshold
+    is reported as Jev''s, with both the model''s and Jev''s scores shown on the row, never as the model''s
+    confidence.'
   use_case: MCP-connected agents can delegate typed decision evaluation to TypeSafe AI's Jev service instead
     of reasoning through decisions internally, improving confidence scores and decision consistency. The
     optional registration pattern allows deployments to offer the tool only when an API key is available,
