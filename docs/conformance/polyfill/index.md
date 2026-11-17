@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-348 of the grid's 348 features are native on PostgreSQL and left out.
+387 of the grid's 387 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-161 of the grid's 348 features are native on DuckDB and left out.
+200 of the grid's 387 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -643,7 +643,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-80 of the grid's 348 features are native on Trino and left out.
+119 of the grid's 387 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1378,7 +1378,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-80 of the grid's 348 features are native on Presto and left out.
+119 of the grid's 387 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2113,7 +2113,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-80 of the grid's 348 features are native on Athena and left out.
+119 of the grid's 387 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2848,7 +2848,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 348 features are native on ClickHouse and left out.
+36 of the grid's 387 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3585,6 +3585,45 @@ function provisa.transpiler.polyfill.texts._bpchar: bpchar of a text, a typmod a
 <tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
 =&gt;
 if($n IS NULL OR $o IS NULL, NULL, concat(arrayStringConcat(arrayFilter((_c, _b) -&gt; _b &lt;= 63 - length(concat(&#x27;_&#x27;, toString($o))), extractAll(assumeNotNull($n), &#x27;(?s).&#x27;), arrayCumSum(arrayMap(_c -&gt; toInt64(length(_c)), extractAll(assumeNotNull($n), &#x27;(?s).&#x27;))))), concat(&#x27;_&#x27;, toString($o))))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>a bit string literal</strong><br>A text or NULL cast to bit or bit varying.</td><td><pre><code>function provisa.transpiler.polyfill.bits._literal: A bit string literal cast to bit or bit varying, as its text (:func:`held`).</code></pre></td><td><ul><li>A bit string is held as its text of 0s and 1s. A literal is read as bit_in reads it (22P02 of a digit it does not read), cut or padded to the cast&#x27;s length; a cast to bit of a value that is no literal is refused by name. <code>0A000</code> a cast to bit of a value that is no literal has no form</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>biteq</strong><br>Two bit strings equal.</td><td><pre><code>function provisa.transpiler.polyfill.bits.biteq_of_bit_text: biteq of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitne</strong><br>Two bit strings not equal.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitne_of_bit_text: bitne of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitlt</strong><br>One bit string before another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitlt_of_bit_text: bitlt of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitle</strong><br>One bit string before or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitle_of_bit_text: bitle of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitgt</strong><br>One bit string after another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitgt_of_bit_text: bitgt of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitge</strong><br>One bit string after or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitge_of_bit_text: bitge of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbiteq</strong><br>Two bit strings equal.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbiteq_of_bit_text: varbiteq of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbitne</strong><br>Two bit strings not equal.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbitne_of_bit_text: varbitne of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbitlt</strong><br>One bit string before another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbitlt_of_bit_text: varbitlt of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbitle</strong><br>One bit string before or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbitle_of_bit_text: varbitle of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbitgt</strong><br>One bit string after another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbitgt_of_bit_text: varbitgt of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbitge</strong><br>One bit string after or equal to another.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbitge_of_bit_text: varbitge of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitcmp</strong><br>btree&#x27;s comparison of two bit strings.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitcmp_of_bit_text: bitcmp of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbitcmp</strong><br>btree&#x27;s comparison of two bit strings.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbitcmp_of_bit_text: varbitcmp of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitand</strong><br>The bitwise AND of two bit strings of one length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitand_of_bit_text: bitand of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitor</strong><br>The bitwise OR of two bit strings of one length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitor_of_bit_text: bitor of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitxor</strong><br>The bitwise XOR of two bit strings of one length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitxor_of_bit_text: bitxor of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitnot</strong><br>Each bit of a bit string flipped.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitnot_of_bit_text: bitnot of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitshiftleft</strong><br>A bit string shifted left, its length kept.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitshiftleft_of_bit_text: bitshiftleft of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitshiftright</strong><br>A bit string shifted right, its length kept.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitshiftright_of_bit_text: bitshiftright of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bitcat</strong><br>Two bit strings joined.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bitcat_of_bit_text: bitcat of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_count</strong><br>The 1 bits of a bit string.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bit_count_of_bit_text: bit_count of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_length</strong><br>A bit string&#x27;s bits.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bit_length_of_bit_text: bit_length of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>length of a bit string</strong><br>A bit string&#x27;s bits.</td><td><pre><code>function provisa.transpiler.polyfill.bits.length_of_bit_text: length of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>octet_length of a bit string</strong><br>A bit string&#x27;s bytes.</td><td><pre><code>function provisa.transpiler.polyfill.bits.octet_length_of_bit_text: octet_length of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>get_bit of a bit string</strong><br>A bit of a bit string, by its index from 0.</td><td><pre><code>function provisa.transpiler.polyfill.bits.get_bit_of_bit_text: get_bit of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>set_bit of a bit string</strong><br>A bit string with a bit set, by its index from 0.</td><td><pre><code>function provisa.transpiler.polyfill.bits.set_bit_of_bit_text: set_bit of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int4 of a bit string</strong><br>A bit string&#x27;s bits as an integer.</td><td><pre><code>function provisa.transpiler.polyfill.bits.int4_of_bit_text: int4 of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>int8 of a bit string</strong><br>A bit string&#x27;s bits as a bigint.</td><td><pre><code>function provisa.transpiler.polyfill.bits.int8_of_bit_text: int8 of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit</strong><br>A bit string cast to bit of a length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bit_of_bit_text: bit of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>varbit</strong><br>A bit string cast to bit varying of a length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.varbit_of_bit_text: varbit of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substring of a bit string</strong><br>Part of a bit string, from a start, of a count of bits.</td><td><pre><code>function provisa.transpiler.polyfill.bits.substring_of_bit_text: substring of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>position of a bit string</strong><br>Where a bit string first holds another, from 1; 0 where it does not.</td><td><pre><code>function provisa.transpiler.polyfill.bits.position_of_bit_text: position of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>substring of a bit string from a start</strong><br>Part of a bit string, from a start to its end.</td><td><pre><code>function provisa.transpiler.polyfill.bits.substring_of_bit_text: substring of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay of a bit string</strong><br>A bit string with another put in place of a count of its bits from a start.</td><td><pre><code>function provisa.transpiler.polyfill.bits.overlay_of_bit_text: overlay of bit strings held as their text.</code></pre><pre><code>function provisa.transpiler.polyfill.bits.overlay_of_bit_text: overlay of bit strings held as their text.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_and of bit strings</strong><br>The bitwise AND of the bit strings of a group, of one length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bit_and_of_bit_text: bit_and of bit strings held as their text, bit by bit.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_or of bit strings</strong><br>The bitwise OR of the bit strings of a group, of one length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bit_or_of_bit_text: bit_or of bit strings held as their text, bit by bit.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bit_xor of bit strings</strong><br>The bitwise XOR of the bit strings of a group, of one length.</td><td><pre><code>function provisa.transpiler.polyfill.bits.bit_xor_of_bit_text: bit_xor of bit strings held as their text, bit by bit.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.bytea.octet_length_of_bytes: octet_length of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
@@ -3661,7 +3700,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-161 of the grid's 348 features are native on Snowflake and left out.
+200 of the grid's 387 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4301,7 +4340,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-161 of the grid's 348 features are native on Databricks and left out.
+200 of the grid's 387 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4941,7 +4980,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-161 of the grid's 348 features are native on BigQuery and left out.
+200 of the grid's 387 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5581,7 +5620,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-161 of the grid's 348 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+200 of the grid's 387 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6221,7 +6260,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-161 of the grid's 348 features are native on Redshift and left out.
+200 of the grid's 387 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6861,7 +6900,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-161 of the grid's 348 features are native on MySQL and left out.
+200 of the grid's 387 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7501,7 +7540,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-161 of the grid's 348 features are native on SingleStore and left out.
+200 of the grid's 387 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8141,7 +8180,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-161 of the grid's 348 features are native on SQLite and left out.
+200 of the grid's 387 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8781,7 +8820,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-161 of the grid's 348 features are native on Oracle and left out.
+200 of the grid's 387 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9421,7 +9460,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-161 of the grid's 348 features are native on Hive and left out.
+200 of the grid's 387 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10061,7 +10100,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-161 of the grid's 348 features are native on Exasol and left out.
+200 of the grid's 387 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10701,7 +10740,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-161 of the grid's 348 features are native on Druid and left out.
+200 of the grid's 387 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)

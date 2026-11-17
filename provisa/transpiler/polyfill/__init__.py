@@ -21,6 +21,7 @@ from __future__ import annotations
 from provisa.transpiler.polyfill import (
     aggregates,
     arrays,
+    bits,
     bytea,
     calls,
     casts,
@@ -92,6 +93,7 @@ GRID = Grid(
     + geometric.FEATURES
     # a text's rows are read before bytea's, whose rows of one name keep what is no bytea
     + texts.FEATURES
+    + bits.FEATURES
     + bytea.FEATURES
     + ported.FEATURES
 )

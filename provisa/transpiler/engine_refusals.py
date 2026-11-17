@@ -128,7 +128,6 @@ _ON_BOTH: dict[str, frozenset[str] | None] = {
     "row_security_active": _ANY,
     "set_config": _ANY,
     "regclass": _ANY,
-    "bit": _ANY,
     "float4": _JSON,
     # bytes, which the engine's own string function reads as text.
     "substr": _BYTES,
@@ -186,6 +185,7 @@ _ON: dict[str, dict[str, frozenset[str] | None]] = {
         "int4": _JSON,
         "int8": _JSON | _OID,
         "float8": _JSON,
+        "bit": _ANY,  # ClickHouse's is polyfill.bits' row
     },
     _C: {
         "gcd": _NUMERIC,

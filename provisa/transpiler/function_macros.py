@@ -2840,6 +2840,9 @@ def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
     rewrite that writes this call. A row that keeps the old table's form, a rewrite that leaves
     this call or refuses it, and a refusal answer nothing: the call is refused as it was."""
     try:
+        first = polyfill.GRID.read_first(node, dialect)  # a rule over every call, before patterns
+        if first is not None and first.rewritten is not None:
+            return True
         applied = polyfill.GRID.read(node, dialect)  # a rule of no pattern runs its rewrite here
         if applied is None or applied.form is None or isinstance(applied.form, polyfill.Refusal):
             return False
@@ -2902,10 +2905,6 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and any(_is_null(part) for part in node.expressions)
         ):  # strict, and an engine's own part of a NULL is its error
             return exp.Cast(this=exp.Null(), to=exp.DataType.build("DOUBLE"))
-        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
-            edged = _past_the_edge(node, dialect)
-            if edged is not None:
-                return edged
         target = node
         if (
             isinstance(node, exp.Dot)
@@ -2913,10 +2912,16 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
             and node.this.name.lower() == "pg_catalog"
         ):
             target = node.expression
-        first = polyfill.GRID.read_first(target, dialect)  # a grid rule over every call
+        # A grid rule over every call, before the forms of a substring past its edge: a substring
+        # of a bit string is its row's.
+        first = polyfill.GRID.read_first(target, dialect)
         if first is not None and first.rewritten is not None:
             in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
             return first.rewritten if in_select else first.rewritten.unalias()
+        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
+            edged = _past_the_edge(node, dialect)
+            if edged is not None:
+                return edged
         polyfilled = _polyfilled(target, node, dialect, rewrite)
         if polyfilled is not None:
             return polyfilled
