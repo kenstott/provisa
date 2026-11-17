@@ -59,6 +59,12 @@ function mermaidConfig(tokens: GraphTokens) {
     // suppressErrorRendering: a failed render throws and removes its scratch element instead
     // of drawing Mermaid's error graphic on the page body.
     suppressErrorRendering: true,
+    // Mermaid 12 changed its defaults: a flowchart takes the "neo" look and the ELK layout, and
+    // wraps labels at 120px with a 120px minimum node width. The plan keeps Mermaid 11's look:
+    // the classic look, the dagre layout, 200px wrapping and no minimum width (maintainer
+    // 2026-11-17, "Mermaid 12, old look pinned").
+    look: "classic" as const,
+    layout: "dagre",
     theme: "base" as const,
     themeVariables: {
       background: tokens.canvas,
@@ -82,7 +88,7 @@ function mermaidConfig(tokens: GraphTokens) {
       fontFamily: theme.fontFamily ?? DEFAULT_THEME.fontFamily,
       fontSize: "14px",
     },
-    flowchart: { htmlLabels: false },
+    flowchart: { htmlLabels: false, wrappingWidth: 200, minNodeWidth: 0 },
   };
 }
 

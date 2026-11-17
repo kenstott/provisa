@@ -164,7 +164,9 @@
       "parameter_unbound_on_branch": "पैरामीटर {{parameter}} को OR की एक शाखा में मान दिया गया है और दूसरी में नहीं। हर शाखा में {{parameter}} को मान दें।",
       "parameter_conflict": "पैरामीटर {{parameter}} को एक साथ दो अलग मान दिए गए हैं ({{first}} और {{second}})। उसे एक मान दें, या IN या OR से मानों की सूची दें।",
       "parameter_calls_over_cap": "स्टेटमेंट को {{table}} के लिए {{calls}} कॉल चाहिए, उसके पैरामीटरों को दिए गए हर मान के लिए एक, और एक स्टेटमेंट के लिए अधिकतम {{cap}} किए जाते हैं (सेटिंग {{setting}})। कम मान दें।",
-      "parameter_not_written": "संबंध {{relationship}} पैरामीटर {{parameter}} पर जुड़ता है, जिसे एक स्टेटमेंट किसी मान से बाँधता है और कभी नहीं लिखता। कोई लेखन {{relationship}} नहीं बनाता।"
+      "parameter_not_written": "संबंध {{relationship}} पैरामीटर {{parameter}} पर जुड़ता है, जिसे एक स्टेटमेंट किसी मान से बाँधता है और कभी नहीं लिखता। कोई लेखन {{relationship}} नहीं बनाता।",
+      "parameter_required": "तालिका '{{table}}' को पैरामीटर {{parameters}} चाहिए: हर एक को मान दें (SQL में उसके कॉलम पर WHERE शर्त, GraphQL में एक आर्ग्युमेंट)।",
+      "parameter_wrong_type": "पैरामीटर {{parameter}} प्रकार {{type}} का मान लेता है; '{{value}}' वैसा मान नहीं है।"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' का अडैप्टर discover_schema लागू नहीं करता",
@@ -673,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} पंक्तियों की पूर्ण संख्या नहीं है: LIMIT 0 या उससे अधिक की गिनती लेता है, जैसे LIMIT 10।",
       "invalid_skip": "SKIP {{value}} पंक्तियों की पूर्ण संख्या नहीं है: SKIP 0 या उससे अधिक की गिनती लेता है, जैसे SKIP 10।",
       "engine_refused": "इंजन ने क्वेरी अस्वीकार कर दी: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} {{variable}} को पढ़ता है, लेकिन कथन कोई वेरिएबल नहीं बाँधता: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है।",
       "undefined_variable_property": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestion}} था? {{owner}} :{{label}} से बँधा है, जिसकी एक प्रॉपर्टी {{variable}} है।",
       "undefined_variable_properties": "{{clause}} {{variable}} को पढ़ता है, जिसे कथन में कुछ भी बाँधता नहीं: वेरिएबल MATCH पैटर्न, WITH, UNWIND या CALL से बँधता है। यहाँ बँधे: {{bound}}। क्या आपका मतलब {{suggestions}} था? प्रत्येक ऐसे लेबल से बँधा है जिसकी एक प्रॉपर्टी {{variable}} है।",

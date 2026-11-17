@@ -857,7 +857,11 @@ def _build_native_filter_args(
     for nfc in t.native_filter_columns:
         col_name = nfc["column_name"]
         bare_name = col_name[4:] if col_name.startswith("_nf_") else col_name
-        arg_name = f"_{bare_name}" if bare_name in response_field_names else bare_name
+        # REQ-1986: the argument is the parameter's alias where it has one, as a column's field is
+        # its alias; either is a name the parameter is bound under (core.parameters.bound_names).
+        spelled = nfc.get("alias") or col_name
+        given = spelled[4:] if spelled.startswith("_nf_") else spelled
+        arg_name = f"_{given}" if given in response_field_names else given
         meta = t.column_metadata.get(col_name.lower())
         # An array parameter (a query vector) takes a list, as its column holds one.
         nfc_gql_type = array_graphql_type(meta.data_type) if meta else GraphQLString

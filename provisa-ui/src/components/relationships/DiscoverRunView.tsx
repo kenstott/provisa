@@ -11,7 +11,8 @@
 // REQ-413: a discovery run in the dialog. While it runs: how far it has got, the suggestions so
 // far and a Stop that keeps what was found. Once it has ended: how it ended, the scope it ran with
 // and what each kind found, then one table of every proposal it read, each ticked to accept, ticked
-// not to be recommended again, or left undecided, and one Apply.
+// not to be recommended again, or left undecided, and one Apply. New run sits beside Apply above
+// the table, whose rows scroll beneath its pinned header while the result stays in view.
 
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Progress, Stack, Text } from "@mantine/core";
@@ -89,12 +90,14 @@ export function DiscoverRunView({
         )}
       </Stack>
       {readError && (
-        <Alert color="red" mb="md" data-testid="discover-read-error">
+        <Alert color="red" mb="md" style={{ flexShrink: 0 }} data-testid="discover-read-error">
           {readError}
         </Alert>
       )}
+      {/* An Alert clips what overflows it, so in the dialog's column it would give up height to the
+          table: the alerts keep theirs and only the table shrinks. */}
       {!running && (
-        <Alert color="blue" mb="md" data-testid="discover-result">
+        <Alert color="blue" mb="md" style={{ flexShrink: 0 }} data-testid="discover-result">
           {report &&
             discoveryResultLines(report, t).map((line) => (
               <Text key={line} fz="sm">
@@ -108,12 +111,17 @@ export function DiscoverRunView({
           state={proposals}
           tableDomainById={suggestions.tableDomainById}
           tableNameById={suggestions.tableNameById}
+          newRun={
+            <Button variant="default" onClick={onNewRun} data-testid="discover-new-run">
+              {t("discoverDialog.newRun")}
+            </Button>
+          }
         />
       )}
-      <FormLayout style={{ marginTop: "var(--mantine-spacing-md)" }}>
-        <FormFooter
-          action={
-            running ? (
+      {running && (
+        <FormLayout style={{ marginTop: "var(--mantine-spacing-md)" }}>
+          <FormFooter
+            action={
               <Button
                 variant="default"
                 onClick={onStop}
@@ -122,14 +130,10 @@ export function DiscoverRunView({
               >
                 {t("discoverDialog.stop")}
               </Button>
-            ) : (
-              <Button onClick={onNewRun} data-testid="discover-new-run">
-                {t("discoverDialog.newRun")}
-              </Button>
-            )
-          }
-        />
-      </FormLayout>
+            }
+          />
+        </FormLayout>
+      )}
     </>
   );
 }

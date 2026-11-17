@@ -77,6 +77,53 @@ def parameter_name(column: Any) -> str:
     return name[len(NF_PREFIX) :] if name.startswith(NF_PREFIX) else name
 
 
+def bound_names(column: Any) -> list[str]:
+    """Every name a statement binds a parameter under (REQ-1986, a parameter is bound under its
+    own name and under its alias alike): its column's name, its own name (without ``_nf_``), its
+    declared alias and the alias without ``_nf_``; each name without ``_nf_`` also in its one
+    canonical spelling (:func:`canonical_name`)."""
+    alias = _get(column, "alias")
+    spelled = [column_name(column), parameter_name(column)]
+    if alias:
+        spelled += [alias, alias[len(NF_PREFIX) :] if alias.startswith(NF_PREFIX) else alias]
+    plain = [n for n in spelled if not n.startswith(NF_PREFIX)]
+    return list(dict.fromkeys([*spelled, *(canonical_name(n) for n in plain)]))
+
+
+def parameter_names(columns: Iterable[Any], taken: Iterable[str] = ()) -> dict[str, str]:
+    """Each name the parameters of a table's ``columns`` are bound under (:func:`bound_names`),
+    lowercased as an unquoted SQL identifier folds, to its parameter column: the one map every
+    front resolves a parameter name by. A name in ``taken`` -- one of the table's own result
+    columns' names -- stays that column's."""
+    held = {t.lower() for t in taken}
+    names: dict[str, str] = {}
+    for c in columns:
+        if not is_parameter(c):
+            continue
+        for name in bound_names(c):
+            key = name.lower()
+            if key not in held:
+                names.setdefault(key, column_name(c))
+    return names
+
+
+def parameter_column(names: Mapping[str, str], name: str) -> str | None:
+    """The parameter column ``name`` binds in a table's :func:`parameter_names`, or None for no
+    parameter: the name as written, or in its canonical spelling."""
+    return names.get(name.lower()) or names.get(canonical_name(name).lower())
+
+
+def given_names(fact: ParameterFact) -> list[str]:
+    """The names a caller gives a parameter by: its own, and its alias (without ``_nf_``) where
+    it declares one -- what a vocabulary publishes it under."""
+    alias = (
+        fact.alias[len(NF_PREFIX) :]
+        if fact.alias and fact.alias.startswith(NF_PREFIX)
+        else fact.alias
+    )
+    return list(dict.fromkeys([fact.name, *([alias] if alias else [])]))
+
+
 def required_parameters(columns: Iterable[Any]) -> list[str]:
     """The parameters of ``columns`` a read must give, by the name a caller gives each: what the
     Register Table picker names a table by before it is registered."""
@@ -103,6 +150,7 @@ class ParameterFact:
     opaque: bool  # an input to the source's call; False: a real column of the table
     required_by_source: bool
     required_by_steward: bool
+    alias: str | None = None  # the parameter column's declared alias
 
     @property
     def required(self) -> bool:
@@ -140,6 +188,7 @@ def parameter_facts(columns: Iterable[Any]) -> list[ParameterFact]:
             opaque=is_opaque(c),
             required_by_source=bool(_get(c, "native_filter_required")),
             required_by_steward=bool(_get(c, "required_by_steward")),
+            alias=_get(c, "alias"),
         )
     return list(facts.values())
 
@@ -242,15 +291,6 @@ def missing_parameters(
         if key not in missing or not column_name(c).startswith(NF_PREFIX):
             missing[key] = parameter_name(c)
     return list(missing.values())
-
-
-class ParameterRequired(ValueError):
-    """A read of a table that leaves a required parameter without a value: refused before anything
-    is sent to the source, naming the table and the parameters (REQ-1986)."""
-
-    def __init__(self, table: str, reason: str) -> None:
-        self.table = table
-        super().__init__(f"Table {table!r} {reason}")
 
 
 def missing_reason(missing: list[str]) -> str:
