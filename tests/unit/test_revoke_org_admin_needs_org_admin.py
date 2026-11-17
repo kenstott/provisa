@@ -218,6 +218,8 @@ async def test_an_org_admin_removes_an_org_admin_member(org, monkeypatch):
 
 async def test_user_management_alone_cannot_remove_an_org_admin_user_from_the_org(org, monkeypatch):
     _model_db(monkeypatch, [ORG_ADMIN_ROLE])
+    # delete_user takes the admin pool before it decides; any statement on it is past the gate.
+    monkeypatch.setattr(users_router, "_admin_pool", lambda _r: _Db())
     with pytest.raises(ApiError) as err:
         await users_router.delete_user("bob", _request("alice", "people_admin"))
     _refused_for_org_admin(err)
@@ -225,6 +227,7 @@ async def test_user_management_alone_cannot_remove_an_org_admin_user_from_the_or
 
 async def test_an_org_admin_removes_an_org_admin_user_from_the_org(org, monkeypatch):
     _model_db(monkeypatch, [ORG_ADMIN_ROLE])
+    monkeypatch.setattr(users_router, "_admin_pool", lambda _r: _Db())
     with pytest.raises(RuntimeError, match="past the gate"):
         await users_router.delete_user("bob", _request("alice", ORG_ADMIN_ROLE))
 
