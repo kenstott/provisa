@@ -6,14 +6,14 @@ A polyfill is how Provisa gives a PostgreSQL client PostgreSQL's behaviour on a 
 
 ## [PostgreSQL](postgres.md)
 
-333 of the grid's 333 features are native on PostgreSQL and left out.
+348 of the grid's 348 features are native on PostgreSQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 </tbody></table>
 
 ## [DuckDB](duckdb.md)
 
-146 of the grid's 333 features are native on DuckDB and left out.
+161 of the grid's 348 features are native on DuckDB and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -643,7 +643,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Trino](trino.md)
 
-65 of the grid's 333 features are native on Trino and left out.
+80 of the grid's 348 features are native on Trino and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -1378,7 +1378,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Presto](presto.md)
 
-65 of the grid's 333 features are native on Presto and left out.
+80 of the grid's 348 features are native on Presto and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2113,7 +2113,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Athena](athena.md)
 
-65 of the grid's 333 features are native on Athena and left out.
+80 of the grid's 348 features are native on Athena and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -2848,7 +2848,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [ClickHouse](clickhouse.md)
 
-36 of the grid's 333 features are native on ClickHouse and left out.
+36 of the grid's 348 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -3001,6 +3001,7 @@ refused (its error is under the limitations)</code></pre></td><td><ul><li>Refuse
 <tr><td><strong>regexp_replace</strong><br>The first match replaced, or every one with the g flag; i and c set the case.</td><td><pre><code>regexp_replace($s, $p, $r, $f::text)
 =&gt;
 function provisa.transpiler.polyfill.regex.flagged: regexp_replace with PostgreSQL&#x27;s flags read: the first match or every one, its case.</code></pre></td><td><ul><li>A flag other than g, i, c and t, a flag that is no constant, and a first match whose pattern or replacement is no constant, whose replacement names the whole match (\0) or whose pattern names a group by number are refused. <code>0A000</code> regexp_replace() has no form on clickhouse</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>regular expressions on ClickHouse</strong><br>regexp_count, regexp_instr, regexp_substr, regexp_like and regexp_split_to_array of a literal pattern and literal flags.</td><td><pre><code>function provisa.transpiler.polyfill.regex._ch_regexp: A regexp function of a literal pattern and literal flags on ClickHouse (_ch_form).</code></pre></td><td><ul><li>The pattern and the flags are literals, read by RE2 with a newline an ordinary character: a pattern of a back reference, a locale&#x27;s class (\w, \s, [[:alpha:]]), \b, lookaround or a director prefix, a flag other than i and c, and a subexpression other than 0 are refused by name; a pattern that matches the empty text raises 0A000 where it counts, places or splits, and a NULL text that is no literal raises 0A000 in regexp_split_to_array (ClickHouse holds no NULL of an array).</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>pg_collation_for</strong><br>The collation a COLLATE clause gives a value, as quote_ident writes its name.</td><td><pre><code>pg_collation_for($v::text COLLATE &quot;default&quot;)
 =&gt;
 &#x27;&quot;default&quot;&#x27;</code></pre><pre><code>pg_collation_for($v::character COLLATE &quot;default&quot;)
@@ -3129,6 +3130,18 @@ CAST($v + throwIf(ifNull($v &lt; 0 OR $v &gt; 4294967295, 0), &#x27;postgresql-e
 <tr><td><strong>random</strong><br>A uniform random integer between two bounds, both included.</td><td><pre><code>random($lo, $hi)
 =&gt;
 function provisa.transpiler.polyfill.numbers.random_between: random of two integers: a uniform integer from the one to the other, both included.</code></pre></td><td><ul><li>Bounds 2^53 or more apart, and bounds of no said integer type, refused by name: a double draws no wider range exactly.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int2</strong><br>A jsonb number as smallint.</td><td><pre><code>int2($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.int2_of_jsonb: int2 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value rounded half away from zero, 22003 past the type; one whose exponent has more than six digits is refused with 0A000. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int4</strong><br>A jsonb number as integer.</td><td><pre><code>int4($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.int4_of_jsonb: int4 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value rounded half away from zero, 22003 past the type; one whose exponent has more than six digits is refused with 0A000. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>int8</strong><br>A jsonb number as bigint, and an oid as a bigint.</td><td><pre><code>int8($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.int8_of_jsonb: int8 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value rounded half away from zero, 22003 past the type; one whose exponent has more than six digits is refused with 0A000. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
+=&gt;
+function provisa.transpiler.polyfill.numbers.float8_of_jsonb: float8 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value read to the nearest float, 22003 where it overflows or underflows. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -3187,6 +3200,7 @@ function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timesta
 <tr><td><strong>date</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.dated: A text the statement writes cast to a date: its day, PostgreSQL&#x27;s error of one that does</code></pre></td><td><ul><li>A text the statement writes: an ISO date of 1900 to 2299, any other refused by name. A text column&#x27;s cast keeps ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>time</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.timed: A text the statement writes cast to a time: its time of day as time_out writes it, which</code></pre></td><td><ul><li>A text the statement writes: hours, minutes, seconds and a fraction, each field read as PostgreSQL reads it (a seventh fractional digit rounded, 24:00:00 the last, a field out of range 22008); any other text (AM or PM, a zone, a date) is refused by name. ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day (0 to 86400000000), compared as integers, and the select list, or a cast to text, shows it as time_out&#x27;s text. 24:00:00 is held and compared; pgwire reads no time of 24:00:00 back, so a column that shows it raises. A value whose type the statement does not say (a table&#x27;s column) is read from its text at run time: a date before the clock is read past, up to six fractional digits; any other text raises 22007, a field past its range 22008, each without the value in its message. A timestamp is read as its wall time&#x27;s time of day.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>integer</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input (a 0x, 0o or 0b prefix, underscores); past the type it raises 22003, a text the input does not read 22P02. A column&#x27;s cast keeps ClickHouse&#x27;s own, which wraps past the type.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>an oid literal</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>numeric input</strong><br>A literal cast to a numeric.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.numeric_read: A literal cast to a numeric, cast from its text rounded as PostgreSQL rounds it: ClickHouse</code></pre></td><td><ul><li>A number or a text the statement writes is cast from its text, rounded half away from zero to the scale, as PostgreSQL rounds it; past the precision it raises 22003, a text the input does not read 22P02. A value of no precision said holds up to 38 digits; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on clickhouse). A column&#x27;s cast keeps ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date + integer</strong><br>A date plus or less a number of days, by its operator (date_pli, date_mii, integer_pl_date).</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.days_moved: A date plus or less a number of days, by its operator: date_pli, date_mii or</code></pre></td><td><ul><li>A day moved past a date&#x27;s range raises 22008, as PostgreSQL does; a day within it but outside 1900-01-01 .. 2299-12-31 (ClickHouse&#x27;s Date32) raises 0A000 (date_pli() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse). Of operands whose types the statement says (a literal, a cast); a date column&#x27;s keeps ClickHouse&#x27;s own arithmetic, exact within Date32&#x27;s range.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp</strong><br>A text cast to a timestamp, or to a timestamp with time zone.</td><td></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;). A text the statement writes is read where the statement is transpiled (provisa.transpiler.transpile): an infinity, a year BC or past 9999, and a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 (a timestamp&#x27;s) or 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC (a timestamptz&#x27;s, its offset read) raise 0A000 (timestamptz_in() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse), where ClickHouse would hold it at its type&#x27;s end. A timestamp&#x27;s offset is dropped, as PostgreSQL&#x27;s input drops it (ClickHouse&#x27;s cast reads it). A text in another form, and a text column&#x27;s cast, keep ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
@@ -3538,6 +3552,39 @@ function provisa.transpiler.polyfill.geometric.measured_pt_contained_circle_2: p
 <tr><td><strong>pt_contained_poly(shape, shape)</strong><br>PostgreSQL&#x27;s pt_contained_poly.</td><td><pre><code>pt_contained_poly($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.geometric.measured_pt_contained_poly_2: pt_contained_poly of a shape: geo_ops.c&#x27;s row of its type, in ClickHouse&#x27;s form.</code></pre></td><td><ul><li>geo_ops.c&#x27;s pt_contained_poly in the same floating-point steps and order (pg_forms_geometric.MEASURES): exact. A shape holding NaN or an infinity, and an answer that is not finite, raises 0A000 (pt_contained_poly does not read this value).</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>btrim</strong><br>Text without the characters of a set at its start and end.</td><td><pre><code>btrim($t::text, $c::text)
+=&gt;
+replaceRegexpAll($t, if($c = &#x27;&#x27;, &#x27;a^&#x27;, concat(&#x27;^[&#x27;, replaceRegexpAll($c, &#x27;([\\\\\\]\\[^-])&#x27;, &#x27;\\\\\\1&#x27;), &#x27;]+|[&#x27;, replaceRegexpAll($c, &#x27;([\\\\\\]\\[^-])&#x27;, &#x27;\\\\\\1&#x27;), &#x27;]+$&#x27;)), &#x27;&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>ltrim</strong><br>Text without the characters of a set at its start.</td><td><pre><code>ltrim($t::text, $c::text)
+=&gt;
+replaceRegexpAll($t, if($c = &#x27;&#x27;, &#x27;a^&#x27;, concat(&#x27;^[&#x27;, replaceRegexpAll($c, &#x27;([\\\\\\]\\[^-])&#x27;, &#x27;\\\\\\1&#x27;), &#x27;]+&#x27;)), &#x27;&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>rtrim</strong><br>Text without the characters of a set at its end.</td><td><pre><code>rtrim($t::text, $c::text)
+=&gt;
+replaceRegexpAll($t, if($c = &#x27;&#x27;, &#x27;a^&#x27;, concat(&#x27;[&#x27;, replaceRegexpAll($c, &#x27;([\\\\\\]\\[^-])&#x27;, &#x27;\\\\\\1&#x27;), &#x27;]+$&#x27;)), &#x27;&#x27;)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>translate</strong><br>Each character found in a set replaced by the one at its place in another, or dropped.</td><td><pre><code>translate($t::text, $f::text, $r::text)
+=&gt;
+if($t IS NULL OR $f IS NULL OR $r IS NULL, NULL, arrayStringConcat(arrayMap(_c -&gt; if(indexOf(extractAll(assumeNotNull($f), &#x27;(?s).&#x27;), _c) = 0, _c, if(indexOf(extractAll(assumeNotNull($f), &#x27;(?s).&#x27;), _c) &lt;= lengthUTF8(assumeNotNull($r)), extractAll(assumeNotNull($r), &#x27;(?s).&#x27;)[indexOf(extractAll(assumeNotNull($f), &#x27;(?s).&#x27;), _c)], &#x27;&#x27;)), extractAll(assumeNotNull($t), &#x27;(?s).&#x27;))))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>overlay</strong><br>Text with a replacement put in place of a count of its characters from a start.</td><td><pre><code>overlay($t::text, $r::text, $p::integer, $n::integer)
+=&gt;
+if(throwIf(ifNull(toInt64($p) &lt; 1, 0), &#x27;postgresql-error 22011: negative substring length not allowed&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64($p) &gt;= 1 AND (toInt64($p) + toInt64($n) &gt; 2147483647 OR toInt64($p) + toInt64($n) &lt; -2147483648), 0), &#x27;postgresql-error 22003: integer out of range&lt;end of postgresql-error&gt;&#x27;) = 0, concat(substringUTF8($t, 1, toInt64($p) - 1), $r, substringUTF8($t, greatest(toInt64($p) + toInt64($n), 1))), NULL)</code></pre><pre><code>overlay($t::text, $r::text, $p::integer)
+=&gt;
+if(throwIf(ifNull(toInt64($p) &lt; 1, 0), &#x27;postgresql-error 22011: negative substring length not allowed&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64($p) &gt;= 1 AND (toInt64($p) + toInt64(lengthUTF8($r)) &gt; 2147483647 OR toInt64($p) + toInt64(lengthUTF8($r)) &lt; -2147483648), 0), &#x27;postgresql-error 22003: integer out of range&lt;end of postgresql-error&gt;&#x27;) = 0, concat(substringUTF8($t, 1, toInt64($p) - 1), $r, substringUTF8($t, greatest(toInt64($p) + toInt64(lengthUTF8($r)), 1))), NULL)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>string_to_array</strong><br>Text split at each delimiter into an array; a piece equal to a third argument is NULL.</td><td><pre><code>string_to_array($s::text, $d::text)
+=&gt;
+function provisa.transpiler.polyfill.texts._to_array: string_to_array: NULL of a NULL literal (ClickHouse holds no NULL of an array); else the</code></pre><pre><code>string_to_array($s::text, $d::text, $n::text)
+=&gt;
+function provisa.transpiler.polyfill.texts._to_array: string_to_array: NULL of a NULL literal (ClickHouse holds no NULL of an array); else the</code></pre></td><td><ul><li>A NULL text that is no literal raises 0A000: ClickHouse holds no NULL of an array.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>varchar</strong><br>Text cast to character varying of a declared length (its typmod).</td><td><pre><code>varchar($s, $m, $e)
+=&gt;
+if(throwIf(ifNull($m &gt;= 4 AND lengthUTF8($s) &gt; (toInt64($m) - 4) AND NOT $e AND NOT match(substringUTF8($s, greatest((toInt64($m) - 4), 0) + 1), &#x27;^ *$&#x27;), 0), &#x27;postgresql-error 22001: value too long for type character varying&lt;end of postgresql-error&gt;&#x27;) = 0, if($s IS NULL OR $m IS NULL OR $e IS NULL, NULL, if($m &gt;= 4 AND lengthUTF8($s) &gt; (toInt64($m) - 4), substringUTF8($s, 1, greatest((toInt64($m) - 4), 0)), $s)), NULL)</code></pre><pre><code>varchar($s::name)
+=&gt;
+CAST($s AS Nullable(String))</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bpchar</strong><br>Text cast to character of a declared length (its typmod), padded with spaces.</td><td><pre><code>bpchar($s, $m, $e)
+=&gt;
+function provisa.transpiler.polyfill.texts._bpchar: bpchar of a text, a typmod and whether the cast is explicit, its character literal held as</code></pre></td><td><ul><li>A length past 10485760 characters that pads the text raises 0A000; past PostgreSQL&#x27;s allocation it raises XX000, as PostgreSQL does.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>nameconcatoid</strong><br>A name and an oid joined by an underscore, the name cut to fit a name&#x27;s 63 bytes.</td><td><pre><code>nameconcatoid($n, $o)
+=&gt;
+if($n IS NULL OR $o IS NULL, NULL, concat(arrayStringConcat(arrayFilter((_c, _b) -&gt; _b &lt;= 63 - length(concat(&#x27;_&#x27;, toString($o))), extractAll(assumeNotNull($n), &#x27;(?s).&#x27;), arrayCumSum(arrayMap(_c -&gt; toInt64(length(_c)), extractAll(assumeNotNull($n), &#x27;(?s).&#x27;))))), concat(&#x27;_&#x27;, toString($o))))</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)
 =&gt;
 function provisa.transpiler.polyfill.bytea.octet_length_of_bytes: octet_length of a bytea held as ClickHouse&#x27;s String, its bytes.</code></pre></td><td><ul><li>ClickHouse&#x27;s String is the bytea&#x27;s bytes. A value is read where the statement says it is a bytea (a cast, or a column of a VALUES list cast to one) and ClickHouse holds its literal as those bytes: hex input, or text with no backslash. The escape form, and a value whose type no statement says, are refused by name.</li></ul></td><td></td><td></td></tr>
@@ -3614,7 +3661,7 @@ function provisa.transpiler.polyfill.bytea.encode_of_bytes: encode of a bytea he
 
 ## [Snowflake](snowflake.md)
 
-146 of the grid's 333 features are native on Snowflake and left out.
+161 of the grid's 348 features are native on Snowflake and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4254,7 +4301,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Databricks](databricks.md)
 
-146 of the grid's 333 features are native on Databricks and left out.
+161 of the grid's 348 features are native on Databricks and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -4894,7 +4941,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [BigQuery](bigquery.md)
 
-146 of the grid's 333 features are native on BigQuery and left out.
+161 of the grid's 348 features are native on BigQuery and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -5534,7 +5581,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [T-SQL (SQL Server, Fabric, Synapse)](tsql.md)
 
-146 of the grid's 333 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+161 of the grid's 348 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6174,7 +6221,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Redshift](redshift.md)
 
-146 of the grid's 333 features are native on Redshift and left out.
+161 of the grid's 348 features are native on Redshift and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -6814,7 +6861,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [MySQL](mysql.md)
 
-146 of the grid's 333 features are native on MySQL and left out.
+161 of the grid's 348 features are native on MySQL and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -7454,7 +7501,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SingleStore](singlestore.md)
 
-146 of the grid's 333 features are native on SingleStore and left out.
+161 of the grid's 348 features are native on SingleStore and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8094,7 +8141,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [SQLite](sqlite.md)
 
-146 of the grid's 333 features are native on SQLite and left out.
+161 of the grid's 348 features are native on SQLite and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -8734,7 +8781,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Oracle](oracle.md)
 
-146 of the grid's 333 features are native on Oracle and left out.
+161 of the grid's 348 features are native on Oracle and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -9374,7 +9421,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Hive](hive.md)
 
-146 of the grid's 333 features are native on Hive and left out.
+161 of the grid's 348 features are native on Hive and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10014,7 +10061,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Exasol](exasol.md)
 
-146 of the grid's 333 features are native on Exasol and left out.
+161 of the grid's 348 features are native on Exasol and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -10654,7 +10701,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 
 ## [Druid](druid.md)
 
-146 of the grid's 333 features are native on Druid and left out.
+161 of the grid's 348 features are native on Druid and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
