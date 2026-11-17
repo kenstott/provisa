@@ -20,7 +20,12 @@
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
     },
     "ai": {
+      "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "endpoint_key_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
+      "endpoint_key_unset": "AI エンドポイント {{vendor}} にキーがありません：{{field}} が設定されていません。",
       "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "local_server_from_environment": "{{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスの AI エンドポイントを宣言してください。",
+      "server_environment_sets": "ここでは {{vendor}} を呼び出せません：サーバーの環境が {{variable}} を設定しており、そのクライアントがすべての組織に対して送信してしまいます。",
       "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
     },
     "api": {
@@ -165,7 +170,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch の検出には「index」ヒントが必要です。",
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} にキーがありません: 環境変数 {{env}} を設定してください。",
       "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
       "model_incomplete": "選択したモデルには、ベンダーとモデルの両方を指定します。",
       "no_adapter_for_source_type": "ソースタイプ「{{source_type}}」に登録されたアダプターがありません",

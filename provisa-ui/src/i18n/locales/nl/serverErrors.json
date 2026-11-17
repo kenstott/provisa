@@ -20,7 +20,12 @@
       "vector_model_fields_required": "elk vector_models-item vereist id, provider en dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "Het AI-eindpunt {{vendor}} haalt zijn adres uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen adres.",
+      "endpoint_key_from_server": "Het AI-eindpunt {{vendor}} haalt zijn sleutel uit de omgeving van de server, die een organisatie op deze server niet gebruikt. Geef het onder Beheer, AI-modellen een eigen sleutel.",
+      "endpoint_key_unset": "Het AI-eindpunt {{vendor}} heeft geen sleutel: {{field}} is niet ingesteld.",
       "key_required": "{{vendor}} heeft geen sleutel. Stel er een in onder Beheer, AI-modellen.",
+      "local_server_from_environment": "{{vendor}} wordt bereikt op het eigen adres van de server, dat een organisatie op deze server niet gebruikt. Leg onder Beheer, AI-modellen een AI-eindpunt op uw eigen adres vast.",
+      "server_environment_sets": "{{vendor}} kan hier niet worden aangeroepen: de omgeving van de server stelt {{variable}} in, die zijn client voor elke organisatie zou meesturen.",
       "vendor_uses_server_credentials": "{{vendor}} wordt bereikt met de eigen inloggegevens van de server, die een organisatie op deze server niet gebruikt. Kies onder Beheer, AI-modellen een leverancier die een sleutel accepteert, of een AI-eindpunt."
     },
     "api": {
@@ -165,7 +170,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch-detectie vereist een 'index'-hint.",
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} heeft geen sleutel: stel de omgevingsvariabele {{env}} in.",
       "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
       "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
       "no_adapter_for_source_type": "Geen adapter geregistreerd voor brontype '{{source_type}}'",

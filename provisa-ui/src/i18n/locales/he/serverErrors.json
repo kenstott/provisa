@@ -20,7 +20,12 @@
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",
+      "endpoint_key_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את המפתח שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה מפתח משלכם תחת ניהול, מודלי AI.",
+      "endpoint_key_unset": "לנקודת הקצה של AI‏ {{vendor}} אין מפתח: {{field}} אינו מוגדר.",
       "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "local_server_from_environment": "הגישה אל {{vendor}} נעשית בכתובת של השרת עצמו, שארגון בשרת זה אינו משתמש בה. הגדירו נקודת קצה של AI בכתובת משלכם תחת ניהול, מודלי AI.",
+      "server_environment_sets": "לא ניתן לקרוא ל-{{vendor}} כאן: סביבת השרת מגדירה את {{variable}}, שהלקוח שלו היה שולח עבור כל ארגון.",
       "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
     },
     "api": {
@@ -165,7 +170,6 @@
       "elasticsearch_index_hint_required": "גילוי Elasticsearch דורש רמז 'index'.",
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
-      "endpoint_has_no_key": "ל-{{vendor}} אין מפתח: הגדירו את משתנה הסביבה {{env}}.",
       "model_has_no_room": "המודל {{model}} אינו יכול להכיל בקשה: {{reason}}",
       "model_incomplete": "מודל שנבחר מציין גם את הספק שלו וגם את המודל שלו.",
       "no_adapter_for_source_type": "לא רשום מתאם עבור סוג המקור '{{source_type}}'",

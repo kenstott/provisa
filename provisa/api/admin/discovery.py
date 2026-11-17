@@ -233,10 +233,13 @@ async def discovery_models(request: Request):  # REQ-413, REQ-464
 async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
     """The models ``vendor`` serves, for the run's Model select; ``vendor`` must have a key."""
     require_capability_request(request, "create_relationship")
-    import os
-
     from provisa.api.admin.ai_models_router import _run_model_listing
-    from provisa.core.org_secrets import org_ai_key
+    from provisa.core.org_secrets import (
+        endpoint_address,
+        endpoint_key,
+        org_ai_key,
+        read_org_api_keys,
+    )
     from provisa.core.org_settings import resolve_org_config
     from provisa.llm.vendor_models import (
         VENDOR_MODEL_APIS,
@@ -260,22 +263,11 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
             f"{vendor} lists no models here; enter the model name",
             vendor=vendor,
         )
-    env = endpoint.get("api_key_env")
-    from provisa.core.env_reference_guard import refuse_named_by_org
-
-    refuse_named_by_org(env)  # REQ-1557: a held organization's own key variable is not read
-    endpoint_key = os.environ.get(env) if env else None
-    if env and not endpoint_key:
-        raise ApiError(
-            409,
-            "discovery.endpoint_has_no_key",
-            f"{vendor} has no key: set the {env} environment variable.",
-            vendor=vendor,
-            env=env,
-        )
+    # The key and address the endpoint's calls are made with (REQ-1395, REQ-1557, REQ-1790).
+    key = await endpoint_key(await read_org_api_keys(pool), endpoint)
+    address = endpoint_address(endpoint)
     models = await _run_model_listing(
-        vendor,
-        lambda: fetch_endpoint_models(endpoint["style"], endpoint["base_url"], endpoint_key),
+        vendor, lambda: fetch_endpoint_models(endpoint["style"], address, key)
     )
     return {"vendor": vendor, "models": models}
 
