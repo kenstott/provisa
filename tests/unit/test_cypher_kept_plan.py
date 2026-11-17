@@ -76,6 +76,7 @@ def _ctx(table_id: int = 1) -> SimpleNamespace:
         native_filter_columns={},
         # The per-table parameter facts of a compiled context (label_map reads them).
         parameters={},
+        parameter_names={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),

@@ -19,6 +19,7 @@ other condition on it is refused here, by name, before anything is sent to the s
 
 from __future__ import annotations
 
+import re
 from typing import Any
 
 #: The operator setting that caps the calls one statement makes to a parameterized table.
@@ -109,3 +110,85 @@ class ParameterNotWritten(ParameterBindingRefused):
             f"statement binds to a value and never writes. A write does not make {relationship}."
         )
         self.params = {"parameter": parameter, "relationship": relationship}
+
+
+class ParameterRequired(ParameterBindingRefused):
+    """A read of a table that leaves a required parameter without a value: refused before anything
+    is sent to the source, naming the table and the parameters, under one code on every front."""
+
+    code = "data.parameter_required"
+
+    def __init__(self, table: str, missing: list[str]) -> None:
+        from provisa.core.parameters import missing_reason
+
+        self.table = table
+        self.missing = list(missing)
+        super().__init__(f"Table {table!r} {missing_reason(self.missing)}")
+        self.params = {"table": table, "parameters": ", ".join(self.missing)}
+
+
+# The IR types a parameter's value is checked against before the call, by the base type's
+# spelling (core.ir_types.base_type): each with the value kinds it takes. A type not listed takes
+# any value, which the source alone can judge.
+_INTEGER_TYPES = frozenset(
+    {"smallint", "integer", "int", "bigint", "int2", "int4", "int8", "tinyint", "hugeint"}
+)
+_NUMBER_TYPES = frozenset(
+    {"numeric", "decimal", "real", "double precision", "double", "float", "float4", "float8"}
+)
+_BOOLEAN_TYPES = frozenset({"boolean", "bool"})
+_INTEGER_TEXT = re.compile(r"\s*[+-]?\d+\s*\Z")
+_BOOLEAN_TEXT = frozenset({"true", "false"})
+
+
+def _fits(base: str, value: Any) -> bool:
+    if base in _INTEGER_TYPES:
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, int):
+            return True
+        if isinstance(value, float):
+            return value.is_integer()
+        return isinstance(value, str) and _INTEGER_TEXT.match(value) is not None
+    if base in _NUMBER_TYPES:
+        if isinstance(value, bool):
+            return False
+        if isinstance(value, (int, float)):
+            return True
+        if not isinstance(value, str):
+            return False
+        try:
+            float(value)
+        except ValueError:
+            return False
+        return True
+    if base in _BOOLEAN_TYPES:
+        return isinstance(value, bool) or (
+            isinstance(value, str) and value.strip().lower() in _BOOLEAN_TEXT
+        )
+    return True
+
+
+class ParameterWrongType(ParameterBindingRefused):
+    """A value given to a parameter that its registered type does not take: refused naming the
+    parameter and the type, before the source is called."""
+
+    code = "data.parameter_wrong_type"
+
+    def __init__(self, parameter: str, data_type: str, value: Any) -> None:
+        super().__init__(
+            f"The parameter {parameter} takes a value of type {data_type}; {value!r} is not one."
+        )
+        self.params = {"parameter": parameter, "type": data_type, "value": str(value)}
+
+
+def check_value(parameter: str, data_type: str | None, value: Any) -> None:
+    """Refuse ``value`` for ``parameter`` when its registered ``data_type`` does not take it
+    (:class:`ParameterWrongType`). A value not known yet (None: a ``$N`` bound when the statement
+    runs) and an array parameter's list are the source's to judge."""
+    from provisa.core.ir_types import base_type, type_name
+
+    if data_type is None or value is None or isinstance(value, (list, tuple)):
+        return
+    if not _fits(type_name(base_type(type_name(data_type))), value):
+        raise ParameterWrongType(parameter, data_type, value)

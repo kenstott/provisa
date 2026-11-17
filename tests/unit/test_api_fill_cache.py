@@ -569,7 +569,7 @@ async def test_a_path_parameter_table_read_without_its_value_is_refused_whatever
     """REQ-1986: a path parameter the statement gives no value is refused naming it -- never
     read by a parent's keys through a join on some other column, never skipped as if it held no
     row -- and the endpoint is not called."""
-    from provisa.core.parameters import ParameterRequired
+    from provisa.core.parameter_binding import ParameterRequired
 
     route = respx.route(host="api.test").mock(side_effect=_one_pet)
     _state, read = api_step

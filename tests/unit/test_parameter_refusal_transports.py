@@ -30,7 +30,9 @@ from provisa.core.parameter_binding import (
     ParameterByEqualityOnly,
     ParameterCallsOverCap,
     ParameterConflict,
+    ParameterRequired,
     ParameterUnbound,
+    ParameterWrongType,
 )
 
 _REFUSALS = [
@@ -38,6 +40,8 @@ _REFUSALS = [
     ParameterUnbound("_nf_petId"),
     ParameterConflict("_nf_petId", 5, 6),
     ParameterCallsOverCap("pet_by_id", 3, 2),
+    ParameterRequired("get_pet_by_id", ["petId"]),
+    ParameterWrongType("_nf_petId", "integer", "two"),
 ]
 _each = pytest.mark.parametrize("refusal", _REFUSALS, ids=lambda r: r.code)
 

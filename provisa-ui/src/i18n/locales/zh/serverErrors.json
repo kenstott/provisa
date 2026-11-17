@@ -164,7 +164,9 @@
       "parameter_unbound_on_branch": "参数 {{parameter}} 在 OR 的一个分支中有值,在另一个分支中没有。请在每个分支中为 {{parameter}} 指定值。",
       "parameter_conflict": "参数 {{parameter}} 同时被赋予两个不同的值({{first}} 和 {{second}})。请只给它一个值,或用 IN 或 OR 列出这些值。",
       "parameter_calls_over_cap": "该语句需要对 {{table}} 发起 {{calls}} 次调用(其参数的每个值一次),而一条语句最多发起 {{cap}} 次(设置 {{setting}})。请减少值的数量。",
-      "parameter_not_written": "关系 {{relationship}} 通过参数 {{parameter}} 连接,语句将该参数绑定到一个值,从不写入它。写入操作不会创建 {{relationship}}。"
+      "parameter_not_written": "关系 {{relationship}} 通过参数 {{parameter}} 连接,语句将该参数绑定到一个值,从不写入它。写入操作不会创建 {{relationship}}。",
+      "parameter_required": "表 '{{table}}' 需要参数 {{parameters}}：为每个参数提供一个值（在 SQL 中是对其列的 WHERE 条件，在 GraphQL 中是一个参数）。",
+      "parameter_wrong_type": "参数 {{parameter}} 接受 {{type}} 类型的值；'{{value}}' 不是该类型。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
@@ -673,7 +675,6 @@
       "invalid_limit": "LIMIT {{value}} 不是整数行数：LIMIT 需要 0 或更大的计数，例如 LIMIT 10。",
       "invalid_skip": "SKIP {{value}} 不是整数行数：SKIP 需要 0 或更大的计数，例如 SKIP 10。",
       "engine_refused": "引擎拒绝了查询：{{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} 读取了 {{variable}}，但语句未绑定任何变量：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。",
       "undefined_variable_property": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestion}} 吗？{{owner}} 绑定到 :{{label}}，它有属性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 读取了 {{variable}}，但语句中没有任何部分绑定它：变量由 MATCH 模式、WITH、UNWIND 或 CALL 绑定。此处已绑定：{{bound}}。 您是指 {{suggestions}} 吗？它们各自绑定到具有属性 {{variable}} 的标签。",

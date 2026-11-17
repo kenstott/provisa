@@ -903,11 +903,12 @@ def _refuse_or_drop(exec_sql: str, tn: str, missing: list[str], dropped_tables: 
         drop_union_branches_for_table,
         find_api_table_names,
     )
-    from provisa.core.parameters import ParameterRequired, missing_reason
+    from provisa.core.parameter_binding import ParameterRequired
+    from provisa.core.parameters import missing_reason
 
     reason = missing_reason(missing)
     if tn in find_api_table_names(drop_union_branches_for_table(exec_sql, tn)):
-        raise ParameterRequired(tn, reason)
+        raise ParameterRequired(tn, missing)
     log.warning("[MAT] %s lacks required parameter(s) %s — dropping its union branch", tn, missing)
     dropped_tables[tn] = reason
 
@@ -1606,9 +1607,9 @@ async def _mat_api_ep_table(
             missing = _missing_path_params(ep, args)
             if missing:
                 # REQ-1986: never called without it, and never answered as if it held no row.
-                from provisa.core.parameters import ParameterRequired, missing_reason
+                from provisa.core.parameter_binding import ParameterRequired
 
-                raise ParameterRequired(tn, missing_reason(missing))
+                raise ParameterRequired(tn, missing)
             live = await _mat_fetch_rows_from_rest(
                 ep,
                 col_names,
@@ -1676,9 +1677,9 @@ async def _mat_api_ep_table(
         missing = _missing_path_params(ep, args)
         if missing:
             # REQ-1986: never called without it, and never answered as if it held no row.
-            from provisa.core.parameters import ParameterRequired, missing_reason
+            from provisa.core.parameter_binding import ParameterRequired
 
-            raise ParameterRequired(tn, missing_reason(missing))
+            raise ParameterRequired(tn, missing)
         # REQ-1661 (amended 2026-09-30): a failed live fetch fails the query -- it is never
         # logged and skipped, which left the engine answering from whatever cache it held.
         rows = await _mat_fetch_rows_from_rest(

@@ -24,7 +24,7 @@ import pytest
 
 from provisa.api.data.materialization import _materialize_api_to_engine_cache
 from provisa.api_source.models import ApiColumn, ApiColumnType, ApiEndpoint, ParamType
-from provisa.core.parameters import ParameterRequired
+from provisa.core.parameter_binding import ParameterRequired
 
 TABLE = 7
 
