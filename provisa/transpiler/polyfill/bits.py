@@ -40,6 +40,7 @@ from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite, replacement
+from provisa.transpiler.polyfill.numbers import ch_checked as _checked
 from provisa.transpiler.polyfill.numbers import ch_fail
 
 FAMILY = "bit strings"
@@ -212,10 +213,6 @@ def _feature(name: str, summary: str, kinds: tuple[str, ...], form: str) -> Feat
 def _null_if_any(holes: str, answer: str) -> str:
     nulls = " OR ".join(f"${h} IS NULL" for h in holes)
     return f"if({nulls}, NULL, {answer})"
-
-
-def _checked(raises: list[str], answer: str) -> str:
-    return f"if({' + '.join(raises)} = 0, {answer}, NULL)"
 
 
 _COMPARED = {

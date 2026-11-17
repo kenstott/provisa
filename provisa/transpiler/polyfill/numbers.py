@@ -172,6 +172,17 @@ def ch_fail(sqlstate: str, message: str) -> str:
     return "throwIf(ifNull({condition}, 0), '" + text + "')"
 
 
+def ch_only(form: str | Rewrite) -> dict[str, str | Rewrite]:
+    """ClickHouse's ``form``, every other dialect keeping what it had (the old table's form)."""
+    return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, "clickhouse": form}
+
+
+def ch_checked(raises: list[str], answer: str) -> str:
+    """``answer`` where none of ``raises`` (ch_fail's, each 0 where it does not raise) raises:
+    ClickHouse reads every branch of a condition, so each raise stands beside the answer."""
+    return f"if({' + '.join(raises)} = 0, {answer}, NULL)"
+
+
 #: ClickHouse's name of each type a cast row writes, as a Nullable: every value may be NULL.
 _CLICKHOUSE_TYPES = {
     "DECIMAL(38, 0)": "Nullable(Decimal(38, 0))",

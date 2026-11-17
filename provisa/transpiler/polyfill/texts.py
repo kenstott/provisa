@@ -37,19 +37,16 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.transpiler.polyfill import trino
-from provisa.transpiler.polyfill.grid import DIALECTS, NATIVE, Feature, Limitation, Rule, Side
+from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
+from provisa.transpiler.polyfill.numbers import ch_checked as _checked
 from provisa.transpiler.polyfill.numbers import ch_fail
+from provisa.transpiler.polyfill.numbers import ch_only as _ch
 
 FAMILY = "text functions"
 
 _CH = "clickhouse"
-
-
-def _ch(form: str | Rewrite) -> dict[str, str | Rewrite]:
-    """ClickHouse's ``form``, every other dialect keeping what it had (the old table's form)."""
-    return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, _CH: form}
 
 
 #: The characters of a set, each escaped for a bracket expression.
@@ -97,12 +94,6 @@ TRANSLATE = Feature(
     "Each character found in a set replaced by the one at its place in another, or dropped.",
     read=Side(rules=(Rule("translate($t::text, $f::text, $r::text)", _ch(_TRANSLATED)),)),
 )
-
-
-def _checked(raises: list[str], answer: str) -> str:
-    """``answer`` where none of ``raises`` (ch_fail's, each 0 where it does not raise) raises:
-    ClickHouse reads every branch of a condition, so each raise stands beside the answer."""
-    return f"if({' + '.join(raises)} = 0, {answer}, NULL)"
 
 
 _START = "toInt64($p)"
