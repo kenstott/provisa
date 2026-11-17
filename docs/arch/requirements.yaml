@@ -3673,7 +3673,25 @@
     run outside its scope are named with one action to add them, and Reset to defaults restores the defaults.
     The pickers offer no table a run would leave out (a draft, a system domain''s table); a run whose source
     or target holds no table is refused before it starts, saying why, and a run that leaves out some of
-    the tables named says how many and why.'
+    the tables named says how many and why. (Amended 2026-11-16, A PROPOSED PAIR''S VALUES ARE MEASURED
+    AGAINST EACH OTHER, AND THE THRESHOLD IS THE PERSON''S OWN:) Maintainer 2026-11-16. Every pair a run
+    proposes, foreign key or semantic, is measured on its data, within a stated bound of distinct values
+    read per column: how many of the source column''s distinct values occur in the target column and the
+    reverse, and whether each side''s values are distinct (a key). The measure is shown on the pair''s row,
+    decides its cardinality (many-to-one when the target side is distinct, one-to-one when both are, many-to-many
+    when neither is), and is the evidence the score is given by: a pair whose values are contained in a
+    distinct target scores as a key relationship whatever the model rated it; a pair whose values barely
+    meet scores low however alike its names are. A table that cannot be read in full (a parameterized table)
+    is measured on what it can give and says so. The threshold that decides which rows start ticked is set
+    in the dialog and kept for the person who set it. (Amended 2026-11-16, SUGGESTIONS ARE DECIDED ONLY
+    IN A RUN''S RESULT; THE RELATIONSHIPS PAGE LISTS NONE:) Maintainer 2026-11-16. The Relationships page
+    lists registered relationships only; it has no list of suggestions. A suggestion is decided only in
+    a Discover run''s result table, and a decided one is shown in no list. (Amended 2026-11-16, A PAIR ALREADY
+    JOINED, DIRECTLY OR AS A JUNCTION''S LEG, IS NEVER SUGGESTED; A DECIDED PAIR STAYS DECIDED:) Lead 2026-11-16,
+    following the maintainer''s report that discovery asked again about relationships he had accepted. A
+    pair of columns already joined by a registered relationship, directly or as a leg of a many-to-many
+    relationship through its junction table, is not proposed as a new one. A pair once accepted or marked
+    not to be recommended again keeps that decision: a later run never reopens it as pending.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -45155,7 +45173,10 @@
     first page in bar order, as before. (Amended 2026-11-16, DELETING AN ORGANIZATION AND GRANTING ORG ADMIN
     NEED ORG ADMIN:) Maintainer 2026-11-16 (''both need org_admin''; relayed by the audit session). Deleting
     an organization and granting the org_admin role are done only by an org_admin of that organization;
-    the user_management capability alone allows neither.'
+    the user_management capability alone allows neither. (Amended 2026-11-16, REVOKING ORG_ADMIN NEEDS ORG_ADMIN,
+    AS GRANTING IT DOES:) Maintainer 2026-11-16. Revoking org_admin from a person needs org_admin, as granting
+    it does, so a holder of user_management alone cannot remove an organization''s administrators. The platform
+    administrator keeps the audited recovery of an organization''s administration.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation
@@ -75384,7 +75405,13 @@
     its ends is withdrawn or retired, a derived state with no setting of its own. Graph views (the ERD,
     Explore''s graph, the graph schema) leave withdrawn tables and their relationships out, and show them,
     drawn apart, only to a person who may preview them and asks to; no query language reaches them; relationship
-    discovery never includes them.'
+    discovery never includes them. (Amended 2026-11-16, WITHDRAWN IS THE WAYPOINT OF A MOVE BETWEEN REGIONS;
+    THERE IS NO DRAFT:) Maintainer 2026-11-16, replacing the amendment of this day that kept draft as the
+    internal waypoint of a region move. There is no draft state. A move between regions passes through withdrawn:
+    the holder of data residency for the origin region withdraws the object, so no data is held or read
+    anywhere, and a holder for the destination region puts it back into that region; putting back names
+    a region, within the regions the person''s grant covers. A configuration file carries a withdrawn object
+    as withdrawn, so a promotion carries a move in progress.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
@@ -89164,7 +89191,26 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     by the audit session), after the security audit found a stored view answered from its build with no
     check of the reader. A view read from its stored build applies the reader''s role: its row rules, masks
     and visibility hold as on any governed read. The stored rows are served as they are only to a reader
-    who sees everything.'
+    who sees everything. (Amended 2026-11-16, A STORED TRANSFORM VIEW: THE READER''S ROW RULES FILTER IT,
+    AND AN OUTPUT DERIVED FROM A MASKED INPUT IS MASKED:) Maintainer 2026-11-16, settling how a reader''s
+    rules hold on a view whose columns a transform computes and whose result is stored. The view is built
+    once and stored; it is never recomputed per reader. A reader''s row rules filter its stored rows: the
+    build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
+    from a column the reader sees masked is masked for that reader, as that column is, since it was derived
+    from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
+    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.
+    (Amended 2026-11-16, WHERE THE STORED ROWS CANNOT CARRY A READER''S RULE, THE READ IS REFUSED BY NAME;
+    A RULE CHANGE REBUILDS:) Lead 2026-11-16, consequences of the amendment of this day. Where the stored
+    rows of a transform view cannot carry what a reader''s rule needs, that reader''s read is refused by
+    name, never answered unfiltered: a row rule on a table read inside a derived table or another view,
+    a row rule over a view that groups, aggregates, removes duplicates or combines queries, and a faked
+    mask on an input that feeds an output. A view that calls a code command (REQ-2249) is read under the
+    same rule. A change to a row rule or a mask that changes which input columns the stored rows must keep
+    rebuilds each view it touches, and until that build has published, the view is read as before the change
+    or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
+    CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
+    until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
+    is refused by name; the view is never read under the rules it had before the change.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
