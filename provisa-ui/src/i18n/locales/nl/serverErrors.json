@@ -163,7 +163,9 @@
       "parameter_unbound_on_branch": "De parameter {{parameter}} krijgt in één tak van een OR een waarde en in een andere niet. Geef {{parameter}} in elke tak een waarde.",
       "parameter_conflict": "De parameter {{parameter}} krijgt tegelijk twee verschillende waarden ({{first}} en {{second}}). Geef hem één waarde, of som de waarden op met IN of OR.",
       "parameter_calls_over_cap": "Het statement heeft {{calls}} aanroepen naar {{table}} nodig, één voor elke waarde van zijn parameters, en per statement worden er hoogstens {{cap}} gedaan (instelling {{setting}}). Geef minder waarden op.",
-      "parameter_not_written": "De relatie {{relationship}} koppelt op de parameter {{parameter}}, die een statement aan een waarde bindt en nooit schrijft. Een schrijfactie maakt {{relationship}} niet aan."
+      "parameter_not_written": "De relatie {{relationship}} koppelt op de parameter {{parameter}}, die een statement aan een waarde bindt en nooit schrijft. Een schrijfactie maakt {{relationship}} niet aan.",
+      "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
+      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -652,7 +654,6 @@
       "invalid_limit": "LIMIT {{value}} is geen geheel aantal rijen: LIMIT verwacht een aantal van 0 of meer, bijv. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} is geen geheel aantal rijen: SKIP verwacht een aantal van 0 of meer, bijv. SKIP 10.",
       "engine_refused": "De engine heeft de query geweigerd: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL.",
       "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
       "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",

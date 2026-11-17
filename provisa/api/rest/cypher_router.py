@@ -50,8 +50,7 @@ import re as _re
 from sqlalchemy import select
 
 from provisa.core import request_deadline
-from provisa.core.parameter_binding import ParameterBindingRefused
-from provisa.core.parameters import ParameterRequired
+from provisa.core.parameter_binding import ParameterBindingRefused, ParameterRequired
 from provisa.api.errors import ApiError
 from provisa.core.read_refusal import ReadRefused
 from provisa.executor.result import QueryResult
@@ -341,13 +340,9 @@ async def _governed_plan(semantic_sql: str, role_id: str, **route: Any) -> Any:
     except PermissionError as exc:
         return cypher_error(403, "cypher.permission_denied", str(exc), reason=str(exc))
     except ParameterBindingRefused as exc:
-        # REQ-1986: a condition that binds a parameter no value, under the refusal's own code.
+        # REQ-1986: a condition that binds a parameter no value, or a read leaving a required one
+        # without a value, under the refusal's own code.
         return cypher_error(400, exc.code, str(exc), **exc.params)
-    except ParameterRequired as exc:
-        # REQ-1986: a read leaving a required parameter without a value -- the caller's to give.
-        return cypher_error(
-            400, "cypher.parameter_required", str(exc), table=exc.table, reason=str(exc)
-        )
     except Exception as exc:
         log.exception("Cypher governance/routing failed")
         return cypher_error(

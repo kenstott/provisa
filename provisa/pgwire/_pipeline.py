@@ -1968,6 +1968,14 @@ async def govern_statement(
     normalized_sql = _front.normalized_sql
     _parsed_input = _front.parsed
     _metric_semantic_sql = _front.metric_semantic_sql
+    # REQ-1986: a parameter is bound under its own name and its alias alike; from here on the
+    # statement names each by its column, which governance and the binder read it by.
+    from provisa.compiler.nf_extractor import name_parameters_by_column
+
+    if name_parameters_by_column(_parsed_input, ctx):
+        normalized_sql = _parsed_input.sql(dialect="postgres")
+        if _metric_semantic_sql is not None:
+            _metric_semantic_sql = normalized_sql
 
     _reject_physical_source_refs(_parsed_input, state)
     _reject_view_writes(_parsed_input, state)  # REQ-1157: view/MV-backed relations are query-only

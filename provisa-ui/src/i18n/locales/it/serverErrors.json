@@ -163,7 +163,9 @@
       "parameter_unbound_on_branch": "Il parametro {{parameter}} riceve un valore in un ramo di un OR e nessuno in un altro. Dai un valore a {{parameter}} in ogni ramo.",
       "parameter_conflict": "Il parametro {{parameter}} riceve due valori diversi insieme ({{first}} e {{second}}). Dagli un solo valore, oppure elenca i valori con IN o OR.",
       "parameter_calls_over_cap": "L'istruzione richiede {{calls}} chiamate a {{table}}, una per ogni valore dato ai suoi parametri, e per un'istruzione ne vengono fatte al massimo {{cap}} (impostazione {{setting}}). Indica meno valori.",
-      "parameter_not_written": "La relazione {{relationship}} si unisce sul parametro {{parameter}}, che un'istruzione associa a un valore e non scrive mai. Una scrittura non crea {{relationship}}."
+      "parameter_not_written": "La relazione {{relationship}} si unisce sul parametro {{parameter}}, che un'istruzione associa a un valore e non scrive mai. Una scrittura non crea {{relationship}}.",
+      "parameter_required": "La tabella '{{table}}' richiede il parametro o i parametri {{parameters}}: dai un valore a ciascuno (una condizione WHERE sulla sua colonna in SQL, un argomento in GraphQL).",
+      "parameter_wrong_type": "Il parametro {{parameter}} accetta un valore di tipo {{type}}; '{{value}}' non lo è."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adattatore per '{{source_type}}' non implementa discover_schema",
@@ -652,7 +654,6 @@
       "invalid_limit": "LIMIT {{value}} non è un numero intero di righe: LIMIT accetta un conteggio da 0 in su, ad es. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} non è un numero intero di righe: SKIP accetta un conteggio da 0 in su, ad es. SKIP 10.",
       "engine_refused": "Il motore ha rifiutato la query: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} legge {{variable}}, ma l'istruzione non vincola alcuna variabile: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL.",
       "undefined_variable_property": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestion}}? {{owner}} è vincolata a :{{label}}, che ha una proprietà {{variable}}.",
       "undefined_variable_properties": "{{clause}} legge {{variable}}, che nulla nell'istruzione vincola: una variabile è vincolata da un pattern MATCH, WITH, UNWIND o CALL. Vincolate qui: {{bound}}. Intendevi {{suggestions}}? Ciascuna è vincolata a un'etichetta con una proprietà {{variable}}.",

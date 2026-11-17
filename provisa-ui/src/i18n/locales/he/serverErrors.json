@@ -163,7 +163,9 @@
       "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
       "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
       "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים.",
-      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}."
+      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}.",
+      "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
+      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -652,7 +654,6 @@
       "invalid_limit": "LIMIT {{value}} אינו מספר שלם של שורות: LIMIT מקבל מספר של 0 ומעלה, למשל LIMIT 10.",
       "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
       "engine_refused": "המנוע דחה את השאילתה: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL.",
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
