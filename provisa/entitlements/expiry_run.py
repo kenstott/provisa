@@ -120,8 +120,9 @@ def _detail(d: Due) -> dict:
     }
 
 
-async def run(db: "Database", now: datetime) -> Run:
-    """Emit ``db``'s due events at ``now`` into its administrative trail; what was due."""
+async def run(db: "Database", org_id: str, now: datetime) -> Run:
+    """Emit ``db``'s due events at ``now`` into the administrative trail of ``org_id``, the org
+    ``db`` holds; what was due."""
     from provisa.core.org_membership import record_admin_action
 
     async with db.acquire() as conn:
@@ -131,7 +132,12 @@ async def run(db: "Database", now: datetime) -> Run:
     for action, events in ((EXPIRING_SOON, outcome.expiring), (EXPIRED, outcome.expired)):
         for d in events:
             await record_admin_action(
-                db, action=action, actor_id="platform", subject_id=d.principal, detail=_detail(d)
+                db,
+                org_id=org_id,
+                action=action,
+                actor_id="platform",
+                subject_id=d.principal,
+                detail=_detail(d),
             )
     return outcome
 
@@ -251,7 +257,10 @@ async def run_org(org_id: str) -> Outcome:
         assert db is not None, "the org's model store is bound with its runtime"
         assert state.config is not None, "the deployment's configuration is loaded"
         notify = bool(state.config.mail.provider)
-        outcome = Outcome(await sweep(db, notify=notify), await run(db, datetime.now(UTC)))
+        outcome = Outcome(
+            await sweep(db, org_id=org_id, notify=notify),
+            await run(db, org_id, datetime.now(UTC)),
+        )
         if notify:
             await _tell(db, org_id, outcome)
     finally:

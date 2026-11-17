@@ -90,7 +90,6 @@ jobs:
       - name: Set up Node.js
         uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
 
       # provisa-notebook's build takes Pyodide from this directory, not from its CDN.
@@ -155,7 +154,6 @@ jobs:
       - name: Set up Node.js
         uses: ./.github/actions/setup-ui
         with:
-          node-version: "20"
           install: "false"
 
       # provisa-notebook's build takes Pyodide from this directory, not from its CDN.

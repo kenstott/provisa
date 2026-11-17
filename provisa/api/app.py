@@ -6029,9 +6029,9 @@ def create_app() -> FastAPI:
 
         logs = list(buffer_handler.buffer)
         if pattern:
-            import re
+            from provisa.api.debug_log_filter import lines_matching
 
-            logs = [log for log in logs if re.search(pattern, log)]
+            logs = lines_matching(pattern, logs)  # bounded: the pattern is the client's
 
         return {"count": len(logs), "logs": logs[-limit:]}
 

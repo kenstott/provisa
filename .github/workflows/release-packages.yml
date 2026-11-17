@@ -126,10 +126,8 @@ jobs:
         with:
           python-version: '3.12'
 
-      - name: Set up Node 20 (vite build)
+      - name: Set up Node (vite build)
         uses: ./.github/actions/setup-ui
-        with:
-          node-version: "20"
 
       # `npm run build`'s prebuild hook renders the offline MkDocs site into the UI's build; without
       # mkdocs on PATH it fails with ENOENT.

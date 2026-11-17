@@ -27,6 +27,7 @@ from provisa.api.admin._platform_guard import (
 from provisa.api.errors import ApiError
 from provisa.api.redaction_load import load_deployment_rules, refresh_org
 from provisa.security import redaction
+from provisa.security.sandbox_egress import held
 
 router = APIRouter()
 
@@ -41,12 +42,14 @@ class RulesBody(BaseModel):
     rules: list[RuleBody]
 
 
-def _parsed(body: RulesBody, source: str) -> list[dict]:
+def _parsed(body: RulesBody, source: str, *, server_references: bool = True) -> list[dict]:
+    """The rules, each checked (:func:`redaction.parse_rules`); one refused is refused by name.
+    A held org's rules may not reference the server's environment."""
     raw = [r.model_dump() for r in body.rules]
     try:
-        rules = redaction.parse_rules(raw, source)
+        rules = redaction.parse_rules(raw, source, server_references=server_references)
     except redaction.RuleInvalid as exc:
-        raise ApiError(400, "redaction.rule_invalid", str(exc), rule=exc.rule, why=exc.why) from exc
+        raise ApiError(400, exc.code, str(exc), rule=exc.rule, why=exc.why) from exc
     return [{"name": r.name, "pattern": r.pattern, "reference": r.reference} for r in rules]
 
 
@@ -78,7 +81,7 @@ async def put_org_redaction(body: RulesBody, request: Request) -> dict:
     from provisa.core.org_settings import write_org_overrides
 
     org_id = require_active_org_id(request)
-    rules = _parsed(body, "org")
+    rules = _parsed(body, "org", server_references=not held(org_id))
     assert state.model_db is not None
     await write_org_overrides(
         state.model_db,

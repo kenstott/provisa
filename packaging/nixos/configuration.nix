@@ -38,7 +38,7 @@ in
   environment.systemPackages = with pkgs; [
     git
     uv
-    nodejs_22
+    nodejs_24
     maven
     # tests/unit renders the chart with `helm template`.
     kubernetes-helm

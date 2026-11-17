@@ -22,7 +22,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 from sqlalchemy import delete as _delete, func, insert, select, update
 
-from provisa.api.admin._platform_guard import require_role_grantable
+from provisa.api.admin._platform_guard import require_held_roles_removable, require_roles_removable
 from provisa.api.admin.capabilities import require_capability_request
 from provisa.api.errors import ApiError
 from provisa.auth.role_grants import regrant
@@ -101,11 +101,7 @@ def _refuse_platform_role(request: Request, role_ids: list[str]) -> None:
     a platform administrator. The rule is ``rights.check_role_grant`` — the one every grant path
     asks — read against the role's resolved capabilities, so no role name is tested.
     """
-    from provisa.api.app import state
-
-    roles = getattr(state, "roles", {})
-    for role_id in role_ids:
-        require_role_grantable(request, role_id, (roles.get(role_id) or {}).get("capabilities"))
+    require_roles_removable(request, role_ids)
 
 
 @router.post("/")
@@ -211,6 +207,17 @@ async def update_user(user_id: str, body: UpdateUserBody, request: Request):
     values["updated_at"] = func.now()
     pool = _admin_pool(request)
     async with pool.acquire() as conn:
+        if body.roles is not None:
+            # REQ-1327 (amended 2026-11-16): rewriting the list takes away the roles it drops, and
+            # removing a role asks what granting it asks (rights.check_role_grant).
+            held = (
+                await conn.execute_core(
+                    select(local_users.c.roles).where(local_users.c.id == user_id)
+                )
+            ).fetchone()
+            if held is None:
+                raise ApiError(404, "users.user_not_found", "User not found")
+            _refuse_platform_role(request, sorted(set(held[0]) - set(body.roles)))
         result = await conn.execute_core(
             update(local_users)
             .where(local_users.c.id == user_id)
@@ -319,6 +326,7 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
             409, "users.no_active_org", "no org is bound to this request; sign in to an org first"
         )
     model_db = await _org_model_db(org_id)
+    await require_held_roles_removable(request, model_db, user_id)  # REQ-1327
     try:
         await assert_not_last_org_admin(model_db, user_id, org_id)
     except LastOrgAdminError as exc:
@@ -334,6 +342,7 @@ async def delete_user(user_id: str, request: Request):  # REQ-1302, REQ-1305, RE
         raise ApiError(404, "users.user_not_found", "User not found")
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="remove_member",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id,
