@@ -517,9 +517,21 @@ const controlPlaneEnvFor = (dataDir: string) => {
   return env;
 };
 const controlPlaneEnv = controlPlaneEnvFor(E2E_DATA_DIR);
-// global-teardown stops the embedded servers it finds here (none on the compose Postgres).
-process.env.PROVISA_E2E_EMBEDDED_CONTROL_PLANES =
-  pgPort === null ? CORE_BACKENDS.map((b) => embeddedControlPlaneDir(b.dataDir)).join(",") : "";
+// Each embedded control plane is stopped after the backend on it. Playwright tears its webServers
+// down after globalTeardown, in the reverse of their order: stopped by globalTeardown, a control
+// plane went while its backend still ran, whose replica housekeeping then failed on the gone socket
+// (run 43995449668). These entries come first in the webServer list, so they go last: each waits,
+// and on the SIGTERM of its graceful shutdown stops its control plane and exits. None on the compose
+// Postgres, which is not the run's to stop.
+const embeddedControlPlaneStops =
+  pgPort === null
+    ? CORE_BACKENDS.map((b) => ({
+        command:
+          `cd .. && trap '.venv/bin/python -m provisa.core.control_plane_pg stop ` +
+          `"${embeddedControlPlaneDir(b.dataDir)}"; exit' TERM; while :; do sleep 60 & wait $!; done`,
+        gracefulShutdown: { signal: "SIGTERM" as const, timeout: 60000 },
+      }))
+    : [];
 
 export default defineConfig({
   globalSetup: "./e2e/global-setup.ts",
@@ -559,6 +571,7 @@ export default defineConfig({
   webServer: ONLY_REGIONS_DEMO
     ? []
     : [
+        ...embeddedControlPlaneStops,
         {
           command: "npm run dev",
           port: E2E_UI_PORT,

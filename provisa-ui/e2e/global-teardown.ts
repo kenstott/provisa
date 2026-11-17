@@ -5,7 +5,6 @@
 // This source code is licensed under the Business Source License 1.1
 // found in the LICENSE file in the root directory of this source tree.
 
-import { execFileSync } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
 import { fileURLToPath } from "url";
@@ -24,16 +23,9 @@ export default async function globalTeardown() {
   // removes nothing.
   removeNeo4jContainer();
   removeDemoSources();
-  // The core lane's embedded control planes (playwright.config.ts): each is a persistent server
-  // that outlives the run unless it is stopped.
-  for (const dir of (process.env.PROVISA_E2E_EMBEDDED_CONTROL_PLANES ?? "").split(",")) {
-    if (!dir) continue;
-    execFileSync(
-      path.resolve(__dirname, "../../.venv/bin/python"),
-      ["-m", "provisa.core.control_plane_pg", "stop", dir],
-      { cwd: path.resolve(__dirname, "../.."), stdio: "inherit" },
-    );
-  }
+  // The core lane's embedded control planes are stopped after their backends, by webServer entries
+  // of their own (playwright.config.ts embeddedControlPlaneStops), not here: Playwright stops the
+  // backends after this teardown.
 
   if (fs.existsSync(SNAPSHOT_PATH)) {
     fs.copyFileSync(SNAPSHOT_PATH, CONFIG_PATH);
