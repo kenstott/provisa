@@ -1678,6 +1678,20 @@ ANSWERED = [
         "SELECT pg_catalog.\"in_range\"(2.5::numeric, 2.5::numeric, '0'::numeric, true::boolean, true::boolean) AS v",
         "t",
     ),
+    ('SELECT pg_catalog."to_hex"(NULL::integer) AS v', None),
+    ('SELECT pg_catalog."to_hex"(3::integer) AS v', "3"),
+    ('SELECT pg_catalog."to_hex"((-7)::integer) AS v', "fffffff9"),
+    ('SELECT pg_catalog."to_hex"(42::integer) AS v', "2a"),
+    ("SELECT pg_catalog.\"to_hex\"('-2147483648'::integer) AS v", "80000000"),
+    ("SELECT pg_catalog.\"to_hex\"('2147483647'::integer) AS v", "7fffffff"),
+    ("SELECT pg_catalog.\"to_hex\"('0'::integer) AS v", "0"),
+    ('SELECT pg_catalog."to_hex"(NULL::bigint) AS v', None),
+    ('SELECT pg_catalog."to_hex"(3::bigint) AS v', "3"),
+    ('SELECT pg_catalog."to_hex"((-7)::bigint) AS v', "fffffffffffffff9"),
+    ('SELECT pg_catalog."to_hex"(5000000000::bigint) AS v', "12a05f200"),
+    ("SELECT pg_catalog.\"to_hex\"('-9223372036854775808'::bigint) AS v", "8000000000000000"),
+    ("SELECT pg_catalog.\"to_hex\"('9223372036854775807'::bigint) AS v", "7fffffffffffffff"),
+    ("SELECT pg_catalog.\"to_hex\"('0'::bigint) AS v", "0"),
     ("SELECT '1.4e-45'::real", "1e-45"),
     ("SELECT 0.1::real", "0.1"),
     ("SELECT '-7.125'::real", "-7.125"),
@@ -1909,6 +1923,8 @@ RAISED = [
         'SELECT pg_catalog."in_range"((-7.125)::numeric, (-7.125)::numeric, (-7.125)::numeric, false::boolean, false::boolean) AS v',
         "22013",
     ),
+    ("SELECT pg_catalog.\"to_hex\"('2147483648'::integer) AS v", "22003"),
+    ("SELECT pg_catalog.\"to_hex\"('9223372036854775808'::bigint) AS v", "22003"),
     ("SELECT '3.4028236e+38'::real", "22003"),
     ("SELECT '1e-46'::real", "22003"),
     ("SELECT pg_catalog.power(0::double precision, (-1)::double precision)", "2201F"),
@@ -2020,6 +2036,19 @@ def test_a_real_literal_is_the_nearest_real_a_tie_to_the_even_one(bits):
 def test_a_real_past_the_type_is_none():
     assert nearest_real(decimal.Decimal("3.4028236e+38")) is None
     assert math.isfinite(nearest_real(decimal.Decimal("3.4028235e+38")) or math.inf)
+
+
+@pytest.mark.parametrize("name", ["to_hex", "to_oct", "to_bin"])
+@pytest.mark.parametrize(
+    ("literal", "type_name"),
+    [("'2147483648'", "integer"), ("'9223372036854775808'", "bigint")],
+)
+def test_a_literal_past_its_type_raises_in_a_rule_of_no_pattern(name, literal, type_name):
+    """to_hex and its kin are rules of no pattern, which bind the argument as written: the
+    literal is read there as PostgreSQL reads it, where ClickHouse's cast answered NULL."""
+    with pytest.raises(RowRefused) as raised:
+        transpile(f'SELECT pg_catalog."{name}"({literal}::{type_name}) AS v', "clickhouse")
+    assert raised.value.sqlstate == "22003"
 
 
 #: A numeric's call PostgreSQL answers in numeric's exact digits: refused by name, as it was, where
