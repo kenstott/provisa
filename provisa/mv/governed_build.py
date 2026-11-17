@@ -245,7 +245,7 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
     from provisa.transpiler.router import Route
 
     if mv.semantic_sql is not None:
-        semantic = mv.semantic_sql
+        semantic = _with_kept_inputs(state, mv, mv.semantic_sql)
     elif mv.join_pattern is not None:
         semantic = await _join_semantic_sql(state, mv)
     else:
@@ -264,6 +264,21 @@ async def _governed_plan(state: Any, mv: "MVDefinition", *, route_hint: str | No
     if plan.exec_params:
         raise ViewNotBuildable(mv.id, "its definition carries bound parameters")
     return plan
+
+
+def _with_kept_inputs(state: Any, mv: "MVDefinition", semantic: str) -> str:
+    """REQ-2131 (amended 2026-11-16): a view applying a column transform is built once and stored,
+    and a reader's row rules filter its stored rows: its build keeps, beside its columns, every
+    input column a role's row rule on one of its inputs reads (``transform_view_rules``)."""
+    from provisa.codesource.columns_fold import called
+    from provisa.compiler.stage2 import context_table_map
+    from provisa.mv.transform_view_rules import kept_inputs, roles_rules, with_rule_inputs
+
+    transforms = getattr(state, "column_transforms", None) or {}
+    if mv.view_table is None or not called(semantic, transforms):
+        return semantic
+    kept = kept_inputs(semantic, context_table_map(state.view_context), roles_rules(state))
+    return with_rule_inputs(semantic, kept)
 
 
 async def _join_semantic_sql(state: Any, mv: "MVDefinition") -> str:
