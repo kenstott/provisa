@@ -133,7 +133,7 @@ def cypher_to_sql(  # REQ-345, REQ-347, REQ-352
 
 #: The keywords sqlglot reads back as other than a column (``like``, ``qualify``) when its own
 #: SQL text writes them bare. Fixed by the pinned sqlglot (pyproject: sqlglot>=30.23,<30.24);
-#: tests/unit/test_cypher_keyword_table.py probes every Postgres tokenizer keyword and fails when
+#: tests/unit/test_cypher_first_translation.py probes every Postgres tokenizer keyword and fails when
 #: a sqlglot change makes this set differ, so a process never probes at its first translation.
 SQL_KEYWORDS: frozenset[str] = frozenset(
     {
