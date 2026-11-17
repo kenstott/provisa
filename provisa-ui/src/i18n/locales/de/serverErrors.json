@@ -899,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
       "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} liegt außerhalb des hochgeladenen Projekts; ein Projekt liest nur seine eigenen Dateien.",
+      "filter_value_refused": "{{value}} kann kein Wert in einem Berechtigungsfilter sein: Ein Wert ist eine Zeichenkette, eine Zahl, true, false, null, eine Liste davon oder eine Sitzungsvariable.",
+      "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     }
   }
 }

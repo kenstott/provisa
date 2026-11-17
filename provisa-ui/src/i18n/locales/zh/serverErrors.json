@@ -899,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} 的预检未运行：在此组织中它只在受限进程中运行，而该进程无法启动（{{reason}}）。",
       "confined_failed": "{{subject}} 的预检未返回结论：其受限进程已先行结束（{{reason}}）。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} 位于上传的项目之外；项目只读取自身的文件。",
+      "filter_value_refused": "{{value}} 不能作为权限过滤器中的值：值是字符串、数字、true、false、null、它们的列表或会话变量。",
+      "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
     }
   }
 }

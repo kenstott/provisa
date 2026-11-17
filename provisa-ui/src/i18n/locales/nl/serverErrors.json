@@ -899,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
       "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} ligt buiten het geüploade project; een project leest alleen zijn eigen bestanden.",
+      "filter_value_refused": "{{value}} kan geen waarde in een machtigingsfilter zijn: een waarde is een tekenreeks, een getal, true, false, null, een lijst daarvan of een sessievariabele.",
+      "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     }
   }
 }

@@ -899,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "Le contrôle préalable de {{subject}} n'a pas été exécuté : dans cette organisation, il ne s'exécute que dans un processus confiné, et aucun n'a pu être démarré ({{reason}}).",
       "confined_failed": "Le contrôle préalable de {{subject}} n'a rendu aucun verdict : son processus confiné s'est terminé avant ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} est hors du projet téléversé ; un projet ne lit que ses propres fichiers.",
+      "filter_value_refused": "{{value}} ne peut pas être une valeur dans un filtre d'autorisation : une valeur est une chaîne, un nombre, true, false, null, une liste de ceux-ci ou une variable de session.",
+      "filter_operator_refused": "{{operator}} n'est pas un opérateur avec lequel un filtre d'autorisation peut être converti."
     }
   }
 }
