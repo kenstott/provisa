@@ -169,6 +169,23 @@ describe("plan diagram controls", () => {
     }
   });
 
+  it("keeps Mermaid 11's look: classic look, dagre layout, 200px wrapping, no minimum node width", async () => {
+    initialize.mockClear();
+    const { unmount } = await drawn(<MermaidDiagram chart={LARGE} />);
+    const cfg = initialize.mock.calls.at(-1)?.[0] as {
+      look: string;
+      layout: string;
+      theme: string;
+      flowchart: { htmlLabels: boolean; wrappingWidth: number; minNodeWidth: number };
+    };
+    // Mermaid 12's flowchart defaults are the neo look, ELK, 120px wrapping and a 120px minimum.
+    expect(cfg.look).toBe("classic");
+    expect(cfg.layout).toBe("dagre");
+    expect(cfg.theme).toBe("base");
+    expect(cfg.flowchart).toEqual({ htmlLabels: false, wrappingWidth: 200, minNodeWidth: 0 });
+    unmount();
+  });
+
   it("a click on a node names it; the node selected is marked", async () => {
     const onNodeClick = vi.fn();
     const { container, rerender } = await drawn(
