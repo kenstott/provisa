@@ -66652,7 +66652,11 @@
     the same day. When Jev re-scores a discovery run''s proposals it is asked about the tables and columns
     by name, with their descriptions, classes, tags and glossary terms; what it scores under the threshold
     is reported as Jev''s, with both the model''s and Jev''s scores shown on the row, never as the model''s
-    confidence.'
+    confidence. (Amended 2026-11-16, THE MODEL''S SCORE DECIDES THE STARTING TICK; JEV IS SENT NO SAMPLE
+    VALUES:) Maintainer 2026-11-16, two decisions on the amendment above. In a discovery run''s result a
+    row starts ticked by the model''s score; Jev''s score is shown beside it and does not replace it. Jev
+    is sent no sample values: the tables'' and columns'' names, descriptions, classes, tags and glossary
+    terms only.'
   use_case: MCP-connected agents can delegate typed decision evaluation to TypeSafe AI's Jev service instead
     of reasoning through decisions internally, improving confidence scores and decision consistency. The
     optional registration pattern allows deployments to offer the tool only when an API key is available,
