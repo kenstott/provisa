@@ -36,6 +36,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote, urlsplit
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.codesource.bundle import BundleRefused, content_hash, unpack
 from provisa.core.package_registries import GIT, Resolved
 
@@ -168,7 +169,9 @@ def http_get(url: str, headers: dict[str, str], ca_bundle: str | None = None) ->
             url, headers=headers, follow_redirects=True, timeout=300.0, verify=verify
         )
     except httpx.HTTPError as exc:
-        raise BundleRefused("fetch_failed", f"could not fetch {url}: {exc}", url=url) from exc
+        raise BundleRefused(
+            "fetch_failed", f"could not fetch {url}: {describe_http_failure(exc)}", url=url
+        ) from exc
     if response.status_code != 200:
         raise BundleRefused(
             "fetch_failed", f"could not fetch {url}: HTTP {response.status_code}", url=url

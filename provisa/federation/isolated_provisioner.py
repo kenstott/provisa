@@ -37,6 +37,8 @@ from typing import Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
+
 log = logging.getLogger(__name__)
 
 # Docker Engine API over the mounted socket. The host part of the URL is ignored by the UDS
@@ -218,7 +220,7 @@ async def _wait_until_ready(host: str, port: int, timeout: float) -> None:
                     return
                 last = f"HTTP {resp.status_code}"
             except httpx.HTTPError as exc:
-                last = str(exc)
+                last = describe_http_failure(exc)
             if asyncio.get_running_loop().time() >= deadline:
                 break
             await asyncio.sleep(2.0)
