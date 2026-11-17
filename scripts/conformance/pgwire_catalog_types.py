@@ -368,16 +368,10 @@ def provisa_config(pg_port: int, pg_dsn: str) -> dict[str, Any]:
             },
             "assignments_source": "provisa",
             "default_assignments": [{"domain_id": "*", "role_id": "org_admin"}],
-            # The Cypher TCK's session user acts as tck_empty (scripts/conformance/cypher_tck_bolt.py):
-            # a Bolt sign-in holds the role its claims map to, not the control plane's assignments.
-            "role_mapping": [
-                {
-                    "claim": "username",
-                    "type": "exact",
-                    "value": TCK_SESSION_USER,
-                    "role": "tck_empty",
-                }
-            ],
+            # A job's extra access adds its rules (write_config). The Cypher TCK's session user is
+            # assigned tck_empty instead (.github/workflows/conformance-cypher.yml): the control
+            # plane holds the assignments, so a mapped role it does not hold is not one (REQ-1263).
+            "role_mapping": [],
             # The role a pgwire login acts as when its user names none.
             "default_role": "org_admin",
         },
