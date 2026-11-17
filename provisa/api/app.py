@@ -4824,6 +4824,16 @@ def create_app() -> FastAPI:
             content={"detail": str(exc), "code": exc.code, "params": exc.params},
         )
 
+    from provisa.core.source_uploads import LocalPathRefused as _LocalPathRefused
+
+    @app.exception_handler(_LocalPathRefused)
+    async def _local_path_refused_handler(_req: _Request, exc: _LocalPathRefused):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1997: a held org's source names a place on the server's own disk; not read.
+        return _JSONResponse(
+            status_code=403,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
+
     @app.exception_handler(_SandboxDiskFull)
     async def _sandbox_disk_full_handler(_req: _Request, exc: _SandboxDiskFull):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
         # REQ-2006: a demo sandbox's folder is at its disk cap; the write was not made.
@@ -4932,6 +4942,17 @@ def create_app() -> FastAPI:
         from provisa.api.errors import secret_name_refused_response
 
         return secret_name_refused_response(exc)
+
+    from provisa.core.org_secrets import AiKeyRequired as _AiKeyRequired
+
+    @app.exception_handler(_AiKeyRequired)
+    async def _ai_key_required_handler(_req: _Request, exc: _AiKeyRequired):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1395: an AI call with no key to make it with (on a server of many organizations,
+        # none the organization stored). 409: nothing was sent; the answer says where to add one.
+        return _JSONResponse(
+            status_code=409,
+            content={"detail": str(exc), "code": exc.code, "params": exc.params},
+        )
 
     from provisa.core.operator_floor import OperatorFloorError as _OperatorFloorError
 

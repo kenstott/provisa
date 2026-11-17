@@ -48,6 +48,13 @@ from provisa.api.mcp import admin_api, model_tool_specs, polly_pages, polly_usag
 from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
+from provisa.core.org_secrets import (
+    AiKeyRequired,
+    endpoint_provider_key,
+    provider_key,
+    read_org_api_keys,
+)
+from provisa.core.secrets_providers import many_organisations
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
 # caller's identity and injected at execution, so the model can never select or escalate it.
@@ -1420,9 +1427,10 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
                 return False, f"the {vendor!r} endpoint needs {key_env} set"
     elif vendor == "ollama":
         pass  # REQ-1797: no credential — a local server, reachable at OLLAMA_API_URL or the default
-    elif vendor == "google":
+    elif vendor == "google" and not many_organisations():
         # REQ-1797: aisuite's Google provider is Vertex AI, not the simpler Gemini API-key auth —
-        # it needs a GCP project + service-account credentials, not one key.
+        # it needs a GCP project + service-account credentials, not one key. They are the
+        # deployment's own: on a server of many organizations the vendor is refused below.
         missing = [
             v
             for v in ("GOOGLE_PROJECT_ID", "GOOGLE_REGION", "GOOGLE_APPLICATION_CREDENTIALS")
@@ -1431,13 +1439,22 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
         if missing:
             return False, f"google (Vertex AI) needs {', '.join(missing)} set"
     else:
-        env_var = {"anthropic": "ANTHROPIC_API_KEY", "openai": "OPENAI_API_KEY"}.get(vendor)
-        if env_var and not os.environ.get(env_var):
-            return False, f"{env_var} is not set"
+        try:
+            await _vendor_key(state, vendor)
+        except AiKeyRequired as refused:
+            return False, str(refused)
 
     if vendor != "anthropic" and not await _resolve_model(state):
         return False, f"no model is set for vendor {vendor!r}"
     return True, ""
+
+
+async def _vendor_key(state: Any, vendor: str) -> str | None:
+    """The key one of aisuite's named vendors is called with for the acting org (REQ-1395,
+    provisa.core.org_secrets.provider_key): refused when it has none to use."""
+    model_db = getattr(state, "model_db", None)
+    stored = await read_org_api_keys(model_db) if model_db is not None else {}
+    return provider_key(stored, vendor)
 
 
 async def _resolve_model(state: Any) -> str | None:
@@ -2084,7 +2101,9 @@ async def _run_chat_anthropic(
     Anthropic-only hosted web_search/web_fetch tools. Unchanged behavior from before REQ-1797."""
     from anthropic import AsyncAnthropic, omit
 
-    client = AsyncAnthropic()
+    # REQ-1395: the key is handed to the client, which constructed with none reads the
+    # environment's itself.
+    client = AsyncAnthropic(api_key=await _vendor_key(state, "anthropic"))
     model = await _resolve_model(state)
     assert model is not None  # _llm_configured() guarantees this for vendor == "anthropic"
     refused = await _budget_refusal(budget, model)
@@ -2330,7 +2349,8 @@ async def _resolve_aisuite_routing(state: Any, vendor: str, model: str) -> tuple
     endpoints = {ep["id"]: ep for ep in (cfg.get("ai_endpoints") or [])}
     endpoint = endpoints.get(vendor)
     if endpoint is None:
-        return f"{vendor}:{model}", {}
+        key = await _vendor_key(state, vendor)
+        return f"{vendor}:{model}", ({vendor: {"api_key": key}} if key else {})
 
     style = endpoint["style"]  # "openai" | "anthropic"
     from provisa.core.request_context import current_org
@@ -2344,6 +2364,7 @@ async def _resolve_aisuite_routing(state: Any, vendor: str, model: str) -> tuple
     )
     resolved_base_url = await _resolve_config_field(endpoint["base_url"])
     provider_config: dict[str, Any] = {"base_url": resolved_base_url}
+    api_key = endpoint_provider_key(api_key)
     if api_key:
         provider_config["api_key"] = api_key
     elif style == "openai":
@@ -2435,7 +2456,9 @@ async def _run_chat_aisuite(
         yield {"type": "done"}
         return
     provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
-    cap = output_cap(provider_key, custom_endpoint=bool(provider_configs))
+    # An endpoint is routed with its base_url; a named vendor with its key alone.
+    at_endpoint = "base_url" in provider_configs.get(provider_key, {})
+    cap = output_cap(provider_key, custom_endpoint=at_endpoint)
     openai_tools = [_to_openai_tool(t) for t in _TOOLS + _CLIENT_TOOLS]
     system_text = _system_prompt(current_route)
     # REQ-2012: an Anthropic model behind an OpenAI-wire gateway (OpenRouter) caches only where a

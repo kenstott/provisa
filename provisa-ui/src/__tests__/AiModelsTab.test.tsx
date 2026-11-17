@@ -107,6 +107,7 @@ function state(overrides: Partial<AiModelsState> = {}): AiModelsState {
     model_limits: KNOWN_LIMITS,
     nl: { rate_limit: 60 },
     api_keys_set: { anthropic: false },
+    deployment_keys: true,
     restart_required_note: "AI model settings take effect after a service restart.",
     ...overrides,
   };
@@ -218,6 +219,36 @@ describe("AiModelsTab", () => {
     fireEvent.click(screen.getByTestId("ai-models-save"));
     await waitFor(() => expect(mockSet).toHaveBeenCalledTimes(1));
     expect(mockSet.mock.calls[0][0].api_keys).toBeUndefined();
+  });
+
+  it("says the deployment default is used only where the deployment's keys are", async () => {
+    mockFetch.mockResolvedValue(state({ api_keys_set: { anthropic: false, jev: false } }));
+    const { unmount } = render(<AiModelsTab />);
+    await waitFor(() =>
+      expect(screen.getByTestId("ai-models-anthropic-key-status")).toHaveTextContent(
+        "No key set. Using the deployment default.",
+      ),
+    );
+    expect(screen.getByTestId("ai-models-keys-panel")).toHaveTextContent(
+      "the deployment's default key is used",
+    );
+    unmount();
+
+    // A server of many organizations: a vendor with no key set is not called (REQ-1395).
+    mockFetch.mockResolvedValue(
+      state({ api_keys_set: { anthropic: false, jev: false }, deployment_keys: false }),
+    );
+    render(<AiModelsTab />);
+    await waitFor(() =>
+      expect(screen.getByTestId("ai-models-anthropic-key-status")).toBeInTheDocument(),
+    );
+    expect(screen.getByTestId("ai-models-anthropic-key-status").textContent).toBe("No key set.");
+    expect(screen.getByTestId("ai-models-jev-key-status").textContent).toBe("No key set.");
+    expect(screen.getByTestId("ai-models-keys-panel")).toHaveTextContent(
+      "A vendor with no key set is not used.",
+    );
+    expect(screen.getByTestId("ai-models-keys-panel")).not.toHaveTextContent("deployment");
+    expect(screen.getByTestId("ai-models-jev-panel")).not.toHaveTextContent("deployment");
   });
 
   it("sends api_keys.anthropic when a new key is entered", async () => {

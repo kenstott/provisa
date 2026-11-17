@@ -339,9 +339,9 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
 async def _refiner(state: Any, tables: dict[int, TableFacts]) -> Rescore | None:
     """REQ-1789: with a Jev key configured, each proposal's confidence is Jev's calibrated score,
     given on what the run knows of its tables and columns."""
-    from provisa.core.org_secrets import resolve_jev_api_key
+    from provisa.core.org_secrets import JEV, org_ai_key_or_none
 
-    jev_key = await resolve_jev_api_key(state.model_db)
+    jev_key = await org_ai_key_or_none(state.model_db, JEV)
     if not jev_key:
         return None
     from provisa.discovery.rescoring import jev_scores

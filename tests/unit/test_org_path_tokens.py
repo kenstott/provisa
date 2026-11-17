@@ -84,7 +84,14 @@ def _held_elsewhere(code: str) -> Iterator[None]:
 
 
 def _input(type_: str, path: str | None) -> Any:
-    return SimpleNamespace(id="survey", type=type_, path=path)
+    return SimpleNamespace(
+        id="survey",
+        type=type_,
+        path=path,
+        sentinel_path=None,
+        mapping_json=None,
+        federation_hints_json=None,
+    )
 
 
 def test_the_save_keeps_a_path_in_the_org_folder_as_its_token(org, monkeypatch):
@@ -108,10 +115,19 @@ def test_the_save_keeps_a_path_in_the_org_folder_as_its_token(org, monkeypatch):
 def test_a_server_of_many_organizations_refuses_a_path_on_its_own_disk(org, monkeypatch):
     from provisa.api.admin.schema_common import file_source_path
 
+    from provisa.core.request_context import current_org
+    from provisa.security import sandbox_egress
+
     monkeypatch.setattr("provisa.core.org_files.current_org_segment", lambda: "acme")
     monkeypatch.setattr(secrets_providers, "_many_organisations", lambda: True)
-    refused = file_source_path(_input("sqlite", "/data/shop.sqlite"))
-    assert refused is not None and refused.code == "schema.file_path_local_refused"
+    # The rule is asked of the bound org, which is not the deployment's own.
+    monkeypatch.setattr(sandbox_egress, "_deployment_org", lambda: "default")
+    token = current_org.set("acme")
+    try:
+        refused = file_source_path(_input("sqlite", "/data/shop.sqlite"))
+    finally:
+        current_org.reset(token)
+    assert refused is not None and refused.code == "sources.local_path_refused"
     assert "{files}" in refused.message
     # A token path and a remote location stand.
     assert file_source_path(_input("sqlite", "{files}/survey/s.sqlite")) is None

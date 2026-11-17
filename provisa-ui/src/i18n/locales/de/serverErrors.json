@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "jeder vector_models-Eintrag erfordert id, provider und dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
+      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt."
+    },
     "api": {
       "answer_cut": "Die Antwort für {{table}} wurde bei max_pages={{max_pages}} abgeschnitten ({{rows}} Zeilen): Die API hat weitere Daten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts, um alles zu lesen.",
       "answer_row_cut": "Die Antwort für {{table}} wurde bei max_rows={{max_rows}} abgeschnitten: Die Gegenstelle hat weitere Daten. Erhöhen Sie graphql_remote.max_rows, um alles zu lesen."
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Ungültige Lemon-Squeezy-Signatur",
-      "tenant_no_ls_customer": "Mandant hat keinen Lemon-Squeezy-Kunden",
-      "tenant_not_found": "Mandant nicht gefunden",
-      "webhook_missing_customer_id": "Webhook ohne Kunden-ID",
-      "webhook_missing_tenant_linkage": "Webhook ohne Mandantenzuordnung"
+      "checkout_not_complete": "Dieser Checkout ist nicht abgeschlossen, daher gibt es noch kein Abonnement zum Zuordnen.",
+      "invalid_signature": "Ungültige Webhook-Signatur",
+      "no_trial": "Diese Organisation hat keine Testphase",
+      "org_no_customer": "Diese Organisation hat noch kein Abrechnungskonto.",
+      "org_not_found": "Organisation nicht gefunden",
+      "reconcile_not_creator": "Nur der Ersteller der Organisation kann dies tun",
+      "session_org_mismatch": "Dieser Checkout wurde nicht für diese Organisation geöffnet.",
+      "subscription_items_unrecognized": "Dieses Abonnement enthält nicht sowohl einen Tarifpreis als auch einen Datenübertragungspreis, die diese Bereitstellung verkauft, und kann daher nicht umgestellt werden.",
+      "trial_already_started": "Diese Organisation hat ihre Testphase bereits begonnen. Eine Testphase wird einmal pro Organisation angeboten.",
+      "webhook_missing_org_linkage": "Das Webhook-Abonnement nennt keine Organisation",
+      "webhook_missing_subscription": "Der Webhook nennt kein Abonnement"
     },
     "control_plane": {
       "multitenancy_disabled": "Mandantenfähigkeit ist nicht aktiviert"
@@ -168,7 +178,6 @@
       "source_not_found": "Quelle '{{source_id}}' nicht gefunden",
       "table_id_required": "table_id für den Tabellen-Geltungsbereich erforderlich",
       "unknown_source_type": "Unbekannter Quellentyp: {{type}}",
-      "vendor_has_no_key": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
       "vendor_unknown": "{{vendor}} listet hier keine Modelle auf; geben Sie den Modellnamen ein.",
       "answer_unreadable": "Die Antwort des Modells enthielt keine lesbare Liste."
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Logs-Quelle {{source}}: {{error}}",
       "logs_path_refused": "Logs-Quelle {{source}}: {{reason}}",
       "file_path_leaves_org": "Quelle {{source}}: {{path}} verlässt den Ordner der Organisation.",
-      "file_path_local_refused": "Quelle {{source}}: Ein Server mit vielen Organisationen liest keine Datei auf seinem eigenen Datenträger; laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an.",
       "relationship_alias_taken": "Der Alias '{{alias}}' ist bereits der Alias der Beziehung '{{relationship}}' von '{{table}}'",
       "relationship_ambiguous_table": "Der Tabellenname '{{table}}' ({{end}}) bezeichnet eine Tabelle in mehr als einer Quelle ({{sources}})",
       "relationship_unknown_source": "Die Quelltabelle '{{table}}' ist nicht registriert",
@@ -719,7 +727,8 @@
       "not_a_file_source": "Einer {{type}}-Quelle wird keine Datei per Upload gegeben."
     },
     "sources": {
-      "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine."
+      "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine.",
+      "local_path_refused": "Die Quellen dieser Organisation lesen keine Datei auf dem eigenen Datenträger des Servers außerhalb ihres eigenen Ordners; {{path}} ist eine solche. Laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an."
     },
     "sandbox": {
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",

@@ -313,7 +313,7 @@ def test_the_model_presents_the_fixture_under_the_names_postgresql_gives_it(tmp_
         "CONFORMANCE_PG_HOST": "127.0.0.1",
         "CONFORMANCE_PG_DATABASE": "conformance",
         "CONFORMANCE_PG_USER": "postgres",
-        "CONFORMANCE_PG_PASSWORD": "conformance",
+        "CONFORMANCE_PG_PASSWORD": "conformance-pg-password",
         "CONFORMANCE_JWT_SECRET": "conformance-jwt-signing-key-not-a-secret-0000",
         "PROVISA_SUPERUSER_USERNAME": "conformance-su",
         "PROVISA_SUPERUSER_PASSWORD": "conformance-su-password",

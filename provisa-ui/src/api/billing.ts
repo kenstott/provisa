@@ -54,15 +54,28 @@ export interface TrialSummary {
   converted_at: string | null;
 }
 
+/** Stripe's subscription statuses. Only `trialing` and `active` entitle the org. */
+export type SubscriptionStatus =
+  | "trialing"
+  | "active"
+  | "past_due"
+  | "unpaid"
+  | "canceled"
+  | "paused"
+  | "incomplete"
+  | "incomplete_expired";
+
 export interface SubscriptionSummary {
-  status: string;
+  status: SubscriptionStatus;
+  /** Null when the subscription is set to end at the close of this period. */
   renews_at: string | null;
+  /** Set when the subscription ends at the close of this period instead of renewing. */
+  cancel_at_period_end: boolean;
   ends_at: string | null;
   trial_ends_at: string | null;
   card_brand: string | null;
   card_last_four: string | null;
   product_name: string | null;
-  variant_name: string | null;
   fixed_cents: number | null;
   /** "minimum" — metered usage is drawn against it; "fee" — metered usage adds to it. */
   fixed_kind: "minimum" | "fee" | null;
@@ -95,7 +108,7 @@ export interface CurrentBill {
 export interface BillingSummary {
   org_id: string;
   plan: string;
-  subscription_status: string | null;
+  subscription_status: SubscriptionStatus | null;
   entitled: boolean;
   trial: TrialSummary | null;
   period_start: string;
@@ -107,11 +120,10 @@ export interface BillingSummary {
   bill: CurrentBill | null;
   /** Why the bill cannot be stated. No amount is shown from a rate kept anywhere else. */
   bill_unavailable: string | null;
-  /** Null when the subscription will not charge: cancelled, expired, past due. */
+  /** Billed in arrears at the period's end; null unless the subscription is active or trialing. */
   next_charge: { date: string; cents: number } | null;
+  /** Whether the org has a billing customer, and so a portal to open. */
   has_portal: boolean;
-  /** REQ-1482: whether the separate data transfer subscription has been ordered. */
-  has_egress_subscription: boolean;
 }
 
 export async function fetchBillingSummary(orgId: string): Promise<BillingSummary> {
@@ -132,130 +144,154 @@ export async function fetchMyReservation(): Promise<OrgReservation | null> {
 }
 
 /**
- * How the buyer is reading the app, sent with every checkout so the overlay opens dressed to match.
+ * How the buyer is reading the app, sent with every checkout so it opens dressed to match.
  *
- * lemon.js renders the checkout on top of the page that asked for it, so the two are on screen
- * together — a light checkout over the dark app was two designs at once. The store holds one
- * appearance for every buyer, so the scheme and the language have to travel per checkout; only the
- * browser knows them. Build it with `useCheckoutAppearance`, which resolves both from the running
- * app rather than restating them.
+ * The checkout is embedded in this page, so the two are on screen together: a light checkout in
+ * the dark app is two designs at once. The scheme and the language travel per checkout because
+ * only the browser knows them. Build it with `useCheckoutAppearance`, which resolves both from the
+ * running app rather than restating them.
  */
 export interface CheckoutAppearance {
   scheme: "light" | "dark";
   locale: string;
 }
 
+/** What every checkout route answers: the session the page mounts in place (REQ-1476). */
+export interface CheckoutSession {
+  client_secret: string;
+  session_id: string;
+  /** The key Stripe.js is initialised with. Public by design. */
+  publishable_key: string;
+  /** Whether this checkout carries the free evaluation (REQ-1566). */
+  trial: boolean;
+}
+
 /** Mint the Starter trial checkout. The card is captured at the merchant of record, not here. */
 export async function startTrial(
   orgId: string,
-  redirectUrl: string,
+  returnUrl: string,
   appearance: CheckoutAppearance,
-): Promise<string> {
-  const data = (await billingFetch("/trial/start", {
+): Promise<CheckoutSession> {
+  return (await billingFetch("/trial/start", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, redirect_url: redirectUrl, ...appearance }),
-  })) as { checkout_url: string };
-  return data.checkout_url;
+    body: JSON.stringify({ org_id: orgId, return_url: returnUrl, ...appearance }),
+  })) as CheckoutSession;
 }
 
-/**
- * Mint the checkout for the data transfer subscription (REQ-1482).
- *
- * A second subscription, because a Lemon Squeezy variant carries one usage-based price and the plan
- * variant's is the active hour. Lemon Squeezy can only start a subscription from a checkout, so the
- * customer completes a second one.
- */
-export async function startEgressSubscription(
-  orgId: string,
-  redirectUrl: string,
-  appearance: CheckoutAppearance,
-): Promise<string> {
-  const data = (await billingFetch("/egress/checkout", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, redirect_url: redirectUrl, ...appearance }),
-  })) as { checkout_url: string };
-  return data.checkout_url;
+/** An embedded checkout as Stripe.js hands it back: attached to one element, then destroyed. */
+export interface EmbeddedCheckout {
+  mount: (el: HTMLElement) => void;
+  destroy: () => void;
+}
+
+interface StripeJs {
+  createEmbeddedCheckoutPage: (opts: {
+    fetchClientSecret: () => Promise<string>;
+  }) => Promise<EmbeddedCheckout>;
 }
 
 declare global {
   interface Window {
-    createLemonSqueezy?: () => void;
-    LemonSqueezy?: {
-      // lemon.js forwards every postMessage from the overlay iframe to the handler verbatim: store
-      // events arrive as `{event: "Checkout.Success", ...}` and the overlay's own lifecycle arrives
-      // as the bare strings "mounted" and "close". Typing this as an object hid the second kind.
-      Setup: (opts: { eventHandler: (e: unknown) => void }) => void;
-      Url: { Open: (url: string) => void };
-    };
+    Stripe?: (publishableKey: string) => StripeJs;
   }
 }
 
-const LEMON_JS = "https://assets.lemonsqueezy.com/lemon.js";
+// Stripe requires Stripe.js to be loaded from js.stripe.com, never bundled or self-hosted. The
+// version is the one the server's API calls are pinned to (dahlia), whose embedded checkout is
+// created with `createEmbeddedCheckoutPage`.
+export const STRIPE_JS = "https://js.stripe.com/dahlia/stripe.js";
 
-function loadLemonJs(): Promise<void> {
-  if (window.LemonSqueezy) return Promise.resolve();
+function loadStripeJs(): Promise<(publishableKey: string) => StripeJs> {
+  if (window.Stripe) return Promise.resolve(window.Stripe);
   return new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>(`script[src="${LEMON_JS}"]`);
+    const existing = document.querySelector<HTMLScriptElement>(`script[src="${STRIPE_JS}"]`);
     const script = existing ?? document.createElement("script");
-    script.addEventListener("load", () => resolve());
+    script.addEventListener("load", () => {
+      if (window.Stripe) resolve(window.Stripe);
+      else reject(new Error("Stripe.js loaded without defining Stripe."));
+    });
     script.addEventListener("error", () => reject(new Error("Could not load the checkout.")));
     if (existing) return;
-    script.src = LEMON_JS;
-    script.defer = true;
+    script.src = STRIPE_JS;
     document.head.appendChild(script);
   });
 }
 
 /**
- * Open a Lemon Squeezy checkout as an overlay on the current page.
+ * Mount the checkout `session` names into `container` and return it for the caller to destroy.
  *
- * The checkout is created with `embed`, so its URL renders as an overlay driven by lemon.js rather
- * than a full page. `onSuccess` fires when the customer completes payment, which is when the
- * summary is worth refetching — the subscription itself is linked by the webhook.
- *
- * `onClose` fires when the buyer dismisses the overlay without paying. lemon.js tears the iframe
- * down and posts nothing else, so a caller that showed a "opening checkout" state has no other way
- * to learn the checkout is over and would sit on that state for the rest of the session. A close
- * that follows a success is the buyer closing the receipt, not an abandonment, and is not reported.
+ * Payment happens entirely inside Stripe's iframe. On completion Stripe navigates this page to the
+ * checkout's return URL with `session_id` added, which is where the page picks the purchase up
+ * (`readCheckoutReturn`). Closing the host without paying is the caller's `destroy()`.
  */
-export async function openCheckout(
-  url: string,
-  onSuccess: () => void,
-  onClose?: () => void,
-): Promise<void> {
-  await loadLemonJs();
-  window.createLemonSqueezy!();
-  let paid = false;
-  window.LemonSqueezy!.Setup({
-    eventHandler: (e) => {
-      if (typeof e === "object" && e !== null && (e as { event?: string }).event) {
-        if ((e as { event: string }).event === "Checkout.Success") {
-          paid = true;
-          onSuccess();
-        }
-        return;
-      }
-      if (e === "close" && !paid) onClose?.();
-    },
+export async function mountCheckout(
+  session: CheckoutSession,
+  container: HTMLElement,
+): Promise<EmbeddedCheckout> {
+  const stripe = (await loadStripeJs())(session.publishable_key);
+  const checkout = await stripe.createEmbeddedCheckoutPage({
+    fetchClientSecret: () => Promise.resolve(session.client_secret),
   });
-  window.LemonSqueezy!.Url.Open(url);
+  checkout.mount(container);
+  return checkout;
+}
+
+// The return trip. The server appends `session_id` to the return URL; the onboarding page also
+// needs the org the checkout was for, which no longer exists anywhere on the page after the
+// navigation, so it rides the return URL as `checkout_org`.
+const SESSION_PARAM = "session_id";
+const ORG_PARAM = "checkout_org";
+
+/** The current address with any previous checkout's return parameters taken off. */
+function currentUrlWithoutReturn(): URL {
+  const url = new URL(window.location.href);
+  url.searchParams.delete(SESSION_PARAM);
+  url.searchParams.delete(ORG_PARAM);
+  return url;
+}
+
+/** Where a checkout opened from this page returns to; `orgId` is carried when given. */
+export function checkoutReturnUrl(orgId?: string): string {
+  const url = currentUrlWithoutReturn();
+  if (orgId !== undefined) url.searchParams.set(ORG_PARAM, orgId);
+  return url.toString();
+}
+
+export interface CheckoutReturn {
+  sessionId: string;
+  /** Null when the checkout was opened without one (the Billing page knows its org). */
+  orgId: string | null;
+}
+
+/** The checkout this page load is the return from, or null when it is not one. */
+export function readCheckoutReturn(): CheckoutReturn | null {
+  const params = new URLSearchParams(window.location.search);
+  const sessionId = params.get(SESSION_PARAM);
+  if (!sessionId) return null;
+  return { sessionId, orgId: params.get(ORG_PARAM) };
+}
+
+/** Take the return parameters off the address bar, so a reload does not handle them twice. */
+export function clearCheckoutReturn(): void {
+  window.history.replaceState(window.history.state, "", currentUrlWithoutReturn().toString());
 }
 
 /**
  * Bind a completed checkout whose webhook has not landed, and start building the org (REQ-1476).
  *
- * Called on the return from checkout when the org is still a reservation. `reconciled` is false when
- * the webhook won the race, which is the normal outcome; the caller polls the org either way.
+ * Called on the return from checkout with the `session_id` Stripe put on the return URL.
+ * `reconciled` is false when the webhook won the race, which is the normal outcome; the caller
+ * polls the org either way.
  */
 export async function reconcileCheckout(
   orgId: string,
+  sessionId: string,
 ): Promise<{ reconciled: boolean; state: OrgProvisioning["provisioning_state"] }> {
   return (await billingFetch("/checkout/reconcile", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId }),
+    body: JSON.stringify({ org_id: orgId, session_id: sessionId }),
   })) as { reconciled: boolean; state: OrgProvisioning["provisioning_state"] };
 }
 
@@ -263,11 +299,14 @@ export async function cancelTrial(orgId: string): Promise<void> {
   await billingFetch(`/trial/cancel?org_id=${encodeURIComponent(orgId)}`, { method: "POST" });
 }
 
-/** The Lemon Squeezy customer portal — payment method, invoices and cancellation live there. */
-export async function fetchPortalUrl(orgId: string): Promise<string> {
-  const data = (await billingFetch(`/portal?org_id=${encodeURIComponent(orgId)}`)) as {
-    portal_url: string;
-  };
+/**
+ * The billing portal: payment method, invoices and cancellation live there. `returnUrl` is where
+ * its back link goes.
+ */
+export async function fetchPortalUrl(orgId: string, returnUrl: string): Promise<string> {
+  const data = (await billingFetch(
+    `/portal?org_id=${encodeURIComponent(orgId)}&return_url=${encodeURIComponent(returnUrl)}`,
+  )) as { portal_url: string };
   return data.portal_url;
 }
 
@@ -294,12 +333,12 @@ export interface PlanOffer {
   fixed_cents: number | null;
   fixed_kind: "minimum" | "fee" | null;
   fixed_interval: string | null;
-  /** Cents per engine hour past `included_hours`. The checkout overlay never shows this. */
+  /** Cents per engine hour past `included_hours`. */
   hourly_cents: number;
   /** Engine hours the fixed minimum has already bought. */
   included_hours: number;
   egress: PlanEgress;
-  /** Null on every plan whose variant grants no trial — today, all three Pro sizes. */
+  /** Null on every plan the checkout gives no trial — today, all three Pro sizes. */
   trial_days: number | null;
   source_limit: number;
   lane: "shared" | "isolated";
@@ -319,8 +358,7 @@ export async function fetchPlans(orgId: string): Promise<PlanOffers> {
 }
 
 // REQ-1514: the same offers with no org, for the signup page — the buyer picking a size has no org
-// to ask about yet, and the checkout overlay states only the first tier's unit price, which is zero
-// on every plan.
+// to ask about yet, and the terms are stated on the page before the checkout opens.
 
 export interface Catalog {
   plans: PlanOffer[];
@@ -337,35 +375,34 @@ export async function fetchCatalog(): Promise<Catalog> {
   return (await billingFetch("/catalog")) as Catalog;
 }
 
-/** Open the signup checkout for `plan`. The server resolves the variant; the client never names it. */
+/** Open the signup checkout for `plan`. The server resolves the prices; the client never names them. */
 export async function startPlanCheckout(
   orgId: string,
   plan: string,
-  redirectUrl: string,
+  returnUrl: string,
   appearance: CheckoutAppearance,
-): Promise<string> {
-  const data = (await billingFetch("/plan/checkout", {
+): Promise<CheckoutSession> {
+  return (await billingFetch("/plan/checkout", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ org_id: orgId, plan, redirect_url: redirectUrl, ...appearance }),
-  })) as { checkout_url: string };
-  return data.checkout_url;
+    body: JSON.stringify({ org_id: orgId, plan, return_url: returnUrl, ...appearance }),
+  })) as CheckoutSession;
 }
 
 export interface PlanChanged {
   org_id: string;
   plan: string;
-  changed: boolean;
-  /** Absent when the provider would not take the change and named its portal instead. */
-  prorated?: "charged_now" | "credited_next_invoice";
-  subscription_status?: string;
-  egress_moved?: boolean | null;
+  changed: true;
+  /**
+   * REQ-1509: no proration. The old plan's usage to date is invoiced now with its minimum in full,
+   * and the new plan's minimum is invoiced in full at the period's end.
+   */
+  minimums: "each_plan_in_full";
+  subscription_status: string;
   /** What the org's engine now runs on, or null when the move failed (REQ-1510). */
-  engine?: { lane: string; moved: boolean; shard?: string | null; size?: PlanEngine | null } | null;
+  engine: { lane: string; moved: boolean; shard?: string | null; size?: PlanEngine | null } | null;
   /** The engine move's failure. The plan change stands regardless — the org is invoiced for it. */
-  engine_error?: string | null;
-  portal_url?: string;
-  detail?: string;
+  engine_error: string | null;
 }
 
 export async function changePlan(orgId: string, plan: string): Promise<PlanChanged> {

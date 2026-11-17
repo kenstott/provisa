@@ -842,10 +842,13 @@ class TestVendorModelListing:
         assert "publishes no list-models API" in r.json()["detail"]
 
     def test_vendor_with_no_key_anywhere_is_rejected(self, client, org_overrides, monkeypatch):
-        monkeypatch.delenv("COHERE_API_KEY", raising=False)
-        r = client.get("/admin/ai-models/vendors/cohere/models")
-        assert r.status_code == 400
-        assert "set an API key for 'cohere'" in r.json()["detail"]
+        from provisa.core.org_secrets import AiKeyRequired
+
+        monkeypatch.delenv("CO_API_KEY", raising=False)
+        # This bare app registers no handler for the refusal (provisa.api.app answers it 409).
+        with pytest.raises(AiKeyRequired) as refused:
+            client.get("/admin/ai-models/vendors/cohere/models")
+        assert refused.value.code == "ai.key_required" and refused.value.vendor == "cohere"
 
     def test_a_vendor_rejecting_the_key_surfaces_as_502(self, client, org_overrides, monkeypatch):
         import httpx

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "प्रत्येक vector_models प्रविष्टि के लिए id, provider और dimensions आवश्यक हैं"
     },
+    "ai": {
+      "key_required": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
+      "vendor_uses_server_credentials": "{{vendor}} तक सर्वर के अपने क्रेडेंशियल से पहुँचा जाता है, जिनका उपयोग इस सर्वर का कोई संगठन नहीं करता। एडमिन, AI मॉडल में कुंजी लेने वाला वेंडर या कोई AI एंडपॉइंट चुनें।"
+    },
     "api": {
       "answer_cut": "{{table}} का उत्तर max_pages={{max_pages}} पर काट दिया गया ({{rows}} पंक्तियाँ): API में और डेटा है। सब पढ़ने के लिए एंडपॉइंट का max_pages या पृष्ठ आकार बढ़ाएँ।",
       "answer_row_cut": "{{table}} का उत्तर max_rows={{max_rows}} पर काट दिया गया: रिमोट में और डेटा है। सब पढ़ने के लिए graphql_remote.max_rows बढ़ाएँ।"
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "म्यूटेशन '{{field_name}}' की अनुमति नहीं है: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy हस्ताक्षर अमान्य है",
-      "tenant_no_ls_customer": "टेनेंट का कोई Lemon Squeezy ग्राहक नहीं है",
-      "tenant_not_found": "टेनेंट नहीं मिला",
-      "webhook_missing_customer_id": "वेबहुक में ग्राहक id नहीं है",
-      "webhook_missing_tenant_linkage": "वेबहुक में टेनेंट लिंकेज नहीं है"
+      "checkout_not_complete": "यह चेकआउट पूरा नहीं हुआ है, इसलिए जोड़ने के लिए अभी कोई सदस्यता नहीं है।",
+      "invalid_signature": "अमान्य webhook हस्ताक्षर",
+      "no_trial": "इस संगठन का कोई ट्रायल नहीं है",
+      "org_no_customer": "इस संगठन का अभी कोई बिलिंग खाता नहीं है।",
+      "org_not_found": "संगठन नहीं मिला",
+      "reconcile_not_creator": "केवल संगठन का निर्माता ही यह कर सकता है",
+      "session_org_mismatch": "यह चेकआउट इस संगठन के लिए नहीं खोला गया था।",
+      "subscription_items_unrecognized": "इस सदस्यता में इस डिप्लॉयमेंट द्वारा बेचा जाने वाला प्लान मूल्य और डेटा ट्रांसफ़र मूल्य दोनों नहीं हैं, इसलिए इसे बदला नहीं जा सकता।",
+      "trial_already_started": "इस संगठन ने अपना ट्रायल पहले ही शुरू कर दिया है। ट्रायल प्रति संगठन एक बार दिया जाता है।",
+      "webhook_missing_org_linkage": "webhook सदस्यता किसी संगठन का नाम नहीं बताती",
+      "webhook_missing_subscription": "webhook किसी सदस्यता का नाम नहीं बताता"
     },
     "control_plane": {
       "multitenancy_disabled": "मल्टीटेनेंसी सक्षम नहीं है"
@@ -168,7 +178,6 @@
       "source_not_found": "स्रोत '{{source_id}}' नहीं मिला",
       "table_id_required": "table स्कोप के लिए table_id आवश्यक है",
       "unknown_source_type": "अज्ञात स्रोत प्रकार: {{type}}",
-      "vendor_has_no_key": "{{vendor}} की कोई कुंजी नहीं है। एडमिन, AI मॉडल में एक सेट करें।",
       "vendor_unknown": "{{vendor}} यहाँ कोई मॉडल सूचीबद्ध नहीं करता; मॉडल का नाम दर्ज करें।",
       "answer_unreadable": "मॉडल के उत्तर में कोई पढ़ने योग्य सूची नहीं थी।"
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Logs स्रोत {{source}}: {{error}}",
       "logs_path_refused": "Logs स्रोत {{source}}: {{reason}}",
       "file_path_leaves_org": "स्रोत {{source}}: {{path}} संगठन के फ़ोल्डर से बाहर जाता है।",
-      "file_path_local_refused": "स्रोत {{source}}: कई संगठनों वाला सर्वर अपनी डिस्क की कोई फ़ाइल नहीं पढ़ता; फ़ाइल अपलोड करें, या उसे {files}/… या किसी दूरस्थ पते से बताएँ।",
       "relationship_alias_taken": "उपनाम '{{alias}}' पहले से '{{table}}' से संबंध '{{relationship}}' का उपनाम है",
       "relationship_ambiguous_table": "तालिका नाम '{{table}}' ({{end}}) एक से अधिक स्रोतों ({{sources}}) में तालिका दर्शाता है",
       "relationship_unknown_source": "स्रोत तालिका '{{table}}' पंजीकृत नहीं है",
@@ -719,7 +727,8 @@
       "not_a_file_source": "{{type}} स्रोत को अपलोड से फ़ाइल नहीं दी जाती।"
     },
     "sources": {
-      "private_destination": "इस संगठन के स्रोत केवल सार्वजनिक पतों तक पहुँच सकते हैं; {{host}} {{address}} है, जो सार्वजनिक नहीं है।"
+      "private_destination": "इस संगठन के स्रोत केवल सार्वजनिक पतों तक पहुँच सकते हैं; {{host}} {{address}} है, जो सार्वजनिक नहीं है।",
+      "local_path_refused": "इस संगठन के स्रोत सर्वर की अपनी डिस्क पर संगठन के फ़ोल्डर के बाहर की कोई फ़ाइल नहीं पढ़ते; {{path}} ऐसी ही एक फ़ाइल है। फ़ाइल अपलोड करें, या उसे {files}/… या किसी दूरस्थ पते से बताएँ।"
     },
     "sandbox": {
       "wrong_tier": "यह सैंडबॉक्स कहीं और से परोसा जाता है; इसे इसके अपने पते से खोलें।",

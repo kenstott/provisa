@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "vendor_uses_server_credentials": "{{vendor}} est joint avec les identifiants propres au serveur, qu'une organisation de ce serveur n'utilise pas. Choisissez un fournisseur qui accepte une clé, ou un point de terminaison IA, dans Admin, Modèles IA."
+    },
     "api": {
       "answer_cut": "La réponse pour {{table}} a été tronquée à max_pages={{max_pages}} ({{rows}} lignes) : l'API en a davantage. Augmentez max_pages ou la taille de page du point de terminaison pour tout lire.",
       "answer_row_cut": "La réponse pour {{table}} a été tronquée à max_rows={{max_rows}} : le service distant en a davantage. Augmentez graphql_remote.max_rows pour tout lire."
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "Mutation « {{field_name}} » non autorisée : {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Signature Lemon Squeezy invalide",
-      "tenant_no_ls_customer": "Le locataire n'a pas de client Lemon Squeezy",
-      "tenant_not_found": "Locataire introuvable",
-      "webhook_missing_customer_id": "Identifiant client manquant dans le webhook",
-      "webhook_missing_tenant_linkage": "Lien vers le locataire manquant dans le webhook"
+      "checkout_not_complete": "Ce paiement n'est pas terminé : il n'y a donc pas encore d'abonnement à rattacher.",
+      "invalid_signature": "Signature de webhook invalide",
+      "no_trial": "Cette organisation n'a pas d'essai",
+      "org_no_customer": "Cette organisation n'a pas encore de compte de facturation.",
+      "org_not_found": "Organisation introuvable",
+      "reconcile_not_creator": "Seul le créateur de l'organisation peut faire cela",
+      "session_org_mismatch": "Ce paiement n'a pas été ouvert pour cette organisation.",
+      "subscription_items_unrecognized": "Cet abonnement ne comporte pas à la fois un prix d'offre et un prix de transfert de données vendus par ce déploiement : il ne peut donc pas être modifié.",
+      "trial_already_started": "Cette organisation a déjà commencé son essai. Un essai est proposé une fois par organisation.",
+      "webhook_missing_org_linkage": "L'abonnement du webhook n'indique aucune organisation",
+      "webhook_missing_subscription": "Le webhook n'indique aucun abonnement"
     },
     "control_plane": {
       "multitenancy_disabled": "le mode multilocataire n'est pas activé"
@@ -168,7 +178,6 @@
       "source_not_found": "Source « {{source_id}} » introuvable",
       "table_id_required": "table_id requis pour la portée table",
       "unknown_source_type": "Type de source inconnu : {{type}}",
-      "vendor_has_no_key": "{{vendor}} n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
       "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle.",
       "answer_unreadable": "La réponse du modèle ne contenait aucune liste lisible."
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Source Logs {{source}} : {{error}}",
       "logs_path_refused": "Source Logs {{source}} : {{reason}}",
       "file_path_leaves_org": "Source {{source}} : {{path}} sort du dossier de l'organisation.",
-      "file_path_local_refused": "Source {{source}} : un serveur de plusieurs organisations ne lit aucun fichier sur son propre disque ; téléversez le fichier, ou désignez-le par {files}/… ou par une adresse distante.",
       "relationship_alias_taken": "L'alias '{{alias}}' est déjà l'alias de la relation '{{relationship}}' depuis '{{table}}'",
       "relationship_ambiguous_table": "Le nom de table '{{table}}' ({{end}}) désigne une table dans plus d'une source ({{sources}})",
       "relationship_unknown_source": "La table source '{{table}}' n'est pas enregistrée",
@@ -719,7 +727,8 @@
       "not_a_file_source": "Une source {{type}} ne reçoit pas de fichier par téléversement."
     },
     "sources": {
-      "private_destination": "Les sources de cette organisation ne peuvent atteindre que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une."
+      "private_destination": "Les sources de cette organisation ne peuvent atteindre que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une.",
+      "local_path_refused": "Les sources de cette organisation ne lisent aucun fichier sur le disque du serveur en dehors de son propre dossier ; {{path}} en est un. Téléversez le fichier, ou désignez-le par {files}/… ou par une adresse distante."
     },
     "sandbox": {
       "wrong_tier": "Ce bac à sable est servi ailleurs ; ouvrez-le depuis sa propre adresse.",

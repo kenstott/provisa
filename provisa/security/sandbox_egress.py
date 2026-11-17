@@ -147,6 +147,11 @@ _demo_destinations: dict[str, frozenset[tuple[str, int | None]]] = {}
 # sources are held to public destinations whatever host the demo names (REQ-2006).
 _seeded_demo_sources: dict[str, frozenset[str]] = {}
 
+# REQ-1997: the places on the server's own disk a demo's sources name (its shipped files), by
+# their real paths. A held org reads those and its own folder, and nothing else on this disk
+# (provisa.core.source_uploads.require_own_disk).
+_demo_locations: dict[str, frozenset[str]] = {}
+
 #: A network-host source with no host given is reached at this host (schema_common._add_source_pool).
 _DEFAULT_HOST = "localhost"
 _URL_FIELDS = ("path", "base_url")
@@ -237,8 +242,22 @@ def _strings(node: object) -> list[str]:
 
 
 def set_demo_destinations(org_id: str, sources: list[dict]) -> None:
-    """Record what the demo of sandbox org ``org_id`` declares, from its configuration's sources."""
+    """Record what the demo of sandbox org ``org_id`` declares, from its configuration's sources:
+    the destinations they reach and the places on the server's own disk they read (REQ-1997)."""
+    from provisa.core.source_uploads import real_locations
+
     _demo_destinations[org_id] = frozenset(d for s in sources for d in destinations(s))
+    _demo_locations[org_id] = frozenset(
+        # A source given with no type names no path a type reads; its other files still count.
+        real
+        for s in sources
+        for real in real_locations(str(s.get("type", "")), s)
+    )
+
+
+def declared_location(org_id: str, real_path: str) -> bool:
+    """Whether ``real_path`` is a place on the server's own disk ``org_id``'s demo declares."""
+    return real_path in _demo_locations.get(org_id, frozenset())
 
 
 def set_seeded_demo(org_id: str, sources: list) -> None:
@@ -251,6 +270,7 @@ def set_seeded_demo(org_id: str, sources: list) -> None:
 def forget(org_id: str) -> None:
     _demo_destinations.pop(org_id, None)
     _seeded_demo_sources.pop(org_id, None)
+    _demo_locations.pop(org_id, None)
 
 
 def _own_beside_a_seeded_demo(org: str, source_id: str | None) -> bool:
@@ -294,8 +314,11 @@ def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
 
 
 def source_fields(source: object) -> dict:
-    """The address-bearing fields of a registered :class:`provisa.core.models.Source`."""
+    """The address-bearing fields of a registered :class:`provisa.core.models.Source`, with
+    its type and its sentinel marker: what says where it reads from (REQ-2006, REQ-1997)."""
     return {
+        "type": str(getattr(source.type, "value", source.type)),  # type: ignore[attr-defined]
+        "sentinel_path": getattr(source, "sentinel_path", None),
         "host": source.host,  # type: ignore[attr-defined]
         "port": source.port,  # type: ignore[attr-defined]
         "path": source.path,  # type: ignore[attr-defined]
@@ -452,6 +475,10 @@ def require_connectable(
     if not held(org):
         return None
     assert org is not None
+    # REQ-1997: nor may it read the server's own disk outside its folder and its demo's files.
+    from provisa.core.source_uploads import require_source_own_disk
+
+    require_source_own_disk(source_type, fields, org)
     if _own_beside_a_seeded_demo(org, source_id):
         # Not one of the demo's: every destination it names must be public, the demo's included.
         for host, port in destinations(fields):

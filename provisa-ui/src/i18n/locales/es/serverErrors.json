@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "cada entrada de vector_models requiere id, provider y dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
+      "vendor_uses_server_credentials": "{{vendor}} se alcanza con las credenciales propias del servidor, que una organización de este servidor no usa. Elija un proveedor que acepte una clave, o un punto de conexión de IA, en Administración, Modelos de IA."
+    },
     "api": {
       "answer_cut": "La respuesta para {{table}} se cortó en max_pages={{max_pages}} ({{rows}} filas): la API tiene más. Aumente max_pages o el tamaño de página del endpoint para leerla completa.",
       "answer_row_cut": "La respuesta para {{table}} se cortó en max_rows={{max_rows}}: el remoto tiene más. Aumente graphql_remote.max_rows para leerla completa."
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "Mutación '{{field_name}}' no permitida: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Firma de Lemon Squeezy no válida",
-      "tenant_no_ls_customer": "El inquilino no tiene cliente de Lemon Squeezy",
-      "tenant_not_found": "No se encontró el inquilino",
-      "webhook_missing_customer_id": "Falta el id de cliente en el webhook",
-      "webhook_missing_tenant_linkage": "Falta la vinculación de inquilino en el webhook"
+      "checkout_not_complete": "Este pago no se ha completado, así que aún no hay ninguna suscripción que vincular.",
+      "invalid_signature": "Firma de webhook no válida",
+      "no_trial": "Esta organización no tiene prueba",
+      "org_no_customer": "Esta organización aún no tiene cuenta de facturación.",
+      "org_not_found": "Organización no encontrada",
+      "reconcile_not_creator": "Solo el creador de la organización puede hacer esto",
+      "session_org_mismatch": "Este pago no se abrió para esta organización.",
+      "subscription_items_unrecognized": "Esta suscripción no incluye a la vez un precio de plan y un precio de transferencia de datos que esta implementación venda, así que no se puede cambiar.",
+      "trial_already_started": "Esta organización ya ha iniciado su prueba. La prueba se ofrece una vez por organización.",
+      "webhook_missing_org_linkage": "La suscripción del webhook no indica ninguna organización",
+      "webhook_missing_subscription": "El webhook no indica ninguna suscripción"
     },
     "control_plane": {
       "multitenancy_disabled": "el modo multiinquilino no está habilitado"
@@ -168,7 +178,6 @@
       "source_not_found": "No se encontró el origen '{{source_id}}'",
       "table_id_required": "table_id es obligatorio para el ámbito de tabla",
       "unknown_source_type": "Tipo de origen desconocido: {{type}}",
-      "vendor_has_no_key": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
       "vendor_unknown": "{{vendor}} no lista modelos aquí; escriba el nombre del modelo.",
       "answer_unreadable": "La respuesta del modelo no contenía ninguna lista legible."
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Origen Logs {{source}}: {{error}}",
       "logs_path_refused": "Origen Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "Origen {{source}}: {{path}} sale de la carpeta de la organización.",
-      "file_path_local_refused": "Origen {{source}}: un servidor de muchas organizaciones no lee archivos de su propio disco; suba el archivo o indíquelo como {files}/… o con una dirección remota.",
       "relationship_alias_taken": "El alias '{{alias}}' ya es el alias de la relación '{{relationship}}' desde '{{table}}'",
       "relationship_ambiguous_table": "El nombre de tabla '{{table}}' ({{end}}) designa una tabla en más de un origen ({{sources}})",
       "relationship_unknown_source": "La tabla de origen '{{table}}' no está registrada",
@@ -719,7 +727,8 @@
       "not_a_file_source": "A un origen {{type}} no se le da un archivo por subida."
     },
     "sources": {
-      "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es."
+      "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es.",
+      "local_path_refused": "Las fuentes de esta organización no leen archivos del propio disco del servidor fuera de su carpeta; {{path}} es uno de ellos. Suba el archivo o indíquelo como {files}/… o con una dirección remota."
     },
     "sandbox": {
       "wrong_tier": "Este sandbox se sirve en otro lugar; ábralo desde su propia dirección.",

@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "各 vector_models エントリには id、provider、dimensions が必要です"
     },
+    "ai": {
+      "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
+      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
+    },
     "api": {
       "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。",
       "answer_row_cut": "{{table}} の応答は max_rows={{max_rows}} で切り詰められました。リモートにはまだデータがあります。すべて読み取るには graphql_remote.max_rows を増やしてください。"
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy の署名が無効です",
-      "tenant_no_ls_customer": "テナントに Lemon Squeezy の顧客がありません",
-      "tenant_not_found": "テナントが見つかりません",
-      "webhook_missing_customer_id": "Webhook に顧客IDがありません",
-      "webhook_missing_tenant_linkage": "Webhook にテナントの関連付けがありません"
+      "checkout_not_complete": "このチェックアウトは完了していないため、関連付けるサブスクリプションはまだありません。",
+      "invalid_signature": "webhook の署名が無効です",
+      "no_trial": "この組織には試用期間がありません",
+      "org_no_customer": "この組織にはまだ請求アカウントがありません。",
+      "org_not_found": "組織が見つかりません",
+      "reconcile_not_creator": "これを行えるのは組織の作成者だけです",
+      "session_org_mismatch": "このチェックアウトはこの組織のために開かれたものではありません。",
+      "subscription_items_unrecognized": "このサブスクリプションには、このデプロイメントが販売するプラン価格とデータ転送価格の両方が含まれていないため、移行できません。",
+      "trial_already_started": "この組織はすでに試用を開始しています。試用は組織ごとに 1 回提供されます。",
+      "webhook_missing_org_linkage": "webhook のサブスクリプションに組織が示されていません",
+      "webhook_missing_subscription": "webhook にサブスクリプションが示されていません"
     },
     "control_plane": {
       "multitenancy_disabled": "マルチテナントは有効になっていません"
@@ -168,7 +178,6 @@
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
       "table_id_required": "table スコープには table_id が必要です",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
-      "vendor_has_no_key": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
       "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。",
       "answer_unreadable": "モデルの回答に読み取れるリストがありませんでした。"
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Logs ソース {{source}}: {{error}}",
       "logs_path_refused": "Logs ソース {{source}}: {{reason}}",
       "file_path_leaves_org": "ソース {{source}}: {{path}} は組織のフォルダーの外を指しています。",
-      "file_path_local_refused": "ソース {{source}}: 多数の組織を抱えるサーバーは自身のディスク上のファイルを読み取りません。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。",
       "relationship_alias_taken": "エイリアス '{{alias}}' は、すでに '{{table}}' からのリレーションシップ '{{relationship}}' のエイリアスです",
       "relationship_ambiguous_table": "テーブル名 '{{table}}' ({{end}}) は複数のソース ({{sources}}) のテーブルを指しています",
       "relationship_unknown_source": "ソーステーブル '{{table}}' は登録されていません",
@@ -719,7 +727,8 @@
       "not_a_file_source": "{{type}} ソースにはアップロードでファイルを渡せません。"
     },
     "sources": {
-      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。"
+      "private_destination": "この組織のソースが到達できるのは公開アドレスだけです。{{host}} は {{address}} で、公開アドレスではありません。",
+      "local_path_refused": "この組織のソースは、組織自身のフォルダー外にあるサーバーのディスク上のファイルを読み取りません。{{path}} はそのようなファイルです。ファイルをアップロードするか、{files}/… またはリモートのアドレスで指定してください。"
     },
     "sandbox": {
       "wrong_tier": "このサンドボックスは別の場所で提供されています。サンドボックス自身のアドレスから開いてください。",

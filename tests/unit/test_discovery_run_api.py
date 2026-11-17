@@ -213,7 +213,7 @@ class _World:
         async def org_keys(pool):
             return dict(api_keys)
 
-        async def no_jev(pool):
+        async def no_jev(pool, vendor):
             return None
 
         def respond(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
@@ -235,7 +235,7 @@ class _World:
         monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
-        monkeypatch.setattr("provisa.core.org_secrets.resolve_jev_api_key", no_jev)
+        monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)
         monkeypatch.setattr("provisa.llm.client.ProvisaLLMClient._respond", respond)
 
 
@@ -1745,14 +1745,15 @@ async def test_proposals_jev_scores_under_the_threshold_are_left_out_as_jevs_wit
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     asked: list[tuple[Any, list[dict]]] = []
 
-    async def jev_key(pool):
+    async def jev_key(pool, vendor):
+        assert vendor == "jev"
         return "ts-key"
 
     async def evaluate(api_key, state, questions):
         asked.append((state, questions))
         return {"answers": {q["id"]: {"noul": 0.31} for q in questions}}
 
-    monkeypatch.setattr("provisa.core.org_secrets.resolve_jev_api_key", jev_key)
+    monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", jev_key)
     monkeypatch.setattr("provisa.jev.client.evaluate", evaluate)
     world.answers = [
         json.dumps(
@@ -1788,13 +1789,14 @@ async def test_a_jev_call_that_fails_keeps_the_models_confidence_and_the_result_
     await _three_tables(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
 
-    async def jev_key(pool):
+    async def jev_key(pool, vendor):
+        assert vendor == "jev"
         return "ts-key"
 
     async def evaluate(api_key, state, questions):
         raise RuntimeError("unreachable")
 
-    monkeypatch.setattr("provisa.core.org_secrets.resolve_jev_api_key", jev_key)
+    monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", jev_key)
     monkeypatch.setattr("provisa.jev.client.evaluate", evaluate)
     world.answers = [json.dumps([_suggestion((1, "customer_id"), (2, "id"), 0.95)])]
     run = await _run(world, _scope())

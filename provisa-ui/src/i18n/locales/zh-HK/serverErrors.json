@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "每個 vector_models 項目都需要 id、provider 及 dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
+      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
+    },
     "api": {
       "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
       "answer_row_cut": "{{table}} 的回應在 max_rows={{max_rows}} 處被截斷：遠端還有更多資料。請提高 graphql_remote.max_rows 以讀取全部資料。"
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "不允許執行變更「{{field_name}}」：{{reason}}"
     },
     "billing": {
-      "invalid_signature": "Lemon Squeezy 簽章無效",
-      "tenant_no_ls_customer": "租用戶沒有 Lemon Squeezy 客戶",
-      "tenant_not_found": "找不到租用戶",
-      "webhook_missing_customer_id": "Webhook 缺少客戶 ID",
-      "webhook_missing_tenant_linkage": "Webhook 缺少租用戶連結"
+      "checkout_not_complete": "此結帳尚未完成，因此仍未有可連結的訂閱。",
+      "invalid_signature": "webhook 簽署無效",
+      "no_trial": "此機構沒有試用",
+      "org_no_customer": "此機構仍未有收費帳戶。",
+      "org_not_found": "找不到機構",
+      "reconcile_not_creator": "只有機構的建立者可以執行此操作",
+      "session_org_mismatch": "此結帳並非為此機構開啟。",
+      "subscription_items_unrecognized": "此訂閱未同時包含本部署出售的計劃價格及數據傳輸價格，因此無法變更。",
+      "trial_already_started": "此機構已開始試用。每個機構只提供一次試用。",
+      "webhook_missing_org_linkage": "webhook 訂閱未有註明任何機構",
+      "webhook_missing_subscription": "webhook 未有註明任何訂閱"
     },
     "control_plane": {
       "multitenancy_disabled": "未啟用多租用戶功能"
@@ -168,7 +178,6 @@
       "source_not_found": "找不到數據來源「{{source_id}}」",
       "table_id_required": "資料表範圍需要 table_id",
       "unknown_source_type": "未知的數據來源類型：{{type}}",
-      "vendor_has_no_key": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
       "vendor_unknown": "{{vendor}} 在此處不列出模型；請輸入模型名稱。",
       "answer_unreadable": "模型的回答中沒有可讀取的清單。"
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Logs 來源 {{source}}：{{error}}",
       "logs_path_refused": "Logs 來源 {{source}}：{{reason}}",
       "file_path_leaves_org": "資料來源 {{source}}：{{path}} 超出了機構的資料夾。",
-      "file_path_local_refused": "資料來源 {{source}}：承載多個機構的伺服器不讀取其本身磁碟上的檔案；請上載檔案，或以 {files}/… 或遠端地址指定它。",
       "relationship_alias_taken": "別名 '{{alias}}' 已是來自 '{{table}}' 的關係 '{{relationship}}' 的別名",
       "relationship_ambiguous_table": "表名 '{{table}}'（{{end}}）指向多於一個資料來源中的表（{{sources}}）",
       "relationship_unknown_source": "來源表 '{{table}}' 未註冊",
@@ -719,7 +727,8 @@
       "not_a_file_source": "{{type}} 資料來源不經上載取得檔案。"
     },
     "sources": {
-      "private_destination": "此組織的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。"
+      "private_destination": "此組織的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。",
+      "local_path_refused": "此組織的資料來源不讀取伺服器本身磁碟上位於其自有資料夾以外的檔案；{{path}} 正是這樣的檔案。請上載檔案，或以 {files}/… 或遠端地址指定它。"
     },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；請從它自己的地址開啟。",

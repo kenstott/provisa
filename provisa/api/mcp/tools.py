@@ -1741,14 +1741,9 @@ async def search_reference_library(state: Any, role: str, question: str, k: int 
 
 
 async def _jev_api_key(state: Any) -> str:
-    from provisa.core.org_secrets import resolve_jev_api_key
+    from provisa.core.org_secrets import JEV, org_ai_key
 
-    key = await resolve_jev_api_key(getattr(state, "model_db", None))
-    if not key:
-        raise ValueError(
-            "Jev is not configured — set TYPESAFEAI_API_KEY or an org Jev key in Admin > AI Models"
-        )
-    return key
+    return await org_ai_key(getattr(state, "model_db", None), JEV)
 
 
 async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[dict]) -> dict:
@@ -1759,8 +1754,8 @@ async def jev_evaluate(state: Any, role: str, jev_state: Any, questions: list[di
     confidence score the caller can branch on (see docs.typesafe.ai/confidence for
     confidence-routing: escalate low-confidence answers instead of trusting them blind).
     role is required for audit attribution (REQ-074) even though this call touches no
-    governed data — consistent with every other MCP tool. The acting org's own Jev key
-    (Admin > AI Models) is preferred over the deployment's TYPESAFEAI_API_KEY.
+    governed data — consistent with every other MCP tool. The key is the acting org's own Jev key
+    (Admin, AI Models), as provisa.core.org_secrets resolves every AI key.
     """
     from provisa.jev.client import evaluate
 

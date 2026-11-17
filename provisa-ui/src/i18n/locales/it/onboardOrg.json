@@ -31,7 +31,6 @@
     "createFailed": "Impossibile creare l'organizzazione",
     "provisionFailed": "Provisioning non riuscito",
     "provisionTimeout": "Il provisioning non è stato completato in tempo",
-    "egressCheckoutFailed": "Non è stato possibile aprire il pagamento dell'abbonamento al trasferimento dati. Puoi aggiungerlo in seguito da Fatturazione.",
     "welcomeTitle": "Benvenuto in {{name}}!",
     "welcomeAdmin": "Congratulazioni — l'organizzazione è pronta e il suo amministratore è stato assegnato a questo account.",
     "welcomeInviteHeading": "Invita altre persone",
@@ -67,10 +66,10 @@
     "resumeTitle": "Completa la registrazione",
     "resumeBody": "Hai iniziato a registrare {{name}} ma non hai completato il pagamento. Il nome resta riservato fino al {{expires}}.",
     "resumeButton": "Riprendi il pagamento",
-    "checkoutNotSettled": "Il pagamento non ci è ancora arrivato. Ricarica questa pagina tra un minuto per completare la configurazione dell'organizzazione.",
     "autoJoinChoiceTitle": "Più di un'organizzazione corrisponde alla tua email",
     "autoJoinChoiceBody": "Il tuo indirizzo email corrisponde alle regole di adesione di più organizzazioni. Scegli quella a cui appartieni, oppure rifiutale tutte e crea la tua.",
     "joinOfferedOrg": "Unisciti",
-    "declineAutoJoin": "Nessuna di queste"
+    "declineAutoJoin": "Nessuna di queste",
+    "checkoutReturnNoOrg": "Questa pagina è stata raggiunta da un pagamento che non indicava la sua organizzazione. Riprendi il pagamento qui sotto."
   }
 }

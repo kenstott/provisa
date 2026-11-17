@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
     },
+    "ai": {
+      "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
+      "vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+    },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
       "answer_row_cut": "The answer for {{table}} was cut at max_rows={{max_rows}}: the remote has more. Raise graphql_remote.max_rows to read it all."
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "Mutation '{{field_name}}' not permitted: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Invalid Lemon Squeezy signature",
-      "tenant_no_ls_customer": "Tenant has no Lemon Squeezy customer",
-      "tenant_not_found": "Tenant not found",
-      "webhook_missing_customer_id": "Webhook missing customer id",
-      "webhook_missing_tenant_linkage": "Webhook missing tenant linkage"
+      "checkout_not_complete": "This checkout has not completed, so there is no subscription to attach yet.",
+      "invalid_signature": "Invalid webhook signature",
+      "no_trial": "This organization has no trial",
+      "org_no_customer": "This organization has no billing account yet.",
+      "org_not_found": "Organization not found",
+      "reconcile_not_creator": "Only the organization's creator can do this",
+      "session_org_mismatch": "This checkout was not opened for this organization.",
+      "subscription_items_unrecognized": "This subscription does not carry both a plan price and a data transfer price this deployment sells, so it cannot be moved.",
+      "trial_already_started": "This organization has already started its trial. A trial is offered once per organization.",
+      "webhook_missing_org_linkage": "Webhook subscription names no organization",
+      "webhook_missing_subscription": "Webhook names no subscription"
     },
     "control_plane": {
       "multitenancy_disabled": "multitenancy is not enabled"
@@ -168,7 +178,6 @@
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
       "unknown_source_type": "Unknown source type: {{type}}",
-      "vendor_has_no_key": "{{vendor}} has no key. Set one under Admin, AI Models.",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "Logs source {{source}}: {{error}}",
       "logs_path_refused": "Logs source {{source}}: {{reason}}",
       "file_path_leaves_org": "Source {{source}}: {{path}} leaves the organization's folder.",
-      "file_path_local_refused": "Source {{source}}: a server of many organizations reads no file on its own disk; upload the file, or name it as {files}/… or by a remote address.",
       "relationship_alias_taken": "Alias '{{alias}}' is already the alias of relationship '{{relationship}}' from '{{table}}'",
       "relationship_ambiguous_table": "The {{end}} table name '{{table}}' names a table in more than one source ({{sources}})",
       "relationship_unknown_source": "Source table '{{table}}' is not registered",
@@ -719,7 +727,8 @@
       "not_a_file_source": "A {{type}} source is not given a file by upload."
     },
     "sources": {
-      "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one."
+      "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one.",
+      "local_path_refused": "This organization's sources read no file on the server's own disk outside its own folder; {{path}} is one. Upload the file, or name it as {files}/… or by a remote address."
     },
     "sandbox": {
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",

@@ -1320,10 +1320,10 @@ def _reserve_flight_port():  # pyright: ignore
     # canonical SQLAlchemy async URL as the platform plane — one place names the
     # driver, so no fixture hand-builds it.
     os.environ.setdefault("TENANT_DATABASE_URL", _cp_url)
-    # REQ-594, REQ-1075: the Lemon Squeezy webhook authenticates by HMAC over the raw body keyed
-    # by this secret, and verify_webhook_signature raises without it. A fixed test value lets the
-    # skip-path tests reach the signature check (and get a clean 400) instead of a 500.
-    os.environ.setdefault("LEMONSQUEEZY_SIGNING_SECRET", "test-signing-secret")
+    # REQ-594, REQ-1075: the Stripe webhook authenticates by HMAC over the timestamped raw body
+    # keyed by this secret, and verify_webhook_signature raises without it. A fixed test value lets
+    # the skip-path tests reach the signature check (and get a clean 400) instead of a 500.
+    os.environ.setdefault("STRIPE_WEBHOOK_SECRET", "whsec_test-signing-secret")
 
 
 @pytest.fixture(scope="session")

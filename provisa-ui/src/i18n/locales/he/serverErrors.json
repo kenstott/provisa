@@ -19,6 +19,10 @@
     "ai_models": {
       "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
     },
+    "ai": {
+      "key_required": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
+      "vendor_uses_server_credentials": "הגישה אל {{vendor}} נעשית באישורי השרת עצמו, שארגון בשרת זה אינו משתמש בהם. בחרו ספק שמקבל מפתח, או נקודת קצה של AI, תחת ניהול, מודלי AI."
+    },
     "api": {
       "answer_cut": "התשובה עבור {{table}} נחתכה ב-max_pages={{max_pages}} ({{rows}} שורות): ל-API יש עוד. הגדילו את max_pages או את גודל העמוד של נקודת הקצה כדי לקרוא הכול.",
       "answer_row_cut": "התשובה עבור {{table}} נחתכה ב-max_rows={{max_rows}}: למקור המרוחק יש עוד. הגדילו את graphql_remote.max_rows כדי לקרוא הכול."
@@ -49,11 +53,17 @@
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "חתימת Lemon Squeezy לא תקינה",
-      "tenant_no_ls_customer": "לדייר אין לקוח Lemon Squeezy",
-      "tenant_not_found": "הדייר לא נמצא",
-      "webhook_missing_customer_id": "ל-Webhook חסר מזהה לקוח",
-      "webhook_missing_tenant_linkage": "ל-Webhook חסר קישור לדייר"
+      "checkout_not_complete": "התשלום הזה לא הושלם, ולכן עדיין אין מינוי לשייך.",
+      "invalid_signature": "חתימת webhook לא חוקית",
+      "no_trial": "לארגון הזה אין תקופת ניסיון",
+      "org_no_customer": "לארגון הזה עדיין אין חשבון חיוב.",
+      "org_not_found": "הארגון לא נמצא",
+      "reconcile_not_creator": "רק יוצר הארגון יכול לעשות זאת",
+      "session_org_mismatch": "התשלום הזה לא נפתח עבור הארגון הזה.",
+      "subscription_items_unrecognized": "המינוי הזה אינו כולל גם מחיר תוכנית וגם מחיר העברת נתונים שהפריסה הזו מוכרת, ולכן לא ניתן להעביר אותו.",
+      "trial_already_started": "הארגון הזה כבר התחיל את תקופת הניסיון שלו. תקופת ניסיון מוצעת פעם אחת לכל ארגון.",
+      "webhook_missing_org_linkage": "מינוי ה־webhook אינו מציין ארגון",
+      "webhook_missing_subscription": "ה־webhook אינו מציין מינוי"
     },
     "control_plane": {
       "multitenancy_disabled": "ריבוי דיירים אינו מופעל"
@@ -168,7 +178,6 @@
       "source_not_found": "המקור '{{source_id}}' לא נמצא",
       "table_id_required": "table_id נדרש עבור היקף table",
       "unknown_source_type": "סוג מקור לא מוכר: {{type}}",
-      "vendor_has_no_key": "ל-{{vendor}} אין מפתח. הגדירו מפתח תחת ניהול, מודלי AI.",
       "vendor_unknown": "{{vendor}} אינו מציג כאן מודלים; הזינו את שם המודל.",
       "answer_unreadable": "תשובת המודל לא הכילה רשימה קריאה."
     },
@@ -467,7 +476,6 @@
       "logs_invalid": "מקור Logs {{source}}: {{error}}",
       "logs_path_refused": "מקור Logs {{source}}: {{reason}}",
       "file_path_leaves_org": "מקור {{source}}: {{path}} יוצא מתיקיית הארגון.",
-      "file_path_local_refused": "מקור {{source}}: שרת של ארגונים רבים אינו קורא קבצים מהדיסק שלו; העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת.",
       "relationship_alias_taken": "הכינוי '{{alias}}' כבר משמש ככינוי של הקשר '{{relationship}}' מ-'{{table}}'",
       "relationship_ambiguous_table": "שם הטבלה '{{table}}' ({{end}}) מציין טבלה ביותר ממקור אחד ({{sources}})",
       "relationship_unknown_source": "טבלת המקור '{{table}}' אינה רשומה",
@@ -719,7 +727,8 @@
       "not_a_file_source": "למקור {{type}} לא ניתן קובץ בהעלאה."
     },
     "sources": {
-      "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו."
+      "private_destination": "המקורות של הארגון הזה יכולים להגיע רק לכתובות ציבוריות; {{host}} הוא {{address}}, שאינה כזו.",
+      "local_path_refused": "המקורות של הארגון הזה אינם קוראים קבצים מהדיסק של השרת מחוץ לתיקייה של הארגון; {{path}} הוא קובץ כזה. העלו את הקובץ, או ציינו אותו כ-{files}/… או בכתובת מרוחקת."
     },
     "sandbox": {
       "wrong_tier": "ארגז החול הזה מוגש ממקום אחר; פתחו אותו מהכתובת שלו.",
