@@ -89234,7 +89234,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
     CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
     until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
-    is refused by name; the view is never read under the rules it had before the change.'
+    is refused by name; the view is never read under the rules it had before the change. (Amended 2026-11-16,
+    A CODE-COMMAND VIEW''S BRIDGE ROWS ARE FILTERED BY THE READER''S RULE ON EACH INPUT, THROUGH ITS RELATIONSHIP:)
+    Lead 2026-11-16, narrowing the amendment of this day that refused every reader with a row rule on a
+    table read inside another view, so that REQ-2249''s rule (row rules apply at each hop) holds. For a
+    view that calls a code command, the stored bridge rows are filtered by the reader''s row rule on each
+    input table through the input''s registered relationship to the view (an EXISTS over the input under
+    the reader''s rule). An output that is an input''s relationship key is derived from that key column
+    only, so a mask elsewhere on the input does not mask it. A row rule on an input that has no relationship
+    from the view is still refused by name.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
