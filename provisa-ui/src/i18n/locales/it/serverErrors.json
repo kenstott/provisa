@@ -624,7 +624,7 @@
       "schema_not_avro": "Lo schema {{schema_id}} nel registro {{registry}} è {{kind}}, non Avro",
       "schema_registry_error": "Il registro degli schemi {{registry}} ha risposto HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Il registro degli schemi {{registry}} ha rifiutato le credenziali dell'origine (HTTP {{http_status}}, autenticazione '{{method}}')",
-      "schema_registry_unreachable": "Il registro degli schemi {{registry}} non è raggiungibile: {{error}}",
+      "schema_registry_unreachable": "Il registro degli schemi non è raggiungibile: {{error}}",
       "sse_limit_reached": "numero massimo di sottoscrizioni SSE simultanee raggiunto",
       "table_not_found": "Tabella '{{table}}' non trovata",
       "unknown_role": "Ruolo '{{role}}' sconosciuto",

@@ -624,7 +624,7 @@
       "schema_not_avro": "रजिस्ट्री {{registry}} में स्कीमा {{schema_id}} {{kind}} है, Avro नहीं",
       "schema_registry_error": "स्कीमा रजिस्ट्री {{registry}} ने HTTP {{http_status}} लौटाया: {{error}}",
       "schema_registry_refused_credentials": "स्कीमा रजिस्ट्री {{registry}} ने स्रोत के क्रेडेंशियल अस्वीकार कर दिए (HTTP {{http_status}}, प्रमाणीकरण '{{method}}')",
-      "schema_registry_unreachable": "स्कीमा रजिस्ट्री {{registry}} तक पहुँचा नहीं जा सकता: {{error}}",
+      "schema_registry_unreachable": "स्कीमा रजिस्ट्री तक पहुँचा नहीं जा सकता: {{error}}",
       "sse_limit_reached": "अधिकतम समवर्ती SSE सब्सक्रिप्शन सीमा पूरी हो गई",
       "table_not_found": "टेबल '{{table}}' नहीं मिली",
       "unknown_role": "अज्ञात भूमिका '{{role}}'",

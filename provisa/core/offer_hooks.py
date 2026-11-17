@@ -218,7 +218,7 @@ async def deliver(target: HookTarget, body: Mapping[str, Any]) -> None:
             answer = await client.post(target.url, content=raw, headers=headers)
     except httpx.HTTPError as exc:
         raise HookFailed(
-            f"the request hook at {target.url} could not be reached: {describe_http_failure(exc)}"
+            f"the request hook could not be reached: {describe_http_failure(exc)}"
         ) from exc
     if not answer.is_success:
         raise HookFailed(
