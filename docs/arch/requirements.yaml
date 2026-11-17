@@ -3686,7 +3686,12 @@
     in the dialog and kept for the person who set it. (Amended 2026-11-16, SUGGESTIONS ARE DECIDED ONLY
     IN A RUN''S RESULT; THE RELATIONSHIPS PAGE LISTS NONE:) Maintainer 2026-11-16. The Relationships page
     lists registered relationships only; it has no list of suggestions. A suggestion is decided only in
-    a Discover run''s result table, and a decided one is shown in no list.'
+    a Discover run''s result table, and a decided one is shown in no list. (Amended 2026-11-16, A PAIR ALREADY
+    JOINED, DIRECTLY OR AS A JUNCTION''S LEG, IS NEVER SUGGESTED; A DECIDED PAIR STAYS DECIDED:) Lead 2026-11-16,
+    following the maintainer''s report that discovery asked again about relationships he had accepted. A
+    pair of columns already joined by a registered relationship, directly or as a leg of a many-to-many
+    relationship through its junction table, is not proposed as a new one. A pair once accepted or marked
+    not to be recommended again keeps that decision: a later run never reopens it as pending.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -45168,7 +45173,10 @@
     first page in bar order, as before. (Amended 2026-11-16, DELETING AN ORGANIZATION AND GRANTING ORG ADMIN
     NEED ORG ADMIN:) Maintainer 2026-11-16 (''both need org_admin''; relayed by the audit session). Deleting
     an organization and granting the org_admin role are done only by an org_admin of that organization;
-    the user_management capability alone allows neither.'
+    the user_management capability alone allows neither. (Amended 2026-11-16, REVOKING ORG_ADMIN NEEDS ORG_ADMIN,
+    AS GRANTING IT DOES:) Maintainer 2026-11-16. Revoking org_admin from a person needs org_admin, as granting
+    it does, so a holder of user_management alone cannot remove an organization''s administrators. The platform
+    administrator keeps the audited recovery of an organization''s administration.'
   use_case: Multi-tenant SaaS governance requires a hard boundary between the provider's control-plane
     operations and customer data access. Unified role inheritance conflates recovery capability with standing
     access and creates a silent backdoor that compliance frameworks (SOC 2, ISO 27001) cannot audit. Separation

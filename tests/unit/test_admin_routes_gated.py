@@ -65,6 +65,7 @@ GATE_NAMES = frozenset(
         "can_act_cross_org",
         # router-local gates
         "_require_org_admin",
+        "_require_org_admin_rights",
         "_require_platform_admin",
         "_administered_org_scope",
         "_org_guard",

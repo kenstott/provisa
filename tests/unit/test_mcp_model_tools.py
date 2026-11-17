@@ -578,6 +578,7 @@ def _column(name: str, data_type: str, **kw: Any) -> admin_types.TableColumnType
 def _table(**kw: Any) -> admin_types.RegisteredTableType:
     base: dict[str, Any] = {
         "id": 7,
+        "registered_at": "2026-11-17T00:00:00+00:00",
         "source_id": "pg",
         "domain_id": "sales",
         "schema_name": "public",

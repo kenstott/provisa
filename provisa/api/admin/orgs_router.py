@@ -226,6 +226,16 @@ def _validate_org_policy(
                 f"role {auto_join_role!r} carries platform rights and cannot be an auto-join role",
                 role=auto_join_role,
             )
+        # REQ-1327 (amended 2026-11-16): an org administrator's role is granted only by a holder
+        # of its rights, and an auto-join grants with none, so it never confers one. Judged by the
+        # same definitions as the platform check above; the grant refuses it too.
+        from provisa.api.admin._platform_guard import org_admin_refusal
+        from provisa.security.rights import admin_role_grant_missing
+
+        auto_join_rights = (_app_state.platform_roles.get(auto_join_role) or {}).get("capabilities")
+        lacking = admin_role_grant_missing(auto_join_rights, ())
+        if lacking:
+            raise org_admin_refusal(lacking)
     if auto_join:
         # REQ-1477: auto-join treats a matching address as proof of belonging, which only holds for
         # a domain the org controls. A consumer mailbox is issued to anyone who asks for one.
@@ -1004,9 +1014,9 @@ async def delete_org(org_id: str, request: Request, confirm: str | None = None):
     schema; membership, invite and auto-join opt-out rows cascade from the registry row.
     """
 
-    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.api.admin.invites_router import _require_org_admin_rights
 
-    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
+    await _require_org_admin_rights(request, org_id)  # REQ-1327
     if org_id == "root":
         # REQ-1300/REQ-1296: root carries the deployment's own admin surface and demo assets.
         raise ApiError(400, "orgs.cannot_delete_root", "Cannot delete the root org")
@@ -1366,10 +1376,10 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
 
     REQ-1308: a caller can never grant themselves a role they were not assigned.
     """
-    from provisa.api.admin.invites_router import _require_org_admin
+    from provisa.api.admin.invites_router import _require_org_admin_rights
     from provisa.core.org_membership import grant_org_admin, record_admin_action
 
-    await _require_org_admin(request, org_id, allow_cross_org=True)  # REQ-1327
+    await _require_org_admin_rights(request, org_id)  # REQ-1327
     actor = _caller_user_id(request)
     if actor is not None and actor == user_id:
         raise ApiError(
