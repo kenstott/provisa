@@ -19,6 +19,8 @@ times."""
 
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
@@ -71,3 +73,23 @@ def test_the_listed_engine_errors_answer_postgresql_s_value(sql, want):
     runtime = ClickHouseFederationRuntime.embedded()
     ((got,),) = list(runtime.run_sync(transpile(sql, "clickhouse")).iter_rows())
     assert got == want
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        'SELECT pg_catalog."range_agg"(c1 ORDER BY c1) AS v FROM (VALUES '
+        "('[1,5)'::int4range), ('empty'::int4range), ('(,3]'::int4range)) AS t(c1)",
+        'SELECT pg_catalog."range_agg"(NULL::int4range) AS v',
+    ],
+)
+def test_a_range_fold_names_its_item_a_few_times(sql):
+    """ClickHouse's analysis of a lambda costs as the square of the times its body names its
+    variables: range_agg's fold named its item 973 times (each read of a bound re-read the item's
+    text) and took ClickHouse's analyzer longer than the measure's 30 s a call. Each item is now
+    read as a range before the fold, a tuple whose parts the step names once each."""
+    written = transpile(sql, "clickhouse")
+    folds = re.findall(r"arrayFold\(\((_s\d+), (_x\d+)\)", written)
+    assert folds
+    for _, item in folds:
+        assert len(re.findall(rf"\b{item}\b", written)) < 100

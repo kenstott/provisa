@@ -436,6 +436,11 @@ class _Nothing:
 _Value = _R | _M
 
 
+def astuple_side(side: _Side) -> tuple[exp.Expr, exp.Expr, exp.Expr, exp.Expr]:
+    """A bound's parts in _Side's order."""
+    return side.inf, side.value, side.inc, side.text
+
+
 def _choose(condition: exp.Expr, a: _Side, b: _Side) -> _Side:
     """``a`` where ``condition`` holds, else ``b``. A predicate is no value on every dialect, so
     an inclusivity is chosen with AND and OR."""
@@ -604,6 +609,8 @@ class _Writer:
 
     def __init__(self, dialect: str) -> None:
         self.dialect = dialect
+        #: A fold's item already read (ClickHouse): its text's form, and the range read of it.
+        self._preparsed: dict[str, _R] = {}
         self.serial = 0
 
     def fresh(self, stem: str) -> str:
@@ -793,6 +800,15 @@ class _Writer:
         makes it ('(1,5]' is '[2,6)'). Each part is one short expression: an operator names them
         many times over, so nothing here repeats a bound's reading. ``NULLIF`` is what keeps the
         word ``empty`` from a cast, as NULL passes through every function here."""
+        preparsed = self._preparsed.get(text.sql(dialect="postgres"))
+        if preparsed is not None and preparsed.rtype == rtype:
+            return _R(
+                rtype,
+                preparsed.null.copy(),
+                preparsed.empty.copy(),
+                _Side(*(part.copy() for part in astuple_side(preparsed.lower))),
+                _Side(*(part.copy() for part in astuple_side(preparsed.upper))),
+            )
         held = exp.Nullif(this=text.copy(), expression=_string("empty"))
         comma = _strpos(held, ",")
         quoted = rtype.element in ("timestamp", "timestamptz")
@@ -1105,6 +1121,8 @@ class _Writer:
         state, item = exp.column(state_name), exp.column(item_name)
         if self.dialect == "snowflake":  # a lambda's variables are VARIANT there
             state, item = _text_cast(state), _text_cast(item)
+        if self.dialect == "clickhouse":
+            items, item = self._items_read(items, item, rtype)
         body = step(state, item)
         fold = exp.Lambda(
             this=body,
@@ -1120,6 +1138,38 @@ class _Writer:
             same = exp.Lambda(this=exp.column(done), expressions=[exp.to_identifier(done)])
             return _call(name, items, start, fold, same)
         return _call(name, items, start, fold)  # databricks, spark, snowflake
+
+    def _items_read(
+        self, items: exp.Expr, item: exp.Expr, rtype: RangeType
+    ) -> tuple[exp.Expr, exp.Expr]:
+        """ClickHouse: each item of a fold read as a range before the fold, as a tuple of its text
+        and its parts, so the fold's step names each part once. ClickHouse's analysis of a lambda
+        costs as the square of the times its body names its variables, and a step reads an item's
+        bounds many times over (range_agg's fold passed 30 s)."""
+        name = self.fresh("p")
+        read = self.parsed(exp.column(name), rtype)
+        parts = [
+            exp.column(name),
+            read.null,
+            read.empty,
+            *astuple_side(read.lower),
+            *astuple_side(read.upper),
+        ]
+        each = exp.Lambda(this=_call("tuple", *parts), expressions=[exp.to_identifier(name)])
+        tupled = _call("arrayMap", each, items)
+
+        def at(n: int) -> exp.Expr:
+            return _call("tupleElement", item.copy(), _int(n))
+
+        text = at(1)
+        self._preparsed[text.sql(dialect="postgres")] = _R(
+            rtype,
+            at(2),
+            at(3),
+            _Side(at(4), at(5), at(6), at(7)),
+            _Side(at(8), at(9), at(10), at(11)),
+        )
+        return tupled, text
 
     def sorted_ranges(self, text: exp.Expr, rtype: RangeType, operation: str) -> exp.Expr:
         """The ranges in ``text`` in range_cmp's order: each a row of its sort keys and itself,
