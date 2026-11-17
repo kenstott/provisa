@@ -134,10 +134,8 @@ async def test_a_withdrawn_table_is_out_of_the_load_and_kept_for_its_preview(pla
     async with plane.acquire() as conn:
         await _withdraw_table(conn, "customers")
         served = {t["table_name"] for t in await fetch_tables(conn)}
-        drafts = await fetch_tables(conn, draft=True)
         withdrawn = await fetch_tables(conn, withdrawn=True)
     assert served == {"orders", "invoices"}
-    assert drafts == []
     (customers,) = withdrawn
     assert customers["table_name"] == "customers"
     assert (customers["withdrawn"], customers["source_withdrawn"]) == (True, False)
@@ -226,8 +224,7 @@ async def test_withdrawing_an_unknown_source_says_so(plane):
 
 @pytest.fixture
 def actions(plane, monkeypatch):
-    """The withdraw / put back mutations on the plane, the rebuild and the engine recorded."""
-    from provisa.api import app as appmod
+    """The withdraw / put back mutations on the plane, the rebuild recorded."""
     from provisa.api.admin import schema_mutation
 
     done: list[tuple] = []
@@ -241,20 +238,9 @@ def actions(plane, monkeypatch):
     async def _readable(_info, _table_id):
         return None
 
-    engine = SimpleNamespace(
-        register_source=lambda model, _pw, *, catalog_name: done.append(
-            ("attach", model.id, catalog_name)
-        ),
-        drop_source=lambda source_id, *, catalog_name: done.append(("detach", source_id)),
-    )
     monkeypatch.setattr(schema_mutation, "_get_pool", _pool)
     monkeypatch.setattr(schema_mutation, "_rebuild_schemas", _rebuild)
     monkeypatch.setattr(schema_mutation, "_table_unread", _readable)
-    monkeypatch.setattr(appmod.state, "federation_engine", engine, raising=False)
-    monkeypatch.setattr(appmod.state, "source_catalogs", {"erp": "erp"}, raising=False)
-    monkeypatch.setattr(
-        "provisa.api.app_loaders.catalog_name_for_source", lambda _s, _t, sid: f"cat_{sid}"
-    )
     return done
 
 
@@ -282,15 +268,15 @@ async def test_a_table_is_withdrawn_and_put_back_by_one_action_each(plane, actio
     async with plane.acquire() as conn:
         customers = await _id(conn, "customers")
     async with model_change.scope("save", actor=lambda: "ada"):
-        out = await _set_table_withdrawn(_info(), customers, True)
+        out = await _set_table_withdrawn(_info(), customers, True, None)
     assert (out.success, out.code) == (True, "schema.table_withdrawn")
     assert await _withdrawn_flag(plane, "customers") is True
     async with model_change.scope("save", actor=lambda: "ada"):
-        back = await _set_table_withdrawn(_info(), customers, False)
+        back = await _set_table_withdrawn(_info(), customers, False, None)
     assert (back.success, back.code) == (True, "schema.table_put_back")
     assert await _withdrawn_flag(plane, "customers") is False
     assert actions == [("rebuild",), ("rebuild",)]
-    missing = await _set_table_withdrawn(_info(), 999_999, True)
+    missing = await _set_table_withdrawn(_info(), 999_999, True, None)
     assert (missing.success, missing.code) == (False, "schema.table_not_found")
 
 
@@ -309,27 +295,199 @@ async def test_withdrawing_a_table_needs_table_registration_in_its_domain(
     async with plane.acquire() as conn:
         customers = await _id(conn, "customers")
     with pytest.raises(PermissionError):
-        await schema_mutation._set_table_withdrawn(_info(), customers, True)
+        await schema_mutation._set_table_withdrawn(_info(), customers, True, None)
     assert asked == [("table_registration", "sales")]
     assert await _withdrawn_flag(plane, "customers") is False
 
 
-async def test_a_source_is_withdrawn_detached_and_put_back_attached(plane, actions):
+async def test_a_source_is_withdrawn_and_put_back_by_one_action_each(plane, actions):
+    """Each worker's engine detaches or attaches it when its model reload reads the row
+    (model_reload.reconcile_sources), this worker's included: the action writes the row and
+    rebuilds."""
     from provisa.api.admin.schema_mutation import _set_source_withdrawn
 
     async with model_change.scope("save", actor=lambda: "ada"):
-        out = await _set_source_withdrawn(_info(), "erp", True)
-        back = await _set_source_withdrawn(_info(), "erp", False)
-        missing = await _set_source_withdrawn(_info(), "nope", True)
+        out = await _set_source_withdrawn(_info(), "erp", True, None)
+        assert "erp" in await _withdrawn_source_ids(plane)
+        back = await _set_source_withdrawn(_info(), "erp", False, None)
+        missing = await _set_source_withdrawn(_info(), "nope", True, None)
     assert (out.success, out.code) == (True, "schema.source_withdrawn")
     assert (back.success, back.code) == (True, "schema.source_put_back")
     assert (missing.success, missing.code) == (False, "schema.source_not_found")
-    assert actions == [
-        ("detach", "erp"),
-        ("rebuild",),
-        ("attach", "erp", "cat_erp"),
-        ("rebuild",),
-    ]
+    assert "erp" not in await _withdrawn_source_ids(plane)
+    assert actions == [("rebuild",), ("rebuild",)]
+
+
+async def _withdrawn_source_ids(db) -> frozenset[str]:
+    async with db.acquire() as conn:
+        return await source_repo.withdrawn_ids(conn)
+
+
+async def test_putting_back_what_is_not_withdrawn_is_refused_by_name(plane, actions):
+    """Putting back names a region: on a table or source in production it would move it past
+    the origin region's holder, so it is refused."""
+    from provisa.api.admin.schema_mutation import _set_source_withdrawn, _set_table_withdrawn
+
+    async with plane.acquire() as conn:
+        customers = await _id(conn, "customers")
+    table = await _set_table_withdrawn(_info(), customers, False, None)
+    assert (table.success, table.code, table.params) == (
+        False,
+        "schema.table_not_withdrawn",
+        {"table": "customers"},
+    )
+    source = await _set_source_withdrawn(_info(), "erp", False, None)
+    assert (source.success, source.code) == (False, "schema.source_not_withdrawn")
+    assert actions == []
+
+
+async def test_put_back_without_a_region_is_refused_naming_what_to_give(plane, actions):
+    import strawberry
+
+    from provisa.api.admin.schema_mutation import Mutation
+
+    async with plane.acquire() as conn:
+        customers = await _id(conn, "customers")
+    table = await Mutation().put_back_table(_info(), customers, strawberry.UNSET)  # pyright: ignore[reportCallIssue]
+    assert (table.code, table.params) == (
+        "schema.put_back_needs_region",
+        {"object": f"table {customers}"},
+    )
+    source = await Mutation().put_back_source(_info(), "erp", strawberry.UNSET)  # pyright: ignore[reportCallIssue]
+    assert (source.code, source.params) == (
+        "schema.put_back_needs_region",
+        {"object": "source erp"},
+    )
+    assert actions == []
+
+
+# --- a move between regions passes through withdrawn, by a holder for each region -----------------
+
+EU_HOLDER, US_HOLDER = "eu_holder", "us_holder"
+
+
+@pytest.fixture
+def regions(plane, actions, monkeypatch):
+    """A platform declaring the regions eu and us, and two people: one holding data_residency
+    for eu, one for us. The org selects both regions (the stores each reads are not this test's)."""
+    from provisa.api import app as appmod
+    from provisa.api.admin import schema_mutation
+
+    monkeypatch.setattr("provisa.api.admin.region_defaults.connected_region", lambda: "eu")
+    monkeypatch.setattr(
+        "provisa.core.repositories.region.require_table_region", _any_region_selected
+    )
+    monkeypatch.setattr("provisa.core.repositories.region.require_selected", _any_region_selected)
+    monkeypatch.setattr(schema_mutation, "require_capability", lambda *a, **kw: None)
+    holders = {
+        holder: {
+            "id": holder,
+            "capabilities": ["data_residency", "table_registration", "source_registration"],
+            "domain_access": ["*"],
+            "residency_values": [region],
+        }
+        for holder, region in ((EU_HOLDER, "eu"), (US_HOLDER, "us"))
+    }
+    monkeypatch.setattr(appmod.state, "roles", holders, raising=False)
+
+
+async def _any_region_selected(_conn, _what, _region) -> None:
+    return None
+
+
+def _as(holder: str) -> Any:
+    identity = SimpleNamespace(user_id=holder, roles=[holder], acting_roles=[holder])
+    request = SimpleNamespace(state=SimpleNamespace(identity=identity, role=holder))
+    return SimpleNamespace(context={"request": request})
+
+
+async def _region_of(db, name: str) -> str | None:
+    async with db.acquire() as conn:
+        return (
+            await conn.execute_core(
+                select(registered_tables.c.region).where(registered_tables.c.table_name == name)
+            )
+        ).scalar_one()
+
+
+async def test_a_table_moves_between_regions_by_a_holder_for_each(plane, regions):
+    """eu's holder withdraws a table kept in eu; us's holder puts it back into us. Neither
+    needed the other's region."""
+    from provisa.api.admin.schema_mutation import _set_table_withdrawn
+
+    async with plane.acquire() as conn:
+        customers = await _id(conn, "customers")
+        await conn.execute_core(
+            update(registered_tables).where(registered_tables.c.id == customers).values(region="eu")
+        )
+    async with model_change.scope("save", actor=lambda: "ada"):
+        out = await _set_table_withdrawn(_as(EU_HOLDER), customers, True, None)
+    assert (out.success, out.code) == (True, "schema.table_withdrawn")
+    assert await _withdrawn_flag(plane, "customers") is True
+    async with model_change.scope("save", actor=lambda: "ada"):
+        back = await _set_table_withdrawn(_as(US_HOLDER), customers, False, "us")
+    assert (back.success, back.code) == (True, "schema.table_put_back")
+    assert await _withdrawn_flag(plane, "customers") is False
+    assert await _region_of(plane, "customers") == "us"
+
+
+async def test_only_the_origin_regions_holder_withdraws(plane, regions):
+    from provisa.api.admin.schema_mutation import _set_table_withdrawn
+
+    async with plane.acquire() as conn:
+        customers = await _id(conn, "customers")
+        await conn.execute_core(
+            update(registered_tables).where(registered_tables.c.id == customers).values(region="eu")
+        )
+    refused = await _set_table_withdrawn(_as(US_HOLDER), customers, True, None)
+    assert (refused.success, refused.code, refused.params) == (
+        False,
+        "security.withdraw_residency_refused",
+        {"object": "table customers", "value": "eu"},
+    )
+    assert await _withdrawn_flag(plane, "customers") is False
+
+
+async def test_putting_back_names_a_region_the_holders_grant_covers(plane, regions):
+    from provisa.api.admin.schema_mutation import _set_table_withdrawn
+
+    async with plane.acquire() as conn:
+        customers = await _id(conn, "customers")
+        await conn.execute_core(
+            update(registered_tables)
+            .where(registered_tables.c.id == customers)
+            .values(region="eu", withdrawn=True)
+        )
+    refused = await _set_table_withdrawn(_as(EU_HOLDER), customers, False, "us")
+    assert (refused.success, refused.code, refused.params) == (
+        False,
+        "security.data_residency_refused",
+        {"object": "table customers", "value": "us"},
+    )
+    # Not put back, and still where it was.
+    assert await _withdrawn_flag(plane, "customers") is True
+    assert await _region_of(plane, "customers") == "eu"
+
+
+async def test_a_source_moves_by_a_holder_for_each_region(plane, regions):
+    from provisa.api.admin.schema_mutation import _set_source_withdrawn
+
+    async with plane.acquire() as conn:
+        await conn.execute_core(update(sources).where(sources.c.id == "erp").values(region="eu"))
+    refused = await _set_source_withdrawn(_as(US_HOLDER), "erp", True, None)
+    assert refused.code == "security.withdraw_residency_refused"
+    async with model_change.scope("save", actor=lambda: "ada"):
+        out = await _set_source_withdrawn(_as(EU_HOLDER), "erp", True, None)
+        refused_back = await _set_source_withdrawn(_as(EU_HOLDER), "erp", False, "us")
+        back = await _set_source_withdrawn(_as(US_HOLDER), "erp", False, "us")
+    assert (out.success, refused_back.code, back.success) == (
+        True,
+        "security.data_residency_refused",
+        True,
+    )
+    async with plane.acquire() as conn:
+        row = await source_repo.get(conn, "erp")
+    assert row is not None and (row["withdrawn"], row["region"]) == (False, "us")
 
 
 # --- every surface, built from the shared load --------------------------------------------------
@@ -503,13 +661,18 @@ def test_who_may_preview_a_withdrawn_table():
 
 
 def test_a_withdrawn_table_is_found_for_its_stewards_preview_and_named_by_no_statement(surfaces):
-    from provisa.api.admin.table_read import draft_table, drafts_a_statement_names
+    from provisa.api.admin import table_read
 
     withdrawn = surfaces.role_build_inputs["withdrawn_tables"]
     (customers,) = withdrawn
-    assert draft_table(surfaces, customers["id"]) is customers
-    # A statement a caller sends never reaches it, a steward's included.
-    assert drafts_a_statement_names(surfaces, "SELECT id FROM customers", STEWARD) == []
+    assert table_read.withdrawn_table(surfaces, customers["id"]) is customers
+    # A statement a caller sends never reaches it, a steward's included: there is no path that
+    # names a withdrawn table to a statement.
+    assert not hasattr(table_read, "drafts_a_statement_names")
+    from provisa.api.role_surface import role_surface
+
+    surface = role_surface(surfaces, STEWARD)
+    assert surface is not None and "customers" not in surface.context.tables
 
 
 def test_a_preview_of_a_withdrawn_sources_table_is_refused_saying_why(surfaces):

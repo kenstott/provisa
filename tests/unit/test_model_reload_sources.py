@@ -19,14 +19,18 @@ mutation. Every other worker reaches the same state when its schema build reads 
 * a source the config declares is built from the config's entry, where its credentials are;
 * a failure to build source state is logged and does not stop the schema build;
 * a retired source (REQ-2248) is not a registered source: the rows a build reads leave it out,
-  so it is given no state, and a restored one is built on the next pass."""
+  so it is given no state, and a restored one is built on the next pass;
+* an added source this worker published no catalog for -- one put back after it was withdrawn
+  (REQ-1921), or registered on another worker -- is attached by this worker's engine, under the
+  catalog name the build published for it."""
 
-# Requirements: REQ-1914, REQ-2248
+# Requirements: REQ-1914, REQ-1921, REQ-2248
 
 from __future__ import annotations
 
 import ast
 import asyncio
+import contextlib
 import logging
 from pathlib import Path
 from types import SimpleNamespace
@@ -71,9 +75,17 @@ def worker(monkeypatch):
     """A worker's state with one runtime, and the pool builder recorded instead of dialled."""
     runtime = OrgRuntime(org_id="acme")
     runtime.source_pools = SimpleNamespace(remove=AsyncMock())
+    attached: list[tuple[str, str | None]] = []
+    engine = SimpleNamespace(
+        register_source=lambda source, _pw, catalog_name=None: attached.append(
+            (source.id, catalog_name)
+        )
+    )
     state = SimpleNamespace(
         _active_runtime=lambda: runtime,
         source_pools=runtime.source_pools,
+        source_catalogs=runtime.source_catalogs,
+        federation_engine=engine,
         graphql_remote_sources={},
         config=None,
     )
@@ -82,10 +94,15 @@ def worker(monkeypatch):
     async def _build(config, extra_sources=None):
         assert list(config.sources) == []
         built.append(list(extra_sources or []))
+        # As the build publishes them (_populate_source_catalog_names).
+        for source in extra_sources or []:
+            runtime.source_catalogs[source.id] = f"acme_{source.id}"
 
     monkeypatch.setattr("provisa.api.app.state", state)
     monkeypatch.setattr("provisa.api.app_loaders._build_source_pools_and_enums", _build)
-    return SimpleNamespace(state=state, runtime=runtime, built=built)
+    # No organisation vault here: the sources' credentials are plain values.
+    monkeypatch.setattr("provisa.core.secrets_store.bound_to_request_org", contextlib.nullcontext)
+    return SimpleNamespace(state=state, runtime=runtime, built=built, attached=attached)
 
 
 def _reconcile(rows: list[dict]) -> None:
@@ -113,6 +130,26 @@ def test_a_source_another_worker_registered_is_built_here(worker):
     assert [[s.id for s in batch] for batch in worker.built] == [["b"]]
     worker.runtime.source_pools.remove.assert_not_awaited()  # nothing existing is torn down
     assert set(worker.runtime.source_rows) == {"a", "b"}
+
+
+def test_a_source_put_back_is_attached_by_this_workers_engine(worker):
+    """REQ-1921: withdrawn, a source leaves the rows a build reads and is detached; put back, it
+    is added again, and every worker's engine attaches it through the stamp -- this one's too."""
+    _reconcile([_row("a"), _row("b")])
+    worker.runtime.source_catalogs.update(a="acme_a", b="acme_b")
+    _reconcile([_row("a")])  # b withdrawn: its catalog forgotten here
+    assert "b" not in worker.runtime.source_catalogs
+    _reconcile([_row("a"), _row("b")])  # b put back
+    assert worker.attached == [("b", "acme_b")]
+
+
+def test_a_source_this_worker_already_attached_is_not_attached_again(worker):
+    """The worker that registered a source published its catalog and attached it in the
+    mutation: its next build does not attach it a second time."""
+    _reconcile([_row("a")])
+    worker.runtime.source_catalogs["b"] = "acme_b"  # create_source on this worker
+    _reconcile([_row("a"), _row("b")])
+    assert worker.attached == []
 
 
 def test_a_source_another_worker_changed_gets_a_new_pool(worker):

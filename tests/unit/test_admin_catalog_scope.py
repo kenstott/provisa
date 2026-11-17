@@ -13,7 +13,8 @@
 ``tables``, ``relationships``, ``domains``, ``sources`` and ``metrics`` used to answer every
 signed-in caller with the whole registered catalog, grant lists included. Every caller reads what
 the role the request acts as is served, from the one narrowing the Flight and MCP catalogs use; a
-draft table, in no compiled context yet, by the same rule applied to its stored columns. No
+table in no compiled context -- saved since the last build, or withdrawn and answered to its
+stewards -- by the same rule applied to its stored columns. No
 capability widens it (REQ-2152): ``table_registration`` or a hiding right (REQ-1944) opens the
 feature, never more of the catalog. Grant lists and mask settings need ``view_governance``
 (REQ-1134).
@@ -65,8 +66,8 @@ _ROLES = {
 # REQ-2153: the build keeps each role's own domain access beside its reach; no domain tree here.
 for _definition in _ROLES.values():
     _definition["own_domain_access"] = list(_definition["domain_access"])
-# (table id, column) → the grant of a draft table's stored column, set by the draft tests.
-_DRAFT_GRANTS: dict[tuple[int, str], list[str]] = {}
+# (table id, column) → the grant of a stored column a test sets on a table no build compiled.
+_STORED_GRANTS: dict[tuple[int, str], list[str]] = {}
 
 _METRICS = [
     # REQ-2153: '*' names no role -- a metric for everyone names the roles it is for.
@@ -115,7 +116,7 @@ _RELATIONSHIPS = [
 
 
 class _Conn:
-    _extra: list[dict] = []  # draft rows a test adds to registered_tables
+    _extra: list[dict] = []  # rows a test adds to registered_tables
 
     async def __aenter__(self):
         return self
@@ -200,8 +201,8 @@ def _model(monkeypatch):
                 types.SimpleNamespace(
                     column_name=c,
                     scope="domain",
-                    # A draft's columns carry their own grants (test_a_draft_*).
-                    visible_to=_DRAFT_GRANTS.get((row["id"], c), ["analyst"]),
+                    # A table no build compiled carries its stored grants.
+                    visible_to=_STORED_GRANTS.get((row["id"], c), ["analyst"]),
                     masks=[
                         {"to": ["registrar"], "mask": None},
                         {"mask": {"type": "constant", "value": "***"}},
@@ -305,7 +306,7 @@ async def test_a_hiding_right_never_widens_what_is_answered():
     }
 
 
-def _draft(columns: list[dict]) -> dict:
+def _withdrawn(columns: list[dict]) -> dict:
     return {
         "id": 4,
         "domain_id": "sales",
@@ -315,64 +316,54 @@ def _draft(columns: list[dict]) -> dict:
     }
 
 
-async def test_a_draft_is_answered_by_the_grant_on_its_stored_columns(monkeypatch):
-    """REQ-2152: a draft is in no compiled context; column_served decides it from its stored
-    columns, the rule the compile applies. A grant names its roles (REQ-2153)."""
-    draft = _draft(
+def _as_built(monkeypatch) -> None:
+    """The roles as the build holds them: each with its acting chain (REQ-2188), itself."""
+    built = {rid: {**r, "id": rid, "acting_chain": [rid]} for rid, r in _ROLES.items()}
+    monkeypatch.setattr(appmod.state, "roles", built, raising=False)
+
+
+def test_a_withdrawn_table_is_answered_by_its_stored_columns_to_its_stewards_alone(monkeypatch):
+    """REQ-1921, REQ-2152: a withdrawn table is in no compiled context; it is answered only to a
+    role that may preview it (table registration reaching its domain), and of it what
+    column_served gives that role from its stored columns. A grant names its roles (REQ-2153)."""
+    withdrawn = _withdrawn(
         [
             {"column_name": "id", "visible_to": ["registrar", "auditor"], "scope": "domain"},
             {"column_name": "score", "visible_to": ["auditor"], "scope": "domain"},
         ]
     )
-    monkeypatch.setattr(
-        appmod.state, "role_build_inputs", {"draft_tables": [draft], "withdrawn_tables": []}
-    )
-    monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
-    for column in draft["columns"]:
-        _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
-    _COLUMNS[4] = ["id", "score"]
-    try:
-        assert (await _tables(_caller("registrar")))["leads"] == ["id"]
-        assert (await _tables(_caller("auditor")))["leads"] == ["id", "score"]
-        assert "leads" not in await _tables(_caller("masker"))  # hr only: sales out of reach
-    finally:
-        del _COLUMNS[4]
-        _DRAFT_GRANTS.clear()
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"withdrawn_tables": [withdrawn]})
+    _as_built(monkeypatch)
+    assert catalog_scope(_caller("registrar")).served[4] == {"id"}
+    # Granted every column, but holding no table registration: not one of its stewards.
+    assert 4 not in catalog_scope(_caller("auditor")).served
+    assert 4 not in catalog_scope(_caller("masker")).served  # hr only: sales out of reach
 
 
-async def test_a_draft_whose_grants_exclude_the_registrants_role_is_not_answered(monkeypatch):
-    """REQ-2152: registration ends when the table is saved; a draft granted to another role only
-    is not listed to the registrar who saved it."""
-    draft = _draft([{"column_name": "id", "visible_to": ["auditor"], "scope": "domain"}])
-    monkeypatch.setattr(
-        appmod.state, "role_build_inputs", {"draft_tables": [draft], "withdrawn_tables": []}
-    )
-    monkeypatch.setattr(_Conn, "_extra", [draft], raising=False)
-    for column in draft["columns"]:
-        _DRAFT_GRANTS[(draft["id"], column["column_name"])] = column["visible_to"]
-    _COLUMNS[4] = ["id"]
-    try:
-        assert "leads" not in await _tables(_caller("registrar"))
-        assert (await _tables(_caller("auditor")))["leads"] == ["id"]
-    finally:
-        del _COLUMNS[4]
-        _DRAFT_GRANTS.clear()
+def test_a_withdrawn_table_whose_grants_exclude_its_steward_is_not_answered(monkeypatch):
+    """REQ-1921, REQ-2152: the right to preview it does not widen the columns: a withdrawn table
+    granted to another role only is answered to nobody who may preview it."""
+    withdrawn = _withdrawn([{"column_name": "id", "visible_to": ["auditor"], "scope": "domain"}])
+    monkeypatch.setattr(appmod.state, "role_build_inputs", {"withdrawn_tables": [withdrawn]})
+    _as_built(monkeypatch)
+    assert 4 not in catalog_scope(_caller("registrar")).served
+    assert 4 not in catalog_scope(_caller("auditor")).served
 
 
 async def test_a_table_saved_since_the_last_build_is_answered_by_its_stored_columns(monkeypatch):
-    """REQ-2152: a table the last schema build did not compile -- saved since, not a draft -- is
+    """REQ-2152: a table the last schema build did not compile -- saved since, not withdrawn -- is
     answered from the moment it is saved, by the rule the compile will apply to it."""
     fresh = {"id": 5, "domain_id": "sales", "source_id": "pg", "table_name": "fresh"}
     monkeypatch.setattr(_Conn, "_extra", [fresh], raising=False)
     _COLUMNS[5] = ["id", "score"]
-    _DRAFT_GRANTS.update({(5, "id"): ["registrar", "auditor"], (5, "score"): ["auditor"]})
+    _STORED_GRANTS.update({(5, "id"): ["registrar", "auditor"], (5, "score"): ["auditor"]})
     try:
         assert (await _tables(_caller("registrar")))["fresh"] == ["id"]
         assert (await _tables(_caller("auditor")))["fresh"] == ["id", "score"]
         assert "fresh" not in await _tables(_caller("masker"))  # hr only
     finally:
         del _COLUMNS[5]
-        _DRAFT_GRANTS.clear()
+        _STORED_GRANTS.clear()
 
 
 async def test_a_table_only_a_sql_catalog_reads_is_listed_to_no_person(monkeypatch):
@@ -382,13 +373,13 @@ async def test_a_table_only_a_sql_catalog_reads_is_listed_to_no_person(monkeypat
     business = {"id": 7, "domain_id": "sales", "source_id": "pg", "table_name": "table_keys"}
     monkeypatch.setattr(_Conn, "_extra", [catalog, business], raising=False)
     _COLUMNS[6] = _COLUMNS[7] = ["id"]
-    _DRAFT_GRANTS.update({(6, "id"): ["auditor"], (7, "id"): ["auditor"]})
+    _STORED_GRANTS.update({(6, "id"): ["auditor"], (7, "id"): ["auditor"]})
     try:
         listed = await Query().tables(_caller("auditor"))
         assert [t.id for t in listed if t.table_name == "table_keys"] == [7]
     finally:
         del _COLUMNS[6], _COLUMNS[7]
-        _DRAFT_GRANTS.clear()
+        _STORED_GRANTS.clear()
 
 
 async def test_a_control_plane_role_is_answered_no_data_catalog():
@@ -658,24 +649,21 @@ async def test_observability_lists_only_the_tables_its_caller_reads(monkeypatch)
     assert [m.id for m in await Query().mv_list(_caller("analyst"))] == ["mv_orders"]
 
 
-def test_a_drafts_name_is_read_by_the_caller_it_is_served_to():
-    """A draft is in no compiled context; the scope serves it by its stored columns, so the
-    observability lists name it (its replica builds) to that caller too."""
+def test_a_withdrawn_tables_name_is_read_by_the_caller_it_is_served_to():
+    """A withdrawn table is in no compiled context; the scope serves it by its stored columns to
+    its stewards, so the observability lists name it (its kept builds) to that caller too."""
     from provisa.api.admin.catalog_scope import CatalogScope
 
     state = types.SimpleNamespace(
         tables=[{"id": 1, "table_name": "orders"}],
-        role_build_inputs={
-            "draft_tables": [{"id": 9, "table_name": "drafted"}],
-            "withdrawn_tables": [],
-        },
+        role_build_inputs={"withdrawn_tables": [{"id": 9, "table_name": "withdrawn_one"}]},
     )
     scope = CatalogScope(
-        whole=False, reach=None, served={1: {"id"}, 9: {"id"}}, governance=False, role="analyst"
+        whole=False, reach=None, served={1: {"id"}, 9: {"id"}}, governance=False, role="registrar"
     )
     reads = schema_query._names_read(state, scope)
-    assert reads("orders") and reads("public.drafted")
+    assert reads("orders") and reads("public.withdrawn_one")
     unserved = CatalogScope(
-        whole=False, reach=None, served={1: {"id"}}, governance=False, role="analyst"
+        whole=False, reach=None, served={1: {"id"}}, governance=False, role="registrar"
     )
-    assert not schema_query._names_read(state, unserved)("drafted")
+    assert not schema_query._names_read(state, unserved)("withdrawn_one")
