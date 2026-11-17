@@ -5510,45 +5510,44 @@
   feature: connector-catalog-remote-schemas
   priority: SHOULD
   type: behavioral
-  description: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store
-    on every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against
-    it.] GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
+  description: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store on
+    every engine, not in a Trino Iceberg table on S3. Kept here for history; do not implement against it.]
+    GET operation results are materialized as Parquet in a Trino Iceberg table on S3 (`results.api_cache`,
     `s3a://provisa-results/api_cache/`). [END SUPERSEDED BLOCK] The cache key is a SHA-256 hash of `source_id
     + operation path + native args`. [SUPERSEDED by REQ-845, 2026-10-03 -- a repeated call is served from
     the engine''s own store, not from Trino. Kept here for history; do not implement against it.] Repeated
     calls within TTL hit Trino directly. [END SUPERSEDED BLOCK] The cache table is dropped after TTL expires.
-    Mutations are never cached, because they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES IN
-    THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s own store, in the
-    org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds on every engine.
-    The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE
-    SCENARIO READS THE ENGINE''S STORE:) A repeated call with identical args within TTL is served from
-    its cache table in the engine''s own store, with no upstream REST call. The acceptance scenario, which
-    read "cached in Trino Iceberg on S3 ... served from Trino directly", names the engine''s store.
-    (Amended 2026-10-08, A LIVE FETCH IS STORED ONCE) When a statement reads an API table that is not
-    in the cache, the rows fetched are stored once, by the statement, under the columns it reads and
-    by name. The fetch itself writes nothing. Before this the fetch also wrote them, into the same
-    table and with the endpoint''s parameter columns, so a table with a parameter that is no response
-    field failed on its first read and one without held its rows twice. Columns promoted from JSON are
-    applied to the table the statement stored.
-
-    (Amended 2026-10-08, AN ANSWER IS KEPT UNDER ITS ARGUMENTS) An API table with a parameter is a
-    function of its arguments, so what is cached is the answer to one argument set and is kept under
-    it: the arguments the statement gives for the table''s own parameters, path and query alike, over
-    the endpoint''s default parameters. A read for other arguments is a miss and calls the API with
-    them; it is never answered with rows fetched for another argument set. Every argument the
-    statement gives is sent, because its condition is taken out of the statement the engine runs. An
-    argument that is another table''s parameter is no part of the name. Rows a GraphQL read filled are
-    read back by the same arguments, one group per argument set. The one exception is a table read by
-    its parent''s keys: when the statement does not give a parameter that a join feeds (a path
-    parameter, or the query parameter a join targets), the table is every key''s fill together, which
-    is what the statement joins to. Before this the cache table was named for the table alone, so
-    the second argument set read within the lifetime of the first was answered with the first''s rows,
-    and a query argument given in SQL was not sent at all.
-
-    (Amended 2026-10-08, DEFAULT PARAMETERS ON EVERY CALL) Every call to an endpoint sends its default
-    parameters under what the statement gives, whichever path makes the call. The fills a GraphQL read
-    makes left them out, so the same table was called one way from GraphQL and another from SQL. The
-    default parameters are no part of a fill''s argument group.'
+    Mutations are never cached, because they are side-effecting. (Amended 2026-10-03, THE API CACHE LIVES
+    IN THE ENGINE''S STORE:) The rows a call returns are kept in the federation engine''s own store, in
+    the org''s API cache schema, in one table per API table (REQ-845, REQ-859). This holds on every engine.
+    The cache key and the rule that a mutation is never cached are unchanged. (Amended 2026-10-03, THE SCENARIO
+    READS THE ENGINE''S STORE:) A repeated call with identical args within TTL is served from its cache
+    table in the engine''s own store, with no upstream REST call. The acceptance scenario, which read "cached
+    in Trino Iceberg on S3 ... served from Trino directly", names the engine''s store. (Amended 2026-10-08,
+    A LIVE FETCH IS STORED ONCE) When a statement reads an API table that is not in the cache, the rows
+    fetched are stored once, by the statement, under the columns it reads and by name. The fetch itself
+    writes nothing. Before this the fetch also wrote them, into the same table and with the endpoint''s
+    parameter columns, so a table with a parameter that is no response field failed on its first read and
+    one without held its rows twice. Columns promoted from JSON are applied to the table the statement stored.
+    (Amended 2026-10-08, AN ANSWER IS KEPT UNDER ITS ARGUMENTS) An API table with a parameter is a function
+    of its arguments, so what is cached is the answer to one argument set and is kept under it: the arguments
+    the statement gives for the table''s own parameters, path and query alike, over the endpoint''s default
+    parameters. A read for other arguments is a miss and calls the API with them; it is never answered with
+    rows fetched for another argument set. Every argument the statement gives is sent, because its condition
+    is taken out of the statement the engine runs. An argument that is another table''s parameter is no
+    part of the name. Rows a GraphQL read filled are read back by the same arguments, one group per argument
+    set. The one exception is a table read by its parent''s keys: when the statement does not give a parameter
+    that a join feeds (a path parameter, or the query parameter a join targets), the table is every key''s
+    fill together, which is what the statement joins to. Before this the cache table was named for the table
+    alone, so the second argument set read within the lifetime of the first was answered with the first''s
+    rows, and a query argument given in SQL was not sent at all. (Amended 2026-10-08, DEFAULT PARAMETERS
+    ON EVERY CALL) Every call to an endpoint sends its default parameters under what the statement gives,
+    whichever path makes the call. The fills a GraphQL read makes left them out, so the same table was called
+    one way from GraphQL and another from SQL. The default parameters are no part of a fill''s argument
+    group. (Amended 2026-11-16, AN ENDPOINT READ WITHOUT ITS REQUIRED PARAMETER IS REFUSED, NEVER SKIPPED
+    OR DROPPED:) Lead 2026-11-16, following REQ-1986''s parameter binding and the requirements audit of
+    this day: an endpoint whose required path parameter is not given is refused with the catalogued binding
+    refusal; it is never skipped on a miss nor dropped as unmaterializable.'
   use_case: '[SUPERSEDED by REQ-845, 2026-10-03 -- the API cache is held in the engine''s own store on
     every engine, not in S3/Iceberg read through Trino. Kept here for history; do not implement against
     it.] S3/Iceberg materialization of GET operation results prevents repeated upstream REST calls and
@@ -60620,7 +60619,11 @@
     did. Overlap: REQ-1907 (per-role tolerance, proposed) changes the same decision and must take its inputs
     from the same in-memory state. (Amended 2026-11-09, WITHOUT THE GUARANTEE THE READ DOES NOT WAIT:) Maintainer
     2026-11-09 (REQ-860): a source without the freshness guarantee is landed before the read only when nothing
-    usable is held; a held copy past its freshness is answered and the refresh runs in the background.'
+    usable is held; a held copy past its freshness is answered and the refresh runs in the background. (Amended
+    2026-11-16, AN ENDPOINT READ WITHOUT ITS REQUIRED PARAMETER IS REFUSED, NEVER SKIPPED OR DROPPED:) Lead
+    2026-11-16, following REQ-1986''s parameter binding and the requirements audit of this day: an endpoint
+    whose required path parameter is not given is refused with the catalogued binding refusal; it is never
+    skipped on a miss nor dropped as unmaterializable.'
   use_case: 'API-backed and other unreachable sources materialize lazily: a query that arrives before
     the event loop has landed a table, or after it went stale, is served fresh rows rather than an empty
     or stale replica. materialize_pending existed on the native backends with no caller since 2026-07.'
@@ -75014,7 +75017,29 @@
   priority: MUST
   type: behavioral
   target: 2026-Q4
-  description: 'A domain is deleted only when nothing refers to it, and the operator is shown everything that does. Asking to delete a domain returns its complete impact list -- the registered tables and their columns, relationships, row filters, masking rules, metrics, materialized views and plain views, commands and webhooks, data products, glossary links, tag assignments, the roles and role assignments that name the domain, the sources that list it as an allowed domain, and the replicas and view storage held for its tables -- each kind with a count and the names, and each item linked to where the operator removes or moves it. While that list is not empty the deletion is refused and nothing is removed. The operator is responsible for the cleanup. Each item is removed or moved through its own existing action, under the right that action already requires and with its own audit record. When the list is empty the deletion succeeds and removes only the domain itself. No deletion of a domain removes any other object. The control plane does not cascade from a domain, and the rule is checked in code so that it holds the same on every control plane. A role that lists the domain is on the impact list like anything else. The operator edits the role, and a data role cannot be left with no domain (a role always lists one or more domains or all of them). Removing an individual object cleans up after itself -- removing a table removes its replica, its rules and its place in relationships, or is itself refused while something reads it -- so that emptying a domain leaves nothing behind. [SUPERSEDED by REQ-1918, 2026-10-02 -- deletion follows the general rule there. Kept here for history; do not implement against it.] A bulk removal built on the same list may be added later; it is not part of this requirement. [END SUPERSEDED BLOCK] (Amended 2026-10-02, GENERAL RULE) Domain deletion follows the general deletion rule of REQ-1918: one object at a time, refused while anything depends on it. There is no bulk removal of a domain''s contents.'
+  description: 'A domain is deleted only when nothing refers to it, and the operator is shown everything
+    that does. Asking to delete a domain returns its complete impact list -- the registered tables and their
+    columns, relationships, row filters, masking rules, metrics, materialized views and plain views, commands
+    and webhooks, data products, glossary links, tag assignments, the roles and role assignments that name
+    the domain, the sources that list it as an allowed domain, and the replicas and view storage held for
+    its tables -- each kind with a count and the names, and each item linked to where the operator removes
+    or moves it. While that list is not empty the deletion is refused and nothing is removed. The operator
+    is responsible for the cleanup. Each item is removed or moved through its own existing action, under
+    the right that action already requires and with its own audit record. When the list is empty the deletion
+    succeeds and removes only the domain itself. No deletion of a domain removes any other object. The control
+    plane does not cascade from a domain, and the rule is checked in code so that it holds the same on every
+    control plane. A role that lists the domain is on the impact list like anything else. The operator edits
+    the role, and a data role cannot be left with no domain (a role always lists one or more domains or
+    all of them). Removing an individual object cleans up after itself -- removing a table removes its replica,
+    its rules and its place in relationships, or is itself refused while something reads it -- so that emptying
+    a domain leaves nothing behind. [SUPERSEDED by REQ-1918, 2026-10-02 -- deletion follows the general
+    rule there. Kept here for history; do not implement against it.] A bulk removal built on the same list
+    may be added later; it is not part of this requirement. [END SUPERSEDED BLOCK] (Amended 2026-10-02,
+    GENERAL RULE) Domain deletion follows the general deletion rule of REQ-1918: one object at a time, refused
+    while anything depends on it. There is no bulk removal of a domain''s contents. (Amended 2026-11-16,
+    A DOMAIN NOTHING REFERS TO IS RETIRED, NOT DELETED:) Lead 2026-11-16, following REQ-2248 (retirement)
+    and the requirements audit of this day: where this requirement says a domain nothing refers to is deleted,
+    it is retired, as every model object is; the guard that refuses while something refers to it is unchanged.'
   use_case: A domain owns tables, rules and data, and many other objects point at it. Deleting it silently
     either destroyed a great deal without warning or left objects pointing at a domain that no longer
     existed, depending on the control plane in use. Refusing until the domain is empty, as relational
