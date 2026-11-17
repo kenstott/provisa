@@ -60,7 +60,7 @@ def test_fk_candidates_empty_when_connector_unsupported():
 
 def test_collect_fk_candidates_produces_relationship_candidates():
     # REQ-413
-    # collect_fk_candidates in collector.py must return RelationshipCandidate
+    # collect_fk_for_tables in collector.py must return RelationshipCandidate
     # objects derived from FK metadata, with confidence=1.0 and the FK source.
     from provisa.discovery.analyzer import RelationshipCandidate
 
@@ -164,66 +164,56 @@ def test_o2m_alias_already_plural_not_double_pluralized():
 # ---------------------------------------------------------------------------
 
 
+def _facts(table_id: int, name: str, domain: str, *columns: str):
+    """A registered table as a discovery run sees it (provisa.discovery.columns.TableFacts)."""
+    from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
+
+    return TableFacts(
+        table_id=table_id,
+        domain_id=domain,
+        schema_name="public",
+        table_name=name,
+        description=None,
+        tags=(),
+        role=None,
+        columns=tuple(
+            ColumnFacts(
+                name=c,
+                data_type="integer",
+                description=None,
+                tags=(),
+                classes=(UNKNOWN,),
+                sensitive=False,
+                samples=(),
+                is_primary_key=c == "id",
+                groups=type_groups("integer", subtype=None, array_depth=0),
+            )
+            for c in columns
+        ),
+    )
+
+
 def test_discovery_input_contains_tables_and_relationships():
     # REQ-611
-    # DiscoveryInput (the discovery tier data structure) must carry both table
-    # metadata (Tier 2/3 assets) and existing relationships (Tier 4).
+    # A discovery run carries both table metadata (Tier 2/3 assets, TableFacts) and the
+    # existing relationships (Tier 4, Known) its suggestions are checked against.
     # This validates that the discovery pipeline integrates multiple tiers.
-    from provisa.discovery.collector import DiscoveryInput, TableMeta
+    from provisa.discovery.direction import Known
 
-    t = TableMeta(
-        table_id=1,
-        source_id="src1",
-        domain_id="domain_a",
-        schema_name="public",
-        table_name="customers",
-        columns=[{"name": "id", "type": "integer"}],
-        sample_values=[],
-    )
-    di = DiscoveryInput(
-        tables=[t],
-        existing_relationships=[
-            {
-                "source_table_id": 1,
-                "target_table_id": 2,
-                "source_column": "id",
-                "target_column": "customer_id",
-                "cardinality": "one-to-many",
-            }
-        ],
-        rejected_pairs=[],
-    )
+    t = _facts(1, "customers", "domain_a", "id")
+    known = Known(existing={(1, "id", 2, "customer_id")})
 
-    assert len(di.tables) == 1
-    assert di.tables[0].domain_id == "domain_a"
-    assert len(di.existing_relationships) == 1
+    assert t.domain_id == "domain_a"
+    assert len(known.existing) == 1
 
 
 def test_table_meta_captures_domain_ownership():
     # REQ-611
     # Tier 3 (domain assets) requires tables to carry a domain_id.
-    # TableMeta must expose domain_id so the discovery tier can determine
+    # TableFacts must expose domain_id so the discovery tier can determine
     # whether a table has been claimed.
-    from provisa.discovery.collector import TableMeta
-
-    unclaimed = TableMeta(
-        table_id=5,
-        source_id="src2",
-        domain_id="",
-        schema_name="public",
-        table_name="raw_events",
-        columns=[],
-        sample_values=[],
-    )
-    claimed = TableMeta(
-        table_id=6,
-        source_id="src2",
-        domain_id="analytics",
-        schema_name="public",
-        table_name="events",
-        columns=[],
-        sample_values=[],
-    )
+    unclaimed = _facts(5, "raw_events", "")
+    claimed = _facts(6, "events", "analytics")
 
     # Unclaimed table has no domain_id (Tier 2)
     assert unclaimed.domain_id == ""
@@ -231,23 +221,17 @@ def test_table_meta_captures_domain_ownership():
     assert claimed.domain_id == "analytics"
 
 
-@pytest.mark.asyncio
-async def test_discovery_collect_metadata_scope_invalid_raises():
+def test_discovery_collect_metadata_scope_invalid_raises():
     # REQ-611
-    # collect_metadata enforces tier prerequisites by raising ValueError on
-    # an invalid scope — the tiered model has exactly three valid scopes.
-    from provisa.discovery.collector import collect_metadata
+    # Discovery refuses an invalid scope -- the tiered model has exactly three valid scopes.
+    from pydantic import ValidationError
 
-    trino_conn = MagicMock()
-    pg_conn = MagicMock()
+    from provisa.api.admin.discovery import DiscoverRequest
 
-    async def mock_fetch(*_):
-        return []
-
-    pg_conn.fetch = mock_fetch
-
-    with pytest.raises(ValueError, match="Invalid scope"):
-        await collect_metadata(trino_conn, pg_conn, "invalid_scope")
+    with pytest.raises(ValidationError, match="scope"):
+        DiscoverRequest(scope="invalid_scope", kinds=["foreign_keys"])  # type: ignore[arg-type]
+    for scope in ("table", "domain", "cross-domain"):
+        assert DiscoverRequest(scope=scope, kinds=["foreign_keys"]).scope == scope
 
 
 # ---------------------------------------------------------------------------
@@ -279,33 +263,24 @@ def test_fk_candidate_has_maximum_confidence():
     assert fk_candidate.confidence == 1.0
 
 
+def _left_out(tables, raw: dict) -> list[str]:
+    """Why a discovery run leaves out ``raw``, an element of the model's answer to its request
+    over ``tables``: empty when it is kept."""
+    from provisa.discovery.runner import Tally, read_items
+    from provisa.discovery.windows import plan
+    from provisa.llm.limits import DEFAULT_LIMITS
+
+    _, (request,) = plan(tables, None, *DEFAULT_LIMITS)
+    tally = Tally(total=1)
+    read_items(request, [raw], tally)
+    return [r.left_out for r in tally.left_out]
+
+
 def test_validate_candidate_requires_cardinality():
     # REQ-612
     # Candidates must carry a valid cardinality — malformed candidates
     # (including invalid cardinality values) are filtered before ranking.
-    from provisa.discovery.analyzer import _validate_candidate
-    from provisa.discovery.collector import DiscoveryInput, TableMeta
-
-    t1 = TableMeta(
-        table_id=1,
-        source_id="s",
-        domain_id="d",
-        schema_name="sc",
-        table_name="a",
-        columns=[{"name": "x", "type": "int"}],
-        sample_values=[],
-    )
-    t2 = TableMeta(
-        table_id=2,
-        source_id="s",
-        domain_id="d",
-        schema_name="sc",
-        table_name="b",
-        columns=[{"name": "y", "type": "int"}],
-        sample_values=[],
-    )
-    di = DiscoveryInput(tables=[t1, t2], existing_relationships=[], rejected_pairs=[])
-
+    tables = [_facts(1, "a", "d", "x"), _facts(2, "b", "d", "y")]
     bad = {
         "source_table_id": 1,
         "source_column": "x",
@@ -314,36 +289,14 @@ def test_validate_candidate_requires_cardinality():
         "cardinality": "bad-value",
         "confidence": 0.9,
     }
-    assert _validate_candidate(bad, di) is False
+    assert _left_out(tables, bad) == ["invalid_shape"]
 
 
 def test_validate_candidate_requires_existing_columns():
     # REQ-612
     # Candidates referencing columns that do not exist in the table metadata
     # must be rejected — confidence ranking only applies to valid candidates.
-    from provisa.discovery.analyzer import _validate_candidate
-    from provisa.discovery.collector import DiscoveryInput, TableMeta
-
-    t1 = TableMeta(
-        table_id=1,
-        source_id="s",
-        domain_id="d",
-        schema_name="sc",
-        table_name="a",
-        columns=[{"name": "real_col", "type": "int"}],
-        sample_values=[],
-    )
-    t2 = TableMeta(
-        table_id=2,
-        source_id="s",
-        domain_id="d",
-        schema_name="sc",
-        table_name="b",
-        columns=[{"name": "id", "type": "int"}],
-        sample_values=[],
-    )
-    di = DiscoveryInput(tables=[t1, t2], existing_relationships=[], rejected_pairs=[])
-
+    tables = [_facts(1, "a", "d", "real_col"), _facts(2, "b", "d", "id")]
     bad = {
         "source_table_id": 1,
         "source_column": "nonexistent_col",
@@ -352,36 +305,14 @@ def test_validate_candidate_requires_existing_columns():
         "cardinality": "many-to-one",
         "confidence": 0.9,
     }
-    assert _validate_candidate(bad, di) is False
+    assert _left_out(tables, bad) == ["unknown_column"]
 
 
 def test_validate_candidate_passes_for_valid_candidate():
     # REQ-612
     # A well-formed candidate with valid table IDs, existing columns, and
     # a valid cardinality must pass validation and be eligible for ranking.
-    from provisa.discovery.analyzer import _validate_candidate
-    from provisa.discovery.collector import DiscoveryInput, TableMeta
-
-    t1 = TableMeta(
-        table_id=10,
-        source_id="s",
-        domain_id="d",
-        schema_name="sc",
-        table_name="orders",
-        columns=[{"name": "user_id", "type": "int"}],
-        sample_values=[],
-    )
-    t2 = TableMeta(
-        table_id=20,
-        source_id="s",
-        domain_id="d",
-        schema_name="sc",
-        table_name="users",
-        columns=[{"name": "id", "type": "int"}],
-        sample_values=[],
-    )
-    di = DiscoveryInput(tables=[t1, t2], existing_relationships=[], rejected_pairs=[])
-
+    tables = [_facts(10, "orders", "d", "user_id"), _facts(20, "users", "d", "id")]
     good = {
         "source_table_id": 10,
         "source_column": "user_id",
@@ -390,7 +321,7 @@ def test_validate_candidate_passes_for_valid_candidate():
         "cardinality": "many-to-one",
         "confidence": 0.85,
     }
-    assert _validate_candidate(good, di) is True
+    assert _left_out(tables, good) == []
 
 
 def test_relationship_candidate_reasoning_field_carried():
