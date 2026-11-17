@@ -97236,9 +97236,13 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Cypher, SQL, SPARQL, GraphQL, and JSON:API, REST and gRPC where those reach the relationship (a JSON:API
     include, the REST and gRPC forms the relationship is served in). Each opens that language''s Explore
     editor with a query that reads the relationship, run at once: Cypher matches the relationship''s type
-    between its two node labels; SQL joins the source table to the target table on the relationship''s
-    columns; SPARQL selects subject and object over the relationship''s predicate; GraphQL reads the source
-    type with the relationship''s field nested; JSON:API, REST and gRPC read the source with the relationship
-    followed in their own form. Each query uses the names the role sees (the aliases in the panel) and
-    a row limit. A language the relationship is not exposed in (for example excluded from Cypher) shows
-    no link.'
+    between its two node labels; SQL joins the source table to the target table on the relationship''s columns;
+    SPARQL selects subject and object over the relationship''s predicate; GraphQL reads the source type
+    with the relationship''s field nested; JSON:API, REST and gRPC read the source with the relationship
+    followed in their own form. Each query uses the names the role sees (the aliases in the panel) and a
+    row limit. A language the relationship is not exposed in (for example excluded from Cypher) shows no
+    link. (Amended 2026-11-16, THE DATA PRODUCT ACCESS SECTION LINKS EACH OF ITS RELATIONSHIPS THE SAME
+    WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
+    patterns''). A data product''s Access section lists each relationship in the product with the same set
+    of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
