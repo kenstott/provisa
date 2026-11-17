@@ -337,6 +337,7 @@ async def test_deriving_the_table_registers_it_as_register_table_proposes_it(sta
     )
     parameter = next(c for c in table.columns if c.name == "_nf_orderId")
     assert (parameter.native_filter_type, parameter.native_filter_required) == ("path_param", True)
+    assert parameter.alias is None  # named as the function's argument
     # In service with its function: released, not left a draft for its domain to release.
     assert released.await_args is not None
     assert released.await_args.args[-2:] == (7, False)

@@ -468,7 +468,7 @@ def test_a_function_no_plain_list_shares_a_type_with_derives_its_table(served):
     api.by_id()
     as_function = _rows(server, "SELECT id, name FROM get_owner(3)")
     assert api.by_id() == ["/owners/3"]
-    as_table = _rows(server, "SELECT id, name FROM pets.get_owner_by_id WHERE _nf_owner_id = 3")
+    as_table = _rows(server, 'SELECT id, name FROM pets.get_owner_by_id WHERE "_nf_ownerId" = 3')
     assert api.by_id() == ["/owners/3"]
     assert as_table == as_function == [(3, "owner 3")]
 

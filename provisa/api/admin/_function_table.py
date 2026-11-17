@@ -149,6 +149,10 @@ async def derive_table(request: Any, source_id: str, domain_id: str, operation: 
     schema_name = _TABLE_SCHEMA[state.source_types[source_id]]
     columns = await resolve_available_columns_metadata(source_id, schema_name, operation.table)
     table = default_table_input(source_id, domain_id, schema_name, operation.table, columns)
+    for column in table.columns:
+        if column.native_filter_type is not None:
+            # A parameter is named as the function's argument is; it takes no alias of its own.
+            column.alias = None
     info = types.SimpleNamespace(context={"request": request})
     mutation = Mutation()
     result = await mutation.register_table(info, table)  # pyright: ignore[reportCallIssue]
