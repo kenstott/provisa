@@ -153,6 +153,7 @@
       "source_starting": "El origen {{source}} todavía se está iniciando. Vuelva a intentarlo en un momento.",
       "source_unavailable": "El origen {{source}} no pudo responder. Inténtelo de nuevo en breve.",
       "view_outside_load_window": "La vista {{view}} solo se puede leer dentro de su ventana de lectura. Vuelve a abrirse a las {{opens_at}}.",
+      "view_awaits_rule_rebuild": "La vista {{view}} se está volviendo a crear por un cambio en las reglas de fila de sus entradas. Este rol podrá leerla cuando esa compilación se haya publicado.",
       "graphql_body_missing": "La solicitud no tiene cuerpo: una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_body_not_json": "El cuerpo de la solicitud no es JSON: {{error}}",
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",
@@ -351,7 +352,9 @@
       "org_selection_required": "Se requiere seleccionar una organización",
       "already_exists": "El rol '{{role}}' ya existe",
       "description_missing": "El rol '{{role}}' necesita una descripción de para qué sirve",
-      "right_not_in_parents": "El rol {{role}} no puede tener {{right}}: ningún padre lo tiene"
+      "right_not_in_parents": "El rol {{role}} no puede tener {{right}}: ningún padre lo tiene",
+      "platform_right_requires_platform_admin": "Un rol que incluye {{rights}} lo define un administrador de la plataforma",
+      "rights_not_held": "El rol {{role}} incluye {{rights}}, que usted no tiene"
     },
     "schema": {
       "allowed_domains_updated": "Dominios permitidos actualizados para el origen '{{source}}'",
@@ -896,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "La comprobación previa de {{subject}} no se ejecutó: en esta organización solo se ejecuta en un proceso confinado, y no se pudo iniciar ninguno ({{reason}}).",
       "confined_failed": "La comprobación previa de {{subject}} no devolvió ningún veredicto: su proceso confinado terminó antes ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} está fuera del proyecto subido; un proyecto solo lee sus propios archivos.",
+      "filter_value_refused": "{{value}} no puede ser un valor en un filtro de permiso: un valor es una cadena, un número, true, false, null, una lista de estos o una variable de sesión.",
+      "filter_operator_refused": "{{operator}} no es un operador con el que se pueda convertir un filtro de permiso."
     }
   }
 }

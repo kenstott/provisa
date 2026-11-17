@@ -243,6 +243,9 @@ class MVDefinition:  # REQ-133, REQ-135, REQ-158, REQ-160, REQ-199, REQ-234, REQ
     row_count: int | None = None
     last_error: str | None = None
     last_input_token: str | None = None  # REQ-881: source version token at last materialization
+    # REQ-2131: the kept input columns its stored table holds, as read from the table, with the
+    # (last_refresh_at, rules generation) they were read for (transform_view_rules).
+    stored_rule_inputs: tuple[tuple[float | None, int], frozenset[str]] | None = None
 
     def __post_init__(self):
         if self.target_table is None:

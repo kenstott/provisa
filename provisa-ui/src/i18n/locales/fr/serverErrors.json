@@ -153,6 +153,7 @@
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
       "source_unavailable": "La source {{source}} n'a pas pu répondre. Réessayez sous peu.",
       "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
+      "view_awaits_rule_rebuild": "La vue {{view}} est en cours de reconstruction suite à une modification des règles de ligne sur ses entrées. Ce rôle pourra la lire une fois cette construction publiée.",
       "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
       "graphql_request_not_object": "Une requête GraphQL est un objet JSON contenant une requête.",
@@ -351,7 +352,9 @@
       "org_selection_required": "Sélection d'une organisation requise",
       "already_exists": "Le rôle '{{role}}' existe déjà",
       "description_missing": "Le rôle '{{role}}' a besoin d'une description de ce à quoi il sert",
-      "right_not_in_parents": "Le rôle {{role}} ne peut pas détenir {{right}} : aucun parent ne le détient"
+      "right_not_in_parents": "Le rôle {{role}} ne peut pas détenir {{right}} : aucun parent ne le détient",
+      "platform_right_requires_platform_admin": "Un rôle comportant {{rights}} est défini par un administrateur de la plateforme",
+      "rights_not_held": "Le rôle {{role}} comporte {{rights}}, que vous ne détenez pas"
     },
     "schema": {
       "allowed_domains_updated": "Domaines autorisés mis à jour pour la source « {{source}} »",
@@ -896,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "Le contrôle préalable de {{subject}} n'a pas été exécuté : dans cette organisation, il ne s'exécute que dans un processus confiné, et aucun n'a pu être démarré ({{reason}}).",
       "confined_failed": "Le contrôle préalable de {{subject}} n'a rendu aucun verdict : son processus confiné s'est terminé avant ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} est hors du projet téléversé ; un projet ne lit que ses propres fichiers.",
+      "filter_value_refused": "{{value}} ne peut pas être une valeur dans un filtre d'autorisation : une valeur est une chaîne, un nombre, true, false, null, une liste de ceux-ci ou une variable de session.",
+      "filter_operator_refused": "{{operator}} n'est pas un opérateur avec lequel un filtre d'autorisation peut être converti."
     }
   }
 }

@@ -153,6 +153,7 @@
       "source_starting": "L'origine {{source}} è ancora in fase di avvio. Riprova tra un momento.",
       "source_unavailable": "L'origine {{source}} non ha potuto rispondere. Riprova tra poco.",
       "view_outside_load_window": "La vista {{view}} può essere letta solo nella sua finestra di lettura. Si riapre alle {{opens_at}}.",
+      "view_awaits_rule_rebuild": "La vista {{view}} è in fase di ricostruzione per una modifica alle regole di riga sui suoi input. Questo ruolo potrà leggerla quando quella build sarà pubblicata.",
       "graphql_body_missing": "La richiesta non ha corpo: una richiesta GraphQL è un oggetto JSON con una query.",
       "graphql_body_not_json": "Il corpo della richiesta non è JSON: {{error}}",
       "graphql_request_not_object": "Una richiesta GraphQL è un oggetto JSON con una query.",
@@ -351,7 +352,9 @@
       "org_selection_required": "Selezione dell'organizzazione richiesta",
       "already_exists": "Il ruolo '{{role}}' esiste già",
       "description_missing": "Il ruolo '{{role}}' ha bisogno di una descrizione di a cosa serve",
-      "right_not_in_parents": "Il ruolo {{role}} non può detenere {{right}}: nessun genitore lo detiene"
+      "right_not_in_parents": "Il ruolo {{role}} non può detenere {{right}}: nessun genitore lo detiene",
+      "platform_right_requires_platform_admin": "Un ruolo che include {{rights}} è definito da un amministratore della piattaforma",
+      "rights_not_held": "Il ruolo {{role}} include {{rights}}, che non detieni"
     },
     "schema": {
       "allowed_domains_updated": "Domini consentiti aggiornati per l'origine '{{source}}'",
@@ -896,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "Il controllo preliminare di {{subject}} non è stato eseguito: in questa organizzazione viene eseguito solo in un processo confinato, e non è stato possibile avviarne uno ({{reason}}).",
       "confined_failed": "Il controllo preliminare di {{subject}} non ha restituito alcun verdetto: il suo processo confinato è terminato prima ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} è fuori dal progetto caricato; un progetto legge solo i propri file.",
+      "filter_value_refused": "{{value}} non può essere un valore in un filtro di autorizzazione: un valore è una stringa, un numero, true, false, null, un elenco di questi o una variabile di sessione.",
+      "filter_operator_refused": "{{operator}} non è un operatore con cui si possa convertire un filtro di autorizzazione."
     }
   }
 }

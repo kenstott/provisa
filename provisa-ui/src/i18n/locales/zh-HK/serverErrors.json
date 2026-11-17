@@ -153,6 +153,7 @@
       "source_starting": "來源 {{source}} 仍在啟動。請稍後再試。",
       "source_unavailable": "來源 {{source}} 無法回應。請稍後再試。",
       "view_outside_load_window": "視圖 {{view}} 只能在其讀取時段內讀取。下次開放時間為 {{opens_at}}。",
+      "view_awaits_rule_rebuild": "由於其輸入的行規則有變更，檢視 {{view}} 正在重新建置。該建置發佈後，此角色即可讀取。",
       "graphql_body_missing": "請求沒有正文:GraphQL 請求是包含查詢的 JSON 物件。",
       "graphql_body_not_json": "請求正文不是 JSON:{{error}}",
       "graphql_request_not_object": "GraphQL 請求是包含查詢的 JSON 物件。",
@@ -351,7 +352,9 @@
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
       "description_missing": "角色 '{{role}}' 需要說明其用途",
-      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它"
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它",
+      "platform_right_requires_platform_admin": "包含 {{rights}} 的角色由平台管理員定義",
+      "rights_not_held": "角色 {{role}} 包含 {{rights}}，而您不持有這些權限"
     },
     "schema": {
       "allowed_domains_updated": "已更新數據來源「{{source}}」的允許領域",
@@ -896,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
       "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} 位於上傳的項目之外；項目只讀取自身的檔案。",
+      "filter_value_refused": "{{value}} 不能作為權限篩選器中的值：值是字串、數字、true、false、null、它們的列表或工作階段變數。",
+      "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
     }
   }
 }
