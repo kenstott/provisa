@@ -20,6 +20,19 @@ const API_BASE = import.meta.env.VITE_API_BASE || "";
 
 export type DataLevel = "full" | "sample" | "synthetic";
 
+/** Why an offer is listed for review: its role is gone, a dataset is not built, its sample does
+ * not hold against the build, its open data is no longer public, or a synthetic dataset has lost
+ * its profiler or a column its fake. */
+export type OfferReviewReason =
+  | "role_gone"
+  | "not_built"
+  | "sample_not_a_view"
+  | "sample_outside_product"
+  | "sample_misses_dataset"
+  | "not_public"
+  | "profiler_gone"
+  | "fake_gone";
+
 /** A dataset's column as an offer's role sees it; ``masked`` is the mask's kind, null unmasked. */
 export interface OfferField {
   name: string;
@@ -111,8 +124,9 @@ export interface Offer extends OfferInput {
   product_id: string;
   version: number;
   published_by: string | null;
-  /** Why it is listed for review; null when it is not. */
-  review: string | null;
+  /** Why it is listed for review, a reason the catalog states (dataProductOffers.reviewReason);
+   * null when it is not. */
+  review: OfferReviewReason | null;
   created_at: string;
   updated_at: string;
   contracts: OfferDatasetContract[];

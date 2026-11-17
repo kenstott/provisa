@@ -78,6 +78,10 @@ export interface FormState {
   outputColumns: DatasetColumn[];
   // REQ-2168: the command's name per language; a language left out offers its own name.
   languageBindings: Record<string, LanguageBinding>;
+  // REQ-1986: a registered source operation that reads rows is also exposed as a parameterized
+  // table while this is on; null for a function with no table form, or one not yet registered
+  // (registration sets it).
+  exposedAsTable: boolean | null;
 }
 
 // REQ-885: selectable implementation kinds for the function/command editor.
@@ -164,6 +168,7 @@ export const EMPTY_FORM: FormState = {
   writesTable: "",
   outputColumns: [],
   languageBindings: {},
+  exposedAsTable: null,
 };
 
 // REQ-1159: IR type → JSON-schema scalar. return_schema is the GraphQL projection of the

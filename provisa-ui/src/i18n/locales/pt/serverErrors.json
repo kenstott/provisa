@@ -20,7 +20,12 @@
       "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "endpoint_key_from_server": "O endpoint de IA {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "endpoint_key_unset": "O endpoint de IA {{vendor}} não tem chave: {{field}} não está definido.",
       "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
+      "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
+      "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações.",
       "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
     },
     "api": {
@@ -158,29 +163,29 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
+      "answer_unreadable": "A resposta do modelo não continha uma lista legível.",
       "cassandra_discovery_unsupported": "A descoberta de esquema do Cassandra requer uma sessão CQL ativa, que não está disponível. Defina as colunas manualmente para esta fonte.",
       "database_not_connected": "Banco de dados não conectado",
+      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "domain_id_required": "domain_id obrigatório para escopo de domínio",
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} não tem chave: defina a variável de ambiente {{env}}.",
-      "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
-      "model_failed": "O modelo {{model}} falhou: {{error}}",
       "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",
       "model_incomplete": "Um modelo escolhido indica tanto o fornecedor quanto o modelo.",
       "no_adapter_for_source_type": "Nenhum adaptador registrado para o tipo de fonte '{{source_type}}'",
       "no_live_connection": "Nenhuma conexão ativa para a fonte '{{source_id}}'. A descoberta de esquema do MongoDB requer uma conexão ativa no pool da fonte. Verifique se a fonte está conectada e se o servidor está acessível.",
       "run_ended": "A execução de descoberta {{run_id}} já terminou: {{status}}",
+      "run_failed": "A execução de descoberta {{run_id}} falhou: {{error}}",
       "run_not_found": "Execução de descoberta {{run_id}} não encontrada",
       "run_still_going": "A execução de descoberta {{run_id}} ainda está em andamento. Decida sobre as propostas quando ela terminar.",
       "schema_discovery_unsupported": "O tipo de fonte '{{source_type}}' não oferece suporte à descoberta de esquema. Defina as colunas manualmente.",
       "semantics_unavailable": "A semântica não pode ser executada: {{model}}, o modelo atribuído à inferência de relacionamentos, não tem chave. Defina uma em Administração, Modelos de IA.",
       "source_not_found": "Fonte '{{source_id}}' não encontrada",
       "table_id_required": "table_id obrigatório para escopo de tabela",
+      "table_not_found": "A tabela {{table_id}} não está registrada.",
       "unknown_source_type": "Tipo de fonte desconhecido: {{type}}",
-      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo.",
-      "answer_unreadable": "A resposta do modelo não continha uma lista legível."
+      "vendor_unknown": "{{vendor}} não lista modelos aqui; digite o nome do modelo."
     },
     "llm": {
       "request_failed": "A solicitação ao modelo falhou: {{reason}}",
@@ -219,7 +224,10 @@
       "unknown_command": "Comando desconhecido: '{{name}}'",
       "unknown_impl_kind": "impl_kind de função desconhecido: '{{impl_kind}}'",
       "written_table_missing": "o comando '{{name}}' escreve '{{table}}', que não está registrada",
-      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso."
+      "host_code_refused": "O comando '{{name}}' é do tipo {{impl_kind}}, que executa código no host do servidor. O código do host está desativado nesta implantação; use um resolvedor de código em vez disso.",
+      "no_plain_list": "Nenhuma operação da fonte '{{source_id}}' sem um parâmetro obrigatório devolve as linhas de '{{operation}}', por isso a tabela continua ativada",
+      "plain_list_unregistered": "'{{operation}}' da fonte '{{source_id}}' devolve as linhas da sua lista {{lists}}; registre primeiro essa lista como tabela",
+      "table_has_dependents": "A tabela '{{table}}' da função '{{name}}' ainda é referenciada por outros objetos; remova primeiro essas referências"
     },
     "graphql_remote": {
       "introspection_failed": "Falha na introspecção: {{error}}",
@@ -528,7 +536,8 @@
       "code_resolver_retired": "Resolver de código '{{resolver}}' retirado",
       "code_resolver_has_dependents": "O resolver de código '{{resolver}}' não pode ser retirado enquanto algo depender dele",
       "incremental_no_change": "A fonte de código não tem nenhuma função @change para {{table}}. Declare uma com @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\"."
+      "incremental_needs_rebuild_every": "{{table}} é mantida de forma incremental, portanto é recompilada por inteiro por relógio. Defina a frequência, em segundos, em \"Recompilação completa a cada\".",
+      "table_derived_from_function": "A tabela '{{name}}' é derivada de uma função: é removida desativando a tabela da função, e as suas colunas e parâmetros são editados na função"
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",

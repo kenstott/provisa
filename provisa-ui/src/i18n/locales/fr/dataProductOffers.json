@@ -60,6 +60,16 @@
     "resultsNotIncluded": "résultats non inclus.",
     "seeQuality": "Voir la qualité",
     "inReview": "En révision",
+    "reviewReason": {
+      "role_gone": "Le rôle de cette offre n'est pas défini.",
+      "not_built": "Un jeu de données de cette offre n'est pas dans le build du modèle.",
+      "sample_not_a_view": "Un échantillon de cette offre nomme une table qui n'est pas une vue du modèle. Un échantillon est une ou plusieurs vues sur les jeux de données du produit.",
+      "sample_outside_product": "Une vue de l'échantillon de cette offre lit plus que les jeux de données du produit, ou aucun d'eux.",
+      "sample_misses_dataset": "Aucune vue de l'échantillon de cette offre ne lit l'un des jeux de données du produit. Une offre couvre chaque jeu de données du produit.",
+      "not_public": "Les données de cette offre ouverte ne sont plus publiques.",
+      "profiler_gone": "Un jeu de données de cette offre synthétique n'a pas de profileur.",
+      "fake_gone": "Une colonne d'un jeu de données de cette offre synthétique n'a pas de valeur fictive."
+    },
     "contracts_one": "{{count}} contrat",
     "contracts_other": "{{count}} contrats",
     "noContracts": "Aucun contrat dérivé pour l'instant.",

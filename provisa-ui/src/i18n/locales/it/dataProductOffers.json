@@ -60,6 +60,16 @@
     "resultsNotIncluded": "risultati non inclusi.",
     "seeQuality": "Vedi qualità",
     "inReview": "In revisione",
+    "reviewReason": {
+      "role_gone": "Il ruolo di questa offerta non è definito.",
+      "not_built": "Un dataset di questa offerta non è nella build del modello.",
+      "sample_not_a_view": "Un campione di questa offerta nomina una tabella che non è una vista del modello. Un campione è una o più viste sui dataset del prodotto.",
+      "sample_outside_product": "Una vista del campione di questa offerta legge più dei dataset del prodotto, o nessuno di essi.",
+      "sample_misses_dataset": "Nessuna vista del campione di questa offerta legge uno dei dataset del prodotto. Un'offerta copre ogni dataset del prodotto.",
+      "not_public": "I dati di questa offerta aperta non sono più pubblici.",
+      "profiler_gone": "Un dataset di questa offerta sintetica non ha un profiler.",
+      "fake_gone": "Una colonna di un dataset di questa offerta sintetica non ha un valore fittizio."
+    },
     "contracts_one": "{{count}} contratto",
     "contracts_other": "{{count}} contratti",
     "noContracts": "Ancora nessun contratto derivato.",

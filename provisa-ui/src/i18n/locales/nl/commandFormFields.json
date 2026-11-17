@@ -52,6 +52,8 @@
     "colVisibleTo": "Zichtbaar voor (rollen, kommagescheiden; leeg = iedereen)",
     "colVisibleToPlaceholder": "analyst, org_admin",
     "colMask": "Masker",
+    "exposedAsTable": "Ook als tabel",
+    "exposedAsTableHint": "Clients die tabellen lezen, zoals BI-tools, lezen deze functie als een tabel met de parameters als kolommen. Uitgeschakeld geeft ze de rijen van de lijst van de bron van hetzelfde type terug, en wordt de tabel verwijderd.",
     "requiresApproval": "Vereist goedkeuring",
     "requiresApprovalHint": "Elke aanroep wordt pas uitgevoerd nadat de goedkeuringshook hem goedkeurt. Zonder geconfigureerde hook worden aanroepen geweigerd.",
     "writesTable": "Schrijft tabel",

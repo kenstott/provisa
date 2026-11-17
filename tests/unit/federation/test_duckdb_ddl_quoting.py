@@ -62,6 +62,7 @@ def _source(**fields) -> Any:
         "federation_hints": {},
         "mapping": {},
         "max_live_concurrency": None,
+        "download_from": None,
     }
     return SimpleNamespace(**{**base, **fields})
 

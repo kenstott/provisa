@@ -21,7 +21,12 @@
     },
     "ai": {
       "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
-      "vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+      "vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models.",
+      "endpoint_key_from_server": "The AI endpoint {{vendor}} takes its key from the server's environment, which an organization on this server does not use. Give it a key of your own under Admin, AI Models.",
+      "endpoint_key_unset": "The AI endpoint {{vendor}} has no key: {{field}} is not set.",
+      "endpoint_address_from_server": "The AI endpoint {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+      "local_server_from_environment": "{{vendor}} is reached at the server's own address, which an organization on this server does not use. Declare an AI endpoint at your own address under Admin, AI Models.",
+      "server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization."
     },
     "api": {
       "answer_cut": "The answer for {{table}} was cut at max_pages={{max_pages}} ({{rows}} rows): the API has more. Raise the endpoint's max_pages or its page size to read it all.",
@@ -164,20 +169,20 @@
       "elasticsearch_index_hint_required": "Elasticsearch discovery requires an 'index' hint.",
       "elasticsearch_mapping_failed": "Failed to read Elasticsearch mapping for index '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint already registered: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
       "decided_both_ways": "A proposal is accepted or not recommended again, not both.",
-      "model_failed": "The model {{model}} failed: {{error}}",
       "model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
       "model_incomplete": "A chosen model names both its vendor and its model.",
       "no_adapter_for_source_type": "No adapter registered for source type '{{source_type}}'",
       "no_live_connection": "No live connection for source '{{source_id}}'. MongoDB schema discovery requires an active connection in the source pool. Verify the source is connected and the server is reachable.",
       "run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
+      "run_failed": "Discovery run {{run_id}} failed: {{error}}",
       "run_not_found": "Discovery run {{run_id}} not found",
       "run_still_going": "Discovery run {{run_id}} is still going. Decide its proposals once it has ended.",
       "schema_discovery_unsupported": "Source type '{{source_type}}' does not support schema discovery. Define columns manually.",
       "semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
       "source_not_found": "Source '{{source_id}}' not found",
       "table_id_required": "table_id required for table scope",
+      "table_not_found": "Table {{table_id}} is not registered.",
       "unknown_source_type": "Unknown source type: {{type}}",
       "vendor_unknown": "{{vendor}} lists no models here; enter the model name.",
       "answer_unreadable": "The model's answer held no readable list."
@@ -219,7 +224,10 @@
       "unknown_command": "Unknown command: '{{name}}'",
       "unknown_impl_kind": "Unknown function impl_kind: '{{impl_kind}}'",
       "written_table_missing": "command '{{name}}' writes '{{table}}', which is not registered",
-      "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead."
+      "host_code_refused": "Command '{{name}}' is of kind {{impl_kind}}, which runs code on the server's host. Host code is off on this deployment; use a code resolver instead.",
+      "no_plain_list": "No operation of source '{{source_id}}' without a required parameter returns the rows of '{{operation}}', so its table stays on",
+      "plain_list_unregistered": "'{{operation}}' of source '{{source_id}}' returns the rows of its list {{lists}}; register that list as a table first",
+      "table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first"
     },
     "graphql_remote": {
       "introspection_failed": "Introspection failed: {{error}}",
@@ -528,7 +536,8 @@
       "code_resolver_retired": "Code resolver '{{resolver}}' retired",
       "code_resolver_has_dependents": "Code resolver '{{resolver}}' cannot be retired while something depends on it",
       "incremental_no_change": "The code source has no @change function for {{table}}. Declare one with @change table={{table}}.",
-      "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\"."
+      "incremental_needs_rebuild_every": "{{table}} is kept incrementally, so it is rebuilt whole on a clock. Set how often, in seconds, in \"Whole rebuild every\".",
+      "table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function"
     },
     "secrets": {
       "env_reference_object_locked": "This object is the operator's: it reads the server's own environment and cannot be changed here. Add one of your own instead.",

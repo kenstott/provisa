@@ -16,6 +16,11 @@ It measures and changes nothing. ``app._rebuild_schemas`` opens one :class:`Buil
 finished record is logged in one line and handed to whoever is capturing (:func:`capture`): a test
 counts builds and phases, never seconds.
 
+A build's record ends when its caller is answered: the compiled model is published. What nobody
+waits on runs after that, in the runtime's after-answer pass (``build_after_answer``), whose own
+record (:class:`AfterAnswer`) hangs on the build's (:attr:`BuildRecord.after`): the phases it ran
+(:data:`AFTER_PHASES`), the stamps of the build it ran for, and what became of it.
+
 It lives beside the build it measures (``provisa.api``) and imports nothing of the product, so the
 build, the compile (``app_loaders``) and the watcher (``model_reload``) can all report to it.
 
@@ -63,13 +68,20 @@ WRITE_CAPABILITY = (
     "write_capability"  # metrics, grant expansion, field numbers, write ops per table
 )
 COMPILE = "compile"  # the whole-model context, names, path map, lazy role surfaces, wire proto
-DERIVED_WRITES = "derived_writes"  # field numbers, lineage edges, checker targets written
-PUBLISH = "publish"  # graph sessions swept, tables/relationships/metrics published, generation
-NAMES_TABLE = "names_table"  # prod: the names table and frozen aliases written
+FIELD_NUMBERS = "field_numbers"  # the wire field numbers the compile allocated, stored
+PUBLISH = "publish"  # graph sessions swept, tables/relationships/metrics published, generation,
+# stamps; prod: the names the clash policy derived frozen as aliases
 FINALIZE = "finalize"  # tables served, live engine, every view's SQL lowered, MV registry
 MEASURE = "measure"  # measured fakes read from data, masks published again
-ANNOUNCE = "announce"  # replica convergence started, offers re-derived, catalogs told
+CONVERGE = "converge"  # replica convergence started (detached)
+
+# The after-answer pass's phases, in the order it runs them: what a build derives that no request
+# is governed by. A pass a newer build superseded stops before the next of them.
+DERIVED_WRITES = "derived_writes"  # lineage edges, checker targets written
+NAMES_TABLE = "names_table"  # prod: the stored names table written
+ANNOUNCE = "announce"  # offers re-derived, catalogs told
 LIFECYCLE = "lifecycle"  # push listeners, ingest engines, poll and row-materialize jobs
+WARM_UP = "warm_up"  # every role's surface built
 
 PHASES: tuple[str, ...] = (
     EFFECTIVE_NAMES,
@@ -87,14 +99,14 @@ PHASES: tuple[str, ...] = (
     GOVERNANCE,
     WRITE_CAPABILITY,
     COMPILE,
-    DERIVED_WRITES,
+    FIELD_NUMBERS,
     PUBLISH,
-    NAMES_TABLE,
     FINALIZE,
     MEASURE,
-    ANNOUNCE,
-    LIFECYCLE,
+    CONVERGE,
 )
+
+AFTER_PHASES: tuple[str, ...] = (DERIVED_WRITES, NAMES_TABLE, ANNOUNCE, LIFECYCLE, WARM_UP)
 
 # The causes that are not a writer: every other cause is the calling function, by name.
 BOOT = "boot"  # the process's own build of the deployment org at startup
@@ -107,6 +119,11 @@ WAITING = "waiting"  # ended before its turn came (cancelled, or the wait refuse
 BUILT = "built"
 CURRENT = "current"  # the watcher's reload found the runtime built at the stored stamp: no build
 FAILED = "failed"
+
+# What became of an after-answer pass.
+PENDING = "pending"  # its build is answered; it has not ended
+RAN = "ran"  # every phase, for the stamps of its build
+SUPERSEDED = "superseded"  # a newer build was published: it stopped before ``stopped_before``
 
 
 # The functions that only pass a call for a build on: their caller is the cause, not they.
@@ -156,7 +173,7 @@ def caused[**P, R](build: Callable[P, R]) -> Callable[P, R]:
 
 @dataclass
 class Warmed:
-    """The role surfaces built in the background after a build (``warm_role_surfaces``): work the
+    """The role surfaces built by a build's after-answer pass (``warm_role_surfaces``): work the
     build's own time does not include, that the next request and the next write compete with."""
 
     roles: int  # surfaces it built (or found refused), of the roles the build registered
@@ -165,8 +182,45 @@ class Warmed:
 
 
 @dataclass
+class AfterAnswer:
+    """The after-answer pass of one build: what ran once the build's caller had its answer."""
+
+    runtime: str  # the runtime it is the pass of, as the runtime is registered
+    org_id: str
+    env: str
+    cause: str  # of the build it ran for
+    stamps: dict[str, int]  # the stamps of the build it ran for
+    answered_s: float = 0.0  # what the build's caller waited: its turn and the build
+    outcome: str = PENDING
+    waited_s: float = 0.0  # from the answer to the pass's first phase
+    took_s: float = 0.0  # its phases, from the first to its end
+    phases: list[tuple[str, float]] = field(default_factory=list)  # ran, with its seconds
+    failed_in: str | None = None  # the phase that raised
+    error: str | None = None  # what it raised
+    stopped_before: str | None = None  # superseded: the first phase it did not run
+
+    @property
+    def phase_names(self) -> list[str]:
+        return [name for name, _ in self.phases]
+
+    def line(self) -> str:
+        """The pass in one log line, beside its build's: names, stamps and seconds."""
+        parts = [
+            f"after-answer pass of {self.org_id}: answered after {self.answered_s:.1f}s, "
+            f"waited {self.waited_s:.1f}s, took {self.took_s:.1f}s",
+            f"env={self.env} cause={self.cause} outcome={self.outcome}"
+            + (f" failed_in={self.failed_in}" if self.failed_in else "")
+            + (f" stopped_before={self.stopped_before}" if self.stopped_before else ""),
+            "for stamps " + " ".join(f"{kind} {at}" for kind, at in self.stamps.items()),
+        ]
+        if self.phases:
+            parts.append("phases " + " ".join(f"{n}={s:.2f}" for n, s in self.phases))
+        return "; ".join(parts)
+
+
+@dataclass
 class BuildRecord:
-    """One call for a build of one org runtime."""
+    """One call for a build of one org runtime, to its caller's answer."""
 
     org_id: str
     env: str
@@ -179,13 +233,16 @@ class BuildRecord:
     loaded_stamps: dict[str, int | None] = field(default_factory=dict)  # the runtime's, before
     read_stamps: dict[str, int] = field(default_factory=dict)  # this build is loaded at
     counts: dict[str, int] = field(default_factory=dict)
-    warmed: Warmed | None = None  # set when the warm-up this build started has ended
+    warmed: Warmed | None = None  # set when the warm-up of this build's pass has ended
+    after: AfterAnswer | None = None  # what ran after the answer; None when nothing was published
     _open: tuple[str, float] | None = field(default=None, repr=False)
 
     def phase(self, name: str) -> None:
         """``name`` begins here, and the phase before it has ended."""
         if name not in PHASES:
-            raise ValueError(f"{name!r} is not a build phase (rebuild_trace.PHASES)")
+            raise ValueError(
+                f"{name!r} is not a phase of the build before its answer (rebuild_trace.PHASES)"
+            )
         now = time.perf_counter()
         self._close(now)
         self._open = (name, now)
@@ -281,6 +338,7 @@ class Recorded:
 
     def __init__(self) -> None:
         self.calls: list[BuildRecord] = []
+        self.passes: list[AfterAnswer] = []  # the after-answer passes, in the order they ended
 
     @property
     def builds(self) -> list[BuildRecord]:
@@ -294,6 +352,7 @@ class Recorded:
 
     def clear(self) -> None:
         self.calls.clear()
+        self.passes.clear()
 
 
 _capturing: list[Recorded] = []
@@ -328,10 +387,22 @@ def finished(record: BuildRecord, *, slow_s: float) -> None:
     log.log(logging.WARNING if slow else logging.INFO, "%s", record.line())
 
 
+def pass_ended(after: AfterAnswer, *, slow_s: float) -> None:
+    """An after-answer pass has ended: hand its record to every open capture and log it in one
+    line. One that failed is logged by whoever caught the failure, with its traceback."""
+    with _capturing_guard:
+        open_captures = list(_capturing)
+    for recorded in open_captures:
+        recorded.passes.append(after)
+    if after.outcome == FAILED:
+        return
+    log.log(logging.WARNING if after.took_s >= slow_s else logging.INFO, "%s", after.line())
+
+
 def warm_up_ended(
     record: BuildRecord | None, org_id: str, warmed: Warmed, *, slow_s: float
 ) -> None:
-    """The warm-up a build started has ended. Its time is in no build's ``took``."""
+    """The warm-up of a build's pass has ended. Its time is in no build's ``took``."""
     if record is not None:
         record.warmed = warmed
     log.log(

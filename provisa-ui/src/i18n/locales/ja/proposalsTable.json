@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "チェックした行は適用時に承認されます。スコアが {{threshold}}% 以上の行は最初からチェックされています。どちらのボックスもチェックしていない行は未決定のままです。",
     "colScore": "スコア",
+    "colJev": "Jev",
     "colKind": "種類",
     "colReasoning": "理由",
     "colNote": "備考",
@@ -25,7 +26,6 @@
       "unknown_column": "リクエストが比較しなかったテーブルまたは列を指定しています",
       "not_comparable": "2 つの列のクラスが異なるため比較されません",
       "below_threshold": "モデルの信頼度がしきい値 {{threshold}}% を下回っています。",
-      "scored_below_threshold": "Jev の評価は {{scored}}% で、しきい値 {{threshold}}% を下回りました。モデルの信頼度は {{confidence}}% でした。",
       "same_column": "列からその列自身へ",
       "primary_key_to_primary_key": "主キーから主キーへ",
       "both_repeating": "両側で値が重複しており、どちらも一の側ではありません",

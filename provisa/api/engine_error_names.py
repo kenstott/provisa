@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import ipaddress
 import re
+from typing import Any
 from urllib.parse import urlsplit
 
 from provisa.core.environments import SCHEMA_SUFFIXES
@@ -66,6 +67,21 @@ def client_text(text: str, org_id: str | None = None) -> str:
 
     org = org_id if org_id is not None else current_org.get()
     return client_redact(no_internal_schema(model_named(no_internal_address(text), org), org))
+
+
+def client_value(value: Any, org_id: str | None = None) -> Any:
+    """Each string in ``value`` -- an answer's ``errors`` list, an error object with its
+    ``extensions``, a message -- as a client is told it (:func:`client_text`), the value's shape
+    kept. An error message sent inside a successful answer is told as one in a 400 is (REQ-2087)."""
+    if isinstance(value, str):
+        return client_text(value, org_id)
+    if isinstance(value, list):
+        return [client_value(v, org_id) for v in value]
+    if isinstance(value, tuple):
+        return tuple(client_value(v, org_id) for v in value)
+    if isinstance(value, dict):
+        return {k: client_value(v, org_id) for k, v in value.items()}
+    return value
 
 
 def no_internal_address(text: str) -> str:

@@ -724,13 +724,7 @@ export interface ModelLimits {
 
 /** The type groups columns are compared within. */
 export type TypeGroup =
-  | "whole_number"
-  | "decimal"
-  | "text"
-  | "uuid"
-  | "date"
-  | "timestamp"
-  | "timestamptz";
+  "whole_number" | "decimal" | "text" | "uuid" | "date" | "timestamp" | "timestamptz";
 
 /** At most how many model requests a run of this scope makes, by type group. The count reads no
  *  table: it is an upper bound from what is registered, and the run may make fewer. */
@@ -750,13 +744,7 @@ export interface DiscoveryCount {
 export interface SemanticsReport {
   suggested: number;
   empty_reason:
-    | "requests_failed"
-    | "unreadable"
-    | "none_proposed"
-    | "below_threshold"
-    | "scored_below_threshold"
-    | "filtered"
-    | null;
+    "requests_failed" | "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
   requests_total: number;
   requests_done: number;
   split: number;
@@ -769,8 +757,8 @@ export interface SemanticsReport {
   // The four below are absent from a run recorded before a run kept what it left out.
   /** Proposals whose two columns are not compared: their classes do not meet. */
   not_comparable?: number;
-  /** Proposals Jev was asked to score, and those it scored under the threshold though the model
-   *  had not. */
+  /** Proposals Jev was asked to score, and those it scored under the threshold. Jev's score is
+   *  shown beside the model's and removes none. */
   scored?: number;
   scored_below_threshold?: number;
   /** Requests whose proposals Jev could not score: they kept the model's confidence. */
@@ -797,16 +785,12 @@ export type RemovedKind =
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
 export type ProposalReason =
-  | "invalid_shape"
-  | "unknown_column"
-  | "not_comparable"
-  | "below_threshold"
-  | "scored_below_threshold"
-  | RemovedKind;
+  "invalid_shape" | "unknown_column" | "not_comparable" | "below_threshold" | RemovedKind;
 
 /** REQ-413: a proposal a run read. `reason` null: one of the run's suggestions. One that named no
  *  two compared columns has no tables or confidence, and `answer` is the element as the model
- *  wrote it. `scored` is Jev's confidence where Jev scored it. */
+ *  wrote it. `confidence` is the model's, which decides; `scored` is Jev's where Jev scored it,
+ *  shown beside it. */
 export interface RunProposal {
   id: number;
   run_id: number;
@@ -996,8 +980,7 @@ export async function clearRejectedCandidates(): Promise<{ deleted: number }> {
 
 /** The outcome of one suggestion in an Accept all or Reject all: done, or why not. */
 export type CandidateOutcome =
-  | { id: number; ok: true; relationship_id?: string }
-  | { id: number; ok: false; error: string };
+  { id: number; ok: true; relationship_id?: string } | { id: number; ok: false; error: string };
 
 async function candidatesAtOnce(
   action: "accept" | "reject",

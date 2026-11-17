@@ -20,7 +20,12 @@
       "vector_model_fields_required": "每个 vector_models 条目都需要 id、provider 和 dimensions"
     },
     "ai": {
+      "endpoint_address_from_server": "AI 端点 {{vendor}} 从服务器环境中获取地址，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的地址。",
+      "endpoint_key_from_server": "AI 端点 {{vendor}} 从服务器环境中获取密钥，而此服务器上的组织不使用服务器环境。请在 管理 > AI 模型 中为其设置您自己的密钥。",
+      "endpoint_key_unset": "AI 端点 {{vendor}} 没有密钥：{{field}} 未设置。",
       "key_required": "{{vendor}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "local_server_from_environment": "{{vendor}} 通过服务器自身的地址访问，而此服务器上的组织不使用该地址。请在 管理 > AI 模型 中以您自己的地址声明一个 AI 端点。",
+      "server_environment_sets": "此处无法调用 {{vendor}}：服务器环境设置了 {{variable}}，其客户端会为每个组织发送它。",
       "vendor_uses_server_credentials": "{{vendor}} 通过服务器自身的凭据访问，而此服务器上的组织不使用这些凭据。请在 管理 > AI 模型 中选择接受密钥的供应商或 AI 端点。"
     },
     "api": {
@@ -158,29 +163,29 @@
     },
     "discovery": {
       "adapter_missing_discover_schema": "'{{source_type}}' 的适配器未实现 discover_schema",
+      "answer_unreadable": "模型的回答中没有可读取的列表。",
       "cassandra_discovery_unsupported": "Cassandra 架构发现需要活跃的 CQL 会话，当前不可用。请为此数据源手动定义列。",
       "database_not_connected": "数据库未连接",
+      "decided_both_ways": "一条提议只能被接受或不再推荐，不能两者兼有。",
       "domain_id_required": "域范围需要 domain_id",
       "elasticsearch_index_hint_required": "Elasticsearch 发现需要 'index' 提示。",
       "elasticsearch_mapping_failed": "读取索引 '{{index}}' 的 Elasticsearch 映射失败：{{error}}",
       "endpoint_already_registered": "终结点已注册：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} 没有密钥：请设置环境变量 {{env}}。",
-      "decided_both_ways": "一条提议只能被接受或不再推荐，不能两者兼有。",
-      "model_failed": "模型 {{model}} 失败：{{error}}",
       "model_has_no_room": "模型 {{model}} 无法容纳一个请求：{{reason}}",
       "model_incomplete": "所选模型需同时指明其供应商和模型。",
       "no_adapter_for_source_type": "数据源类型 '{{source_type}}' 没有已注册的适配器",
       "no_live_connection": "数据源 '{{source_id}}' 没有活跃连接。MongoDB 架构发现需要连接池中存在活跃连接。请确认数据源已连接且服务器可达。",
       "run_ended": "发现运行 {{run_id}} 已结束：{{status}}",
+      "run_failed": "发现运行 {{run_id}} 失败：{{error}}",
       "run_not_found": "未找到发现运行 {{run_id}}",
       "run_still_going": "发现运行 {{run_id}} 仍在进行。请在其结束后再决定其提议。",
       "schema_discovery_unsupported": "数据源类型 '{{source_type}}' 不支持架构发现。请手动定义列。",
       "semantics_unavailable": "无法运行语义推断：分配给关系推断的模型 {{model}} 没有密钥。请在 管理 > AI 模型 中设置。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
       "table_id_required": "表范围需要 table_id",
+      "table_not_found": "表 {{table_id}} 未注册。",
       "unknown_source_type": "未知数据源类型：{{type}}",
-      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。",
-      "answer_unreadable": "模型的回答中没有可读取的列表。"
+      "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
     },
     "llm": {
       "request_failed": "对模型的请求失败：{{reason}}",
@@ -219,7 +224,10 @@
       "unknown_command": "未知命令：'{{name}}'",
       "unknown_impl_kind": "未知的函数 impl_kind：'{{impl_kind}}'",
       "written_table_missing": "命令 '{{name}}' 写入 '{{table}}'，但该表未注册",
-      "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。"
+      "host_code_refused": "命令 '{{name}}' 的类型为 {{impl_kind}}，会在服务器主机上运行代码。此部署已关闭主机代码；请改用代码解析器。",
+      "no_plain_list": "源 '{{source_id}}' 中没有不带必需参数的操作返回 '{{operation}}' 的行，因此其表保持开启",
+      "plain_list_unregistered": "源 '{{source_id}}' 的 '{{operation}}' 返回其列表 {{lists}} 的行；请先将该列表注册为表",
+      "table_has_dependents": "函数 '{{name}}' 的表 '{{table}}' 仍被其他对象引用；请先移除这些引用"
     },
     "graphql_remote": {
       "introspection_failed": "内省失败：{{error}}",
@@ -528,7 +536,8 @@
       "code_resolver_retired": "已停用代码解析器 '{{resolver}}'",
       "code_resolver_has_dependents": "仍有对象依赖代码解析器 '{{resolver}}' 时无法停用",
       "incremental_no_change": "代码源没有针对 {{table}} 的 @change 函数。请使用 @change table={{table}} 声明一个。",
-      "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。"
+      "incremental_needs_rebuild_every": "{{table}} 采用增量维护，因此会按时钟完整重建。请在“完整重建间隔”中设置间隔（秒）。",
+      "table_derived_from_function": "表 '{{name}}' 派生自函数：通过关闭该函数的表来删除它，其列和参数在函数上编辑"
     },
     "secrets": {
       "env_reference_object_locked": "此对象属于运营方：它读取服务器自身的环境，无法在此更改。请改为添加您自己的对象。",

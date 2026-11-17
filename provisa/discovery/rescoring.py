@@ -10,7 +10,7 @@
 
 """A second scorer for a discovery run's proposals (REQ-1789): with a Jev key configured, each
 proposal the model made is put to Jev as a yes-or-no question, and Jev's calibrated confidence
-replaces the model's own.
+is shown beside the model's own, which decides which proposals are suggestions.
 
 Jev judges on what it is shown, so each question comes with what a run knows of the two tables
 and the two columns (:func:`evidence`): their names, descriptions, tags, the table's role and

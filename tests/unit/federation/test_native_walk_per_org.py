@@ -67,6 +67,7 @@ def _org_state(org: str, store: str) -> SimpleNamespace:
                 "replicate": None,
                 "load_protected": None,
                 "max_live_concurrency": None,
+                "download_from": None,
                 "cache_ttl": None,
             }
         },

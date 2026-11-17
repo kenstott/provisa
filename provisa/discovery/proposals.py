@@ -46,8 +46,6 @@ UNKNOWN_COLUMN = "unknown_column"
 NOT_COMPARABLE = "not_comparable"
 #: The model's own confidence is under the threshold.
 BELOW_THRESHOLD = "below_threshold"
-#: The model's confidence met the threshold and a second scorer's did not.
-SCORED_BELOW_THRESHOLD = "scored_below_threshold"
 
 #: Every reason a proposal is left out for: those of an answer's reading, then the removals of
 #: :class:`provisa.discovery.direction.Removed`.
@@ -56,7 +54,6 @@ REASONS: tuple[str, ...] = (
     UNKNOWN_COLUMN,
     NOT_COMPARABLE,
     BELOW_THRESHOLD,
-    SCORED_BELOW_THRESHOLD,
     "same_column",
     "primary_key_to_primary_key",
     "both_repeating",
@@ -74,7 +71,6 @@ REASONS: tuple[str, ...] = (
 ACCEPTABLE: frozenset[str] = frozenset(
     {
         BELOW_THRESHOLD,
-        SCORED_BELOW_THRESHOLD,
         "primary_key_to_primary_key",
         "both_repeating",
         "pending",
@@ -91,13 +87,12 @@ NOT_AGAIN = "Not to be recommended again"
 class Recorded:
     """One proposal as a run read it. ``left_out`` None: it is among the run's suggestions.
     ``proposal`` None: the element named no two compared columns, and ``answer`` is the element
-    as the model wrote it. ``scored``: the confidence a second scorer gave it."""
+    as the model wrote it. A second scorer's confidence is the proposal's ``scored``."""
 
     kind: Kind
     left_out: str | None
     proposal: Proposal | None = None
     answer: str | None = None
-    scored: float | None = None
 
 
 def _values(run_id: int, r: Recorded) -> dict[str, Any]:
@@ -110,7 +105,7 @@ def _values(run_id: int, r: Recorded) -> dict[str, Any]:
         "target_table_id": None if p is None else p.end[0],
         "target_column": None if p is None else p.end[1],
         "confidence": None if p is None else p.confidence,
-        "scored": r.scored,
+        "scored": None if p is None else p.scored,
         "reasoning": None if p is None else p.reasoning,
         "suggested_name": None if p is None else (p.suggested_name or None),
         "left_out": r.left_out,
@@ -157,8 +152,8 @@ def _view(row: Any, never_read: set[int]) -> dict[str, Any]:
 
 
 async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, Any]]:
-    """Every proposal of the run no reviewer has decided, the highest score first (a second
-    scorer's where it gave one, else the model's), those with none last."""
+    """Every proposal of the run no reviewer has decided, the model's highest score first, those
+    with none last. A second scorer's score is shown beside it and does not order (REQ-1789)."""
     from provisa.discovery.gather import tables_never_read
 
     found = (
@@ -172,11 +167,8 @@ async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, 
     ends.discard(None)
     never_read = await tables_never_read(state, conn, sorted(ends)) if ends else set()
 
-    def score(r: dict[str, Any]) -> float | None:
-        return r["confidence"] if r["scored"] is None else r["scored"]
-
     rows = [_view(r, never_read) for r in found]
-    return sorted(rows, key=lambda r: (score(r) is None, -(score(r) or 0.0)))
+    return sorted(rows, key=lambda r: (r["confidence"] is None, -(r["confidence"] or 0.0)))
 
 
 class NotDecidable(ValueError):
@@ -204,7 +196,7 @@ async def _candidate_of(conn: "Connection", run_id: int, proposal_id: int) -> in
                 target_table_id=int(row.target_table_id),
                 target_column=str(row.target_column),
                 cardinality="many-to-one",
-                confidence=float(row.confidence if row.scored is None else row.scored),
+                confidence=float(row.confidence),
                 reasoning=row.reasoning or "",
                 suggested_name=row.suggested_name or "",
             )

@@ -68,6 +68,8 @@ class Proposal:
     confidence: float
     reasoning: str
     suggested_name: str = ""
+    #: The confidence a second scorer gave it (REQ-1789): shown beside the model's, which decides.
+    scored: float | None = None
 
     @property
     def edge(self) -> Edge:

@@ -67,6 +67,16 @@ class _Embedder:
         return [[0.1, 0.2, 0.3] for _ in texts], 5 * len(texts)
 
 
+@pytest.fixture(autouse=True)
+def _revoke_issued():
+    """Each test revokes every grant it issued: the services' grants are the process's, and a
+    grant left behind is another test's."""
+    before = set(services._grants)
+    yield
+    for token in set(services._grants) - before:
+        services.revoke(token)
+
+
 @pytest.fixture
 def service(monkeypatch: pytest.MonkeyPatch) -> dict:
     """The org's config, its vendors and its meter, as the service reads them."""

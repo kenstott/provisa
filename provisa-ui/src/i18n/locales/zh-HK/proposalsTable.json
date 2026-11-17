@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "套用時會接受已剔選的列。評分為 {{threshold}}% 或以上的列預設剔選。兩個方格都未剔選的列保持未決定。",
     "colScore": "評分",
+    "colJev": "Jev",
     "colKind": "類型",
     "colReasoning": "理由",
     "colNote": "備註",
@@ -25,7 +26,6 @@
       "unknown_column": "引用了請求未比較的表或欄",
       "not_comparable": "兩欄的類別不同，因此不作比較",
       "below_threshold": "模型的信心低於 {{threshold}}% 的門檻。",
-      "scored_below_threshold": "Jev 的評分為 {{scored}}%，低於 {{threshold}}% 的門檻。模型給出的是 {{confidence}}%。",
       "same_column": "由某欄指向其本身",
       "primary_key_to_primary_key": "主索引鍵到主索引鍵",
       "both_repeating": "兩邊均有重複值，因此任何一邊都不是「一」的一方",

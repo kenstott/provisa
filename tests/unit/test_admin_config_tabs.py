@@ -937,9 +937,16 @@ class TestVendorModelListing:
             }
         ]
         monkeypatch.delenv("UNSET_GATEWAY_KEY_FOR_TEST", raising=False)
-        r = client.get("/admin/ai-models/vendors/my-gateway/models")
-        assert r.status_code == 400
-        assert "UNSET_GATEWAY_KEY_FOR_TEST" in r.json()["detail"]
+        from provisa.core.org_secrets import AiKeyRequired
+
+        # The router's refusal; the API answers it 409 (provisa.api.app).
+        with pytest.raises(AiKeyRequired) as refused:
+            client.get("/admin/ai-models/vendors/my-gateway/models")
+        assert refused.value.code == "ai.endpoint_key_unset"
+        assert refused.value.params == {
+            "vendor": "my-gateway",
+            "field": "UNSET_GATEWAY_KEY_FOR_TEST",
+        }
 
     def test_disabled_custom_endpoint_is_not_listable(self, client, org_overrides):
         org_overrides["ai_endpoints"] = [

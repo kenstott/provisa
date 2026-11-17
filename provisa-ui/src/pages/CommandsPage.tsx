@@ -199,6 +199,7 @@ export function CommandsPage() {
         writesTable: fn.writesTable ?? "", // REQ-1924, REQ-871
         outputColumns, // REQ-1159
         languageBindings: fn.languageBindings ?? {}, // REQ-2168
+        exposedAsTable: fn.exposedAsTable ?? null, // REQ-1986
       };
     }
     const wh = held.webhooks.find((w) => w.name === name);
@@ -227,6 +228,7 @@ export function CommandsPage() {
       writesTable: "",
       outputColumns: [],
       languageBindings: {},
+      exposedAsTable: null, // REQ-1986: a webhook has no table form
     };
   };
 
@@ -304,6 +306,7 @@ export function CommandsPage() {
             requiresApproval: form.requiresApproval, // REQ-1924
             writesTable: isStatement || isTemplate ? undefined : form.writesTable || null, // REQ-1924, REQ-871
             languageBindings: form.languageBindings, // REQ-2168
+            exposedAsTable: form.exposedAsTable ?? undefined, // REQ-1986
           },
           editingName, // the open command is updated; a new one is created
         );

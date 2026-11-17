@@ -27,7 +27,6 @@ import pytest
 
 from tests.integration.test_demo_sandboxes_e2e import (
     _JWT_SECRET,
-    _close_opened,
     _demo,
     _deployment_config,
     _open,
@@ -54,6 +53,10 @@ def tier(tmp_path_factory):
         _ORG,
         engine="duckdb",
         config=str(config),
+        # Its own control plane: a demo's template org (sbxtpl<demo>) is global, so on the
+        # session's shared plane every module serving a demo of the same name shares one template,
+        # and one module's record of it was served to the next as theirs (release 510).
+        control_plane="own",
         auth={"provider": "basic", "jwt_secret": _JWT_SECRET, "assignments_source": "provisa"},
         env={
             "PROVISA_SANDBOX_TIER": "true",
@@ -65,7 +68,6 @@ def tier(tmp_path_factory):
     srv.start(timeout=240)
     try:
         yield srv
-        _close_opened(srv)  # the control plane is shared: none of its sandboxes is left open
     finally:
         srv.stop_process()
 

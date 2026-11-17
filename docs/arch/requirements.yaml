@@ -3665,7 +3665,15 @@
     person''s last run, read from that run''s stored scope; a value that no longer holds is left out and
     named; Reset to defaults restores the defaults. A finished run states its scope: the kinds, the model,
     the source and target domains and their table counts. The request states what a confidence value means
-    by the evidence shown, and that a suggestion is kept at 0.7.'
+    by the evidence shown, and that a suggestion is kept at 0.7. (Amended 2026-11-16, ONLY NEW RUN REUSES
+    A RUN''S FIELDS; OPENING DISCOVER STARTS FROM THE DEFAULTS:) Maintainer 2026-11-16, amending the rule
+    of 2026-11-16 that a new run starts from the person''s last run. Opening Discover relationships always
+    starts from the defaults. Only New run, at the end of a run, opens the form with that run''s fields;
+    there a domain chosen with all its tables is restored as all its tables, tables registered since that
+    run outside its scope are named with one action to add them, and Reset to defaults restores the defaults.
+    The pickers offer no table a run would leave out (a draft, a system domain''s table); a run whose source
+    or target holds no table is refused before it starts, saying why, and a run that leaves out some of
+    the tables named says how many and why.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -41546,8 +41554,8 @@
   - provisa-ui/src/__tests__/LoginPage.test.tsx
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1263
-  status: in-progress
-  since: 2026-08
+  status: complete
+  since: 2026-11
   group: 2. Authentication & Identity
   category: API Token Management
   feature: sign-in-and-identity-credentials
@@ -41628,6 +41636,8 @@
   - tests/unit/test_grpc_auth.py
   - provisa-ui/src/__tests__/PersonalAccessTokens.test.tsx
   - provisa-client/tests/test_client.py
+  - tests/unit/test_pat_scopes_are_roles.py
+  - tests/integration/test_pat_scopes_e2e.py
   docs:
   - admin.md
   - api-reference.md
@@ -56235,7 +56245,8 @@
   docs:
   - environments.md
 - id: REQ-1562
-  status: in-progress
+  status: complete
+  since: 2026-11
   target: 2026-Q4
   group: 11. Platform, Infrastructure & Delivery
   category: Deployment
@@ -81993,7 +82004,14 @@
     to be it; (5) rows of a parameterized table that were kept (a kept-for-good table, a synthetic environment)
     hold the asked value as an ordinary stored column, and conditions on that stored column are ordinary
     filters; (6) a source whose operations have no named return type cannot be compared, so each of its
-    parameterized operations gets its table.'
+    parameterized operations gets its table. (Amended 2026-11-16, THE DERIVED TABLE SHARES ITS FUNCTION''S
+    STATE AND IS EDITED ONLY THROUGH IT:) Lead 2026-11-16, consequences of the table being an attribute
+    of its function. The derived table has its function''s release state: released with it, never a draft
+    of its own, since a draft table would leave a released function unreadable. It is not deleted, and its
+    columns and parameters are not edited, on the table itself: only through its function. Turning the switch
+    off, or deleting the function, is refused while a relationship, view, metric, row rule, data-product
+    membership or write grant refers to the derived table, naming each; glossary references and tags the
+    product made itself do not block it. A parameter is bound under its own name and under its alias alike.'
   use_case: 'An OpenAPI operation takes an optional region query parameter, and without it returns every region''s rows, millions of them. A steward makes region required on the table; from then on an analyst''s SQL query without a region condition is refused, naming the table and region, and the GraphQL field''s region argument is non-null. The operation''s id path parameter is shown locked on, because the source requires it.'
   scenario: 'Given an OpenAPI table with a required path parameter id and an optional query parameter region, and a remote GraphQL table with an optional argument status
 
@@ -85224,8 +85242,8 @@
   - tests/integration/test_timestamptz_e2e.py
   - tests/integration/test_zoned_timestamp_warehouses_e2e.py
 - id: REQ-2049
-  status: in-progress
-  since: 2026-10
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Demo Provisioning
   feature: product-tour-and-demos-sandbox
@@ -85336,6 +85354,15 @@
     directories, unused images) and turned the shared Elasticsearch red; a version taken down loses its bundle directory and
     the images no container still uses, an older one never brought up its directory, and nothing else is pruned
     (scripts/demo_stores_sync.sh, tests/unit/test_demo_bundle_setup.py).'
+  tests:
+  - tests/unit/test_demo_bundles.py
+  - tests/integration/test_demo_bundle_sandbox_e2e.py
+  - tests/unit/test_demo_stores.py
+  - tests/unit/test_demo_stores_linger.py
+  - tests/unit/test_demo_live_landing.py
+  - tests/unit/test_demo_template_warm_start.py
+  - tests/unit/test_start_ui_install_named_demo.py
+  - tests/unit/test_held_paths_logs_code_download.py
 - id: REQ-2051
   status: in-progress
   since: 2026-10
@@ -86815,8 +86842,8 @@ And a constant naming a secret that does not exist fails the query, naming the c
   docs:
   - security.md
 - id: REQ-2087
-  status: in-progress
-  since: 2026-10
+  status: complete
+  since: 2026-11
   group: 11. Platform, Infrastructure & Delivery
   category: Security
   feature: encryption-and-secrets-secrets
@@ -86880,6 +86907,9 @@ And the Secrets page lists warehouse_pw under the automatic rule by name, with n
   tests:
   - tests/unit/test_central_redaction.py
   - provisa-ui/src/__tests__/RedactionTab.test.tsx
+  - tests/unit/test_client_redaction_marker.py
+  - tests/unit/pgwire/test_redaction_not_in_data_path.py
+  - tests/unit/test_source_error_text.py
   stakeholders:
   - compliance
   - ops

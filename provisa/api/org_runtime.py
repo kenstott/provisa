@@ -264,6 +264,10 @@ class OrgRuntime:
     # REQ-194: this model version's names table -- every object's name on every surface -- built
     # from view_context with the build (provisa.compiler.names_table).
     names_table: "NamesTable | None" = None
+    # REQ-2125: each checker table's id with the id of the table its contract scans, as this
+    # build resolved it. A request that acts on a product (a grant, a product's promised checks)
+    # reads it here; the stored checker_targets are the meta domain's, written after the answer.
+    checked_targets: dict[int, int] = field(default_factory=dict)
     # REQ-1677: role id → [role, parent, grandparent, …], the chain folded into the build.
     role_chains: dict[str, list[str]] = field(default_factory=dict)
 

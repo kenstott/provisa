@@ -25,9 +25,6 @@ from pydantic import BaseModel, Field
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
-from provisa.discovery.analyzer import RelationshipCandidate, analyze_answer
-from provisa.discovery.collector import collect_fk_candidates, collect_metadata
-from provisa.discovery.prompt import build_prompt
 from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
 from provisa.discovery.run import (
@@ -42,6 +39,7 @@ from provisa.discovery.windows import NoRoomError
 from provisa.otel_compat import get_tracer as _get_tracer
 from provisa.otel_compat import stage as _stage
 from provisa.api.admin.capabilities import require_capability_request
+from provisa.api.engine_error_names import client_text
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -62,7 +60,11 @@ WHERE_TO_SET = "Admin, AI Models"
 
 
 class DiscoverRequest(BaseModel):
-    scope: str  # "table", "domain", "cross-domain"
+    """A discovery done while the caller waits, as a run (REQ-413): ``table`` compares the tables
+    of the table's domain, ``domain`` those of the domain, ``cross-domain`` those of every
+    domain."""
+
+    scope: Literal["table", "domain", "cross-domain"]
     kinds: list[DiscoveryKind] = Field(min_length=1)
     table_id: int | None = None
     domain_id: str | None = None
@@ -144,165 +146,6 @@ async def discovery_kinds(request: Request):  # REQ-413
         "foreign_keys": {"available": True},
         "semantics": _semantics_availability(await semantic_model(pool)),
     }
-
-
-def _key(rel: dict | RelationshipCandidate) -> tuple[int, str, int, str]:
-    """The columns a relationship joins, the identity of a candidate."""
-    if isinstance(rel, RelationshipCandidate):
-        return (rel.source_table_id, rel.source_column, rel.target_table_id, rel.target_column)
-    return (
-        int(rel["source_table_id"]),
-        str(rel["source_column"]),
-        int(rel["target_table_id"]),
-        str(rel["target_column"]),
-    )
-
-
-async def _semantics(
-    conn: "Connection",
-    engine: Any,
-    scope: str,
-    scope_id: str | int | None,
-    model: SemanticModel,
-    found_by_fk: set[tuple[int, str, int, str]],
-) -> tuple[dict[str, Any], list[RelationshipCandidate]]:  # REQ-018, REQ-167, REQ-413
-    """Semantic suggestions from the assigned model, and what this kind found: how many, and when
-    none, why. A failure of the model is raised as an error, not reported as none found."""
-    discovery_input = await collect_metadata(engine, conn, scope, scope_id)
-    rejected = await conn.fetch(
-        "SELECT source_table_id, source_column, target_table_id, target_column "
-        "FROM relationship_candidates WHERE status = 'rejected'"
-    )
-    discovery_input.rejected_pairs = [dict(r) for r in rejected]
-    prompt = build_prompt(discovery_input)
-    try:
-        analysis = await asyncio.to_thread(
-            analyze_answer,
-            prompt,
-            model.api_keys,
-            discovery_input,
-            MIN_CONFIDENCE,
-            config=model.config,
-        )
-    except Exception as exc:
-        raise ApiError(
-            502,
-            "discovery.model_failed",
-            f"The model {model.label} failed: {exc}",
-            model=model.label,
-            error=str(exc),
-        ) from exc
-    kept = analysis.candidates
-    below_threshold = analysis.below_threshold
-
-    # Optional: when a Jev key is configured, replace each candidate's self-reported confidence
-    # with Jev's calibrated score (REQ-1789); those it drops fell below the threshold.
-    from provisa.core.org_secrets import JEV, org_ai_key_or_none
-
-    jev_key = await org_ai_key_or_none(state.model_db, JEV)
-    if jev_key and kept:
-        from provisa.jev.decisions import refine_relationship_confidence
-
-        refined = await refine_relationship_confidence(kept, jev_key, min_confidence=MIN_CONFIDENCE)
-        below_threshold += len(kept) - len(refined)
-        kept = refined
-
-    known = (
-        {_key(r) for r in discovery_input.existing_relationships}
-        | {_key(r) for r in discovery_input.rejected_pairs}
-        | found_by_fk
-    )
-    fresh = [c for c in kept if _key(c) not in known]
-    if fresh:
-        empty_reason = None
-    elif analysis.unreadable:
-        empty_reason = "unreadable"
-    elif analysis.cut_short and analysis.proposed == 0:
-        empty_reason = "cut_short"
-    elif analysis.proposed == 0:
-        empty_reason = "none_proposed"
-    else:
-        empty_reason = "filtered"
-    return {
-        "suggested": len(fresh),
-        "proposed": analysis.proposed,
-        "below_threshold": below_threshold,
-        "threshold": MIN_CONFIDENCE,
-        "already_known": len(kept) - len(fresh),
-        "invalid": analysis.invalid,
-        "empty_reason": empty_reason,
-        # The model's answer stopped at its token limit before its list closed: the suggestions
-        # counted are those of its elements that were complete.
-        "cut_short": analysis.cut_short,
-    }, fresh
-
-
-@router.post("/relationships")
-async def trigger_discovery(
-    request: Request, body: DiscoverRequest
-):  # REQ-018, REQ-167, REQ-413, REQ-612
-    """Run the kinds of relationship discovery asked for, and say what each found."""
-    require_capability_request(request, "create_relationship")
-    with _stage(_tracer, "admin.discovery") as span:
-        scope_id: str | int | None = None
-        if body.scope == "table":
-            if body.table_id is None:
-                raise ApiError(
-                    400, "discovery.table_id_required", "table_id required for table scope"
-                )
-            scope_id = body.table_id
-        elif body.scope == "domain":
-            if body.domain_id is None:
-                raise ApiError(
-                    400, "discovery.domain_id_required", "domain_id required for domain scope"
-                )
-            scope_id = body.domain_id
-
-        kinds = set(body.kinds)
-        pool = state.model_db
-        assert pool is not None
-        model: SemanticModel | None = None
-        if "semantics" in kinds:
-            model = await semantic_model(pool)
-            if model.problem is not None:
-                raise ApiError(
-                    409,
-                    "discovery.semantics_unavailable",
-                    f"Semantics cannot run: {model.label}, the model assigned to relationship "
-                    f"inference, has no key. Set one under {WHERE_TO_SET}.",
-                    model=model.label,
-                    where=WHERE_TO_SET,
-                )
-
-        report: dict[str, Any] = {}
-        all_candidates: list[RelationshipCandidate] = []
-        async with pool.acquire() as _conn:
-            conn = cast("Connection", _conn)
-            found_by_fk: set[tuple[int, str, int, str]] = set()
-            if "foreign_keys" in kinds:
-                fk_candidates = await collect_fk_candidates(
-                    state.source_pools,
-                    state.source_types,
-                    conn,
-                    body.scope,
-                    scope_id,
-                )
-                _log.warning("FK introspection returned %d candidates", len(fk_candidates))
-                found_by_fk = {_key(c) for c in fk_candidates}
-                all_candidates.extend(fk_candidates)
-                report["foreign_keys"] = {"found": len(fk_candidates)}
-            if model is not None:
-                engine = state.federation_engine
-                assert engine is not None
-                report["semantics"], suggested = await _semantics(
-                    conn, engine, body.scope, scope_id, model, found_by_fk
-                )
-                all_candidates.extend(suggested)
-
-            stored_ids = await candidates_repo.store_candidates(conn, all_candidates, body.scope)
-
-        span.set_attribute("admin.source_count", len(all_candidates))
-        return {"candidates_found": len(all_candidates), "stored_ids": stored_ids, **report}
 
 
 class RunScope(BaseModel):  # REQ-413
@@ -390,10 +233,13 @@ async def discovery_models(request: Request):  # REQ-413, REQ-464
 async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
     """The models ``vendor`` serves, for the run's Model select; ``vendor`` must have a key."""
     require_capability_request(request, "create_relationship")
-    import os
-
     from provisa.api.admin.ai_models_router import _run_model_listing
-    from provisa.core.org_secrets import org_ai_key
+    from provisa.core.org_secrets import (
+        endpoint_address,
+        endpoint_key,
+        org_ai_key,
+        read_org_api_keys,
+    )
     from provisa.core.org_settings import resolve_org_config
     from provisa.llm.vendor_models import (
         VENDOR_MODEL_APIS,
@@ -417,22 +263,11 @@ async def discovery_vendor_models(request: Request, vendor: str):  # REQ-413
             f"{vendor} lists no models here; enter the model name",
             vendor=vendor,
         )
-    env = endpoint.get("api_key_env")
-    from provisa.core.env_reference_guard import refuse_named_by_org
-
-    refuse_named_by_org(env)  # REQ-1557: a held organization's own key variable is not read
-    endpoint_key = os.environ.get(env) if env else None
-    if env and not endpoint_key:
-        raise ApiError(
-            409,
-            "discovery.endpoint_has_no_key",
-            f"{vendor} has no key: set the {env} environment variable.",
-            vendor=vendor,
-            env=env,
-        )
+    # The key and address the endpoint's calls are made with (REQ-1395, REQ-1557, REQ-1790).
+    key = await endpoint_key(await read_org_api_keys(pool), endpoint)
+    address = endpoint_address(endpoint)
     models = await _run_model_listing(
-        vendor,
-        lambda: fetch_endpoint_models(endpoint["style"], endpoint["base_url"], endpoint_key),
+        vendor, lambda: fetch_endpoint_models(endpoint["style"], address, key)
     )
     return {"vendor": vendor, "models": models}
 
@@ -557,6 +392,82 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
     return {"run": started.view()}
 
 
+async def _source_domains(conn: "Connection", body: DiscoverRequest) -> list[str]:
+    """The domains a discovery request's scope compares the tables of."""
+    from sqlalchemy import select
+
+    from provisa.core.schema_org import registered_tables as rt
+
+    if body.scope == "table":
+        if body.table_id is None:
+            raise ApiError(400, "discovery.table_id_required", "table_id required for table scope")
+        domain = (
+            await conn.execute_core(select(rt.c.domain_id).where(rt.c.id == body.table_id))
+        ).scalar()
+        if domain is None:
+            raise ApiError(
+                404,
+                "discovery.table_not_found",
+                f"Table {body.table_id} is not registered",
+                table_id=body.table_id,
+            )
+        return [str(domain)]
+    if body.scope == "domain":
+        if body.domain_id is None:
+            raise ApiError(
+                400, "discovery.domain_id_required", "domain_id required for domain scope"
+            )
+        return [body.domain_id]
+    found = await conn.execute_core(select(rt.c.domain_id).distinct().order_by(rt.c.domain_id))
+    return [str(r[0]) for r in found.fetchall()]
+
+
+@router.post("/relationships")
+async def trigger_discovery(
+    request: Request, body: DiscoverRequest
+):  # REQ-018, REQ-167, REQ-413, REQ-612
+    """A discovery run done while the caller waits: started, performed and stored as a run the
+    dialog starts (its proposals kept, Jev's scores beside the model's), and answered with the
+    run and what each kind found."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    with _stage(_tracer, "admin.discovery") as span:
+        async with pool.acquire() as _conn:
+            domains = await _source_domains(cast("Connection", _conn), body)
+        scope = RunScope(kinds=body.kinds, source_domains=domains)
+        spec = scope.spec()
+        model = await _run_model(spec)
+        async with pool.acquire() as _conn:
+            run_id = await runs_repo.start(
+                cast("Connection", _conn),
+                scope=scope.model_dump(),
+                model=None if model is None else model.label,
+                started_by=_caller(request),
+            )
+        await run_discovery(run_id, spec, model)
+        async with pool.acquire() as _conn:
+            ended = await runs_repo.run(cast("Connection", _conn), run_id)
+        assert ended is not None
+        if ended.status != runs_repo.DONE:
+            raise ApiError(
+                502,
+                "discovery.run_failed",
+                f"Discovery run {run_id} failed: {ended.error}",
+                run_id=run_id,
+                error=ended.error,
+            )
+        report = ended.report
+        assert report is not None, f"discovery run {run_id} finished with no report"
+        span.set_attribute("admin.source_count", int(report["suggestions"]))
+        return {
+            "run": ended.view(),
+            "candidates_found": report["suggestions"],
+            "stored_ids": report["stored_ids"],
+            **{kind: report[kind] for kind in ("foreign_keys", "semantics") if kind in report},
+        }
+
+
 async def _held(conn: "Connection", run_id: int) -> runs_repo.RunRow:
     await runs_repo.give_up_on_left_behind(conn, runs_repo.this_launch())
     found = await runs_repo.run(conn, run_id)
@@ -671,7 +582,9 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
                 relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
-                results.append({"id": each.id, "action": "accept", "ok": False, "error": str(exc)})
+                results.append(
+                    {"id": each.id, "action": "accept", "ok": False, "error": client_text(str(exc))}
+                )
                 continue
             results.append(
                 {"id": each.id, "action": "accept", "ok": True, "relationship_id": relationship_id}
@@ -682,7 +595,12 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: marking proposal %s failed: %s", proposal_id, exc)
                 results.append(
-                    {"id": proposal_id, "action": "not_again", "ok": False, "error": str(exc)}
+                    {
+                        "id": proposal_id,
+                        "action": "not_again",
+                        "ok": False,
+                        "error": client_text(str(exc)),
+                    }
                 )
                 continue
             results.append({"id": proposal_id, "action": "not_again", "ok": True})
@@ -739,7 +657,7 @@ async def accept_candidates(request: Request, body: AcceptAllRequest):  # REQ-41
                 accepted = await candidates_repo.accept(conn, each.id, each.name)
             except Exception as exc:  # reported per suggestion, the rest go on
                 _log.warning("Accept all: candidate %s failed: %s", each.id, exc)
-                results.append({"id": each.id, "ok": False, "error": str(exc)})
+                results.append({"id": each.id, "ok": False, "error": client_text(str(exc))})
                 continue
             results.append(
                 {"id": each.id, "ok": True, "relationship_id": accepted["relationship_id"]}
@@ -762,7 +680,7 @@ async def reject_candidates(request: Request, body: RejectAllRequest):  # REQ-41
                 await candidates_repo.reject(conn, candidate_id, body.reason)
             except Exception as exc:  # reported per suggestion, the rest go on
                 _log.warning("Reject all: candidate %s failed: %s", candidate_id, exc)
-                results.append({"id": candidate_id, "ok": False, "error": str(exc)})
+                results.append({"id": candidate_id, "ok": False, "error": client_text(str(exc))})
                 continue
             results.append({"id": candidate_id, "ok": True})
     return {"results": results}

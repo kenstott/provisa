@@ -2776,6 +2776,14 @@ class Function(BaseModel):  # REQ-205, REQ-206, REQ-207, REQ-208
     # REQ-2168: the command's name per language (sql, cypher, graphql, rest, mcp, sparql). A
     # language left out offers it under its generated name; SQL cannot be excluded.
     language_bindings: dict[str, CommandBinding] = Field(default_factory=dict)
+    # REQ-1986: for a source operation that returns rows, the type of one row as the source's
+    # own schema names it (an OpenAPI component, a GraphQL type, a gRPC message); None where the
+    # source names none. Two operations of a source return the same type when this is equal.
+    source_type: str | None = None
+    # REQ-1986: whether this function is also exposed as a parameterized table, derived from it
+    # and never registered on its own. None for a function with no table form (anything but a
+    # source operation that reads rows and requires a parameter).
+    exposed_as_table: bool | None = None
 
     model_config = ConfigDict(populate_by_name=True)
 

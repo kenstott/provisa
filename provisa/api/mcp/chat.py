@@ -49,12 +49,17 @@ from provisa.api.mcp import tools as mcp_tools
 from provisa.api.mcp.column_state import DESCRIBE_TABLE
 from provisa.api.mcp.sql_quoting import quote_identifiers
 from provisa.core.org_secrets import (
+    NO_KEY,
     AiKeyRequired,
+    endpoint_address,
+    endpoint_key,
     endpoint_provider_key,
     provider_key,
     read_org_api_keys,
+    sdk_config,
 )
 from provisa.core.secrets_providers import many_organisations
+from provisa.api.engine_error_names import client_text, client_value
 
 # Tool schemas mirror the MCP tools, minus `role` — the role is pinned by the endpoint from the
 # caller's identity and injected at execution, so the model can never select or escalate it.
@@ -1399,34 +1404,20 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
     }
     endpoint = endpoints.get(vendor)
     if endpoint is not None:
-        key_env = endpoint.get("api_key_env")
-        from provisa.core.request_context import current_org
-        from provisa.core.sandbox_ai import endpoint_key, key_org
-
-        # REQ-1826: this must resolve the SAME grammar _resolve_api_key_field does at actual chat
-        # time (${secret:NAME}/${env:NAME}/${user:NAME}, or a plain env-var name) — a bare
-        # os.environ.get(key_env) check here always failed for a ${secret:...}/${env:...}
-        # reference (that string is never itself a real env var name), permanently reporting "not
-        # configured" for the exact vault-reference pattern this app's own AI Models UI recommends
-        # (REQ-1808's whole point: every config field may carry that grammar, not just literals).
-        if key_env:
-            try:
-                # REQ-2006: a sandbox's tier endpoint's key is the deployment org's.
-                resolved = (
-                    await endpoint_key(endpoint, current_org.get())
-                    if key_org(endpoint, current_org.get())
-                    else await _resolve_api_key_field(key_env)
-                )
-            except Exception as exc:
-                # Never swallow the real cause into a generic "needs X set" — a ${secret:...}
-                # that fails to resolve (unbound org, wrong org, the secret genuinely missing) is
-                # a DIFFERENT, more diagnosable problem than "nothing was ever configured", and
-                # reporting it as the latter hides exactly the information needed to fix it.
-                return False, f"the {vendor!r} endpoint's {key_env} could not be resolved: {exc}"
-            if not resolved:
-                return False, f"the {vendor!r} endpoint needs {key_env} set"
-    elif vendor == "ollama":
-        pass  # REQ-1797: no credential — a local server, reachable at OLLAMA_API_URL or the default
+        # REQ-1826: the same resolution the chat's call makes (_resolve_aisuite_routing): the
+        # resolver's (provisa.core.org_secrets.endpoint_key), whose refusals say why.
+        try:
+            await endpoint_key(await _stored_keys(state), endpoint)
+            endpoint_address(endpoint)
+        except AiKeyRequired as refused:
+            return False, str(refused)
+        except Exception as exc:
+            # Never swallow the real cause into a generic "needs X set" — a ${secret:...}
+            # that fails to resolve (unbound org, wrong org, the secret genuinely missing) is
+            # a DIFFERENT, more diagnosable problem than "nothing was ever configured", and
+            # reporting it as the latter hides exactly the information needed to fix it.
+            key_env = endpoint.get("api_key_env")
+            return False, f"the {vendor!r} endpoint's {key_env} could not be resolved: {exc}"
     elif vendor == "google" and not many_organisations():
         # REQ-1797: aisuite's Google provider is Vertex AI, not the simpler Gemini API-key auth —
         # it needs a GCP project + service-account credentials, not one key. They are the
@@ -1440,7 +1431,7 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
             return False, f"google (Vertex AI) needs {', '.join(missing)} set"
     else:
         try:
-            await _vendor_key(state, vendor)
+            sdk_config(vendor, {"api_key": await _vendor_key(state, vendor)})
         except AiKeyRequired as refused:
             return False, str(refused)
 
@@ -1452,9 +1443,14 @@ async def _llm_configured(state: Any) -> tuple[bool, str]:
 async def _vendor_key(state: Any, vendor: str) -> str | None:
     """The key one of aisuite's named vendors is called with for the acting org (REQ-1395,
     provisa.core.org_secrets.provider_key): refused when it has none to use."""
+    return provider_key(await _stored_keys(state), vendor)
+
+
+async def _stored_keys(state: Any) -> dict[str, str]:
+    """The acting org's AI keys (provisa.core.org_secrets.read_org_api_keys); none where no model
+    store is bound."""
     model_db = getattr(state, "model_db", None)
-    stored = await read_org_api_keys(model_db) if model_db is not None else {}
-    return provider_key(stored, vendor)
+    return await read_org_api_keys(model_db) if model_db is not None else {}
 
 
 async def _resolve_model(state: Any) -> str | None:
@@ -1901,6 +1897,12 @@ def _prepare_client_call(call: dict, confirmation: str | None = None) -> tuple[d
     return prepared, None if error is None else _unquoted_note(error)
 
 
+def _tool_error(exc: BaseException) -> str:
+    """A failed tool's result, as the model is told it: its text told as a client is told an
+    error's, since the model's answer returns to the caller (REQ-2087)."""
+    return client_text(f"Error: {exc}")
+
+
 async def _checked_graph_navigates(
     state: Any, role: str, calls: list[dict]
 ) -> tuple[dict[str, str], dict[str, str]]:
@@ -1929,7 +1931,7 @@ async def _checked_graph_navigates(
             continue
         read = await check_graph_read(state, role, query)
         if read.problem is not None:
-            refused[call["id"]] = (
+            refused[call["id"]] = client_text(
                 "Not navigated: this Cypher statement does not run, so it was not put on the "
                 f"Graph page. {read.problem}. Correct the statement and navigate again."
             )
@@ -2103,7 +2105,9 @@ async def _run_chat_anthropic(
 
     # REQ-1395: the key is handed to the client, which constructed with none reads the
     # environment's itself.
-    client = AsyncAnthropic(api_key=await _vendor_key(state, "anthropic"))
+    client = AsyncAnthropic(
+        **sdk_config("anthropic", {"api_key": await _vendor_key(state, "anthropic")})
+    )
     model = await _resolve_model(state)
     assert model is not None  # _llm_configured() guarantees this for vendor == "anthropic"
     refused = await _budget_refusal(budget, model)
@@ -2186,7 +2190,7 @@ async def _run_chat_anthropic(
             usage = usage + polly_usage.from_anthropic(resp.usage)
             over = budget.over_cap(usage, model)  # REQ-1174: the turn ends at its role's cap
             if over is not None:
-                yield {"type": "error", "error": over}
+                yield {"type": "error", "error": client_value(over)}
                 yield polly_usage.usage_event(model, usage)
                 yield {"type": "done"}
                 return
@@ -2230,7 +2234,7 @@ async def _run_chat_anthropic(
                 content = json.dumps(result, default=str)
                 is_error = False
             except Exception as exc:  # noqa: BLE001 - reported back to the model, see pragma
-                content = f"Error: {exc}"
+                content = _tool_error(exc)
                 is_error = True
                 artifact = None
             if artifact is not None:
@@ -2353,16 +2357,11 @@ async def _resolve_aisuite_routing(state: Any, vendor: str, model: str) -> tuple
         return f"{vendor}:{model}", ({vendor: {"api_key": key}} if key else {})
 
     style = endpoint["style"]  # "openai" | "anthropic"
-    from provisa.core.request_context import current_org
-    from provisa.core.sandbox_ai import endpoint_key, key_org
-
-    # REQ-2006: a sandbox's tier endpoint's key is the deployment org's; any other, the org's own.
-    api_key = (
-        await endpoint_key(endpoint, current_org.get())
-        if key_org(endpoint, current_org.get())
-        else await _resolve_api_key_field(endpoint.get("api_key_env"))
-    )
-    resolved_base_url = await _resolve_config_field(endpoint["base_url"])
+    # The resolver's key (provisa.core.org_secrets.endpoint_key): the one the org's keys carry for
+    # it (a sandbox's tier endpoint's, REQ-2006), else its api_key_env, never the server's
+    # environment on a server of many organizations (REQ-1395).
+    api_key = await endpoint_key(await _stored_keys(state), endpoint)
+    resolved_base_url = await _resolve_config_field(endpoint_address(endpoint))
     provider_config: dict[str, Any] = {"base_url": resolved_base_url}
     api_key = endpoint_provider_key(api_key)
     if api_key:
@@ -2371,7 +2370,7 @@ async def _resolve_aisuite_routing(state: Any, vendor: str, model: str) -> tuple
         # aisuite's OpenAI provider requires a non-empty api_key even when the server behind
         # base_url doesn't check one at all (e.g. Ollama's OpenAI-compatible endpoint) — a
         # placeholder here is not a credential, just satisfying that constructor guard.
-        provider_config["api_key"] = "not-required"
+        provider_config["api_key"] = NO_KEY
     return f"{style}:{model}", {style: provider_config}
 
 
@@ -2396,18 +2395,6 @@ async def _resolve_config_field(value: str) -> str:
         async with bound_to_request_org():
             return resolve_secrets(value)
     return resolve_secrets(value)
-
-
-async def _resolve_api_key_field(api_key_env: str | None) -> str | None:
-    """The endpoint's API key, from its ``api_key_env`` field (REQ-1790, REQ-1808, REQ-1827).
-
-    Delegates to provisa.core.secrets.resolve_api_key_field — the ONE shared implementation of
-    this grammar, also used by provisa/vector/providers.py's embedding-model key. Kept as a thin
-    wrapper (not a bare re-export) so this module's own call sites/tests don't need to know it
-    moved."""
-    from provisa.core.secrets import resolve_api_key_field
-
-    return await resolve_api_key_field(api_key_env)
 
 
 async def _run_chat_aisuite(
@@ -2455,7 +2442,9 @@ async def _run_chat_aisuite(
         yield refused
         yield {"type": "done"}
         return
-    provider = ProviderFactory.create_provider(provider_key, provider_configs.get(provider_key, {}))
+    provider = ProviderFactory.create_provider(
+        provider_key, sdk_config(provider_key, provider_configs.get(provider_key, {}))
+    )
     # An endpoint is routed with its base_url; a named vendor with its key alone.
     at_endpoint = "base_url" in provider_configs.get(provider_key, {})
     cap = output_cap(provider_key, custom_endpoint=at_endpoint)
@@ -2515,7 +2504,7 @@ async def _run_chat_aisuite(
             billed = (billed or 0.0) + float(call_cost)
         over = budget.over_cap(usage, model_name)  # REQ-1174: the turn ends at its role's cap
         if over is not None:
-            yield {"type": "error", "error": over}
+            yield {"type": "error", "error": client_value(over)}
             yield polly_usage.usage_event(model_name, usage, billed)
             yield {"type": "done"}
             return
@@ -2557,7 +2546,7 @@ async def _run_chat_aisuite(
                 content = json.dumps(result, default=str)
                 is_error = False
             except Exception as exc:  # noqa: BLE001 - reported back to the model, see pragma
-                content = f"Error: {exc}"
+                content = _tool_error(exc)
                 is_error = True
                 artifact = None
             if artifact is not None:
@@ -2651,9 +2640,11 @@ async def run_chat(
         yield {
             "type": "error",
             "error": (
-                "Polly isn't configured yet"
-                + (f" ({reason})" if reason else "")
-                + ". Set a vendor, model, and API key in Settings, then try again."
+                client_value(
+                    "Polly isn't configured yet"
+                    + (f" ({reason})" if reason else "")
+                    + ". Set a vendor, model, and API key in Settings, then try again."
+                )
             ),
             "action": {"label": "Open AI Models settings", "route": "/admin/ai-models"},
         }
@@ -2713,5 +2704,5 @@ async def _budget_refusal(budget: Any, model: str) -> dict | None:
     try:
         await budget.admit(model)
     except BudgetRefused as exc:
-        return {"type": "error", "error": str(exc)}
+        return {"type": "error", "error": client_text(str(exc))}
     return None

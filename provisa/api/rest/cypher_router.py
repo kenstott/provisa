@@ -22,6 +22,7 @@ Five-stage pipeline:
 
 from __future__ import annotations
 
+from provisa.api.engine_error_names import client_text, client_value
 from provisa.api.role_surface import role_surface
 
 
@@ -463,7 +464,7 @@ def access_violations(
     )
     if not violations:
         return None
-    listed = [{"code": v.code, "message": v.message} for v in violations]
+    listed = [{"code": v.code, "message": client_value(v.message)} for v in violations]
     return cypher_error(
         403,
         "cypher.access_violations",
@@ -1348,7 +1349,7 @@ async def graph_counts(request: Request) -> JSONResponse:  # REQ-392
             # A parameterized table: a count gives no parameter, so the read is refused -- said,
             # with that refusal's reason.
             log.warning("graph-counts: %s not counted: %s", cypher, exc)
-            return {"count": None, "error": str(exc)}
+            return {"count": None, "error": client_text(str(exc))}
         executed = await _run_plan(plan, state)
         if isinstance(executed, Response):
             # A label the engine cannot count (its catalog is not attached on this engine): said,
@@ -1397,7 +1398,7 @@ def _uncounted(cypher: str, refused: Response) -> dict[str, Any]:
 
     why = _json.loads(bytes(refused.body))["detail"]
     log.warning("graph-counts: %s not counted (%s): %s", cypher, refused.status_code, why)
-    return {"count": None, "error": why}
+    return {"count": None, "error": client_value(why)}
 
 
 def _total(counts: dict[str, dict[str, Any]]) -> int | None:
