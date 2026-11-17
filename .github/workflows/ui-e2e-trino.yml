@@ -57,11 +57,26 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Maven Central is asked for the pinned Trino plugin jars once per pin, here: the lane needs
+  # this job and restores its cache (.github/actions/trino-plugins); its prepare script fetches
+  # nothing.
+  trino-plugins:
+    name: Trino plugins
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+
   playwright:
     name: Playwright Trino lane
+    needs: [trino-plugins]
     uses: ./.github/workflows/lane.yml
     with:
       name: ui-trino
+      trino-plugins: true
       # Trino's healthcheck start_period alone is 120s, and the Trino-engine backend's
       # register_system_catalogs() gets a 300s webServer timeout on a cold JVM;
       # source-to-query-olap-lake-trino.spec.ts's druid case alone budgets a 900s beforeAll for

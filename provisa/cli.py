@@ -391,6 +391,10 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     capability check, same report. A deployment pipeline holding a credential that passes that
     check is the organization delegating its own standing, which is the org's decision to make and
     revocable as any other credential is.
+
+    Its callers are the ``provisa env`` commands, each of which takes a required ``--org``. The
+    org goes in the X-Org-Provisa header, as the UI sends it: an environment route acts in the org
+    its path names only on a request bound to that org (REQ-1327), and a session token names none.
     """
     import urllib.error
     import urllib.request
@@ -400,6 +404,7 @@ def _api_call(args: argparse.Namespace, method: str, path: str, body: dict | Non
     url = f"{api.rstrip('/')}{path}"
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, method=method, data=data)
+    req.add_header("X-Org-Provisa", args.org)
     if data is not None:
         req.add_header("Content-Type", "application/json")
     if token:

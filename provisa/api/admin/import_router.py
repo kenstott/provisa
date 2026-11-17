@@ -34,9 +34,11 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from provisa.api.admin.capabilities import has_capability_request
+from provisa.api.admin.roles_router import require_roles_definable
 from provisa.api.errors import ApiError
 from provisa.core.models import ProvisaConfig
 from provisa.security.rights import Capability
+from provisa.import_shared.refused import ImportRefused
 from provisa.import_shared.upload import DDN, HASURA_V2, UploadError, staged_upload
 from provisa.import_shared.warnings import WarningCollector, in_report_order
 
@@ -333,6 +335,11 @@ async def preview_import(req: ImportPreviewRequest, request: Request) -> ImportP
         flavor, config, collector, discovered = _convert(req)
     except UploadError as exc:
         raise ApiError(400, "import.bad_upload", str(exc)) from exc
+    except ImportRefused as exc:
+        # A file outside the upload, or a permission filter value with no SQL literal: by name.
+        refused = ApiError(400, exc.code, str(exc))
+        refused.params = dict(exc.params)
+        raise refused from exc
     except ValueError as exc:
         # A malformed metadata document is the administrator's input, not a server fault.
         raise ApiError(400, "import.conversion_failed", f"conversion failed: {exc}") from exc
@@ -497,6 +504,9 @@ async def apply_import(req: ImportApplyRequest, request: Request) -> ImportApply
             raise ApiError(403, "import.sensitive_data_required", refusal(changes))
 
     async with state.model_db.acquire() as conn:
+        # REQ-1327/REQ-1337: an imported role passes what the role forms ask, and carries only
+        # rights its importer holds.
+        await require_roles_definable(conn, request, config)
         await _require_residency_of_import(request, conn, config)  # REQ-1921
     if req.dry_run:  # REQ-2222
         return ImportApplyResponse(
