@@ -724,7 +724,13 @@ export interface ModelLimits {
 
 /** The type groups columns are compared within. */
 export type TypeGroup =
-  "whole_number" | "decimal" | "text" | "uuid" | "date" | "timestamp" | "timestamptz";
+  | "whole_number"
+  | "decimal"
+  | "text"
+  | "uuid"
+  | "date"
+  | "timestamp"
+  | "timestamptz";
 
 /** At most how many model requests a run of this scope makes, by type group. The count reads no
  *  table: it is an upper bound from what is registered, and the run may make fewer. */
@@ -744,7 +750,12 @@ export interface DiscoveryCount {
 export interface SemanticsReport {
   suggested: number;
   empty_reason:
-    "requests_failed" | "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
+    | "requests_failed"
+    | "unreadable"
+    | "none_proposed"
+    | "below_threshold"
+    | "filtered"
+    | null;
   requests_total: number;
   requests_done: number;
   split: number;
@@ -785,7 +796,11 @@ export type RemovedKind =
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
 export type ProposalReason =
-  "invalid_shape" | "unknown_column" | "not_comparable" | "below_threshold" | RemovedKind;
+  | "invalid_shape"
+  | "unknown_column"
+  | "not_comparable"
+  | "below_threshold"
+  | RemovedKind;
 
 /** REQ-413: a proposal a run read. `reason` null: one of the run's suggestions. One that named no
  *  two compared columns has no tables or confidence, and `answer` is the element as the model
@@ -941,25 +956,6 @@ export async function applyRunDecisions(
   return (
     await discoveryRequest<{ results: DecisionResult[] }>(
       `/runs/${runId}/apply`,
-      "Apply",
-      postJson(decisions),
-    )
-  ).results;
-}
-
-/** Every suggestion still waiting, whichever run stored it, as its run lists it, and the score
- *  from which a row starts ticked (REQ-413). */
-export function fetchSuggestions(): Promise<RunProposals> {
-  return discoveryRequest("/suggestions", "Suggestions");
-}
-
-/** Decide waiting suggestions (their proposals' ids) as a run's result is decided. */
-export async function applySuggestionDecisions(
-  decisions: RunDecisions,
-): Promise<DecisionResult[]> {
-  return (
-    await discoveryRequest<{ results: DecisionResult[] }>(
-      "/suggestions/apply",
       "Apply",
       postJson(decisions),
     )

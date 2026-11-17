@@ -14,17 +14,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { ArrowLeft, Code2, X, Link2 } from "lucide-react";
-import {
-  ActionIcon,
-  Alert,
-  Button,
-  Group,
-  Modal,
-  Pagination,
-  Table,
-  Text,
-  Title,
-} from "@mantine/core";
+import { ActionIcon, Alert, Button, Group, Modal, Pagination, Table, Text } from "@mantine/core";
 import type { ColumnTagChange, TagLossResolution } from "../api/glossary";
 import { TagLossSummary } from "../components/admin/TagLossSummary";
 import { tagLossTitle } from "../components/admin/tagLoss";
@@ -40,13 +30,7 @@ import { SqlModelingModal } from "../components/SqlModelingModal";
 import { DiscoverDialog } from "../components/relationships/DiscoverDialog";
 import { DiscoverButton, DiscoverResultBanner } from "../components/relationships/DiscoverControls";
 import { useDiscoveryRun } from "../components/relationships/useDiscoveryRun";
-import {
-  applySuggestionDecisions,
-  fetchRejectedCount,
-  clearRejectedCandidates,
-  fetchSettings,
-  fetchSuggestions,
-} from "../api/admin";
+import { fetchRejectedCount, clearRejectedCandidates, fetchSettings } from "../api/admin";
 import {
   useRelationships,
   useAllRelationships,
@@ -72,11 +56,6 @@ import {
   ConflictModal,
   ReverseRelationshipForm,
 } from "../components/relationships/RelationshipModals";
-import { ProposalsTable } from "../components/relationships/ProposalsTable";
-import {
-  useProposalDecisions,
-  type ProposalSource,
-} from "../components/relationships/useRunProposals";
 import { PageLoading } from "../components/PageLoading";
 import { useDependentsDialog } from "../hooks/useDependentsDialog";
 import { applyConvention, domainToSqlName } from "../naming";
@@ -359,23 +338,6 @@ export function RelationshipsPage() {
     else void handleAdd(resolve);
   };
 
-  // REQ-413: every suggestion still waiting, decided in the table a run's result is decided in:
-  // the accept box, "Don't recommend again", one Apply. A decided one leaves the list. Read by a
-  // person who may create relationships; the list is not shown to anyone else.
-  const suggestionSource = useMemo<ProposalSource | null>(
-    () =>
-      canManage
-        ? { key: "suggestions", read: fetchSuggestions, send: applySuggestionDecisions }
-        : null,
-    [canManage],
-  );
-  const suggestionsApplied = useCallback(() => {
-    void refetchRels();
-    load();
-  }, [load, refetchRels]);
-  const suggestions = useProposalDecisions(suggestionSource, suggestionsApplied);
-  const reloadSuggestions = suggestions.reload;
-
   const handleClearRejections = useCallback(async () => {
     setDiscoverError("");
     setDiscoverMsg("");
@@ -388,8 +350,11 @@ export function RelationshipsPage() {
     }
   }, [t]);
 
-  // REQ-413: the discovery run is the server's; the suggestions are read again as it stores more.
-  const discovery = useDiscoveryRun(reloadSuggestions);
+  // REQ-413 (amended 2026-11-16): the discovery run is the server's. The page lists no
+  // suggestions: they are decided only in the run's result, so a run storing more changes
+  // nothing here.
+  const nothingListed = useCallback(() => {}, []);
+  const discovery = useDiscoveryRun(nothingListed);
   const openDiscover = () => {
     setDiscoverAsk(true);
     void discovery.refresh();
@@ -399,8 +364,7 @@ export function RelationshipsPage() {
   const handleApplied = useCallback(() => {
     void refetchRels();
     load();
-    void reloadSuggestions();
-  }, [load, refetchRels, reloadSuggestions]);
+  }, [load, refetchRels]);
 
   // The form's values for a relationship, as its edit form holds them.
   const formOf = useCallback(
@@ -1013,20 +977,6 @@ export function RelationshipsPage() {
 
       {conflictRel && <ConflictModal rel={conflictRel} onClose={() => setConflictRel(null)} />}
 
-      {!erd.on && ((suggestions.proposals?.length ?? 0) > 0 || suggestions.error !== "") && (
-        <div className="page-aux" data-testid="rels-suggestions">
-          <Title order={3} mt="xl" mb="xs">
-            {t("candidatesTable.heading")}
-          </Title>
-          <ProposalsTable
-            state={suggestions}
-            tableDomainById={tableDomainById}
-            tableNameById={tableNameById}
-            testId="suggestions"
-            rowTestId="suggestion"
-          />
-        </div>
-      )}
       {refusal.dialog}
       {tagLoss && (
         <Modal

@@ -84,7 +84,6 @@ vi.mock("../../context/AuthContext", () => ({ useAuth: () => AUTH }));
 vi.mock("../../context/DomainFilterContext", () => ({ useDomainFilter: () => FILTER }));
 vi.mock("../../api/admin", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../api/admin")>()),
-  fetchSuggestions: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7 }),
   fetchRejectedCount: vi.fn().mockResolvedValue(0),
   fetchSettings: vi.fn().mockResolvedValue({
     naming: { convention: "apollo_graphql", use_domains: false, default_domain: "" },

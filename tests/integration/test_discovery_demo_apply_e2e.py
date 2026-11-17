@@ -12,9 +12,12 @@
 
 The ``test`` instance: the smoke check's isolated instance of the default demo. A run over
 pet-store and shelter, foreign keys and semantics (a stand-in model on the loopback proposing each
-junction's keys both ways round), reads every foreign key constraint of their tables; a reviewer
-applies what starts ticked, and afterwards no suggestion is left waiting. Every registered
-relationship names the columns it joins.
+junction's keys both ways round), reads every foreign key constraint of their tables. A junction's
+key already joined through its many-to-many relationship (pets-treated-by-vets through pet_visits,
+the pets' companions, the playgroups' members) is left out as existing, never suggested. A
+reviewer applies what starts ticked, and afterwards no suggestion is left waiting; a second run
+suggests none of the pairs decided. The Relationships page lists no suggestions: they are decided
+only in a run's result. Every registered relationship names the columns it joins.
 """
 
 # Requirements: REQ-413
@@ -116,25 +119,34 @@ def _relationships(inst: Instance) -> list[dict]:
     )["relationships"]
 
 
-def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: Instance):
-    names = _tables(instance)
-    run = _run(
-        instance,
-        {
-            "kinds": ["foreign_keys", "semantics"],
-            "vendor": files_e2e._VENDOR,
-            "model": files_e2e._MODEL,
-            "source_domains": ["pet-store", "shelter"],
-        },
-    )
-    listed = _ok(
+_SCOPE = {
+    "kinds": ["foreign_keys", "semantics"],
+    "vendor": files_e2e._VENDOR,
+    "model": files_e2e._MODEL,
+    "source_domains": ["pet-store", "shelter"],
+}
+
+#: The legs of the demo's junction relationships: the junction's key to the end's key.
+_JUNCTION_LEGS = {
+    ("pet_visits", "pet_id", "pets", "id"),
+    ("pet_visits", "vet_id", "vets", "id"),
+    ("pet_companions", "pet_id", "pets", "id"),
+    ("pet_companions", "companion_pet_id", "pets", "id"),
+    ("playgroup_members", "pet_id", "pets", "id"),
+    ("playgroup_members", "playgroup_id", "playgroups", "id"),
+}
+
+
+def _proposals(inst: Instance, run_id: int) -> dict:
+    return _ok(
         httpx.get(
-            f"{instance.url}/admin/discover/runs/{run['id']}/proposals",
-            headers=_HEADERS,
-            timeout=60,
+            f"{inst.url}/admin/discover/runs/{run_id}/proposals", headers=_HEADERS, timeout=60
         )
     )
-    proposals, threshold = listed["proposals"], listed["threshold"]
+
+
+def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: Instance):
+    names = _tables(instance)
 
     def edge(p: dict) -> tuple:
         return (
@@ -143,6 +155,25 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
             names.get(p["target_table_id"]),
             p["target_column"],
         )
+
+    def unordered(p: dict) -> tuple:
+        e = edge(p)
+        return e if e in _JUNCTION_LEGS else (e[2], e[3], e[0], e[1])
+
+    run = _run(instance, _SCOPE)
+    listed = _proposals(instance, run["id"])
+    proposals, threshold = listed["proposals"], listed["threshold"]
+
+    # Each junction's keys, proposed both ways round, are left out: the pair is joined already.
+    legs = [p for p in proposals if unordered(p) in _JUNCTION_LEGS]
+    assert {unordered(p) for p in legs} >= {
+        ("pet_visits", "pet_id", "pets", "id"),
+        ("pet_visits", "vet_id", "vets", "id"),
+        ("pet_companions", "pet_id", "pets", "id"),
+        ("playgroup_members", "pet_id", "pets", "id"),
+    }, [edge(p) for p in proposals]
+    assert [(edge(p), p["reason"]) for p in legs if p["reason"] != "existing"] == []
+    assert not any(p["decidable"] for p in legs)
 
     ticked = [
         p
@@ -167,6 +198,20 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
     )["results"]
     assert all(r["ok"] for r in applied), applied
 
+    waiting = _ok(
+        httpx.get(f"{instance.url}/admin/discover/candidates", headers=_HEADERS, timeout=60)
+    )
+    assert waiting == [], [edge(c) for c in waiting]
+
+    # A second run asks again about none of them: a decided pair stays decided.
+    again = _run(instance, _SCOPE)
+    reopened = [
+        (edge(p), p["reason"])
+        for p in _proposals(instance, again["id"])["proposals"]
+        if p["reason"] in (None, "pending")
+    ]
+    assert reopened == []
+    assert again["suggestions"] == 0, again
     waiting = _ok(
         httpx.get(f"{instance.url}/admin/discover/candidates", headers=_HEADERS, timeout=60)
     )

@@ -29,6 +29,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import delete, insert, select, update
 
 from provisa.core.schema_org import discovery_run_proposals as rows_t
+from provisa.core.schema_org import relationship_candidates as candidates_t
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.direction import Kind, Proposal
@@ -67,14 +68,14 @@ REASONS: tuple[str, ...] = (
 
 #: The reasons a proposal left out for can still be decided by a reviewer. Not these: one that
 #: names no two compared columns; two columns that are not compared; a column to itself; one
-#: already registered; one repeating a foreign key or a stronger proposal listed beside it.
+#: already registered; one already decided (rejected: a decided pair keeps its decision); one
+#: repeating a foreign key or a stronger proposal listed beside it.
 ACCEPTABLE: frozenset[str] = frozenset(
     {
         BELOW_THRESHOLD,
         "primary_key_to_primary_key",
         "both_repeating",
         "pending",
-        "rejected",
         "out_of_scope",
     }
 )
@@ -171,71 +172,6 @@ async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, 
     return sorted(rows, key=lambda r: (r["confidence"] is None, -(r["confidence"] or 0.0)))
 
 
-def _run_of(scope: str) -> int:
-    """The run a stored suggestion came from: every suggestion is stored by a run, under its
-    scope ``run:<id>`` (:class:`provisa.discovery.run.Publisher`, :func:`_candidate_of`)."""
-    prefix, _, run_id = scope.partition(":")
-    if prefix != "run" or not run_id.isdigit():
-        raise ValueError(f"A suggestion's scope names no discovery run: {scope!r}")
-    return int(run_id)
-
-
-async def suggested(conn: "Connection", state: Any) -> list[dict[str, Any]]:  # REQ-413
-    """Every suggestion still waiting, as its run listed it (:func:`listed`): the run's
-    undecided proposal that is the suggestion, the highest score first. A run stores each
-    suggestion from a proposal it keeps, so each has exactly one."""
-    from provisa.core.schema_org import relationship_candidates as rc
-    from provisa.discovery.gather import tables_never_read
-
-    waiting = (await conn.execute_core(select(rc).where(rc.c.status == "suggested"))).fetchall()
-    by_run: dict[int, set[tuple[int, str, int, str]]] = {}
-    for c in waiting:
-        by_run.setdefault(_run_of(c.scope), set()).add(
-            (c.source_table_id, c.source_column, c.target_table_id, c.target_column)
-        )
-    found = (
-        (
-            await conn.execute_core(
-                select(rows_t).where(
-                    rows_t.c.run_id.in_(sorted(by_run)),
-                    rows_t.c.decision.is_(None),
-                    rows_t.c.left_out.is_(None),
-                )
-            )
-        ).fetchall()
-        if by_run
-        else []
-    )
-    rows: dict[tuple[int, tuple[int, str, int, str]], Any] = {}
-    for r in found:
-        edge = (r.source_table_id, r.source_column, r.target_table_id, r.target_column)
-        if edge in by_run[r.run_id]:
-            assert (r.run_id, edge) not in rows, f"run {r.run_id} keeps {edge} twice"
-            rows[(r.run_id, edge)] = r
-    unbacked = [
-        (run_id, edge)
-        for run_id, edges in by_run.items()
-        for edge in edges
-        if (run_id, edge) not in rows
-    ]
-    if unbacked:
-        raise ValueError(f"Suggestions with no proposal of their run: {sorted(unbacked)}")
-    ends = {r.source_table_id for r in rows.values()} | {r.target_table_id for r in rows.values()}
-    never_read = await tables_never_read(state, conn, sorted(ends)) if ends else set()
-    views = [_view(r, never_read) for r in rows.values()]
-    return sorted(views, key=lambda v: (-v["confidence"], v["id"]))
-
-
-async def run_of_proposal(conn: "Connection", proposal_id: int) -> int:
-    """The run a proposal belongs to."""
-    row = (
-        await conn.execute_core(select(rows_t.c.run_id).where(rows_t.c.id == proposal_id))
-    ).fetchone()
-    if row is None:
-        raise NotDecidable(f"Proposal {proposal_id} is not among any run's proposals")
-    return int(row.run_id)
-
-
 class NotDecidable(ValueError):
     """A proposal that cannot be accepted or marked, and why."""
 
@@ -252,6 +188,21 @@ async def _candidate_of(conn: "Connection", run_id: int, proposal_id: int) -> in
         raise NotDecidable(f"Proposal {proposal_id} is not among the run's undecided proposals")
     if not decidable(row.left_out):
         raise NotDecidable(f"Proposal {proposal_id} cannot be decided: it is {row.left_out}")
+    # REQ-413 (amended 2026-11-16): a pair once accepted or marked not to be recommended again
+    # keeps that decision; storing the proposal would reopen it as pending.
+    rc = candidates_t
+    held = (
+        await conn.execute_core(
+            select(rc.c.status).where(
+                rc.c.source_table_id == row.source_table_id,
+                rc.c.source_column == row.source_column,
+                rc.c.target_table_id == row.target_table_id,
+                rc.c.target_column == row.target_column,
+            )
+        )
+    ).scalar_one_or_none()
+    if held is not None and held != "suggested":
+        raise NotDecidable(f"Proposal {proposal_id} cannot be decided: its pair is already {held}")
     (candidate_id,) = await candidates_repo.store_candidates(
         conn,
         [

@@ -29,23 +29,12 @@ interface ProposalsTableProps {
   state: RunProposalsState;
   tableDomainById: Record<string, string>;
   tableNameById: Record<string, string>;
-  /** Names the table's parts (and its remembered sort): the dialog's result is "discover", the
-   *  Relationships page's suggestions their own, so the two can be open at once. */
-  testId?: string;
-  /** Names each row's parts. */
-  rowTestId?: string;
 }
 
 const percent = (confidence: number) => (confidence * 100).toFixed(0);
 const NONE = new Set<string>();
 
-export function ProposalsTable({
-  state,
-  tableDomainById,
-  tableNameById,
-  testId = "discover",
-  rowTestId = "proposal",
-}: ProposalsTableProps) {
+export function ProposalsTable({ state, tableDomainById, tableNameById }: ProposalsTableProps) {
   const { t } = useTranslation();
   const proposals = useMemo(() => state.proposals ?? [], [state.proposals]);
 
@@ -101,7 +90,7 @@ export function ProposalsTable({
     { key: "kind", label: t("proposalsTable.colKind"), sortValue: (p) => p.kind },
   ];
   // Unsorted, the rows keep the order they were read in: the highest score first.
-  const sort = useListSortGroup(proposals, columns, `${testId}-proposals`);
+  const sort = useListSortGroup(proposals, columns, "discover-proposals");
 
   const decidable = useMemo(
     () => proposals.filter((p) => p.decidable).map((p) => String(p.id)),
@@ -146,12 +135,12 @@ export function ProposalsTable({
   return (
     <>
       {state.error && (
-        <Alert color="red" mb="md" data-testid={`${testId}-proposals-error`}>
+        <Alert color="red" mb="md" data-testid="discover-proposals-error">
           {state.error}
         </Alert>
       )}
       {state.failures.length > 0 && (
-        <Alert color="red" mb="md" data-testid={`${testId}-apply-failures`}>
+        <Alert color="red" mb="md" data-testid="discover-apply-failures">
           <Text fz="0.875rem">{t("proposalsTable.failed", { count: state.failures.length })}</Text>
           {state.failures.map(({ proposal, error }) => (
             <Text key={proposal.id} fz="0.875rem">
@@ -161,7 +150,7 @@ export function ProposalsTable({
         </Alert>
       )}
       {state.applied && (
-        <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid={`${testId}-applied`}>
+        <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="discover-applied">
           {t("proposalsTable.applied", {
             accepted: state.applied.accepted,
             notAgain: state.applied.notAgain,
@@ -170,7 +159,7 @@ export function ProposalsTable({
       )}
       {proposals.length === 0 ? (
         state.proposals !== null && (
-          <Text fz="sm" c="dimmed" data-testid={`${testId}-no-proposals`}>
+          <Text fz="sm" c="dimmed" data-testid="discover-no-proposals">
             {t("proposalsTable.none")}
           </Text>
         )
@@ -184,7 +173,7 @@ export function ProposalsTable({
               onClick={() => void state.apply(nameOf)}
               disabled={accepting + marking === 0}
               loading={state.applying}
-              data-testid={`${testId}-apply`}
+              data-testid="discover-apply"
               style={{ flexShrink: 0 }}
             >
               {applyLabel}
@@ -193,7 +182,7 @@ export function ProposalsTable({
           {/* The list fills the dialog and scrolls sideways within it where it cannot fit. */}
           <div style={{ overflowX: "auto" }}>
             <ListTable
-              testId={`${testId}-proposals`}
+              testId="discover-proposals"
               minWidth={900}
               style={{ width: "100%" }}
               selection={selection}
@@ -224,14 +213,14 @@ export function ProposalsTable({
                   return (
                     <ListRow
                       key={p.id}
-                      testId={`${rowTestId}-${p.id}`}
+                      testId={`proposal-${p.id}`}
                       itemKey={p.decidable ? p.id : undefined}
                     >
                       <Table.Td>
                         {p.confidence === null ? "" : `${percent(p.confidence)}%`}
                       </Table.Td>
                       {jevScored && (
-                        <Table.Td data-testid={`${rowTestId}-jev-${p.id}`}>
+                        <Table.Td data-testid={`proposal-jev-${p.id}`}>
                           {p.scored === null ? "" : `${percent(p.scored)}%`}
                         </Table.Td>
                       )}
@@ -255,7 +244,7 @@ export function ProposalsTable({
                           <Checkbox
                             size="xs"
                             aria-label={t("proposalsTable.notAgainAria", { name })}
-                            data-testid={`${rowTestId}-not-again-${p.id}`}
+                            data-testid={`proposal-not-again-${p.id}`}
                             checked={state.notAgain.has(p.id)}
                             onChange={() => state.toggleNotAgain(p.id)}
                           />
