@@ -61,7 +61,10 @@
       "tablesGone": "{{count}} 件のテーブルはそこに登録されていません。",
       "tablesGone_other": "{{count}} 件のテーブルはそこに登録されていません。",
       "vendorNoKey": "{{vendor}} にはキーがないため、割り当て済みのモデルを使います。",
-      "modelGone": "{{vendor}} は {{model}} を提供しなくなったため、割り当て済みのモデルを使います。"
+      "modelGone": "{{vendor}} は {{model}} を提供しなくなったため、割り当て済みのモデルを使います。",
+      "newTables": "前回の実行以降に登録された {{count}} 件のテーブルは、その実行が対象にしなかった {{domains}} にあります。",
+      "newTables_other": "前回の実行以降に登録された {{count}} 件のテーブルは、その実行が対象にしなかった {{domains}} にあります。",
+      "addNewTables": "この実行に追加"
     }
   }
 }

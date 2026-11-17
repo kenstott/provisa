@@ -61,7 +61,10 @@
       "tablesGone": "{{count}} table is no longer registered there.",
       "tablesGone_other": "{{count}} tables are no longer registered there.",
       "vendorNoKey": "{{vendor}} has no key, so the model is the assigned one.",
-      "modelGone": "{{vendor}} no longer lists {{model}}, so the model is the assigned one."
+      "modelGone": "{{vendor}} no longer lists {{model}}, so the model is the assigned one.",
+      "newTables": "{{count}} table registered since your last run is in {{domains}}, which it did not look at.",
+      "newTables_other": "{{count}} tables registered since your last run are in {{domains}}, which it did not look at.",
+      "addNewTables": "Add to this run"
     }
   }
 }

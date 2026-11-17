@@ -526,6 +526,7 @@ async def _fetch_table_with_columns(
         gql_naming_convention=row.get("gql_naming_convention"),
         watermark_column=row.get("watermark_column"),
         columns=columns,
+        registered_at=row["created_at"].isoformat(),  # REQ-413
         write_grants=write_grants,
         unique_constraints=unique_constraints,  # REQ-1093
         api_endpoint=api_endpoint,

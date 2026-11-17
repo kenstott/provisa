@@ -313,6 +313,7 @@ fragment ListedTableFields on RegisteredTableType {
   timeTravel
   apiEndpoint
   modelingRole
+  registeredAt
   viewMetrics {
     metrics
     dimensions
@@ -358,6 +359,7 @@ query TablesQuery {
     tableName
     alias
     description
+    registeredAt
     cacheTtl
     roleTtl {
       role

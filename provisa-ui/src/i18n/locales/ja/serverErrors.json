@@ -180,9 +180,13 @@
       "run_still_going": "検出の実行 {{run_id}} はまだ進行中です。終了してから候補を決定してください。",
       "schema_discovery_unsupported": "ソースタイプ「{{source_type}}」はスキーマ検出をサポートしていません。列を手動で定義してください。",
       "semantics_unavailable": "セマンティクスを実行できません: リレーションシップ推論に割り当てられたモデル {{model}} にキーがありません。管理 > AIモデルで設定してください。",
+      "source_domains_empty": "選択したソースドメインには、検出が読み取るテーブルがありません。",
       "source_not_found": "ソース「{{source_id}}」が見つかりません",
+      "source_tables_not_read": "選択したソーステーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
       "table_id_required": "table スコープには table_id が必要です",
       "table_not_found": "テーブル {{table_id}} は登録されていません。",
+      "target_domains_empty": "選択したターゲットドメインには、検出が読み取るテーブルがありません。",
+      "target_tables_not_read": "選択したターゲットテーブル ({{count}} 件) はどれも読み取られません: 検出はシステムドメインのテーブルと停止中のテーブルを除外します。",
       "unknown_source_type": "不明なソースタイプ：{{type}}",
       "vendor_unknown": "{{vendor}} はここではモデルを一覧表示しません。モデル名を入力してください。"
     },

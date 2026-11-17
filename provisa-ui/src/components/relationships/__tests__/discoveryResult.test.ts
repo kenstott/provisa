@@ -242,6 +242,46 @@ describe("discoveryResultLines", () => {
     ]);
   });
 
+  it("never prints an empty list of domains: a set of no table is its count alone", () => {
+    const none = report({
+      foreign_keys: { found: 0, suggested: 0 },
+      source_domains: [],
+      target_domains: [],
+      source_tables: 0,
+      target_tables: 0,
+      target_same_as_source: false,
+    });
+    expect(discoveryResultLines(none, t).slice(1, 3)).toEqual([
+      "Source: 0 tables.",
+      "Target: 0 tables.",
+    ]);
+  });
+
+  it("says how many of the chosen tables the run left out, and why", () => {
+    const some = report({
+      foreign_keys: { found: 0, suggested: 0 },
+      source_domains: ["files"],
+      target_domains: ["files"],
+      source_tables: 3,
+      target_tables: 3,
+      target_same_as_source: true,
+      source_left_out: 2,
+      target_left_out: 0,
+    });
+    const lines = discoveryResultLines(some, t);
+    expect(lines).toContain(
+      "2 of the chosen source tables were left out: discovery does not read a table of a system domain or one out of service.",
+    );
+    expect(lines.some((l) => l.includes("target tables"))).toBe(false);
+    const one = discoveryResultLines(
+      { ...some, source_left_out: 0, target_same_as_source: false, target_left_out: 1 },
+      t,
+    );
+    expect(one).toContain(
+      "1 of the chosen target tables was left out: discovery does not read a table of a system domain or one out of service.",
+    );
+  });
+
   it("says how many Jev scored under the threshold, without that removing them", () => {
     const lines = found(
       report({

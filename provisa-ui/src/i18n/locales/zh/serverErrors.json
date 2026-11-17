@@ -180,9 +180,13 @@
       "run_still_going": "发现运行 {{run_id}} 仍在进行。请在其结束后再决定其提议。",
       "schema_discovery_unsupported": "数据源类型 '{{source_type}}' 不支持架构发现。请手动定义列。",
       "semantics_unavailable": "无法运行语义推断：分配给关系推断的模型 {{model}} 没有密钥。请在 管理 > AI 模型 中设置。",
+      "source_domains_empty": "所选源域中没有发现会读取的表。",
       "source_not_found": "未找到数据源 '{{source_id}}'",
+      "source_tables_not_read": "所选源表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
       "table_id_required": "表范围需要 table_id",
       "table_not_found": "表 {{table_id}} 未注册。",
+      "target_domains_empty": "所选目标域中没有发现会读取的表。",
+      "target_tables_not_read": "所选目标表（{{count}} 个）都不会被读取：发现会略过系统域的表和已停用的表。",
       "unknown_source_type": "未知数据源类型：{{type}}",
       "vendor_unknown": "{{vendor}} 在此处不列出模型；请输入模型名称。"
     },

@@ -26,6 +26,7 @@ CONTRACT = "dataset: provisa/sales/orders\nchecks:\n  - row_count:\n"
 def _table(**overrides: Any) -> RegisteredTableType:
     fields: dict[str, Any] = dict(
         id=2,
+        registered_at="2026-11-17T00:00:00+00:00",
         source_id="dq",
         domain_id="sales",
         schema_name="quality",

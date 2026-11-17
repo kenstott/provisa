@@ -53,6 +53,7 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     tableName: "trades",
     alias: null,
     description: null,
+    registeredAt: "2026-11-01T00:00:00+00:00",
     cacheTtl: null,
     roleTtl: [],
     pagingKind: null,
