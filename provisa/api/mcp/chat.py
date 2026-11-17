@@ -2390,18 +2390,6 @@ async def _resolve_config_field(value: str) -> str:
     return resolve_secrets(value)
 
 
-async def _resolve_api_key_field(api_key_env: str | None) -> str | None:
-    """The endpoint's API key, from its ``api_key_env`` field (REQ-1790, REQ-1808, REQ-1827).
-
-    Delegates to provisa.core.secrets.resolve_api_key_field — the ONE shared implementation of
-    this grammar, also used by provisa/vector/providers.py's embedding-model key. Kept as a thin
-    wrapper (not a bare re-export) so this module's own call sites/tests don't need to know it
-    moved."""
-    from provisa.core.secrets import resolve_api_key_field
-
-    return await resolve_api_key_field(api_key_env)
-
-
 async def _run_chat_aisuite(
     state: Any,
     role: str,

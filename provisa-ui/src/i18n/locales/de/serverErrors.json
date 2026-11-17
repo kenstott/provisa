@@ -21,7 +21,12 @@
     },
     "ai": {
       "key_required": "{{vendor}} hat keinen Schlüssel. Legen Sie einen unter Admin, KI-Modelle fest.",
-      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt."
+      "vendor_uses_server_credentials": "{{vendor}} wird mit den eigenen Zugangsdaten des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Wählen Sie unter Admin, KI-Modelle einen Anbieter, der einen Schlüssel annimmt, oder einen KI-Endpunkt.",
+      "endpoint_key_from_server": "Der KI-Endpunkt {{vendor}} bezieht seinen Schlüssel aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle einen eigenen Schlüssel.",
+      "endpoint_key_unset": "Der KI-Endpunkt {{vendor}} hat keinen Schlüssel: {{field}} ist nicht gesetzt.",
+      "endpoint_address_from_server": "Der KI-Endpunkt {{vendor}} bezieht seine Adresse aus der Umgebung des Servers, die eine Organisation auf diesem Server nicht verwendet. Geben Sie ihm unter Admin, KI-Modelle eine eigene Adresse.",
+      "local_server_from_environment": "{{vendor}} wird unter der eigenen Adresse des Servers erreicht, die eine Organisation auf diesem Server nicht verwendet. Legen Sie unter Admin, KI-Modelle einen KI-Endpunkt mit Ihrer eigenen Adresse an.",
+      "server_environment_sets": "{{vendor}} kann hier nicht aufgerufen werden: Die Umgebung des Servers setzt {{variable}}, das sein Client für jede Organisation senden würde."
     },
     "api": {
       "answer_cut": "Die Antwort für {{table}} wurde bei max_pages={{max_pages}} abgeschnitten ({{rows}} Zeilen): Die API hat weitere Daten. Erhöhen Sie max_pages oder die Seitengröße des Endpunkts, um alles zu lesen.",
@@ -163,7 +168,6 @@
       "elasticsearch_index_hint_required": "Die Elasticsearch-Erkennung erfordert einen 'index'-Hinweis.",
       "elasticsearch_mapping_failed": "Elasticsearch-Mapping für Index '{{index}}' konnte nicht gelesen werden: {{error}}",
       "endpoint_already_registered": "Endpunkt bereits registriert: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} hat keinen Schlüssel: Setzen Sie die Umgebungsvariable {{env}}.",
       "decided_both_ways": "Ein Vorschlag wird akzeptiert oder nicht erneut empfohlen, nicht beides.",
       "model_failed": "Das Modell {{model}} ist fehlgeschlagen: {{error}}",
       "model_has_no_room": "Das Modell {{model}} kann keine Anfrage aufnehmen: {{reason}}",

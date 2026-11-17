@@ -21,7 +21,12 @@
     },
     "ai": {
       "key_required": "{{vendor}} no tiene clave. Configure una en Administración, Modelos de IA.",
-      "vendor_uses_server_credentials": "{{vendor}} se alcanza con las credenciales propias del servidor, que una organización de este servidor no usa. Elija un proveedor que acepte una clave, o un punto de conexión de IA, en Administración, Modelos de IA."
+      "vendor_uses_server_credentials": "{{vendor}} se alcanza con las credenciales propias del servidor, que una organización de este servidor no usa. Elija un proveedor que acepte una clave, o un punto de conexión de IA, en Administración, Modelos de IA.",
+      "endpoint_key_from_server": "El punto de conexión de IA {{vendor}} toma su clave del entorno del servidor, que una organización de este servidor no usa. Asígnele una clave propia en Administración, Modelos de IA.",
+      "endpoint_key_unset": "El punto de conexión de IA {{vendor}} no tiene clave: {{field}} no está definido.",
+      "endpoint_address_from_server": "El punto de conexión de IA {{vendor}} toma su dirección del entorno del servidor, que una organización de este servidor no usa. Asígnele una dirección propia en Administración, Modelos de IA.",
+      "local_server_from_environment": "{{vendor}} se alcanza en la dirección propia del servidor, que una organización de este servidor no usa. Declare un punto de conexión de IA en su propia dirección en Administración, Modelos de IA.",
+      "server_environment_sets": "No se puede llamar a {{vendor}} aquí: el entorno del servidor define {{variable}}, que su cliente enviaría para cada organización."
     },
     "api": {
       "answer_cut": "La respuesta para {{table}} se cortó en max_pages={{max_pages}} ({{rows}} filas): la API tiene más. Aumente max_pages o el tamaño de página del endpoint para leerla completa.",
@@ -163,7 +168,6 @@
       "elasticsearch_index_hint_required": "El descubrimiento de Elasticsearch requiere una indicación 'index'.",
       "elasticsearch_mapping_failed": "Error al leer el mapping de Elasticsearch para el índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint ya registrado: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} no tiene clave: defina la variable de entorno {{env}}.",
       "decided_both_ways": "Una propuesta se acepta o no se vuelve a recomendar, no ambas cosas.",
       "model_failed": "El modelo {{model}} falló: {{error}}",
       "model_has_no_room": "El modelo {{model}} no puede contener una solicitud: {{reason}}",

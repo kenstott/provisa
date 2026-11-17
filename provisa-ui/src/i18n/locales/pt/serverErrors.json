@@ -21,7 +21,12 @@
     },
     "ai": {
       "key_required": "{{vendor}} não tem chave. Defina uma em Administração, Modelos de IA.",
-      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA."
+      "vendor_uses_server_credentials": "{{vendor}} é acessado com as credenciais do próprio servidor, que uma organização neste servidor não usa. Escolha um fornecedor que aceite uma chave, ou um endpoint de IA, em Administração, Modelos de IA.",
+      "endpoint_key_from_server": "O endpoint de IA {{vendor}} obtém sua chave do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele uma chave própria em Administração, Modelos de IA.",
+      "endpoint_key_unset": "O endpoint de IA {{vendor}} não tem chave: {{field}} não está definido.",
+      "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",
+      "local_server_from_environment": "{{vendor}} é acessado no endereço do próprio servidor, que uma organização neste servidor não usa. Declare um endpoint de IA no seu próprio endereço em Administração, Modelos de IA.",
+      "server_environment_sets": "{{vendor}} não pode ser chamado aqui: o ambiente do servidor define {{variable}}, que o cliente dele enviaria para todas as organizações."
     },
     "api": {
       "answer_cut": "A resposta para {{table}} foi cortada em max_pages={{max_pages}} ({{rows}} linhas): a API tem mais. Aumente max_pages ou o tamanho de página do endpoint para ler tudo.",
@@ -163,7 +168,6 @@
       "elasticsearch_index_hint_required": "A descoberta do Elasticsearch requer uma dica de 'index'.",
       "elasticsearch_mapping_failed": "Falha ao ler o mapeamento do Elasticsearch para o índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint já registrado: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} não tem chave: defina a variável de ambiente {{env}}.",
       "decided_both_ways": "Uma proposta é aceita ou não é recomendada de novo, não as duas coisas.",
       "model_failed": "O modelo {{model}} falhou: {{error}}",
       "model_has_no_room": "O modelo {{model}} não comporta uma solicitação: {{reason}}",

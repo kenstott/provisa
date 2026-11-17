@@ -10675,7 +10675,6 @@
   "de/serverErrors.json::serverErrors.data.parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
   "de/serverErrors.json::serverErrors.data.parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
   "de/serverErrors.json::serverErrors.discovery.table_unreadable": "Discovery cannot read the table {{table}}: {{reason}}. Leave it out of the tables chosen, or correct it and try again.",
-  "de/serverErrors.json::serverErrors.discovery.endpoint_has_no_key": "{{vendor}} has no key: set the {{env}} environment variable.",
   "de/serverErrors.json::serverErrors.discovery.model_has_no_room": "The model {{model}} cannot hold a request: {{reason}}",
   "de/serverErrors.json::serverErrors.discovery.model_incomplete": "A chosen model names both its vendor and its model.",
   "de/serverErrors.json::serverErrors.discovery.run_ended": "Discovery run {{run_id}} has already ended: {{status}}",
@@ -10797,5 +10796,10 @@
   "de/aiModelsTab.json::aiModelsTab.apiKeyNotSetOrgOnly": "No key set.",
   "de/aiModelsTab.json::aiModelsTab.jevIntroOrgOnly": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. With no key set, those features use the model's confidence alone.",
   "de/serverErrors.json::serverErrors.ai.key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
-  "de/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+  "de/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.endpoint_key_from_server": "The AI endpoint {{vendor}} takes its key from the server's environment, which an organization on this server does not use. Give it a key of your own under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.endpoint_key_unset": "The AI endpoint {{vendor}} has no key: {{field}} is not set.",
+  "de/serverErrors.json::serverErrors.ai.endpoint_address_from_server": "The AI endpoint {{vendor}} takes its address from the server's environment, which an organization on this server does not use. Give it an address of its own under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.local_server_from_environment": "{{vendor}} is reached at the server's own address, which an organization on this server does not use. Declare an AI endpoint at your own address under Admin, AI Models.",
+  "de/serverErrors.json::serverErrors.ai.server_environment_sets": "{{vendor}} cannot be called here: the server's environment sets {{variable}}, which its client would send for every organization."
 }

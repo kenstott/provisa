@@ -21,7 +21,12 @@
     },
     "ai": {
       "key_required": "{{vendor}} 沒有金鑰。請在 管理 > AI 模型 中設定。",
-      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。"
+      "vendor_uses_server_credentials": "{{vendor}} 透過伺服器本身的憑證存取，而此伺服器上的組織不會使用這些憑證。請在 管理 > AI 模型 中選擇接受金鑰的供應商或 AI 端點。",
+      "endpoint_key_from_server": "AI 端點 {{vendor}} 從伺服器環境取得金鑰，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的金鑰。",
+      "endpoint_key_unset": "AI 端點 {{vendor}} 沒有金鑰：{{field}} 未設定。",
+      "endpoint_address_from_server": "AI 端點 {{vendor}} 從伺服器環境取得位址，而此伺服器上的組織不會使用伺服器環境。請在 管理 > AI 模型 中為其設定您自己的位址。",
+      "local_server_from_environment": "{{vendor}} 透過伺服器本身的位址存取，而此伺服器上的組織不會使用該位址。請在 管理 > AI 模型 中以您自己的位址宣告一個 AI 端點。",
+      "server_environment_sets": "此處無法呼叫 {{vendor}}：伺服器環境設定了 {{variable}}，其用戶端會為每個組織傳送它。"
     },
     "api": {
       "answer_cut": "{{table}} 的回應在 max_pages={{max_pages}} 處被截斷（{{rows}} 列）：API 還有更多資料。請提高端點的 max_pages 或頁面大小以讀取全部資料。",
@@ -163,7 +168,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} 沒有金鑰：請設定環境變數 {{env}}。",
       "decided_both_ways": "一項提議只能被接受或不再推薦，不能兩者兼有。",
       "model_failed": "模型 {{model}} 失敗：{{error}}",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",

@@ -350,13 +350,13 @@ def _refuse_endpoint_key_from_environment(endpoint: Mapping[str, object], field:
         )
 
 
-def _endpoint_key_unset(endpoint: Mapping[str, object]) -> AiKeyRequired:
+def _endpoint_key_unset(endpoint: Mapping[str, object], field: str) -> AiKeyRequired:
     endpoint_id = str(endpoint["id"])
     return AiKeyRequired(
         endpoint_id,
         "ai.endpoint_key_unset",
-        f"The AI endpoint {endpoint_id} has no key: what it names is not set. Set it under "
-        f"{WHERE_TO_ADD_AI_KEY}.",
+        f"The AI endpoint {endpoint_id} has no key: {field} is not set.",
+        field=field,
     )
 
 
@@ -390,7 +390,7 @@ async def endpoint_key(stored: Mapping[str, str], endpoint: Mapping[str, object]
 
     key = await resolve_api_key_field(field)
     if not key:
-        raise _endpoint_key_unset(endpoint)
+        raise _endpoint_key_unset(endpoint, field)
     return key
 
 
@@ -413,7 +413,7 @@ def endpoint_key_now(stored: Mapping[str, str], endpoint: Mapping[str, object]) 
         # it is refused above, so this read is an install of one organization's own (REQ-1395).
         key = os.environ.get(field)
     if not key:
-        raise _endpoint_key_unset(endpoint)
+        raise _endpoint_key_unset(endpoint, field)
     return key
 
 

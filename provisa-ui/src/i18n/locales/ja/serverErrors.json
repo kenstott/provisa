@@ -21,7 +21,12 @@
     },
     "ai": {
       "key_required": "{{vendor}} にキーがありません。管理 > AIモデルで設定してください。",
-      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。"
+      "vendor_uses_server_credentials": "{{vendor}} にはサーバー自身の認証情報で接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで、キーを受け付けるベンダーまたは AI エンドポイントを選択してください。",
+      "endpoint_key_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からキーを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のキーを設定してください。",
+      "endpoint_key_unset": "AI エンドポイント {{vendor}} にキーがありません：{{field}} が設定されていません。",
+      "endpoint_address_from_server": "AI エンドポイント {{vendor}} はサーバーの環境からアドレスを取得しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスを設定してください。",
+      "local_server_from_environment": "{{vendor}} にはサーバー自身のアドレスで接続しますが、このサーバー上の組織はそれを使用しません。管理 > AIモデルで独自のアドレスの AI エンドポイントを宣言してください。",
+      "server_environment_sets": "ここでは {{vendor}} を呼び出せません：サーバーの環境が {{variable}} を設定しており、そのクライアントがすべての組織に対して送信してしまいます。"
     },
     "api": {
       "answer_cut": "{{table}} の応答は max_pages={{max_pages}} で切り詰められました（{{rows}} 行）。API にはまだデータがあります。すべて読み取るには、エンドポイントの max_pages またはページサイズを増やしてください。",
@@ -163,7 +168,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch の検出には「index」ヒントが必要です。",
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} にキーがありません: 環境変数 {{env}} を設定してください。",
       "decided_both_ways": "候補は承認するか、今後は推奨しないかのどちらかで、両方はできません。",
       "model_failed": "モデル {{model}} が失敗しました: {{error}}",
       "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
