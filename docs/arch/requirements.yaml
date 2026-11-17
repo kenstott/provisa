@@ -75405,7 +75405,13 @@
     its ends is withdrawn or retired, a derived state with no setting of its own. Graph views (the ERD,
     Explore''s graph, the graph schema) leave withdrawn tables and their relationships out, and show them,
     drawn apart, only to a person who may preview them and asks to; no query language reaches them; relationship
-    discovery never includes them.'
+    discovery never includes them. (Amended 2026-11-16, WITHDRAWN IS THE WAYPOINT OF A MOVE BETWEEN REGIONS;
+    THERE IS NO DRAFT:) Maintainer 2026-11-16, replacing the amendment of this day that kept draft as the
+    internal waypoint of a region move. There is no draft state. A move between regions passes through withdrawn:
+    the holder of data residency for the origin region withdraws the object, so no data is held or read
+    anywhere, and a holder for the destination region puts it back into that region; putting back names
+    a region, within the regions the person''s grant covers. A configuration file carries a withdrawn object
+    as withdrawn, so a promotion carries a move in progress.'
   use_case: A regulated enterprise holds data that must stay in a country but still wants one governed
     layer over the whole estate, in which most data may be read from anywhere. Rules on user attributes
     already limit who sees what; what was missing was a guarantee that the platform itself never quietly
@@ -89192,7 +89198,19 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     build keeps, out of every reader''s sight, the input columns those rules read. A transform output computed
     from a column the reader sees masked is masked for that reader, as that column is, since it was derived
     from a value the reader may not see; an output from inputs the reader sees in clear is shown as stored.
-    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.'
+    A reader whose rules narrow nothing reads the stored rows as they are. No transform is called on a read.
+    (Amended 2026-11-16, WHERE THE STORED ROWS CANNOT CARRY A READER''S RULE, THE READ IS REFUSED BY NAME;
+    A RULE CHANGE REBUILDS:) Lead 2026-11-16, consequences of the amendment of this day. Where the stored
+    rows of a transform view cannot carry what a reader''s rule needs, that reader''s read is refused by
+    name, never answered unfiltered: a row rule on a table read inside a derived table or another view,
+    a row rule over a view that groups, aggregates, removes duplicates or combines queries, and a faked
+    mask on an input that feeds an output. A view that calls a code command (REQ-2249) is read under the
+    same rule. A change to a row rule or a mask that changes which input columns the stored rows must keep
+    rebuilds each view it touches, and until that build has published, the view is read as before the change
+    or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
+    CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
+    until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
+    is refused by name; the view is never read under the rules it had before the change.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
