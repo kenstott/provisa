@@ -235,29 +235,25 @@ def test_each_plugin_is_fetched_at_its_own_version(monkeypatch, tmp_path):
     ]
 
 
-def test_the_workflows_fetch_each_plugin_at_the_harness_version():
-    # CI and the harness must fetch the same build of each plugin.
+def test_the_release_and_the_trino_stack_take_the_harness_pin_from_the_action():
+    # CI and the harness must use the same build of each plugin: the release's plugin tarball
+    # and the stack both Trino-backed UI lanes start no longer fetch at versions of their own.
+    # The release primes the action's cache (the pin and sha256s of tests/trino_plugins.py); the
+    # stack script checks the jars its caller restored and fetches nothing.
     from pathlib import Path
 
+    import yaml
+
     repo = Path(__file__).resolve().parents[2]
-    wanted = " ".join(
-        f"{name}:{pins._TRINO_PLUGIN_VERSIONS.get(name, '$VERSION')}"
-        for name in pins._TRINO_PLUGINS
-    )
-    # The release's plugin tarball, and the stack both Trino-backed UI lanes start (one script
-    # now; each lane's workflow carried its own copy).
-    for name in (
-        ".github/workflows/release-prebuilt.yml",
-        "scripts/ci/lanes/trino-stack-prepare.sh",
-    ):
-        text = (repo / name).read_text()
-        assert f'VERSION="{pins._TRINO_PLUGIN_VERSION}"' in text, name
-        loop = " ".join(
-            text[text.index("for spec in") : text.index("; do", text.index("for spec in"))]
-            .replace("\\", " ")
-            .split()
-        )
-        assert loop == f"for spec in {wanted}", name
+    release = yaml.safe_load((repo / ".github/workflows/release-prebuilt.yml").read_text())
+    steps = release["jobs"]["download-plugins"]["steps"]
+    assert {"uses": "./.github/actions/trino-plugins", "with": {"phase": "prime"}}.items() <= next(
+        s for s in steps if s.get("uses") == "./.github/actions/trino-plugins"
+    ).items()
+    stack = (repo / "scripts/ci/lanes/trino-stack-prepare.sh").read_text()
+    assert "python3 tests/trino_plugins.py verify" in stack
+    for name, text in (("release-prebuilt.yml", str(release)), ("trino-stack-prepare.sh", stack)):
+        assert pins._TRINO_PLUGIN_MAVEN not in text and "curl" not in text, name
 
 
 def test_another_build_is_refused_by_name(plugins):

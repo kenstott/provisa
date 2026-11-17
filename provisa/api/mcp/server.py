@@ -315,6 +315,12 @@ def switchable_roles(state: Any) -> set[str]:  # REQ-2082
     return {*_may_name(), *principal_of(state, identity)[1]}
 
 
+def principal_rights(state: Any) -> set[str]:  # REQ-2246
+    """The rights the roles a tool call may name carry (:func:`switchable_roles`): what decides
+    which built-in tools the session's principal is offered."""
+    return capabilities_for_claims(sorted(switchable_roles(state)), state.roles)
+
+
 def _may_name() -> set[str]:
     """The roles a remote call's principal may name: what the transport read for the request."""
     named = _request_may_name.get()
@@ -487,38 +493,40 @@ def build_mcp_server(state: Any):
         finally:
             _local_identity.reset(reset)
 
-    def _tool(fn):
-        """Register ``fn`` as an MCP tool whose body runs on its own request thread (REQ-1882).
+    async def _governed(name: str, make_coro: Any) -> Any:
+        """One tool call ``name``, the coroutine ``make_coro`` makes, run on its own request
+        thread (REQ-1882) as the call's principal, under MCP's request deadline.
 
         The MCP transport only receives and dispatches; the tool — catalog reads, governance,
         execution, audit — runs on a request thread's own loop (a
         ``provisa.core.connection_loop.ConnectionLoop``), in a copy of this call's context
         (the bearer-resolved role/identity/org ContextVars travel with it)."""
+        # Async on the MCP loop by necessity: the MCP SDK dispatches tools as coroutines on
+        # its own loop, which must keep serving other calls while this one runs.
+        from provisa.core.statement_warnings import collecting
+
+        with _request_span(_tracer, f"mcp.{name}", transport="mcp"):  # REQ-1910
+            # REQ-1350: what a tool's answers say about themselves goes in its result.
+            with collecting() as found:
+                try:
+                    result = await run_on_request_thread(
+                        lambda: _within_request(lambda: _as_principal(make_coro), f"MCP {name}")
+                    )
+                except RoleNotHeld as refused:
+                    raise await _probed(refused, name) from refused
+                except Exception as exc:  # noqa: BLE001  # allow-blind-except: FastMCP sends any tool error's text to the client; REQ-2087 redacts that text, and an unchanged one is re-raised as it is
+                    said = _redacted_error(exc)
+                    if said is None:
+                        raise
+                    raise said from None
+            return _with_warnings(result, found)
+
+    def _tool(fn):
+        """Register ``fn`` as an MCP tool run by :func:`_governed`."""
 
         @functools.wraps(fn)
         async def _on_request_thread(*args: Any, **kwargs: Any) -> Any:
-            # Async on the MCP loop by necessity: the MCP SDK dispatches tools as coroutines on
-            # its own loop, which must keep serving other calls while this one runs.
-            from provisa.core.statement_warnings import collecting
-
-            with _request_span(_tracer, f"mcp.{fn.__name__}", transport="mcp"):  # REQ-1910
-                # REQ-1350: what a tool's answers say about themselves goes in its result.
-                with collecting() as found:
-                    try:
-                        result = await run_on_request_thread(
-                            lambda: _within_request(
-                                lambda: _as_principal(lambda: fn(*args, **kwargs)),
-                                f"MCP {fn.__name__}",
-                            )
-                        )
-                    except RoleNotHeld as refused:
-                        raise await _probed(refused, fn.__name__) from refused
-                    except Exception as exc:  # noqa: BLE001  # allow-blind-except: FastMCP sends any tool error's text to the client; REQ-2087 redacts that text, and an unchanged one is re-raised as it is
-                        said = _redacted_error(exc)
-                        if said is None:
-                            raise
-                        raise said from None
-                return _with_warnings(result, found)
+            return await _governed(fn.__name__, lambda: fn(*args, **kwargs))
 
         return mcp.tool()(_on_request_thread)
 
@@ -1225,7 +1233,36 @@ def build_mcp_server(state: Any):
 
     mcp.list_tools = usable_tools  # pyright: ignore[reportAttributeAccessIssue]
 
-    _install_tool_groups(mcp)  # REQ-2246: sip mode; before the titles go, so its tool loses its own
+    async def _offer() -> tuple[set[str], list]:
+        """REQ-2246: what this session's principal is offered -- the rights its roles carry, and
+        the tools of the commands the session's role sees -- read on a request thread as the
+        call's principal, as a tool call reads them."""
+
+        async def _read() -> tuple[set[str], list]:
+            from provisa.api.mcp import command_tools
+
+            return principal_rights(state), command_tools.tools_for(state, _role(None))
+
+        return await run_on_request_thread(lambda: _as_principal(_read))
+
+    async def _call_command(name: str, arguments: dict[str, Any]) -> Any:
+        """REQ-2246: a call of a command's tool, run as the session's role, governed as any tool
+        call is."""
+        from provisa.api.mcp import command_tools
+
+        return await _governed(
+            name, lambda: command_tools.call(state, _role(None), name, arguments)
+        )
+
+    async def _rights() -> set[str]:
+        return await run_on_request_thread(_principal_rights_now)
+
+    async def _principal_rights_now() -> set[str]:
+        return principal_rights(state)
+
+    # REQ-2246: sip mode and the tools a session's principal is offered; before the titles go, so
+    # the catalog tool loses its own.
+    _install_tool_groups(mcp, _offer, _rights, _call_command)
     # A client is sent every tool's schemas on every model call. Pydantic titles each schema and
     # property after its own name ("Role", "list_tablesArguments"), which says nothing the names
     # do not. A title is an annotation: arguments are validated by each tool's argument model and
@@ -1247,26 +1284,36 @@ def _session_mode(ctx: Any) -> str:
     return getattr(request.state, tool_groups.STATE_KEY)
 
 
-def _install_tool_groups(mcp: Any) -> None:
-    """REQ-2246: register ``tool_groups``, check every tool has one group, and list each session
-    the tools of its mode. ``mcp.list_tools()`` stays the whole registry; the protocol's
-    tools/list answers a session the tools its mode and the groups it added list. A call is
-    dispatched as before, listed or not: what the caller may call is decided by its rights."""
+def _install_tool_groups(mcp: Any, offer: Any, rights: Any, call_command: Any) -> None:
+    """REQ-2246: register ``tool_groups``, check every tool has one group and one rights entry,
+    and answer each session's tools/list and tools/call.
+
+    ``mcp.list_tools()`` stays the whole registry. tools/list answers a session the built-in tools
+    its principal's rights allow (``offer``: the rights, and the tools of the commands its role
+    sees) within its mode and the groups it added, and, in full mode, each command's tool.
+    tools/call runs a
+    built-in tool the principal's rights allow (``rights``) as before, listed in the mode or not,
+    and a command's tool through ``call_command``; any other name is refused by name."""
     import functools as _functools
 
     from mcp import types
     from mcp.server.fastmcp import Context
+    from mcp.server.fastmcp.exceptions import ToolError
+    from mcp.server.fastmcp.utilities.func_metadata import _convert_to_content
     from mcp.server.lowlevel import NotificationOptions
 
     from provisa.api.mcp import tool_groups
 
-    async def _registered() -> set[str]:
-        return {t.name for t in await mcp.list_tools()}
+    async def _offered_builtins() -> tuple[set[str], list]:
+        held, commands = await offer()
+        every = await mcp.list_tools()
+        return {t.name for t in every if tool_groups.offered(t.name, held)}, commands
 
     @mcp.tool(name=tool_groups.CATALOG_TOOL, description=tool_groups.CATALOG_DESCRIPTION)
     @_in_request_span(_tracer, f"mcp.{tool_groups.CATALOG_TOOL}", transport="mcp")
     async def _tool_groups(ctx: Context, add: str | None = None) -> dict:
-        answer = tool_groups.answer(_session_mode(ctx), ctx.session, add, await _registered())
+        offered, _commands = await _offered_builtins()
+        answer = tool_groups.answer(_session_mode(ctx), ctx.session, add, offered)
         if add is not None:
             # On this call's own response stream, so the client reads it with the answer.
             await ctx.session.send_notification(
@@ -1281,12 +1328,29 @@ def _install_tool_groups(mcp: Any) -> None:
         ctx = mcp.get_context()
         mode = _session_mode(ctx)
         every = await mcp.list_tools()
-        return types.ListToolsResult(
-            tools=[t for t in every if tool_groups.listed(mode, ctx.session, t.name)]
-        )
+        held, commands = await offer()
+        builtins = [
+            t
+            for t in every
+            if tool_groups.offered(t.name, held) and tool_groups.listed(mode, ctx.session, t.name)
+        ]
+        # REQ-2246 (amended 2026-11-16): command tools are listed in full mode only; a sip
+        # session reaches commands through list_commands and run_sql, and a call of a command's
+        # tool runs as in full mode, as an unlisted built-in the principal may use does.
+        listed_commands = commands if mode == tool_groups.FULL else []
+        return types.ListToolsResult(tools=[*builtins, *listed_commands])
+
+    async def _called(name: str, arguments: dict[str, Any]) -> Any:
+        if mcp._tool_manager.get_tool(name) is not None:
+            if not tool_groups.offered(name, await rights()):
+                raise ToolError(f"Tool {name} is not offered to your roles")
+            return await mcp.call_tool(name, arguments)
+        return list(_convert_to_content(await call_command(name, arguments)))
 
     low = mcp._mcp_server
     low.list_tools()(_listed)
+    # As FastMCP registers its own: each built-in tool validates its arguments by its own model.
+    low.call_tool(validate_input=False)(_called)
     # The capability that tells a client its tool list changes (tools.listChanged).
     low.create_initialization_options = _functools.partial(
         low.create_initialization_options, NotificationOptions(tools_changed=True)

@@ -1130,7 +1130,7 @@ Demo/install example schema must include at least one FK relationship to exercis
 
 **Status:** ✅ complete · **Priority:** MAY · **Type:** behavioral
 
-The `hasura_v2_relationship_style` option controls whether FK-derived relationships use Hasura V2's naming conventions: singular for many-to-one, plural for one-to-many using inflection.
+The `hasura_v2_relationship_style` option controls whether FK-derived relationships use Hasura V2's naming conventions: singular for many-to-one, plural for one-to-many using inflection. (Amended 2026-11-16, EVERY GENERATED RELATIONSHIP NAME IS DISAMBIGUATED AUTOMATICALLY:) Maintainer 2026-11-16. When two generated relationships would carry the same name (the relationship's name, its GraphQL field or its Cypher type, wherever that name must be unique) but join different source and target columns, the names are disambiguated automatically, as foreign-key aliases already are (_by_<column>, then the table where the column alone does not separate them). This holds for every way a relationship is generated: declared foreign keys, discovery's semantic and measured suggestions, and accepting several suggestions at once, judged against the relationships already registered and the others accepted with it. A name a person typed is never changed; a clash with one is refused by name.
 
 **Use case:** V2-compatible relationship naming enables teams to adopt Hasura conventions without schema migration.
 
@@ -2046,7 +2046,7 @@ RSS source URL is resolved from `federation_hints.feed_url` if present, otherwis
 
 **Status:** ✅ complete · **Priority:** MUST · **Type:** structural
 
-A model registry must be declared in Provisa config listing available embedding models with id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry cannot be used for embedding generation or query vectorization.
+A model registry must be declared in Provisa config listing available embedding models with id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry cannot be used for embedding generation or query vectorization. (Amended 2026-11-16, EVERY INSTALL SHIPS THE EMBEDDING LIBRARY FOR THE DEFAULT MODEL:) Maintainer 2026-11-16 ('Ship it in every install'). Every install (DMG, AppImage, Windows, the container image, pip provisa[embedded]) carries the library the default embedding model needs (sentence-transformers on a CPU-only torch, never a CUDA build), so the default model works with no added step. A configured model whose library is missing is refused by name at startup, never failing later in a background task.
 
 **Use case:** Explicit model registry enables air-gapped deployments and audit trails for embedding model usage.
 

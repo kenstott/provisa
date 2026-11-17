@@ -29,6 +29,22 @@ _BOOLEAN = {"boolean", "bool"}
 _ANY = {"json", "jsonb"}
 
 
+def json_type(type_name: str) -> str | None:
+    """The JSON Schema type of a value of the argument type ``type_name`` (REQ-2246: a command's
+    MCP tool schema), or None for a type any JSON value is (JSON) or one JSON Schema has no word
+    for; the command's binding checks a value of either."""
+    kind = type_name.strip().lower()
+    if kind in _TEXT:
+        return "string"
+    if kind in _INTEGER:
+        return "integer"
+    if kind in _NUMBER:
+        return "number"
+    if kind in _BOOLEAN:
+        return "boolean"
+    return None
+
+
 class ArgumentDefaultRefused(ValueError):
     """A default that is not a value of its argument's type, or a call missing an argument."""
 

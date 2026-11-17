@@ -24,7 +24,7 @@
     "partial": "{{count}} 個請求中有 {{failed}} 個失敗，因此結果不完整。",
     "partial_other": "{{count}} 個請求中有 {{failed}} 個失敗，因此結果不完整。",
     "semanticsNoneProposed": "語意：無。模型未提出任何關係。",
-    "semanticsBelowThreshold": "語意：無。每項建議都低於 {{threshold}}% 的信心門檻。",
+    "semanticsBelowThreshold": "語義：無。每項提議的評分都低於保留建議所需的 {{threshold}}%。",
     "semanticsFiltered": "語意：無。每項建議都因下列原因被排除。",
     "split": "{{count}} 個請求被一分為二後重新發出。",
     "split_other": "{{count}} 個請求被一分為二後重新發出。",
@@ -38,7 +38,7 @@
     "leftOut": "未建議：{{list}}。",
     "leftOutItem": "{{label}}（{{count}}）",
     "removed": {
-      "below_threshold": "模型給出的信心低於 {{threshold}}%",
+      "below_threshold": "評分低於 {{threshold}}%",
       "invalid": "未指明兩個被比較的欄",
       "not_comparable": "位於不同類別的欄之間",
       "same_column": "由某欄指向其本身",
@@ -49,7 +49,8 @@
       "rejected": "之前已拒絕",
       "matches_foreign_key": "與今次執行中找到的外部索引鍵相同",
       "out_of_scope": "不在所選表之內",
-      "weaker": "與已保留更強提議的欄對重複"
+      "weaker": "與已保留更強提議的欄對重複",
+      "many_to_many": "兩欄都不是鍵"
     }
   }
 }

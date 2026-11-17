@@ -12,16 +12,21 @@
 // constraints and semantic ones together, the highest score first. A row's first box accepts it;
 // its last marks it not to be recommended again; with neither it stays undecided. A proposal that
 // cannot be decided (it names no two compared columns, or repeats what is already there) is
-// listed with why and has no box. One Apply says what it will do, with the counts.
+// listed with why and has no box. One Apply says what it will do, with the counts. Each row
+// shows its pair's values measured against each other; the Score is the measure's where values
+// were compared, the model's own beside it. The threshold rows start ticked from is the
+// person's own, set here.
 
 import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Group, Table, Text } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, NumberInput, Table, Text } from "@mantine/core";
 import type { RunProposal } from "../../api/admin";
+import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
 import { ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
 import type { ListSelection } from "../list/listSelection";
 import { useListSortGroup, type ListColumn } from "../list/useListSortGroup";
+import { measureLines } from "./pairMeasure";
 import { candidateName } from "./relationship-types";
 import type { RunProposalsState } from "./useRunProposals";
 
@@ -55,7 +60,7 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
             source_column: p.source_column,
             target_column: p.target_column ?? "",
             cardinality: "many-to-one",
-            confidence: p.confidence ?? 0,
+            confidence: p.score ?? 0,
             reasoning: "",
             suggested_name: p.suggested_name ?? undefined,
           },
@@ -67,7 +72,8 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
   const jevScored = proposals.some((p) => p.scored !== null);
   const columns: ListColumn<RunProposal>[] = [
     // A proposal with no score sorts below every scored one.
-    { key: "score", label: t("proposalsTable.colScore"), sortValue: (p) => p.confidence ?? -1 },
+    { key: "score", label: t("proposalsTable.colScore"), sortValue: (p) => p.score ?? -1 },
+    { key: "model", label: t("proposalsTable.colModel"), sortValue: (p) => p.confidence ?? -1 },
     ...(jevScored
       ? [
           {
@@ -92,14 +98,14 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
   // Unsorted, the rows keep the order they were read in: the highest score first.
   const sort = useListSortGroup(proposals, columns, "discover-proposals");
 
-  const decidable = useMemo(
-    () => proposals.filter((p) => p.decidable).map((p) => String(p.id)),
+  const acceptable = useMemo(
+    () => proposals.filter((p) => p.acceptable).map((p) => String(p.id)),
     [proposals],
   );
   // The list's own selection column is the accept box.
   const selection: ListSelection = {
-    selected: new Set(decidable.filter((id) => state.accept.has(Number(id)))),
-    shown: decidable,
+    selected: new Set(acceptable.filter((id) => state.accept.has(Number(id)))),
+    shown: acceptable,
     deleting: NONE,
     toggle: (key) => state.toggleAccept(Number(key)),
     toggleAll: state.toggleAcceptAll,
@@ -109,7 +115,7 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
 
   const chosen = (ids: ReadonlySet<number>) =>
     proposals.filter((p) => p.decidable && ids.has(p.id)).length;
-  const accepting = chosen(state.accept);
+  const accepting = proposals.filter((p) => p.acceptable && state.accept.has(p.id)).length;
   const marking = chosen(state.notAgain);
   const applyLabel =
     accepting > 0 && marking > 0
@@ -125,8 +131,9 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
       p.reason === null
         ? ""
         : t(`proposalsTable.reason.${p.reason}`, {
-            threshold: Math.round(state.threshold * 100),
+            threshold: Math.round(state.keptAt * 100),
           }),
+      p.decidable && !p.acceptable ? t("proposalsTable.manyToMany") : "",
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
     ]
       .filter(Boolean)
@@ -166,9 +173,29 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
       ) : (
         <>
           <Group justify="space-between" align="center" mb="xs" wrap="nowrap">
-            <Text fz="sm" c="dimmed">
-              {t("proposalsTable.intro", { threshold: Math.round(state.threshold * 100) })}
-            </Text>
+            <Group gap="md" align="flex-end" wrap="nowrap">
+              <FormLayout style={{ flexShrink: 0 }}>
+                <FormField size="short" hint={t("proposalsTable.thresholdHint")}>
+                  <NumberInput
+                    label={t("proposalsTable.threshold")}
+                    data-testid="discover-threshold"
+                    value={Math.round(state.threshold * 100)}
+                    onChange={(v) => {
+                      if (typeof v === "number") state.setThreshold(v / 100);
+                    }}
+                    min={0}
+                    max={100}
+                    step={5}
+                    suffix="%"
+                    clampBehavior="strict"
+                    allowDecimal={false}
+                  />
+                </FormField>
+              </FormLayout>
+              <Text fz="sm" c="dimmed">
+                {t("proposalsTable.intro")}
+              </Text>
+            </Group>
             <Button
               onClick={() => void state.apply(nameOf)}
               disabled={accepting + marking === 0}
@@ -183,7 +210,7 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
           <div style={{ overflowX: "auto" }}>
             <ListTable
               testId="discover-proposals"
-              minWidth={900}
+              minWidth={1100}
               style={{ width: "100%" }}
               selection={selection}
             >
@@ -191,10 +218,12 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
                 sortGroup={sort}
                 columns={[
                   { col: "score" },
+                  { col: "model" },
                   ...(jevScored ? [{ col: "jev" }] : []),
                   { col: "source" },
                   { col: "target" },
                   t("candidatesTable.colCardinality"),
+                  t("proposalsTable.colMeasure"),
                   { col: "kind" },
                   t("proposalsTable.colReasoning"),
                   t("proposalsTable.colNote"),
@@ -214,9 +243,12 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
                     <ListRow
                       key={p.id}
                       testId={`proposal-${p.id}`}
-                      itemKey={p.decidable ? p.id : undefined}
+                      itemKey={p.acceptable ? p.id : undefined}
                     >
-                      <Table.Td>
+                      <Table.Td data-testid={`proposal-score-${p.id}`}>
+                        {p.score === null ? "" : `${percent(p.score)}%`}
+                      </Table.Td>
+                      <Table.Td data-testid={`proposal-model-${p.id}`}>
                         {p.confidence === null ? "" : `${percent(p.confidence)}%`}
                       </Table.Td>
                       {jevScored && (
@@ -230,7 +262,19 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
                       <Table.Td>
                         <BreakableName name={label(p.target_table_id, p.target_column)} />
                       </Table.Td>
-                      <Table.Td>{p.cardinality ?? ""}</Table.Td>
+                      <Table.Td data-testid={`proposal-cardinality-${p.id}`}>
+                        {p.cardinality ?? ""}
+                      </Table.Td>
+                      <Table.Td data-testid={`proposal-measure-${p.id}`}>
+                        {[
+                          ...(p.measure ? measureLines(p.measure, t) : []),
+                          p.source_table_id !== null && !p.measured
+                            ? t("proposalsTable.measure.modelScore")
+                            : "",
+                        ]
+                          .filter(Boolean)
+                          .join(" ")}
+                      </Table.Td>
                       <Table.Td>{t(`proposalsTable.kind.${p.kind}`)}</Table.Td>
                       <Table.Td>
                         {p.source_table_id === null

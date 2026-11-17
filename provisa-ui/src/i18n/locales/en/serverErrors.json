@@ -203,7 +203,8 @@
       "empty_answer": "The model returned no text."
     },
     "environments": {
-      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
+      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again.",
+      "owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership."
     },
     "front_door": {
       "coordinator_waking": "The environment is starting. It will be ready in about five minutes.",
