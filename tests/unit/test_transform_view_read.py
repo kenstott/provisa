@@ -70,16 +70,23 @@ def _state(
             view_table="clean_suppliers",
         )
     )
-    from provisa.compiler.rls import RLSContext
-
     return SimpleNamespace(
         mv_registry=registry,
         stored_view_reads={"clean_suppliers"},
         view_sql_map={"clean_suppliers": READ},
         column_transforms={"clean_address": CLEAN_ADDRESS},
-        # Every role's row rules: what the build keeps the inputs of.
-        rls_contexts={"east_reader": RLSContext(rules=rules or {})},
-        role_build_inputs={"draft_tables": []},  # no table is out of service
+        role_build_inputs={
+            "draft_tables": [],  # no table is out of service
+            # Every role's row rules, as stored: what the build keeps the inputs of.
+            "rls_rules": [
+                {"role_id": "east_reader", "table_id": table_id, "filter_expr": rule}
+                for table_id, rule in (rules or {}).items()
+            ],
+            "tables": [
+                {"id": 1, "source_id": "fx", "domain_id": "fx"},
+                {"id": 2, "source_id": "fx", "domain_id": "fx"},
+            ],
+        },
     )
 
 
@@ -220,13 +227,13 @@ def test_the_build_keeps_the_inputs_every_roles_row_rules_read():
     from provisa.mv.transform_view_rules import kept_inputs, roles_rules, with_rule_inputs
 
     state = _state(MVStatus.FRESH, {1: _east()})
-    from provisa.compiler.rls import RLSContext
-
-    state.rls_contexts["west_reader"] = RLSContext(
-        rules={
-            1: read_rule(
+    state.role_build_inputs["rls_rules"].append(
+        {
+            "role_id": "west_reader",
+            "table_id": 1,
+            "filter_expr": read_rule(
                 "id > current_setting('provisa.min_id') AND region IN (SELECT r FROM allowed)"
-            )
+            ),
         }
     )
     kept = kept_inputs(DEFINITION, _gov().table_map, roles_rules(state))
@@ -237,6 +244,20 @@ def test_the_build_keeps_the_inputs_every_roles_row_rules_read():
         'SELECT id, clean_address(raw_address), "suppliers"."id" AS "__rule_input_suppliers__id", '
         '"suppliers"."region" AS "__rule_input_suppliers__region" FROM fx.suppliers'
     )
+
+
+def test_the_build_keeps_the_inputs_a_domain_rule_on_an_input_reads():
+    """A meta-role's rule on a table folds in a member's domain rule (security.meta_role), so
+    the build keeps the columns a domain rule on an input's domain reads."""
+    from provisa.compiler.rls import read_rule
+    from provisa.mv.transform_view_rules import kept_inputs, roles_rules
+
+    state = _state(MVStatus.FRESH)
+    state.role_build_inputs["rls_rules"].append(
+        {"role_id": "fx_member", "domain_id": "fx", "filter_expr": read_rule("raw_address <> ''")}
+    )
+    kept = kept_inputs(DEFINITION, _gov().table_map, roles_rules(state))
+    assert kept == [("suppliers", 1, "raw_address")]
 
 
 def test_a_session_variable_in_the_readers_rule_is_cast_to_the_kept_columns_type():

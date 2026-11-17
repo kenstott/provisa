@@ -100,10 +100,34 @@ def rule_inputs(definition: str, table_map: Mapping[str, int]) -> list[tuple[str
 
 
 def roles_rules(state: Any) -> Callable[[int], list[exp.Expr]]:  # pyright: ignore[reportPrivateImportUsage]
-    """Every role's row rule on a table, by its id: what a build keeps the inputs of."""
+    """Every role's row rule on a table, by its id: what a build keeps the inputs of.
+
+    Read from the generation's stored rule rows (``role_build_inputs``), which name every role's
+    rules model-wide, so no role's surface is built to collect them (REQ-1914). A stored role's
+    rule on a table is its table rule (compiler.rls.build_rls_context); a meta-role's folds in a
+    member's domain rule where the member has none on the table (security.meta_role._rls); every
+    role holds a signals table to the reading org (compiler.rls.org_scoped_signals)."""
+    from provisa.compiler.rls import (  # noqa: PLC0415
+        ORG_SCOPED_SIGNALS_RULE,
+        SIGNALS_SOURCE,
+        build_rls_context,
+    )
+
+    inputs = state.role_build_inputs
+    rows = inputs["rls_rules"]
+    tables = {t["id"]: t for t in inputs["tables"]}
+    contexts = [
+        build_rls_context(rows, role_id) for role_id in sorted({r["role_id"] for r in rows})
+    ]
 
     def of(table_id: int) -> list[exp.Expr]:  # pyright: ignore[reportPrivateImportUsage]
-        return [rls.rules[table_id] for rls in state.rls_contexts.values() if table_id in rls.rules]
+        table = tables[table_id]
+        domain = table.get("domain_id") or ""
+        found = [ctx.rules[table_id] for ctx in contexts if table_id in ctx.rules]
+        found += [ctx.domain_rules[domain] for ctx in contexts if domain in ctx.domain_rules]
+        if table["source_id"] == SIGNALS_SOURCE:
+            found.append(ORG_SCOPED_SIGNALS_RULE)
+        return found
 
     return of
 
