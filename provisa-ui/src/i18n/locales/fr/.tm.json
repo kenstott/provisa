@@ -10797,5 +10797,11 @@
   "fr/aiModelsTab.json::aiModelsTab.apiKeyNotSetOrgOnly": "No key set.",
   "fr/aiModelsTab.json::aiModelsTab.jevIntroOrgOnly": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. With no key set, those features use the model's confidence alone.",
   "fr/serverErrors.json::serverErrors.ai.key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
-  "fr/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+  "fr/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models.",
+  "fr/commandFormFields.json::commandFormFields.exposedAsTable": "Also a table",
+  "fr/commandFormFields.json::commandFormFields.exposedAsTableHint": "Clients that read tables, such as BI tools, read this function as a table with its parameters as columns. Turned off, it returns the rows of the source's list of the same type, and the table is removed.",
+  "fr/serverErrors.json::serverErrors.functions.no_plain_list": "No operation of source '{{source_id}}' without a required parameter returns the rows of '{{operation}}', so its table stays on",
+  "fr/serverErrors.json::serverErrors.functions.plain_list_unregistered": "'{{operation}}' of source '{{source_id}}' returns the rows of its list {{lists}}; register that list as a table first",
+  "fr/serverErrors.json::serverErrors.functions.table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first",
+  "fr/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function"
 }

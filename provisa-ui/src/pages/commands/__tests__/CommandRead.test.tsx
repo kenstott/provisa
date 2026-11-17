@@ -125,6 +125,23 @@ describe("a function's read view", () => {
   });
 });
 
+describe("a function's table (REQ-1986)", () => {
+  it("says whether a reading source operation is also a table", () => {
+    render(
+      <FunctionRead
+        fn={{ ...fn, implKind: "source_operation", kind: "query", exposedAsTable: false }}
+        productNames={[]}
+      />,
+    );
+    expect(Object.fromEntries(fields("function-read-fields"))["Also a table"]).toBe("No");
+  });
+
+  it("says nothing of a table for a function with no table form", () => {
+    render(<FunctionRead fn={fn} productNames={[]} />);
+    expect(Object.fromEntries(fields("function-read-fields"))["Also a table"]).toBeUndefined();
+  });
+});
+
 describe("a webhook's read view", () => {
   it("shows every value, and its inline response fields' governance", () => {
     render(<WebhookRead wh={wh} />);
