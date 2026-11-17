@@ -422,8 +422,8 @@ class TestHeldPerOrganizationAndCredential:
         # Each kind of credential, with ``secret`` as the part of it that is secret.
         other_key = json.dumps({**json.loads(key_file), "private_key_id": secret})
         return [
-            ("refresh", lambda: access_token(_refresh(client_secret=secret)), "httpx.post"),
-            ("service account", lambda: access_token(_service_account(other_key)), "httpx.post"),
+            ("refresh", lambda: access_token(_refresh(client_secret=secret)), "httpx.Client.post"),
+            ("service account", lambda: access_token(_service_account(other_key)), "httpx.Client.post"),
             (
                 "client credentials",
                 lambda: _client_credentials_token(_client_credentials(client_secret=secret)),
@@ -455,7 +455,7 @@ class TestHeldPerOrganizationAndCredential:
         else:
             monkeypatch.setenv("TEST_ROTATED_SECRET", "made-up-secret-1")
             fetch = next(f for k, f, _ in self._kinds(key_file, reference) if k == kind)
-        target = "httpx.Client.post" if kind == "client credentials" else "httpx.post"
+        target = "httpx.Client.post"  # every grant posts through the egress-checked client
         with patch(target, side_effect=[_granted("token-1"), _granted("token-2")]) as post:
             assert fetch() == "token-1"
             assert fetch() == "token-1"
@@ -470,7 +470,7 @@ class TestHeldPerOrganizationAndCredential:
     def test_the_hold_is_keyed_by_a_digest_never_the_secret(self, key_file, monkeypatch):
         monkeypatch.setenv("TEST_HELD_SECRET", "made-up-resolved-secret")
         auths = [
-            (lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")), "httpx.post"),
+            (lambda: access_token(_refresh(client_secret="${env:TEST_HELD_SECRET}")), "httpx.Client.post"),
             (
                 lambda: _client_credentials_token(
                     _client_credentials(client_secret="${env:TEST_HELD_SECRET}")
@@ -493,7 +493,7 @@ class TestHeldPerOrganizationAndCredential:
         token = current_org.set(None)
         try:
             with (
-                patch("httpx.post", return_value=_granted()) as post,
+                patch("httpx.Client.post", return_value=_granted()) as post,
                 pytest.raises(RuntimeError, match="No active org bound"),
             ):
                 access_token(_refresh())
