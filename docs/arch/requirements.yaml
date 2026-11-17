@@ -3709,7 +3709,11 @@
     suggestion, and its reason says it was admitted on key values matching in the data, with the measure
     beside the model''s confidence. The cutoff is set in the discovery dialog beside the threshold, remembered
     the same way, and defaults to 20%. A run measures every pair in the band; stopping the run is how a
-    person bounds it.'
+    person bounds it. (Amended 2026-11-16, THE CHECKS RUN FOREIGN KEYS, SEMANTIC, JEV, THEN THE KEY-VALUE
+    MEASURE:) Maintainer 2026-11-16. A run''s checks go in order of cost: declared foreign keys; the model''s
+    semantic proposals; Jev''s re-score of them where a Jev key is configured, kept beside the model''s
+    confidence; then the key-value measure, of only the pairs in the band between the measure cutoff and
+    the threshold. The band is judged on the model''s confidence, never Jev''s.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
