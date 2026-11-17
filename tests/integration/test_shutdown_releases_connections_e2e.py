@@ -86,6 +86,42 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
             "".join(traceback.format_stack(limit=40)),
         )
 
+    import time as _time
+
+    from provisa.federation import duckdb_runtime as _dr
+
+    runtimes: list = []
+    _orig_init, _orig_close = (
+        _dr.DuckDBFederationRuntime.__init__,
+        _dr.DuckDBFederationRuntime.close,
+    )
+
+    def _init(self, *a, **k):
+        runtimes.append(
+            (
+                _time.monotonic(),
+                "BUILT",
+                id(self),
+                threading.current_thread().name,
+                "".join(traceback.format_stack(limit=30)),
+            )
+        )
+        _orig_init(self, *a, **k)
+
+    def _close(self):
+        runtimes.append(
+            (
+                _time.monotonic(),
+                "CLOSED",
+                id(self),
+                threading.current_thread().name,
+                "".join(traceback.format_stack(limit=12)),
+            )
+        )
+        _orig_close(self)
+
+    _dr.DuckDBFederationRuntime.__init__ = _init
+    _dr.DuckDBFederationRuntime.close = _close
     event.listen(Pool, "connect", _on_connect)
     event.listen(Pool, "checkout", _on_checkout)
     server = _server()
@@ -98,7 +134,16 @@ async def test_a_lifespan_with_a_reapplied_config_leaves_no_backend_open():
         # scope (ModelChangeMiddleware), since loading the config writes the model.
         async with model_change.scope("PUT /admin/config", actor=lambda: "test"):
             await _load_and_build()
+    shut = _time.monotonic()
     left = _opened_since(server, started)
+    _dr.DuckDBFederationRuntime.__init__, _dr.DuckDBFederationRuntime.close = (
+        _orig_init,
+        _orig_close,
+    )
+    if left:
+        for t, what, rid, thread, stack in runtimes:
+            print(f"=== DIAG runtime {what} {rid} at shutdown{t - shut:+.2f}s on {thread}")
+            print(stack)
     for pid, *_ in left:
         print(f"=== DIAG leaked pid {pid}: opened by {opened.get(pid, ('not SQLAlchemy', ''))[0]}")
         print(opened.get(pid, ("", ""))[1])
