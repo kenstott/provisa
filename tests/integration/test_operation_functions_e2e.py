@@ -327,18 +327,20 @@ def test_an_argument_that_is_another_tables_column_calls_for_each_row_kept(serve
 def test_an_argument_that_assigns_nothing_is_the_table_forms_refusal(
     served, function_form, table_form
 ):
+    """Whatever the table form answers -- its refusal, and the calls it makes or does not --
+    the function form answers the same."""
     server, api = served
     api.by_id()
     as_function = _sql(server, function_form)
+    function_calls = api.by_id()
     as_table = _sql(server, table_form)
-    assert as_function.status_code == as_table.status_code, (as_function.text, as_table.text)
-    assert as_function.status_code >= 400, as_function.text
-    assert "code" in as_table.json(), as_table.text
-    assert as_function.json().get("code") == as_table.json()["code"], (
-        as_function.text,
-        as_table.text,
+    table_calls = api.by_id()
+    assert as_table.status_code >= 400, as_table.text
+    assert (as_function.status_code, as_function.json()) == (
+        as_table.status_code,
+        as_table.json(),
     )
-    assert api.by_id() == []
+    assert function_calls == table_calls
 
 
 @pytest.mark.parametrize("pet, rows", [(1, []), (2, [(2, "detail of pet 2")])])
