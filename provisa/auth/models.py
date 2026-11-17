@@ -102,9 +102,22 @@ class AuthProvider(ABC):  # REQ-120
     # PAT-shaped credential is simply not a PAT and goes to the provider like any other token.
     pat_store: Any = None
 
+    # REQ-812: whether this provider can say what a signed-in identity holds NOW, without the person
+    # signing in again (:meth:`reread`). One that cannot -- an external identity provider's signed
+    # token, a SAML assertion -- is trusted only until the sign-in's token expires.
+    rereads: bool = False
+
     @property
     def auth_scheme(self) -> str:
         return "bearer"
+
+    async def reread(self, identity: AuthIdentity) -> AuthIdentity:  # REQ-812
+        """``identity`` as the provider holds it now: its roles read again at the source. Raises
+        ValueError, as sign-in does, when the account no longer signs in. Only a provider whose
+        :attr:`rereads` is true answers."""
+        raise NotImplementedError(
+            f"auth provider {self.provider_name!r} cannot re-read a signed-in identity"
+        )
 
     @abstractmethod
     async def validate_token(self, token: str) -> AuthIdentity:  # REQ-486

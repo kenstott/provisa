@@ -625,7 +625,11 @@
       "schema_registry_unreachable": "Il registro degli schemi {{registry}} non è raggiungibile: {{error}}",
       "sse_limit_reached": "numero massimo di sottoscrizioni SSE simultanee raggiunto",
       "table_not_found": "Tabella '{{table}}' non trovata",
-      "unknown_role": "Ruolo '{{role}}' sconosciuto"
+      "unknown_role": "Ruolo '{{role}}' sconosciuto",
+      "owner_role_lost": "La sottoscrizione è terminata: il suo proprietario non ha più il ruolo con cui è stata avviata ({{roles}})",
+      "sink_cap_reached": "Hai già {{cap}} sink Kafka in esecuzione, il massimo consentito dall'operatore ({{setting}})",
+      "sink_needs_write": "Il ruolo '{{role}}' non ha il diritto di scrittura richiesto da un sink Kafka",
+      "owner_sign_in_expired": "La sottoscrizione è terminata: l'accesso con cui è stata avviata è scaduto; accedi di nuovo e riavviala"
     },
     "users": {
       "assignment_not_found": "Assegnazione non trovata",

@@ -47,6 +47,8 @@ SCHEMA_SQL = Path(__file__).parents[2] / "provisa" / "core" / "schema.sql"
 REGISTRY_ONLY_TABLES = {
     # REQ-1916: the platform state store's cluster node list. Portable metadata only.
     "cluster_nodes",
+    # REQ-812: the platform state store's running client-started Kafka sinks. Portable metadata only.
+    "running_sinks",
     # REQ-1429: the platform state store's record of each coordinator's system catalogs.
     "engine_system_catalogs",
     "orgs",
