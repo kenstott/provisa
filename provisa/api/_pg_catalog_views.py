@@ -937,6 +937,7 @@ def _pg_proc() -> str:
                 "proargnames": f"ARRAY(SELECT a.argument ->> 'name' FROM {_ARGUMENTS} "
                 "ORDER BY a.position)",
                 "prosrc": "f.name",
+                SCOPE_COLUMN: "rt.id",
             },
             f"FROM tracked_functions f {_RETURNED_TABLE}",
         ),
@@ -947,6 +948,7 @@ def _pg_proc() -> str:
                 "proowner": str(OWNER_OID),
                 "prosupport": "CAST(s.prosupport AS OID)",
                 "proargtypes": "s.proargtypes",
+                SCOPE_COLUMN: "NULL",
             },
             f"FROM {_unnested(_shipped_procs(), _PROC_COLUMNS)}",
         ),
@@ -1019,6 +1021,7 @@ def _is_routines() -> str:
                 "is_deterministic": "'NO'",
                 "sql_data_access": "'MODIFIES'",
                 "security_type": "'INVOKER'",
+                SCOPE_COLUMN: "rt.id",
             },
             f"FROM tracked_functions f {_RETURNED_TABLE}",
         ),

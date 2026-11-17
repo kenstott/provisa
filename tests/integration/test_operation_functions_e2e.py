@@ -191,7 +191,18 @@ def _config(spec_path: str, base_url: str) -> dict:
                 ],
             },
         ],
-        "relationships": [],
+        # A join on the parameter is governed as any join: by the relationship that admits it.
+        "relationships": [
+            {
+                "id": "list-pets-to-get-pet-by-id",
+                "alias": "DETAIL",
+                "cardinality": "many-to-one",
+                "source_table_id": "list_pets",
+                "source_column": "id",
+                "target_table_id": "get_pet_by_id",
+                "target_column": "_nf_petId",
+            }
+        ],
         "rls_rules": [
             {
                 "description": "Test rule.",
@@ -322,7 +333,8 @@ def test_an_argument_that_assigns_nothing_is_the_table_forms_refusal(
     as_table = _sql(server, table_form)
     assert as_function.status_code == as_table.status_code, (as_function.text, as_table.text)
     assert as_function.status_code >= 400, as_function.text
-    assert as_function.json()["code"] == as_table.json()["code"], (
+    assert "code" in as_table.json(), as_table.text
+    assert as_function.json().get("code") == as_table.json()["code"], (
         as_function.text,
         as_table.text,
     )

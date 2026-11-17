@@ -95,20 +95,25 @@ def _source_type(state, source_id: str) -> str:
 # --- what a source offers ----------------------------------------------------------------------
 
 
-# The commands of each source's spec, by operation, with the spec they were read from: a spec is
-# read once and again only when the source's spec is replaced (a refresh, a new registration).
-_COMMANDS: dict[str, tuple[dict, dict[str, Any]]] = {}
+# The commands of each source's spec, by operation, and its queries, with the spec they were read
+# from: a spec is read once and again only when the source's spec is replaced (a refresh, a new
+# registration).
+_COMMANDS: dict[str, tuple[dict, dict[str, Any], list[Any]]] = {}
 
 
-def _commands(state, source_id: str) -> dict[str, Any]:
+def _read_spec(state, source_id: str) -> tuple[dict, dict[str, Any], list[Any]]:
     spec = state.openapi_specs[source_id]["spec"]
     held = _COMMANDS.get(source_id)
     if held is None or held[0] is not spec:
         from provisa.openapi.mapper import parse_spec
 
-        _, mutations = parse_spec(spec)
-        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations})
-    return held[1]
+        queries, mutations = parse_spec(spec)
+        held = _COMMANDS[source_id] = (spec, {m.operation_id: m for m in mutations}, queries)
+    return held
+
+
+def _commands(state, source_id: str) -> dict[str, Any]:
+    return _read_spec(state, source_id)[1]
 
 
 # An OpenAPI parameter's type as a function's argument type.
@@ -123,11 +128,8 @@ _OPENAPI_ARGUMENT_TYPE = {
 def _openapi_reads(state, source_id: str) -> list[Operation]:
     """REQ-1986: each GET that answers rows and requires a parameter, as the function returning
     the rows of its table (named by its operation id)."""
-    from provisa.openapi.mapper import parse_spec
-
-    queries, _ = parse_spec(state.openapi_specs[source_id]["spec"])
     found = []
-    for q in queries:
+    for q in _read_spec(state, source_id)[2]:
         params = [*q.path_params, *q.query_params]
         if q.columns_declared or not any(p["required"] for p in params):
             continue
