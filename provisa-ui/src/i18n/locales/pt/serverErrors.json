@@ -201,7 +201,8 @@
       "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
-      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
+      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente.",
+      "owner_not_member": "{{user}} criou o ambiente {{env}}, mas não é membro de {{org}}; atuar nele como proprietário exige ser membro."
     },
     "front_door": {
       "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",

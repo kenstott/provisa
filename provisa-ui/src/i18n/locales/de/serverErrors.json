@@ -201,7 +201,8 @@
       "empty_answer": "Das Modell hat keinen Text zurückgegeben."
     },
     "environments": {
-      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
+      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut.",
+      "owner_not_member": "{{user}} hat die Umgebung {{env}} erstellt, ist aber kein Mitglied von {{org}}; um darin als Eigentümer zu handeln, ist eine Mitgliedschaft erforderlich."
     },
     "front_door": {
       "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa fünf Minuten bereit.",
