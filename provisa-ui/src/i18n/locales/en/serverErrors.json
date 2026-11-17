@@ -616,7 +616,9 @@
       "table_not_found": "Table '{{table}}' not found",
       "unknown_role": "Unknown role '{{role}}'",
       "owner_role_lost": "The subscription ended: its owner no longer holds the role it was started under ({{roles}})",
-      "sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})"
+      "sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})",
+      "sink_needs_write": "Role '{{role}}' lacks the write right a Kafka sink needs",
+      "owner_sign_in_expired": "The subscription ended: the sign-in it was started under has expired; sign in again and start it again"
     },
     "users": {
       "assignment_not_found": "Assignment not found",

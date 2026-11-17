@@ -616,7 +616,9 @@
       "table_not_found": "Tabela '{{table}}' não encontrada",
       "unknown_role": "Função desconhecida '{{role}}'",
       "owner_role_lost": "A assinatura terminou: seu proprietário não tem mais a função sob a qual ela foi iniciada ({{roles}})",
-      "sink_cap_reached": "Você já tem {{cap}} sinks do Kafka em execução, o máximo que o operador permite ({{setting}})"
+      "sink_cap_reached": "Você já tem {{cap}} sinks do Kafka em execução, o máximo que o operador permite ({{setting}})",
+      "sink_needs_write": "O papel '{{role}}' não tem o direito de escrita que um sink do Kafka exige",
+      "owner_sign_in_expired": "A assinatura terminou: o login sob o qual ela foi iniciada expirou; entre novamente e inicie-a outra vez"
     },
     "users": {
       "assignment_not_found": "Atribuição não encontrada",

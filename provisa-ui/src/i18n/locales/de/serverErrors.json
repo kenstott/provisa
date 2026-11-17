@@ -616,7 +616,9 @@
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_role": "Unbekannte Rolle '{{role}}'",
       "owner_role_lost": "Das Abonnement wurde beendet: Sein Eigentümer hat die Rolle nicht mehr, unter der es gestartet wurde ({{roles}})",
-      "sink_cap_reached": "Sie haben bereits {{cap}} laufende Kafka-Sinks, das Maximum, das der Betreiber erlaubt ({{setting}})"
+      "sink_cap_reached": "Sie haben bereits {{cap}} laufende Kafka-Sinks, das Maximum, das der Betreiber erlaubt ({{setting}})",
+      "sink_needs_write": "Der Rolle '{{role}}' fehlt das Schreibrecht, das eine Kafka-Sink braucht",
+      "owner_sign_in_expired": "Das Abonnement wurde beendet: Die Anmeldung, unter der es gestartet wurde, ist abgelaufen; melden Sie sich erneut an und starten Sie es neu"
     },
     "users": {
       "assignment_not_found": "Zuweisung nicht gefunden",

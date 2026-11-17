@@ -140,14 +140,20 @@ def _no_directives():
     return directives
 
 
-async def _subscribe(state, ctx, request):
+# The role a request acts as, as endpoint.py hands it on (require_role): a sink needs its write
+# right (REQ-868), a stream does not.
+_WRITER = {"id": "analyst", "capabilities": ["write"]}
+_READER = {"id": "analyst", "capabilities": []}
+
+
+async def _subscribe(state, ctx, request, role=_WRITER):
     return await handle_subscription_sse(
         document=_document(),
         ctx=ctx,
         rls=MagicMock(),
         state=state,
         variables=None,
-        role="analyst",
+        role=role,
         role_id="analyst",
         raw_request=request,
         directives=_no_directives(),
@@ -390,6 +396,252 @@ async def test_revoking_the_role_ends_an_open_stream_with_a_last_frame(sink_db, 
     assert feed.closed
 
 
+# --- starting a sink needs the write right (REQ-812 amended 2026-11-16, REQ-868) -------------------
+
+
+@pytest.mark.asyncio
+async def test_a_reader_without_write_is_refused_and_nothing_reaches_kafka(sink_db, monkeypatch):
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker1:9092")
+    state, ctx = _state(sink_db)
+    request = _request({"x-provisa-sink": "kafka://broker1:9092/orders-topic"})
+    spawned: list = []
+    producers: list = []
+
+    with (
+        patch(
+            "provisa.core.connection_loop.spawn_long_lived",
+            lambda c, *, name=None: spawned.append(c),
+        ),
+        patch("provisa.kafka.sink.KafkaProducer", lambda **k: producers.append(k)),
+    ):
+        with pytest.raises(ApiError) as refused:
+            await _subscribe(state, ctx, request, role=_READER)
+    assert refused.value.status_code == 403
+    assert refused.value.code == "subscribe.sink_needs_write"
+    assert refused.value.params == {"role": "analyst"}
+    assert spawned == []
+    assert producers == []
+    assert await running.held_by(sink_db, "alice") == 0  # no place was taken
+
+
+@pytest.mark.asyncio
+async def test_a_writer_starts_a_sink(sink_db, monkeypatch):
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker1:9092")
+    state, ctx = _state(sink_db)
+    request = _request({"x-provisa-sink": "kafka://broker1:9092/orders-topic"})
+    spawned: list = []
+
+    def _spawn(coro, *, name=None):
+        spawned.append(name)
+        coro.close()
+
+    with patch("provisa.core.connection_loop.spawn_long_lived", _spawn):
+        response = await _subscribe(state, ctx, request, role=_WRITER)
+    assert response.status_code == 202
+    assert spawned == ["kafka-sink:orders"]
+    assert await running.held_by(sink_db, "alice") == 1
+
+
+@pytest.mark.asyncio
+async def test_a_reader_still_opens_a_stream(sink_db):
+    """The write right is a sink's: a plain subscription stream needs only read access."""
+    state, ctx = _state(sink_db)
+    with patch("provisa.api.request_timeout.outlive_deadline", lambda: None):
+        response = await _subscribe(state, ctx, _request({}), role=_READER)
+    assert isinstance(response, StreamingResponse)
+
+
+# --- claims mode: what the sign-in holds now, or until its token expires ---------------------------
+
+
+def _claims_state(provider_name: str):
+    return SimpleNamespace(
+        auth_config={"provider": provider_name, "assignments_source": "claims"},
+        admin_db=None,
+        multitenancy=False,
+    )
+
+
+async def _not_claimant(_state, _user_id):
+    return False
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("provider_name", ["oauth", "keycloak", "saml"])
+async def test_in_claims_mode_a_provider_that_cannot_reread_ends_at_the_tokens_expiry(
+    provider_name,
+):
+    """An external IdP's signed token or a SAML assertion cannot be asked again what it holds:
+    the sign-in's roles are trusted only until its token expires."""
+    provider = MagicMock()
+    provider.rereads = False
+    exp = int(datetime.now(UTC).timestamp()) + 2
+    identity = AuthIdentity(
+        user_id="alice",
+        email=None,
+        display_name="alice",
+        roles=["analyst"],
+        raw_claims={"exp": exp},
+        credential="idp",
+    )
+    owner = owner_mod.Owner(identity=identity, org_id=None, roles=("analyst",))
+    state = _claims_state(provider_name)
+    with (
+        patch("provisa.auth.wiring.build_auth_provider", lambda *_a, **_k: provider),
+        patch("provisa.auth.held_assignments.is_bootstrap_claimant", _not_claimant),
+    ):
+        await owner_mod.ensure_held(state, owner)  # before expiry: held
+        with patch.object(owner_mod, "_now", lambda: float(exp)):
+            with pytest.raises(owner_mod.OwnerSignInExpired) as ended:
+                await owner_mod.ensure_held(state, owner)
+    assert ended.value.code == "subscribe.owner_sign_in_expired"
+
+
+@pytest.mark.parametrize(
+    ("provider_name", "rereads"),
+    [
+        ("basic", True),
+        ("simple", True),
+        ("ldap", True),
+        ("firebase", True),
+        ("oauth", False),
+        ("keycloak", False),
+        ("saml", False),
+    ],
+)
+def test_which_providers_reread_what_a_sign_in_holds(provider_name, rereads):
+    from provisa.auth.providers.basic import BasicAuthProvider
+    from provisa.auth.providers.firebase import FirebaseAuthProvider
+    from provisa.auth.providers.keycloak import KeycloakAuthProvider
+    from provisa.auth.providers.ldap import LdapAuthProvider
+    from provisa.auth.providers.oauth import OAuthProvider
+    from provisa.auth.providers.saml import SamlAuthProvider
+    from provisa.auth.providers.simple import SimpleAuthProvider
+
+    cls = {
+        "basic": BasicAuthProvider,
+        "simple": SimpleAuthProvider,
+        "ldap": LdapAuthProvider,
+        "firebase": FirebaseAuthProvider,
+        "oauth": OAuthProvider,
+        "keycloak": KeycloakAuthProvider,
+        "saml": SamlAuthProvider,
+    }[provider_name]
+    assert cls.rereads is rereads
+
+
+class _UserIds:
+    async def id_for(self, username: str) -> str:
+        return f"id-{username}"
+
+
+@pytest.mark.asyncio
+async def test_in_claims_mode_a_rereading_provider_ends_on_a_revocation_at_the_provider():
+    """A provider that can be asked again (here the simple provider's configured users) is read
+    now: a role taken away there ends the sink, though the token still names it."""
+    from provisa.auth.providers.simple import SimpleAuthProvider
+
+    users = [{"username": "alice", "password_hash": "x", "roles": ["analyst"]}]
+    provider = SimpleAuthProvider(users, "secret", _UserIds())
+    identity = await provider._identity("alice", users[0])
+    owner = owner_mod.Owner(identity=identity, org_id=None, roles=("analyst",))
+    state = _claims_state("simple")
+    with (
+        patch("provisa.auth.wiring.build_auth_provider", lambda *_a, **_k: provider),
+        patch("provisa.auth.held_assignments.is_bootstrap_claimant", _not_claimant),
+    ):
+        assert await owner_mod.holds(state, owner)
+        users[0]["roles"] = []  # revoked at the provider
+        assert not await owner_mod.holds(state, owner)
+        provider._users.pop("alice")  # the account is gone: it holds no role
+        with pytest.raises(OwnerRoleLost):
+            await owner_mod.ensure_held(state, owner)
+
+
+@pytest.mark.asyncio
+async def test_firebase_rereads_the_users_custom_claims():
+    from provisa.auth.providers import firebase as fb
+
+    provider = fb.FirebaseAuthProvider.__new__(fb.FirebaseAuthProvider)
+    provider._entitlements_claim = None
+    identity = AuthIdentity(
+        user_id="uid1", email=None, display_name=None, roles=["analyst"], raw_claims={}
+    )
+    record = SimpleNamespace(
+        uid="uid1",
+        email="a@x",
+        email_verified=True,
+        display_name="A",
+        disabled=False,
+        custom_claims={"roles": ["analyst"]},
+    )
+    auth = MagicMock()
+    auth.get_user = lambda uid: record
+    auth.UserNotFoundError = type("UserNotFoundError", (Exception,), {})
+    with patch.object(fb, "firebase_auth", auth):
+        assert (await provider.reread(identity)).roles == ["analyst"]
+        record.custom_claims = None  # every custom claim removed
+        assert (await provider.reread(identity)).roles == []
+        record.disabled = True
+        with pytest.raises(ValueError):
+            await provider.reread(identity)
+
+
+@pytest.mark.asyncio
+async def test_in_claims_mode_the_sink_ends_at_the_tokens_expiry(sink_db, monkeypatch):
+    monkeypatch.setenv("KAFKA_BOOTSTRAP_SERVERS", "broker1:9092")
+    monkeypatch.setattr(running, "HEARTBEAT", timedelta(seconds=0.05))
+    state, ctx = _state(sink_db)
+    state.auth_config = {"provider": "oauth", "assignments_source": "claims"}
+    state.admin_db = None
+    state.multitenancy = False
+    request = _request({"x-provisa-sink": "kafka://broker1:9092/orders-topic"})
+    clock = [1000.0]
+    request.state.identity = AuthIdentity(
+        user_id="alice",
+        email=None,
+        display_name="alice",
+        roles=["analyst"],
+        raw_claims={"exp": 1010},
+        credential="idp",
+    )
+    provider = MagicMock()
+    provider.rereads = False
+    feed = _Changes()
+    spawned: list = []
+    producer = MagicMock()
+
+    async def _publish(*_a, **_k):
+        return None
+
+    producer.publish_rows = _publish
+
+    with (
+        patch(
+            "provisa.core.connection_loop.spawn_long_lived",
+            lambda c, *, name=None: spawned.append(c),
+        ),
+        patch("provisa.subscriptions.registry.get_provider", lambda *_a, **_k: feed),
+        patch("provisa.kafka.sink.KafkaProducer", lambda **_k: producer),
+        patch("provisa.api.data.endpoint._handle_query", _query_result),
+        patch("provisa.compiler.parser.parse_query", MagicMock()),
+        patch("provisa.auth.wiring.build_auth_provider", lambda *_a, **_k: provider),
+        patch("provisa.auth.held_assignments.is_bootstrap_claimant", _not_claimant),
+        patch.object(owner_mod, "_now", lambda: clock[0]),
+    ):
+        response = await _subscribe(state, ctx, request)
+        assert response.status_code == 202
+        sink = asyncio.ensure_future(spawned[0])
+        await asyncio.sleep(0.2)
+        assert not sink.done()  # the token is good: it runs
+        clock[0] = 1010.0  # the sign-in's token expires
+        async with asyncio.timeout(5):
+            await sink
+    assert feed.closed
+    producer.close.assert_called_once()
+    assert await running.held_by(sink_db, "alice") == 0
+
+
 # --- the refusals and the setting are told in every locale -----------------------------------------
 
 
@@ -405,6 +657,8 @@ def test_the_refusals_and_the_setting_are_catalogued_in_every_locale():
         assert "{{roles}}" in subscribe["owner_role_lost"], lang
         assert "{{cap}}" in subscribe["sink_cap_reached"], lang
         assert "{{setting}}" in subscribe["sink_cap_reached"], lang
+        assert "{{role}}" in subscribe["sink_needs_write"], lang
+        assert subscribe["owner_sign_in_expired"], lang
         settings = json.loads((lang / "settings.json").read_text(encoding="utf-8"))
         field = settings["settings"]["subscriptions"]["max_sinks_per_principal"]
         assert field["label"] and field["help"], lang

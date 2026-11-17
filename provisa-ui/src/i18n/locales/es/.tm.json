@@ -10854,5 +10854,7 @@
   "es/serverErrors.json::serverErrors.subscribe.owner_role_lost": "The subscription ended: its owner no longer holds the role it was started under ({{roles}})",
   "es/serverErrors.json::serverErrors.subscribe.sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})",
   "es/settings.json::settings.subscriptions.max_sinks_per_principal.label": "Running Kafka sinks per person",
-  "es/settings.json::settings.subscriptions.max_sinks_per_principal.help": "How many Kafka sinks one person may have running at once. A request to start another is refused until one of theirs stops."
+  "es/settings.json::settings.subscriptions.max_sinks_per_principal.help": "How many Kafka sinks one person may have running at once. A request to start another is refused until one of theirs stops.",
+  "es/serverErrors.json::serverErrors.subscribe.sink_needs_write": "Role '{{role}}' lacks the write right a Kafka sink needs",
+  "es/serverErrors.json::serverErrors.subscribe.owner_sign_in_expired": "The subscription ended: the sign-in it was started under has expired; sign in again and start it again"
 }

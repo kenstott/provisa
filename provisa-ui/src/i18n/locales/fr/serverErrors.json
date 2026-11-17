@@ -616,7 +616,9 @@
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_role": "Rôle « {{role}} » inconnu",
       "owner_role_lost": "L'abonnement a pris fin : son propriétaire n'a plus le rôle sous lequel il a été démarré ({{roles}})",
-      "sink_cap_reached": "Vous avez déjà {{cap}} sinks Kafka en cours d'exécution, le maximum autorisé par l'opérateur ({{setting}})"
+      "sink_cap_reached": "Vous avez déjà {{cap}} sinks Kafka en cours d'exécution, le maximum autorisé par l'opérateur ({{setting}})",
+      "sink_needs_write": "Le rôle '{{role}}' n'a pas le droit d'écriture qu'exige un sink Kafka",
+      "owner_sign_in_expired": "L'abonnement a pris fin : la connexion sous laquelle il a été démarré a expiré ; reconnectez-vous et redémarrez-le"
     },
     "users": {
       "assignment_not_found": "Affectation introuvable",

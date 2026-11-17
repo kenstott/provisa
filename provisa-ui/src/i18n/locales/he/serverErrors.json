@@ -616,7 +616,9 @@
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
       "unknown_role": "תפקיד לא מוכר '{{role}}'",
       "owner_role_lost": "המנוי הסתיים: לבעליו אין עוד את התפקיד שתחתיו הוא הופעל ({{roles}})",
-      "sink_cap_reached": "כבר יש לך {{cap}} יעדי Kafka פעילים, המספר המרבי שהמפעיל מתיר ({{setting}})"
+      "sink_cap_reached": "כבר יש לך {{cap}} יעדי Kafka פעילים, המספר המרבי שהמפעיל מתיר ({{setting}})",
+      "sink_needs_write": "לתפקיד '{{role}}' אין את הרשאת הכתיבה שיעד Kafka דורש",
+      "owner_sign_in_expired": "המנוי הסתיים: ההתחברות שתחתיה הוא הופעל פגה; התחבר שוב והפעל אותו מחדש"
     },
     "users": {
       "assignment_not_found": "ההקצאה לא נמצאה",

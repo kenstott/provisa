@@ -437,7 +437,8 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
     """Start a background task that publishes subscription results to Kafka.
 
     Returns ``202 Accepted`` immediately. REQ-812: the sink runs until its owner no longer holds the
-    role it was started under (or shutdown), and is refused when its owner already holds the
+    role it was started under (or shutdown), and is refused when that role lacks the write right
+    (REQ-868: a sink writes into a topic of the operator's cluster) or its owner already holds the
     operator's cap of running sinks.
     """
     try:
@@ -448,7 +449,17 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
     from provisa.api.errors import ApiError
     from provisa.core import settings_registry
     from provisa.core.platform_state import sinks as running
+    from provisa.security.rights import Capability, has_capability
     from provisa.subscriptions.owner import bounded_by_owner, ensure_held
+
+    # REQ-812, REQ-868: refused by name before a place is taken or anything is produced.
+    if not has_capability(role, Capability.WRITE):
+        raise ApiError(
+            403,
+            "subscribe.sink_needs_write",
+            f"Role {role_id!r} lacks the write right a Kafka sink needs",
+            role=role_id,
+        )
 
     sink_db = state.platform_state_db
     try:
@@ -493,11 +504,11 @@ async def _launch_kafka_sink(  # REQ-812, REQ-286
         return result  # type: ignore[return-value]
 
     async def _sink_loop() -> None:
-        from provisa.subscriptions.owner import OwnerRoleLost
+        from provisa.subscriptions.owner import OwnerRightEnded
 
         try:
             await _publish()
-        except OwnerRoleLost as ended:
+        except OwnerRightEnded as ended:
             log.info("Kafka sink stopped: %s → %s: %s", table_name, topic, ended)
         finally:
             await running.release(sink_db, sink_id)
