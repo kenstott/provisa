@@ -622,7 +622,7 @@
       "schema_not_avro": "注册表 {{registry}} 中的模式 {{schema_id}} 是 {{kind}}，不是 Avro",
       "schema_registry_error": "模式注册表 {{registry}} 返回 HTTP {{http_status}}：{{error}}",
       "schema_registry_refused_credentials": "模式注册表 {{registry}} 拒绝了数据源的凭据（HTTP {{http_status}}，认证“{{method}}”）",
-      "schema_registry_unreachable": "无法连接模式注册表 {{registry}}：{{error}}",
+      "schema_registry_unreachable": "无法连接模式注册表：{{error}}",
       "sse_limit_reached": "已达到并发 SSE 订阅上限",
       "table_not_found": "未找到表 '{{table}}'",
       "unknown_role": "未知角色 '{{role}}'",

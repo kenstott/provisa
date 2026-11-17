@@ -622,7 +622,7 @@
       "schema_not_avro": "註冊表 {{registry}} 中的綱要 {{schema_id}} 是 {{kind}}，不是 Avro",
       "schema_registry_error": "綱要註冊表 {{registry}} 回應 HTTP {{http_status}}：{{error}}",
       "schema_registry_refused_credentials": "綱要註冊表 {{registry}} 拒絕了資料來源的憑證（HTTP {{http_status}}，驗證「{{method}}」）",
-      "schema_registry_unreachable": "無法連線綱要註冊表 {{registry}}：{{error}}",
+      "schema_registry_unreachable": "無法連線綱要註冊表：{{error}}",
       "sse_limit_reached": "已達同時 SSE 訂閱上限",
       "table_not_found": "找不到資料表「{{table}}」",
       "unknown_role": "未知角色「{{role}}」",

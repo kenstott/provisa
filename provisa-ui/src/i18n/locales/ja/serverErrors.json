@@ -622,7 +622,7 @@
       "schema_not_avro": "レジストリ {{registry}} のスキーマ {{schema_id}} は {{kind}} で、Avro ではありません",
       "schema_registry_error": "スキーマレジストリ {{registry}} が HTTP {{http_status}} を返しました: {{error}}",
       "schema_registry_refused_credentials": "スキーマレジストリ {{registry}} がソースの資格情報を拒否しました（HTTP {{http_status}}、認証 '{{method}}'）",
-      "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
+      "schema_registry_unreachable": "スキーマレジストリに接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
       "unknown_role": "不明なロール「{{role}}」です",

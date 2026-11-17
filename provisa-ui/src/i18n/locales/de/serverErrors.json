@@ -622,7 +622,7 @@
       "schema_not_avro": "Schema {{schema_id}} in der Registry {{registry}} ist {{kind}}, nicht Avro",
       "schema_registry_error": "Die Schema-Registry {{registry}} antwortete mit HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Die Schema-Registry {{registry}} hat die Zugangsdaten der Quelle abgelehnt (HTTP {{http_status}}, Authentifizierung '{{method}}')",
-      "schema_registry_unreachable": "Die Schema-Registry {{registry}} ist nicht erreichbar: {{error}}",
+      "schema_registry_unreachable": "Die Schema-Registry ist nicht erreichbar: {{error}}",
       "sse_limit_reached": "Maximale Anzahl gleichzeitiger SSE-Abonnements erreicht",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
       "unknown_role": "Unbekannte Rolle '{{role}}'",
