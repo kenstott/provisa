@@ -1249,6 +1249,7 @@ async def remove_member(org_id: str, user_id: str, request: Request):  # REQ-130
         raise ApiError(404, "orgs.membership_not_found", "Membership not found")
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="remove_member",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id,
@@ -1286,6 +1287,7 @@ async def leave_org(org_id: str, request: Request):  # REQ-1306
     await suppress_auto_join(_admin_pool(), user_id, org_id)
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="leave_org",
         actor_id=user_id,
         subject_id=user_id,
@@ -1359,6 +1361,7 @@ async def lift_suspension(org_id: str, request: Request):  # REQ-2076
         raise ApiError(404, "orgs.no_suspension", "No such suspension in this org")
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action="security.suspension_lifted",
         actor_id=_caller_user_id(request) or "anonymous",
         subject_id=user_id or token_hash,
@@ -1397,6 +1400,7 @@ async def grant_org_admin_role(org_id: str, user_id: str, request: Request):  # 
     await grant_org_admin(_admin_pool(), model_db, user_id, org_id, joined_via=JOINED_VIA_ADMIN)
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="grant_org_admin",
         actor_id=actor or "anonymous",
         subject_id=user_id,
@@ -1455,6 +1459,7 @@ async def revoke_org_admin_role(org_id: str, user_id: str, request: Request):  #
         )
     await record_admin_action(
         model_db,
+        org_id=org_id,
         action="revoke_org_admin",
         actor_id=actor or "anonymous",
         subject_id=user_id,

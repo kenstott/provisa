@@ -770,7 +770,9 @@ Run relationship discovery while you wait. The run is stored like one started fr
 }
 ```
 
-`scope` is one of `"table"`, `"domain"` or `"cross-domain"`. A `"table"` scope compares the tables of that table's domain and needs `table_id` (integer). A `"domain"` scope needs `domain_id`. A `"cross-domain"` scope compares the tables of every domain.
+`scope` is one of `"table"`, `"domain"` or `"cross-domain"`. A `"table"` scope compares the tables of that table's domain and needs `table_id` (integer). A `"domain"` scope needs `domain_id`. A `"cross-domain"` scope compares the tables of every domain. To compare chosen domains or tables, start a run with `POST /admin/discover/runs`.
+
+A field not named here is refused with `422`.
 
 `kinds` names at least one of `"foreign_keys"` and `"semantics"`. The `semantics` kind asks the model your organization assigns to relationship inference. When that model's vendor has no key to use, the request is refused with `409` and code `discovery.semantics_unavailable`.
 

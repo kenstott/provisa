@@ -179,6 +179,23 @@ def test_a_run_names_at_least_one_kind_and_a_known_scope():
         discovery.DiscoverRequest.model_validate({"scope": "galaxy", "kinds": ["foreign_keys"]})
 
 
+@pytest.mark.parametrize(
+    "extra",
+    [{"domain_ids": ["sales"]}, {"source_domains": ["sales"]}, {"domian_id": "sales"}],
+)
+def test_a_field_the_route_does_not_read_is_refused(extra):
+    """The route never ignores an input: a field it does not read, such as a list of domains
+    for the cross-domain scope (that scope compares every domain), is refused, not dropped."""
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+        discovery.DiscoverRequest.model_validate(
+            {"scope": "cross-domain", "kinds": ["foreign_keys"], **extra}
+        )
+
+
+def test_the_cross_domain_scope_names_no_domains():
+    assert "domain_ids" not in discovery.DiscoverRequest.model_fields
+
+
 # --- the assigned model, whatever its vendor ----------------------------------------------------
 
 
