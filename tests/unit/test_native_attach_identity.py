@@ -62,6 +62,7 @@ def _src(source_id: str):
         federation_hints={},
         mapping={},
         max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+        download_from=None,  # REQ-1997: a source always carries it
         cache_ttl=None,
     )
 

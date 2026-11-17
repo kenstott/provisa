@@ -515,6 +515,9 @@ class NativeEngineBackend(EngineBackend):
                     # is divided from (DuckDBPostgresConnector.details reads it directly). A
                     # sources row always carries the column; NULL is no cap.
                     max_live_concurrency=_rs_dict["max_live_concurrency"],
+                    # REQ-1997: where the source's file is fetched from, which the sandbox check at
+                    # attach (sandbox_egress.pinned_source) reads. A sources row always carries it.
+                    download_from=_rs_dict["download_from"],
                 )
 
         def _rs(v: Any) -> Any:
@@ -644,6 +647,8 @@ class NativeEngineBackend(EngineBackend):
                 # REQ-1909: read directly by DuckDBPostgresConnector.details; every source this
                 # walk holds carries it (a config Source, or the runtime row's shim above).
                 max_live_concurrency=src.max_live_concurrency,
+                # REQ-1997: read by the sandbox check every attach passes (engine.resolve).
+                download_from=src.download_from,
                 schema_name=schema_name,
                 table_name=table_name,
                 column_fields=fields,
