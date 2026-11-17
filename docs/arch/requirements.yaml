@@ -57498,7 +57498,17 @@
     2026-11-13, A DROP''S PATH STAYS IN THE SELECTED DOMAINS:) Maintainer 2026-11-12 (also REQ-2135): the
     paths a pill dropped on a graph frame writes, and the paths between two nodes dragged together, pass
     only through labels of the selected domains and never through a system domain''s nodes unless an end
-    of the path is of that domain; with no such path the drop says so by name and changes nothing.'
+    of the path is of that domain; with no such path the drop says so by name and changes nothing. (Amended
+    2026-11-16, TWO RELATIONSHIPS SHARING A MIDDLE TABLE CAN BE JOINED THROUGH IT FROM THE LIST:) Maintainer
+    2026-11-16. On the Relationships list, two ticked relationships that share a middle table offer an action
+    to join them through it, creating one junction-backed relationship (via_table) between their other ends.
+    It qualifies when the two share a common source that refers to both ends (a junction: J.a -> A, J.b
+    -> B; J''s other columns become the edge''s attributes) or a common target both refer to (a shared dimension:
+    A.x -> D, B.y -> D). The action opens one short form with the name (from the two, disambiguated as generated
+    names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
+    stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
+    proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
+    its edge the same way.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
