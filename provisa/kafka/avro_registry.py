@@ -33,6 +33,8 @@ from dataclasses import dataclass
 from pathlib import PurePath
 from typing import Any
 
+from provisa.security import sandbox_egress  # REQ-2006
+
 log = logging.getLogger(__name__)
 
 # Requirements: REQ-1951
@@ -216,14 +218,14 @@ class SchemaRegistry:
         import httpx
 
         if self._client is None:
-            from provisa.security import sandbox_egress
-
             # REQ-2006: a held org's registry is checked at each request.
             self._client = httpx.AsyncClient(
                 **self.client_options(), event_hooks=sandbox_egress.http_event_hooks()
             )
         try:
             return await self._client.get(f"{self._url}{path}", timeout=self._timeout())
+        except sandbox_egress.PrivateDestinationRefused:
+            raise  # REQ-2006: refused by name, not reported as a registry that cannot be reached
         except (httpx.HTTPError, OSError) as exc:
             raise SchemaRegistryRefusal(
                 503,
