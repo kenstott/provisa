@@ -2,6 +2,7 @@
   "proposalsTable": {
     "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de {{threshold}}% ou mais começam marcadas. Uma linha sem nenhuma caixa marcada fica sem decisão.",
     "colScore": "Pontuação",
+    "colJev": "Jev",
     "colKind": "Tipo",
     "colReasoning": "Raciocínio",
     "colNote": "Observação",
@@ -25,7 +26,6 @@
       "unknown_column": "Cita uma tabela ou coluna que a solicitação não comparou",
       "not_comparable": "As duas colunas têm classes diferentes, então não são comparadas",
       "below_threshold": "A confiança do modelo está abaixo do limiar de {{threshold}}%.",
-      "scored_below_threshold": "O Jev a pontuou com {{scored}}%, abaixo do limiar de {{threshold}}%. O modelo deu {{confidence}}%.",
       "same_column": "De uma coluna para ela mesma",
       "primary_key_to_primary_key": "Chave primária para chave primária",
       "both_repeating": "Os valores se repetem nos dois lados, então nenhum é o lado um",

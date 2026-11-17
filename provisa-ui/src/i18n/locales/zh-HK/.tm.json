@@ -10459,7 +10459,6 @@
   "zh-HK/discoverResult.json::discoverResult.semanticsFound_other": "Semantics: {{count}} suggestions.",
   "zh-HK/discoverResult.json::discoverResult.semanticsNoneProposed": "Semantics: none. The model proposed no relationships.",
   "zh-HK/discoverResult.json::discoverResult.semanticsUnreadable": "Semantics: none. The model's answer could not be read.",
-  "zh-HK/serverErrors.json::serverErrors.discovery.model_failed": "The model {{model}} failed: {{error}}",
   "zh-HK/serverErrors.json::serverErrors.discovery.semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
   "zh-HK/navBar.json::navBar.itemSyncing": "Syncing",
   "zh-HK/syncingTab.json::syncingTab.addEntry": "Add",
@@ -10727,7 +10726,6 @@
   "zh-HK/discoverDialog.json::discoverDialog.restore.tablesGone_other": "{{count}} tables are no longer registered there.",
   "zh-HK/discoverDialog.json::discoverDialog.restore.vendorNoKey": "{{vendor}} has no key, so the model is the assigned one.",
   "zh-HK/discoverResult.json::discoverResult.removed.not_comparable": "between columns of different classes",
-  "zh-HK/discoverResult.json::discoverResult.removed.scored_below_threshold": "scored below {{threshold}}% by Jev",
   "zh-HK/discoverResult.json::discoverResult.removed.weaker": "repeating a pair of columns a stronger proposal was kept for",
   "zh-HK/discoverResult.json::discoverResult.scopeKinds": "Looked for: {{kinds}}.",
   "zh-HK/discoverResult.json::discoverResult.scopeSource": "Source: {{count}} table of {{domains}}.",
@@ -10737,7 +10735,6 @@
   "zh-HK/discoverResult.json::discoverResult.scopeTarget_other": "Target: {{count}} tables of {{domains}}.",
   "zh-HK/discoverResult.json::discoverResult.scoringFailed": "Jev could not score the proposals of {{count}} request, so they kept the model's confidence.",
   "zh-HK/discoverResult.json::discoverResult.scoringFailed_other": "Jev could not score the proposals of {{count}} requests, so they kept the model's confidence.",
-  "zh-HK/discoverResult.json::discoverResult.semanticsScoredBelowThreshold": "Semantics: none. The model gave every proposal {{threshold}}% or more, and Jev scored each below that.",
   "zh-HK/proposalsTable.json::proposalsTable.applied": "{{accepted}} accepted, {{notAgain}} not to be recommended again.",
   "zh-HK/proposalsTable.json::proposalsTable.apply": "Apply",
   "zh-HK/proposalsTable.json::proposalsTable.applyAccept": "Accept {{count}}",
@@ -10767,7 +10764,6 @@
   "zh-HK/proposalsTable.json::proposalsTable.reason.primary_key_to_primary_key": "Primary key to primary key",
   "zh-HK/proposalsTable.json::proposalsTable.reason.rejected": "Rejected before",
   "zh-HK/proposalsTable.json::proposalsTable.reason.same_column": "From a column to itself",
-  "zh-HK/proposalsTable.json::proposalsTable.reason.scored_below_threshold": "Jev scored it {{scored}}%, below the {{threshold}}% threshold. The model gave {{confidence}}%.",
   "zh-HK/proposalsTable.json::proposalsTable.reason.unknown_column": "Names a table or column the request did not compare",
   "zh-HK/proposalsTable.json::proposalsTable.reason.weaker": "A stronger proposal of the same two columns was kept",
   "zh-HK/serverErrors.json::serverErrors.discovery.decided_both_ways": "A proposal is accepted or not recommended again, not both.",
@@ -10794,5 +10790,10 @@
   "zh-HK/aiModelsTab.json::aiModelsTab.apiKeyNotSetOrgOnly": "No key set.",
   "zh-HK/aiModelsTab.json::aiModelsTab.jevIntroOrgOnly": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. With no key set, those features use the model's confidence alone.",
   "zh-HK/serverErrors.json::serverErrors.ai.key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
-  "zh-HK/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+  "zh-HK/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models.",
+  "zh-HK/discoverResult.json::discoverResult.jevBelow": "Jev scored {{count}} proposal under {{threshold}}%. It is shown beside the model's score, which decides.",
+  "zh-HK/discoverResult.json::discoverResult.jevBelow_other": "Jev scored {{count}} proposals under {{threshold}}%. Each is shown beside the model's score, which decides.",
+  "zh-HK/proposalsTable.json::proposalsTable.colJev": "Jev",
+  "zh-HK/serverErrors.json::serverErrors.discovery.run_failed": "Discovery run {{run_id}} failed: {{error}}",
+  "zh-HK/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered."
 }

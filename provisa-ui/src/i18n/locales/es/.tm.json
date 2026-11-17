@@ -10463,7 +10463,6 @@
   "es/discoverResult.json::discoverResult.semanticsFound_other": "Semantics: {{count}} suggestions.",
   "es/discoverResult.json::discoverResult.semanticsNoneProposed": "Semantics: none. The model proposed no relationships.",
   "es/discoverResult.json::discoverResult.semanticsUnreadable": "Semantics: none. The model's answer could not be read.",
-  "es/serverErrors.json::serverErrors.discovery.model_failed": "The model {{model}} failed: {{error}}",
   "es/serverErrors.json::serverErrors.discovery.semantics_unavailable": "Semantics cannot run: {{model}}, the model assigned to relationship inference, has no key. Set one under Admin, AI Models.",
   "es/navBar.json::navBar.itemSyncing": "Syncing",
   "es/syncingTab.json::syncingTab.addEntry": "Add",
@@ -10731,7 +10730,6 @@
   "es/discoverDialog.json::discoverDialog.restore.tablesGone_other": "{{count}} tables are no longer registered there.",
   "es/discoverDialog.json::discoverDialog.restore.vendorNoKey": "{{vendor}} has no key, so the model is the assigned one.",
   "es/discoverResult.json::discoverResult.removed.not_comparable": "between columns of different classes",
-  "es/discoverResult.json::discoverResult.removed.scored_below_threshold": "scored below {{threshold}}% by Jev",
   "es/discoverResult.json::discoverResult.removed.weaker": "repeating a pair of columns a stronger proposal was kept for",
   "es/discoverResult.json::discoverResult.scopeKinds": "Looked for: {{kinds}}.",
   "es/discoverResult.json::discoverResult.scopeSource": "Source: {{count}} table of {{domains}}.",
@@ -10741,7 +10739,6 @@
   "es/discoverResult.json::discoverResult.scopeTarget_other": "Target: {{count}} tables of {{domains}}.",
   "es/discoverResult.json::discoverResult.scoringFailed": "Jev could not score the proposals of {{count}} request, so they kept the model's confidence.",
   "es/discoverResult.json::discoverResult.scoringFailed_other": "Jev could not score the proposals of {{count}} requests, so they kept the model's confidence.",
-  "es/discoverResult.json::discoverResult.semanticsScoredBelowThreshold": "Semantics: none. The model gave every proposal {{threshold}}% or more, and Jev scored each below that.",
   "es/proposalsTable.json::proposalsTable.applied": "{{accepted}} accepted, {{notAgain}} not to be recommended again.",
   "es/proposalsTable.json::proposalsTable.apply": "Apply",
   "es/proposalsTable.json::proposalsTable.applyAccept": "Accept {{count}}",
@@ -10771,7 +10768,6 @@
   "es/proposalsTable.json::proposalsTable.reason.primary_key_to_primary_key": "Primary key to primary key",
   "es/proposalsTable.json::proposalsTable.reason.rejected": "Rejected before",
   "es/proposalsTable.json::proposalsTable.reason.same_column": "From a column to itself",
-  "es/proposalsTable.json::proposalsTable.reason.scored_below_threshold": "Jev scored it {{scored}}%, below the {{threshold}}% threshold. The model gave {{confidence}}%.",
   "es/proposalsTable.json::proposalsTable.reason.unknown_column": "Names a table or column the request did not compare",
   "es/proposalsTable.json::proposalsTable.reason.weaker": "A stronger proposal of the same two columns was kept",
   "es/serverErrors.json::serverErrors.discovery.decided_both_ways": "A proposal is accepted or not recommended again, not both.",
@@ -10798,5 +10794,10 @@
   "es/aiModelsTab.json::aiModelsTab.apiKeyNotSetOrgOnly": "No key set.",
   "es/aiModelsTab.json::aiModelsTab.jevIntroOrgOnly": "Optional. When set, Provisa scores ontology relationship-type proposals and discovered foreign-key relationships with Jev's calibrated-confidence decision API as well as the generating model's self-reported confidence. With no key set, those features use the model's confidence alone.",
   "es/serverErrors.json::serverErrors.ai.key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
-  "es/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models."
+  "es/serverErrors.json::serverErrors.ai.vendor_uses_server_credentials": "{{vendor}} is reached with the server's own credentials, which an organization on this server does not use. Choose a vendor that takes a key, or an AI endpoint, under Admin, AI Models.",
+  "es/discoverResult.json::discoverResult.jevBelow": "Jev scored {{count}} proposal under {{threshold}}%. It is shown beside the model's score, which decides.",
+  "es/discoverResult.json::discoverResult.jevBelow_other": "Jev scored {{count}} proposals under {{threshold}}%. Each is shown beside the model's score, which decides.",
+  "es/proposalsTable.json::proposalsTable.colJev": "Jev",
+  "es/serverErrors.json::serverErrors.discovery.run_failed": "Discovery run {{run_id}} failed: {{error}}",
+  "es/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered."
 }
