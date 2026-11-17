@@ -170,7 +170,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch 探索需要「index」提示。",
       "elasticsearch_mapping_failed": "無法讀取索引「{{index}}」的 Elasticsearch 對應：{{error}}",
       "endpoint_already_registered": "端點已註冊：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} 沒有金鑰：請設定環境變數 {{env}}。",
       "model_has_no_room": "模型 {{model}} 無法容納一個請求：{{reason}}",
       "model_incomplete": "所選模型需同時指明其供應商和模型。",
       "no_adapter_for_source_type": "數據來源類型「{{source_type}}」沒有已註冊的配接器",

@@ -170,7 +170,6 @@
       "elasticsearch_index_hint_required": "El descubrimiento de Elasticsearch requiere una indicación 'index'.",
       "elasticsearch_mapping_failed": "Error al leer el mapping de Elasticsearch para el índice '{{index}}': {{error}}",
       "endpoint_already_registered": "Endpoint ya registrado: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} no tiene clave: defina la variable de entorno {{env}}.",
       "model_has_no_room": "El modelo {{model}} no puede contener una solicitud: {{reason}}",
       "model_incomplete": "Un modelo elegido indica tanto su proveedor como su modelo.",
       "no_adapter_for_source_type": "No hay adaptador registrado para el tipo de origen '{{source_type}}'",

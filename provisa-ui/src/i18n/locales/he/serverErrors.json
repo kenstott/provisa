@@ -170,7 +170,6 @@
       "elasticsearch_index_hint_required": "גילוי Elasticsearch דורש רמז 'index'.",
       "elasticsearch_mapping_failed": "קריאת ה-mapping של Elasticsearch עבור האינדקס '{{index}}' נכשלה: {{error}}",
       "endpoint_already_registered": "נקודת הקצה כבר רשומה: {{error}}",
-      "endpoint_has_no_key": "ל-{{vendor}} אין מפתח: הגדירו את משתנה הסביבה {{env}}.",
       "model_has_no_room": "המודל {{model}} אינו יכול להכיל בקשה: {{reason}}",
       "model_incomplete": "מודל שנבחר מציין גם את הספק שלו וגם את המודל שלו.",
       "no_adapter_for_source_type": "לא רשום מתאם עבור סוג המקור '{{source_type}}'",

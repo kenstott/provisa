@@ -170,7 +170,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch の検出には「index」ヒントが必要です。",
       "elasticsearch_mapping_failed": "インデックス「{{index}}」の Elasticsearch マッピングの読み取りに失敗しました：{{error}}",
       "endpoint_already_registered": "エンドポイントは既に登録されています：{{error}}",
-      "endpoint_has_no_key": "{{vendor}} にキーがありません: 環境変数 {{env}} を設定してください。",
       "model_has_no_room": "モデル {{model}} はリクエストを収められません: {{reason}}",
       "model_incomplete": "選択したモデルには、ベンダーとモデルの両方を指定します。",
       "no_adapter_for_source_type": "ソースタイプ「{{source_type}}」に登録されたアダプターがありません",

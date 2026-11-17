@@ -170,7 +170,6 @@
       "elasticsearch_index_hint_required": "Обнаружение Elasticsearch требует подсказки 'index'.",
       "elasticsearch_mapping_failed": "Не удалось прочитать маппинг Elasticsearch для индекса '{{index}}': {{error}}",
       "endpoint_already_registered": "Конечная точка уже зарегистрирована: {{error}}",
-      "endpoint_has_no_key": "У {{vendor}} нет ключа: задайте переменную окружения {{env}}.",
       "model_has_no_room": "Модель {{model}} не может вместить запрос: {{reason}}",
       "model_incomplete": "Для выбранной модели указываются и поставщик, и модель.",
       "no_adapter_for_source_type": "Для типа источника '{{source_type}}' не зарегистрирован адаптер",

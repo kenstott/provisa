@@ -170,7 +170,6 @@
       "elasticsearch_index_hint_required": "Elasticsearch-detectie vereist een 'index'-hint.",
       "elasticsearch_mapping_failed": "Kan Elasticsearch-mapping voor index '{{index}}' niet lezen: {{error}}",
       "endpoint_already_registered": "Endpoint al geregistreerd: {{error}}",
-      "endpoint_has_no_key": "{{vendor}} heeft geen sleutel: stel de omgevingsvariabele {{env}} in.",
       "model_has_no_room": "Het model {{model}} kan geen verzoek bevatten: {{reason}}",
       "model_incomplete": "Een gekozen model noemt zowel de leverancier als het model.",
       "no_adapter_for_source_type": "Geen adapter geregistreerd voor brontype '{{source_type}}'",
