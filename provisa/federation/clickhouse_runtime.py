@@ -154,6 +154,11 @@ class _CHBackend(Protocol):
 #: The longest statement ClickHouse parses: a form may write a long answer into its text (REQ-2167:
 #: table_to_xml's document of pg_class passed the default 256 KiB, run 43410717058).
 MAX_QUERY_SIZE = 64 * 1024 * 1024
+#: The most elements of a statement's tree ClickHouse reads, before and after its own expansion
+#: (defaults 50000 and 500000): a range's form, its text read by characters (REQ-2236's ClickHouse
+#: rows of text), nests some 170 substrings, each written several times by the forms around it.
+MAX_AST_ELEMENTS = 1_000_000
+MAX_EXPANDED_AST_ELEMENTS = 5_000_000
 
 
 def _settings(qid: str, sql: str) -> dict[str, str]:
@@ -161,7 +166,12 @@ def _settings(qid: str, sql: str) -> dict[str, str]:
     keeps it (REQ-2171). It is what timezone() and an instant read without a zone go by, and no
     more: what a statement reads of a stored column has the zone written into it
     (transpiler.zoned_instants). ``max_query_size`` is read before the statement is parsed."""
-    settings = {"query_id": qid, "max_query_size": str(MAX_QUERY_SIZE)}
+    settings = {
+        "query_id": qid,
+        "max_query_size": str(MAX_QUERY_SIZE),
+        "max_ast_elements": str(MAX_AST_ELEMENTS),
+        "max_expanded_ast_elements": str(MAX_EXPANDED_AST_ELEMENTS),
+    }
     zone = told_as(sql, clickhouse_spelling, "ClickHouse")
     return settings if zone is None else {**settings, "session_timezone": zone}
 
@@ -425,6 +435,8 @@ class _EmbeddedBackend:
         self._session = session.Session(path) if path else session.Session()
         # Read before a statement is parsed, so a setting of the session, not of the statement.
         self._session.query(f"SET max_query_size = {MAX_QUERY_SIZE}")
+        self._session.query(f"SET max_ast_elements = {MAX_AST_ELEMENTS}")
+        self._session.query(f"SET max_expanded_ast_elements = {MAX_EXPANDED_AST_ELEMENTS}")
 
     # chdb binds {pN:Type} values as the server's typed query parameters (Session.query params).
     # It passes each value's text to the server as given, and the server reads parameter text in

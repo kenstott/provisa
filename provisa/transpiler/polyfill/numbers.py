@@ -61,12 +61,18 @@ def ch_only(form: str | Rewrite) -> dict[str, str | Rewrite]:
     return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, "clickhouse": form}
 
 
-def ch_once(form: str) -> str:
+def ch_once(form: str, only: frozenset[str] | None = None) -> str:
     """``form`` with each of its holes read once: bound to a lambda's parameter of the same name
     (``$a`` as ``_a``). A form that names its argument several times, written where another form
-    names it several times (abs in a range's form), would grow as the product of the two."""
-    holes = list(dict.fromkeys(re.findall(r"\$([A-Za-z]\w*)", form)))
-    body = re.sub(r"\$([A-Za-z]\w*)", r"_\1", form)
+    names it several times (abs in a range's form), would grow as the product of the two. ``only``:
+    the holes to bind, the rest left as they are (a leaf named twice costs nothing); none to bind is
+    the form itself."""
+    named = list(dict.fromkeys(re.findall(r"\$([A-Za-z]\w*)", form)))
+    holes = named if only is None else [hole for hole in named if hole in only]
+    if not holes:
+        return form
+    bound = "|".join(holes)
+    body = re.sub(rf"\$({bound})\b", r"_\1", form)
     parameters = ", ".join(f"_{hole}" for hole in holes)
     arrays = ", ".join(f"[${hole}]" for hole in holes)
     return f"arrayElement(arrayMap(({parameters}) -> {body}, {arrays}), 1)"

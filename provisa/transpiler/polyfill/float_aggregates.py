@@ -194,7 +194,7 @@ def _over_or_filtered(node: exp.Expr) -> bool:
 
 
 SUM = Feature(
-    "sum of numbers",
+    "sum",
     FAMILY,
     "The sum of a group's bigints, exact; of its reals or doubles, the overflow raised.",
     read=Side(rules=(Rule(None, {"clickhouse": Rewrite(_sum, mentions=r"\bsum\s*\(")}),)),

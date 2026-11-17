@@ -41,7 +41,7 @@ from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
 from provisa.transpiler.polyfill.numbers import ch_checked as _checked
-from provisa.transpiler.polyfill.numbers import ch_fail
+from provisa.transpiler.polyfill.numbers import ch_fail, ch_once
 from provisa.transpiler.polyfill.numbers import ch_only as _ch
 
 FAMILY = "text functions"
@@ -312,6 +312,261 @@ NAMECONCATOID = Feature(
     ),
 )
 
+# --- text by characters: ClickHouse's String functions read bytes, its UTF8 kin characters --------
+
+_NULL_OF = "$t IS NULL OR $n IS NULL"
+
+#: left and right of a count of characters (varlena.c's text_left and text_right): a negative count
+#: is all but that many from the other end. right of the least integer is the whole text: its
+#: negation overflows, as PostgreSQL's does, to itself.
+LEFT_RIGHT: tuple[Feature, ...] = (
+    Feature(
+        "left",
+        FAMILY,
+        "The first characters of a text; a negative count all but the last.",
+        read=Side(
+            rules=(
+                Rule(
+                    "left($t::text, $n::integer)",
+                    _ch(ch_once(f"if({_NULL_OF}, NULL, leftUTF8($t, $n))")),
+                ),
+            )
+        ),
+    ),
+    Feature(
+        "right",
+        FAMILY,
+        "The last characters of a text; a negative count all but the first.",
+        read=Side(
+            rules=(
+                Rule(
+                    "right($t::text, $n::integer)",
+                    _ch(
+                        ch_once(
+                            f"if({_NULL_OF}, NULL, if($n = -2147483648, $t, rightUTF8($t, $n)))"
+                        )
+                    ),
+                ),
+            )
+        ),
+    ),
+)
+
+REVERSE = Feature(
+    "reverse",
+    FAMILY,
+    "A text's characters in reverse order.",
+    read=Side(rules=(Rule("reverse($t::text)", _ch("reverseUTF8($t)")),)),
+)
+
+#: substr and substring of a text by characters (text_substring): from max($s, 1) to $s + $l, none
+#: before 1; a negative length 22011. The sum is an Int64's, which holds two integers'. A NULL
+#: start or length passes through each if to ClickHouse's substringUTF8, which answers NULL of it.
+_FROM = "if(toInt64($s) < 1, 1, toInt64($s))"
+_COUNT = f"toInt64($s) + toInt64($l) - {_FROM}"
+_SUBSTR = f"substringUTF8($t, {_FROM})"
+_LENGTH_CHECKED = _checked(
+    [ch_fail("22011", "negative substring length not allowed").format(condition="$l < 0")],
+    "substringUTF8($t, $s, $l)",
+)
+_SUBSTR_FOR = _checked(
+    [ch_fail("22011", "negative substring length not allowed").format(condition="$l < 0")],
+    f"substringUTF8($t, {_FROM}, if({_COUNT} < 0, 0, {_COUNT}))",
+)
+
+
+def _leaf(argument: exp.Expr) -> bool:
+    """A column, a NULL or a literal (cast or not): what a form may name several times."""
+    value = argument.unnest()
+    value = value.this.unnest() if isinstance(value, exp.Cast) else value
+    return isinstance(value, (exp.Column, exp.Null, exp.Literal))
+
+
+#: A start of a constant 1 or more and a length of a constant 0 or more: ClickHouse's own reading of
+#: them is PostgreSQL's, and a statement's own forms (a range's text) write many such calls.
+_SUBSTR_PLAIN = "substringUTF8($t, $s)"
+_SUBSTR_FOR_PLAIN = "substringUTF8($t, $s, $l)"
+
+
+def _substring_of(plain: str, checked: str, pattern: str):
+    def rewrite(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        from provisa.transpiler.function_macros import _constant
+
+        call = trino.called(node)
+        if call is None:
+            return None
+        args = call[1]
+        holes = "tsl"[: len(args)]
+        start = _constant(args[1]) if len(args) > 1 else None
+        length = _constant(args[2]) if len(args) > 2 else 0  # noqa: PLR2004 -- the length's place
+        from_one = start is not None and start >= 1
+        if from_one and (len(args) == 2 or (length is not None and length >= 0)):  # noqa: PLR2004
+            form = plain
+        elif from_one:
+            form = _LENGTH_CHECKED  # only the length is read twice: whether it is negative
+        else:
+            form = checked
+        # An argument read several times is bound once (a lambda's) only where it is no leaf: a
+        # range's form nests many such calls, and ClickHouse bounds a statement's tree.
+        bindings = dict(zip(holes, args, strict=True))
+        heavy = frozenset(
+            h for h, a in bindings.items() if not _leaf(a) and form.count(f"${h}") > 1
+        )
+        return graft(replacement(ch_once(form, heavy), dialect, pattern), bindings)
+
+    rewrite.__doc__ = "substr of a text by characters; a constant start and length as they are."
+    rewrite.__qualname__ = f"substr_of_text_{len(pattern)}"
+    return Rewrite(rewrite)
+
+
+_SUBSTR_PATTERN = "substr($t::text, $s::integer)"
+_SUBSTR_FOR_PATTERN = "substr($t::text, $s::integer, $l::integer)"
+
+SUBSTRINGS = Feature(
+    "substr",
+    FAMILY,
+    "A text's characters from a position, for a count.",
+    read=Side(
+        rules=(
+            Rule(_SUBSTR_PATTERN, _ch(_substring_of(_SUBSTR_PLAIN, _SUBSTR, _SUBSTR_PATTERN))),
+            Rule(
+                _SUBSTR_FOR_PATTERN,
+                _ch(_substring_of(_SUBSTR_FOR_PLAIN, _SUBSTR_FOR, _SUBSTR_FOR_PATTERN)),
+            ),
+        )
+    ),
+)
+
+#: lpad and rpad (varlena.c's lpad and rpad): a count of no characters is the empty text, a text as
+#: long as the count or longer its first characters, an empty fill no padding. Past 536870911
+#: characters PostgreSQL's 54000 (four bytes each overflow an integer), past 268435455 its XX000
+#: (more than its allocation's bound).
+_PAD_RAISES = [
+    ch_fail("54000", "requested length too large").format(condition="$n > 536870911"),
+    ch_fail("XX000", "invalid memory alloc request size").format(
+        condition="$n > 268435455 AND $n <= 536870911"
+    ),
+]
+
+
+def _padded(left: bool, fill: str) -> str:
+    """The text, filled to $n characters by repeats of ``fill`` (ClickHouse's leftPadUTF8 reads
+    only a constant fill), or its first $n characters."""
+    count = "greatest(toInt64($n), 0)"
+    need = f"greatest({count} - toInt64(lengthUTF8($t)), 0)"
+    repeats = f"repeat({fill}, toUInt64(intDiv({need}, greatest(lengthUTF8({fill}), 1)) + 1))"
+    filling = f"leftUTF8({repeats}, {need})"
+    filled = f"concat({filling}, $t)" if left else f"concat($t, {filling})"
+    return ch_once(
+        _checked(
+            _PAD_RAISES,
+            f"multiIf($t IS NULL OR $n IS NULL OR {fill} IS NULL, NULL, $n <= 0, '', "
+            f"{fill} = '' OR $n > 268435455 OR lengthUTF8($t) >= {count}, leftUTF8($t, {count}), "
+            f"{filled})",
+        )
+    )
+
+
+PADS: tuple[Feature, ...] = tuple(
+    Feature(
+        name,
+        FAMILY,
+        summary,
+        read=Side(
+            rules=(
+                Rule(f"{name}($t::text, $n::integer)", _ch(_padded(left, "' '"))),
+                Rule(f"{name}($t::text, $n::integer, $f::text)", _ch(_padded(left, "$f"))),
+            )
+        ),
+    )
+    for name, left, summary in (
+        ("lpad", True, "A text filled on the left to a count of characters."),
+        ("rpad", False, "A text filled on the right to a count of characters."),
+    )
+)
+
+#: ascii: the code point of a text's first character (a UTF-8 database), 0 of the empty text.
+_BYTE = "toUInt32(reinterpretAsUInt8(substring($t, {}, 1)))"
+_B1, _B2, _B3, _B4 = (_BYTE.format(i) for i in range(1, 5))
+_ASCII = ch_once(
+    f"if($t IS NULL, NULL, multiIf($t = '', 0, {_B1} < 0x80, {_B1}, "
+    f"{_B1} < 0xE0, bitOr(bitShiftLeft(bitAnd({_B1}, 0x1F), 6), bitAnd({_B2}, 0x3F)), "
+    f"{_B1} < 0xF0, bitOr(bitOr(bitShiftLeft(bitAnd({_B1}, 0x0F), 12), "
+    f"bitShiftLeft(bitAnd({_B2}, 0x3F), 6)), bitAnd({_B3}, 0x3F)), "
+    f"bitOr(bitOr(bitShiftLeft(bitAnd({_B1}, 0x07), 18), bitShiftLeft(bitAnd({_B2}, 0x3F), 12)), "
+    f"bitOr(bitShiftLeft(bitAnd({_B3}, 0x3F), 6), bitAnd({_B4}, 0x3F)))))"
+)
+ASCII = Feature(
+    "ascii",
+    FAMILY,
+    "The code point of a text's first character.",
+    read=Side(rules=(Rule("ascii($t::text)", _ch(_ASCII)),)),
+)
+
+#: A character(n) literal's lengths and text (varchar.c's bpcharlen, bpcharoctetlen, rtrim1 and
+#: bpchar_name): its characters without trailing spaces, its bytes with them, its text without
+#: them. ClickHouse holds the literal as the text written, unpadded: each is answered here of the
+#: literal as PostgreSQL holds it (:func:`_held_character`).
+_OF_CHARACTER = {
+    "char_length": lambda held: exp.Literal.number(len(held.rstrip(" "))),
+    "character_length": lambda held: exp.Literal.number(len(held.rstrip(" "))),
+    "length": lambda held: exp.Literal.number(len(held.rstrip(" "))),
+    "octet_length": lambda held: exp.Literal.number(len(held.encode())),
+    "text": lambda held: exp.Literal.string(held.rstrip(" ")),
+}
+#: name of a character literal is its text clipped to NAMEDATALEN - 1 bytes at a character.
+_NAME_BYTES = 63
+
+
+def _name_of(held: str) -> exp.Expr:
+    text = held.rstrip(" ")
+    while len(text.encode()) > _NAME_BYTES:
+        text = text[:-1]
+    return exp.Literal.string(text)
+
+
+def _of_character_literal(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """char_length, length, octet_length, text and name of a character(n) literal, as PostgreSQL
+    holds it; any other argument keeps what it had."""
+    call = trino.called(node)
+    if call is None or len(call[1]) != 1:
+        return None
+    argument = call[1][0].unnest()
+    if not (isinstance(argument, exp.Cast) and argument.to.is_type(exp.DataType.Type.CHAR)):
+        return None
+    held = _held_character(argument)
+    if not (isinstance(held, exp.Literal) and held.is_string):
+        return None
+    for name in sorted(call[0]):
+        if name in _OF_CHARACTER:
+            return exp.alias_(_OF_CHARACTER[name](held.this), name)
+        if name == "name":
+            return exp.alias_(_name_of(held.this), name)
+    return None
+
+
+OF_CHARACTER = Feature(
+    "character literal",
+    FAMILY,
+    "The lengths and text of a character(n) literal, its padding as PostgreSQL holds it.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    _CH: Rewrite(
+                        _of_character_literal,
+                        mentions=r"\b(?:char_length|character_length|length|octet_length|text"
+                        r"|name)\s*\(",
+                        # Before bytea's patterns of the same names, which keep what is no bytea.
+                        first=True,
+                    )
+                },
+            ),
+        )
+    ),
+)
+
 FEATURES: tuple[Feature, ...] = (
     *TRIMS,
     TRANSLATE,
@@ -319,4 +574,10 @@ FEATURES: tuple[Feature, ...] = (
     STRING_TO_ARRAY,
     *LENGTH_CASTS,
     NAMECONCATOID,
+    *LEFT_RIGHT,
+    REVERSE,
+    SUBSTRINGS,
+    *PADS,
+    ASCII,
+    OF_CHARACTER,
 )

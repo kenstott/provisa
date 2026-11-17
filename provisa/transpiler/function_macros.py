@@ -2942,7 +2942,13 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if first is not None and first.rewritten is not None:
             in_select = isinstance(node.parent, exp.Select) and node.arg_key == "expressions"
             return first.rewritten if in_select else first.rewritten.unalias()
-        if isinstance(node, (exp.Substring, exp.Left, exp.Right)) and dialect in _FROM_THE_END:
+        if (
+            isinstance(node, (exp.Substring, exp.Left, exp.Right))
+            and dialect in _FROM_THE_END
+            # REQ-2236: a grid row that reads the position as PostgreSQL does (ClickHouse's text
+            # by characters) comes before this form, which reads bytes there.
+            and not (dialect == "clickhouse" and _answered_by_a_row(node, dialect))
+        ):
             edged = _past_the_edge(node, dialect)
             if edged is not None:
                 return edged
