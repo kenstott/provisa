@@ -146,9 +146,13 @@ def refuse_on_engine_shard(source: Source) -> None:  # REQ-2073
 
 
 async def upsert(  # REQ-012, REQ-250, REQ-1919
-    conn: "Connection", source: Source
+    conn: "Connection", source: Source, *, withdrawn: bool | None = None
 ) -> None:
-    """Create the source, or replace its definition."""
+    """Create the source, or replace its definition.
+
+    REQ-1921: ``withdrawn`` is written only when given -- by a configuration, which carries it as
+    the store holds it. Every other save keeps what is held (a new source is live): a source is
+    withdrawn and put back only by ``withdrawSource`` / ``putBackSource``."""
     # REQ-2134: a producer command is host code; config load, a config import and the admin API
     # all save through here and ``create``.
     refuse_producer_command(source.id, source.producer_command)
@@ -162,6 +166,8 @@ async def upsert(  # REQ-012, REQ-250, REQ-1919
 
     await require_selected(conn, f"source {source.id}", source.region)  # REQ-1921
     values = await owned_if_reconnected(conn, _source_values(source))
+    if withdrawn is not None:
+        values["withdrawn"] = withdrawn
     await conn.upsert(
         sources,
         values,

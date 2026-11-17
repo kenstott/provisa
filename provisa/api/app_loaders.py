@@ -1900,51 +1900,30 @@ def schema_input_for(
         gql_governed_object_cols=inputs["gql_governed_object_cols"],
         columns_outside_relation=inputs["columns_outside_relation"],
         metrics=metrics,  # REQ-1319
-        draft_tables=inputs["draft_tables"],  # REQ-1921
     )
 
 
-#: REQ-1921: how a draft is marked where a role it is served to is offered it (its type's
-#: description in the schema and the paths built from it).
-DRAFT_MARK = "Draft: not released."
-
-
-def schema_input_with_drafts(
-    state: Any, role: dict, drafts: list[dict], *, marked: bool
-) -> SchemaInput:
-    """``role``'s schema input with ``drafts`` among its tables, as the role build builds it from
-    this generation's inputs, the tables moved from the drafts to the tables and their columns'
-    types the registered ones (REQ-1921). ``marked``: the drafts as a schema offers them, on a
-    copy: each one's description says it is a draft (:data:`DRAFT_MARK`), and it takes no write
-    (a draft is served to be read; a mutation naming one is refused naming it as a draft)."""
+def schema_input_with_withdrawn(state: Any, role: dict, withdrawn: list[dict]) -> SchemaInput:
+    """``role``'s schema input with the ``withdrawn`` tables among its tables, as the role build
+    builds it from this generation's inputs, their columns' types the registered ones: what a
+    steward's preview of them (admin/table_read.py) and the graph view a steward asks to see them
+    in are built from (REQ-1921). No role's schema or context holds a withdrawn table."""
     from dataclasses import replace
 
     inputs = state.role_build_inputs
-    added = {d["id"] for d in drafts}
-    tables = [
-        {
-            **d,
-            "description": f"{DRAFT_MARK} {d.get('description') or ''}".strip(),
-            "write_ops": [],
-        }
-        if marked
-        else d
-        for d in drafts
-    ]
-    si = schema_input_for(state, role, [*inputs["tables"], *tables], inputs["metrics"])
+    si = schema_input_for(state, role, [*inputs["tables"], *withdrawn], inputs["metrics"])
     return replace(
         si,
-        draft_tables=[t for t in inputs["draft_tables"] if t["id"] not in added],
         column_types={
             **inputs["column_types"],
             **{
-                draft["id"]: [
+                table["id"]: [
                     ColumnMetadata(
                         column_name=c["column_name"], data_type=c["data_type"], is_nullable=True
                     )
-                    for c in draft["columns"]
+                    for c in table["columns"]
                 ]
-                for draft in drafts
+                for table in withdrawn
             },
         },
     )
@@ -2013,39 +1992,18 @@ class _RoleParts:
         from provisa.compiler.schema_gen import build_table_path_map
         from provisa.grpc.proto_gen import generate_proto
 
-        from provisa.security.rights import registers_tables_in
-
         si, ctx = self._schema_input_and_context()
         with serving(self._runtime):
-            # REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN: a role is offered, in its GraphQL schema
-            # and REST paths and marked as a draft, every draft of a domain it holds table
-            # registration in. Its context keeps them as drafts: a request naming one is read
-            # through the drafts' own view (admin/table_read.reading_drafts), as a statement
-            # naming one is.
-            served = (
-                [
-                    d
-                    for d in self._inputs["draft_tables"]
-                    if registers_tables_in(self._role, self._state.roles, d["domain_id"])
-                ]
-                if reads_data(self._role.get("capabilities"))
-                else []
-            )
-            offered = (
-                schema_input_with_drafts(self._state, self._role, served, marked=True)
-                if served
-                else si
-            )
             # No swallow: a role whose schema or proto cannot be built raises here, and the lazy
             # surface holds that failure -- logged as an ERROR naming the role, and raised to
             # every read of it -- rather than serving a permanently cached "no schema available".
             # An unmapped column type is a real gap in the proto type map, not a reason to
             # silently disable gRPC for the role.
             return RoleSurface(
-                schema=generate_schema(offered),
+                schema=generate_schema(si),
                 context=ctx,
                 rls=self._rls,
-                table_path_map=build_table_path_map(offered),
+                table_path_map=build_table_path_map(si),
                 proto=generate_proto(si, field_numbers=self._inputs["field_numbers"]),
             )
 
@@ -2108,7 +2066,6 @@ def role_build_inputs(
     rls_rules: list[dict],
     metrics: list[dict],
     field_numbers: Any,
-    draft_tables: list[dict],
     withdrawn_tables: list[dict],
     withdrawn_relationships: list[dict],
     remote_sources: dict,
@@ -2146,7 +2103,6 @@ def role_build_inputs(
         "gql_governed_object_cols": table_edge_columns(remote_sources, table_ids),
         "columns_outside_relation": table_columns_outside_relation(remote_sources, table_ids),
         "tables": tables,
-        "draft_tables": draft_tables,
         # REQ-1921: withdrawn -- in no role's schema or context; read only by a steward's preview.
         "withdrawn_tables": withdrawn_tables,
         "withdrawn_relationships": withdrawn_relationships,
@@ -2230,7 +2186,6 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
     metrics: list[dict],  # REQ-1319: config metric registry for schema projection
     field_numbers=None,  # FieldNumberAllocator | None (REQ-1903) — the caller owns load/persist
     *,
-    draft_tables: list[dict],  # REQ-1921: out of service; named only to be refused
     withdrawn_tables: list[dict],  # REQ-1921: withdrawn; for the steward's preview alone
     withdrawn_relationships: list[dict],  # REQ-1921: withdrawn with an end; for the same
 ) -> dict[int, int]:
@@ -2258,7 +2213,6 @@ def _build_and_register_schemas(  # REQ-016, REQ-021, REQ-038, REQ-041, REQ-221,
         rls_rules=rls_rules,
         metrics=metrics,
         field_numbers=field_numbers,
-        draft_tables=draft_tables,
         withdrawn_tables=withdrawn_tables,
         withdrawn_relationships=withdrawn_relationships,
         remote_sources=_remote_sources,

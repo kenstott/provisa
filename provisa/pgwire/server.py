@@ -4357,7 +4357,7 @@ class ProvisaServer(BuenaVistaServer):  # REQ-001, REQ-266
 
 def _log_statement_failure(what: str, sql: str, exc: Exception) -> None:
     """Log a statement that did not complete. A REFUSAL is the answer the statement gets, not a
-    fault of the server: a 4xx ``ApiError`` (a role without the right, a draft table, an unbound
+    fault of the server: a 4xx ``ApiError`` (a role without the right, a withdrawn table, an unbound
     source) is one line at INFO, without a traceback, as a ``PermissionError`` refusal already
     was (not logged at all). Anything else is unexpected and keeps its traceback."""
     from provisa.api.errors import ApiError

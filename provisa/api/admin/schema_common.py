@@ -1041,12 +1041,12 @@ async def _sync_view_mv(
     allowed_lateness: float = 0.0,  # REQ-961: seal-deadline slack (s)
     expected_events: list[str] | None = None,  # REQ-961: preflight freshness contract
     business_day_grain: bool = False,  # REQ-962: gate windows to business days
-    draft: bool,  # REQ-1921: checked as saved, registered for building only once released
+    withdrawn: bool,  # REQ-1921: checked as saved, registered for building only once put back
     region: str | None,  # REQ-1921: the region the view names (None: none), where it is built
     bitemporal_columns: list[str],  # the view's declared columns: a snapshot view's read compares
 ) -> None:
-    """Register or update an MVDefinition for a materialized user-defined view. A draft view is
-    held to every rule a saved view is, and is not registered: nothing builds it."""
+    """Register or update an MVDefinition for a materialized user-defined view. A withdrawn view
+    is held to every rule a saved view is, and is not registered: nothing builds it."""
     check_view_mv(
         table_name,
         view_sql,
@@ -1122,7 +1122,7 @@ async def _sync_view_mv(
     # Refused, and nothing registered, when the view reads an input the engine cannot read whole.
     from provisa.mv.readable_inputs import register_view, require_readable_inputs
 
-    if draft:
+    if withdrawn:
         await require_readable_inputs(mv, state)
         return
     await register_view(state, mv)

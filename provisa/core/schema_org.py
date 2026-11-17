@@ -281,11 +281,9 @@ registered_tables = Table(
     Column("role_ttl", JSON, nullable=False, default=dict, server_default="{}"),
     Column("replicate", Integer),  # REQ-826: NULL = inherit source
     Column("region", Text),  # REQ-1921: the org region its data lives in; NULL = none
-    # REQ-1921: the waypoint of a move between regions -- out of service while set, read and
-    # written nowhere, offered in no schema, copied nowhere. Set by the move, never chosen.
-    Column("draft", Boolean, nullable=False, default=False, server_default=false()),
     # REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
-    # keeps no replica; its definition, grants and relationships stay. Put back by one action.
+    # keeps no replica; its definition, grants and relationships stay. Put back by one action,
+    # naming a region: the waypoint of a move between regions.
     Column("withdrawn", Boolean, nullable=False, default=False, server_default=false()),
     Column("load_protected", Boolean),  # REQ-1141: NULL = inherit source
     Column("off_peak_window", Text),  # REQ-1141

@@ -1147,7 +1147,7 @@ def _with_withdrawn(state: Any, role_id: str, surface: Any) -> tuple[Any, frozen
     registration reaching their domains) and their withdrawn relationships, built for this one
     answer and kept nowhere; with the ids of those tables and the names of the junctions among
     them. No context a statement is compiled in holds them."""
-    from provisa.api.app_loaders import schema_input_with_drafts
+    from provisa.api.app_loaders import schema_input_with_withdrawn
     from provisa.compiler.context import build_context
     from provisa.gql.label_map import CypherLabelMap
     from provisa.security.rights import effective_domain_access_role, registers_tables_in
@@ -1174,7 +1174,7 @@ def _with_withdrawn(state: Any, role_id: str, surface: Any) -> tuple[Any, frozen
         return _build_label_map(surface.context, role_id, state), shown_ids, set()
     from dataclasses import replace
 
-    si = schema_input_with_drafts(state, role, shown, marked=False)
+    si = schema_input_with_withdrawn(state, role, shown)
     si = replace(si, relationships=[*si.relationships, *edges])
     cache = state.schema_build_cache
     label_map = CypherLabelMap.from_schema(

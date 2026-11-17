@@ -226,7 +226,7 @@ def _tag_instances_sql() -> str:
         document_domains AS ({_DOCUMENT_DOMAINS_SQL}
         ),
         objects AS (
-            SELECT 'source' AS object_kind, FALSE AS draft, 'source:' || s.id AS object_key, s.id AS object_id,
+            SELECT 'source' AS object_kind, s.withdrawn AS withdrawn, 'source:' || s.id AS object_key, s.id AS object_id,
                    CAST(NULL AS INTEGER) AS table_id, CAST(NULL AS TEXT) AS domain_id,
                    CAST(NULL AS TEXT) AS owner,
                    COALESCE((SELECT '|' || STRING_AGG(x, '|') || '|'
@@ -236,12 +236,12 @@ def _tag_instances_sql() -> str:
             FROM sources s
             WHERE NOT s.retired
             UNION ALL
-            SELECT 'table', rt.draft, 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
+            SELECT 'table', rt.withdrawn, 'table:' || CAST(rt.id AS TEXT), CAST(rt.id AS TEXT), rt.id, rt.domain_id,
                    CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM registered_tables rt
             WHERE NOT rt.retired
             UNION ALL
-            SELECT 'column', rt.draft, 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
+            SELECT 'column', rt.withdrawn, 'column:' || CAST(tc.table_id AS TEXT) || ':' || tc.column_name,
                    CAST(tc.table_id AS TEXT) || ':' || tc.column_name, tc.table_id,
                    rt.domain_id, CAST(NULL AS TEXT), '|', CAST(NULL AS TEXT), CAST(NULL AS TEXT)
             FROM table_columns tc JOIN registered_tables rt ON rt.id = tc.table_id
@@ -337,7 +337,7 @@ def _tag_instances_sql() -> str:
                    CAST(NULL AS TEXT) AS assignment_key, CAST(NULL AS TEXT) AS term_key
             FROM defs d
             JOIN objects o ON d.applies_to @> jsonb_build_array(o.object_kind)
-            WHERE d.required AND NOT o.draft
+            WHERE d.required AND NOT o.withdrawn
               -- A TAG IS OFFERED BY DOMAIN: required only on objects of the tag's allowed
               -- domains (none: every domain), as assignTag places an object
               -- (domain_guard.tag_target_domains): a source open to every domain is in all of
@@ -687,24 +687,24 @@ def _data_product_edges_sql() -> str:
             SELECT m.table_id, m.product_id, rt.dq_contract
             FROM data_product_tables m
             JOIN registered_tables rt ON rt.id = m.table_id
-            WHERE NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         ),
         free AS (
             SELECT id AS table_id FROM registered_tables rt
-            WHERE NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
               AND NOT EXISTS (SELECT 1 FROM data_product_tables m WHERE m.table_id = rt.id)
         ),
         links AS (
             SELECT r.id AS rel_id, r.alias, r.source_table_id AS a, r.target_table_id AS b
             FROM relationships r
-            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft AND NOT s.retired AND NOT s.withdrawn AND s.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
-            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.retired AND NOT s.withdrawn AND s.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
             WHERE r.source_table_id <> r.target_table_id AND NOT r.retired
             UNION ALL
             SELECT r.id, r.alias, r.target_table_id, r.source_table_id
             FROM relationships r
-            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.draft AND NOT s.retired AND NOT s.withdrawn AND s.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
-            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.draft AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            JOIN registered_tables s ON s.id = r.source_table_id AND NOT s.retired AND NOT s.withdrawn AND s.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            JOIN registered_tables t ON t.id = r.target_table_id AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
             WHERE r.source_table_id <> r.target_table_id AND NOT r.retired
         ),
         -- (product, the relationship leaving its member, a table reached): walking on only
@@ -905,7 +905,7 @@ def _table_inputs_sql() -> str:
                         WHEN t.materialize THEN 'materialized_view'
                         ELSE 'view' END AS kind
             FROM registered_tables t
-            WHERE NOT t.draft AND NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            WHERE NOT t.retired AND NOT t.withdrawn AND t.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         ),
         walk (table_id, relation, relation_id) AS (
             SELECT e.tgt_id, e.src, e.src_id
@@ -1003,7 +1003,7 @@ def _table_details_sql() -> str:
             FROM registered_tables rt
             LEFT JOIN table_tags t ON t.table_id = rt.id
             LEFT JOIN limits l ON l.table_id = rt.id
-            WHERE NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+            WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         )
         SELECT id, modeling_role, modeling_history,
                CASE WHEN suffix IS NULL THEN NULLIF(description, '')
@@ -1037,7 +1037,7 @@ def _column_details_sql() -> str:
                END AS comment
         FROM registered_tables rt
         JOIN table_columns tc
-          ON tc.table_id = rt.id AND NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
+          ON tc.table_id = rt.id AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
         LEFT JOIN column_tags t ON t.table_id = tc.table_id AND t.column_name = tc.column_name
     """
 
@@ -1245,13 +1245,13 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'table:' || CAST(rt.id AS TEXT) AS object_key,
                CAST(rt.tenant_id AS TEXT) AS tenant_id
         FROM registered_tables rt
-        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+        WHERE rt.modeling_role IN ('fact', 'dimension') AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
         UNION ALL
         SELECT 'data_quality', 'table', rt.source_id, rt.id, rt.table_name, rt.domain_id,
                'table:' || CAST(rt.id AS TEXT), CAST(rt.tenant_id AS TEXT)
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
-        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL AND NOT rt.draft
+        WHERE s.type IN ({_CHECKER_TYPES_SQL}) AND rt.dq_contract IS NOT NULL
               AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
     """,
     # REQ-1443 clause 10: a checker table's rules, one row per check of its contract in the order
@@ -1267,7 +1267,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
         FROM registered_tables rt
         JOIN sources s ON s.id = rt.source_id
         CROSS JOIN LATERAL jsonb_array_elements(rt.dq_rules) WITH ORDINALITY AS r(rule, position)
-        WHERE rt.dq_rules IS NOT NULL AND NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
+        WHERE rt.dq_rules IS NOT NULL AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)
     """,
     # REQ-2091: every sensitive column's coverage by a fake, with the latest adequacy checks.
     "sensitive_coverage": _sensitive_coverage_sql(),
@@ -1384,17 +1384,14 @@ _META_TABLE_VIEWS: dict[str, str] = {
                    AS latest_outcome,
                (SELECT r.scan_time FROM checker_latest_runs r WHERE r.table_id = rt.id)
                    AS latest_run_at,
-               -- A draft's row is here; who reads it is the statement's governance
-               -- (compiler/stage2: a role holding table registration in its domain, and no
-               -- other). Last, so an existing view is replaced in place.
-               rt.draft,
                -- Whether a read of the table must give a parameter; with one, the
                -- table gives no row count, profile or sample. Which parameters, of what type and
                -- kind, is in table_columns_meta. Last, so the view is replaced in place.
                EXISTS (SELECT 1 FROM table_columns p
                        WHERE p.table_id = rt.id AND {required_parameter}) AS requires_parameters,
-               -- withdrawn, itself or through its source; its row is read as a
-               -- draft's is (compiler/stage2). Last, so the view is replaced in place.
+               -- withdrawn, itself or through its source; who reads its row is the
+               -- statement's governance (compiler/stage2: a role holding table registration in
+               -- its domain, and no other). Last, so the view is replaced in place.
                (rt.withdrawn OR rt.source_id IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn)) AS withdrawn
         FROM registered_tables rt
         -- A retired table is not listed.
@@ -1482,10 +1479,10 @@ _META_TABLE_VIEWS: dict[str, str] = {
                     THEN tc.native_filter_type NOT IN ({real_column_kinds}) END
                    AS parameter_opaque
         -- registered_tables first: schema.sql locks it before table_columns (lock order).
-        -- A draft or retired table's columns are not listed, nor a retired column.
+        -- A withdrawn or retired table's columns are not listed, nor a retired column.
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
-        WHERE NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
+        WHERE NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
     """.replace("{real_column_kinds}", _real_column_kinds_sql()),
     # REQ-2080: description is the last column, so an existing view is replaced in place.
     "roles": """
@@ -1506,7 +1503,7 @@ _META_TABLE_VIEWS: dict[str, str] = {
                'meta' AS domain_id
         FROM registered_tables rt
         JOIN table_columns tc ON tc.table_id = rt.id
-        WHERE tc.scope = 'listed' AND NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
+        WHERE tc.scope = 'listed' AND NOT rt.retired AND NOT rt.withdrawn AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) AND NOT tc.retired
     """,
     # REQ-2155: a role's parents, one row per (role, parent), in declared order.
     "roles_parents": """

@@ -2466,7 +2466,7 @@ def _refuse_soda_on_hosted_plane(source_type: str) -> MutationResult | None:  # 
 
 
 def _residency_refusal(
-    info, what: str, before: object, after: str | None, *, draft: bool = False
+    info, what: str, before: object, after: str | None
 ) -> MutationResult | None:  # REQ-1921
     """The refusal of a region change the caller's data_residency grant does not cover, naming
     the value; None when it may be made (``capabilities.require_residency_change``)."""
@@ -2474,7 +2474,7 @@ def _residency_refusal(
     from provisa.security.residency import ResidencyRefused
 
     try:
-        require_residency_change(info, what, before, after, draft=draft)
+        require_residency_change(info, what, before, after)
     except ResidencyRefused as refused:
         return MutationResult(
             success=False, message=str(refused), code=refused.code, params=refused.params
@@ -2680,15 +2680,54 @@ def _source_not_found(source_id: str) -> MutationResult:
     )
 
 
+def _step_refusal(
+    info: StrawberryInfo, what: str, region: str | None, *, withdrawing: bool
+) -> MutationResult | None:  # REQ-1921
+    """The refusal of a step of a move between regions the caller's data_residency grant does
+    not cover, naming the value; None when it may be taken (``capabilities.require_residency_step``)."""
+    from provisa.api.admin.capabilities import require_residency_step
+    from provisa.security.residency import ResidencyRefused
+
+    try:
+        require_residency_step(info, what, region, withdrawing=withdrawing)
+    except ResidencyRefused as refused:
+        return MutationResult(
+            success=False, message=str(refused), code=refused.code, params=refused.params
+        )
+    return None
+
+
+def _put_back_needs_region(what: str) -> MutationResult:  # REQ-1921
+    return MutationResult(
+        success=False,
+        message=f"putting back {what} names a region: give region, or null for no region",
+        code="schema.put_back_needs_region",
+        params={"object": what},
+    )
+
+
+def _region_refused(refused: ValueError, params: dict) -> MutationResult:
+    return MutationResult(
+        success=False,
+        message=str(refused),
+        code="schema.region_refused",
+        params={**params, "reason": str(refused)},
+    )
+
+
 async def _set_table_withdrawn(
-    info: StrawberryInfo, table_id: int, withdrawn: bool
+    info: StrawberryInfo, table_id: int, withdrawn: bool, region: str | None
 ) -> MutationResult:  # REQ-1921
-    """Withdraw the table ``table_id`` or put it back: one action each, guarded by the right that
-    edits it (table registration in its domain)."""
+    """Withdraw the table ``table_id``, or put it back into ``region``: one action each, guarded
+    by the right that edits it (table registration in its domain) and, on a platform that
+    declares regions, by the caller's data_residency grant -- withdrawing needs the region the
+    table is in covered, putting back the region named. So a move between regions passes through
+    withdrawn, by a holder for each region; nothing is held or read anywhere in between."""
     from sqlalchemy import update as _update
 
     from provisa.api.admin.code_resolver import held_by_set
     from provisa.core import model_change, model_uri
+    from provisa.core.repositories import region as region_repo
 
     pool = await _get_pool()
     async with pool.acquire() as conn:
@@ -2700,7 +2739,8 @@ async def _set_table_withdrawn(
                     registered_tables.c.alias,
                     registered_tables.c.materialize,
                     registered_tables.c.code_resolver,
-                    registered_tables.c.draft,
+                    registered_tables.c.region,
+                    registered_tables.c.withdrawn,
                 ).where(registered_tables.c.id == table_id, registered_tables.c.retired.is_(False))
             )
         ).fetchone()
@@ -2718,17 +2758,37 @@ async def _set_table_withdrawn(
         _unread = await _table_unread(info, table_id)  # REQ-2152
         if _unread is not None:
             return _unread
+        if not withdrawn and not row.withdrawn:
+            # Putting back names a region: a table in production is moved by setTableRegion.
+            return MutationResult(
+                success=False,
+                message=f"table {row.table_name!r} is not withdrawn",
+                code="schema.table_not_withdrawn",
+                params={"table": row.table_name},
+            )
+        what = f"table {row.table_name}"
+        refused = _step_refusal(
+            info, what, row.region if withdrawn else region, withdrawing=withdrawn
+        )
+        if refused is not None:
+            return refused
         model_change.name(  # REQ-1524
             "withdraw" if withdrawn else "put back",
             model_change.uri(model_uri.named_table_uri, row.domain_id, row.alias or row.table_name),
         )
-        await conn.execute_core(
-            _update(registered_tables)
-            .where(registered_tables.c.id == table_id)
-            .values(withdrawn=withdrawn)
-        )
+        async with conn.transaction():
+            if not withdrawn:
+                try:
+                    await region_repo.set_table_region(conn, table_id, region)
+                except ValueError as refused_region:
+                    return _region_refused(refused_region, {"table": table_id, "region": region})
+            await conn.execute_core(
+                _update(registered_tables)
+                .where(registered_tables.c.id == table_id)
+                .values(withdrawn=withdrawn)
+            )
     await _rebuild_schemas()
-    if not withdrawn and row.materialize and not row.draft:
+    if not withdrawn and row.materialize:
         # Put back: a materialized view is built now, as a newly saved one is.
         from provisa.api.admin.schema_common import activate_view_mv
 
@@ -2742,42 +2802,48 @@ async def _set_table_withdrawn(
 
 
 async def _set_source_withdrawn(
-    info: StrawberryInfo, source_id: str, withdrawn: bool
+    info: StrawberryInfo, source_id: str, withdrawn: bool, region: str | None
 ) -> MutationResult:  # REQ-1921
-    """Withdraw the source ``source_id`` or put it back: one action each, guarded by the right
-    that edits it (source registration). This worker's engine detaches or attaches it here; every
-    other worker's does so when its model reload reads the row (model_reload.reconcile_sources)."""
-    from provisa.api.admin.schema_common import _drop_source_on_engine
-    from provisa.api.app import state
+    """Withdraw the source ``source_id``, or put it back into ``region``: one action each,
+    guarded by the right that edits it (source registration) and, on a platform that declares
+    regions, by the caller's data_residency grant, as a table's (:func:`_set_table_withdrawn`).
+    Every worker's engine detaches or attaches it when its model reload reads the row
+    (model_reload.reconcile_sources), this one's included."""
     from provisa.core.models import BUILT_IN_SOURCE_IDS
+    from provisa.core.repositories import region as region_repo
     from provisa.core.repositories import source as source_repo
-    from provisa.core.secrets import resolve_secrets
 
     require_capability(info, "source_registration")
     if source_id in BUILT_IN_SOURCE_IDS:
         return _source_not_found(source_id)
     pool = await _get_pool()
     async with pool.acquire() as conn:
-        if not await source_repo.set_withdrawn(conn, source_id, withdrawn):
-            return _source_not_found(source_id)
         row = await source_repo.get(conn, source_id)
-    assert row is not None  # just written
-    if withdrawn:
-        _drop_source_on_engine(state, source_id)
-    else:
-        from provisa.api.app_loaders import catalog_name_for_source
-
-        model = source_repo.source_from_row(row)
-        # Its catalog name as create_source publishes it; the rebuild's reconcile publishes the
-        # rest of its per-source state, as for a source added.
-        state.source_catalogs[source_id] = catalog_name_for_source(
-            state, model.type.value, source_id
+        if row is None or row["retired"]:
+            return _source_not_found(source_id)
+        if not withdrawn and not row["withdrawn"]:
+            # Putting back names a region: a source in production is moved by setSourceRegion.
+            return MutationResult(
+                success=False,
+                message=f"source {source_id!r} is not withdrawn",
+                code="schema.source_not_withdrawn",
+                params={"source": source_id},
+            )
+        refused = _step_refusal(
+            info,
+            f"source {source_id}",
+            row["region"] if withdrawn else region,
+            withdrawing=withdrawn,
         )
-        state.federation_engine.register_source(
-            model,
-            resolve_secrets(model.password, credential=True) if model.password else "",
-            catalog_name=state.source_catalogs[source_id],
-        )
+        if refused is not None:
+            return refused
+        async with conn.transaction():
+            if not withdrawn:
+                try:
+                    await region_repo.set_source_region(conn, source_id, region)
+                except ValueError as refused_region:
+                    return _region_refused(refused_region, {"source": source_id, "region": region})
+            await source_repo.set_withdrawn(conn, source_id, withdrawn)
     await _rebuild_schemas()
     return MutationResult(
         success=True,
@@ -4778,10 +4844,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         raise TableSaveRefused(MutationResult(success=False, message=str(_dq_err)))
                     from provisa.api.admin.region_defaults import kept_placement
 
-                    model.region, model.draft, _stored_withdrawn = await kept_placement(
-                        _conn, model
-                    )  # REQ-1921
-                    _stored_region, _stored_draft = model.region, model.draft
+                    model.region, _stored_withdrawn = await kept_placement(_conn, model)  # REQ-1921
+                    _stored_region = model.region
                     _conflict = await _domain_table_conflict(
                         _conn,
                         model.domain_id,
@@ -5118,8 +5182,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                         input,
                         table_id,
                         stored_region=_stored_region,
-                        stored_draft=_stored_draft,
-                        draft=model.draft,
                     )
                     await save_row_rules(info, _conn, input, model)
                     await save_carried_paging(_conn, input, table_id)
@@ -5153,9 +5215,8 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     allowed_lateness=input.mv_allowed_lateness,  # REQ-961
                     expected_events=input.mv_expected_events,  # REQ-961
                     business_day_grain=input.mv_business_day_grain,  # REQ-962
-                    # REQ-1921: built only while in service -- neither a move's waypoint nor
-                    # withdrawn.
-                    draft=model.draft or _stored_withdrawn,
+                    # REQ-1921: built only while in service, not withdrawn.
+                    withdrawn=_stored_withdrawn,
                     region=model.region,  # REQ-1921
                 )
             except ValueError as _det_err:  # REQ-964: reject non-deterministic MV SQL
@@ -5180,7 +5241,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                 "Landed-table reconcile failed after update_table", exc_info=True
             )
         # Materialize + wire a (re)materialized view immediately — FRESH now, not STALE-until-restart.
-        if input.view_sql and input.materialize and not (model.draft or _stored_withdrawn):
+        if input.view_sql and input.materialize and not _stored_withdrawn:
             from provisa.api.admin.schema_common import activate_view_mv
 
             await activate_view_mv(input.table_name)
@@ -6444,7 +6505,6 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     registered_tables.c.domain_id,
                     registered_tables.c.table_name,
                     registered_tables.c.region,
-                    registered_tables.c.draft,
                 ).where(registered_tables.c.id == table_id)
             )
             row = _row.fetchone()
@@ -6456,10 +6516,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     params={"table": table_id},
                 )
             require_capability(info, "table_registration", domain_id=row.domain_id)
-            # A draft table is claimed: its destination alone is judged (REQ-1921).
-            refused_here = _residency_refusal(
-                info, f"table {row.table_name}", row.region, region, draft=row.draft
-            )
+            refused_here = _residency_refusal(info, f"table {row.table_name}", row.region, region)
             if refused_here is not None:
                 return refused_here
             try:
@@ -6484,24 +6541,35 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """Take a table or view out of production (REQ-1921): it serves no role on any front
         door, no engine reads it and its replica is removed; its definition, grants and
         relationships stay, and its domain's stewards may preview it. ``putBackTable`` returns it."""
-        return await _set_table_withdrawn(info, table_id, True)
+        return await _set_table_withdrawn(info, table_id, True, None)
 
     @strawberry.mutation
-    async def put_back_table(self, info: StrawberryInfo, table_id: int) -> MutationResult:
-        """Return a withdrawn table or view to production (REQ-1921), as it was."""
-        return await _set_table_withdrawn(info, table_id, False)
+    async def put_back_table(
+        self, info: StrawberryInfo, table_id: int, region: str | None = strawberry.UNSET
+    ) -> MutationResult:
+        """Return a withdrawn table or view to production (REQ-1921) in ``region`` (null: no
+        region), within the regions the caller's data_residency grant covers: the second step of
+        a move between regions."""
+        if region is strawberry.UNSET:
+            return _put_back_needs_region(f"table {table_id}")
+        return await _set_table_withdrawn(info, table_id, False, region)
 
     @strawberry.mutation
     async def withdraw_source(self, info: StrawberryInfo, source_id: str) -> MutationResult:
         """Take a source out of production (REQ-1921): none of its tables serves any role, no
         engine attaches it and none of its tables keeps a replica; its definition, tables and
         grants stay. ``putBackSource`` returns it."""
-        return await _set_source_withdrawn(info, source_id, True)
+        return await _set_source_withdrawn(info, source_id, True, None)
 
     @strawberry.mutation
-    async def put_back_source(self, info: StrawberryInfo, source_id: str) -> MutationResult:
-        """Return a withdrawn source to production (REQ-1921), as it was."""
-        return await _set_source_withdrawn(info, source_id, False)
+    async def put_back_source(
+        self, info: StrawberryInfo, source_id: str, region: str | None = strawberry.UNSET
+    ) -> MutationResult:
+        """Return a withdrawn source to production (REQ-1921) in ``region`` (null: no region),
+        within the regions the caller's data_residency grant covers."""
+        if region is strawberry.UNSET:
+            return _put_back_needs_region(f"source {source_id}")
+        return await _set_source_withdrawn(info, source_id, False, region)
 
     @strawberry.mutation
     async def set_source_region(

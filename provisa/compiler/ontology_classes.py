@@ -145,7 +145,7 @@ def _row(term_id: int, name: str, columns: list[dict], bindings: list[dict]) -> 
         "replicate": None,
         "load_protected": None,
         "region": None,
-        "draft": False,
+        "withdrawn": False,
         "off_peak_window": None,
         "off_peak_tz": None,
         "file_glob": None,
