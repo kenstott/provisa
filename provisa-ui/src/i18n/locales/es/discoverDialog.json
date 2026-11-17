@@ -51,6 +51,17 @@
     "stopped": "Detenido. Lo encontrado se conserva.",
     "failed": "La ejecución falló: {{error}}",
     "newRun": "Nueva ejecución",
-    "noSuggestions": "No queda ninguna sugerencia pendiente de esta ejecución."
+    "noSuggestions": "No queda ninguna sugerencia pendiente de esta ejecución.",
+    "restore": {
+      "fromLastRun": "Estos son los campos de su última ejecución.",
+      "reset": "Restablecer valores predeterminados",
+      "leftOut": "Se omitió de ellos, porque ya no es válido:",
+      "domainsGone": "El dominio {{names}} ya no está disponible.",
+      "domainsGone_other": "Los dominios {{names}} ya no están disponibles.",
+      "tablesGone": "{{count}} tabla ya no está registrada allí.",
+      "tablesGone_other": "{{count}} tablas ya no están registradas allí.",
+      "vendorNoKey": "{{vendor}} no tiene clave, así que el modelo es el asignado.",
+      "modelGone": "{{vendor}} ya no ofrece {{model}}, así que el modelo es el asignado."
+    }
   }
 }

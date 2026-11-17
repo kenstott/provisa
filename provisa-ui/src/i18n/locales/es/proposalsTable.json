@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "Una fila marcada se acepta al aplicar. Las filas con un {{threshold}} % o más empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
+    "colScore": "Puntuación",
+    "colKind": "Tipo",
+    "colReasoning": "Razonamiento",
+    "colNote": "Nota",
+    "colNotAgain": "No volver a recomendar",
+    "notAgainAria": "No volver a recomendar {{name}}",
+    "kind": {
+      "foreign_keys": "Restricción",
+      "semantics": "Semántica"
+    },
+    "asWritten": "Tal como lo escribió el modelo: {{answer}}",
+    "apply": "Aplicar",
+    "applyAccept": "Aceptar {{count}}",
+    "applyNotAgain": "No volver a recomendar {{count}}",
+    "applyBoth": "Aceptar {{accept}}, no volver a recomendar {{notAgain}}",
+    "applied": "{{accepted}} aceptadas, {{notAgain}} que no se volverán a recomendar.",
+    "failed": "{{count}} no se pudo aplicar:",
+    "failed_other": "{{count}} no se pudieron aplicar:",
+    "none": "A esta ejecución no le queda ninguna propuesta por decidir.",
+    "reason": {
+      "invalid_shape": "No es una relación como la solicitada: falta un campo o tiene una forma incorrecta",
+      "unknown_column": "Nombra una tabla o columna que la solicitud no comparó",
+      "not_comparable": "Las dos columnas tienen clases distintas, así que no se comparan",
+      "below_threshold": "La confianza del modelo está por debajo del umbral del {{threshold}} %.",
+      "scored_below_threshold": "Jev la puntuó con un {{scored}} %, por debajo del umbral del {{threshold}} %. El modelo le dio un {{confidence}} %.",
+      "same_column": "De una columna a sí misma",
+      "primary_key_to_primary_key": "Clave primaria a clave primaria",
+      "both_repeating": "Los valores se repiten en ambos lados, así que ninguno es el lado uno",
+      "existing": "Ya registrada",
+      "pending": "Ya pendiente entre las sugerencias",
+      "rejected": "Rechazada antes",
+      "matches_foreign_key": "Coincide con una clave foránea encontrada en esta ejecución",
+      "out_of_scope": "Fuera de las tablas de origen y destino elegidas",
+      "weaker": "Se conservó una propuesta más fuerte de las mismas dos columnas"
+    }
+  }
+}

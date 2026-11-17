@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "Een aangevinkte rij wordt bij toepassen geaccepteerd. Rijen met een score van {{threshold}}% of meer zijn vooraf aangevinkt. Een rij zonder vinkje blijft onbeslist.",
+    "colScore": "Score",
+    "colKind": "Soort",
+    "colReasoning": "Redenering",
+    "colNote": "Opmerking",
+    "colNotAgain": "Niet opnieuw aanbevelen",
+    "notAgainAria": "{{name}} niet opnieuw aanbevelen",
+    "kind": {
+      "foreign_keys": "Constraint",
+      "semantics": "Semantisch"
+    },
+    "asWritten": "Zoals het model het schreef: {{answer}}",
+    "apply": "Toepassen",
+    "applyAccept": "{{count}} accepteren",
+    "applyNotAgain": "{{count}} niet opnieuw aanbevelen",
+    "applyBoth": "{{accept}} accepteren, {{notAgain}} niet opnieuw aanbevelen",
+    "applied": "{{accepted}} geaccepteerd, {{notAgain}} niet opnieuw aan te bevelen.",
+    "failed": "{{count}} kon niet worden toegepast:",
+    "failed_other": "{{count}} konden niet worden toegepast:",
+    "none": "Deze run heeft geen voorstel meer om over te beslissen.",
+    "reason": {
+      "invalid_shape": "Geen relatie in de gevraagde vorm: een veld ontbreekt of heeft de verkeerde vorm",
+      "unknown_column": "Noemt een tabel of kolom die het verzoek niet vergeleek",
+      "not_comparable": "De twee kolommen hebben verschillende klassen en worden dus niet vergeleken",
+      "below_threshold": "De betrouwbaarheid van het model ligt onder de drempel van {{threshold}}%.",
+      "scored_below_threshold": "Jev beoordeelde het met {{scored}}%, onder de drempel van {{threshold}}%. Het model gaf {{confidence}}%.",
+      "same_column": "Van een kolom naar zichzelf",
+      "primary_key_to_primary_key": "Primaire sleutel naar primaire sleutel",
+      "both_repeating": "Waarden herhalen zich aan beide kanten, dus geen van beide is de één-kant",
+      "existing": "Al geregistreerd",
+      "pending": "Wacht al tussen de voorstellen",
+      "rejected": "Eerder afgewezen",
+      "matches_foreign_key": "Komt overeen met een refererende sleutel uit deze run",
+      "out_of_scope": "Buiten de gekozen bron- en doeltabellen",
+      "weaker": "Een sterker voorstel voor dezelfde twee kolommen is behouden"
+    }
+  }
+}

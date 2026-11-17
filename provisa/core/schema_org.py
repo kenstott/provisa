@@ -2703,6 +2703,35 @@ discovery_runs = Table(
     ),
 )
 
+# REQ-413: every proposal a discovery run read, kept with the run: a foreign key it found or an
+# element of a model's answer, with the confidence and reasoning given. ``left_out`` is why it is
+# not among the run's suggestions (provisa/discovery/proposals.py REASONS); null: it is one of
+# them. A proposal that named no two compared columns has no table ids, and ``answer`` holds the
+# element as the model wrote it. ``scored`` is the confidence a second scorer gave it, when one
+# re-scored it. ``decision`` is what a reviewer decided of it in the run's result: ``accepted``
+# (``accepted_as`` the relationship it became) or ``rejected`` (not to be recommended again);
+# null: undecided, and nothing is recorded against it.
+discovery_run_proposals = Table(
+    "discovery_run_proposals",
+    metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("run_id", Integer, ForeignKey("discovery_runs.id", ondelete="CASCADE"), nullable=False),
+    Column("kind", Text, nullable=False),  # foreign_keys | semantics
+    Column("source_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("source_column", Text, nullable=True),
+    Column("target_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("target_column", Text, nullable=True),
+    Column("confidence", Float, nullable=True),
+    Column("scored", Float, nullable=True),
+    Column("reasoning", Text, nullable=True),
+    Column("suggested_name", Text, nullable=True),
+    Column("left_out", Text, nullable=True),
+    Column("answer", Text, nullable=True),
+    Column("decision", Text, nullable=True),
+    Column("accepted_as", Text, nullable=True),
+    Column("tenant_id", Uuid),
+)
+
 # REQ-2179: the review queue -- each candidate term a scan proposes, as a draft until the steward
 # accepts, merges or rejects it. ``proposal`` is what the scan proposes: a new term, or a merge into
 # the glossary term it duplicates or names again (match_term_id, match_kind). ``payload`` is a JSON

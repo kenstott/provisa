@@ -255,11 +255,23 @@ async def run(conn: "Connection", run_id: int) -> RunRow | None:
     return None if row is None else _row(row)
 
 
-async def recent(conn: "Connection", limit: int) -> list[RunRow]:
-    """The latest runs, newest first."""
+#: Every run, whoever started it.
+ANYONE = object()
+
+
+async def recent(conn: "Connection", limit: int, started_by: Any = ANYONE) -> list[RunRow]:
+    """The latest runs, newest first; with ``started_by``, those that person started (None: those
+    started with no person signed in)."""
+    query = select(*_COLUMNS)
+    if started_by is not ANYONE:
+        query = query.where(
+            runs_t.c.started_by.is_(None)
+            if started_by is None
+            else runs_t.c.started_by == started_by
+        )
     rows = (
         await conn.execute_core(
-            select(*_COLUMNS).order_by(runs_t.c.started_at.desc(), runs_t.c.id.desc()).limit(limit)
+            query.order_by(runs_t.c.started_at.desc(), runs_t.c.id.desc()).limit(limit)
         )
     ).fetchall()
     return [_row(r) for r in rows]

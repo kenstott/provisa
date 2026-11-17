@@ -65,6 +65,7 @@ _TABLES = (
     "roles",
     "data_products",
     "discovery_runs",
+    "discovery_run_proposals",
     "glossary_term_domains",
     "glossary_term_edges",
     "glossary_term_experts",
@@ -336,13 +337,13 @@ async def test_the_count_is_sized_from_the_chosen_models_limits(monkeypatch):
         **_ASSIGNED,
         "ai_models": {
             **_ASSIGNED["ai_models"],
-            "model_limits": {"mistral": {"tiny": {"input_tokens": 650, "output_tokens": 300}}},
+            "model_limits": {"mistral": {"tiny": {"input_tokens": 1000, "output_tokens": 300}}},
         },
     }
     _World(monkeypatch, db, config=config, api_keys={"openai": "k", "mistral": "m"})
     assigned = await discovery.count_run(_REQUEST, _scope())
     chosen = await discovery.count_run(_REQUEST, _scope(vendor="mistral", model="tiny"))
-    assert chosen["model"]["input_tokens"] == 650 and chosen["model"]["output_tokens"] == 300
+    assert chosen["model"]["input_tokens"] == 1000 and chosen["model"]["output_tokens"] == 300
     assert chosen["suggestions_per_request"] == 2
     assert chosen["requests"] > assigned["requests"]
 
@@ -656,7 +657,7 @@ async def test_a_run_makes_no_more_requests_than_were_counted(monkeypatch, tmp_p
         **_ASSIGNED,
         "ai_models": {
             **_ASSIGNED["ai_models"],
-            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 1000, "output_tokens": 4096}}},
         },
     }
     world = _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
@@ -716,7 +717,7 @@ async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_
         **_ASSIGNED,
         "ai_models": {
             **_ASSIGNED["ai_models"],
-            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 1000, "output_tokens": 4096}}},
         },
     }
     world = _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
@@ -799,7 +800,7 @@ _SMALL_WINDOWS = {
     **_ASSIGNED,
     "ai_models": {
         **_ASSIGNED["ai_models"],
-        "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 4096}}},
+        "model_limits": {"openai": {"gpt-test": {"input_tokens": 1000, "output_tokens": 4096}}},
     },
 }
 
@@ -1049,7 +1050,7 @@ async def test_a_model_whose_limits_hold_no_request_is_refused_saying_why(monkey
         **_ASSIGNED,
         "ai_models": {
             **_ASSIGNED["ai_models"],
-            "model_limits": {"openai": {"gpt-test": {"input_tokens": 650, "output_tokens": 100}}},
+            "model_limits": {"openai": {"gpt-test": {"input_tokens": 1000, "output_tokens": 100}}},
         },
     }
     _World(monkeypatch, db, config=config, api_keys={"openai": "k"})
@@ -1251,9 +1252,9 @@ _EVERY_KIND = [k.id for k in catalogue()]
     ("input_tokens", "values", "kinds"),
     [
         pytest.param(200_000, "short", "none", id="one-window-short-values"),
-        pytest.param(700, "short", "none", id="small-windows-short-values"),
-        pytest.param(700, "long", "none", id="small-windows-long-values"),
-        pytest.param(700, "long", "every", id="small-windows-every-kind-matched"),
+        pytest.param(1050, "short", "none", id="small-windows-short-values"),
+        pytest.param(1050, "long", "none", id="small-windows-long-values"),
+        pytest.param(1050, "long", "every", id="small-windows-every-kind-matched"),
         pytest.param(900, "long", "plain", id="mid-windows-kinds-that-are-not-sensitive"),
         pytest.param(1500, "long", "every", id="wider-windows-every-kind-matched"),
     ],
@@ -1390,7 +1391,7 @@ def test_the_bound_holds_whatever_the_tables_hold(seed):
     cut = rng.randint(1, len(read))
     target = None if rng.random() < 0.5 else read[cut - 1 :]
     source = read if target is None else read[:cut]
-    input_tokens = rng.choice([650, 800, 1200, 3000, 100_000])
+    input_tokens = rng.choice([1000, 1150, 1550, 3350, 100_000])
     _, requests = windows.plan(source, target, input_tokens, 4096)
     k, by_group = windows.bound(
         _as_registered(source),
@@ -1490,3 +1491,316 @@ async def test_a_parameterized_table_kept_for_good_is_read_from_its_stored_rows(
     assert facts["order_history"].reduced and world.classified == []
     (listed,) = await discovery.list_candidates(_REQUEST)
     assert listed["reduced_information"] is True
+
+
+# --- nothing a run read is dropped: what was left out is kept, listed and can be accepted -------------
+
+
+async def _proposals(db: Database, run_id: int) -> list[dict]:
+    async with db.acquire() as conn:
+        rows = (
+            await conn.execute_core(
+                select(so.discovery_run_proposals)
+                .where(so.discovery_run_proposals.c.run_id == run_id)
+                .order_by(so.discovery_run_proposals.c.id)
+            )
+        ).fetchall()
+    return [dict(r._mapping) for r in rows]
+
+
+async def _three_tables(db: Database) -> None:
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "stores", [("id", "integer", True), ("region_id", "integer", False)]
+    )
+
+
+async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monkeypatch, tmp_path):
+    from provisa.discovery.analyzer import RelationshipCandidate
+
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    world.fk_found = [
+        RelationshipCandidate(3, "region_id", 2, "id", "many-to-one", 1.0, "Foreign key constraint")
+    ]
+    world.answers = [
+        json.dumps(
+            [
+                _suggestion((1, "customer_id"), (2, "id"), 0.95),
+                _suggestion((1, "customer_id"), (3, "id"), 0.55),
+                _suggestion((3, "region_id"), (2, "id"), 0.9),
+                _suggestion((1, "customer_id"), (9, "id"), 0.9),
+                {"source_table_id": 1},
+            ]
+        )
+    ]
+    run = await _run(world, _scope(kinds=["foreign_keys", "semantics"]))
+    assert run["status"] == "done", run
+    report = run["report"]
+    semantics = report["semantics"]
+    assert (semantics["proposed"], semantics["suggested"]) == (5, 1)
+    assert (semantics["below_threshold"], semantics["invalid"]) == (1, 2)
+    assert semantics["not_comparable"] == 0 and semantics["scored"] == 0
+    assert report["removed"]["matches_foreign_key"] == 1
+    # What the run compared is said, so what it did not is plain.
+    assert report["source_domains"] == report["target_domains"] == ["crm", "sales"]
+    assert report["target_same_as_source"] is True
+    assert (report["source_tables"], report["target_tables"]) == (3, 3)
+
+    kept = await _proposals(db, run["id"])
+    assert [(r["kind"], r["left_out"], r["source_column"], r["target_table_id"]) for r in kept] == [
+        ("foreign_keys", None, "region_id", 2),
+        ("semantics", None, "customer_id", 2),
+        ("semantics", "below_threshold", "customer_id", 3),
+        ("semantics", "unknown_column", None, None),
+        ("semantics", "invalid_shape", None, None),
+        ("semantics", "matches_foreign_key", "region_id", 2),
+    ]
+    assert kept[2]["confidence"] == 0.55 and kept[2]["reasoning"] == "orders name their customer"
+    assert json.loads(kept[3]["answer"])["target_table_id"] == 9
+    assert json.loads(kept[4]["answer"]) == {"source_table_id": 1}
+
+    answered = await discovery.list_proposals(_REQUEST, run["id"])
+    assert answered["threshold"] == 0.7
+    listed = answered["proposals"]
+    # One table: the foreign key and the suggestion with what was left out, the highest score first.
+    assert [(r["kind"], r["reason"], r["decidable"], r["confidence"]) for r in listed] == [
+        ("foreign_keys", None, True, 1.0),
+        ("semantics", None, True, 0.95),
+        ("semantics", "matches_foreign_key", False, 0.9),
+        ("semantics", "below_threshold", True, 0.55),
+        ("semantics", "unknown_column", False, None),
+        ("semantics", "invalid_shape", False, None),
+    ]
+    assert listed[3]["source_table_id"] == 1 and listed[3]["target_column"] == "id"
+    assert listed[3]["suggested_name"] == "purchase-history"
+    assert listed[3]["cardinality"] == "many-to-one" and listed[4]["cardinality"] is None
+    assert not any(r["reduced_information"] for r in listed)
+
+
+async def _answered(world: _World, answers: list[dict], **scope: Any) -> tuple[dict, list[dict]]:
+    world.answers = [json.dumps(answers)]
+    run = await _run(world, _scope(**scope))
+    return run, (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+
+
+def _apply(accept: list[tuple[int, str]] = (), not_again: list[int] = ()) -> Any:
+    return discovery.ApplyRequest(
+        accept=[discovery.AcceptEach(id=i, name=n) for i, n in accept], not_again=list(not_again)
+    )
+
+
+async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leaves_the_rest(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, listed = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.95),
+            _suggestion((3, "region_id"), (2, "id"), 0.8),
+            _suggestion((1, "customer_id"), (3, "id"), 0.55),
+            _suggestion((3, "region_id"), (1, "id"), 0.3),
+        ],
+    )
+    kept, undecided, below, low = listed
+    assert [r["reason"] for r in listed] == [None, None, "below_threshold", "below_threshold"]
+
+    done = await discovery.apply_decisions(
+        _REQUEST,
+        run["id"],
+        _apply([(kept["id"], "customer-orders"), (below["id"], "orders-by-store")], [low["id"]]),
+    )
+    assert done["results"] == [
+        {"id": kept["id"], "action": "accept", "ok": True, "relationship_id": "customer-orders"},
+        {"id": below["id"], "action": "accept", "ok": True, "relationship_id": "orders-by-store"},
+        {"id": low["id"], "action": "not_again", "ok": True},
+    ]
+    by_edge = {
+        (c["source_table_id"], c["source_column"], c["target_table_id"]): c
+        for c in await _candidates(db)
+    }
+    assert by_edge[(1, "customer_id", 2)]["status"] == "accepted"
+    assert by_edge[(1, "customer_id", 3)]["status"] == "accepted"
+    assert by_edge[(1, "customer_id", 3)]["confidence"] == 0.55
+    assert by_edge[(3, "region_id", 1)]["status"] == "rejected"
+    assert by_edge[(3, "region_id", 1)]["rejection_reason"] == "Not to be recommended again"
+    # Left alone, it is undecided: still waiting as the run's suggestion, nothing recorded against it.
+    assert by_edge[(3, "region_id", 2)]["status"] == "suggested"
+    async with db.acquire() as conn:
+        registered = (
+            await conn.execute_core(select(so.relationships.c.id).order_by(so.relationships.c.id))
+        ).fetchall()
+    assert [r[0] for r in registered] == ["customer-orders", "orders-by-store"]
+    # What was decided leaves the run's table; what was not stays.
+    remaining = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    assert [r["id"] for r in remaining] == [undecided["id"]]
+
+    # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
+    # registered (the one the model rates low too), the one marked as rejected before.
+    _, again = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.95),
+            _suggestion((3, "region_id"), (2, "id"), 0.8),
+            _suggestion((3, "region_id"), (1, "id"), 0.9),
+            _suggestion((1, "customer_id"), (3, "id"), 0.55),
+        ],
+    )
+    assert [
+        (r["source_table_id"], r["target_table_id"], r["reason"], r["decidable"]) for r in again
+    ] == [
+        (1, 2, "existing", False),
+        (3, 1, "rejected", True),
+        (3, 2, "pending", True),
+        (1, 3, "existing", False),
+    ]
+
+
+async def test_a_proposal_that_cannot_be_decided_is_refused_and_the_rest_are_applied(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, (below, unknown) = await _answered(
+        world,
+        [
+            _suggestion((1, "customer_id"), (2, "id"), 0.55),
+            _suggestion((1, "customer_id"), (9, "id"), 0.9),
+        ],
+    )
+    assert (below["decidable"], unknown["decidable"]) == (True, False)
+    done = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply([(unknown["id"], "x"), (below["id"], "orders-of-a-customer")])
+    )
+    refused, accepted = done["results"]
+    assert refused["ok"] is False and "unknown_column" in refused["error"]
+    assert accepted == {
+        "id": below["id"],
+        "action": "accept",
+        "ok": True,
+        "relationship_id": "orders-of-a-customer",
+    }
+    # Decided, it cannot be decided again.
+    twice = await discovery.apply_decisions(_REQUEST, run["id"], _apply([], [below["id"]]))
+    assert twice["results"][0]["ok"] is False
+
+    with pytest.raises(ApiError) as both:
+        await discovery.apply_decisions(
+            _REQUEST, run["id"], _apply([(unknown["id"], "x")], [unknown["id"]])
+        )
+    assert both.value.status_code == 400
+
+
+async def test_a_runs_proposals_are_decided_once_it_has_ended(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, (below,) = await _answered(world, [_suggestion((1, "customer_id"), (2, "id"), 0.55)])
+    async with db.acquire() as conn:
+        await conn.execute_core(so.discovery_runs.update().values(status="running"))
+    with pytest.raises(ApiError) as early:
+        await discovery.apply_decisions(_REQUEST, run["id"], _apply([(below["id"], "x")]))
+    assert early.value.status_code == 409 and early.value.code == "discovery.run_still_going"
+    with pytest.raises(ApiError) as missing:
+        await discovery.list_proposals(_REQUEST, 41)
+    assert missing.value.status_code == 404
+
+
+async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    other = cast(
+        Any, SimpleNamespace(state=SimpleNamespace(identity=SimpleNamespace(user_id="steward-2")))
+    )
+    mine = await _run(world, _scope(kinds=["foreign_keys"], source_domains=["sales"]))
+    theirs = (await discovery.start_run(other, _scope(source_domains=["crm"])))["run"]
+    everyone = (await discovery.list_runs(_REQUEST, limit=1))["runs"]
+    assert [r["id"] for r in everyone] == [theirs["id"]]
+    own = (await discovery.list_runs(_REQUEST, limit=1, mine=True))["runs"]
+    assert [r["id"] for r in own] == [mine["id"]]
+    # The run keeps every field the dialog sent, so a new run can start from them.
+    assert own[0]["scope"] == {
+        "kinds": ["foreign_keys"],
+        "source_domains": ["sales"],
+        "source_tables": None,
+        "target_same_as_source": True,
+        "target_domains": [],
+        "target_tables": None,
+        "vendor": None,
+        "model": None,
+    }
+
+
+async def test_proposals_jev_scores_under_the_threshold_are_left_out_as_jevs_with_both_scores(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    asked: list[tuple[Any, list[dict]]] = []
+
+    async def jev_key(pool, vendor):
+        assert vendor == "jev"
+        return "ts-key"
+
+    async def evaluate(api_key, state, questions):
+        asked.append((state, questions))
+        return {"answers": {q["id"]: {"noul": 0.31} for q in questions}}
+
+    monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", jev_key)
+    monkeypatch.setattr("provisa.jev.client.evaluate", evaluate)
+    world.answers = [
+        json.dumps(
+            [
+                _suggestion((1, "customer_id"), (2, "id"), 0.95),
+                _suggestion((3, "region_id"), (2, "id"), 0.9),
+            ]
+        )
+    ]
+    run = await _run(world, _scope())
+    assert run["status"] == "done", run
+    semantics = run["report"]["semantics"]
+    assert semantics["suggested"] == 0
+    # Not the model's doing: it gave both 0.7 or more, and the result says who scored them lower.
+    assert semantics["below_threshold"] == 0
+    assert (semantics["scored"], semantics["scored_below_threshold"]) == (2, 2)
+    assert semantics["empty_reason"] == "scored_below_threshold"
+    listed = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    assert [(r["reason"], r["confidence"], r["scored"], r["decidable"]) for r in listed] == [
+        ("scored_below_threshold", 0.95, 0.31, True),
+        ("scored_below_threshold", 0.9, 0.31, True),
+    ]
+    # Jev was shown the tables by name, not by id alone.
+    ((state, questions),) = asked
+    assert [t["table"]["name"] for t in state["tables"]] == ["orders", "customers", "stores"]
+    assert "table 'orders' (id 1)" in questions[0]["instructions"]
+
+
+async def test_a_jev_call_that_fails_keeps_the_models_confidence_and_the_result_says_so(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _three_tables(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+
+    async def jev_key(pool, vendor):
+        assert vendor == "jev"
+        return "ts-key"
+
+    async def evaluate(api_key, state, questions):
+        raise RuntimeError("unreachable")
+
+    monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", jev_key)
+    monkeypatch.setattr("provisa.jev.client.evaluate", evaluate)
+    world.answers = [json.dumps([_suggestion((1, "customer_id"), (2, "id"), 0.95)])]
+    run = await _run(world, _scope())
+    semantics = run["report"]["semantics"]
+    assert semantics["suggested"] == 1 and semantics["scoring_failed"] == 1
+    (candidate,) = await _candidates(db)
+    assert candidate["confidence"] == 0.95
