@@ -169,6 +169,22 @@ async def clear_rejections(conn: "Connection") -> int:  # REQ-167
     return result.rowcount or 0
 
 
+async def mark_accepted(conn: "Connection", candidate_id: int) -> None:  # REQ-413
+    """Mark a many-to-many candidate accepted: accepting it made or joined a shared dimension
+    (:mod:`provisa.discovery.dimension`), whose relationships end at the dimension, so none is
+    registered for the pair itself."""
+    result = await conn.execute_core(
+        update(relationship_candidates)
+        .where(
+            relationship_candidates.c.id == candidate_id,
+            relationship_candidates.c.status == "suggested",
+        )
+        .values(status="accepted")
+    )
+    if (result.rowcount or 0) == 0:
+        raise ValueError(f"Candidate {candidate_id} not found or not in suggested status")
+
+
 async def reject(conn: "Connection", candidate_id: int, reason: str) -> None:  # REQ-167
     """Reject a candidate with a reason."""
     result = await conn.execute_core(

@@ -136,18 +136,27 @@ def decidable(left_out: str | None) -> bool:
 
 
 #: The measured cardinality no relationship has: neither column's values are distinct, so none
-#: starts at one and ends at the other's key (a relationship is many-to-one, one-to-many or
-#: one-to-one; tables sharing values join through a table holding each value once).
+#: starts at one and ends at the other's key. Such a pair is accepted as a shared dimension
+#: (:mod:`provisa.discovery.dimension`): a table holding each value once, which each side joins.
 MANY_TO_MANY = "many-to-many"
 
 
-def acceptable(left_out: str | None, cardinality: str | None) -> bool:
-    """Whether a reviewer may accept the proposal: it can be decided, and its measured
-    cardinality is one a relationship has."""
-    return decidable(left_out) and cardinality != MANY_TO_MANY
+@dataclass(frozen=True)
+class Shared:
+    """The shared dimension a many-to-many proposal joins on accepting it. ``name`` None: its
+    two sides already join two different dimensions, so it cannot be accepted."""
+
+    name: str | None
+    reused: bool
 
 
-def _view(row: Any, never_read: set[int]) -> dict[str, Any]:
+def acceptable(left_out: str | None, shared: Shared | None) -> bool:
+    """Whether a reviewer may accept the proposal: it can be decided, and a many-to-many pair
+    (``shared``) names the dimension it joins."""
+    return decidable(left_out) and (shared is None or shared.name is not None)
+
+
+def _view(row: Any, never_read: set[int], shared: Shared | None) -> dict[str, Any]:
     ends = {row.source_table_id, row.target_table_id} - {None}
     return {
         "id": int(row.id),
@@ -170,9 +179,14 @@ def _view(row: Any, never_read: set[int]) -> dict[str, Any]:
         "reason": row.left_out,
         "answer": row.answer,
         "decidable": decidable(row.left_out),
-        "acceptable": acceptable(row.left_out, row.cardinality),
+        "acceptable": acceptable(row.left_out, shared),
         # REQ-1986: one of its tables is never read, so no values were compared.
         "reduced_information": bool(ends & never_read),
+        # A many-to-many pair: the shared dimension accepting it joins, and whether it is one
+        # already registered (a second pair on the same values reuses it).
+        "dimension": None
+        if shared is None or shared.name is None
+        else {"name": shared.name, "reused": shared.reused},
     }
 
 
@@ -193,19 +207,35 @@ async def listed(conn: "Connection", state: Any, run_id: int) -> list[dict[str, 
     ends.discard(None)
     never_read = await tables_never_read(state, conn, sorted(ends)) if ends else set()
 
-    rows = [_view(r, never_read) for r in found]
+    rows = [_view(r, never_read, await _shared(conn, r)) for r in found]
     return sorted(rows, key=lambda r: (r["score"] is None, -(r["score"] or 0.0)))
+
+
+async def _shared(conn: "Connection", row: Any) -> Shared | None:
+    """The shared dimension a decidable many-to-many proposal joins; None for any other."""
+    from provisa.discovery import dimension
+
+    if row.cardinality != MANY_TO_MANY or not decidable(row.left_out):
+        return None
+    try:
+        name, reused = await dimension.named(
+            conn,
+            (int(row.source_table_id), str(row.source_column)),
+            (int(row.target_table_id), str(row.target_column)),
+            row.suggested_name,
+        )
+    except dimension.TwoDimensions:
+        return Shared(None, False)
+    return Shared(name, reused)
 
 
 class NotDecidable(ValueError):
     """A proposal that cannot be accepted or marked, and why."""
 
 
-async def _candidate_of(
-    conn: "Connection", run_id: int, proposal_id: int, *, accepting: bool
-) -> int:
-    """The proposal as a suggestion of its run: the stored suggestion it already is, or one
-    stored now, with its measured cardinality and score."""
+async def undecided(conn: "Connection", run_id: int, proposal_id: int) -> Any:
+    """The proposal's row, refused by name when it cannot be decided: not among the run's
+    undecided proposals, left out for a reason no reviewer decides, or its pair already decided."""
     row = (
         await conn.execute_core(
             select(rows_t).where(rows_t.c.id == proposal_id, rows_t.c.run_id == run_id)
@@ -230,11 +260,13 @@ async def _candidate_of(
     ).scalar_one_or_none()
     if held is not None and held != "suggested":
         raise NotDecidable(f"Proposal {proposal_id} cannot be decided: its pair is already {held}")
-    if accepting and not acceptable(row.left_out, row.cardinality):
-        raise NotDecidable(
-            f"Proposal {proposal_id} cannot be accepted: neither column's values are distinct, "
-            "so no relationship starts at one and ends at the other's key"
-        )
+    return row
+
+
+async def _candidate_of(conn: "Connection", run_id: int, proposal_id: int) -> int:
+    """The proposal as a suggestion of its run: the stored suggestion it already is, or one
+    stored now, with its measured cardinality and score."""
+    row = await undecided(conn, run_id, proposal_id)
     (candidate_id,) = await candidates_repo.store_candidates(
         conn,
         [
@@ -258,7 +290,7 @@ async def accept(conn: "Connection", run_id: int, proposal_id: int, name: str | 
     """Accept one proposal of the run as a suggestion is accepted
     (:func:`provisa.discovery.candidates.accept`); the relationship it became."""
     async with conn.transaction():
-        candidate_id = await _candidate_of(conn, run_id, proposal_id, accepting=True)
+        candidate_id = await _candidate_of(conn, run_id, proposal_id)
         accepted = await candidates_repo.accept(conn, candidate_id, name)
         await conn.execute_core(
             update(rows_t)
@@ -268,11 +300,39 @@ async def accept(conn: "Connection", run_id: int, proposal_id: int, name: str | 
     return str(accepted["relationship_id"])
 
 
+async def shared_pair(conn: "Connection", run_id: int, proposal_id: int) -> bool:
+    """Whether the run's proposal is a many-to-many pair, accepted as a shared dimension."""
+    cardinality = (
+        await conn.execute_core(
+            select(rows_t.c.cardinality).where(
+                rows_t.c.id == proposal_id, rows_t.c.run_id == run_id
+            )
+        )
+    ).scalar_one_or_none()
+    return cardinality == MANY_TO_MANY
+
+
+async def accepted_as_dimension(
+    conn: "Connection", run_id: int, proposal_id: int, dimension: str
+) -> None:
+    """Record a many-to-many proposal accepted as the shared dimension ``dimension``, which
+    accepting made or joined (:mod:`provisa.discovery.dimension`): its pair is accepted, so a
+    later run never reopens it, and the run's row is decided."""
+    async with conn.transaction():
+        candidate_id = await _candidate_of(conn, run_id, proposal_id)
+        await candidates_repo.mark_accepted(conn, candidate_id)
+        await conn.execute_core(
+            update(rows_t)
+            .where(rows_t.c.id == proposal_id)
+            .values(decision="accepted", accepted_as=dimension)
+        )
+
+
 async def not_again(conn: "Connection", run_id: int, proposal_id: int) -> None:
     """Mark one proposal of the run not to be recommended again: it is rejected, as a suggestion
     is (:func:`provisa.discovery.candidates.reject`), so later runs leave it out."""
     async with conn.transaction():
-        candidate_id = await _candidate_of(conn, run_id, proposal_id, accepting=False)
+        candidate_id = await _candidate_of(conn, run_id, proposal_id)
         await candidates_repo.reject(conn, candidate_id, NOT_AGAIN)
         await conn.execute_core(
             update(rows_t).where(rows_t.c.id == proposal_id).values(decision="rejected")
