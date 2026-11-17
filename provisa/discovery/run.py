@@ -50,7 +50,7 @@ from provisa.discovery.direction import (
 )
 from provisa.discovery.measure import Measurer
 from provisa.discovery.proposals import BELOW_THRESHOLD, Recorded
-from provisa.discovery.runner import Control, Rescore, Tally, execute
+from provisa.discovery.runner import Control, KeyValues, Rescore, Tally, execute
 from provisa.discovery.windows import Request, bound, plan
 
 if TYPE_CHECKING:
@@ -84,6 +84,16 @@ async def while_saying_still_going(
         task.cancel()
 
 
+@dataclass(frozen=True)
+class KeyValueOverlap:
+    """Key value overlap's settings for a run (REQ-413, amended 2026-11-16): the semantic pairs
+    whose model confidence is at ``cutoff`` or more and under the threshold are measured, each
+    column read for at most ``sample_size`` distinct values."""
+
+    cutoff: float
+    sample_size: int
+
+
 @dataclass(frozen=True, kw_only=True)
 class RunSpec:
     """What a run is asked for. ``*_tables`` None: every table of the chosen domains. With
@@ -100,6 +110,8 @@ class RunSpec:
     #: The role of the person who started the run: each proposed pair's values are read as it
     #: (:mod:`provisa.discovery.measure`).
     role: str
+    #: Key value overlap, chosen only with semantics; None: not chosen, and no pair is measured.
+    key_values: KeyValueOverlap | None
 
 
 @dataclass
@@ -357,6 +369,23 @@ async def _refiner(state: Any, tables: dict[int, TableFacts]) -> Rescore | None:
     return refine
 
 
+def _key_values(
+    state: Any, spec: RunSpec, tables: dict[int, TableFacts], known: Known
+) -> KeyValues | None:
+    """The run's key-value measure when Key value overlap is chosen: each band pair's values read
+    as the person who started the run, at most the sample size of them per column. A pair already
+    registered or decided is never measured as a new one (REQ-413)."""
+    if spec.key_values is None:
+        return None
+    measurer = Measurer(
+        gather.values_reader(state, spec.role),
+        tables,
+        decided=known.existing | known.rejected,
+        bound=spec.key_values.sample_size,
+    )
+    return KeyValues(measurer.all, spec.key_values.cutoff)
+
+
 #: Every proposal a run has read so far, to be kept with it.
 RecordSink = Callable[[list[Recorded]], Awaitable[None]]
 
@@ -386,12 +415,9 @@ async def perform(
                 state.source_pools, state.source_types, conn, prepared.source_ids
             )
     tables = prepared.tables
-    # Every proposed pair is measured on its data, read as the person who started the run.
-    # A pair already registered or decided is never measured as a new one (REQ-413).
-    measurer = Measurer(
-        gather.values_reader(state, spec.role), tables, decided=known.existing | known.rejected
-    )
-    fk = await measurer.all(_fk_proposals(fk_found))
+    # Declared foreign keys are the first check and are never measured (REQ-413, amended
+    # 2026-11-16): only semantic pairs in the band are (:func:`provisa.discovery.runner.judged`).
+    fk = _fk_proposals(fk_found)
     publisher = Publisher(pool, scope)
     read_sample = _caching(gather.uniqueness_reader(state))
 
@@ -451,6 +477,12 @@ async def perform(
             }
         if tally is not None:
             out["semantics"] = _semantics_report(tally, outcome)
+        if spec.key_values is not None:
+            # REQ-413 (amended 2026-11-16): the run's summary states Key value overlap's settings.
+            out["key_values"] = {
+                "cutoff": spec.key_values.cutoff,
+                "sample_size": spec.key_values.sample_size,
+            }
         if model is not None:
             out["model"] = model.describe()
         return out
@@ -485,7 +517,7 @@ async def perform(
         model.output_tokens,
         ask,
         _Control(),
-        measure=measurer.all,
+        key_values=_key_values(state, spec, tables, known),
         refine=await _refiner(state, tables),
         to_thread=in_flight,
     )

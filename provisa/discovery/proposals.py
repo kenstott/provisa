@@ -182,6 +182,9 @@ def _view(row: Any, never_read: set[int], shared: Shared | None) -> dict[str, An
         "acceptable": acceptable(row.left_out, shared),
         # REQ-1986: one of its tables is never read, so no values were compared.
         "reduced_information": bool(ends & never_read),
+        # REQ-413 (amended 2026-11-16): only a pair in the band under the threshold is measured,
+        # so a suggestion with a measure was admitted on key values matching in the data.
+        "admitted_on_key_values": row.left_out is None and row.measure is not None,
         # A many-to-many pair: the shared dimension accepting it joins, and whether it is one
         # already registered (a second pair on the same values reuses it).
         "dimension": None

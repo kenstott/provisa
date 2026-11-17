@@ -1971,6 +1971,12 @@ user_directory = Table(
     Column("email_opt_in", Boolean, nullable=False, server_default=true()),
     # REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     Column("discovery_threshold", Float, nullable=False, server_default="0.7"),
+    # REQ-413 (amended 2026-11-16): Key value overlap, the person's own as the threshold is:
+    # whether it is chosen, its measure cutoff, and its sample size (the most distinct values
+    # read of each column; provisa.discovery.measure.DISTINCT_BOUND).
+    Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
+    Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
+    Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

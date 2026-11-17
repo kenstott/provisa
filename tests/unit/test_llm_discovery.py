@@ -32,7 +32,7 @@ import pytest
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
 from provisa.discovery.direction import Proposal
 from provisa.discovery.runner import MIN_CONFIDENCE, Tally, execute, read_items
-from provisa.discovery.runner import kept as judged
+from provisa.discovery.runner import judged
 from provisa.discovery.windows import Request, plan
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
@@ -101,20 +101,14 @@ def _candidate_json(
     }
 
 
-async def _not_measured(found: list[Proposal]) -> list[Proposal]:
-    """No values to measure here: each proposal keeps the model's confidence, as one whose values
-    were not compared does (REQ-413). The measure itself: test_discovery_pair_measure."""
-    return found
-
-
 async def _read(
     items: list, tables: list[TableFacts] | None = None
 ) -> tuple[list[Proposal], Tally]:
-    """The proposals an answer's elements make, judged as the run judges them (measured, then
+    """The proposals an answer's elements make, judged as the run judges them (Key value overlap not chosen,
     held to the threshold)."""
     _, request = _request(tables)
     tally = Tally(total=1)
-    return await judged(*read_items(request, items, tally), _not_measured, tally), tally
+    return await judged(*read_items(request, items, tally), None, None, tally), tally
 
 
 class _Watcher:
@@ -131,9 +125,7 @@ async def _direct(fn, *args):
 
 async def _run(ask) -> tuple[Tally, list[Proposal]]:
     k, request = _request()
-    return await execute(
-        [request], k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
-    )
+    return await execute([request], k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct)
 
 
 # ---------------------------------------------------------------------------
