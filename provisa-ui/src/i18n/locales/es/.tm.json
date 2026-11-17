@@ -5063,7 +5063,7 @@
   "es/redactionTab.json::redactionTab.bestEffort": "Redaction is best effort. The built-in patterns are a starter set, not a guarantee: add patterns here for your organization's own sensitive formats. A source's own logs are out of Provisa's reach.",
   "es/redactionTab.json::redactionTab.builtinTitle": "Built-in patterns",
   "es/redactionTab.json::redactionTab.deploymentTitle": "Deployment rules (every organization)",
-  "es/redactionTab.json::redactionTab.intro": "Text matching these rules is replaced with [REDACTED:<rule>] before it leaves Provisa: in exported traces and logs, container output, the audit log and error messages returned to clients. The organization's own secrets are redacted automatically.",
+  "es/redactionTab.json::redactionTab.intro": "Text matching these rules is replaced before it leaves Provisa: in exported traces and logs, container output, the audit log and every error message returned to a client, including one inside a successful answer. A client receives [REDACTED], which names no rule. Logs, traces and the audit log keep [REDACTED:<rule>]. The organization's own secrets are redacted automatically.",
   "es/redactionTab.json::redactionTab.kindPattern": "Pattern",
   "es/redactionTab.json::redactionTab.kindReference": "Reference",
   "es/redactionTab.json::redactionTab.loading": "Loading…",
