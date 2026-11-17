@@ -67,6 +67,16 @@ class _Embedder:
         return [[0.1, 0.2, 0.3] for _ in texts], 5 * len(texts)
 
 
+@pytest.fixture(autouse=True)
+def _grants_issued_here_are_withdrawn():
+    """Every grant a test here issues is withdrawn after it: the grants are the process's own
+    (provisa.codesource.services), and another file's test counts an organization's."""
+    held = dict(services._grants)
+    yield
+    services._grants.clear()
+    services._grants.update(held)
+
+
 @pytest.fixture
 def service(monkeypatch: pytest.MonkeyPatch) -> dict:
     """The org's config, its vendors and its meter, as the service reads them."""
