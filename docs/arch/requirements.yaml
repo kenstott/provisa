@@ -3729,7 +3729,13 @@
     beside Stop: it closes the dialog and the run goes on on the server, as it already does when the dialog
     is closed. The Relationships page then shows the run is going (its progress, as the dialog shows it)
     with a way to open it again, and shows when it has ended, so a person who left it for hours sees its
-    result on return.'
+    result on return. (Amended 2026-11-16, THE RUN SUMMARY LIVES IN THE DIALOG, COLLAPSIBLE; THE PAGE SHOWS
+    ONE LINE:) Maintainer 2026-11-16 (''the message at the top should be collapsible''; ''this message seems
+    out of place here''). In the dialog a run''s summary (what it looked for, the model, source and target,
+    the counts and what was left out and why) is collapsible, shown collapsed to its first line once the
+    run has ended. The Relationships page does not show that summary: it shows only one line about the latest
+    run (going, with its progress, or ended, with how many suggestions wait), with a way to open it in the
+    dialog; the line goes once the run''s suggestions are all decided.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
