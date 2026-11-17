@@ -625,7 +625,11 @@
       "schema_registry_unreachable": "Schema-registry {{registry}} is niet bereikbaar: {{error}}",
       "sse_limit_reached": "maximum aantal gelijktijdige SSE-abonnementen bereikt",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
-      "unknown_role": "Onbekende rol '{{role}}'"
+      "unknown_role": "Onbekende rol '{{role}}'",
+      "owner_role_lost": "Het abonnement is beëindigd: de eigenaar heeft niet langer de rol waaronder het is gestart ({{roles}})",
+      "sink_cap_reached": "U hebt al {{cap}} actieve Kafka-sinks, het maximum dat de operator toestaat ({{setting}})",
+      "sink_needs_write": "Rol '{{role}}' mist het schrijfrecht dat een Kafka-sink nodig heeft",
+      "owner_sign_in_expired": "Het abonnement is beëindigd: de aanmelding waaronder het is gestart, is verlopen; meld u opnieuw aan en start het opnieuw"
     },
     "users": {
       "assignment_not_found": "Toewijzing niet gevonden",

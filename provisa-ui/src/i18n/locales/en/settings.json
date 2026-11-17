@@ -874,6 +874,12 @@
         "label": "Calls per statement to a parameterized table",
         "help": "The most calls one statement makes to one parameterized table. Each value a statement gives a parameter is one call to the source: each value of an IN list, each branch of an OR, each distinct key of a join. A statement that needs more is refused."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Running Kafka sinks per person",
+        "help": "How many Kafka sinks one person may have running at once. A request to start another is refused until one of theirs stops."
+      }
     }
   }
 }

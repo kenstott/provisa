@@ -27,6 +27,7 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
     """Bcrypt password validation with JWT issuance for testing/simple deployments."""
 
     provider_name: str = "simple"
+    rereads = True  # REQ-812: the users are the deployment's own configuration
 
     def __init__(self, users: list[dict], jwt_secret: str, user_ids) -> None:
         self._users = {u["username"]: u for u in users}
@@ -52,6 +53,14 @@ class SimpleAuthProvider(AuthProvider):  # REQ-120, REQ-124
             roles=roles,
             raw_claims={"sub": user_id, "username": username, "roles": roles},
         )
+
+    async def reread(self, identity: AuthIdentity) -> AuthIdentity:  # REQ-812
+        """The configured user behind ``identity``, with the roles its configuration names now."""
+        username = identity.raw_claims["username"]
+        user = self._users.get(username)
+        if user is None:
+            raise ValueError("Invalid credentials")
+        return await self._identity(username, user)
 
     async def login(self, username: str, password: str) -> str:  # REQ-124
         """Verify credentials and return a signed JWT naming the user's stored id."""
