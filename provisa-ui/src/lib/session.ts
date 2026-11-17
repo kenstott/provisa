@@ -12,6 +12,7 @@ import { clearPersistedAdminCache } from "../apolloClient";
 import { controlPlaneOrigin, isOrgSubdomainHost } from "./authHost";
 import { CHECKED_DOMAINS_KEY, KNOWN_DOMAINS_KEY } from "./domainFilterKeys";
 import { SUPERUSER_TOKEN_KEY } from "./sessionToken";
+import { clearOrgSelectionRequired } from "./orgSelection";
 import {
   endVisit,
   removeStored,
@@ -72,6 +73,27 @@ export function clearSessionState(): void {
   for (const key of SESSION_KEYS) removeStored(key, { global: true });
   for (const key of SESSION_SCOPED_KEYS) removeStoredEverywhere(key);
   clearPersistedAdminCache();
+  // REQ-1935: a refusal for naming no org belongs to the session that drew it. Left set, its
+  // non-dismissible prompt stood over the sign-in page the next identity has to use.
+  clearOrgSelectionRequired();
+}
+
+/**
+ * End the session in place, for a gate that sends the user back to sign-in (REQ-1289, REQ-1292).
+ *
+ * Unlike {@link signOut} it does not navigate: the caller re-renders sign-in. The Firebase SDK is
+ * signed out first, because its session outlives localStorage and `currentBearer` (lib/authFetch)
+ * asks it for a fresh bearer on every request. Clearing `provisa_token` alone left the sign-in page
+ * sending that bearer with no org named, and the refusal raised the select-an-org prompt over the
+ * page (cloud-dev, 2026-11-17). A demo visitor's tab ends only the visit (REQ-2006): the browser's
+ * own login is one the visit never touched.
+ */
+export async function endSession(): Promise<void> {
+  if (!visitorActive()) {
+    const { signOutFirebase } = await import("./firebase");
+    await signOutFirebase();
+  }
+  clearSessionState();
 }
 
 /**
