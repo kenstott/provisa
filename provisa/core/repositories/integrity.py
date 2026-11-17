@@ -680,15 +680,14 @@ async def _blocking(
 
 
 # REQ-1986: a function's derived table is hidden by turning its attribute off, which is refused
-# while anything a steward made refers to the table: its dependents, and these, which are parts
-# of a table (they go when it is deleted) but are made on it by a steward -- a row rule, a data
-# product's membership, a write grant to a role, a glossary term's reference, a tag.
+# while a live object refers to the table: its dependents, and these, which are parts of a table
+# (they go when it is deleted) but are made on it by a steward -- a row rule, a data product's
+# membership (what its offers offer), a write grant to a role. A glossary term's reference and a
+# tag are made by the product as well as by a steward, and are not among them.
 HIDING_BLOCKS: tuple[Reference, ...] = (
     _dep("rls_rules", "table_id", "table", "row_filter", "id"),
     _dep("data_product_tables", "table_id", "table", "data_product", "product_id"),
     _dep("table_write_grants", "table_id", "table", "role", "role_id"),
-    _dep("glossary_term_refs", "table_id", "table", "glossary_term", "term_id"),
-    _dep("tag_assignments", "table_id", "table", "tag_assignment", "id"),
 )
 
 

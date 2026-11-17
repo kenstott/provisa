@@ -320,8 +320,12 @@ async def test_deriving_the_table_registers_it_as_register_table_proposes_it(sta
         AsyncMock(return_value=columns),
     )
     state.roles = {"reader": {}}
-    registered = AsyncMock(return_value=MutationResult(success=True, message="registered"))
+    registered = AsyncMock(
+        return_value=MutationResult(success=True, message="registered", params={"id": 7})
+    )
     monkeypatch.setattr(schema_mutation.Mutation, "register_table", registered)
+    released = AsyncMock(return_value=MutationResult(success=True, message="released"))
+    monkeypatch.setattr(schema_mutation.Mutation, "set_table_draft", released)
     op = await _operation(state, "getOrderById")
     assert await derive_table(_request(), "api", "pets", op) == "openapi.getOrderById"
     assert registered.await_args is not None
@@ -333,6 +337,9 @@ async def test_deriving_the_table_registers_it_as_register_table_proposes_it(sta
     )
     parameter = next(c for c in table.columns if c.name == "_nf_orderId")
     assert (parameter.native_filter_type, parameter.native_filter_required) == ("path_param", True)
+    # In service with its function: released, not left a draft for its domain to release.
+    assert released.await_args is not None
+    assert released.await_args.args[-2:] == (7, False)
 
 
 # --- turning it off ------------------------------------------------------------------------------
@@ -439,3 +446,48 @@ async def test_a_derived_tables_columns_are_not_edited_on_the_table(state, plane
     async with plane.acquire() as conn:
         said = await derived_edit_refusal(conn, model)
     assert said is not None and "get_pet" in said
+
+
+@pytest.mark.asyncio
+async def test_a_relationship_on_a_parameter_is_named_to_a_reader_of_its_tables(plane):
+    """A parameter is the table's input, served to no role as a column: a reader of both tables
+    reads a relationship joined on it, so a refusal names it."""
+    from provisa.api.admin.read_rights import DependentsReader, relationship_readable
+    from provisa.core.schema_org import table_columns
+
+    plain = await _table(plane, "openapi", "findPetsByStatus")
+    derived = await _table(plane, "openapi", "getPetById")
+    async with plane.acquire() as conn:
+        await conn.execute_core(
+            insert(table_columns).values(
+                table_id=derived,
+                column_name="_nf_petId",
+                data_type="integer",
+                visible_to=[],
+                native_filter_type="path_param",
+            )
+        )
+        await conn.execute_core(
+            insert(relationships).values(
+                id="pets-to-pet",
+                source_table_id=plain,
+                target_table_id=derived,
+                source_column="id",
+                target_column="_nf_petId",
+                cardinality="many-to-one",
+            )
+        )
+        served = {(plain, None), (plain, "id"), (derived, None), (derived, "id")}
+
+        def reader(served: set) -> DependentsReader:
+            return DependentsReader(
+                column=lambda table_id, column: (table_id, column) in served,
+                metric=lambda row: True,
+                term=lambda domains: True,
+                command=lambda name: True,
+            )
+
+        assert await relationship_readable(conn, reader(served), "pets-to-pet")
+        assert not await relationship_readable(
+            conn, reader(served - {(derived, None)}), "pets-to-pet"
+        )

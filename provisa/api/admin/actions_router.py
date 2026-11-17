@@ -700,10 +700,15 @@ async def update_function(
     from provisa.core.repositories import data_product as data_product_repo
     from provisa.core.repositories import function as function_repo
 
-    async with state.model_db.acquire() as conn:
-        stored = await function_repo.get_function(conn, name)
-    if stored is None:
-        raise ApiError(404, "actions.function_not_found", f"Function '{name}' not found", name=name)
+    stored = None
+    if operation is not None and operation.table is not None:
+        # REQ-1986: its table attribute is settled against what is stored.
+        async with state.model_db.acquire() as conn:
+            stored = await function_repo.get_function(conn, name)
+        if stored is None:
+            raise ApiError(
+                404, "actions.function_not_found", f"Function '{name}' not found", name=name
+            )
     body.name = name
     hidden = await _settle_table(request, body, operation, stored)  # REQ-1986
 

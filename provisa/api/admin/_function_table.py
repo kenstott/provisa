@@ -150,7 +150,13 @@ async def derive_table(request: Any, source_id: str, domain_id: str, operation: 
     columns = await resolve_available_columns_metadata(source_id, schema_name, operation.table)
     table = default_table_input(source_id, domain_id, schema_name, operation.table, columns)
     info = types.SimpleNamespace(context={"request": request})
-    result = await Mutation().register_table(info, table)  # pyright: ignore[reportCallIssue]
+    mutation = Mutation()
+    result = await mutation.register_table(info, table)  # pyright: ignore[reportCallIssue]
+    if result.success:
+        # Derived from a function that is in service, it is in service with it: it is not a
+        # registration of its own waiting on its domain's release (REQ-1921).
+        derived = (result.params or {})["id"]
+        result = await mutation.set_table_draft(info, derived, False)  # pyright: ignore[reportCallIssue]
     if not result.success:
         raise ApiError(
             422,
