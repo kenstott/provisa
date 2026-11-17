@@ -53,11 +53,17 @@
       "mutation_not_permitted": "Мутация '{{field_name}}' не разрешена: {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Недействительная подпись Lemon Squeezy",
-      "tenant_no_ls_customer": "У тенанта нет клиента Lemon Squeezy",
-      "tenant_not_found": "Тенант не найден",
-      "webhook_missing_customer_id": "В вебхуке отсутствует идентификатор клиента",
-      "webhook_missing_tenant_linkage": "В вебхуке отсутствует привязка к тенанту"
+      "checkout_not_complete": "Это оформление не завершено, поэтому привязывать пока нечего: подписки ещё нет.",
+      "invalid_signature": "Недействительная подпись webhook",
+      "no_trial": "У этой организации нет пробного периода",
+      "org_no_customer": "У этой организации пока нет платёжного аккаунта.",
+      "org_not_found": "Организация не найдена",
+      "reconcile_not_creator": "Это может сделать только создатель организации",
+      "session_org_mismatch": "Это оформление открыто не для этой организации.",
+      "subscription_items_unrecognized": "В этой подписке нет одновременно цены тарифа и цены передачи данных, которые продаёт это развёртывание, поэтому её нельзя перевести.",
+      "trial_already_started": "Эта организация уже начала пробный период. Пробный период предоставляется один раз на организацию.",
+      "webhook_missing_org_linkage": "Подписка в webhook не указывает организацию",
+      "webhook_missing_subscription": "Webhook не указывает подписку"
     },
     "control_plane": {
       "multitenancy_disabled": "мультитенантность не включена"

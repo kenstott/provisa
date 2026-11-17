@@ -53,11 +53,17 @@
       "mutation_not_permitted": "Mutation « {{field_name}} » non autorisée : {{reason}}"
     },
     "billing": {
-      "invalid_signature": "Signature Lemon Squeezy invalide",
-      "tenant_no_ls_customer": "Le locataire n'a pas de client Lemon Squeezy",
-      "tenant_not_found": "Locataire introuvable",
-      "webhook_missing_customer_id": "Identifiant client manquant dans le webhook",
-      "webhook_missing_tenant_linkage": "Lien vers le locataire manquant dans le webhook"
+      "checkout_not_complete": "Ce paiement n'est pas terminé : il n'y a donc pas encore d'abonnement à rattacher.",
+      "invalid_signature": "Signature de webhook invalide",
+      "no_trial": "Cette organisation n'a pas d'essai",
+      "org_no_customer": "Cette organisation n'a pas encore de compte de facturation.",
+      "org_not_found": "Organisation introuvable",
+      "reconcile_not_creator": "Seul le créateur de l'organisation peut faire cela",
+      "session_org_mismatch": "Ce paiement n'a pas été ouvert pour cette organisation.",
+      "subscription_items_unrecognized": "Cet abonnement ne comporte pas à la fois un prix d'offre et un prix de transfert de données vendus par ce déploiement : il ne peut donc pas être modifié.",
+      "trial_already_started": "Cette organisation a déjà commencé son essai. Un essai est proposé une fois par organisation.",
+      "webhook_missing_org_linkage": "L'abonnement du webhook n'indique aucune organisation",
+      "webhook_missing_subscription": "Le webhook n'indique aucun abonnement"
     },
     "control_plane": {
       "multitenancy_disabled": "le mode multilocataire n'est pas activé"
