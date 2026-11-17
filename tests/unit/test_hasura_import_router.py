@@ -239,6 +239,24 @@ def _wire_apply(monkeypatch) -> dict:
         seen["order"].append("residency")  # REQ-1921: judged before anything is loaded
 
     monkeypatch.setattr(ir, "_require_residency_of_import", _residency)
+
+    # REQ-1327: an imported role is judged against the org's roles and domains as stored; this org
+    # holds the standard roles and no domain yet (test_config_import_roles_checked covers the rule).
+    import provisa.core.repositories.domain as domain_repo
+    import provisa.core.repositories.role as role_repo
+    from provisa.core.db import standard_role_dicts
+
+    async def _stored_roles(conn):  # noqa: ARG001
+        return standard_role_dicts()
+
+    async def _stored_domains(conn, retired=False):  # noqa: ARG001
+        return []
+
+    monkeypatch.setattr(role_repo, "list_all", _stored_roles)
+    monkeypatch.setattr(domain_repo, "list_all", _stored_domains)
+    import provisa.api.admin.capabilities as capmod
+
+    monkeypatch.setattr(capmod, "allowed_domains_request", lambda request: None)  # noqa: ARG005
     monkeypatch.setattr(app_mod, "_rebuild_schemas", _rebuild)
     # REQ-2185: the term-embedding trigger reads the org's vector model; its own tests cover it.
     monkeypatch.setattr("provisa.api.admin.reference_library_router.embed_terms", AsyncMock())
@@ -486,3 +504,43 @@ async def test_preview_reports_what_was_carried_mapped_and_left_to_redo(monkeypa
     assert all(i.detail for i in resp.mapped)
     redo = {w.category for w in resp.warnings}
     assert {"sources", "computed_fields", "functions"} <= redo
+
+
+@pytest.mark.asyncio
+async def test_preview_refuses_an_include_outside_the_upload_by_name(monkeypatch):
+    """An uploaded project's ``!include`` of a server file is refused with its catalogued code."""
+    _grant(monkeypatch, {"org_settings"})
+    data = _zip(
+        {
+            "metadata/databases/databases.yaml": yaml.dump(
+                [
+                    {
+                        "name": "default",
+                        "kind": "postgres",
+                        "tables": "!include default/tables/tables.yaml",
+                    }
+                ]
+            ),
+            "metadata/databases/default/tables/tables.yaml": "- !include /etc/hosts\n",
+        }
+    )
+    req = ir.ImportPreviewRequest(
+        filename="metadata.zip", content_b64=base64.b64encode(data).decode()
+    )
+    with pytest.raises(ApiError) as exc:
+        await ir.preview_import(req, _request())
+    assert exc.value.status_code == 400
+    assert exc.value.code == "import.include_outside_upload"
+    assert exc.value.params == {"path": "/etc/hosts"}
+
+
+@pytest.mark.asyncio
+async def test_preview_refuses_a_filter_operator_it_has_no_sql_for_by_name(monkeypatch):
+    _grant(monkeypatch, {"org_settings"})
+    doc = yaml.safe_load(yaml.dump(V2_DOCUMENT))
+    perm = doc["sources"][0]["tables"][0]["select_permissions"][0]["permission"]
+    perm["filter"] = {"id": {"_x */ OR TRUE /*": 1}}
+    with pytest.raises(ApiError) as exc:
+        await ir.preview_import(_preview_req(doc), _request())
+    assert exc.value.code == "import.filter_operator_refused"
+    assert exc.value.params == {"operator": "_x */ OR TRUE /*"}

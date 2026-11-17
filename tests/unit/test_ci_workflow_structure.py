@@ -1478,3 +1478,77 @@ def test_the_uis_engines_admit_the_nvmrc():
     assert floor, f"provisa-ui engines.node is {engines!r}, expected >=x.y.z"
     pin = tuple(int(x) for x in _node_pin().split("."))
     assert tuple(int(x) for x in floor.groups()) <= pin, f"engines {engines} refuses .nvmrc {pin}"
+
+
+# --- the Trino plugin jars: primed once per workflow run, restored before every test ------------
+
+_PLUGINS_ACTION = "./.github/actions/trino-plugins"
+_LANE_WORKFLOW = "./.github/workflows/lane.yml"
+
+
+def _plugin_phases(body: dict) -> list[str]:
+    """The plugin-cache phases a job runs: its own action steps, or `restore` for a call of the
+    lane workflow with trino-plugins switched on (literally or by an expression)."""
+    if body.get("uses") == _LANE_WORKFLOW:
+        return ["restore"] if (body.get("with") or {}).get("trino-plugins", False) else []
+    return [
+        (s.get("with") or {}).get("phase")
+        for s in body.get("steps") or []
+        if s.get("uses") == _PLUGINS_ACTION
+    ]
+
+
+def _needed(jobs: dict, job: str) -> set[str]:
+    """Every job ``job`` waits for, directly or through another."""
+    seen: set[str] = set()
+    todo = [job]
+    while todo:
+        needs = jobs[todo.pop()].get("needs") or []
+        for n in [needs] if isinstance(needs, str) else needs:
+            if n not in seen:
+                seen.add(n)
+                todo.append(n)
+    return seen
+
+
+def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
+    """Release 510 (run 44081179966): each parallel lane missed an evicted plugin cache and
+    fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
+    429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
+    or one download, checksum-verified, saved at once) and every job that restores it (`phase:
+    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    precedes pytest and no lane ever downloads."""
+    restoring = []
+    for path in WORKFLOWS:
+        if path.name == "lane.yml":
+            continue  # the callee: each caller's job is checked where it calls it
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        primers = {j for j, body in jobs.items() if "prime" in _plugin_phases(body)}
+        for job, body in jobs.items():
+            phases = _plugin_phases(body)
+            assert set(phases) <= {"prime", "restore"}, f"{path.name}:{job}: {phases}"
+            if "restore" in phases and "prime" not in phases:
+                restoring.append(f"{path.name}:{job}")
+                assert _needed(jobs, job) & primers, (
+                    f"{path.name}:{job} restores the Trino plugins without waiting for a job "
+                    f"that primes them (primers here: {sorted(primers)})"
+                )
+    assert restoring, "no job restores the Trino plugins"
+
+
+def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
+    steps = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())["jobs"][
+        "lane"
+    ]["steps"]
+    names = [s.get("name") for s in steps]
+    restore = steps[names.index("Restore Trino plugins")]
+    assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
+    assert names.index("Restore Trino plugins") < names.index("Run lane")
+    assert [s for s in steps if s.get("uses") == _PLUGINS_ACTION] == [restore]
+
+
+def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
+    """The jars come from the action's one fetch per pin; a workflow step of its own that ran the
+    fetch would be a second, uncached path to Maven Central."""
+    for where, step in _steps():
+        assert "trino_plugins.py fetch" not in (step.get("run") or ""), where

@@ -297,12 +297,12 @@ def _redactor_forgets_what_a_test_resolved():
     when it ends, so the value one test resolved is not redacted from another's text."""
     from provisa.security import redaction
 
-    before = dict(redaction._user_values)
+    before = {org: dict(values) for org, values in redaction._noted.items()}
     yield
-    if redaction._user_values != before:
+    if redaction._noted != before:
         with redaction._lock:
-            redaction._user_values.clear()
-            redaction._user_values.update(before)
+            redaction._noted.clear()
+            redaction._noted.update(before)
             redaction._rebuild()
 
 

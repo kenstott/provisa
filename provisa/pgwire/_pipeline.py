@@ -2134,12 +2134,12 @@ async def govern_statement(
     from provisa.mv.bitemporal_tables import read_versions
 
     governed_semantic = read_versions(governed_semantic, state, gov_ctx, _travel)
-    # REQ-2131 (amended 2026-11-16): a view applying a column transform is read from its stored
-    # rows under the reader's row rules and masks, applied to the governed statement as a row rule
-    # is (mv/view_read.py).
+    # REQ-2131 (amended 2026-11-16), REQ-2249: a view applying a column transform or calling a code
+    # command is read from its stored rows under the reader's row rules and masks, applied to the
+    # governed statement as a row rule is (mv/view_read.py).
     from provisa.mv.view_read import read_stored_views
 
-    governed_semantic = read_stored_views(governed_semantic, state, gov_ctx)
+    governed_semantic = await read_stored_views(governed_semantic, state, gov_ctx)
     if _registry is not None:
         # REQ-430: a text the statement searches for is embedded once, with the statement.
         governed_semantic = await _similarity.embed_text_queries(governed_semantic, _registry)
@@ -6019,10 +6019,11 @@ async def _govern_compiled(
     from provisa.mv.bitemporal_tables import read_versions
 
     governed_sql = read_versions(governed_sql, state, gov_ctx, _travel)
-    # REQ-2131: a transform view under the reader's row rules and masks, as on the raw-SQL stage.
+    # REQ-2131, REQ-2249: a stored view under the reader's row rules and masks, as on the raw-SQL
+    # stage.
     from provisa.mv.view_read import read_stored_views
 
-    governed_sql = read_stored_views(governed_sql, state, gov_ctx)
+    governed_sql = await read_stored_views(governed_sql, state, gov_ctx)
     # REQ-1682: session-variable predicates resolve to the request's literals on every route (see
     # the raw path above for why the direct Postgres route cannot keep native current_setting).
     governed_sql = _resolve_session_settings(governed_sql, session_vars, "postgres")

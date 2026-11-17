@@ -153,6 +153,7 @@
       "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
       "source_unavailable": "A origem {{source}} não pôde responder. Tente novamente em breve.",
       "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}.",
+      "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
       "graphql_body_missing": "A requisição não tem corpo: uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
@@ -324,6 +325,13 @@
       "catalog_view_refused": "{{view}} é uma exibição de catálogo do domínio meta e não pode ser lida em uma instrução junto com uma tabela de uma fonte de dados: leia-as em duas instruções.",
       "function_unsupported": "{{function}}() não tem equivalente em {{dialect}}."
     },
+    "redaction": {
+      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
+      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
+      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
+      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
+      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
+    },
     "replication": {
       "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
       "no_whole_copy": "A tabela {{schema}}.{{table}} da origem {{source}} não tem uma cópia completa para compilar: ela é replicada linha a linha ou tem uma coluna de parâmetro.",
@@ -344,7 +352,9 @@
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
       "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
-      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém",
+      "platform_right_requires_platform_admin": "Uma função com {{rights}} é definida por um administrador da plataforma",
+      "rights_not_held": "A função {{role}} inclui {{rights}}, que você não detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -727,6 +737,10 @@
     "dbt_sources": {
       "unknown_role": "Não existe nenhuma função chamada {{role}}."
     },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
+    },
     "dbt": {
       "products": {
         "none_offered": "A fonte {{source_id}} não tem nenhum modelo público com contrato aplicado.",
@@ -885,6 +899,11 @@
     "preflight": {
       "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
       "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",
+      "filter_value_refused": "{{value}} não pode ser um valor em um filtro de permissão: um valor é uma string, um número, true, false, null, uma lista destes ou uma variável de sessão.",
+      "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     }
   }
 }
