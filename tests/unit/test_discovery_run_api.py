@@ -1805,3 +1805,56 @@ async def test_a_jev_call_that_fails_keeps_the_models_confidence_and_the_result_
     assert semantics["suggested"] == 1 and semantics["scoring_failed"] == 1
     (candidate,) = await _candidates(db)
     assert candidate["confidence"] == 0.95
+
+
+# --- a set that resolves to no table (REQ-413) -----------------------------------------------------
+
+
+async def _with_a_system_table(monkeypatch, tmp_path) -> _World:
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    await _table(db, 3, "meta", "tables", [("id", "integer", True)])
+    return _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+
+
+@pytest.mark.parametrize(
+    ("over", "code", "count"),
+    [
+        ({"source_tables": [3]}, "discovery.source_tables_not_read", 1),
+        ({"source_domains": ["pet-store"]}, "discovery.source_domains_empty", None),
+        (
+            {"target_same_as_source": False, "target_domains": ["crm"], "target_tables": [3]},
+            "discovery.target_tables_not_read",
+            1,
+        ),
+        (
+            {"target_same_as_source": False, "target_domains": ["pet-store"]},
+            "discovery.target_domains_empty",
+            None,
+        ),
+    ],
+)
+async def test_a_set_that_resolves_to_no_table_is_refused_before_anything_runs(
+    monkeypatch, tmp_path, over, code, count
+):
+    """A chosen set discovery reads no table of is refused, saying why, by the count and by Run:
+    no run is started that would end saying the model proposed nothing."""
+    world = await _with_a_system_table(monkeypatch, tmp_path)
+    for call in (discovery.count_run, discovery.start_run):
+        with pytest.raises(ApiError) as caught:
+            await call(_REQUEST, _scope(kinds=["foreign_keys"], **over))
+        assert caught.value.status_code == 400
+        assert caught.value.code == code
+        if count is not None:
+            assert caught.value.params["count"] == count
+    assert world.launched == []
+    assert (await discovery.list_runs(_REQUEST, limit=5))["runs"] == []
+
+
+async def test_a_run_says_how_many_of_the_chosen_tables_it_left_out(monkeypatch, tmp_path):
+    world = await _with_a_system_table(monkeypatch, tmp_path)
+    run = await _run(world, _scope(kinds=["foreign_keys"], source_tables=[1, 3]))
+    assert run["status"] == "done"
+    assert run["report"]["source_tables"] == 1
+    assert run["report"]["source_left_out"] == 1
+    assert run["report"]["target_left_out"] == 0

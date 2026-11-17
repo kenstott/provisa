@@ -481,6 +481,8 @@ export interface RegisteredTable {
   tableName: string;
   alias: string | null;
   description: string | null;
+  // REQ-413: when it was registered (ISO 8601); null only for a draft not yet registered.
+  registeredAt: string | null;
   cacheTtl: number | null;
   roleTtl: RoleTtl[]; // REQ-1907: role → TTL; effective = max(cache_ttl, role_ttl(role))
   // REQ-318: what reads the table page by page (null: nothing does), its declared paging, and
@@ -591,6 +593,7 @@ export const LISTED_TABLE_FIELDS = [
   "timeTravel",
   "apiEndpoint",
   "modelingRole",
+  "registeredAt",
   "viewMetrics",
 ] as const;
 

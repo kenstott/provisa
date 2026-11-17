@@ -180,9 +180,13 @@
       "run_still_going": "L'exécution de découverte {{run_id}} est encore en cours. Décidez de ses propositions une fois qu'elle est terminée.",
       "schema_discovery_unsupported": "Le type de source « {{source_type}} » ne prend pas en charge la découverte de schéma. Définissez les colonnes manuellement.",
       "semantics_unavailable": "La sémantique ne peut pas s'exécuter : {{model}}, le modèle affecté à l'inférence des relations, n'a pas de clé. Définissez-en une dans Admin, Modèles IA.",
+      "source_domains_empty": "Les domaines source choisis ne contiennent aucune table que la découverte lit.",
       "source_not_found": "Source « {{source_id}} » introuvable",
+      "source_tables_not_read": "Aucune des tables source choisies ({{count}}) n'est lue : la découverte laisse de côté les tables d'un domaine système et celles hors service.",
       "table_id_required": "table_id requis pour la portée table",
       "table_not_found": "La table {{table_id}} n'est pas enregistrée.",
+      "target_domains_empty": "Les domaines cibles choisis ne contiennent aucune table que la découverte lit.",
+      "target_tables_not_read": "Aucune des tables cibles choisies ({{count}}) n'est lue : la découverte laisse de côté les tables d'un domaine système et celles hors service.",
       "unknown_source_type": "Type de source inconnu : {{type}}",
       "vendor_unknown": "{{vendor}} ne liste aucun modèle ici ; saisissez le nom du modèle."
     },

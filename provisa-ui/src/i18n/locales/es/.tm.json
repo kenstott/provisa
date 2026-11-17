@@ -10824,5 +10824,20 @@
   "es/serverErrors.json::serverErrors.functions.table_has_dependents": "The table '{{table}}' of function '{{name}}' is still referred to by other objects; remove those references first",
   "es/serverErrors.json::serverErrors.schema.table_derived_from_function": "Table '{{name}}' is derived from a function: it is removed by turning off the function's table, and its columns and parameters are edited on the function",
   "es/serverErrors.json::serverErrors.schema.relationship_source_column_missing": "Relationship '{{relationship}}' names no source column. A relationship joins on a column of its source table.",
-  "es/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function."
+  "es/serverErrors.json::serverErrors.schema.relationship_target_column_missing": "Relationship '{{relationship}}' names no target column. A relationship joins on a column of its target table, unless its target is a function.",
+  "es/discoverDialog.json::discoverDialog.restore.newTables": "{{count}} table registered since your last run is in {{domains}}, which it did not look at.",
+  "es/discoverDialog.json::discoverDialog.restore.newTables_other": "{{count}} tables registered since your last run are in {{domains}}, which it did not look at.",
+  "es/discoverDialog.json::discoverDialog.restore.addNewTables": "Add to this run",
+  "es/discoverResult.json::discoverResult.scopeSourceCount": "Source: {{count}} table.",
+  "es/discoverResult.json::discoverResult.scopeSourceCount_other": "Source: {{count}} tables.",
+  "es/discoverResult.json::discoverResult.scopeTargetCount": "Target: {{count}} table.",
+  "es/discoverResult.json::discoverResult.scopeTargetCount_other": "Target: {{count}} tables.",
+  "es/discoverResult.json::discoverResult.sourceLeftOut": "{{count}} of the chosen source tables was left out: discovery does not read a table of a system domain or one out of service.",
+  "es/discoverResult.json::discoverResult.sourceLeftOut_other": "{{count}} of the chosen source tables were left out: discovery does not read a table of a system domain or one out of service.",
+  "es/discoverResult.json::discoverResult.targetLeftOut": "{{count}} of the chosen target tables was left out: discovery does not read a table of a system domain or one out of service.",
+  "es/discoverResult.json::discoverResult.targetLeftOut_other": "{{count}} of the chosen target tables were left out: discovery does not read a table of a system domain or one out of service.",
+  "es/serverErrors.json::serverErrors.discovery.source_domains_empty": "The chosen source domains hold no table discovery reads.",
+  "es/serverErrors.json::serverErrors.discovery.target_domains_empty": "The chosen target domains hold no table discovery reads.",
+  "es/serverErrors.json::serverErrors.discovery.source_tables_not_read": "None of the chosen source tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service.",
+  "es/serverErrors.json::serverErrors.discovery.target_tables_not_read": "None of the chosen target tables ({{count}}) is read: discovery leaves out a table of a system domain or one out of service."
 }
