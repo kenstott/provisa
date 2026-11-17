@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on ClickHouse.
 
 When ClickHouse is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 399, of which 291 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 446, of which 297 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-36 of the grid's 396 features are native on ClickHouse and left out.
+36 of the grid's 443 features are native on ClickHouse and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -291,7 +291,7 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>factorial</strong><br>The product of the integers from 1 to n.</td><td><pre><code>factorial($n)
 =&gt;
-function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+arrayElement(arrayMap((_n) -&gt; if(throwIf(ifNull(_n &lt; 0, 0), &#x27;postgresql-error 22003: factorial of a negative number is undefined&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(_n &gt; 32177, 0), &#x27;postgresql-error 22003: value overflows numeric format&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(_n &gt; 56 AND _n &lt;= 32177, 0), &#x27;postgresql-error 0A000: factorial() of a value past 56 has no exact form on clickhouse&lt;end of postgresql-error&gt;&#x27;) = 0, if(_n IS NULL OR _n &gt; 56, NULL, arrayFold((_f, _i) -&gt; _f * toDecimal256(_i, 0), range(1, toUInt64(least(greatest(_n, 0), 56)) + 1), toDecimal256(1, 0))), NULL), [$n]), 1)</code></pre></td><td><ul><li>From 57 to 32177, whose factorial ClickHouse&#x27;s Decimal256 (76 digits) does not hold, refused with 0A000, where PostgreSQL answers its exact digits; past that, PostgreSQL&#x27;s 22003.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>numeric</strong><br>An integer as a numeric.</td><td><pre><code>numeric($v)
 =&gt;
 function provisa.transpiler.polyfill.numbers.numeric_of_an_integer: numeric of an integer: its cast to DECIMAL(38, 0); of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its own digits, at any precision and scale, never rounded; NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). A number written with an exponent (1e3), which PostgreSQL answers with its digits shifted (1000), is refused with 0A000. Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
@@ -316,6 +316,144 @@ function provisa.transpiler.polyfill.numbers.int8_of_jsonb: int8 of a jsonb valu
 <tr><td><strong>float8</strong><br>A jsonb number as double precision.</td><td><pre><code>float8($v)
 =&gt;
 function provisa.transpiler.polyfill.numbers.float8_of_jsonb: float8 of a jsonb value, its JSON number; of a json value, refused.</code></pre></td><td><ul><li>Of a jsonb value: a JSON number answers its value read to the nearest float, 22003 where it overflows or underflows. NULL answers NULL, and any other kind raises PostgreSQL&#x27;s error (22023). Text a jsonb column holds that is not valid JSON, which PostgreSQL refuses when it is stored, raises 22P02 (invalid input syntax for type json) when the call reads it, without PostgreSQL&#x27;s detail line. Of a json value, refused by name.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>float4eq</strong><br>Whether a real is equal to a real, NaN after every other value.</td><td><pre><code>float4eq($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) = tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4ne</strong><br>Whether a real is not equal to a real, NaN after every other value.</td><td><pre><code>float4ne($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) != tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4lt</strong><br>Whether a real is less than a real, NaN after every other value.</td><td><pre><code>float4lt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4le</strong><br>Whether a real is less than or equal to a real, NaN after every other value.</td><td><pre><code>float4le($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4gt</strong><br>Whether a real is greater than a real, NaN after every other value.</td><td><pre><code>float4gt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4ge</strong><br>Whether a real is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float4ge($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8eq</strong><br>Whether a double is equal to a double, NaN after every other value.</td><td><pre><code>float8eq($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) = tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8ne</strong><br>Whether a double is not equal to a double, NaN after every other value.</td><td><pre><code>float8ne($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) != tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8lt</strong><br>Whether a double is less than a double, NaN after every other value.</td><td><pre><code>float8lt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8le</strong><br>Whether a double is less than or equal to a double, NaN after every other value.</td><td><pre><code>float8le($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8gt</strong><br>Whether a double is greater than a double, NaN after every other value.</td><td><pre><code>float8gt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8ge</strong><br>Whether a double is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float8ge($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float48eq</strong><br>Whether a real is equal to a double, NaN after every other value.</td><td><pre><code>float48eq($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) = tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float48ne</strong><br>Whether a real is not equal to a double, NaN after every other value.</td><td><pre><code>float48ne($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) != tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float48lt</strong><br>Whether a real is less than a double, NaN after every other value.</td><td><pre><code>float48lt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float48le</strong><br>Whether a real is less than or equal to a double, NaN after every other value.</td><td><pre><code>float48le($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float48gt</strong><br>Whether a real is greater than a double, NaN after every other value.</td><td><pre><code>float48gt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float48ge</strong><br>Whether a real is greater than or equal to a double, NaN after every other value.</td><td><pre><code>float48ge($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float84eq</strong><br>Whether a double is equal to a real, NaN after every other value.</td><td><pre><code>float84eq($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) = tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float84ne</strong><br>Whether a double is not equal to a real, NaN after every other value.</td><td><pre><code>float84ne($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) != tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float84lt</strong><br>Whether a double is less than a real, NaN after every other value.</td><td><pre><code>float84lt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float84le</strong><br>Whether a double is less than or equal to a real, NaN after every other value.</td><td><pre><code>float84le($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float84gt</strong><br>Whether a double is greater than a real, NaN after every other value.</td><td><pre><code>float84gt($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float84ge</strong><br>Whether a double is greater than or equal to a real, NaN after every other value.</td><td><pre><code>float84ge($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt;= tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float4larger($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), _a, if(_a IS NULL, NULL, _b)), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float4smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float4smaller($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), _a, if(_a IS NULL, NULL, _b)), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8larger</strong><br>The greater of two floats, NaN after every other value.</td><td><pre><code>float8larger($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &gt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), _a, if(_a IS NULL, NULL, _b)), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>float8smaller</strong><br>The less of two floats, NaN after every other value.</td><td><pre><code>float8smaller($a, $b)
+=&gt;
+arrayElement(arrayMap((_a, _b) -&gt; if(if(_a IS NULL OR _b IS NULL, NULL, tuple(isNaN(_a), if(isNaN(_a), 0, toFloat64(_a))) &lt; tuple(isNaN(_b), if(isNaN(_b), 0, toFloat64(_b)))), _a, if(_a IS NULL, NULL, _b)), [$a], [$b]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>acos</strong><br>The arc cosine of a value from -1 to 1.</td><td><pre><code>acos($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(abs(_x) &gt; 1, 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, acos(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>asin</strong><br>The arc sine of a value from -1 to 1.</td><td><pre><code>asin($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(abs(_x) &gt; 1, 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, asin(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>atanh</strong><br>The inverse hyperbolic tangent of a value from -1 to 1.</td><td><pre><code>atanh($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(abs(_x) &gt; 1, 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, atanh(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>acosh</strong><br>The inverse hyperbolic cosine of a value of 1 or more.</td><td><pre><code>acosh($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(_x &lt; 1, 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, acosh(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sin</strong><br>The sine of a finite value.</td><td><pre><code>sin($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(isInfinite(toFloat64(_x)), 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, sin(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>cos</strong><br>The cosine of a finite value.</td><td><pre><code>cos($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(isInfinite(toFloat64(_x)), 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, cos(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>tan</strong><br>The tangent of a finite value.</td><td><pre><code>tan($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(isInfinite(toFloat64(_x)), 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, tan(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>cot</strong><br>The cotangent of a finite value.</td><td><pre><code>cot($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(isInfinite(toFloat64(_x)), 0), &#x27;postgresql-error 22003: input is out of range&lt;end of postgresql-error&gt;&#x27;) = 0, 1.0 / tan(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sqrt</strong><br>The square root of a value of zero or more.</td><td><pre><code>sqrt($x)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_sqrt: sqrt($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>log</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log($x)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_log: log($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>log10</strong><br>The base 10 logarithm of a value above zero.</td><td><pre><code>log10($x)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_log10: log10($x) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>power</strong><br>A value raised to a power.</td><td><pre><code>power($x, $y)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_power: power($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>pow</strong><br>A value raised to a power.</td><td><pre><code>pow($x, $y)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_pow: pow($x, $y) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(isInfinite(degrees(_x)) AND NOT isInfinite(toFloat64(_x)), 0), &#x27;postgresql-error 22003: value out of range: overflow&lt;end of postgresql-error&gt;&#x27;) = 0, degrees(_x), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(isNaN(toFloat64(_x)), 0, sign(_x)), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>abs</strong><br>The absolute value; of an integer type&#x27;s least value, out of range.</td><td><pre><code>abs($a)
+=&gt;
+arrayElement(arrayMap((_a) -&gt; if(throwIf(ifNull(toTypeName(assumeNotNull(_a)) = &#x27;Int16&#x27; AND _a &lt; 0 AND -_a &lt; 0, 0), &#x27;postgresql-error 22003: smallint out of range&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toTypeName(assumeNotNull(_a)) = &#x27;Int32&#x27; AND _a &lt; 0 AND -_a &lt; 0, 0), &#x27;postgresql-error 22003: integer out of range&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toTypeName(assumeNotNull(_a)) = &#x27;Int64&#x27; AND _a &lt; 0 AND -_a &lt; 0, 0), &#x27;postgresql-error 22003: bigint out of range&lt;end of postgresql-error&gt;&#x27;) = 0, if(_a &lt; 0, -_a, _a), NULL), [$a]), 1)</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>lcm</strong><br>The least common multiple of two integers; out of range past the type.</td><td><pre><code>lcm($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.floats.of_no_numeric_lcm: lcm($a, $b) of no numeric: a double&#x27;s answer, its edges as PostgreSQL&#x27;s.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>chr</strong><br>The character of a code point, as its UTF-8 bytes.</td><td><pre><code>chr($x)
+=&gt;
+arrayElement(arrayMap((_x) -&gt; if(throwIf(ifNull(toInt64(_x) &lt; 0, 0), &#x27;postgresql-error 22023: character number must be positive&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64(_x) = 0, 0), &#x27;postgresql-error 54000: null character not permitted&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64(_x) &gt; 0x10FFFF, 0), &#x27;postgresql-error 54000: requested character too large for encoding&lt;end of postgresql-error&gt;&#x27;) + throwIf(ifNull(toInt64(_x) &gt;= 0xD800 AND toInt64(_x) &lt;= 0xDFFF, 0), &#x27;postgresql-error 54000: requested character not valid for encoding&lt;end of postgresql-error&gt;&#x27;) = 0, if(toInt64(_x) &lt; 1 OR toInt64(_x) &gt; 0x10FFFF OR (toInt64(_x) &gt;= 0xD800 AND toInt64(_x) &lt;= 0xDFFF), NULL, multiIf(toInt64(_x) &lt; 0x80, char(toInt64(_x)), toInt64(_x) &lt; 0x800, char(bitOr(0xC0, bitShiftRight(toInt64(_x), 6)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 0), 0x3F))), toInt64(_x) &lt; 0x10000, char(bitOr(0xE0, bitShiftRight(toInt64(_x), 12)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 6), 0x3F)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 0), 0x3F))), char(bitOr(0xF0, bitShiftRight(toInt64(_x), 18)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 12), 0x3F)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 6), 0x3F)), bitOr(0x80, bitAnd(bitShiftRight(toInt64(_x), 0), 0x3F))))), NULL), [$x]), 1)</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>date_mi</strong><br>The days from one date to another.</td><td><pre><code>date_mi($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
@@ -381,9 +519,10 @@ function provisa.transpiler.polyfill.clickhouse.started: date_trunc of a timesta
 <tr><td><strong>date</strong><br>A text cast to a date.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.dated: A text the statement writes cast to a date: its day, PostgreSQL&#x27;s error of one that does</code></pre></td><td><ul><li>A text the statement writes: an ISO date of 1900 to 2299, any other refused by name. A text column&#x27;s cast keeps ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>time</strong><br>A text cast to a time of day.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.timed: A text the statement writes cast to a time: its time of day as time_out writes it, which</code></pre></td><td><ul><li>A text the statement writes: hours, minutes, seconds and a fraction, each field read as PostgreSQL reads it (a seventh fractional digit rounded, 24:00:00 the last, a field out of range 22008); any other text (AM or PM, a zone, a date) is refused by name. ClickHouse&#x27;s server has no Time64: a time is held as an Int64 of its microseconds of the day (0 to 86400000000), compared as integers, and the select list, or a cast to text, shows it as time_out&#x27;s text. 24:00:00 is held and compared; pgwire reads no time of 24:00:00 back, so a column that shows it raises. A value whose type the statement does not say (a table&#x27;s column) is read from its text at run time: a date before the clock is read past, up to six fractional digits; any other text raises 22007, a field past its range 22008, each without the value in its message. A timestamp is read as its wall time&#x27;s time of day.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>integer</strong><br>A literal cast to smallint, integer or bigint.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.integer_read: A literal cast to an integer, read as PostgreSQL reads it: a number rounded half away from</code></pre></td><td><ul><li>A number or a text the statement writes is read as PostgreSQL reads it: a number rounded half away from zero, a text by the integer input (a 0x, 0o or 0b prefix, underscores); past the type it raises 22003, a text the input does not read 22P02. A column&#x27;s cast keeps ClickHouse&#x27;s own, which wraps past the type.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>real</strong><br>A literal cast to a real.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.real_read: A literal cast to a real, read as float4in reads its digits: ClickHouse&#x27;s cast of a text to</code></pre></td><td><ul><li>A number or a text the statement writes is read as float4in reads it: the real nearest its digits, a tie to the even one; past the type, or a value that is no zero read as zero, it raises 22003. A column&#x27;s cast keeps ClickHouse&#x27;s own, which reads a text to a Float32 less exactly.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>an oid literal</strong><br>A text cast to an oid.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.oid_read: A text cast to an oid, read as oidin reads it: from -2147483648 to 4294967295, a negative</code></pre></td><td><ul><li>A text the statement writes is read as PostgreSQL reads it: past -2147483648 to 4294967295 it raises 22003, a text the input does not read 22P02, and a negative value is its 32 bits unsigned. A column&#x27;s cast keeps ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>max and min of tids</strong><br>The last or first tid of a group, by block and then offset.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse._tid_extreme: max or min of tids, held as their text, in PostgreSQL&#x27;s order (block, then offset); NULL of</code></pre></td><td></td><td></td><td></td></tr>
-<tr><td><strong>numeric input</strong><br>A literal cast to a numeric.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.numeric_read: A literal cast to a numeric, cast from its text rounded as PostgreSQL rounds it: ClickHouse</code></pre></td><td><ul><li>A number or a text the statement writes is cast from its text, rounded half away from zero to the scale, as PostgreSQL rounds it; past the precision it raises 22003, a text the input does not read 22P02. A value of no precision said holds up to 38 digits; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on clickhouse). A column&#x27;s cast keeps ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
+<tr><td><strong>numeric input</strong><br>A literal cast to a numeric.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.numeric_read: A literal cast to a numeric, cast from its text rounded as PostgreSQL rounds it: ClickHouse</code></pre></td><td><ul><li>A number or a text the statement writes is cast from its text, rounded half away from zero to the scale, as PostgreSQL rounds it; past the precision it raises 22003, a text the input does not read 22P02. A value of no precision said holds up to 38 digits; one of more raises 0A000 (numeric_in() of a value of more than 38 digits has no exact form on clickhouse). NaN and infinity raise 0A000 (numeric_in() of NaN or infinity has no form on clickhouse): ClickHouse&#x27;s Decimal holds neither. A column&#x27;s cast keeps ClickHouse&#x27;s own.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>date + integer</strong><br>A date plus or less a number of days, by its operator (date_pli, date_mii, integer_pl_date).</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.days_moved: A date plus or less a number of days, by its operator: date_pli, date_mii or</code></pre></td><td><ul><li>A day moved past a date&#x27;s range raises 22008, as PostgreSQL does; a day within it but outside 1900-01-01 .. 2299-12-31 (ClickHouse&#x27;s Date32) raises 0A000 (date_pli() of a value outside 1900-01-01 .. 2299-12-31 has no exact form on clickhouse). Of operands whose types the statement says (a literal, a cast); a date column&#x27;s keeps ClickHouse&#x27;s own arithmetic, exact within Date32&#x27;s range.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>timestamp</strong><br>A text cast to a timestamp, or to a timestamp with time zone.</td><td></td><td><ul><li>Held as DateTime64(6, &#x27;UTC&#x27;). A text the statement writes is read where the statement is transpiled (provisa.transpiler.transpile): an infinity, a year BC or past 9999, and a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 (a timestamp&#x27;s) or 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC (a timestamptz&#x27;s, its offset read) raise 0A000 (timestamptz_in() of a value outside 1900-01-01 00:00:00 .. 2299-12-31 23:59:59.999999 UTC has no exact form on clickhouse), where ClickHouse would hold it at its type&#x27;s end. A timestamp&#x27;s offset is dropped, as PostgreSQL&#x27;s input drops it (ClickHouse&#x27;s cast reads it). A text in another form, and a text column&#x27;s cast, keep ClickHouse&#x27;s own read.</li></ul></td><td></td><td></td></tr>
 <tr><td><strong>first_value</strong><br>The value of a row of a window.</td><td><pre><code>function provisa.transpiler.polyfill.clickhouse.framed_first_value: first_value over a window: NULL where ClickHouse answers its type&#x27;s default.</code></pre></td><td><ul><li>Of a value holding a call, refused by name: what a rule writes is not walked again.</li></ul></td><td></td><td></td></tr>

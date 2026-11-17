@@ -33,10 +33,50 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill.grid import Feature, Rule, Side
-from provisa.transpiler.polyfill.matching import graft
+from provisa.pgwire import function_types
+from provisa.transpiler.polyfill import notation, trino
+from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
-from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_only
+from provisa.transpiler.polyfill.grid import Feature, Rule, Side
+from provisa.transpiler.polyfill.numbers import FAMILY, ch_checked, ch_fail, ch_once, ch_only
+
+
+def _ch(form: str) -> dict[str, str | Rewrite]:
+    """ClickHouse's ``form``, its holes each read once; every other dialect keeps what it had."""
+    return ch_only(ch_once(form))
+
+
+def _of_no_numeric(pattern: str, form: str) -> dict[str, str | Rewrite]:
+    """ClickHouse's ``form`` (its holes each read once) of a call none of whose arguments the
+    statement says is a numeric; a numeric's call keeps what it had, refused by name: PostgreSQL
+    answers it in numeric's exact digits, which a double does not hold."""
+    once = ch_once(form)
+
+    def doubles(node: exp.Expr, dialect: str) -> exp.Expr | None:
+        call = trino.called(node)
+        if call is None or any(function_types.argument_type(a) == "numeric" for a in call[1]):
+            return None
+        bindings = match(notation.pattern(pattern), _typed(node))
+        if bindings is None:
+            return None
+        return graft(replacement(once, dialect, pattern), bindings)
+
+    doubles.__doc__ = f"{pattern} of no numeric: a double's answer, its edges as PostgreSQL's."
+    doubles.__qualname__ = f"of_no_numeric_{_written(pattern)}"
+    return ch_only(Rewrite(doubles))
+
+
+def _typed(node: exp.Expr) -> exp.Expr:
+    """A call written by a name sqlglot leaves a plain call (quoted, or of pg_catalog: "log10") as
+    the node sqlglot reads that name as unquoted (log of base 10), as the grid reads it."""
+    if not isinstance(node, exp.Anonymous):
+        return node
+    arguments = [argument.copy() for argument in node.expressions]
+    return exp.func(node.name.lower(), *arguments, dialect=notation.PATTERN_DIALECT)
+
+
+def _written(pattern: str) -> str:
+    return pattern.split("(", 1)[0]
 
 
 def _ordered(hole: str) -> str:
@@ -70,7 +110,7 @@ COMPARISONS: tuple[Feature, ...] = tuple(
         f"{prefix}{suffix}",
         FAMILY,
         f"Whether {left} is {said} {right}, NaN after every other value.",
-        read=Side(rules=(Rule(f"{prefix}{suffix}($a, $b)", ch_only(_compared(operator))),)),
+        read=Side(rules=(Rule(f"{prefix}{suffix}($a, $b)", _ch(_compared(operator))),)),
     )
     for prefix, (left, right) in _PAIRS.items()
     for suffix, (operator, said) in _COMPARISONS.items()
@@ -89,7 +129,7 @@ CHOSEN: tuple[Feature, ...] = tuple(
             rules=(
                 Rule(
                     f"{prefix}{suffix}($a, $b)",
-                    ch_only(f"if({_compared(operator)}, $a, if($a IS NULL, NULL, $b))"),
+                    _ch(f"if({_compared(operator)}, $a, if($a IS NULL, NULL, $b))"),
                 ),
             )
         ),
@@ -113,7 +153,7 @@ def _domain(name: str, outside: str, summary: str, answer: str | None = None) ->
             rules=(
                 Rule(
                     f"{name}($x)",
-                    ch_only(
+                    _ch(
                         ch_checked(
                             [_OUT_OF_RANGE.format(condition=outside)], answer or f"{name}($x)"
                         )
@@ -145,7 +185,8 @@ SQRT = Feature(
         rules=(
             Rule(
                 "sqrt($x)",
-                ch_only(
+                _of_no_numeric(
+                    "sqrt($x)",
                     ch_checked(
                         [
                             ch_fail("2201F", "cannot take square root of a negative number").format(
@@ -153,7 +194,7 @@ SQRT = Feature(
                             )
                         ],
                         "sqrt($x)",
-                    )
+                    ),
                 ),
             ),
         )
@@ -168,34 +209,18 @@ _LOG_RAISES = [
 _LOG10 = ch_checked(_LOG_RAISES, "log10($x)")
 
 
-def _log10(node: exp.Expr, dialect: str) -> exp.Expr | None:
-    """log10 of one value: sqlglot reads log10 as log of base 10 where it is written plainly, and
-    as a plain call where it is quoted or of pg_catalog, so no pattern names both."""
-    if isinstance(node, exp.Anonymous) and node.name.lower() == "log10":
-        args = list(node.expressions)
-    elif isinstance(node, exp.Log) and node.expression is not None and node.this == _TEN:
-        args = [node.expression]
-    else:
-        return None
-    if len(args) != 1:
-        return None
-    return graft(replacement(_LOG10, dialect, "log10($x)"), {"x": args[0]})
-
-
-_TEN = exp.Literal.number(10)
-
 LOGS: tuple[Feature, ...] = (
     Feature(
         "log",
         FAMILY,
         "The base 10 logarithm of a value above zero.",
-        read=Side(rules=(Rule("log($x)", ch_only(_LOG10)),)),
+        read=Side(rules=(Rule("log($x)", _of_no_numeric("log($x)", _LOG10)),)),
     ),
     Feature(
         "log10",
         FAMILY,
         "The base 10 logarithm of a value above zero.",
-        read=Side(rules=(Rule(None, {"clickhouse": Rewrite(_log10, mentions=r"\blog10\b")}),)),
+        read=Side(rules=(Rule("log10($x)", _of_no_numeric("log10($x)", _LOG10)),)),
     ),
 )
 
@@ -220,7 +245,14 @@ POWERS: tuple[Feature, ...] = tuple(
         name,
         FAMILY,
         "A value raised to a power.",
-        read=Side(rules=(Rule(f"{name}($x, $y)", ch_only(ch_checked(_POWER_RAISES, _POWER))),)),
+        read=Side(
+            rules=(
+                Rule(
+                    f"{name}($x, $y)",
+                    _of_no_numeric(f"{name}($x, $y)", ch_checked(_POWER_RAISES, _POWER)),
+                ),
+            )
+        ),
     )
     for name in ("power", "pow")
 )
@@ -233,7 +265,7 @@ DEGREES = Feature(
         rules=(
             Rule(
                 "degrees($x)",
-                ch_only(
+                _ch(
                     ch_checked(
                         [
                             _OVERFLOW.format(
@@ -252,7 +284,7 @@ SIGN = Feature(
     "sign",
     FAMILY,
     "The sign of a value: -1, 0 or 1; 0 of NaN.",
-    read=Side(rules=(Rule("sign($x)", ch_only("if(isNaN(toFloat64($x)), 0, sign($x))")),)),
+    read=Side(rules=(Rule("sign($x)", _ch("if(isNaN(toFloat64($x)), 0, sign($x))")),)),
 )
 
 #: Each integer type ClickHouse holds a PostgreSQL integer in, and PostgreSQL's name of it.
@@ -272,7 +304,7 @@ ABS = Feature(
         rules=(
             Rule(
                 "abs($a)",
-                ch_only(
+                _ch(
                     ch_checked(
                         [
                             ch_fail("22003", f"{name} out of range").format(
@@ -288,6 +320,85 @@ ABS = Feature(
     ),
 )
 
+#: lcm of two integers (int.c's int4lcm and int8lcm): 0 where either is 0, else |a / gcd * b|,
+#: PostgreSQL's 22003 past the type (a smallint's lcm is an integer's). Computed in Int128, which
+#: holds the product of two bigints, then written as an Int64, which holds every answer.
+#: ClickHouse evaluates every branch, and its gcd of a zero (or of a NULL, read as its default 0)
+#: divides by it: either is read as 1 there.
+_NONZERO_A = "toInt128(if(ifNull($a, 0) = 0, 1, assumeNotNull($a)))"
+_NONZERO_B = "toInt128(if(ifNull($b, 0) = 0, 1, assumeNotNull($b)))"
+_LCM = f"abs(intDiv({_NONZERO_A}, gcd({_NONZERO_A}, {_NONZERO_B})) * {_NONZERO_B})"
+_LCM_LARGEST = {"Int16": 2147483647, "Int32": 2147483647, "Int64": 9223372036854775807}
+_LCM_NAMES = {"Int16": "integer", "Int32": "integer", "Int64": "bigint"}
+
+LCM = Feature(
+    "lcm",
+    FAMILY,
+    "The least common multiple of two integers; out of range past the type.",
+    read=Side(
+        rules=(
+            Rule(
+                "lcm($a, $b)",
+                _of_no_numeric(
+                    "lcm($a, $b)",
+                    ch_checked(
+                        [
+                            ch_fail("22003", f"{_LCM_NAMES[held]} out of range").format(
+                                condition=f"{_of_type('$a', held)} AND $a != 0 AND $b != 0 "
+                                f"AND {_LCM} > {largest}"
+                            )
+                            for held, largest in _LCM_LARGEST.items()
+                        ],
+                        f"if($a IS NULL OR $b IS NULL, NULL, "
+                        f"toInt64(if($a = 0 OR $b = 0, 0, {_LCM})))",
+                    ),
+                ),
+            ),
+        )
+    ),
+)
+
+#: chr of a code point (oracle_compat.c's chr, a UTF-8 database): its UTF-8 bytes. A negative is
+#: 22023, zero (NUL), a surrogate and past 0x10FFFF 54000.
+_CP = "toInt64($x)"
+_CONTINUED = "bitOr(0x80, bitAnd(bitShiftRight({cp}, {shift}), 0x3F))"
+
+
+def _continuation(shift: int) -> str:
+    return _CONTINUED.format(cp=_CP, shift=shift)
+
+
+_UTF8 = (
+    f"multiIf({_CP} < 0x80, char({_CP}), "
+    f"{_CP} < 0x800, char(bitOr(0xC0, bitShiftRight({_CP}, 6)), {_continuation(0)}), "
+    f"{_CP} < 0x10000, char(bitOr(0xE0, bitShiftRight({_CP}, 12)), {_continuation(6)}, "
+    f"{_continuation(0)}), "
+    f"char(bitOr(0xF0, bitShiftRight({_CP}, 18)), {_continuation(12)}, {_continuation(6)}, "
+    f"{_continuation(0)}))"
+)
+_OUTSIDE = f"{_CP} < 1 OR {_CP} > 0x10FFFF OR ({_CP} >= 0xD800 AND {_CP} <= 0xDFFF)"
+
+_CHR = ch_checked(
+    [
+        ch_fail("22023", "character number must be positive").format(condition=f"{_CP} < 0"),
+        ch_fail("54000", "null character not permitted").format(condition=f"{_CP} = 0"),
+        ch_fail("54000", "requested character too large for encoding").format(
+            condition=f"{_CP} > 0x10FFFF"
+        ),
+        ch_fail("54000", "requested character not valid for encoding").format(
+            condition=f"{_CP} >= 0xD800 AND {_CP} <= 0xDFFF"
+        ),
+    ],
+    f"if({_OUTSIDE}, NULL, {_UTF8})",
+)
+
+CHR = Feature(
+    "chr",
+    FAMILY,
+    "The character of a code point, as its UTF-8 bytes.",
+    read=Side(rules=(Rule("chr($x)", _ch(_CHR)),)),
+)
+
 FEATURES: tuple[Feature, ...] = (
     *COMPARISONS,
     *CHOSEN,
@@ -298,4 +409,6 @@ FEATURES: tuple[Feature, ...] = (
     DEGREES,
     SIGN,
     ABS,
+    LCM,
+    CHR,
 )

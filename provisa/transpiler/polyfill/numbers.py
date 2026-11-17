@@ -25,6 +25,8 @@ Trino's form here, every other dialect keeping what it had."""
 
 from __future__ import annotations
 
+import re
+
 import sqlglot.expressions as exp
 
 from provisa.core.pg_error import END, MARK
@@ -45,6 +47,35 @@ def fail(sqlstate: str, message: str) -> str:
 def refused(function: str) -> str:
     """Trino's raise of the refusal of a value ``function`` does not read as PostgreSQL does."""
     return fail("0A000", f"{function} does not read this value")
+
+
+def ch_fail(sqlstate: str, message: str) -> str:
+    """ClickHouse's raise of PostgreSQL's error ``sqlstate`` with ``message`` where ``condition``
+    holds: throwIf, which answers 0 where it does not, so a form adds it to its answer."""
+    text = f"{MARK} {sqlstate}: {message}{END}".replace("'", "''")
+    return "throwIf(ifNull({condition}, 0), '" + text + "')"
+
+
+def ch_only(form: str | Rewrite) -> dict[str, str | Rewrite]:
+    """ClickHouse's ``form``, every other dialect keeping what it had (the old table's form)."""
+    return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, "clickhouse": form}
+
+
+def ch_once(form: str) -> str:
+    """``form`` with each of its holes read once: bound to a lambda's parameter of the same name
+    (``$a`` as ``_a``). A form that names its argument several times, written where another form
+    names it several times (abs in a range's form), would grow as the product of the two."""
+    holes = list(dict.fromkeys(re.findall(r"\$([A-Za-z]\w*)", form)))
+    body = re.sub(r"\$([A-Za-z]\w*)", r"_\1", form)
+    parameters = ", ".join(f"_{hole}" for hole in holes)
+    arrays = ", ".join(f"[${hole}]" for hole in holes)
+    return f"arrayElement(arrayMap(({parameters}) -> {body}, {arrays}), 1)"
+
+
+def ch_checked(raises: list[str], answer: str) -> str:
+    """``answer`` where none of ``raises`` (ch_fail's, each 0 where it does not raise) raises:
+    ClickHouse reads every branch of a condition, so each raise stands beside the answer."""
+    return f"if({' + '.join(raises)} = 0, {answer}, NULL)"
 
 
 def _decimal(digits: int) -> str:
@@ -132,6 +163,30 @@ def _shift(name: str, sql_type: str, promoted: str, mask: int) -> Feature:
 #: The largest n whose factorial a decimal of 38 digits holds (33! has 37).
 _LARGEST_FACTORIAL = 33
 
+#: The largest n whose factorial ClickHouse's Decimal256 (76 digits) holds: 56! has 75.
+CH_LARGEST_FACTORIAL = 56
+#: numeric_fac's own bound: past it the answer overflows numeric (22003).
+_NUMERIC_FACTORIAL_BOUND = 32177
+#: ClickHouse evaluates every branch: the range is bounded so a call past the bound reads none.
+_CH_PRODUCT = (
+    "arrayFold((_f, _i) -> _f * toDecimal256(_i, 0), "
+    f"range(1, toUInt64(least(greatest($n, 0), {CH_LARGEST_FACTORIAL})) + 1), toDecimal256(1, 0))"
+)
+#: ClickHouse's factorial is of a UInt8 up to 20, a Float64 past it: the product in Decimal256.
+_CH_FACTORIAL = ch_checked(
+    [
+        ch_fail("22003", "factorial of a negative number is undefined").format(condition="$n < 0"),
+        ch_fail("22003", "value overflows numeric format").format(
+            condition=f"$n > {_NUMERIC_FACTORIAL_BOUND}"
+        ),
+        ch_fail(
+            "0A000",
+            f"factorial() of a value past {CH_LARGEST_FACTORIAL} has no exact form on clickhouse",
+        ).format(condition=f"$n > {CH_LARGEST_FACTORIAL} AND $n <= {_NUMERIC_FACTORIAL_BOUND}"),
+    ],
+    f"if($n IS NULL OR $n > {CH_LARGEST_FACTORIAL}, NULL, {_CH_PRODUCT})",
+)
+
 FACTORIAL = Feature(
     "factorial",
     FAMILY,
@@ -140,47 +195,41 @@ FACTORIAL = Feature(
         rules=(
             Rule(
                 "factorial($n)",
-                trino.trino_only(
-                    "CASE WHEN $n IS NULL THEN CAST(NULL AS DECIMAL(38, 0)) "
-                    f"WHEN $n < 0 THEN {fail('22003', 'factorial of a negative number is undefined')} "
-                    f"WHEN $n > {_LARGEST_FACTORIAL} THEN {refused('factorial')} "
-                    "ELSE reduce(sequence(1, greatest($n, 1)), CAST(1 AS DECIMAL(38, 0)), "
-                    "(_s, _x) -> _s * _x, _s -> _s) END"
-                ),
+                {
+                    **trino.trino_only(
+                        "CASE WHEN $n IS NULL THEN CAST(NULL AS DECIMAL(38, 0)) "
+                        f"WHEN $n < 0 THEN {fail('22003', 'factorial of a negative number is undefined')} "
+                        f"WHEN $n > {_LARGEST_FACTORIAL} THEN {refused('factorial')} "
+                        "ELSE reduce(sequence(1, greatest($n, 1)), CAST(1 AS DECIMAL(38, 0)), "
+                        "(_s, _x) -> _s * _x, _s -> _s) END"
+                    ),
+                    "clickhouse": ch_once(_CH_FACTORIAL),
+                },
             ),
         ),
-        limitations=dict.fromkeys(
-            trino.TRINO,
-            (
+        limitations={
+            **dict.fromkeys(
+                trino.TRINO,
+                (
+                    Limitation(
+                        f"Past {_LARGEST_FACTORIAL}, whose factorial a decimal of 38 digits does "
+                        "not hold, refused with 0A000, where PostgreSQL answers its exact digits."
+                    ),
+                ),
+            ),
+            "clickhouse": (
                 Limitation(
-                    f"Past {_LARGEST_FACTORIAL}, whose factorial a decimal of 38 digits does not "
-                    "hold, refused with 0A000, where PostgreSQL answers its exact digits."
+                    f"From {CH_LARGEST_FACTORIAL + 1} to {_NUMERIC_FACTORIAL_BOUND}, whose factorial "
+                    "ClickHouse's Decimal256 (76 digits) does not hold, refused with 0A000, where "
+                    "PostgreSQL answers its exact digits; past that, PostgreSQL's 22003."
                 ),
             ),
-        ),
+        },
     ),
 )
 
 _INTEGERS = frozenset({"smallint", "integer", "bigint"})
 _JSON = frozenset({"json", "jsonb"})
-
-
-def ch_fail(sqlstate: str, message: str) -> str:
-    """ClickHouse's raise of PostgreSQL's error ``sqlstate`` with ``message`` where ``condition``
-    holds: throwIf, which answers 0 where it does not, so a form adds it to its answer."""
-    text = f"{MARK} {sqlstate}: {message}{END}".replace("'", "''")
-    return "throwIf(ifNull({condition}, 0), '" + text + "')"
-
-
-def ch_only(form: str | Rewrite) -> dict[str, str | Rewrite]:
-    """ClickHouse's ``form``, every other dialect keeping what it had (the old table's form)."""
-    return {**{d: trino.KEPT for d in DIALECTS if d not in NATIVE}, "clickhouse": form}
-
-
-def ch_checked(raises: list[str], answer: str) -> str:
-    """``answer`` where none of ``raises`` (ch_fail's, each 0 where it does not raise) raises:
-    ClickHouse reads every branch of a condition, so each raise stands beside the answer."""
-    return f"if({' + '.join(raises)} = 0, {answer}, NULL)"
 
 
 #: ClickHouse's name of each type a cast row writes, as a Nullable: every value may be NULL.

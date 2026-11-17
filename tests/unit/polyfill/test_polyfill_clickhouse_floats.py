@@ -32,7 +32,7 @@ import pytest
 
 from provisa.core.pg_error import from_engine
 from provisa.federation.clickhouse_runtime import ClickHouseFederationRuntime
-from provisa.transpiler.function_macros import RowRefused
+from provisa.transpiler.function_macros import FunctionRefused, RowRefused
 from provisa.transpiler.polyfill.clickhouse import nearest_real
 from provisa.transpiler.transpile import transpile
 
@@ -698,6 +698,28 @@ ANSWERED = [
     ('SELECT pg_catalog."int8"(1000::numeric) AS v', "1000"),
     ("SELECT pg_catalog.\"int8\"('0'::numeric) AS v", "0"),
     ("SELECT pg_catalog.\"int8\"('-0.000000000000000000001'::numeric) AS v", "0"),
+    ('SELECT pg_catalog."lcm"(NULL::integer, NULL::integer) AS v', None),
+    ('SELECT pg_catalog."lcm"(3::integer, 3::integer) AS v', "3"),
+    ('SELECT pg_catalog."lcm"((-7)::integer, (-7)::integer) AS v', "7"),
+    ('SELECT pg_catalog."lcm"(42::integer, 42::integer) AS v', "42"),
+    ('SELECT pg_catalog."lcm"(NULL::integer, 3::integer) AS v', None),
+    ('SELECT pg_catalog."lcm"(3::integer, NULL::integer) AS v', None),
+    ("SELECT pg_catalog.\"lcm\"('0'::integer, 3::integer) AS v", "0"),
+    ("SELECT pg_catalog.\"lcm\"(3::integer, '0'::integer) AS v", "0"),
+    ('SELECT pg_catalog."lcm"(NULL::bigint, NULL::bigint) AS v', None),
+    ('SELECT pg_catalog."lcm"(3::bigint, 3::bigint) AS v', "3"),
+    ('SELECT pg_catalog."lcm"((-7)::bigint, (-7)::bigint) AS v', "7"),
+    ('SELECT pg_catalog."lcm"(5000000000::bigint, 5000000000::bigint) AS v', "5000000000"),
+    ('SELECT pg_catalog."lcm"(NULL::bigint, 3::bigint) AS v', None),
+    ('SELECT pg_catalog."lcm"(3::bigint, NULL::bigint) AS v', None),
+    ("SELECT pg_catalog.\"lcm\"('0'::bigint, 3::bigint) AS v", "0"),
+    ("SELECT pg_catalog.\"lcm\"(3::bigint, '0'::bigint) AS v", "0"),
+    ('SELECT pg_catalog."factorial"(NULL::bigint) AS v', None),
+    ('SELECT pg_catalog."factorial"(3::bigint) AS v', "6"),
+    ("SELECT pg_catalog.\"factorial\"('0'::bigint) AS v", "1"),
+    ('SELECT pg_catalog."chr"(NULL::integer) AS v', None),
+    ('SELECT pg_catalog."chr"(3::integer) AS v', "\x03"),
+    ('SELECT pg_catalog."chr"(42::integer) AS v', "*"),
     ("SELECT '1.4e-45'::real", "1e-45"),
     ("SELECT 0.1::real", "0.1"),
     ("SELECT '-7.125'::real", "-7.125"),
@@ -714,6 +736,16 @@ ANSWERED = [
     ("SELECT pg_catalog.float8smaller('NaN'::double precision, NULL::double precision)", None),
     ("SELECT pg_catalog.abs((-5)::numeric)", "5"),
     ("SELECT pg_catalog.sign((-0.5)::numeric)", "-1"),
+    ("SELECT pg_catalog.chr(26085)", "日"),
+    ("SELECT pg_catalog.chr(128512)", "😀"),
+    ("SELECT pg_catalog.chr(233)", "é"),
+    (
+        "SELECT pg_catalog.factorial(56::bigint)",
+        "710998587804863451854045647463724949736497978881168458687447040000000000000",
+    ),
+    ("SELECT pg_catalog.factorial(0::bigint)", "1"),
+    ("SELECT pg_catalog.lcm((-4)::integer, 6::integer)", "12"),
+    ("SELECT pg_catalog.lcm(0::bigint, 0::bigint)", "0"),
 ]
 RAISED = [
     ("SELECT pg_catalog.\"abs\"('-9223372036854775808'::bigint) AS v", "22003"),
@@ -767,6 +799,24 @@ RAISED = [
     ("SELECT pg_catalog.\"int2\"('NaN'::numeric) AS v", "0A000"),
     ("SELECT pg_catalog.\"int4\"('NaN'::numeric) AS v", "0A000"),
     ("SELECT pg_catalog.\"int8\"('NaN'::numeric) AS v", "0A000"),
+    ("SELECT pg_catalog.\"lcm\"('-2147483648'::integer, 3::integer) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"(3::integer, '-2147483648'::integer) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"('2147483647'::integer, 3::integer) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"(3::integer, '2147483647'::integer) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"('-9223372036854775808'::bigint, 3::bigint) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"(3::bigint, '-9223372036854775808'::bigint) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"('9223372036854775807'::bigint, 3::bigint) AS v", "22003"),
+    ("SELECT pg_catalog.\"lcm\"(3::bigint, '9223372036854775807'::bigint) AS v", "22003"),
+    ('SELECT pg_catalog."factorial"((-7)::bigint) AS v', "22003"),
+    ('SELECT pg_catalog."factorial"(5000000000::bigint) AS v', "22003"),
+    ("SELECT pg_catalog.\"factorial\"('-9223372036854775808'::bigint) AS v", "22003"),
+    ("SELECT pg_catalog.\"factorial\"('9223372036854775807'::bigint) AS v", "22003"),
+    ("SELECT pg_catalog.\"factorial\"('9223372036854775808'::bigint) AS v", "22003"),
+    ('SELECT pg_catalog."chr"((-7)::integer) AS v', "22023"),
+    ("SELECT pg_catalog.\"chr\"('-2147483648'::integer) AS v", "22023"),
+    ("SELECT pg_catalog.\"chr\"('2147483647'::integer) AS v", "54000"),
+    ("SELECT pg_catalog.\"chr\"('0'::integer) AS v", "54000"),
+    ("SELECT pg_catalog.\"chr\"('2147483648'::integer) AS v", "22003"),
     ("SELECT '3.4028236e+38'::real", "22003"),
     ("SELECT '1e-46'::real", "22003"),
     ("SELECT pg_catalog.power(0::double precision, (-1)::double precision)", "2201F"),
@@ -774,6 +824,11 @@ RAISED = [
     ("SELECT pg_catalog.power(10::double precision, 400::double precision)", "22003"),
     ("SELECT pg_catalog.log10(0::double precision)", "2201E"),
     ("SELECT pg_catalog.log(0::double precision)", "2201E"),
+    ("SELECT pg_catalog.chr(55296)", "54000"),
+    ("SELECT pg_catalog.chr(1114112)", "54000"),
+    ("SELECT pg_catalog.factorial(32178::bigint)", "22003"),
+    ("SELECT pg_catalog.lcm(65536::integer, 32769::integer)", "22003"),
+    ("SELECT pg_catalog.lcm(3037000499::bigint, 3037000507::bigint)", "22003"),
 ]
 
 #: A numeric NaN or infinity: ClickHouse's Decimal holds neither, and its cast answered NULL.
@@ -869,6 +924,30 @@ def test_a_real_literal_is_the_nearest_real_a_tie_to_the_even_one(bits):
 def test_a_real_past_the_type_is_none():
     assert nearest_real(decimal.Decimal("3.4028236e+38")) is None
     assert math.isfinite(nearest_real(decimal.Decimal("3.4028235e+38")) or math.inf)
+
+
+#: A numeric's call PostgreSQL answers in numeric's exact digits: refused by name, as it was, where
+#: the row answers a double's.
+NUMERIC_CALLS = [
+    "SELECT sqrt(2.5::numeric) AS v",
+    "SELECT log10(2.5::numeric) AS v",
+    "SELECT log(2.5::numeric) AS v",
+    "SELECT power(2.5::numeric, 3::numeric) AS v",
+    "SELECT lcm(2.5::numeric, 3::numeric) AS v",
+]
+
+
+@pytest.mark.parametrize("sql", NUMERIC_CALLS)
+def test_a_numeric_call_stays_refused_by_name(sql):
+    with pytest.raises(FunctionRefused):
+        transpile(sql, "clickhouse")
+
+
+def test_a_row_reads_its_argument_once():
+    """abs inside a range's form, itself inside another: each row's argument is bound once, so
+    the statement grows with the nesting, not as its product (ClickHouse's AST bound)."""
+    written = transpile("SELECT abs(abs(abs(abs(x)))) AS v FROM t", "clickhouse")
+    assert written.count("[x]") == 1
 
 
 @pytest.mark.parametrize(
