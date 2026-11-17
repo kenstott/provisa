@@ -128,8 +128,6 @@ def test_clickhouse_is_told_in_the_requests_own_settings(on_zone):
     assert clickhouse_runtime._settings("q", "SELECT 1") == {
         "query_id": "q",
         "max_query_size": str(clickhouse_runtime.MAX_QUERY_SIZE),
-        "max_ast_elements": str(clickhouse_runtime.MAX_AST_ELEMENTS),
-        "max_expanded_ast_elements": str(clickhouse_runtime.MAX_EXPANDED_AST_ELEMENTS),
         "session_timezone": "Asia/Tokyo",
     }
 
@@ -138,8 +136,6 @@ def test_clickhouse_on_utc_has_no_zone_setting():
     assert clickhouse_runtime._settings("q", "SELECT 1") == {
         "query_id": "q",
         "max_query_size": str(clickhouse_runtime.MAX_QUERY_SIZE),
-        "max_ast_elements": str(clickhouse_runtime.MAX_AST_ELEMENTS),
-        "max_expanded_ast_elements": str(clickhouse_runtime.MAX_EXPANDED_AST_ELEMENTS),
     }
 
 
