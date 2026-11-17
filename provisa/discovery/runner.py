@@ -92,7 +92,8 @@ class Tally:
     invalid: int = 0
     #: Proposals whose two columns are not compared: their classes do not meet.
     not_comparable: int = 0
-    #: Proposals the model itself gave less than :data:`MIN_CONFIDENCE`.
+    #: Proposals scored less than :data:`MIN_CONFIDENCE`: by their measure where their values were
+    #: compared, else by the model's confidence.
     below_threshold: int = 0
     #: Proposals a second scorer was asked about, and those of them it scored under
     #: :data:`MIN_CONFIDENCE`. Its score removes none (REQ-1789).
@@ -152,14 +153,17 @@ def _written(raw: Any) -> str:
     return json.dumps(raw, ensure_ascii=False, default=str)[:ANSWER_CHARS]
 
 
-def read_items(request: Request, items: list, tally: Tally) -> list[Proposal]:
-    """The proposals an answer's elements make: each names two different compared columns of
-    the request, of its group, whose classes meet, at :data:`MIN_CONFIDENCE` or more; ``tally``
-    counts the rest and keeps each with why it is left out."""
+def read_items(
+    request: Request, items: list, tally: Tally
+) -> tuple[list[Proposal], list[Proposal]]:
+    """The proposals an answer's elements make: those naming two compared columns of the request
+    whose classes meet, and those naming two whose classes do not (each counted). ``tally``
+    counts every element that makes no proposal and keeps it with why."""
     columns = {(t.table_id, c.name): c for t, c in request.source.columns()}
     if request.target is not None:
         columns.update({(t.table_id, c.name): c for t, c in request.target.columns()})
     out: list[Proposal] = []
+    apart: list[Proposal] = []
 
     def no_proposal(raw: Any, reason: str) -> None:
         tally.invalid += 1
@@ -196,8 +200,27 @@ def read_items(request: Request, items: list, tally: Tally) -> list[Proposal]:
         )
         if not comparable(a, b, request.group):
             tally.not_comparable += 1
-            tally.left_out.append(Recorded("semantics", NOT_COMPARABLE, proposal))
-        elif confidence < MIN_CONFIDENCE:
+            apart.append(proposal)
+        else:
+            out.append(proposal)
+    return out, apart
+
+
+#: Measures proposals on their data (:meth:`provisa.discovery.measure.Measurer.all`): each with
+#: its measure and the score it gives.
+Measure = Callable[[list[Proposal]], Awaitable[list[Proposal]]]
+
+
+async def kept(
+    found: list[Proposal], apart: list[Proposal], measure: Measure, tally: Tally
+) -> list[Proposal]:
+    """Every proposal of an answer measured; those scored at :data:`MIN_CONFIDENCE` or more and
+    whose classes meet are kept, and the rest are recorded with why."""
+    measured = await measure(found)
+    tally.left_out.extend(Recorded("semantics", NOT_COMPARABLE, p) for p in await measure(apart))
+    out: list[Proposal] = []
+    for proposal in measured:
+        if proposal.rank < MIN_CONFIDENCE:
             tally.below_threshold += 1
             tally.left_out.append(Recorded("semantics", BELOW_THRESHOLD, proposal))
         else:
@@ -236,10 +259,12 @@ async def execute(
     ask: Ask,
     control: Control,
     *,
+    measure: Measure,
     refine: Rescore | None = None,
     to_thread: Callable[..., Awaitable[Any]] = asyncio.to_thread,
 ) -> tuple[Tally, list[Proposal]]:
-    """Ask every request in order, splitting as it must; stop when the control asks. ``refine``
+    """Ask every request in order, splitting as it must; stop when the control asks. Each
+    proposal is measured on its data (``measure``) before it is judged. ``refine``
     re-scores a request's proposals (REQ-1789, when a Jev key is configured): its confidence is
     kept beside the model's (:func:`rescored`)."""
     queue = list(requests)
@@ -270,7 +295,7 @@ async def execute(
             tally.failed.append({"group": request.group, **UNREADABLE})
             await control.returned(tally, proposals)
             continue
-        found = read_items(request, read.items, tally)
+        found = await kept(*read_items(request, read.items, tally), measure, tally)
         if refine is not None and found:
             found = rescored(found, await refine(found), tally)
         proposals.extend(found)

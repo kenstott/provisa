@@ -375,6 +375,12 @@ class _Watcher:
         self.returns += 1
 
 
+async def _not_measured(found: list) -> list:
+    """No values to measure here: each proposal keeps the model's confidence, as one whose values
+    were not compared does (REQ-413). The measure itself: test_discovery_pair_measure."""
+    return found
+
+
 async def _direct(fn, *args):
     return fn(*args)
 
@@ -413,7 +419,9 @@ async def test_the_request_count_equals_the_requests_the_run_then_makes():
         asked.append(prompt)
         return _answer([])
 
-    tally, _ = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
+    tally, _ = await execute(
+        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+    )
     assert len(asked) == len(requests)
     assert tally.done == tally.total == len(requests)
 
@@ -433,7 +441,9 @@ async def test_a_cut_off_answer_splits_the_request_and_keeps_its_complete_sugges
         asked.append(prompt)
         return answers.pop(0)
 
-    tally, proposals = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
+    tally, proposals = await execute(
+        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+    )
     assert len(asked) == 3
     assert tally.split == 1
     assert tally.total == 3 and tally.done == 3
@@ -453,7 +463,9 @@ async def test_a_full_answer_splits_the_request():
         asked.append(prompt)
         return _answer([_item((1, "customer_id"), (2, "id"))] if len(asked) == 1 else [])
 
-    tally, proposals = await execute(requests, k, 150, ask, _Watcher(), to_thread=_direct)
+    tally, proposals = await execute(
+        requests, k, 150, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+    )
     assert tally.split >= 1
     assert len(asked) > 1
     assert (1, "customer_id", 2, "id") in {p.edge for p in proposals}
@@ -470,7 +482,9 @@ async def test_a_request_the_vendor_refuses_as_too_long_is_split_and_asked_again
             raise RuntimeError("Error code: 400 - prompt is too long: 250000 tokens > 200000")
         return _answer([])
 
-    tally, _ = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
+    tally, _ = await execute(
+        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+    )
     assert tally.split == 1
     assert tally.failed == []
     assert len(asked) == 3
@@ -486,6 +500,7 @@ async def test_a_cut_off_answer_that_cannot_split_keeps_what_it_finished():
         4_096,
         lambda p, m: _answer([_item((1, "x_id"), (2, "id"))], cut_off=True, closed=False),
         _Watcher(),
+        measure=_not_measured,
         to_thread=_direct,
     )
     assert tally.split == 0 and tally.cut_short == 1
@@ -505,7 +520,9 @@ async def test_one_failed_request_is_reported_and_the_rest_continue():
             raise RuntimeError("vendor unavailable")
         return _answer([])
 
-    tally, _ = await execute(requests, k, 4_096, ask, _Watcher(), to_thread=_direct)
+    tally, _ = await execute(
+        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+    )
     assert calls == len(requests)
     assert tally.failed == [
         {
@@ -527,6 +544,7 @@ async def test_an_unreadable_answer_is_a_failed_request_with_its_own_message():
         4_096,
         lambda p, m: Completion("no list here", "v", "m", None, False),
         _Watcher(),
+        measure=_not_measured,
         to_thread=_direct,
     )
     assert tally.unreadable == len(requests)
@@ -588,7 +606,7 @@ async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_
         return _answer([_item((a[0].table_id, a[1].name), (b[0].table_id, b[1].name))])
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(stop_after=1), to_thread=_direct
+        requests, k, 4_096, ask, _Watcher(stop_after=1), measure=_not_measured, to_thread=_direct
     )
     assert asked == 1
     assert tally.stopped
@@ -836,8 +854,8 @@ def test_the_instructions_say_what_a_confidence_states_and_where_a_suggestion_is
     assert "the same name on a column that is a key of neither table" in text
 
 
-def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
-    from provisa.discovery.runner import read_items
+async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
+    from provisa.discovery.runner import kept, read_items
 
     orders = tbl(
         1,
@@ -859,26 +877,26 @@ def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
         {**_item((1, "customer_id"), (2, "id")), "cardinality": "many-to-many"},
         "orders.customer_id -> customers.id",
     ]
-    kept = read_items(request, items, tally)
-    assert [p.edge for p in kept] == [(1, "customer_id", 2, "id")]
+    found = await kept(*read_items(request, items, tally), _not_measured, tally)
+    assert [p.edge for p in found] == [(1, "customer_id", 2, "id")]
     assert tally.proposed == 7
     assert (tally.below_threshold, tally.not_comparable, tally.invalid) == (1, 1, 4)
     left = [(r.left_out, None if r.proposal is None else r.proposal.edge) for r in tally.left_out]
     assert left == [
-        ("below_threshold", (1, "store_id", 2, "region_id")),
-        ("not_comparable", (1, "card", 2, "id")),
         ("unknown_column", None),
         ("invalid_shape", None),
         ("invalid_shape", None),
         ("invalid_shape", None),
+        ("not_comparable", (1, "card", 2, "id")),
+        ("below_threshold", (1, "store_id", 2, "region_id")),
     ]
-    below = tally.left_out[0].proposal
+    below = tally.left_out[5].proposal
     assert below is not None and below.confidence == 0.4 and below.reasoning == "names match"
     # An element that made no proposal is kept as the model wrote it.
     assert (
-        tally.left_out[2].answer is not None and '"target_table_id": 9' in tally.left_out[2].answer
+        tally.left_out[0].answer is not None and '"target_table_id": 9' in tally.left_out[0].answer
     )
-    assert tally.left_out[5].answer == '"orders.customer_id -> customers.id"'
+    assert tally.left_out[3].answer == '"orders.customer_id -> customers.id"'
 
 
 def test_a_second_scorers_confidence_is_kept_beside_the_models_and_removes_nothing():

@@ -137,13 +137,24 @@ def _context(identity: Identity | None) -> ssl.SSLContext:
 
 
 def _dial(
-    address: str, port: int, pin: str, identity: Identity | None, timeout: float
+    address: str,
+    port: int,
+    pin: str,
+    identity: Identity | None,
+    timeout: float,
+    org_id: str | None = None,
 ) -> ssl.SSLSocket:
     """A TLS connection to the host whose certificate's fingerprint is ``pin``, refused by name
-    when it cannot be reached or is another host."""
+    when it cannot be reached or is another host. For a held org (``org_id``, the bound org when
+    None) the host must resolve to public addresses only, and the address checked is the one
+    dialled (REQ-2006, ``sandbox_egress.pin``): the certificate's pin, not its name, says who it
+    is."""
+    from provisa.security import sandbox_egress
+
     where = f"{address}:{port}"
+    target = sandbox_egress.pin(address, port, org_id)
     try:
-        raw = socket.create_connection((address, port), timeout=timeout)
+        raw = socket.create_connection((target, port), timeout=timeout)
     except OSError as exc:
         raise ConnectionError(f"remote host {where} could not be reached: {exc}") from exc
     try:
@@ -183,16 +194,18 @@ def pair(
     duckdb: dict[str, int],
     timeout: float = 10.0,
     script: str | None = None,
+    org_id: str | None = None,
 ) -> Paired:
     """Pair with the remote host at ``address:port`` using its pairing ``code``: it keeps
     ``identity``'s certificate as Provisa's, and ``duckdb``, the bounds of its DuckDB
     (worker.duckdb_bounds), until a call gives others. The host's fingerprint, to pin, and its
     certificate, read on this dial: what an engine attaching the host verifies it by (REQ-2100),
     so connecting dials no third time for it. ``script`` (REQ-2225): a script connector's script,
-    which the host keeps, reads the tags of, and answers with."""
+    which the host keeps, reads the tags of, and answers with. ``org_id``: the org pairing it,
+    the bound org when None (:func:`_dial`)."""
     fingerprint, secret = parse_pairing_code(code)
     try:
-        conn = _dial(address, port, fingerprint, None, timeout)
+        conn = _dial(address, port, fingerprint, None, timeout, org_id)
     except ConnectionError as exc:
         raise PairingRefused(str(exc)) from exc
     with conn:
@@ -247,6 +260,7 @@ class RemoteWorker(Worker):
         setup: Callable[[], dict[str, Any]] | None = None,
         script_hash: str | None = None,
         names: dict | None = None,
+        org_id: str | None = None,
     ) -> None:
         # No process to start: the connection is dialled (start).
         super().__init__(source_id, content_hash, command=None)  # pyright: ignore[reportArgumentType]
@@ -265,6 +279,9 @@ class RemoteWorker(Worker):
         self._script_hash = script_hash
         #: REQ-2225: the script's name tables, which only Provisa can make, given with the setup.
         self._names_to_give = names
+        #: REQ-2006: the org whose host this is, held to public destinations on each dial
+        #: (:func:`_dial`); None: the org bound where it dials.
+        self._org_id = org_id
 
     @property
     def where(self) -> str:
@@ -276,7 +293,9 @@ class RemoteWorker(Worker):
         try:
             for _ in range(CONNECTIONS):
                 try:
-                    conn = _dial(self.address, self.port, self._pin, self._identity, timeout)
+                    conn = _dial(
+                        self.address, self.port, self._pin, self._identity, timeout, self._org_id
+                    )
                 except ConnectionError as exc:
                     raise WorkerFailed(self.source_id, str(exc)) from None
                 conns.append(conn)

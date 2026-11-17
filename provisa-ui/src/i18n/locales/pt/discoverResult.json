@@ -24,7 +24,7 @@
     "partial": "{{failed}} de {{count}} solicitação falhou, portanto o resultado é parcial.",
     "partial_other": "{{failed}} de {{count}} solicitações falharam, portanto o resultado é parcial.",
     "semanticsNoneProposed": "Semântica: nenhuma. O modelo não propôs relacionamentos.",
-    "semanticsBelowThreshold": "Semântica: nenhuma. Todas as sugestões ficaram abaixo do limiar de confiança de {{threshold}}%.",
+    "semanticsBelowThreshold": "Semântica: nenhuma. Toda proposta ficou abaixo dos {{threshold}}% com que uma sugestão é mantida.",
     "semanticsFiltered": "Semântica: nenhuma. Todas as sugestões foram deixadas de fora, pelos motivos abaixo.",
     "split": "{{count}} solicitação foi dividida ao meio e enviada de novo.",
     "split_other": "{{count}} solicitações foram divididas ao meio e enviadas de novo.",
@@ -38,7 +38,7 @@
     "leftOut": "Não sugeridas: {{list}}.",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "com menos de {{threshold}}% de confiança segundo o modelo",
+      "below_threshold": "com pontuação inferior a {{threshold}}%",
       "invalid": "sem citar duas colunas comparadas",
       "not_comparable": "entre colunas de classes diferentes",
       "same_column": "de uma coluna para ela mesma",
@@ -49,7 +49,8 @@
       "rejected": "rejeitadas antes",
       "matches_foreign_key": "iguais a uma chave estrangeira encontrada nesta execução",
       "out_of_scope": "fora das tabelas escolhidas",
-      "weaker": "repetindo um par de colunas para o qual uma proposta mais forte foi mantida"
+      "weaker": "repetindo um par de colunas para o qual uma proposta mais forte foi mantida",
+      "many_to_many": "sem que nenhuma coluna seja uma chave"
     }
   }
 }

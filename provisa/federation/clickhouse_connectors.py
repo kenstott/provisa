@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from provisa.core.models import Source
 
 from provisa.compiler.naming import attach_catalog, engine_attach_name
+from provisa.federation.clickhouse_quoting import ch_ident, ch_lit
 from provisa.federation.connector_base import Capability, Connector, Mechanism, ProbeResult
 
 
@@ -53,9 +54,9 @@ class ClickHousePostgresConnector(Connector):
         remote_schema = source.federation_hints.get("schema") or "public"
         return {
             "attach_ddl": [
-                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
-                f"'{source.host}:{source.port}', '{source.database}', "
-                f"'{source.username}', '{source.password}', '{remote_schema}')"
+                f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} ENGINE = PostgreSQL("
+                f"{ch_lit(f'{source.host}:{source.port}')}, {ch_lit(source.database)}, "
+                f"{ch_lit(source.username)}, {ch_lit(source.password)}, {ch_lit(remote_schema)})"
             ],
             "local_schema": local_schema,
         }
@@ -118,10 +119,9 @@ class _ClickHousePgwireConnector(Connector):  # REQ-1730
             local_schema = f"{local_schema}_{schema}"
         return {
             "attach_ddl": [
-                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = PostgreSQL('
-                f"'{ports.pgwire_host}:{ports.pgwire_port}', 'provisa', 'provisa', "
-                f"'{sign_in_password(source)}', "
-                f"'{schema}')"
+                f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} ENGINE = PostgreSQL("
+                f"{ch_lit(f'{ports.pgwire_host}:{ports.pgwire_port}')}, 'provisa', 'provisa', "
+                f"{ch_lit(sign_in_password(source))}, {ch_lit(schema)})"
             ],
             "local_schema": local_schema,
         }
@@ -178,9 +178,9 @@ class ClickHouseMysqlConnector(Connector):
         local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
-                f'CREATE DATABASE IF NOT EXISTS "{local_schema}" ENGINE = MySQL('
-                f"'{source.host}:{source.port}', '{source.database}', "
-                f"'{source.username}', '{source.password}')"
+                f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} ENGINE = MySQL("
+                f"{ch_lit(f'{source.host}:{source.port}')}, {ch_lit(source.database)}, "
+                f"{ch_lit(source.username)}, {ch_lit(source.password)})"
             ],
             "local_schema": local_schema,
         }
@@ -208,7 +208,8 @@ class ClickHouseSqliteConnector(Connector):  # REQ-1178
         local_schema = engine_attach_name("ch", attach_catalog(source))
         return {
             "attach_ddl": [
-                f"CREATE DATABASE IF NOT EXISTS \"{local_schema}\" ENGINE = SQLite('{source.path}')"
+                f"CREATE DATABASE IF NOT EXISTS {ch_ident(local_schema)} "
+                f"ENGINE = SQLite({ch_lit(source.path)})"
             ],
             "local_schema": local_schema,
         }
@@ -243,21 +244,27 @@ class ClickHouseMongoConnector(Connector):
             )
         return {
             "engine_clause": (
-                f"MongoDB('{source.host}:{source.port}', '{source.database}', "
-                f"'{{table}}', '{source.username}', '{source.password}')"
+                f"MongoDB({ch_lit(f'{source.host}:{source.port}')}, {ch_lit(source.database)}, "
+                f"'{{table}}', {ch_lit(source.username)}, {ch_lit(source.password)})"
             ),
             "requires_columns": True,
         }
 
 
-def _clickhouse_s3_creds(source: Source) -> tuple[str | None, str | None]:
+def _clickhouse_s3_creds(source: Source) -> tuple[str, str] | None:
     """S3/S3-compatible (R2) access key + secret from federation_hints — accepts the ClickHouse
     ``aws_key``/``aws_secret`` or the generic ``access_key_id``/``secret_access_key`` spelling."""
     h = source.federation_hints
-    return (
-        h.get("aws_key") or h.get("access_key_id"),
-        h.get("aws_secret") or h.get("secret_access_key"),
-    )
+    key = h.get("aws_key") or h.get("access_key_id")
+    secret = h.get("aws_secret") or h.get("secret_access_key")
+    if not key:
+        return None  # a public bucket: no credentials
+    if not secret:
+        raise ValueError(
+            f"source {source.id!r} names an access key with no secret: give aws_secret "
+            "(or secret_access_key) beside it"
+        )
+    return key, secret
 
 
 def _clickhouse_file_engine(source: Source, fmt: str) -> str:
@@ -268,14 +275,14 @@ def _clickhouse_file_engine(source: Source, fmt: str) -> str:
     path = source.path
     if path is None:
         raise ValueError(f"file source {source.id!r} has no path")
-    key, secret = _clickhouse_s3_creds(source)
-    if path.startswith("s3://") or (path.startswith("https://") and key):
-        creds = f", '{key}', '{secret}'" if key else ""
-        return f"S3('{path}'{creds}, '{fmt}')"
+    s3_creds = _clickhouse_s3_creds(source)
+    if path.startswith("s3://") or (path.startswith("https://") and s3_creds):
+        creds = "".join(f", {ch_lit(part)}" for part in s3_creds or ())
+        return f"S3({ch_lit(path)}{creds}, {ch_lit(fmt)})"
     if path.startswith(("http://", "https://")):
-        return f"URL('{path}', '{fmt}')"
+        return f"URL({ch_lit(path)}, {ch_lit(fmt)})"
     # The File table engine is format-FIRST (unlike S3/URL, which are url-first).
-    return f"File('{fmt}', '{path}')"
+    return f"File({ch_lit(fmt)}, {ch_lit(path)})"
 
 
 def _clickhouse_lake_engine(source: Source, engine: str) -> str:
@@ -284,9 +291,8 @@ def _clickhouse_lake_engine(source: Source, engine: str) -> str:
     path = source.path
     if path is None:
         raise ValueError(f"lake source {source.id!r} has no path (object-store URL)")
-    key, secret = _clickhouse_s3_creds(source)
-    creds = f", '{key}', '{secret}'" if key else ""
-    return f"{engine}('{path}'{creds})"
+    creds = "".join(f", {ch_lit(part)}" for part in _clickhouse_s3_creds(source) or ())
+    return f"{engine}({ch_lit(path)}{creds})"
 
 
 class _ClickHouseFileConnector(Connector):

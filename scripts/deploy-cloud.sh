@@ -103,7 +103,7 @@ preflight_engine() {
     exit 1
   fi
   for k in $ENGINE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+    grep -q "^$k=." <<<"$env_dump" || missing="$missing $k"
   done
   if [ -n "$missing" ]; then
     echo "$API_CONTAINER is missing engine settings:$missing" >&2
@@ -160,7 +160,7 @@ push_commerce_env() {
   local env_dump changed=""
   env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS $COMMERCE_CREDENTIAL_KEYS; do
-    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" && continue
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" && continue
     local want
     want="$(sed -n "s/^$k=//p" "$REPO/.env" 2>/dev/null | tail -1)"
     [ -n "$want" ] || continue
@@ -189,12 +189,12 @@ preflight_commerce() {
   local env_dump missing="" k
   env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" || missing="$missing $k"
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" || missing="$missing $k"
   done
   local mode
   mode="$(printf '%s\n' "$env_dump" | sed -n 's/^STRIPE_MODE=//p' | tr -d ' \r')"
   for k in $(commerce_mode_keys "$env_dump"); do
-    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" \
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" \
       || missing="$missing $k(STRIPE_MODE=${mode:-<unset>})"
   done
   if [ -n "$missing" ]; then
@@ -621,8 +621,13 @@ push_obs() {
   # OTEL_EXPORTER_OTLP_ENDPOINT is set from the resolved compose set at `provisa start`.
   echo "== observability: recreating stack"
   ssh_node "sudo systemctl restart provisa"
-  ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT" \
-    | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
+  local otlp
+  # printenv exits 1 for an unset variable: that, a failed ssh and an empty value are the same refusal.
+  if ! otlp="$(ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT")" \
+    || [ -z "$otlp" ]; then
+    echo "observability installed but the app exports no OTLP endpoint" >&2
+    exit 1
+  fi
 }
 
 # REQ-1428: the collector's own config, which the overlay bind-mounts from
@@ -994,7 +999,7 @@ push_demo() {
   # The mocks are what the demo config's sources resolve to, so their absence is a broken deploy,
   # not a cosmetic gap. Compose names them <project>-<service>-1; match on the service name.
   for svc in petstore-mock graphql-demo grpc-demo; do
-    ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'" | grep -q . \
+    [ -n "$(ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'")" ] \
       || { echo "demo overlay installed but $svc is not running" >&2; exit 1; }
   done
 }
