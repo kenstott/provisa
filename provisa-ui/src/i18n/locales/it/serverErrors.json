@@ -202,7 +202,8 @@
       "empty_answer": "Il modello non ha restituito alcun testo."
     },
     "environments": {
-      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo."
+      "in_use": "{{env}} è ancora riferito da {{count}} elemento/i. Rimuovi o modifica ciascuno, poi elimina di nuovo.",
+      "owner_not_member": "{{user}} ha creato l'ambiente {{env}} ma non è membro di {{org}}; agire al suo interno come proprietario richiede l'appartenenza."
     },
     "front_door": {
       "coordinator_waking": "L'ambiente si sta avviando. Sarà pronto tra circa cinque minuti.",

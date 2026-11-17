@@ -202,7 +202,8 @@
       "empty_answer": "模型未返回任何文本。"
     },
     "environments": {
-      "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
+      "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。",
+      "owner_not_member": "{{user}} 创建了环境 {{env}}，但不是 {{org}} 的成员；以所有者身份在其中操作需要成员资格。"
     },
     "front_door": {
       "coordinator_waking": "环境正在启动，大约五分钟后就绪。",
