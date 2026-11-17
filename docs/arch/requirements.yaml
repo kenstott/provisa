@@ -6742,9 +6742,14 @@
   feature: vector-search-models
   priority: MUST
   type: structural
-  description: A model registry must be declared in Provisa config listing available embedding models
-    with id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
-    cannot be used for embedding generation or query vectorization.
+  description: A model registry must be declared in Provisa config listing available embedding models with
+    id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
+    cannot be used for embedding generation or query vectorization. (Amended 2026-11-16, EVERY INSTALL SHIPS
+    THE EMBEDDING LIBRARY FOR THE DEFAULT MODEL:) Maintainer 2026-11-16 ('Ship it in every install'). Every
+    install (DMG, AppImage, Windows, the container image, pip provisa[embedded]) carries the library the
+    default embedding model needs (sentence-transformers on a CPU-only torch, never a CUDA build), so the
+    default model works with no added step. A configured model whose library is missing is refused by name
+    at startup, never failing later in a background task.
   use_case: Explicit model registry enables air-gapped deployments and audit trails for embedding model
     usage.
   code:
@@ -96925,7 +96930,10 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     where its MCP binding offers it, is listed as its own typed tool (its name from the binding, its input
     schema from the command''s arguments) and runs the command under that role. Over remote HTTP the role
     is resolved from the bearer token when the list is asked for; over stdio it is the pinned mcp.role.
-    A call to a tool the list does not offer is refused by name, as before.'
+    A call to a tool the list does not offer is refused by name, as before. (Amended 2026-11-16, COMMAND
+    TOOLS ARE LISTED IN FULL MODE ONLY:) Maintainer 2026-11-16. A session in sip mode keeps its short list:
+    commands are not listed as their own tools there and stay reachable through list_commands and run_sql.
+    A session in full mode lists each command visible to its role as its own tool.'
   scenario: 'Given an MCP client that connects in sip mode
 
     When it lists the tools

@@ -10859,5 +10859,9 @@
   "de/serverErrors.json::serverErrors.redaction.server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault.",
   "de/serverErrors.json::serverErrors.debug_logs.pattern_refused": "The log filter pattern is refused: {{why}}",
   "de/serverErrors.json::serverErrors.debug_logs.pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters.",
-  "de/serverErrors.json::serverErrors.data.view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published."
+  "de/serverErrors.json::serverErrors.data.view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
+  "de/serverErrors.json::serverErrors.import.include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
+  "de/serverErrors.json::serverErrors.import.filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
+  "de/serverErrors.json::serverErrors.import.filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with.",
+  "de/serverErrors.json::serverErrors.environments.owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership."
 }
