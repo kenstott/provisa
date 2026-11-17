@@ -3701,7 +3701,29 @@
     in its own column. A many-to-many pair (neither side a key) is accepted as a shared dimension: accepting
     it creates a derived table of the pair''s distinct values and a many-to-one relationship from each side
     to it, so both sides join through it on every front door; the dimension is an ordinary view that can
-    be renamed or extended.'
+    be renamed or extended. (Amended 2026-11-16, ONLY PAIRS BETWEEN THE MEASURE CUTOFF AND THE THRESHOLD
+    ARE MEASURED:) Maintainer 2026-11-16. A proposed pair is measured on its data only when the model''s
+    confidence lies between the measure cutoff and the acceptance threshold. Below the cutoff it is never
+    measured and is left out as before; at or above the threshold it is suggested on the model''s confidence
+    and is never measured. A pair in that band whose measure shows matching key values is admitted as a
+    suggestion, and its reason says it was admitted on key values matching in the data, with the measure
+    beside the model''s confidence. The cutoff is set in the discovery dialog beside the threshold, remembered
+    the same way, and defaults to 20%. A run measures every pair in the band; stopping the run is how a
+    person bounds it. (Amended 2026-11-16, THE CHECKS RUN FOREIGN KEYS, SEMANTIC, JEV, THEN THE KEY-VALUE
+    MEASURE:) Maintainer 2026-11-16. A run''s checks go in order of cost: declared foreign keys; the model''s
+    semantic proposals; Jev''s re-score of them where a Jev key is configured, kept beside the model''s
+    confidence; then the key-value measure, of only the pairs in the band between the measure cutoff and
+    the threshold. The band is judged on the model''s confidence, never Jev''s. (Amended 2026-11-16, KEY
+    VALUE OVERLAP IS A THIRD CHOICE IN THE DIALOG, DEPENDING ON SEMANTIC:) Maintainer 2026-11-16. The discovery
+    dialog offers Key value overlap beside Foreign keys and Semantic. It measures the pairs the semantic
+    check proposed, so it is available only while Semantic is chosen; the measure cutoff is set with it
+    and applies only while it is chosen. It is chosen by default and remembered as the threshold is. The
+    run''s summary lists it among what it looked for. Without it, a pair below the threshold is left out
+    as below the threshold, unmeasured. (Amended 2026-11-16, KEY VALUE OVERLAP SHOWS UNDER SEMANTIC, WITH
+    ITS CUTOFF AND SAMPLE SIZE:) Maintainer 2026-11-16. The Key value overlap choice appears in the dialog
+    once Semantic is chosen. Chosen, it shows its two settings: the measure cutoff (default 20%) and the
+    sample size, the most distinct values read of each column for a pair''s measure (default 10,000, the
+    bound used today). Both are remembered as the threshold is, and the run''s summary states them.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -6720,9 +6742,14 @@
   feature: vector-search-models
   priority: MUST
   type: structural
-  description: A model registry must be declared in Provisa config listing available embedding models
-    with id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
-    cannot be used for embedding generation or query vectorization.
+  description: A model registry must be declared in Provisa config listing available embedding models with
+    id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
+    cannot be used for embedding generation or query vectorization. (Amended 2026-11-16, EVERY INSTALL SHIPS
+    THE EMBEDDING LIBRARY FOR THE DEFAULT MODEL:) Maintainer 2026-11-16 ('Ship it in every install'). Every
+    install (DMG, AppImage, Windows, the container image, pip provisa[embedded]) carries the library the
+    default embedding model needs (sentence-transformers on a CPU-only torch, never a CUDA build), so the
+    default model works with no added step. A configured model whose library is missing is refused by name
+    at startup, never failing later in a background task.
   use_case: Explicit model registry enables air-gapped deployments and audit trails for embedding model
     usage.
   code:
@@ -41597,26 +41624,32 @@
   feature: sign-in-and-identity-credentials
   priority: MUST
   type: behavioral
-  description: Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
+  description: 'Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
     (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored
     hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity
     via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing
-    per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name from
-    the user profile — so audit and usage reporting attribute the act to the person, identically to an interactive
-    session; the token's own label is carried as a separate claim recording WHICH of that person's credentials
-    was used. Token management is self-service on the user's own profile, where the secret is displayed
-    exactly once at issuance and the listing shows only a display prefix and lifecycle timestamps. (Amended
-    2026-11-16, A TOKEN'S ROLE NARROWS IT:) Maintainer 2026-11-16 ('should narrow'). A personal access token
-    that names a role acts only as that role, on every transport and in both assignment modes; it never
-    reaches another role its owner holds. A token may name only a role its issuer holds when it is issued
-    (REQ-2076). Whether a token's scopes are enforced or removed, and what each scope would allow, is not
-    settled. (Amended 2026-11-16, A TOKEN'S SCOPES ARE THE ROLES IT MAY USE:) Maintainer 2026-11-16 ('scope
-    is always a role name'; 'the PAT creator must assign specific roles'). This completes A TOKEN'S ROLE
-    NARROWS IT, whose last sentence (scopes not settled) and whose single named role are [SUPERSEDED by
-    this amendment]. A token carries one non-empty list of role names, its scopes; the separate single-role
-    field is gone. The token acts only as a role in its scopes. Each scope must be a role the issuer holds
-    when the token is issued and still holds when it is used; a token with no scopes is not issued. The
-    token form picks the roles with the standard multi-select.
+    per-org scope. A validated token resolves to its OWNER''S account — user id, email and display name
+    from the user profile — so audit and usage reporting attribute the act to the person, identically to
+    an interactive session; the token''s own label is carried as a separate claim recording WHICH of that
+    person''s credentials was used. Token management is self-service on the user''s own profile, where the
+    secret is displayed exactly once at issuance and the listing shows only a display prefix and lifecycle
+    timestamps. (Amended 2026-11-16, A TOKEN''S ROLE NARROWS IT:) Maintainer 2026-11-16 (''should narrow'').
+    A personal access token that names a role acts only as that role, on every transport and in both assignment
+    modes; it never reaches another role its owner holds. A token may name only a role its issuer holds
+    when it is issued (REQ-2076). Whether a token''s scopes are enforced or removed, and what each scope
+    would allow, is not settled. (Amended 2026-11-16, A TOKEN''S SCOPES ARE THE ROLES IT MAY USE:) Maintainer
+    2026-11-16 (''scope is always a role name''; ''the PAT creator must assign specific roles''). This completes
+    A TOKEN''S ROLE NARROWS IT, whose last sentence (scopes not settled) and whose single named role are
+    [SUPERSEDED by this amendment]. A token carries one non-empty list of role names, its scopes; the separate
+    single-role field is gone. The token acts only as a role in its scopes. Each scope must be a role the
+    issuer holds when the token is issued and still holds when it is used; a token with no scopes is not
+    issued. The token form picks the roles with the standard multi-select. (Amended 2026-11-16, IN CLAIMS
+    MODE A TOKEN''S ROLES LAST NO LONGER THAN ITS OWNER''S LAST SIGN-IN:) Maintainer 2026-11-16. Where the
+    identity provider supplies the roles, a personal access token acts with the roles its owner holds now:
+    a provider that can be asked again is asked at each use; for one that cannot (OIDC, Keycloak, SAML),
+    the roles mirrored from the owner''s last sign-in hold only until that sign-in expires, after which
+    the token is refused by name until the owner signs in again. A role removed at the provider therefore
+    stops applying at the next re-read or at that expiry.'
   use_case: Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate
     against all Provisa protocols using the same role/scope model as browser auth, eliminating the need
     for separate credential management per client type.
@@ -96871,7 +96904,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: complete
+  status: in-progress
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -96890,7 +96923,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     after which the client''s list holds that group too. Nothing is unreachable in sip mode, and a group
     costs tokens only once it is added. A tool''s rights are unchanged: what a role may call is decided
     as in full mode. Full mode lists every tool, as before. Sip mode changes only which tools are listed;
-    result sizes keep their own settings.'
+    result sizes keep their own settings. (Amended 2026-11-16, AN MCP SESSION LISTS ONLY WHAT ITS ROLES
+    MAY USE, AND EACH VISIBLE COMMAND IS ITS OWN TOOL:) Maintainer 2026-11-16. As a principal''s GraphQL
+    schema is reduced to its roles, so is its MCP tool list: tools/list names only the built-in tools the
+    principal''s roles'' capabilities allow, within the session''s mode. Each command visible to the role,
+    where its MCP binding offers it, is listed as its own typed tool (its name from the binding, its input
+    schema from the command''s arguments) and runs the command under that role. Over remote HTTP the role
+    is resolved from the bearer token when the list is asked for; over stdio it is the pinned mcp.role.
+    A call to a tool the list does not offer is refused by name, as before. (Amended 2026-11-16, COMMAND
+    TOOLS ARE LISTED IN FULL MODE ONLY:) Maintainer 2026-11-16. A session in sip mode keeps its short list:
+    commands are not listed as their own tools there and stay reachable through list_commands and run_sql.
+    A session in full mode lists each command visible to its role as its own tool.'
   scenario: 'Given an MCP client that connects in sip mode
 
     When it lists the tools
@@ -97208,3 +97251,28 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the descriptor as data, with every existing set generated from it and a test that the generated set
     equals the hand-kept one; the hand-kept sets removed; the type branches moved into hooks one at a
     time, each with its existing tests; the endpoint and the UI; the two checks.'
+- id: REQ-2252
+  status: proposed
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: SHOULD
+  type: ui
+  description: 'Maintainer 2026-11-17 (''def need to have hyperlinks for cypher/sql/sparql/graphql - to
+    see a relationship ... similar to ones we have in the data products screens''; ''we could create queries
+    for relationships across all surfaces as well''). A relationship''s detail panel on the Relationships
+    page has one link per query language the relationship can be read in, on every surface that exposes
+    it, drawn as the data product Access section draws its per-table links (the same icons, tips and component):
+    Cypher, SQL, SPARQL, GraphQL, and JSON:API, REST and gRPC where those reach the relationship (a JSON:API
+    include, the REST and gRPC forms the relationship is served in). Each opens that language''s Explore
+    editor with a query that reads the relationship, run at once: Cypher matches the relationship''s type
+    between its two node labels; SQL joins the source table to the target table on the relationship''s columns;
+    SPARQL selects subject and object over the relationship''s predicate; GraphQL reads the source type
+    with the relationship''s field nested; JSON:API, REST and gRPC read the source with the relationship
+    followed in their own form. Each query uses the names the role sees (the aliases in the panel) and a
+    row limit. A language the relationship is not exposed in (for example excluded from Cypher) shows no
+    link. (Amended 2026-11-16, THE DATA PRODUCT ACCESS SECTION LINKS EACH OF ITS RELATIONSHIPS THE SAME
+    WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
+    patterns''). A data product''s Access section lists each relationship in the product with the same set
+    of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'

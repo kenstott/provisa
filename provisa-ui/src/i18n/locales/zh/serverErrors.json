@@ -153,6 +153,7 @@
       "source_starting": "源 {{source}} 仍在启动。请稍后重试。",
       "source_unavailable": "源 {{source}} 无法响应。请稍后重试。",
       "view_outside_load_window": "视图 {{view}} 只能在其读取时段内读取。下次开放时间为 {{opens_at}}。",
+      "view_awaits_rule_rebuild": "由于其输入的行规则发生变更，视图 {{view}} 正在重新构建。该构建发布后，此角色即可读取它。",
       "graphql_body_missing": "请求没有正文:GraphQL 请求是包含查询的 JSON 对象。",
       "graphql_body_not_json": "请求正文不是 JSON:{{error}}",
       "graphql_request_not_object": "GraphQL 请求是包含查询的 JSON 对象。",
@@ -203,7 +204,8 @@
       "empty_answer": "模型未返回任何文本。"
     },
     "environments": {
-      "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。"
+      "in_use": "仍有 {{count}} 项引用 {{env}}。请移除或更改每一项，然后再次删除。",
+      "owner_not_member": "{{user}} 创建了环境 {{env}}，但不是 {{org}} 的成员；以所有者身份在其中操作需要成员资格。"
     },
     "front_door": {
       "coordinator_waking": "环境正在启动，大约五分钟后就绪。",
@@ -326,6 +328,13 @@
       "catalog_view_refused": "{{view}} 是 meta 域的目录视图,不能与数据源的表在同一条语句中读取:请用两条语句分别读取。",
       "function_unsupported": "{{function}}() 在 {{dialect}} 上没有对应形式。"
     },
+    "redaction": {
+      "rule_invalid": "脱敏规则 {{rule}}：{{why}}",
+      "pattern_backtracks": "脱敏规则 {{rule}}：该模式可能导致灾难性回溯（无界重复中嵌套的重复，或其中可能以相同文本开头的分支）。请改写为不含该结构的形式。",
+      "pattern_unsupported": "脱敏规则 {{rule}}：组织的规则不能使用反向引用、先行或后行断言、原子组、占有型重复或条件组。",
+      "pattern_too_large": "脱敏规则 {{rule}}：展开重复后模式过大。请使用更小的重复次数。",
+      "server_reference": "脱敏规则 {{rule}}：此服务器上的组织不能引用服务器的环境。请使用组织自己保管库中的 ${secret:NAME}。"
+    },
     "replication": {
       "answer_not_json": "为 {{table}} 的副本读取的响应不是有效的 JSON：[{{content_type}}] {{cause}}（位于响应第 {{before_byte}} 字节之前的 {{kib}} KiB 内）。",
       "no_whole_copy": "源 {{source}} 的表 {{schema}}.{{table}} 没有可构建的完整副本：它按行复制，或者带有参数列。",
@@ -346,7 +355,9 @@
       "org_selection_required": "需要先选择组织",
       "already_exists": "角色 '{{role}}' 已存在",
       "description_missing": "角色 '{{role}}' 需要说明其用途",
-      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：没有父角色持有它"
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：没有父角色持有它",
+      "platform_right_requires_platform_admin": "包含 {{rights}} 的角色由平台管理员定义",
+      "rights_not_held": "角色 {{role}} 包含 {{rights}}，而您不持有这些权限"
     },
     "schema": {
       "allowed_domains_updated": "已更新数据源 '{{source}}' 的允许域",
@@ -728,6 +739,10 @@
     "dbt_sources": {
       "unknown_role": "不存在名为 {{role}} 的角色。"
     },
+    "debug_logs": {
+      "pattern_refused": "日志筛选模式被拒绝：{{why}}",
+      "pattern_exceeded": "日志筛选模式被拒绝：在一行 {{length}} 个字符的日志上超出了其步数上限（{{steps}} 步）。"
+    },
     "dbt": {
       "products": {
         "none_offered": "数据源 {{source_id}} 没有强制执行契约的公开模型。",
@@ -886,6 +901,11 @@
     "preflight": {
       "confined_unavailable": "{{subject}} 的预检未运行：在此组织中它只在受限进程中运行，而该进程无法启动（{{reason}}）。",
       "confined_failed": "{{subject}} 的预检未返回结论：其受限进程已先行结束（{{reason}}）。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} 位于上传的项目之外；项目只读取自身的文件。",
+      "filter_value_refused": "{{value}} 不能作为权限过滤器中的值：值是字符串、数字、true、false、null、它们的列表或会话变量。",
+      "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
     }
   }
 }

@@ -26,6 +26,8 @@ _log = logging.getLogger(__name__)
 
 
 def _rules_of(raw: Any, source: str) -> list[redaction.Rule]:
+    """The stored rules. A held org's stored ``${env:...}`` reference is parsed here and never
+    resolved (:func:`redaction.set_org`), so the org's other rules still load."""
     if raw is None:
         return []
     items = json.loads(raw) if isinstance(raw, str) else raw
@@ -71,6 +73,7 @@ async def refresh_org(org_id: str, *, every_environment: bool = False) -> None:
     from provisa.core.org_settings import read_org_overrides
     from provisa.core.secrets import resolve_secrets
     from provisa.core.secrets_runtime import secrets_backend, secrets_backend_spec
+    from provisa.security.sandbox_egress import held
 
     admin_db = state.admin_db
     assert admin_db is not None  # the platform plane is brought up before any org runtime
@@ -89,10 +92,10 @@ async def refresh_org(org_id: str, *, every_environment: bool = False) -> None:
                 planes[env["name"]] = env_runtime.model_db
     names = await secret_references.referenced_names(admin_db, org_id, environments=planes)
     spec = secrets_backend_spec()
-    held: dict[str, str] = {}
+    vault: dict[str, str] = {}
     if spec is not None and spec.key == "provisa":
-        held = await secrets_store.vault_values(admin_db, org_id)
-    secrets: dict[str, str] = {name: value for name, value in held.items()}
+        vault = await secrets_store.vault_values(admin_db, org_id)
+    secrets: dict[str, str] = {name: value for name, value in vault.items()}
     async with secrets_store.bound(admin_db, org_id):
         backend = secrets_backend()
         for name in sorted(names - set(secrets)):
@@ -100,4 +103,6 @@ async def refresh_org(org_id: str, *, every_environment: bool = False) -> None:
                 secrets[name] = backend.resolve(name)
             except (KeyError, ValueError) as exc:
                 _log.error("redaction: secret %r of org %s does not resolve: %s", name, org_id, exc)
-        redaction.set_org(org_id, rules, secrets, resolve_secrets)
+        redaction.set_org(
+            org_id, rules, secrets, resolve_secrets, server_references=not held(org_id)
+        )

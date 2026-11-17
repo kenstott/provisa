@@ -224,6 +224,7 @@ async def record(probe: Probe) -> str | None:
     assert runtime.model_db is not None
     await record_admin_action(
         runtime.model_db,
+        org_id=probe.org_id,
         action=ACTION,
         actor_id=probe.user_id or "unknown",
         subject_id=probe.user_id or "unknown",

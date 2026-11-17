@@ -1167,7 +1167,10 @@ def test_a_ui_lane_can_be_run_for_named_specs_only(workflow):
     body = yaml.safe_load((REPO / ".github" / "workflows" / workflow).read_text())
     specs = body[True]["workflow_dispatch"]["inputs"]["specs"]
     assert (specs["type"], specs["required"], specs["default"]) == ("string", False, "")
-    for job, given in body["jobs"].items():
+    # The lane's jobs; the Trino lanes' plugin-priming job runs no Playwright.
+    lanes = {j: g for j, g in body["jobs"].items() if g.get("uses") == _LANE_WORKFLOW}
+    assert lanes, workflow
+    for job, given in lanes.items():
         with_ = given["with"]
         assert "PROVISA_E2E_SPECS=${{ inputs.specs }}" in with_["env"].splitlines(), job
         run = with_["run"]
@@ -1281,8 +1284,10 @@ def test_no_workflow_or_action_installs_playwright_with_a_full_apt_refresh():
 @pytest.mark.parametrize("name", ["ui-e2e-trino.yml", "ui-e2e-swap-amd64.yml"])
 def test_the_trino_and_swap_ui_lanes_install_plain_chromium(name):
     body = yaml.safe_load((REPO / ".github" / "workflows" / name).read_text())
-    (job,) = body["jobs"].values()
+    (job,) = [j for j in body["jobs"].values() if j.get("uses") == _LANE_WORKFLOW]
     assert job["with"]["ui"] == "chromium"
+    # The lane mounts the plugin jars a job of the same run primed; its stack script fetches none.
+    assert job["with"]["trino-plugins"] is True and job["needs"] == ["trino-plugins"]
 
 
 _MSSQL_ODBC = REPO / ".github" / "actions" / "mssql-odbc" / "action.yml"
@@ -1478,3 +1483,98 @@ def test_the_uis_engines_admit_the_nvmrc():
     assert floor, f"provisa-ui engines.node is {engines!r}, expected >=x.y.z"
     pin = tuple(int(x) for x in _node_pin().split("."))
     assert tuple(int(x) for x in floor.groups()) <= pin, f"engines {engines} refuses .nvmrc {pin}"
+
+
+# --- the Trino plugin jars: primed once per workflow run, restored before every test ------------
+
+_PLUGINS_ACTION = "./.github/actions/trino-plugins"
+_LANE_WORKFLOW = "./.github/workflows/lane.yml"
+
+
+def _plugin_phases(body: dict) -> list[str]:
+    """The plugin-cache phases a job runs: its own action steps, or `restore` for a call of the
+    lane workflow with trino-plugins switched on (literally or by an expression)."""
+    if body.get("uses") == _LANE_WORKFLOW:
+        return ["restore"] if (body.get("with") or {}).get("trino-plugins", False) else []
+    return [
+        (s.get("with") or {}).get("phase")
+        for s in body.get("steps") or []
+        if s.get("uses") == _PLUGINS_ACTION
+    ]
+
+
+def _needed(jobs: dict, job: str) -> set[str]:
+    """Every job ``job`` waits for, directly or through another."""
+    seen: set[str] = set()
+    todo = [job]
+    while todo:
+        needs = jobs[todo.pop()].get("needs") or []
+        for n in [needs] if isinstance(needs, str) else needs:
+            if n not in seen:
+                seen.add(n)
+                todo.append(n)
+    return seen
+
+
+def test_every_plugin_restore_waits_for_a_job_that_primed_the_cache():
+    """Release 510 (run 44081179966): each parallel lane missed an evicted plugin cache and
+    fetched the jars from Maven Central inside collection at the same moment; core 17/18 got HTTP
+    429 as an INTERNALERROR. Now one job per workflow run primes the cache (`phase: prime`: a hit,
+    or one download, checksum-verified, saved at once) and every job that restores it (`phase:
+    restore`, which fails on a miss and verifies each jar) waits for that job, so the cache step
+    precedes pytest and no lane ever downloads."""
+    restoring = []
+    for path in WORKFLOWS:
+        if path.name == "lane.yml":
+            continue  # the callee: each caller's job is checked where it calls it
+        jobs = yaml.safe_load(path.read_text()).get("jobs") or {}
+        primers = {j for j, body in jobs.items() if "prime" in _plugin_phases(body)}
+        for job, body in jobs.items():
+            phases = _plugin_phases(body)
+            assert set(phases) <= {"prime", "restore"}, f"{path.name}:{job}: {phases}"
+            if "restore" in phases and "prime" not in phases:
+                restoring.append(f"{path.name}:{job}")
+                assert _needed(jobs, job) & primers, (
+                    f"{path.name}:{job} restores the Trino plugins without waiting for a job "
+                    f"that primes them (primers here: {sorted(primers)})"
+                )
+    assert restoring, "no job restores the Trino plugins"
+
+
+def test_the_lane_workflow_restores_the_plugins_before_its_lane_and_saves_none():
+    steps = yaml.safe_load((REPO / ".github" / "workflows" / "lane.yml").read_text())["jobs"][
+        "lane"
+    ]["steps"]
+    names = [s.get("name") for s in steps]
+    restore = steps[names.index("Restore Trino plugins")]
+    assert restore["uses"] == _PLUGINS_ACTION and restore["with"] == {"phase": "restore"}
+    assert names.index("Restore Trino plugins") < names.index("Run lane")
+    assert [s for s in steps if s.get("uses") == _PLUGINS_ACTION] == [restore]
+
+
+def test_no_workflow_fetches_the_conftest_plugin_jars_outside_the_action():
+    """The jars come from the action's one fetch per pin; a workflow step of its own that ran the
+    fetch would be a second, uncached path to Maven Central."""
+    for where, step in _steps():
+        assert "trino_plugins.py fetch" not in (step.get("run") or ""), where
+
+
+def test_nothing_in_ci_names_the_plugin_jars_maven_location_but_the_pin():
+    """Maven Central is reached for the plugin jars from one place, tests/trino_plugins.py, run by
+    the action's priming job. The UI Trino and swap lanes' stack script and the release's plugin
+    job each fetched the jars with curl of their own, once per job and run, outside the cache
+    and the checksums."""
+    from tests import trino_plugins
+
+    maven = trino_plugins._TRINO_PLUGIN_MAVEN
+    sources = [
+        *WORKFLOWS,
+        *(REPO / ".github" / "actions").rglob("*.y*ml"),
+        *(REPO / "scripts" / "ci").rglob("*"),
+    ]
+    named = [
+        str(p.relative_to(REPO))
+        for p in sources
+        if p.is_file() and p.suffix in {".yml", ".yaml", ".sh", ".py"} and maven in p.read_text()
+    ]
+    assert named == []

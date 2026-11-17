@@ -1020,6 +1020,7 @@ async def _audit_reaped(org_id: str, name: str, outcome: dict) -> None:
 
     await record_admin_action(
         await _org_model_db(org_id),
+        org_id=org_id,
         action="environment.expired",
         actor_id="platform",
         subject_id=name,
