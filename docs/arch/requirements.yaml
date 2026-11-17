@@ -41597,26 +41597,32 @@
   feature: sign-in-and-identity-credentials
   priority: MUST
   type: behavioral
-  description: Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
+  description: 'Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
     (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored
     hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity
     via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing
-    per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name from
-    the user profile — so audit and usage reporting attribute the act to the person, identically to an interactive
-    session; the token's own label is carried as a separate claim recording WHICH of that person's credentials
-    was used. Token management is self-service on the user's own profile, where the secret is displayed
-    exactly once at issuance and the listing shows only a display prefix and lifecycle timestamps. (Amended
-    2026-11-16, A TOKEN'S ROLE NARROWS IT:) Maintainer 2026-11-16 ('should narrow'). A personal access token
-    that names a role acts only as that role, on every transport and in both assignment modes; it never
-    reaches another role its owner holds. A token may name only a role its issuer holds when it is issued
-    (REQ-2076). Whether a token's scopes are enforced or removed, and what each scope would allow, is not
-    settled. (Amended 2026-11-16, A TOKEN'S SCOPES ARE THE ROLES IT MAY USE:) Maintainer 2026-11-16 ('scope
-    is always a role name'; 'the PAT creator must assign specific roles'). This completes A TOKEN'S ROLE
-    NARROWS IT, whose last sentence (scopes not settled) and whose single named role are [SUPERSEDED by
-    this amendment]. A token carries one non-empty list of role names, its scopes; the separate single-role
-    field is gone. The token acts only as a role in its scopes. Each scope must be a role the issuer holds
-    when the token is issued and still holds when it is used; a token with no scopes is not issued. The
-    token form picks the roles with the standard multi-select.
+    per-org scope. A validated token resolves to its OWNER''S account — user id, email and display name
+    from the user profile — so audit and usage reporting attribute the act to the person, identically to
+    an interactive session; the token''s own label is carried as a separate claim recording WHICH of that
+    person''s credentials was used. Token management is self-service on the user''s own profile, where the
+    secret is displayed exactly once at issuance and the listing shows only a display prefix and lifecycle
+    timestamps. (Amended 2026-11-16, A TOKEN''S ROLE NARROWS IT:) Maintainer 2026-11-16 (''should narrow'').
+    A personal access token that names a role acts only as that role, on every transport and in both assignment
+    modes; it never reaches another role its owner holds. A token may name only a role its issuer holds
+    when it is issued (REQ-2076). Whether a token''s scopes are enforced or removed, and what each scope
+    would allow, is not settled. (Amended 2026-11-16, A TOKEN''S SCOPES ARE THE ROLES IT MAY USE:) Maintainer
+    2026-11-16 (''scope is always a role name''; ''the PAT creator must assign specific roles''). This completes
+    A TOKEN''S ROLE NARROWS IT, whose last sentence (scopes not settled) and whose single named role are
+    [SUPERSEDED by this amendment]. A token carries one non-empty list of role names, its scopes; the separate
+    single-role field is gone. The token acts only as a role in its scopes. Each scope must be a role the
+    issuer holds when the token is issued and still holds when it is used; a token with no scopes is not
+    issued. The token form picks the roles with the standard multi-select. (Amended 2026-11-16, IN CLAIMS
+    MODE A TOKEN''S ROLES LAST NO LONGER THAN ITS OWNER''S LAST SIGN-IN:) Maintainer 2026-11-16. Where the
+    identity provider supplies the roles, a personal access token acts with the roles its owner holds now:
+    a provider that can be asked again is asked at each use; for one that cannot (OIDC, Keycloak, SAML),
+    the roles mirrored from the owner''s last sign-in hold only until that sign-in expires, after which
+    the token is refused by name until the owner signs in again. A role removed at the provider therefore
+    stops applying at the next re-read or at that expiry.'
   use_case: Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate
     against all Provisa protocols using the same role/scope model as browser auth, eliminating the need
     for separate credential management per client type.
