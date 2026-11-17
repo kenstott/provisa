@@ -15,9 +15,11 @@
 // listed with why and has no box. One Apply says what it will do, with the counts. Each row
 // shows its pair's values measured against each other; the Score is the measure's where values
 // were compared, the model's own beside it. The threshold rows start ticked from is the
-// person's own, set here.
+// person's own, set here. The run's actions (New run, Apply) sit in one row above the table;
+// the table scrolls under its pinned header row in the room the dialog leaves it (REQ-1587's
+// pinned list header).
 
-import { useMemo } from "react";
+import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, NumberInput, Table, Text } from "@mantine/core";
 import type { RunProposal } from "../../api/admin";
@@ -34,12 +36,19 @@ interface ProposalsTableProps {
   state: RunProposalsState;
   tableDomainById: Record<string, string>;
   tableNameById: Record<string, string>;
+  /** The dialog's New run, shown beside Apply. */
+  newRun: ReactNode;
 }
 
 const percent = (confidence: number) => (confidence * 100).toFixed(0);
 const NONE = new Set<string>();
 
-export function ProposalsTable({ state, tableDomainById, tableNameById }: ProposalsTableProps) {
+export function ProposalsTable({
+  state,
+  tableDomainById,
+  tableNameById,
+  newRun,
+}: ProposalsTableProps) {
   const { t } = useTranslation();
   const proposals = useMemo(() => state.proposals ?? [], [state.proposals]);
 
@@ -142,12 +151,12 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
   return (
     <>
       {state.error && (
-        <Alert color="red" mb="md" data-testid="discover-proposals-error">
+        <Alert color="red" mb="md" style={{ flexShrink: 0 }} data-testid="discover-proposals-error">
           {state.error}
         </Alert>
       )}
       {state.failures.length > 0 && (
-        <Alert color="red" mb="md" data-testid="discover-apply-failures">
+        <Alert color="red" mb="md" style={{ flexShrink: 0 }} data-testid="discover-apply-failures">
           <Text fz="0.875rem">{t("proposalsTable.failed", { count: state.failures.length })}</Text>
           {state.failures.map(({ proposal, error }) => (
             <Text key={proposal.id} fz="0.875rem">
@@ -164,143 +173,148 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
           })}
         </Text>
       )}
-      {proposals.length === 0 ? (
-        state.proposals !== null && (
+      <Group justify="space-between" align="center" mb="xs" wrap="nowrap">
+        {proposals.length > 0 ? (
+          <Group gap="md" align="flex-end" wrap="nowrap">
+            <FormLayout style={{ flexShrink: 0 }}>
+              <FormField size="short" hint={t("proposalsTable.thresholdHint")}>
+                <NumberInput
+                  label={t("proposalsTable.threshold")}
+                  data-testid="discover-threshold"
+                  value={Math.round(state.threshold * 100)}
+                  onChange={(v) => {
+                    if (typeof v === "number") state.setThreshold(v / 100);
+                  }}
+                  min={0}
+                  max={100}
+                  step={5}
+                  suffix="%"
+                  clampBehavior="strict"
+                  allowDecimal={false}
+                />
+              </FormField>
+            </FormLayout>
+            <Text fz="sm" c="dimmed">
+              {t("proposalsTable.intro")}
+            </Text>
+          </Group>
+        ) : state.proposals !== null ? (
           <Text fz="sm" c="dimmed" data-testid="discover-no-proposals">
             {t("proposalsTable.none")}
           </Text>
-        )
-      ) : (
-        <>
-          <Group justify="space-between" align="center" mb="xs" wrap="nowrap">
-            <Group gap="md" align="flex-end" wrap="nowrap">
-              <FormLayout style={{ flexShrink: 0 }}>
-                <FormField size="short" hint={t("proposalsTable.thresholdHint")}>
-                  <NumberInput
-                    label={t("proposalsTable.threshold")}
-                    data-testid="discover-threshold"
-                    value={Math.round(state.threshold * 100)}
-                    onChange={(v) => {
-                      if (typeof v === "number") state.setThreshold(v / 100);
-                    }}
-                    min={0}
-                    max={100}
-                    step={5}
-                    suffix="%"
-                    clampBehavior="strict"
-                    allowDecimal={false}
-                  />
-                </FormField>
-              </FormLayout>
-              <Text fz="sm" c="dimmed">
-                {t("proposalsTable.intro")}
-              </Text>
-            </Group>
+        ) : (
+          <span />
+        )}
+        <Group gap="xs" wrap="nowrap" style={{ flexShrink: 0 }}>
+          {newRun}
+          {proposals.length > 0 && (
             <Button
               onClick={() => void state.apply(nameOf)}
               disabled={accepting + marking === 0}
               loading={state.applying}
               data-testid="discover-apply"
-              style={{ flexShrink: 0 }}
             >
               {applyLabel}
             </Button>
-          </Group>
-          {/* The list fills the dialog and scrolls sideways within it where it cannot fit. */}
-          <div style={{ overflowX: "auto" }}>
-            <ListTable
-              testId="discover-proposals"
-              minWidth={1100}
-              style={{ width: "100%" }}
-              selection={selection}
-            >
-              <ListHead
-                sortGroup={sort}
-                columns={[
-                  { col: "score" },
-                  { col: "model" },
-                  ...(jevScored ? [{ col: "jev" }] : []),
-                  { col: "source" },
-                  { col: "target" },
-                  t("candidatesTable.colCardinality"),
-                  t("proposalsTable.colMeasure"),
-                  { col: "kind" },
-                  t("proposalsTable.colReasoning"),
-                  t("proposalsTable.colNote"),
-                  // Pinned at the row's end, as a list's actions are: where the list is wider
-                  // than the dialog it scrolls under this column, which is never cut.
-                  <ListActionsHead key="not-again">
-                    <span style={{ whiteSpace: "normal" }}>{t("proposalsTable.colNotAgain")}</span>
-                  </ListActionsHead>,
-                ]}
-              />
-              <Table.Tbody>
-                {sort.items.map((item) => {
-                  if (item.type !== "row") return null;
-                  const p = item.row;
-                  const name = nameOf(p);
-                  return (
-                    <ListRow
-                      key={p.id}
-                      testId={`proposal-${p.id}`}
-                      itemKey={p.acceptable ? p.id : undefined}
-                    >
-                      <Table.Td data-testid={`proposal-score-${p.id}`}>
-                        {p.score === null ? "" : `${percent(p.score)}%`}
+          )}
+        </Group>
+      </Group>
+      {proposals.length > 0 && (
+        // The list's pinned header (REQ-1587): the rows scroll beneath it in the height the
+        // dialog leaves, and sideways where the columns cannot fit.
+        <div className="page-sticky-head" data-testid="discover-proposals-scroll">
+          <ListTable
+            testId="discover-proposals"
+            minWidth={1100}
+            style={{ width: "100%" }}
+            selection={selection}
+          >
+            <ListHead
+              sortGroup={sort}
+              columns={[
+                { col: "score" },
+                { col: "model" },
+                ...(jevScored ? [{ col: "jev" }] : []),
+                { col: "source" },
+                { col: "target" },
+                t("candidatesTable.colCardinality"),
+                t("proposalsTable.colMeasure"),
+                { col: "kind" },
+                t("proposalsTable.colReasoning"),
+                t("proposalsTable.colNote"),
+                // Pinned at the row's end, as a list's actions are: where the list is wider
+                // than the dialog it scrolls under this column, which is never cut.
+                <ListActionsHead key="not-again">
+                  <span style={{ whiteSpace: "normal" }}>{t("proposalsTable.colNotAgain")}</span>
+                </ListActionsHead>,
+              ]}
+            />
+            <Table.Tbody>
+              {sort.items.map((item) => {
+                if (item.type !== "row") return null;
+                const p = item.row;
+                const name = nameOf(p);
+                return (
+                  <ListRow
+                    key={p.id}
+                    testId={`proposal-${p.id}`}
+                    itemKey={p.acceptable ? p.id : undefined}
+                  >
+                    <Table.Td data-testid={`proposal-score-${p.id}`}>
+                      {p.score === null ? "" : `${percent(p.score)}%`}
+                    </Table.Td>
+                    <Table.Td data-testid={`proposal-model-${p.id}`}>
+                      {p.confidence === null ? "" : `${percent(p.confidence)}%`}
+                    </Table.Td>
+                    {jevScored && (
+                      <Table.Td data-testid={`proposal-jev-${p.id}`}>
+                        {p.scored === null ? "" : `${percent(p.scored)}%`}
                       </Table.Td>
-                      <Table.Td data-testid={`proposal-model-${p.id}`}>
-                        {p.confidence === null ? "" : `${percent(p.confidence)}%`}
-                      </Table.Td>
-                      {jevScored && (
-                        <Table.Td data-testid={`proposal-jev-${p.id}`}>
-                          {p.scored === null ? "" : `${percent(p.scored)}%`}
-                        </Table.Td>
+                    )}
+                    <Table.Td>
+                      <BreakableName name={label(p.source_table_id, p.source_column)} />
+                    </Table.Td>
+                    <Table.Td>
+                      <BreakableName name={label(p.target_table_id, p.target_column)} />
+                    </Table.Td>
+                    <Table.Td data-testid={`proposal-cardinality-${p.id}`}>
+                      {p.cardinality ?? ""}
+                    </Table.Td>
+                    <Table.Td data-testid={`proposal-measure-${p.id}`}>
+                      {[
+                        ...(p.measure ? measureLines(p.measure, t) : []),
+                        p.source_table_id !== null && !p.measured
+                          ? t("proposalsTable.measure.modelScore")
+                          : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                    </Table.Td>
+                    <Table.Td>{t(`proposalsTable.kind.${p.kind}`)}</Table.Td>
+                    <Table.Td>
+                      {p.source_table_id === null
+                        ? t("proposalsTable.asWritten", { answer: p.answer })
+                        : (p.reasoning ?? "")}
+                    </Table.Td>
+                    <Table.Td>{note(p)}</Table.Td>
+                    {/* The cell a row's actions take (ListActions), written as the table cell it is. */}
+                    <Table.Td className="list-actions">
+                      {p.decidable && (
+                        <Checkbox
+                          size="xs"
+                          aria-label={t("proposalsTable.notAgainAria", { name })}
+                          data-testid={`proposal-not-again-${p.id}`}
+                          checked={state.notAgain.has(p.id)}
+                          onChange={() => state.toggleNotAgain(p.id)}
+                        />
                       )}
-                      <Table.Td>
-                        <BreakableName name={label(p.source_table_id, p.source_column)} />
-                      </Table.Td>
-                      <Table.Td>
-                        <BreakableName name={label(p.target_table_id, p.target_column)} />
-                      </Table.Td>
-                      <Table.Td data-testid={`proposal-cardinality-${p.id}`}>
-                        {p.cardinality ?? ""}
-                      </Table.Td>
-                      <Table.Td data-testid={`proposal-measure-${p.id}`}>
-                        {[
-                          ...(p.measure ? measureLines(p.measure, t) : []),
-                          p.source_table_id !== null && !p.measured
-                            ? t("proposalsTable.measure.modelScore")
-                            : "",
-                        ]
-                          .filter(Boolean)
-                          .join(" ")}
-                      </Table.Td>
-                      <Table.Td>{t(`proposalsTable.kind.${p.kind}`)}</Table.Td>
-                      <Table.Td>
-                        {p.source_table_id === null
-                          ? t("proposalsTable.asWritten", { answer: p.answer })
-                          : (p.reasoning ?? "")}
-                      </Table.Td>
-                      <Table.Td>{note(p)}</Table.Td>
-                      {/* The cell a row's actions take (ListActions), written as the table cell it is. */}
-                      <Table.Td className="list-actions">
-                        {p.decidable && (
-                          <Checkbox
-                            size="xs"
-                            aria-label={t("proposalsTable.notAgainAria", { name })}
-                            data-testid={`proposal-not-again-${p.id}`}
-                            checked={state.notAgain.has(p.id)}
-                            onChange={() => state.toggleNotAgain(p.id)}
-                          />
-                        )}
-                      </Table.Td>
-                    </ListRow>
-                  );
-                })}
-              </Table.Tbody>
-            </ListTable>
-          </div>
-        </>
+                    </Table.Td>
+                  </ListRow>
+                );
+              })}
+            </Table.Tbody>
+          </ListTable>
+        </div>
       )}
     </>
   );
