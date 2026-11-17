@@ -89201,7 +89201,10 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     mask on an input that feeds an output. A view that calls a code command (REQ-2249) is read under the
     same rule. A change to a row rule or a mask that changes which input columns the stored rows must keep
     rebuilds each view it touches, and until that build has published, the view is read as before the change
-    or refused by name, never with an engine error.'
+    or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
+    CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
+    until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
+    is refused by name; the view is never read under the rules it had before the change.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
