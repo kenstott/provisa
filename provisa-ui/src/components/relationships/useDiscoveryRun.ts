@@ -42,6 +42,9 @@ export interface DiscoveryRunState {
   stop: () => Promise<void>;
   /** Leave the ended run's result and set up a new run. */
   dismiss: () => void;
+  /** The fields a new run starts from: those of the run just left, else of the latest run the
+   *  signed-in person started; null where there is none (the defaults). */
+  previous: DiscoveryScope | null;
 }
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
@@ -49,6 +52,7 @@ const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
   const [run, setRun] = useState<DiscoveryRun | null>(null);
   const [error, setError] = useState("");
+  const [previous, setPrevious] = useState<DiscoveryScope | null>(null);
   const stored = useRef(onStored);
   useEffect(() => {
     stored.current = onStored;
@@ -56,11 +60,20 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
 
   const refresh = useCallback(async () => {
     try {
-      const [latest] = await fetchDiscoveryRuns(1);
+      const [[latest], [own]] = await Promise.all([
+        fetchDiscoveryRuns(1),
+        fetchDiscoveryRuns(1, true),
+      ]);
       setError("");
+      if (own !== undefined) setPrevious(own.scope);
       // An ended run is shown only while it is the one being watched; a run still going always.
+      // The server lists no run: what is shown stays (nothing, before any run).
       setRun((shown) =>
-        latest?.status === "running" ? latest : shown?.id === latest?.id ? latest : shown,
+        latest === undefined
+          ? shown
+          : latest.status === "running" || shown?.id === latest.id
+            ? latest
+            : shown,
       );
     } catch (e) {
       setError(errorText(e));
@@ -106,6 +119,7 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
   const start = useCallback(async (scope: DiscoveryScope) => {
     const started = await startDiscoveryRun(scope);
     setError("");
+    setPrevious(started.scope);
     setRun(started);
   }, []);
 
@@ -127,5 +141,5 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
     setRun((shown) => (shown?.status === "running" ? shown : null));
   }, []);
 
-  return { run, running, error, refresh, start, stop, dismiss };
+  return { run, running, error, refresh, start, stop, dismiss, previous };
 }

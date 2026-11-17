@@ -12,21 +12,23 @@
 // with one going, or the one last watched, it shows that run. Closing the dialog leaves a run
 // going: the run is the server's, and opening the dialog again shows it.
 
+import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Modal } from "@mantine/core";
 import type { DiscoveryScope } from "../../api/admin";
 import { DiscoverRunView, type SuggestionActions } from "./DiscoverRunView";
 import { DiscoverScopeForm, type ScopeTable } from "./DiscoverScopeForm";
 import type { DiscoveryRunState } from "./useDiscoveryRun";
+import { useRunProposals } from "./useRunProposals";
 
 interface DiscoverDialogProps {
   opened: boolean;
   onClose: () => void;
   discovery: DiscoveryRunState;
   tables: ScopeTable[];
-  /** The domains ticked in the Domains picker: the source domains a new run starts with. */
+  /** The domains ticked in the Domains picker: the source domains a run starts with when the
+   *  signed-in person has run none. */
   defaultDomains: string[];
-  /** Every waiting suggestion, with their actions: the dialog lists the shown run's own. */
   suggestions: SuggestionActions;
 }
 
@@ -39,24 +41,28 @@ export function DiscoverDialog({
   suggestions,
 }: DiscoverDialogProps) {
   const { t } = useTranslation();
-  const { run } = discovery;
-  const runScope = run ? `run:${run.id}` : null;
-  const runSuggestions = {
-    ...suggestions,
-    candidates: suggestions.candidates.filter((c) => c.scope === runScope),
+  const { run, previous } = discovery;
+  const proposals = useRunProposals(run, suggestions.onApplied);
+  // "Reset to defaults" sets up the next run from the defaults, until one is run or the dialog
+  // is closed: opened again, it starts from the last run again.
+  const [defaults, setDefaults] = useState(false);
+  const initial = defaults ? null : previous;
+  const close = () => {
+    setDefaults(false);
+    onClose();
   };
   return (
     <Modal
       opened={opened}
-      onClose={onClose}
+      onClose={close}
       title={t("discoverDialog.title")}
-      // A run lists its suggestions in the shared table, whose six columns need the room.
-      size={run ? "min(75rem, calc(100vw - 2rem))" : "lg"}
+      // A run lists its proposals in one table, whose columns need the room.
+      size={run ? "min(90rem, calc(100vw - 2rem))" : "lg"}
       centered
       data-testid="discover-dialog"
     >
-      {/* The scope mounts each time it is shown: the defaults again, and which models can run read
-          again, so a key set meanwhile counts. */}
+      {/* The scope mounts each time it is shown, and again when the run it starts from is known:
+          which models can run is read again, so a key set meanwhile counts. */}
       {opened &&
         (run ? (
           <DiscoverRunView
@@ -64,14 +70,21 @@ export function DiscoverDialog({
             readError={discovery.error}
             onStop={() => void discovery.stop()}
             onNewRun={discovery.dismiss}
-            suggestions={runSuggestions}
+            suggestions={suggestions}
+            proposals={proposals}
           />
         ) : (
           <DiscoverScopeForm
+            key={initial === null ? "defaults" : JSON.stringify(initial)}
             tables={tables}
             defaultDomains={defaultDomains}
-            onCancel={onClose}
-            onRun={(scope: DiscoveryScope) => discovery.start(scope)}
+            initial={initial}
+            onReset={() => setDefaults(true)}
+            onCancel={close}
+            onRun={async (scope: DiscoveryScope) => {
+              await discovery.start(scope);
+              setDefaults(false);
+            }}
           />
         ))}
     </Modal>

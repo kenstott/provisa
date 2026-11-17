@@ -817,3 +817,200 @@ async def test_only_relationships_starting_in_the_source_set_and_ending_in_the_t
     )
     assert [p.edge for p in out.kept] == [(1, "customer_id", 2, "id")]
     assert out.removed.out_of_scope == 1
+
+
+# --- nothing read is dropped: what is left out, and why ---------------------------------------------
+
+
+def test_the_instructions_say_what_a_confidence_states_and_where_a_suggestion_is_kept():
+    from provisa.discovery.runner import MIN_CONFIDENCE
+
+    text = context.instructions(TEXT, 5, either_direction=True)
+    assert context.RUBRIC in text
+    assert MIN_CONFIDENCE == context.KEPT_AT == 0.7
+    assert "A relationship is suggested at 0.7 or more" in text
+    for band in ("0.9 to 1.0", "0.7 to 0.89", "0.4 to 0.69", "below 0.4"):
+        assert band in text
+    # The bands are tied to what a request shows: the columns' names, a key, sample values.
+    assert "sample values overlap or are of one form" in text
+    assert "the same name on a column that is a key of neither table" in text
+
+
+def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
+    from provisa.discovery.runner import read_items
+
+    orders = tbl(
+        1,
+        "orders",
+        col("id", pk=True),
+        col("customer_id"),
+        col("store_id"),
+        col("card", classes=("payment_card",)),
+    )
+    customers = tbl(2, "customers", col("id", pk=True), col("region_id"))
+    k, (request,) = plan([orders], [customers], *DEFAULT_LIMITS)
+    tally = Tally(total=1)
+    items = [
+        _item((1, "customer_id"), (2, "id"), 0.95),
+        _item((1, "store_id"), (2, "region_id"), 0.4),
+        _item((1, "card"), (2, "id"), 0.9),
+        _item((1, "customer_id"), (9, "id"), 0.9),
+        {"source_table_id": 1, "source_column": "customer_id"},
+        {**_item((1, "customer_id"), (2, "id")), "cardinality": "many-to-many"},
+        "orders.customer_id -> customers.id",
+    ]
+    kept = read_items(request, items, tally)
+    assert [p.edge for p in kept] == [(1, "customer_id", 2, "id")]
+    assert tally.proposed == 7
+    assert (tally.below_threshold, tally.not_comparable, tally.invalid) == (1, 1, 4)
+    left = [(r.left_out, None if r.proposal is None else r.proposal.edge) for r in tally.left_out]
+    assert left == [
+        ("below_threshold", (1, "store_id", 2, "region_id")),
+        ("not_comparable", (1, "card", 2, "id")),
+        ("unknown_column", None),
+        ("invalid_shape", None),
+        ("invalid_shape", None),
+        ("invalid_shape", None),
+    ]
+    below = tally.left_out[0].proposal
+    assert below is not None and below.confidence == 0.4 and below.reasoning == "names match"
+    # An element that made no proposal is kept as the model wrote it.
+    assert (
+        tally.left_out[2].answer is not None and '"target_table_id": 9' in tally.left_out[2].answer
+    )
+    assert tally.left_out[5].answer == '"orders.customer_id -> customers.id"'
+
+
+def test_a_second_scorers_confidence_replaces_the_models_and_its_drops_are_kept_as_its_own():
+    from provisa.discovery.runner import rescored
+
+    found = [
+        _sem((1, "customer_id"), (2, "id"), 0.95),
+        _sem((1, "store_id"), (2, "region_id"), 0.9),
+        _sem((1, "note"), (2, "name"), 0.8),
+    ]
+    tally = Tally(total=1)
+    kept = rescored(found, [0.75, 0.31, None], tally)
+    assert [(p.edge, p.confidence) for p in kept] == [
+        ((1, "customer_id", 2, "id"), 0.75),
+        ((1, "note", 2, "name"), 0.8),  # given no score: the model's stands
+    ]
+    assert (tally.scored, tally.scored_below_threshold, tally.below_threshold) == (2, 1, 0)
+    (dropped,) = tally.left_out
+    assert dropped.left_out == "scored_below_threshold" and dropped.scored == 0.31
+    assert dropped.proposal is not None and dropped.proposal.confidence == 0.9
+
+
+def test_a_second_scorer_that_could_not_be_asked_keeps_the_models_confidence_and_is_counted():
+    from provisa.discovery.runner import rescored
+
+    found = [_sem((1, "customer_id"), (2, "id"), 0.95)]
+    tally = Tally(total=1)
+    assert rescored(found, None, tally) == found
+    assert tally.scoring_failed == 1 and tally.scored == 0 and tally.left_out == []
+
+
+async def test_every_removed_proposal_is_given_back_with_its_reason():
+    orders = tbl(1, "orders", col("id", pk=True), col("customer_id"), col("ref"), col("code"))
+    customers = tbl(2, "customers", col("id", pk=True), col("ref"), col("code"))
+    props = [
+        _sem((1, "customer_id"), (1, "customer_id")),
+        _sem((1, "id"), (2, "id")),
+        _fk((1, "customer_id"), (2, "id")),
+        _sem((1, "customer_id"), (2, "id"), 0.8),
+        _sem((1, "ref"), (2, "ref"), 0.9),
+        _sem((1, "ref"), (2, "ref"), 0.75),
+        _sem((1, "code"), (2, "code"), 0.9),
+    ]
+    out = await _settle(props, orders, customers, known=Known(rejected={(1, "code", 2, "code")}))
+    assert [p.edge for p in out.kept] == [(1, "customer_id", 2, "id"), (1, "ref", 2, "ref")]
+    assert [(o.reason, o.proposal.edge, o.proposal.confidence) for o in out.left_out] == [
+        ("same_column", (1, "customer_id", 1, "customer_id"), 0.9),
+        ("primary_key_to_primary_key", (1, "id", 2, "id"), 0.9),
+        ("matches_foreign_key", (1, "customer_id", 2, "id"), 0.8),
+        ("weaker", (1, "ref", 2, "ref"), 0.75),
+        ("rejected", (1, "code", 2, "code"), 0.9),
+    ]
+    assert out.removed.weaker == 1 and out.removed.rejected == 1
+
+
+async def test_a_pair_whose_both_sides_repeat_leaves_out_each_of_its_proposals():
+    a = tbl(1, "a", col("code"))
+    b = tbl(2, "b", col("code"))
+    props = [_sem((1, "code"), (2, "code"), 0.9), _sem((2, "code"), (1, "code"), 0.9)]
+    samples = _Samples({(1, "code"): True, (2, "code"): True})
+    out = await _settle(props, a, b, samples=samples)
+    assert out.kept == [] and out.removed.both_repeating == 1
+    assert [o.reason for o in out.left_out] == ["both_repeating", "both_repeating"]
+
+
+# --- the second scorer is asked with what the run knows ---------------------------------------------
+
+
+def _permit_tables() -> dict[int, TableFacts]:
+    inspections = tbl(
+        313,
+        "inspections",
+        col("inspection_id", pk=True),
+        col("permit_id", "varchar", samples=("BP-0096", "BP-0081"), description="The permit"),
+        domain="city",
+        description="Inspections of permitted work",
+    )
+    permits = tbl(
+        310,
+        "building_permits",
+        col("permit_id", "varchar", pk=True, samples=("BP-0001", "BP-0002")),
+        col("address", "varchar"),
+        domain="city",
+    )
+    return _tables(inspections, permits)
+
+
+def test_the_second_scorer_is_asked_by_name_and_shown_the_tables_and_columns_without_values():
+    from provisa.discovery import rescoring
+
+    tables = _permit_tables()
+    found = [_sem((313, "permit_id"), (310, "permit_id"), 0.95)]
+    asked = rescoring.question(0, found[0], tables)
+    assert asked["id"] == "0" and asked["type"] == "noul"
+    assert "column 'permit_id' of table 'inspections' (id 313)" in asked["instructions"]
+    assert "column 'permit_id' of table 'building_permits' (id 310)" in asked["instructions"]
+    shown = rescoring.evidence(found, tables)
+    assert [t["table"]["name"] for t in shown["tables"]] == ["building_permits", "inspections"]
+    assert shown["tables"][1]["table"]["description"] == "Inspections of permitted work"
+    assert shown["tables"][1]["table"]["columns"] == ["inspection_id", "permit_id"]
+    (column,) = shown["tables"][1]["columns"]
+    assert column == {
+        "name": "permit_id",
+        "description": "The permit",
+        "classes": ["unknown"],
+        "tags": [],
+    }
+    assert "BP-0096" not in json.dumps(shown)  # sample values stay with the run's own model
+
+
+async def test_jevs_scores_come_back_in_order_and_a_failed_call_gives_none(monkeypatch):
+    from provisa.discovery import rescoring
+
+    tables = _permit_tables()
+    found = [
+        _sem((313, "permit_id"), (310, "permit_id"), 0.95),
+        _sem((313, "permit_id"), (310, "address"), 0.8),
+    ]
+    calls: list[tuple] = []
+
+    async def evaluate(api_key, state, questions):
+        calls.append((api_key, state, questions))
+        return {"answers": {"0": {"noul": 0.93}}}
+
+    monkeypatch.setattr("provisa.jev.client.evaluate", evaluate)
+    assert await rescoring.jev_scores(found, tables, "ts-key") == [0.93, None]
+    ((key, state, questions),) = calls
+    assert key == "ts-key" and [q["id"] for q in questions] == ["0", "1"]
+    assert state == rescoring.evidence(found, tables)
+
+    async def failing(api_key, state, questions):
+        raise RuntimeError("unreachable")
+
+    monkeypatch.setattr("provisa.jev.client.evaluate", failing)
+    assert await rescoring.jev_scores(found, tables, "ts-key") is None

@@ -415,6 +415,12 @@ export function RelationshipsPage() {
     [load, refetchRels],
   );
 
+  // REQ-413: a run's proposals were decided in the dialog: relationships and suggestions changed.
+  const handleApplied = useCallback(() => {
+    void refetchRels();
+    load();
+  }, [load, refetchRels]);
+
   const handleReject = useCallback(async (id: number) => {
     await rejectCandidate(id, REJECT_REASON);
     setCandidates((prev) => prev.filter((c) => c.id !== id));
@@ -840,18 +846,7 @@ export function RelationshipsPage() {
         discovery={discovery}
         tables={tables}
         defaultDomains={domainsEnabled ? [...checkedDomains] : []}
-        suggestions={{
-          candidates,
-          tableDomainById,
-          tableNameById,
-          onAccept: (id, name) => void handleAccept(id, name),
-          onReject: (id) => void handleReject(id),
-          onAcceptAll: atOnce.acceptAll,
-          onRejectAll: atOnce.rejectAll,
-          failures: atOnce.failures,
-          message: discoverMsg,
-          error: discoverError,
-        }}
+        suggestions={{ tableDomainById, tableNameById, onApplied: handleApplied }}
       />
       {discoverMsg && (
         <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="rels-discover-msg">

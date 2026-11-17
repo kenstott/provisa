@@ -1,0 +1,40 @@
+{
+  "proposalsTable": {
+    "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de {{threshold}}% ou mais começam marcadas. Uma linha sem nenhuma caixa marcada fica sem decisão.",
+    "colScore": "Pontuação",
+    "colKind": "Tipo",
+    "colReasoning": "Raciocínio",
+    "colNote": "Observação",
+    "colNotAgain": "Não recomendar de novo",
+    "notAgainAria": "Não recomendar {{name}} de novo",
+    "kind": {
+      "foreign_keys": "Restrição",
+      "semantics": "Semântica"
+    },
+    "asWritten": "Como o modelo escreveu: {{answer}}",
+    "apply": "Aplicar",
+    "applyAccept": "Aceitar {{count}}",
+    "applyNotAgain": "Não recomendar {{count}} de novo",
+    "applyBoth": "Aceitar {{accept}}, não recomendar {{notAgain}} de novo",
+    "applied": "{{accepted}} aceitas, {{notAgain}} que não serão recomendadas de novo.",
+    "failed": "{{count}} não pôde ser aplicada:",
+    "failed_other": "{{count}} não puderam ser aplicadas:",
+    "none": "Esta execução não tem mais nenhuma proposta a decidir.",
+    "reason": {
+      "invalid_shape": "Não é um relacionamento na forma pedida: falta um campo ou ele tem a forma errada",
+      "unknown_column": "Cita uma tabela ou coluna que a solicitação não comparou",
+      "not_comparable": "As duas colunas têm classes diferentes, então não são comparadas",
+      "below_threshold": "A confiança do modelo está abaixo do limiar de {{threshold}}%.",
+      "scored_below_threshold": "O Jev a pontuou com {{scored}}%, abaixo do limiar de {{threshold}}%. O modelo deu {{confidence}}%.",
+      "same_column": "De uma coluna para ela mesma",
+      "primary_key_to_primary_key": "Chave primária para chave primária",
+      "both_repeating": "Os valores se repetem nos dois lados, então nenhum é o lado um",
+      "existing": "Já registrada",
+      "pending": "Já aguardando entre as sugestões",
+      "rejected": "Rejeitada antes",
+      "matches_foreign_key": "Igual a uma chave estrangeira encontrada nesta execução",
+      "out_of_scope": "Fora das tabelas de origem e destino escolhidas",
+      "weaker": "Uma proposta mais forte das mesmas duas colunas foi mantida"
+    }
+  }
+}

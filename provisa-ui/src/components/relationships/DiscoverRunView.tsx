@@ -9,30 +9,24 @@
 // permission from the copyright holder.
 
 // REQ-413: a discovery run in the dialog. While it runs: how far it has got, the suggestions so
-// far and a Stop that keeps what was found. Once it has ended: how it ended, what each kind found,
-// the model that ran, and the run's suggestions with Accept / Reject, Accept all and Reject all.
+// far and a Stop that keeps what was found. Once it has ended: how it ended, the scope it ran with
+// and what each kind found, then one table of every proposal it read, each ticked to accept, ticked
+// not to be recommended again, or left undecided, and one Apply.
 
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Progress, Stack, Text } from "@mantine/core";
 import { isReading, type DiscoveryRun } from "../../api/admin";
 import { FormFooter, FormLayout } from "../form/FormLayout";
-import { CandidatesBulkFailures } from "./CandidatesBulkFailures";
-import { CandidatesTable } from "./CandidatesTable";
 import { discoveryResultLines } from "./discoveryResult";
-import type { Candidate } from "./relationship-types";
-import type { BulkFailures } from "./useCandidatesAtOnce";
+import { ProposalsTable } from "./ProposalsTable";
+import type { RunProposalsState } from "./useRunProposals";
 
+/** What the dialog needs of the page to show and decide a run's proposals. */
 export interface SuggestionActions {
-  candidates: Candidate[];
   tableDomainById: Record<string, string>;
   tableNameById: Record<string, string>;
-  onAccept: (id: number, name: string) => void;
-  onReject: (id: number) => void;
-  onAcceptAll: (candidates: { id: number; name: string }[]) => Promise<void>;
-  onRejectAll: (ids: number[]) => Promise<void>;
-  failures: BulkFailures | null;
-  message: string;
-  error: string;
+  /** Told after an Apply decided something: relationships and suggestions have changed. */
+  onApplied: () => void;
 }
 
 export function DiscoverRunView({
@@ -41,12 +35,15 @@ export function DiscoverRunView({
   onStop,
   onNewRun,
   suggestions,
+  proposals,
 }: {
   run: DiscoveryRun;
   readError: string;
   onStop: () => void;
   onNewRun: () => void;
   suggestions: SuggestionActions;
+  /** What the ended run read, and what is ticked of it. */
+  proposals: RunProposalsState;
 }) {
   const { t } = useTranslation();
   const running = run.status === "running";
@@ -98,7 +95,6 @@ export function DiscoverRunView({
       )}
       {!running && (
         <Alert color="blue" mb="md" data-testid="discover-result">
-          {run.model && <Text fz="sm">{t("discoverDialog.modelRan", { model: run.model })}</Text>}
           {report &&
             discoveryResultLines(report, t).map((line) => (
               <Text key={line} fz="sm">
@@ -107,33 +103,12 @@ export function DiscoverRunView({
             ))}
         </Alert>
       )}
-      {suggestions.error && (
-        <Alert color="red" mb="md" data-testid="discover-suggestions-error">
-          {suggestions.error}
-        </Alert>
-      )}
-      <CandidatesBulkFailures failures={suggestions.failures} />
-      {suggestions.message && (
-        <Text c="var(--approve)" mb="md" fz="0.875rem" data-testid="discover-suggestions-msg">
-          {suggestions.message}
-        </Text>
-      )}
-      {suggestions.candidates.length > 0 ? (
-        <CandidatesTable
-          candidates={suggestions.candidates}
+      {!running && (
+        <ProposalsTable
+          state={proposals}
           tableDomainById={suggestions.tableDomainById}
           tableNameById={suggestions.tableNameById}
-          onAccept={suggestions.onAccept}
-          onReject={suggestions.onReject}
-          onAcceptAll={suggestions.onAcceptAll}
-          onRejectAll={suggestions.onRejectAll}
         />
-      ) : (
-        !running && (
-          <Text fz="sm" c="dimmed" data-testid="discover-no-suggestions">
-            {t("discoverDialog.noSuggestions")}
-          </Text>
-        )
       )}
       <FormLayout style={{ marginTop: "var(--mantine-spacing-md)" }}>
         <FormFooter

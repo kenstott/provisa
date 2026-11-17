@@ -29,7 +29,7 @@ from __future__ import annotations
 import asyncio
 import copy
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
 from provisa.discovery import candidates as candidates_repo
@@ -48,7 +48,8 @@ from provisa.discovery.direction import (
     reduced_tables,
     settle,
 )
-from provisa.discovery.runner import MIN_CONFIDENCE, Control, Tally, execute
+from provisa.discovery.proposals import BELOW_THRESHOLD, SCORED_BELOW_THRESHOLD, Recorded
+from provisa.discovery.runner import Control, Rescore, Tally, execute
 from provisa.discovery.windows import Request, bound, plan
 
 if TYPE_CHECKING:
@@ -324,39 +325,35 @@ def _semantics_report(tally: Tally, outcome: Outcome) -> dict[str, Any]:
         empty = "unreadable"
     elif tally.proposed == 0:
         empty = "none_proposed"
+    elif tally.scored_below_threshold and not tally.below_threshold and not tally.not_comparable:
+        # Every proposal that named two compared columns met the threshold on the model's own
+        # confidence and fell under it on the second scorer's.
+        empty = SCORED_BELOW_THRESHOLD
     elif tally.below_threshold and tally.below_threshold + tally.invalid == tally.proposed:
-        empty = "below_threshold"
+        empty = BELOW_THRESHOLD
     else:
         empty = "filtered"
     return {"suggested": shown, "empty_reason": empty, **tally.as_dict()}
 
 
-async def _refiner(state: Any) -> Callable[[list[Proposal]], Awaitable[list[Proposal]]] | None:
-    """REQ-1789: with a Jev key configured, each suggestion's confidence is Jev's calibrated score;
-    those it drops fell below the threshold."""
+async def _refiner(state: Any, tables: dict[int, TableFacts]) -> Rescore | None:
+    """REQ-1789: with a Jev key configured, each proposal's confidence is Jev's calibrated score,
+    given on what the run knows of its tables and columns."""
     from provisa.core.org_secrets import JEV, org_ai_key_or_none
 
     jev_key = await org_ai_key_or_none(state.model_db, JEV)
     if not jev_key:
         return None
-    from provisa.jev.decisions import refine_relationship_confidence
+    from provisa.discovery.rescoring import jev_scores
 
-    async def refine(found: list[Proposal]) -> list[Proposal]:
-        by_edge = {p.edge: p for p in found}
-        refined = await refine_relationship_confidence(
-            [_candidate(p) for p in found], jev_key, min_confidence=MIN_CONFIDENCE
-        )
-        out = []
-        for c in refined:
-            p = by_edge[(c.source_table_id, c.source_column, c.target_table_id, c.target_column)]
-            out.append(
-                Proposal(
-                    p.kind, p.start, p.end, p.written, c.confidence, p.reasoning, p.suggested_name
-                )
-            )
-        return out
+    async def refine(found: list[Proposal]) -> list[float | None] | None:
+        return await jev_scores(found, tables, jev_key)
 
     return refine
+
+
+#: Every proposal a run has read so far, to be kept with it.
+RecordSink = Callable[[list[Recorded]], Awaitable[None]]
 
 
 async def perform(
@@ -368,10 +365,12 @@ async def perform(
     scope: str,
     progress: ProgressSink,
     stop_asked: StopCheck,
+    record: RecordSink,
 ) -> dict[str, Any]:
     """Run the kinds asked over ``prepared``; ``progress`` is told after every step, and the run
     stops after the request in flight once ``stop_asked`` says so. The result says what each
-    kind found and what was removed."""
+    kind found and what was removed. ``record`` is given every proposal read so far, shown or
+    left out with why, each time the suggestions are settled."""
     pool = state.model_db
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
@@ -386,22 +385,45 @@ async def perform(
     read_sample = _caching(gather.uniqueness_reader(state))
     tables = prepared.tables
 
-    async def settled(semantic: list[Proposal]) -> Outcome:
+    def registered(read: Recorded) -> Recorded:
+        """``read``, said to be already registered where it is: a proposal left out as an answer
+        was read (the model rated it low, say) may be one of a relationship that exists, and is
+        then not one a reviewer can still accept."""
+        p = read.proposal
+        if p is None:
+            return read
+        reverse = (p.end[0], p.end[1], p.start[0], p.start[1])
+        if p.edge in known.existing or reverse in known.existing:
+            return replace(read, left_out="existing")
+        return read
+
+    async def settled(semantic: list[Proposal], unread: list[Recorded]) -> Outcome:
         outcome = await settle(
             [*fk, *semantic], tables, prepared.source_ids, prepared.target_ids, known, read_sample
         )
         await publisher.publish(outcome.kept)
+        await record(
+            [
+                *(Recorded(p.kind, None, p) for p in outcome.kept),
+                *(registered(r) for r in unread),
+                *(Recorded(o.proposal.kind, o.reason, o.proposal) for o in outcome.left_out),
+            ]
+        )
         return outcome
 
     def report(tally: Tally | None, outcome: Outcome) -> dict[str, Any]:
         out: dict[str, Any] = {
             "suggestions": len(outcome.kept),
             "removed": outcome.removed.as_dict(),
+            # The run's sets: what it compared, so what it did not is plain.
+            **prepared.sizes(),
+            "target_same_as_source": prepared.target is None,
+            "source_domains": sorted({t.domain_id for t in prepared.source}),
+            "target_domains": sorted({t.domain_id for t in prepared.target or prepared.source}),
             "decided_by": dict(outcome.decided_by),
             "stored_ids": sorted(publisher.stored.values()),
             # REQ-1986: suggestions with a table that is never read, so no values were compared.
             "on_reduced_information": sum(1 for p in outcome.kept if reduced_tables(p, tables)),
-            "tables_not_read": prepared.sizes()["tables_not_read"],
         }
         if "foreign_keys" in spec.kinds:
             out["foreign_keys"] = {
@@ -414,7 +436,7 @@ async def perform(
             out["model"] = model.describe()
         return out
 
-    outcome = await settled([])
+    outcome = await settled([], [])
     latest = report(Tally(total=len(prepared.requests)) if model else None, outcome)
     await progress(latest)
     if model is None:
@@ -426,7 +448,7 @@ async def perform(
 
         async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
             nonlocal outcome, latest
-            outcome = await settled(proposals)
+            outcome = await settled(proposals, tally.left_out)
             latest = report(tally, outcome)
             await progress(latest)
 
@@ -444,8 +466,8 @@ async def perform(
         model.output_tokens,
         ask,
         _Control(),
-        refine=await _refiner(state),
+        refine=await _refiner(state, tables),
         to_thread=in_flight,
     )
-    outcome = await settled(proposals)
+    outcome = await settled(proposals, tally.left_out)
     return report(tally, outcome)
