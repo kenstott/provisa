@@ -53,6 +53,7 @@ from provisa.mv.registry import MVRegistry
 if TYPE_CHECKING:
     from sqlalchemy.engine import Engine
 
+    from provisa.core.model_change import ModelPlane
     from provisa.core.models import Source
     from provisa.kafka.window import KafkaTableConfig
     from provisa.compiler.names_table import NamesTable
@@ -648,14 +649,22 @@ class ActiveOrgPool:  # REQ-1266
     def __bool__(self) -> bool:
         return self.resolve() is not None
 
-    def acquire(self):
+    def _bound(self) -> "Database":
         db = self.resolve()
         if db is None:
             raise RuntimeError(
                 "No tenant control plane is bound for the active org. The org runtime must be "
                 "built (ensure_org_runtime) before its control plane is read."
             )
-        return db.acquire()
+        return db
+
+    @property
+    def model(self) -> "ModelPlane | None":
+        """The model plane of the store it resolves to (``Database.model``)."""
+        return self._bound().model
+
+    def acquire(self):
+        return self._bound().acquire()
 
 
 #: What else stops with a retired runtime, registered by the app (its push listeners land into

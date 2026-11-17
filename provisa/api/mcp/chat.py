@@ -303,10 +303,13 @@ _TOOLS: list[Any] = [
     {
         "name": "discover_relationships",
         "description": (
-            "Run the Relationships page's discovery for one registered table, as the user, and "
-            "list the relationship candidates it found (each with its id, the columns it would "
-            "join, its confidence and why). Use it for 'create any relationships to <table>'; "
-            "accept the candidates the user picks with admin_request POST "
+            "Run the Relationships page's discovery for one registered table's domain, as the "
+            "user, as a stored run. It returns: candidates (each suggestion, with its id, the "
+            "columns it would join, its confidence and why); foreign_keys and semantics (what "
+            "each kind found); run_id (the stored run); and proposals (every proposal the run "
+            "read, with the model's confidence, Jev's score as scored where a Jev key is set, "
+            "and the reason one is not a suggestion). Use it for 'create any relationships to "
+            "<table>'; accept the candidates the user picks with admin_request POST "
             "/admin/discover/candidates/{id}/accept."
         ),
         "input_schema": {
