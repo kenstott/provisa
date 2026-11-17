@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "Een aangevinkte rij wordt bij toepassen geaccepteerd. Rijen met een score van {{threshold}}% of meer zijn vooraf aangevinkt. Een rij zonder vinkje blijft onbeslist.",
+    "intro": "Een aangevinkte rij wordt geaccepteerd wanneer je toepast. Rijen met een score van ten minste de drempel staan bij het begin aangevinkt. Een rij zonder vinkje blijft onbeslist.",
     "colScore": "Score",
+    "colModel": "Model",
     "colJev": "Jev",
     "colKind": "Soort",
+    "colMeasure": "Gemeten",
     "colReasoning": "Redenering",
     "colNote": "Opmerking",
     "colNotAgain": "Niet opnieuw aanbevelen",
@@ -25,7 +27,7 @@
       "invalid_shape": "Geen relatie in de gevraagde vorm: een veld ontbreekt of heeft de verkeerde vorm",
       "unknown_column": "Noemt een tabel of kolom die het verzoek niet vergeleek",
       "not_comparable": "De twee kolommen hebben verschillende klassen en worden dus niet vergeleken",
-      "below_threshold": "De betrouwbaarheid van het model ligt onder de drempel van {{threshold}}%.",
+      "below_threshold": "Score onder de {{threshold}}% waarop een suggestie wordt bewaard.",
       "same_column": "Van een kolom naar zichzelf",
       "primary_key_to_primary_key": "Primaire sleutel naar primaire sleutel",
       "both_repeating": "Waarden herhalen zich aan beide kanten, dus geen van beide is de één-kant",
@@ -34,7 +36,31 @@
       "rejected": "Eerder afgewezen",
       "matches_foreign_key": "Komt overeen met een refererende sleutel uit deze run",
       "out_of_scope": "Buiten de gekozen bron- en doeltabellen",
-      "weaker": "Een sterker voorstel voor dezelfde twee kolommen is behouden"
-    }
+      "weaker": "Een sterker voorstel voor dezelfde twee kolommen is behouden",
+      "many_to_many": "Geen van beide kolommen is een sleutel"
+    },
+    "threshold": "Aanvinken vanaf",
+    "thresholdHint": "Je eigen drempel, bewaard voor je volgende runs.",
+    "measure": {
+      "inTarget": "{{found}} van {{values}} bronwaarden in het doel.",
+      "inTargetFirst": "{{found}} van de eerste {{values}} bronwaarden in het doel.",
+      "inSource": "{{found}} van {{values}} doelwaarden in de bron.",
+      "inSourceFirst": "{{found}} van de eerste {{values}} doelwaarden in de bron.",
+      "both": "Beide kolommen zijn sleutels.",
+      "target": "Het doel is een sleutel.",
+      "source": "De bron is een sleutel.",
+      "neither": "Geen van beide kolommen is een sleutel.",
+      "notRead": {
+        "source": "De bron is niet gelezen: de tabel vereist een parameter.",
+        "target": "Het doel is niet gelezen: de tabel vereist een parameter."
+      },
+      "notReadable": {
+        "source": "Je kunt de bronkolom niet lezen.",
+        "target": "Je kunt de doelkolom niet lezen."
+      },
+      "noValues": "De bron bevat geen waarden.",
+      "modelScore": "Score van het model: er zijn geen waarden vergeleken."
+    },
+    "manyToMany": "Geen van beide kolommen is een sleutel, dus deze kan niet worden geaccepteerd."
   }
 }

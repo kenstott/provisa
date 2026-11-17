@@ -438,6 +438,7 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     from provisa.api.app import state
     from provisa.core.builtin_commands import BuiltinRefused, check as check_builtin
     from provisa.core.command_bindings import CommandBindingRefused, check_declared, check_names
+    from provisa.api.mcp.tool_groups import check_command_names
     from provisa.core.sql_expression import (
         SqlExpressionRefused,
         check_for_engines,
@@ -471,6 +472,7 @@ def _check_command_bindings(body: FunctionInput) -> None:  # REQ-2168
     try:
         check_declared(body.name, body.languageBindings)
         check_names([*served.values(), saved])
+        check_command_names([*served.values(), saved])  # REQ-2246
         if body.implKind == "builtin":
             check_builtin(body.name, body.binding)
         if body.implKind == "sql_expression":

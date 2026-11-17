@@ -36,6 +36,8 @@ import time
 from collections.abc import Mapping
 from typing import Any
 
+from provisa.federation.pg_quoting import pg_ident
+
 SERVER = "motherduck"  # the name pg_duckdb's documentation uses, when the engine has none yet
 _POLL_S = 0.5
 # How long a database's synced tables must hold still to count as settled: longer than the ~6 s
@@ -63,7 +65,7 @@ def _server(cur: Any, options: Mapping[str, str]) -> str:
         return row[0]
     clause = ", ".join(f"{k} %s" for k in options)
     cur.execute(
-        f"CREATE SERVER \"{SERVER}\" TYPE 'motherduck' FOREIGN DATA WRAPPER duckdb"
+        f"CREATE SERVER {pg_ident(SERVER)} TYPE 'motherduck' FOREIGN DATA WRAPPER duckdb"
         + (f" OPTIONS ({clause})" if clause else ""),
         tuple(options.values()),
     )
@@ -80,7 +82,7 @@ def _signed_in(cur: Any, server: str, token: str, source_id: str) -> None:
     row = cur.fetchone()
     if row is None:
         cur.execute(
-            f'CREATE USER MAPPING FOR CURRENT_USER SERVER "{server}" OPTIONS (token %s)',
+            f"CREATE USER MAPPING FOR CURRENT_USER SERVER {pg_ident(server)} OPTIONS (token %s)",
             (token,),
         )
         return
@@ -108,7 +110,7 @@ def _located(cur: Any, schema: str, table: str) -> str | None:
         (schema, table),
     )
     row = cur.fetchone()
-    return None if row is None else f'"{row[0]}"."{table}"'
+    return None if row is None else pg_ident(row[0], table)
 
 
 def _synced(cur: Any, database: str) -> frozenset[tuple[int, str | None]]:

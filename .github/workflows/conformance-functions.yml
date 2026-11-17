@@ -114,6 +114,15 @@ jobs:
         with:
           extras: dev
 
+      # The Trino leg alone mounts the pinned plugin jars, so it primes them itself: a cache hit,
+      # or one fetch from Maven Central, checksum-verified (.github/actions/trino-plugins). The
+      # stack script below fetches nothing.
+      - name: Trino plugins
+        if: matrix.engine == 'trino'
+        uses: ./.github/actions/trino-plugins
+        with:
+          phase: prime
+
       # scripts/ci/lanes/trino-stack-prepare.sh, the Trino lanes' one copy; no catalog here reads
       # the certificate. The app runs on this host and Trino in a container, so each is told the
       # address the other side dials: playwright.config.ts's Trino webServer, name for name. The
