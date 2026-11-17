@@ -9,7 +9,8 @@
 // permission from the copyright holder.
 
 // REQ-413: a proposed pair's measure as its row states it: how many of each column's distinct
-// values occur in the other, which side's values are distinct, and what was not measured.
+// values occur in the other, which side's values are distinct (a key), and what was not
+// measured. Which side is a key comes first: a row shows three lines.
 
 import type { TFunction } from "i18next";
 import type { PairMeasure } from "../../api/admin";
@@ -22,6 +23,12 @@ export function measureLines(m: PairMeasure, t: TFunction): string[] {
     if (unmeasured === "not_read") lines.push(t(`proposalsTable.measure.notRead.${side}`));
     if (unmeasured === "not_readable") lines.push(t(`proposalsTable.measure.notReadable.${side}`));
   }
+  const s = m.source.distinct;
+  const d = m.target.distinct;
+  if (s === true && d === true) lines.push(t("proposalsTable.measure.both"));
+  else if (d === true) lines.push(t("proposalsTable.measure.target"));
+  else if (s === true) lines.push(t("proposalsTable.measure.source"));
+  else if (s === false && d === false) lines.push(t("proposalsTable.measure.neither"));
   if (m.source_in_target !== null && m.source.values !== null) {
     if (m.source.values === 0) lines.push(t("proposalsTable.measure.noValues"));
     else
@@ -40,11 +47,5 @@ export function measureLines(m: PairMeasure, t: TFunction): string[] {
       }),
     );
   }
-  const s = m.source.distinct;
-  const d = m.target.distinct;
-  if (s === true && d === true) lines.push(t("proposalsTable.measure.both"));
-  else if (d === true) lines.push(t("proposalsTable.measure.target"));
-  else if (s === true) lines.push(t("proposalsTable.measure.source"));
-  else if (s === false && d === false) lines.push(t("proposalsTable.measure.neither"));
   return lines;
 }

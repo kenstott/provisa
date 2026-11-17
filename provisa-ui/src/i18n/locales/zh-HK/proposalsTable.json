@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "套用時會接受已剔選的列。評分為 {{threshold}}% 或以上的列預設剔選。兩個方格都未剔選的列保持未決定。",
+    "intro": "套用時會接受已剔選的列。評分至少達到閾值的列預設剔選。兩個方格都未剔選的列保持未決定。",
     "colScore": "評分",
+    "colModel": "模型",
     "colJev": "Jev",
     "colKind": "類型",
+    "colMeasure": "量度結果",
     "colReasoning": "理由",
     "colNote": "備註",
     "colNotAgain": "不再推薦",
@@ -25,7 +27,7 @@
       "invalid_shape": "不是所要求形式的關係：欠缺欄位或欄位形式有誤",
       "unknown_column": "引用了請求未比較的表或欄",
       "not_comparable": "兩欄的類別不同，因此不作比較",
-      "below_threshold": "模型的信心低於 {{threshold}}% 的門檻。",
+      "below_threshold": "評分低於保留建議所需的 {{threshold}}%。",
       "same_column": "由某欄指向其本身",
       "primary_key_to_primary_key": "主索引鍵到主索引鍵",
       "both_repeating": "兩邊均有重複值，因此任何一邊都不是「一」的一方",
@@ -34,7 +36,31 @@
       "rejected": "之前已拒絕",
       "matches_foreign_key": "與今次執行中找到的外部索引鍵相同",
       "out_of_scope": "不在所選的來源表和目標表之內",
-      "weaker": "同樣兩欄已保留了更強的提議"
-    }
+      "weaker": "同樣兩欄已保留了更強的提議",
+      "many_to_many": "兩欄都不是鍵"
+    },
+    "threshold": "剔選起點",
+    "thresholdHint": "你自己的閾值，會為你之後的執行保留。",
+    "measure": {
+      "inTarget": "來源的 {{values}} 個值中有 {{found}} 個在目標中。",
+      "inTargetFirst": "來源的首 {{values}} 個值中有 {{found}} 個在目標中。",
+      "inSource": "目標的 {{values}} 個值中有 {{found}} 個在來源中。",
+      "inSourceFirst": "目標的首 {{values}} 個值中有 {{found}} 個在來源中。",
+      "both": "兩欄都是鍵。",
+      "target": "目標是鍵。",
+      "source": "來源是鍵。",
+      "neither": "兩欄都不是鍵。",
+      "notRead": {
+        "source": "未有讀取來源：其表需要參數。",
+        "target": "未有讀取目標：其表需要參數。"
+      },
+      "notReadable": {
+        "source": "你無法讀取來源欄。",
+        "target": "你無法讀取目標欄。"
+      },
+      "noValues": "來源沒有值。",
+      "modelScore": "模型評分：未有比較任何值。"
+    },
+    "manyToMany": "兩欄都不是鍵，因此無法接受。"
   }
 }

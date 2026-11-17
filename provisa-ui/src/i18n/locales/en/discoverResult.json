@@ -24,7 +24,7 @@
     "partial": "{{failed}} of {{count}} request failed, so the result is partial.",
     "partial_other": "{{failed}} of {{count}} requests failed, so the result is partial.",
     "semanticsNoneProposed": "Semantics: none. The model proposed no relationships.",
-    "semanticsBelowThreshold": "Semantics: none. Every suggestion was below the {{threshold}}% confidence threshold.",
+    "semanticsBelowThreshold": "Semantics: none. Every proposal scored under the {{threshold}}% a suggestion is kept at.",
     "semanticsFiltered": "Semantics: none. Every suggestion was left out, for the reasons below.",
     "split": "{{count}} request was split in half and asked again.",
     "split_other": "{{count}} requests were split in half and asked again.",
@@ -50,7 +50,7 @@
       "matches_foreign_key": "matching a foreign key found in this run",
       "out_of_scope": "outside the chosen tables",
       "weaker": "repeating a pair of columns a stronger proposal was kept for",
-      "many_to_many": "with neither column's values distinct"
+      "many_to_many": "with neither column a key"
     }
   }
 }

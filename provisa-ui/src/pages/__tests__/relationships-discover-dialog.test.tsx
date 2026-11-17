@@ -363,7 +363,7 @@ describe("Discovery dialog: the run in progress", () => {
     expect(result).toHaveTextContent("Foreign keys: 3 found, 1 suggested.");
     expect(result).toHaveTextContent("Semantics: 1 suggestion.");
     expect(result).toHaveTextContent(
-      "Not suggested: given less than 70% confidence by the model (1), already registered (2), rejected before (1).",
+      "Not suggested: scored less than 70% (1), already registered (2), rejected before (1).",
     );
   });
 
@@ -775,16 +775,16 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     expect(screen.getByTestId("proposal-score-601")).toHaveTextContent("95%");
     expect(screen.getByTestId("proposal-model-601")).toHaveTextContent("45%");
     expect(screen.getByTestId("proposal-measure-601")).toHaveTextContent(
-      "30 of 30 source values are in the target. 30 of 100 target values are in the source. " +
-        "The target's values are distinct.",
+      "The target is a key. 30 of 30 source values in the target. " +
+        "30 of 100 target values in the source.",
     );
     expect(screen.getByTestId("proposal-cardinality-602")).toHaveTextContent("many-to-many");
     expect(screen.getByTestId("proposal-measure-602")).toHaveTextContent(
-      "Neither column's values are distinct.",
+      "Neither column is a key.",
     );
     expect(screen.getByTestId("proposal-measure-603")).toHaveTextContent(
       "The source was not read: its table requires a parameter. " +
-        "The target's values are distinct. Scored by the model: no values were compared.",
+        "The target is a key. Scored by the model: no values were compared.",
     );
   });
 
@@ -792,7 +792,7 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     await measuredRun();
     const row = screen.getByTestId("proposal-602");
     expect(within(row).queryByTestId("list-select-602")).toBeNull();
-    expect(row).toHaveTextContent("It cannot be accepted.");
+    expect(row).toHaveTextContent("Neither column is a key, so it cannot be accepted.");
     expect(notAgainBox(602)).toBeInTheDocument();
   });
 

@@ -37,19 +37,19 @@
       "matches_foreign_key": "Matches a foreign key found in this run",
       "out_of_scope": "Outside the chosen source and target tables",
       "weaker": "A stronger proposal of the same two columns was kept",
-      "many_to_many": "Neither column's values are distinct"
+      "many_to_many": "Neither column is a key"
     },
     "threshold": "Tick from",
     "thresholdHint": "Your own threshold, kept for your next runs.",
     "measure": {
-      "inTarget": "{{found}} of {{values}} source values are in the target.",
-      "inTargetFirst": "{{found}} of the first {{values}} source values are in the target.",
-      "inSource": "{{found}} of {{values}} target values are in the source.",
-      "inSourceFirst": "{{found}} of the first {{values}} target values are in the source.",
-      "both": "Both columns' values are distinct.",
-      "target": "The target's values are distinct.",
-      "source": "The source's values are distinct.",
-      "neither": "Neither column's values are distinct.",
+      "inTarget": "{{found}} of {{values}} source values in the target.",
+      "inTargetFirst": "{{found}} of the first {{values}} source values in the target.",
+      "inSource": "{{found}} of {{values}} target values in the source.",
+      "inSourceFirst": "{{found}} of the first {{values}} target values in the source.",
+      "both": "Both columns are keys.",
+      "target": "The target is a key.",
+      "source": "The source is a key.",
+      "neither": "Neither column is a key.",
       "notRead": {
         "source": "The source was not read: its table requires a parameter.",
         "target": "The target was not read: its table requires a parameter."
@@ -61,6 +61,6 @@
       "noValues": "The source holds no values.",
       "modelScore": "Scored by the model: no values were compared."
     },
-    "manyToMany": "Neither column's values are distinct, so no relationship starts at one and ends at the other's key. It cannot be accepted."
+    "manyToMany": "Neither column is a key, so it cannot be accepted."
   }
 }

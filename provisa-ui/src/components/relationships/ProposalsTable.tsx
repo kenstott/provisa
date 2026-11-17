@@ -21,6 +21,7 @@ import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Alert, Button, Checkbox, Group, NumberInput, Table, Text } from "@mantine/core";
 import type { RunProposal } from "../../api/admin";
+import { FormField, FormLayout } from "../form/FormLayout";
 import { BreakableName } from "../list/BreakableName";
 import { ListActionsHead, ListHead, ListRow, ListTable } from "../list/ListTable";
 import type { ListSelection } from "../list/listSelection";
@@ -172,24 +173,25 @@ export function ProposalsTable({ state, tableDomainById, tableNameById }: Propos
       ) : (
         <>
           <Group justify="space-between" align="center" mb="xs" wrap="nowrap">
-            <Group gap="md" align="center" wrap="nowrap">
-              <NumberInput
-                label={t("proposalsTable.threshold")}
-                description={t("proposalsTable.thresholdHint")}
-                data-testid="discover-threshold"
-                value={Math.round(state.threshold * 100)}
-                onChange={(v) => {
-                  if (typeof v === "number") state.setThreshold(v / 100);
-                }}
-                min={0}
-                max={100}
-                step={5}
-                suffix="%"
-                clampBehavior="strict"
-                allowDecimal={false}
-                w={140}
-                style={{ flexShrink: 0 }}
-              />
+            <Group gap="md" align="flex-end" wrap="nowrap">
+              <FormLayout style={{ flexShrink: 0 }}>
+                <FormField size="short" hint={t("proposalsTable.thresholdHint")}>
+                  <NumberInput
+                    label={t("proposalsTable.threshold")}
+                    data-testid="discover-threshold"
+                    value={Math.round(state.threshold * 100)}
+                    onChange={(v) => {
+                      if (typeof v === "number") state.setThreshold(v / 100);
+                    }}
+                    min={0}
+                    max={100}
+                    step={5}
+                    suffix="%"
+                    clampBehavior="strict"
+                    allowDecimal={false}
+                  />
+                </FormField>
+              </FormLayout>
               <Text fz="sm" c="dimmed">
                 {t("proposalsTable.intro")}
               </Text>
