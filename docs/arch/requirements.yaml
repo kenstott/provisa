@@ -3691,7 +3691,17 @@
     following the maintainer''s report that discovery asked again about relationships he had accepted. A
     pair of columns already joined by a registered relationship, directly or as a leg of a many-to-many
     relationship through its junction table, is not proposed as a new one. A pair once accepted or marked
-    not to be recommended again keeps that decision: a later run never reopens it as pending.'
+    not to be recommended again keeps that decision: a later run never reopens it as pending. (Amended 2026-11-16,
+    THE MEASURE''S BOUND AND RULE; A MANY-TO-MANY PAIR IS ACCEPTED AS A SHARED DIMENSION:) Maintainer 2026-11-16,
+    with the lead recording the stated values. A pair is measured on at most 10,000 distinct values per
+    column, read through the governed pipeline as the person who started the run; whether a column is a
+    key is decided exactly. The score is: a key target holding 95% or more of the source''s values scores
+    0.95; a key target otherwise scores 0.95 times the share held; a pair where neither side is a key scores
+    0.6 times the larger share; a pair with no values compared keeps the model''s score, which is shown
+    in its own column. A many-to-many pair (neither side a key) is accepted as a shared dimension: accepting
+    it creates a derived table of the pair''s distinct values and a many-to-one relationship from each side
+    to it, so both sides join through it on every front door; the dimension is an ordinary view that can
+    be renamed or extended.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
