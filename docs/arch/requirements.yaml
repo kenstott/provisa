@@ -3701,7 +3701,15 @@
     in its own column. A many-to-many pair (neither side a key) is accepted as a shared dimension: accepting
     it creates a derived table of the pair''s distinct values and a many-to-one relationship from each side
     to it, so both sides join through it on every front door; the dimension is an ordinary view that can
-    be renamed or extended.'
+    be renamed or extended. (Amended 2026-11-16, ONLY PAIRS BETWEEN THE MEASURE CUTOFF AND THE THRESHOLD
+    ARE MEASURED:) Maintainer 2026-11-16. A proposed pair is measured on its data only when the model''s
+    confidence lies between the measure cutoff and the acceptance threshold. Below the cutoff it is never
+    measured and is left out as before; at or above the threshold it is suggested on the model''s confidence
+    and is never measured. A pair in that band whose measure shows matching key values is admitted as a
+    suggestion, and its reason says it was admitted on key values matching in the data, with the measure
+    beside the model''s confidence. The cutoff is set in the discovery dialog beside the threshold, remembered
+    the same way, and defaults to 20%. A run measures every pair in the band; stopping the run is how a
+    person bounds it.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -97221,3 +97229,28 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the descriptor as data, with every existing set generated from it and a test that the generated set
     equals the hand-kept one; the hand-kept sets removed; the type branches moved into hooks one at a
     time, each with its existing tests; the endpoint and the UI; the two checks.'
+- id: REQ-2252
+  status: proposed
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: SHOULD
+  type: ui
+  description: 'Maintainer 2026-11-17 (''def need to have hyperlinks for cypher/sql/sparql/graphql - to
+    see a relationship ... similar to ones we have in the data products screens''; ''we could create queries
+    for relationships across all surfaces as well''). A relationship''s detail panel on the Relationships
+    page has one link per query language the relationship can be read in, on every surface that exposes
+    it, drawn as the data product Access section draws its per-table links (the same icons, tips and component):
+    Cypher, SQL, SPARQL, GraphQL, and JSON:API, REST and gRPC where those reach the relationship (a JSON:API
+    include, the REST and gRPC forms the relationship is served in). Each opens that language''s Explore
+    editor with a query that reads the relationship, run at once: Cypher matches the relationship''s type
+    between its two node labels; SQL joins the source table to the target table on the relationship''s columns;
+    SPARQL selects subject and object over the relationship''s predicate; GraphQL reads the source type
+    with the relationship''s field nested; JSON:API, REST and gRPC read the source with the relationship
+    followed in their own form. Each query uses the names the role sees (the aliases in the panel) and a
+    row limit. A language the relationship is not exposed in (for example excluded from Cypher) shows no
+    link. (Amended 2026-11-16, THE DATA PRODUCT ACCESS SECTION LINKS EACH OF ITS RELATIONSHIPS THE SAME
+    WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
+    patterns''). A data product''s Access section lists each relationship in the product with the same set
+    of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
