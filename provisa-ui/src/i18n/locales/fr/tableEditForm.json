@@ -260,8 +260,6 @@
       "query": "Requête delta (facultative, native de la source)",
       "queryHelp": "Une requête native de la source avec les espaces réservés $wm (curseur) et {{fields}}. Laissez vide pour une source SQL : Provisa génère SELECT {{fields}} FROM <table> WHERE <watermark> > $wm ORDER BY <watermark>."
     },
-    "draftLabel": "Brouillon",
-    "draftHelp": "Hors service tant que la case est cochée : lue et écrite nulle part, proposée dans aucun schéma et copiée nulle part ; les copies existantes dans chaque région sont supprimées. Une table ou une vue enregistrée ici commence en brouillon ; décochez pour la publier.",
     "pagingRowsFieldHelp": "La propriété de la réponse qui contient les lignes, comme values ou data dans une enveloppe de page. Laissez vide quand la réponse est elle-même les lignes. Les colonnes de la table sont celles des objets qui s'y trouvent.",
     "pagingRowsFieldFixed": "Défini à l'enregistrement de la table. Enregistrez de nouveau la table pour lire ses lignes ailleurs.",
     "scopeHelp": "domain : servi aux rôles qui atteignent le domaine de cette table, y compris par un domaine parent. listed : idem, et chaque rôle voit le nom de la colonne dans le catalogue. public : aussi servi aux rôles en dehors du domaine. own-domain : servi uniquement aux rôles dont l’accès de domaine propre mentionne le domaine de cette table ; un rôle qui l’atteint seulement par un domaine parent n’en est pas servi, même si « Droits de lecture » le nomme.",

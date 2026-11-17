@@ -48,7 +48,7 @@ import {
   pickSchemaAndTable,
   submitRegister,
   runSqlOnPage,
-  releaseDraftTables,
+  expectRegisteredLive,
   setSourceCacheTtl,
   submitSourceAndExpectListed,
   FORM_FIELD,
@@ -137,7 +137,7 @@ test.describe("source to query through the UI: hiveserver2 (REQ-1731)", () => {
     const row = page.locator(".data-table tbody tr").filter({ hasText: sourceId }).first();
     await expect(row).toBeVisible({ timeout: 120000 });
     // REQ-1921: registered through the admin, it starts as draft; released, it is read.
-    await releaseDraftTables(page, { sourceId });
+    await expectRegisteredLive(page, { sourceId });
     const res = await page.request.post("/admin/graphql", {
       data: { query: "{ tables { sourceId dqDataset } }" },
     });

@@ -532,17 +532,6 @@ def registered_id(message: str) -> int:
     return int(found.group(1))
 
 
-def release_field(table_id: int) -> str:
-    """The admin GraphQL field that releases a draft table or view into service: what a domain
-    owner does after registering one through the admin, before anything reads it."""
-    return f"setTableDraft(tableId: {table_id}, draft: false)"
-
-
-def release_mutation(table_id: int) -> str:
-    """:func:`release_field` as a whole mutation document."""
-    return f"mutation {{ {release_field(table_id)} {{ success message }} }}"
-
-
 def config_write_grants(roles: list[str], columns: list[str]) -> list[dict]:
     """A configuration table's ``write_grants``: each of ``roles`` may insert and update
     ``columns`` and delete rows, its read row filter bounding each (REQ-2074)."""

@@ -326,8 +326,6 @@ async def test_deriving_the_table_registers_it_as_register_table_proposes_it(sta
         return_value=MutationResult(success=True, message="registered", params={"id": 7})
     )
     monkeypatch.setattr(schema_mutation.Mutation, "register_table", registered)
-    released = AsyncMock(return_value=MutationResult(success=True, message="released"))
-    monkeypatch.setattr(schema_mutation.Mutation, "set_table_draft", released)
     op = await _operation(state, "getOrderById")
     assert await derive_table(_request(), "api", "pets", op) == "openapi.getOrderById"
     assert registered.await_args is not None
@@ -340,9 +338,8 @@ async def test_deriving_the_table_registers_it_as_register_table_proposes_it(sta
     parameter = next(c for c in table.columns if c.name == "_nf_orderId")
     assert (parameter.native_filter_type, parameter.native_filter_required) == ("path_param", True)
     assert parameter.alias is None  # named as the function's argument
-    # In service with its function: released, not left a draft for its domain to release.
-    assert released.await_args is not None
-    assert released.await_args.args[-2:] == (7, False)
+    # REQ-1921: registered, it is live with its function -- one registration, no second step.
+    assert registered.await_count == 1
 
 
 # --- turning it off ------------------------------------------------------------------------------
