@@ -10810,5 +10810,10 @@
   "fr/dataProductOffers.json::dataProductOffers.reviewReason.sample_misses_dataset": "No view of this offer's sample reads one of the product's datasets. An offer covers every dataset of the product.",
   "fr/dataProductOffers.json::dataProductOffers.reviewReason.not_public": "This open offer's data is no longer public.",
   "fr/dataProductOffers.json::dataProductOffers.reviewReason.profiler_gone": "A dataset of this synthetic offer has no profiler.",
-  "fr/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake."
+  "fr/dataProductOffers.json::dataProductOffers.reviewReason.fake_gone": "A column of a dataset of this synthetic offer has no fake.",
+  "fr/discoverResult.json::discoverResult.jevBelow": "Jev scored {{count}} proposal under {{threshold}}%. It is shown beside the model's score, which decides.",
+  "fr/discoverResult.json::discoverResult.jevBelow_other": "Jev scored {{count}} proposals under {{threshold}}%. Each is shown beside the model's score, which decides.",
+  "fr/proposalsTable.json::proposalsTable.colJev": "Jev",
+  "fr/serverErrors.json::serverErrors.discovery.run_failed": "Discovery run {{run_id}} failed: {{error}}",
+  "fr/serverErrors.json::serverErrors.discovery.table_not_found": "Table {{table_id}} is not registered."
 }

@@ -322,6 +322,7 @@ def source_fields(source: object) -> dict:
         "host": source.host,  # type: ignore[attr-defined]
         "port": source.port,  # type: ignore[attr-defined]
         "path": source.path,  # type: ignore[attr-defined]
+        "download_from": source.download_from,  # type: ignore[attr-defined]
         "base_url": source.base_url,  # type: ignore[attr-defined]
         "federation_hints": source.federation_hints,  # type: ignore[attr-defined]
         "mapping": source.mapping,  # type: ignore[attr-defined]

@@ -242,13 +242,14 @@ describe("discoveryResultLines", () => {
     ]);
   });
 
-  it("says when Jev, not the model, put every proposal under the threshold", () => {
+  it("says how many Jev scored under the threshold, without that removing them", () => {
     const lines = found(
       report({
         semantics: {
           ...SEMANTICS,
           proposed: 30,
-          empty_reason: "scored_below_threshold",
+          suggested: 30,
+          empty_reason: null,
           scored: 30,
           scored_below_threshold: 30,
         },
@@ -256,12 +257,12 @@ describe("discoveryResultLines", () => {
       t,
     );
     expect(lines).toEqual([
-      "Semantics: none. The model gave every proposal 70% or more, and Jev scored each below that.",
-      "Not suggested: scored below 70% by Jev (30).",
+      "Semantics: 30 suggestions.",
+      "Jev scored 30 proposals under 70%. Each is shown beside the model's score, which decides.",
     ]);
   });
 
-  it("tells the model's own low confidence from Jev's, and counts the other reasons", () => {
+  it("counts the model's own low confidence and the other reasons, Jev's apart", () => {
     const lines = found(
       report({
         removed: { weaker: 2 },
@@ -279,8 +280,11 @@ describe("discoveryResultLines", () => {
     expect(lines).toContain(
       "Jev could not score the proposals of 1 request, so they kept the model's confidence.",
     );
+    expect(lines).toContain(
+      "Jev scored 1 proposal under 70%. It is shown beside the model's score, which decides.",
+    );
     expect(lines[lines.length - 1]).toBe(
-      "Not suggested: given less than 70% confidence by the model (4), scored below 70% by Jev (1), " +
+      "Not suggested: given less than 70% confidence by the model (4), " +
         "between columns of different classes (5), " +
         "repeating a pair of columns a stronger proposal was kept for (2).",
     );

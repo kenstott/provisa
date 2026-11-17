@@ -2403,6 +2403,7 @@ def test_the_engines_attach_pass_never_waits_on_a_source_whose_catalog_is_being_
             federation_hints={},
             mapping={},
             max_live_concurrency=None,  # REQ-1909: a source always carries its cap
+            download_from=None,  # REQ-1997: a source always carries it
             cache_ttl=None,
         )
 
