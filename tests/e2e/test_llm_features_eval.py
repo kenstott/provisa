@@ -158,6 +158,7 @@ async def _inferred(tables: list[TableFacts], min_confidence: float) -> set[tupl
     below its threshold when ``min_confidence`` is lower."""
     from provisa.discovery.run import SYSTEM_PROMPT
     from provisa.discovery.runner import execute
+    from provisa.discovery.threshold import DEFAULT
     from provisa.discovery.windows import plan
     from provisa.llm.client import ProvisaLLMClient
 
@@ -168,7 +169,9 @@ async def _inferred(tables: list[TableFacts], min_confidence: float) -> set[tupl
     def ask(prompt: str, max_out: int):
         return client.complete_sync_detailed(prompt, SYSTEM_PROMPT, max_out)
 
-    tally, kept = await execute(requests, k, max_tokens, ask, _Watcher())
+    tally, kept = await execute(
+        requests, k, max_tokens, ask, _Watcher(), threshold=DEFAULT, key_values=None
+    )
     assert tally.failed == [], f"a request failed: {tally.failed}"
     found = [*kept, *(r.proposal for r in tally.left_out if r.left_out == "below_threshold")]
     return {p.edge for p in found if p is not None and p.confidence >= min_confidence}
@@ -301,7 +304,8 @@ def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_prope
     from provisa.discovery.analyzer import read_answer_list
     from provisa.discovery.columns import TEXT
     from provisa.discovery.run import SYSTEM_PROMPT
-    from provisa.discovery.runner import MIN_CONFIDENCE, Tally, read_items
+    from provisa.discovery.runner import Tally, read_items
+    from provisa.discovery.threshold import DEFAULT
     from provisa.discovery.windows import plan
     from provisa.llm.client import ProvisaLLMClient
 
@@ -309,10 +313,10 @@ def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_prope
     k, requests = plan(_drop_tables(), None, 32_000, max_tokens)
     (request,) = [r for r in requests if r.group == TEXT]
     client = ProvisaLLMClient("relationship_inference", config=_OPENROUTER_CONFIG, api_keys={})
-    answer = client.complete_sync_detailed(request.prompt(k), SYSTEM_PROMPT, max_tokens)
+    answer = client.complete_sync_detailed(request.prompt(k, DEFAULT), SYSTEM_PROMPT, max_tokens)
     read = read_answer_list(answer.text, answer.cut_off)
     assert read.items is not None, f"no list in the answer: {answer.text!r}"
-    tally = Tally(total=1)
+    tally = Tally(total=1, threshold=DEFAULT)
     kept = read_items(request, read.items, tally)
     said = [
         {"edge": p.edge, "confidence": p.confidence, "left_out": None, "reasoning": p.reasoning}
@@ -329,5 +333,5 @@ def test_discovery_suggests_the_permit_key_a_folder_of_files_shares(record_prope
     record_property("discovery_model", f"{answer.vendor}:{answer.model}")
     record_property("discovery_answer", json.dumps(said))
     permit = [p for p in kept if p.pair == frozenset({(313, "permit_id"), (310, "permit_id")})]
-    assert permit, f"the permit key was not kept at {MIN_CONFIDENCE} or more; answered: {said}"
+    assert permit, f"the permit key was not kept at {DEFAULT} or more; answered: {said}"
     assert permit[0].start == (313, "permit_id"), f"the wrong way round: {said}"
