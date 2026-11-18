@@ -99,8 +99,10 @@ describe("Discovery dialog: a run starts from the fields of the one before", () 
     await waitFor(() => expect(applyMock).toHaveBeenCalled());
     fireEvent.keyDown(screen.getByTestId("discover-dialog"), { key: "Escape" });
     await waitFor(() => expect(screen.queryByTestId("proposal-501")).not.toBeInTheDocument());
-    // The page's banner keeps the run's result.
-    expect(screen.getByTestId("rels-discover-result")).toBeInTheDocument();
+    // The page's line keeps the run: one of its suggestions still waits.
+    expect(screen.getByTestId("rels-discover-line")).toHaveTextContent(
+      "1 suggestion waits for a decision.",
+    );
     countMock.mockClear();
     fireEvent.click(screen.getByTestId("rels-discover"));
     await waitFor(() => expect(runButton()).toBeEnabled(), SLOW);

@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Cercato: {{kinds}}.",
+    "keyValues": "Sovrapposizione dei valori chiave: le coppie che il modello ha valutato dal {{cutoff}}% a meno del {{threshold}}% sono state misurate su al massimo {{size}} valori distinti per colonna. {{measured}} misurate, {{admitted}} ammesse per valori chiave corrispondenti.",
     "scopeSource": "Origine: {{count}} tabella di {{domains}}.",
     "scopeSource_other": "Origine: {{count}} tabelle di {{domains}}.",
     "scopeTargetSame": "Destinazione: la stessa dell'origine.",

@@ -37,14 +37,15 @@ pytestmark = [pytest.mark.integration, pytest.mark.isolated, pytest.mark.local_p
 
 _HEADERS = {"X-Provisa-Role": "org_admin"}
 
-#: What the stand-in model proposes: the neighborhood pairs, named for their concept.
+#: What the stand-in model proposes: the neighborhood pairs, named for their concept, each rated
+#: between the measure cutoff and the threshold so it is measured (REQ-413, amended 2026-11-16).
 _ANSWERS = [
     (
         "building_permits",
         "neighborhood",
         "budget_2026__budget",
         "neighborhood",
-        0.8,
+        0.5,
         "neighborhood",
     ),
     (
@@ -52,7 +53,7 @@ _ANSWERS = [
         "neighborhood",
         "budget_2026__budget",
         "neighborhood",
-        0.8,
+        0.5,
         "complaint-neighborhood",
     ),
 ]

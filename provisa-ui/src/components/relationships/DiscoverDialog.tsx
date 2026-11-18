@@ -9,8 +9,9 @@
 // permission from the copyright holder.
 
 // REQ-413: discovery asks before it runs. With no run to show, the dialog sets up a run's scope;
-// with one going, or the one ended while it was watched, it shows that run. Closing the dialog
-// leaves a run going: the run is the server's, and opening the dialog again shows it.
+// with one going, the one ended while it was watched, or the one the page's line opened, it shows
+// that run. Closing the dialog, or Run in background, leaves a run going: the run is the
+// server's, and opening the dialog again shows it.
 // The form starts from the defaults when the dialog opens; only "New run" at the end of a run
 // opens it with that run's fields.
 
@@ -43,18 +44,19 @@ export function DiscoverDialog({
   suggestions,
 }: DiscoverDialogProps) {
   const { t } = useTranslation();
-  // An ended run the dialog was closed on is left: it opens again on the form, while the page's
-  // banner keeps the run's result. A run still going, or one that ended while the dialog was
-  // closed, is shown.
-  const [left, setLeft] = useState<number | null>(null);
-  const run = discovery.run !== null && discovery.run.id !== left ? discovery.run : null;
+  const run = discovery.run;
   const proposals = useRunProposals(run, suggestions.onApplied);
   // The run "New run" left, whose fields the form starts from; null: the defaults. "Reset to
   // defaults" and closing the dialog clear it.
   const [initial, setInitial] = useState<LastRun | null>(null);
+  // "Reset to defaults" was pressed: Key value overlap takes its defaults, not the person's own.
+  const [reset, setReset] = useState(false);
   const close = () => {
     setInitial(null);
-    if (run !== null && run.status !== "running") setLeft(run.id);
+    setReset(false);
+    // An ended run the dialog is closed on is left: it opens again on the form, while the page's
+    // line keeps the run, and its Open shows it again.
+    if (run !== null && run.status !== "running") discovery.dismiss();
     onClose();
   };
   // Only a run's results take the wide size: setting up and a run going keep the setup step's
@@ -94,9 +96,12 @@ export function DiscoverDialog({
         (run ? (
           <DiscoverRunView
             run={run}
+            going={discovery.going}
             readError={discovery.error}
-            onStop={() => void discovery.stop()}
+            onStop={(runId) => void discovery.stop(runId)}
+            onBackground={close}
             onNewRun={() => {
+              setReset(false);
               setInitial({ scope: run.scope, startedAt: run.started_at });
               discovery.dismiss();
             }}
@@ -105,11 +110,15 @@ export function DiscoverDialog({
           />
         ) : (
           <DiscoverScopeForm
-            key={initial === null ? "defaults" : JSON.stringify(initial)}
+            key={initial === null ? (reset ? "reset" : "defaults") : JSON.stringify(initial)}
             tables={tables}
             defaultDomains={defaultDomains}
             initial={initial}
-            onReset={() => setInitial(null)}
+            fromDefaults={reset}
+            onReset={() => {
+              setInitial(null);
+              setReset(true);
+            }}
             onCancel={close}
             onRun={async (scope: DiscoveryScope) => {
               await discovery.start(scope);

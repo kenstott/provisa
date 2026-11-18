@@ -8,6 +8,7 @@
     "sqlModelingTool": "Strumento di modellazione SQL",
     "viewErd": "Visualizza ERD",
     "discovering": "L'individuazione è in corso. Aprila per vederne l'avanzamento.",
+    "openRun": "Apri",
     "suggestWithAi": "Suggerisci con AI",
     "clearRejections": "Cancella rifiuti",
     "clearedRejections": "Cancellato {{count}} rifiuto.",

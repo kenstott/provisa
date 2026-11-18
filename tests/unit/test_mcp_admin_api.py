@@ -188,14 +188,15 @@ async def test_discovery_runs_for_the_named_table_as_a_stored_run_jev_asked_by_n
         ("customer_id", "id")
     ]
     assert found["semantics"]["suggested"] == 1
-    # Jev is asked about what the model put at the threshold or above, and scored it under.
-    assert (found["semantics"]["scored"], found["semantics"]["scored_below_threshold"]) == (1, 1)
+    # Jev re-scores every semantic proposal of the model, before the band is judged on the
+    # model's confidence (REQ-413, amended 2026-11-16), and scored both under the threshold.
+    assert (found["semantics"]["scored"], found["semantics"]["scored_below_threshold"]) == (2, 2)
     # Every proposal it read is stored with the run, with both scores.
     stored = (await discovery.list_proposals(_REQUEST, found["run_id"]))["proposals"]
     assert found["proposals"] == stored
     assert [(r["source_column"], r["confidence"], r["scored"], r["reason"]) for r in stored] == [
         ("customer_id", 0.95, 0.31, None),
-        ("id", 0.3, None, "below_threshold"),
+        ("id", 0.3, 0.31, "below_threshold"),
     ]
     # Jev was asked with the tables and columns by name and their context, no sample values.
     ((jev_state, questions),) = asked

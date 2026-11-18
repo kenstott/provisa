@@ -574,7 +574,6 @@ def values_reader(state: Any, role: str):
     A table that requires a parameter is never read (REQ-1986); a table or column ``role`` cannot
     read is not measured. Either is said on the pair."""
     from provisa.discovery.measure import (
-        DISTINCT_BOUND,
         NOT_READ as UNMEASURED_NOT_READ,
         NOT_READABLE,
         Unmeasured,
@@ -592,7 +591,7 @@ def values_reader(state: Any, role: str):
             relation, exposed = published
             return relation, _quote(exposed[column])
 
-        async def values(self, table: TableFacts, column: str) -> Values | Unmeasured:
+        async def values(self, table: TableFacts, column: str, bound: int) -> Values | Unmeasured:
             found = self._column(table, column)
             if isinstance(found, str):
                 return found
@@ -602,13 +601,13 @@ def values_reader(state: Any, role: str):
                 table.table_name,
                 _governed_as(
                     f"SELECT {col}, COUNT(*) FROM {relation} WHERE {col} IS NOT NULL "
-                    f"GROUP BY {col} ORDER BY 2 DESC LIMIT {DISTINCT_BOUND + 1}",
+                    f"GROUP BY {col} ORDER BY 2 DESC LIMIT {bound + 1}",
                     role,
                 ),
             )
             return Values(
-                read=tuple(r[0] for r in rows[:DISTINCT_BOUND]),
-                more=len(rows) > DISTINCT_BOUND,
+                read=tuple(r[0] for r in rows[:bound]),
+                more=len(rows) > bound,
                 distinct=not rows or int(rows[0][1]) == 1,
             )
 

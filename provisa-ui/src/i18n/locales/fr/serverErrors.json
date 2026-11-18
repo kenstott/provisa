@@ -916,6 +916,9 @@
       "include_outside_upload": "{{path}} est hors du projet téléversé ; un projet ne lit que ses propres fichiers.",
       "filter_value_refused": "{{value}} ne peut pas être une valeur dans un filtre d'autorisation : une valeur est une chaîne, un nombre, true, false, null, une liste de ceux-ci ou une variable de session.",
       "filter_operator_refused": "{{operator}} n'est pas un opérateur avec lequel un filtre d'autorisation peut être converti."
+    },
+    "relationship": {
+      "name_taken": "Le nom « {{name}} » est déjà pris par la relation « {{held_by}} ». Nommez celle-ci autrement."
     }
   }
 }

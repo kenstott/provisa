@@ -916,6 +916,9 @@
       "include_outside_upload": "{{path}} 位於上傳的項目之外；項目只讀取自身的檔案。",
       "filter_value_refused": "{{value}} 不能作為權限篩選器中的值：值是字串、數字、true、false、null、它們的列表或工作階段變數。",
       "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
+    },
+    "relationship": {
+      "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另行命名。"
     }
   }
 }

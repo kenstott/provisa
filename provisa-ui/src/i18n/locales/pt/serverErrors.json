@@ -916,6 +916,9 @@
       "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",
       "filter_value_refused": "{{value}} não pode ser um valor em um filtro de permissão: um valor é uma string, um número, true, false, null, uma lista destes ou uma variável de sessão.",
       "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
+    },
+    "relationship": {
+      "name_taken": "O nome '{{name}}' já é usado pelo relacionamento '{{held_by}}'. Dê outro nome a este."
     }
   }
 }

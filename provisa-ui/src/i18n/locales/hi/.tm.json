@@ -10927,5 +10927,16 @@
   "hi/serverErrors.json::serverErrors.subscribe.owner_sign_in_expired": "The subscription ended: the sign-in it was started under has expired; sign in again and start it again",
   "hi/proposalsTable.json::proposalsTable.dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
   "hi/proposalsTable.json::proposalsTable.dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
-  "hi/proposalsTable.json::proposalsTable.twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted."
+  "hi/proposalsTable.json::proposalsTable.twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted.",
+  "discoverDialog.json::discoverDialog.keyValues": "Key value overlap",
+  "discoverDialog.json::discoverDialog.cutoff": "Measure from",
+  "discoverDialog.json::discoverDialog.cutoffHint": "Pairs the model rated from this score up to the threshold are measured on their data.",
+  "discoverDialog.json::discoverDialog.sampleSize": "Sample size",
+  "discoverDialog.json::discoverDialog.sampleSizeHint": "The most distinct values read of each column.",
+  "discoverResult.json::discoverResult.keyValues": "Key value overlap: pairs the model rated from {{cutoff}}% to under {{threshold}}% were measured on at most {{size}} distinct values of each column. {{measured}} measured, {{admitted}} admitted on matching key values.",
+  "proposalsTable.json::proposalsTable.admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence.",
+  "discoverDialog.json::discoverDialog.runInBackground": "Run in background",
+  "discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
+  "discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
+  "relationshipsPage.json::relationshipsPage.openRun": "Open"
 }
