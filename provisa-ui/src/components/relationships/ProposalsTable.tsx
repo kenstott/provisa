@@ -155,6 +155,7 @@ export function ProposalsTable({
             threshold: Math.round(state.keptAt * 100),
           }),
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
+      p.admitted_on_key_values ? t("proposalsTable.admittedOnKeyValues") : "",
     ]
       .filter(Boolean)
       .join(" ");

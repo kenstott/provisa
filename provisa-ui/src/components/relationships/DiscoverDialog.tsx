@@ -52,8 +52,11 @@ export function DiscoverDialog({
   // The run "New run" left, whose fields the form starts from; null: the defaults. "Reset to
   // defaults" and closing the dialog clear it.
   const [initial, setInitial] = useState<LastRun | null>(null);
+  // "Reset to defaults" was pressed: Key value overlap takes its defaults, not the person's own.
+  const [reset, setReset] = useState(false);
   const close = () => {
     setInitial(null);
+    setReset(false);
     if (run !== null && run.status !== "running") setLeft(run.id);
     onClose();
   };
@@ -97,6 +100,7 @@ export function DiscoverDialog({
             readError={discovery.error}
             onStop={() => void discovery.stop()}
             onNewRun={() => {
+              setReset(false);
               setInitial({ scope: run.scope, startedAt: run.started_at });
               discovery.dismiss();
             }}
@@ -105,11 +109,15 @@ export function DiscoverDialog({
           />
         ) : (
           <DiscoverScopeForm
-            key={initial === null ? "defaults" : JSON.stringify(initial)}
+            key={initial === null ? (reset ? "reset" : "defaults") : JSON.stringify(initial)}
             tables={tables}
             defaultDomains={defaultDomains}
             initial={initial}
-            onReset={() => setInitial(null)}
+            fromDefaults={reset}
+            onReset={() => {
+              setInitial(null);
+              setReset(true);
+            }}
             onCancel={close}
             onRun={async (scope: DiscoveryScope) => {
               await discovery.start(scope);

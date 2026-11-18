@@ -26,6 +26,7 @@ import {
   PROPOSALS,
   REPORT,
   SCOPE,
+  UNMEASURED,
   SLOW,
   acceptBox,
   applyButton,
@@ -164,7 +165,7 @@ describe("Discovery dialog: the run's scope", () => {
     ).toBe(semanticsBox());
     fireEvent.click(runButton());
     await waitFor(() =>
-      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, kinds: ["foreign_keys"] }),
+      expect(startMock).toHaveBeenCalledWith({ ...SCOPE, ...UNMEASURED, kinds: ["foreign_keys"] }),
     );
   });
 

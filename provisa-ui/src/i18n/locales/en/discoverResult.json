@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Looked for: {{kinds}}.",
+    "keyValues": "Key value overlap: pairs the model rated from {{cutoff}}% to under {{threshold}}% were measured on at most {{size}} distinct values of each column. {{measured}} measured, {{admitted}} admitted on matching key values.",
     "scopeSource": "Source: {{count}} table of {{domains}}.",
     "scopeSource_other": "Source: {{count}} tables of {{domains}}.",
     "scopeTargetSame": "Target: the same as the source.",

@@ -10896,5 +10896,12 @@
   "hi/serverErrors.json::serverErrors.import.include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
   "hi/serverErrors.json::serverErrors.import.filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
   "hi/serverErrors.json::serverErrors.import.filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with.",
-  "hi/serverErrors.json::serverErrors.environments.owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership."
+  "hi/serverErrors.json::serverErrors.environments.owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership.",
+  "discoverDialog.json::discoverDialog.keyValues": "Key value overlap",
+  "discoverDialog.json::discoverDialog.cutoff": "Measure from",
+  "discoverDialog.json::discoverDialog.cutoffHint": "Pairs the model rated from this score up to the threshold are measured on their data.",
+  "discoverDialog.json::discoverDialog.sampleSize": "Sample size",
+  "discoverDialog.json::discoverDialog.sampleSizeHint": "The most distinct values read of each column.",
+  "discoverResult.json::discoverResult.keyValues": "Key value overlap: pairs the model rated from {{cutoff}}% to under {{threshold}}% were measured on at most {{size}} distinct values of each column. {{measured}} measured, {{admitted}} admitted on matching key values.",
+  "proposalsTable.json::proposalsTable.admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence."
 }

@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Beim Akzeptieren entsteht die gemeinsame Dimension {{name}}, mit der beide Spalten verknüpft werden.",
     "dimensionJoined": "Beim Akzeptieren werden beide Spalten mit der gemeinsamen Dimension {{name}} verknüpft.",
-    "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden."
+    "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden.",
+    "admittedOnKeyValues": "Aufgrund übereinstimmender Schlüsselwerte in den Daten aufgenommen; die Messung steht neben der Konfidenz des Modells."
   }
 }

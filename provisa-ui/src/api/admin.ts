@@ -648,6 +648,11 @@ const API_BASE_RAW = import.meta.env.VITE_API_BASE || "";
  *  semantics inferred by an AI model. */
 export type DiscoveryKind = "foreign_keys" | "semantics";
 
+/** REQ-413: what a run can look for: the kinds, and Key value overlap, the measure of the
+ *  semantic pairs whose model confidence lies between its cutoff and the threshold. It is chosen
+ *  only with semantics. */
+export type DiscoveryRunKind = DiscoveryKind | "key_values";
+
 /** An /admin/discover error carrying the server's stable code (e.g. `discovery.vendor_unknown`). */
 export class DiscoveryError extends Error {
   readonly status: number;
@@ -685,7 +690,7 @@ const postJson = (body: unknown): RequestInit => ({
  *  `target_same_as_source` the target fields are ignored. `vendor` and `model` are both given (a
  *  model for this run only) or both null (the model assigned to relationship inference). */
 export interface DiscoveryScope {
-  kinds: DiscoveryKind[];
+  kinds: DiscoveryRunKind[];
   source_domains: string[];
   source_tables: number[] | null;
   target_same_as_source: boolean;
@@ -693,6 +698,25 @@ export interface DiscoveryScope {
   target_tables: number[] | null;
   vendor: string | null;
   model: string | null;
+  /** Key value overlap's measure cutoff (0 to 1) and sample size (the most distinct values read
+   *  of each column): given while it is chosen, else null. Absent from a run recorded before. */
+  measure_cutoff?: number | null;
+  sample_size?: number | null;
+}
+
+/** REQ-413: Key value overlap as the signed-in person last set it, remembered as the threshold
+ *  is: chosen, its measure cutoff (0 to 1) and its sample size. */
+export interface KeyValueSettings {
+  chosen: boolean;
+  cutoff: number;
+  sample_size: number;
+}
+
+/** The person's Key value overlap, and the defaults Reset to defaults restores. */
+export function fetchDiscoveryKeyValues(): Promise<
+  KeyValueSettings & { defaults: KeyValueSettings }
+> {
+  return discoveryRequest("/key-values", "Key value overlap");
 }
 
 /** Where a model's two limits come from: set by hand, the vendor's published figures, or the
@@ -724,13 +748,7 @@ export interface ModelLimits {
 
 /** The type groups columns are compared within. */
 export type TypeGroup =
-  | "whole_number"
-  | "decimal"
-  | "text"
-  | "uuid"
-  | "date"
-  | "timestamp"
-  | "timestamptz";
+  "whole_number" | "decimal" | "text" | "uuid" | "date" | "timestamp" | "timestamptz";
 
 /** At most how many model requests a run of this scope makes, by type group. The count reads no
  *  table: it is an upper bound from what is registered, and the run may make fewer. */
@@ -750,12 +768,7 @@ export interface DiscoveryCount {
 export interface SemanticsReport {
   suggested: number;
   empty_reason:
-    | "requests_failed"
-    | "unreadable"
-    | "none_proposed"
-    | "below_threshold"
-    | "filtered"
-    | null;
+    "requests_failed" | "unreadable" | "none_proposed" | "below_threshold" | "filtered" | null;
   requests_total: number;
   requests_done: number;
   split: number;
@@ -774,6 +787,9 @@ export interface SemanticsReport {
   scored_below_threshold?: number;
   /** Requests whose proposals Jev could not score: they kept the model's confidence. */
   scoring_failed?: number;
+  /** Pairs measured for Key value overlap, and those of them admitted on matching key values. */
+  measured?: number;
+  admitted?: number;
   cut_short: number;
   unreadable: number;
   /** Each failed request: its group and the server's catalogued message (code and params; the
@@ -797,11 +813,7 @@ export type RemovedKind =
 /** Why a proposal is not among a run's suggestions: a reason of an answer's reading, or a
  *  removal. */
 export type ProposalReason =
-  | "invalid_shape"
-  | "unknown_column"
-  | "not_comparable"
-  | "below_threshold"
-  | RemovedKind;
+  "invalid_shape" | "unknown_column" | "not_comparable" | "below_threshold" | RemovedKind;
 
 /** REQ-413: one column of a measured pair: how many distinct values were read (`more`: it holds
  *  more than the bound), whether its values are distinct, and why it was not measured. */
@@ -850,6 +862,9 @@ export interface RunProposal {
   acceptable: boolean;
   /** One of its tables requires a parameter, so it is never read: no values were compared. */
   reduced_information: boolean;
+  /** A suggestion the model rated under the threshold, admitted on key values matching in the
+   *  data: its measure is shown beside the model's confidence. */
+  admitted_on_key_values: boolean;
   /** A many-to-many pair: the shared dimension accepting it makes, or the registered one it
    *  joins (``reused``). Null for any other pair. */
   dimension: { name: string; reused: boolean } | null;
@@ -863,6 +878,8 @@ export interface DiscoveryReport {
   decided_by?: Record<string, number>;
   foreign_keys?: { found: number; suggested: number };
   semantics?: SemanticsReport;
+  /** Key value overlap's settings, when the run chose it. */
+  key_values?: { cutoff: number; sample_size: number };
   model?: DiscoveryModel;
   // What the run compared; absent from a run recorded before a run said so.
   source_domains?: string[];

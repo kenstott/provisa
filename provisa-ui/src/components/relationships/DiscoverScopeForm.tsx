@@ -20,18 +20,26 @@
 // model its vendor no longer lists) is left out and said; the rest is kept. Tables registered since
 // that run in domains outside the source are named, with one action adding their domains to the
 // source (and to a target of its own). "Reset to defaults" sets the form up as a first run.
+//
+// Key value overlap (REQ-413, amended 2026-11-16) shows once Semantics is ticked: it measures the
+// semantic pairs the model rated between its cutoff and the threshold, so it is offered only with
+// Semantics. Ticked, it shows its cutoff and its sample size (the most distinct values read of each
+// column). All three start as the person last set them, kept by the server when a run starts;
+// "Reset to defaults" restores the defaults.
 
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Alert, Button, Checkbox, Group, Text } from "@mantine/core";
+import { Alert, Button, Checkbox, Group, NumberInput, Text } from "@mantine/core";
 import {
   countDiscoveryRun,
+  fetchDiscoveryKeyValues,
   fetchDiscoveryModels,
   fetchVendorModels,
   type DiscoveryCount,
-  type DiscoveryKind,
   type DiscoveryModels,
+  type DiscoveryRunKind,
   type DiscoveryScope,
+  type KeyValueSettings,
   type TypeGroup,
 } from "../../api/admin";
 import { isInternalDomain } from "../../lib/internalDomains";
@@ -71,10 +79,29 @@ type Counted =
   | { state: "counted"; count: DiscoveryCount }
   | { state: "failed"; error: string };
 
+/** Key value overlap as the form starts it: the run "New run" left, the defaults after "Reset to
+ *  defaults", else as the person last set it. A run that did not choose it keeps the person's
+ *  last cutoff and sample size, unchosen. */
+function startingKeyValues(
+  read: KeyValueSettings & { defaults: KeyValueSettings },
+  initial: LastRun | null,
+  fromDefaults: boolean,
+): KeyValueSettings {
+  if (fromDefaults) return read.defaults;
+  if (initial === null)
+    return { chosen: read.chosen, cutoff: read.cutoff, sample_size: read.sample_size };
+  const { kinds, measure_cutoff: cutoff, sample_size: size } = initial.scope;
+  if (kinds.includes("key_values") && cutoff != null && size != null) {
+    return { chosen: true, cutoff, sample_size: size };
+  }
+  return { chosen: false, cutoff: read.cutoff, sample_size: read.sample_size };
+}
+
 export function DiscoverScopeForm({
   tables,
   defaultDomains,
   initial,
+  fromDefaults,
   onReset,
   onCancel,
   onRun,
@@ -84,6 +111,8 @@ export function DiscoverScopeForm({
   defaultDomains: string[];
   /** The run before, whose fields this one starts from; null: the defaults. */
   initial: LastRun | null;
+  /** Set up by "Reset to defaults": Key value overlap takes its defaults, not the person's own. */
+  fromDefaults: boolean;
   /** Set the form up from the defaults. */
   onReset: () => void;
   onCancel: () => void;
@@ -101,6 +130,9 @@ export function DiscoverScopeForm({
   );
   const [vendor, setVendor] = useState("");
   const [model, setModel] = useState("");
+  // Key value overlap; null until the person's own is read.
+  const [keyValues, setKeyValues] = useState<KeyValueSettings | null>(null);
+  const [keyValuesError, setKeyValuesError] = useState("");
 
   const domains = useMemo(
     () =>
@@ -124,6 +156,17 @@ export function DiscoverScopeForm({
   const [counted, setCounted] = useState<Counted>({ state: "idle" });
   const [starting, setStarting] = useState(false);
   const [startError, setStartError] = useState("");
+
+  useEffect(() => {
+    let live = true;
+    fetchDiscoveryKeyValues()
+      .then((read) => live && setKeyValues(startingKeyValues(read, initial, fromDefaults)))
+      .catch((e) => live && setKeyValuesError(errorText(e)));
+    return () => {
+      live = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- read once as the form mounts
+  }, []);
 
   useEffect(() => {
     let live = true;
@@ -195,19 +238,22 @@ export function DiscoverScopeForm({
   };
 
   const semanticsAvailable = models?.semantics_available === true;
-  const kinds: DiscoveryKind[] = [
+  const asksSemantics = semantics && semanticsAvailable;
+  const measures = asksSemantics && keyValues !== null && keyValues.chosen;
+  const kinds: DiscoveryRunKind[] = [
     ...(foreignKeys ? (["foreign_keys"] as const) : []),
-    ...(semantics && semanticsAvailable ? (["semantics"] as const) : []),
+    ...(asksSemantics ? (["semantics"] as const) : []),
+    ...(measures ? (["key_values"] as const) : []),
   ];
-  const asksSemantics = kinds.includes("semantics");
   const assigned = models?.assigned ?? null;
   const isAssigned = assigned !== null && vendor === assigned.vendor && model === assigned.model;
   const modelIncomplete = asksSemantics && (!vendor || !model.trim());
 
   // Empty means every domain offered; tables, every table of the chosen domains.
   const effective = (chosen: string[]) => (chosen.length > 0 ? chosen : domains);
+  // Semantics waits for Key value overlap to be read, which it is offered with.
   const scope: DiscoveryScope | null =
-    kinds.length === 0 || modelIncomplete
+    kinds.length === 0 || modelIncomplete || (asksSemantics && keyValues === null)
       ? null
       : {
           kinds,
@@ -218,6 +264,8 @@ export function DiscoverScopeForm({
           target_tables: !sameAsSource && targetTables.length > 0 ? targetTables.map(Number) : null,
           vendor: asksSemantics && !isAssigned ? vendor : null,
           model: asksSemantics && !isAssigned ? model.trim() : null,
+          measure_cutoff: measures ? keyValues.cutoff : null,
+          sample_size: measures ? keyValues.sample_size : null,
         };
   const scopeKey = scope === null ? null : JSON.stringify(scope);
 
@@ -371,6 +419,11 @@ export function DiscoverScopeForm({
           {modelsError}
         </Alert>
       )}
+      {keyValuesError && (
+        <Alert color="red" mb="md" data-testid="discover-key-values-error">
+          {keyValuesError}
+        </Alert>
+      )}
       <FormLayout>
         <FormChecks>
           <Checkbox
@@ -390,7 +443,58 @@ export function DiscoverScopeForm({
             onChange={(e) => setSemantics(e.currentTarget.checked)}
             data-testid="discover-kind-semantics"
           />
+          {asksSemantics && keyValues !== null && (
+            <Checkbox
+              label={t("discoverDialog.keyValues")}
+              checked={keyValues.chosen}
+              onChange={(e) => {
+                const chosen = e.currentTarget.checked;
+                setKeyValues((kv) => (kv === null ? kv : { ...kv, chosen }));
+              }}
+              data-testid="discover-kind-key-values"
+            />
+          )}
         </FormChecks>
+        {measures && (
+          <>
+            <FormField size="short" hint={t("discoverDialog.cutoffHint")}>
+              <NumberInput
+                label={t("discoverDialog.cutoff")}
+                data-testid="discover-measure-cutoff"
+                value={Math.round(keyValues.cutoff * 100)}
+                onChange={(v) => {
+                  if (typeof v === "number") {
+                    setKeyValues((kv) => (kv === null ? kv : { ...kv, cutoff: v / 100 }));
+                  }
+                }}
+                min={0}
+                max={100}
+                step={5}
+                suffix="%"
+                clampBehavior="strict"
+                allowDecimal={false}
+              />
+            </FormField>
+            <FormField size="short" hint={t("discoverDialog.sampleSizeHint")}>
+              <NumberInput
+                label={t("discoverDialog.sampleSize")}
+                data-testid="discover-sample-size"
+                value={keyValues.sample_size}
+                onChange={(v) => {
+                  if (typeof v === "number") {
+                    setKeyValues((kv) => (kv === null ? kv : { ...kv, sample_size: v }));
+                  }
+                }}
+                min={1}
+                step={1000}
+                thousandSeparator=","
+                clampBehavior="strict"
+                allowDecimal={false}
+                allowNegative={false}
+              />
+            </FormField>
+          </>
+        )}
         {models !== null && semanticsAvailable && (
           <DiscoverModelField
             models={models}
