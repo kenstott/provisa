@@ -23,6 +23,7 @@ from provisa.core.models import Relationship
 from provisa.core.repositories import retirement
 from provisa.core.repositories import table as table_repo
 from provisa.core.relationship_names import store_effective_names
+from provisa.core.relationship_naming import RelationshipNameTaken
 from provisa.core.repositories.integrity import Dependent, ObjectRef, guard, remove_parts
 from provisa.core.schema_org import registered_tables, relationships, table_columns
 
@@ -202,9 +203,16 @@ async def upsert(
         )
     except Exception as e:
         if "relationships_source_alias_unique" in str(e):
-            raise ValueError(
-                f"Alias {rel.alias!r} already exists for source table {rel.source_table_id!r}"
-            ) from e
+            # REQ-415: a typed alias that is taken is refused, naming the relationship it is.
+            held_by = (
+                await conn.execute_core(
+                    select(relationships.c.id).where(
+                        relationships.c.source_table_id == source_tbl["id"],
+                        relationships.c.alias == rel.alias,
+                    )
+                )
+            ).scalar_one()
+            raise RelationshipNameTaken("alias", str(rel.alias), held_by) from e
         raise
 
     # REQ-351: its effective names, derived once and stored, for the meta domain and every reader.

@@ -377,7 +377,7 @@ def test_no_route_lists_or_decides_suggestions_apart_from_a_runs_result():
 class _NoReads:
     """A values reader that fails the test on any read: a known pair is never measured."""
 
-    async def values(self, table: TableFacts, column: str) -> Any:
+    async def values(self, table: TableFacts, column: str, bound: int) -> Any:
         raise AssertionError(f"read {table.table_name}.{column}: a known pair is not measured")
 
     async def found(self, table: TableFacts, column: str, among: Any) -> frozenset[Any]:
@@ -385,10 +385,12 @@ class _NoReads:
 
 
 def _measurer(known: Known):
-    from provisa.discovery.measure import Measurer
+    from provisa.discovery.measure import DISTINCT_BOUND, Measurer
 
     tables = {tid: _facts(tid) for tid in _SHAPES}
-    return Measurer(_NoReads(), tables, decided=known.existing | known.rejected)
+    return Measurer(
+        _NoReads(), tables, decided=known.existing | known.rejected, bound=DISTINCT_BOUND
+    )
 
 
 async def test_a_junction_leg_is_never_measured_as_a_new_pair(tmp_path):

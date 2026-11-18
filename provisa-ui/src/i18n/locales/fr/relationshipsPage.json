@@ -8,6 +8,7 @@
     "sqlModelingTool": "Outil de modélisation SQL",
     "viewErd": "Voir le diagramme entité-association",
     "discovering": "La découverte est en cours. Ouvrez-la pour voir sa progression.",
+    "openRun": "Ouvrir",
     "suggestWithAi": "Suggérer avec l'IA",
     "clearRejections": "Effacer les rejets",
     "clearedRejections": "{{count}} rejet effacé.",

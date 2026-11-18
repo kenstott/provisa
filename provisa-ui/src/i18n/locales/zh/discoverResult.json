@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "查找内容：{{kinds}}。",
+    "keyValues": "键值重叠：模型评分从 {{cutoff}}% 到低于 {{threshold}}% 的配对，已按每列最多 {{size}} 个不同值进行测量。已测量 {{measured}} 个，因键值匹配而采纳 {{admitted}} 个。",
     "scopeSource": "源：{{domains}} 中的 {{count}} 个表。",
     "scopeSource_other": "源：{{domains}} 中的 {{count}} 个表。",
     "scopeTargetSame": "目标：与源相同。",

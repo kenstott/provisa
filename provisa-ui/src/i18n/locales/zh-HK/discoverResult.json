@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "尋找內容：{{kinds}}。",
+    "keyValues": "鍵值重疊：模型評分由 {{cutoff}}% 至低於 {{threshold}}% 的配對，已按每欄最多 {{size}} 個不同值進行測量。已測量 {{measured}} 個，因鍵值相符而採納 {{admitted}} 個。",
     "scopeSource": "來源：{{domains}} 中的 {{count}} 個表。",
     "scopeSource_other": "來源：{{domains}} 中的 {{count}} 個表。",
     "scopeTargetSame": "目標：與來源相同。",

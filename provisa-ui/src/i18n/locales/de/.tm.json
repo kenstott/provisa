@@ -10926,5 +10926,17 @@
   "de/relationshipRow.json::relationshipRow.queryLinks.sql": "Read {{name}} in SQL",
   "de/relationshipRow.json::relationshipRow.queryLinks.sparql": "Read {{name}} in SPARQL",
   "de/relationshipRow.json::relationshipRow.queryLinks.graphql": "Read {{name}} in GraphQL",
-  "de/relationshipRow.json::relationshipRow.queryLinks.jsonapi": "Read {{name}} in JSON:API"
+  "de/relationshipRow.json::relationshipRow.queryLinks.jsonapi": "Read {{name}} in JSON:API",
+  "de/dataProductsTab.json::dataProductsTab.cypherQueryAria": "Run example Cypher query for {{type}}",
+  "discoverDialog.json::discoverDialog.keyValues": "Key value overlap",
+  "discoverDialog.json::discoverDialog.cutoff": "Measure from",
+  "discoverDialog.json::discoverDialog.cutoffHint": "Pairs the model rated from this score up to the threshold are measured on their data.",
+  "discoverDialog.json::discoverDialog.sampleSize": "Sample size",
+  "discoverDialog.json::discoverDialog.sampleSizeHint": "The most distinct values read of each column.",
+  "discoverResult.json::discoverResult.keyValues": "Key value overlap: pairs the model rated from {{cutoff}}% to under {{threshold}}% were measured on at most {{size}} distinct values of each column. {{measured}} measured, {{admitted}} admitted on matching key values.",
+  "proposalsTable.json::proposalsTable.admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence.",
+  "discoverDialog.json::discoverDialog.runInBackground": "Run in background",
+  "discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
+  "discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
+  "relationshipsPage.json::relationshipsPage.openRun": "Open"
 }

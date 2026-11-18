@@ -25,6 +25,7 @@ import {
   fetchModelLimits,
   fetchRunProposals,
   saveDiscoveryThreshold,
+  fetchDiscoveryKeyValues,
   fetchVendorModels,
   startDiscoveryRun,
   stopDiscoveryRun,
@@ -64,8 +65,10 @@ export const COUNT: DiscoveryCount = {
   target_tables: 2,
   tables_not_read: 0,
 };
+/** Key value overlap as a person who has set none has it: the defaults. */
+export const KEY_VALUES_DEFAULT = { chosen: true, cutoff: 0.2, sample_size: 10000 };
 export const SCOPE: DiscoveryScope = {
-  kinds: ["foreign_keys", "semantics"],
+  kinds: ["foreign_keys", "semantics", "key_values"],
   source_domains: ["shop"],
   source_tables: null,
   target_same_as_source: true,
@@ -73,7 +76,11 @@ export const SCOPE: DiscoveryScope = {
   target_tables: null,
   vendor: null,
   model: null,
+  measure_cutoff: 0.2,
+  sample_size: 10000,
 };
+/** The scope with Key value overlap not chosen (or not offered, without Semantics). */
+export const UNMEASURED = { measure_cutoff: null, sample_size: null };
 export const runOf = (over: Partial<DiscoveryRun>): DiscoveryRun => ({
   id: 7,
   status: "running",
@@ -137,6 +144,7 @@ export const stopMock = vi.mocked(stopDiscoveryRun);
 export const proposalsMock = vi.mocked(fetchRunProposals);
 export const applyMock = vi.mocked(applyRunDecisions);
 export const saveThresholdMock = vi.mocked(saveDiscoveryThreshold);
+export const keyValuesMock = vi.mocked(fetchDiscoveryKeyValues);
 /** A proposal as a run lists it. Unless given, its score is the model's (no values compared)
  *  and it can be accepted where it can be decided. */
 export const proposal = (over: Partial<RunProposal>): RunProposal => ({
@@ -160,6 +168,7 @@ export const proposal = (over: Partial<RunProposal>): RunProposal => ({
   answer: null,
   decidable: true,
   reduced_information: false,
+  admitted_on_key_values: false,
   dimension: null,
   ...over,
 });
@@ -290,6 +299,9 @@ export function resetDiscoveryMocks() {
   proposalsMock.mockReset().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
   applyMock.mockReset().mockResolvedValue([]);
   saveThresholdMock.mockReset().mockImplementation(async (threshold) => ({ threshold }));
+  keyValuesMock
+    .mockReset()
+    .mockResolvedValue({ ...KEY_VALUES_DEFAULT, defaults: KEY_VALUES_DEFAULT });
 }
 
 export const LAST: DiscoveryScope = {
@@ -301,4 +313,7 @@ export const LAST: DiscoveryScope = {
   target_tables: [2],
   vendor: "openai",
   model: "gpt-4.1-mini",
+  // That run did not choose Key value overlap.
+  measure_cutoff: null,
+  sample_size: null,
 };
