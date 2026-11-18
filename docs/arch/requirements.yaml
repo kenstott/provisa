@@ -3828,7 +3828,14 @@
     which a pair is a key relationship, the ceiling a pair where neither side is a key scores at most, the
     number of non-null values the join count reads, and the number of distinct sample values per column
     the model is shown. None is a fixed constant in the code; each starts at its default, is recorded with
-    the run, and the values a person sets are kept for their next runs.'
+    the run, and the values a person sets are kept for their next runs. (Amended 2026-11-18, THE RESULTS
+    ARE A STANDARD LIST WITH A DEFAULT SCORE FILTER:) Maintainer 2026-11-18. A run''s results are shown
+    in the standard list (the shared list component with column sort and filters the other lists use), not
+    a table of their own. When they open, a filter of Score at least 10% is applied and shown like any other
+    filter, so it can be changed or cleared; a line says how many rows it hides. The value a person sets
+    is kept for their next runs, as Tick from is. Accept acts only on rows the filter shows. The dialog''s
+    request count shows the calls and table pairs a run will ask about, and says a pair left unanswered
+    may be asked again.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
