@@ -58,9 +58,7 @@ class Generated:
     table. ``target_name`` is the target's alias or table name, the noun its derived GraphQL field
     is named for; ``target_table`` its table name, the second thing names are told apart by.
     ``graphql_alias`` is a generated field it is pinned to (a shared dimension's edge), made unique
-    on its source table as the derived one is. ``via_label_source`` and ``via_table_name``: a
-    junction-backed relationship's nomination and middle table (REQ-1586), which its field and
-    Cypher type are named from."""
+    on its source table as the derived one is."""
 
     rel_id: str
     id_typed: bool
@@ -73,8 +71,6 @@ class Generated:
     target_table: str
     alias: str | None = None
     graphql_alias: str | None = None
-    via_label_source: str | None = None
-    via_table_name: str | None = None
 
 
 @dataclass(frozen=True)
@@ -209,14 +205,23 @@ def _named(g: Generated, held: list[_Held], convention: str) -> tuple[Named, _He
     aliases = [h.alias for h in same_source if h.alias]
     alias = None if g.alias is None else disambiguated(g.alias, column, g.target_table, aliases)
 
+    graphql_alias = g.graphql_alias
+    field = _field_of(g.graphql_alias, g.target_name, g.cardinality)
+    fields = [h.field for h in same_source if h.served and h.field]
+    if field is not None and field.casefold() in {f.casefold() for f in fields}:
+        field = disambiguated(field, column, g.target_table, fields)
+        # A generated pinned field keeps its own spelling (snake case); a derived one takes the
+        # naming convention's, as the field it replaces would have.
+        graphql_alias = field if g.graphql_alias else apply_convention(field, convention)
+
     def cypher(of_alias: str | None) -> str | None:
         return effective_cypher_type(
             alias=of_alias,
             source_column=g.source_column,
             cardinality=g.cardinality,
-            via_label_source=g.via_label_source,
+            via_label_source=None,
             via_type_value=None,
-            via_table_name=g.via_table_name,
+            via_table_name=None,
         )
 
     cypher_type = cypher(alias)
@@ -230,25 +235,6 @@ def _named(g: Generated, held: list[_Held], convention: str) -> tuple[Named, _He
         # alias is one of its source table's, so it is unique there too.
         alias = disambiguated(cypher_type, column, g.target_table, [*pair, *aliases]).upper()
         cypher_type = cypher(alias)
-
-    # Named after the Cypher type is settled: a junction nominating a fixed label takes its field
-    # from its alias (REQ-1586).
-    graphql_alias = g.graphql_alias
-    field = _field_of(
-        g.graphql_alias,
-        g.target_name,
-        g.cardinality,
-        alias,
-        g.via_label_source,
-        None,
-        g.via_table_name,
-    )
-    fields = [h.field for h in same_source if h.served and h.field]
-    if field is not None and field.casefold() in {f.casefold() for f in fields}:
-        field = disambiguated(field, column, g.target_table, fields)
-        # A generated pinned field keeps its own spelling (snake case); a derived one takes the
-        # naming convention's, as the field it replaces would have.
-        graphql_alias = field if g.graphql_alias else apply_convention(field, convention)
 
     named = Named(rel_id, alias, graphql_alias)
     return named, _Held(

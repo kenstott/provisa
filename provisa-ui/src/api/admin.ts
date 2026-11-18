@@ -883,8 +883,8 @@ export interface RunProposal {
    *  joins (``reused``). Null for any other pair. */
   dimension: { name: string; reused: boolean } | null;
   /** REQ-1586: a junction suggestion, the junction its two ends are joined through. Null for
-   *  any other pair. */
-  via: { table_id: number; source_column: string; target_column: string } | null;
+   *  any other pair; absent until the server sends it (join through a junction). */
+  via?: { table_id: number; source_column: string; target_column: string } | null;
 }
 
 /** A run's report once semantics is under way or the run has ended. */

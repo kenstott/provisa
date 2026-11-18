@@ -10,7 +10,7 @@
 
 // REQ-2240: the bar shown once rows of a list are selected (`useListSelection`).
 
-import { useState, type ReactNode } from "react";
+import { useState } from "react";
 import { Button, Group, List, Text } from "@mantine/core";
 import { Trash2, X } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -24,8 +24,6 @@ export interface ListBulkBarProps {
   nameOf: (key: string) => string;
   /** The page's one bulk call: it resolves once the list is read again without what went. */
   onDelete: (keys: string[]) => Promise<BulkDeleteResult>;
-  /** The page's own actions on what is selected, shown after Delete. */
-  actions?: ReactNode;
   testId?: string;
 }
 
@@ -41,7 +39,6 @@ export function ListBulkBar({
   selection,
   nameOf,
   onDelete,
-  actions,
   testId = "list-bulk",
 }: ListBulkBarProps) {
   const { t } = useTranslation();
@@ -100,7 +97,6 @@ export function ListBulkBar({
               </Button>
             )}
           </ConfirmDialog>
-          {actions}
           <Button
             size="xs"
             variant="subtle"

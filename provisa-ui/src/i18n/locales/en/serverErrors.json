@@ -921,8 +921,7 @@
       "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
     },
     "relationship": {
-      "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise.",
-      "join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it."
+      "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise."
     }
   }
 }

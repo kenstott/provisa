@@ -13,8 +13,7 @@
 Neither column of the pair is a key, so no relationship starts at one and ends at the other.
 Accepting the pair makes a derived table (a view) holding each value of the two columns once,
 named for the concept the proposal names, and a many-to-one relationship from each side to it:
-both sides then join through it on every front door, and the two sides are joined to each other
-through it by one junction-backed relationship (REQ-1586). The dimension is an ordinary view, which
+both sides then join through it on every front door. The dimension is an ordinary view, which
 can be renamed or extended.
 
 A second pair on the same values reuses the dimension: a side already joined many-to-one to a
@@ -23,7 +22,7 @@ relationship. This module plans what accepting makes; the admin API makes it thr
 mutations that register a view and create a relationship.
 """
 
-# Requirements: REQ-413, REQ-1586
+# Requirements: REQ-413
 
 from __future__ import annotations
 
@@ -33,7 +32,6 @@ from typing import TYPE_CHECKING
 
 from sqlalchemy import select, tuple_
 
-from provisa.core.join_through import Through
 from provisa.core.models import DERIVED_SOURCE_ID
 from provisa.core.schema_org import registered_tables, relationships, table_columns
 
@@ -66,9 +64,7 @@ class Side:
 class Plan:
     """What accepting the pair makes. ``table_id`` None: the dimension is made, as ``view_sql``;
     else it is the registered dimension one side already joins, and ``view_sql`` is None.
-    ``joining``: the sides not yet joined to it, each gaining a many-to-one relationship.
-    ``sides``: the pair's two columns, which the dimension joins to each other
-    (REQ-1586)."""
+    ``joining``: the sides not yet joined to it, each gaining a many-to-one relationship."""
 
     name: str
     column: str
@@ -77,7 +73,6 @@ class Plan:
     table_id: int | None
     view_sql: str | None
     joining: tuple[Side, ...]
-    sides: tuple[Side, Side]
 
 
 @dataclass(frozen=True)
@@ -235,7 +230,6 @@ async def plan(
             table_id=held.table_id,
             view_sql=None,
             joining=tuple(s for s in sides if (s.table_id, s.column) not in joined),
-            sides=sides,
         )
     column = concept(suggested_name, target[1])
     return Plan(
@@ -246,23 +240,6 @@ async def plan(
         table_id=None,
         view_sql=view_sql(column, sides),
         joining=sides,
-        sides=sides,
-    )
-
-
-def through(planned: Plan, dimension_id: int) -> Through:
-    """The relationship between the pair's two sides through the dimension (REQ-1586): each side
-    joins the dimension's one column."""
-    first, second = planned.sides
-    return Through(
-        shape="shared_dimension",
-        via_table_id=dimension_id,
-        source_table_id=first.table_id,
-        source_column=first.column,
-        target_table_id=second.table_id,
-        target_column=second.column,
-        via_source_column=planned.column,
-        via_target_column=planned.column,
     )
 
 

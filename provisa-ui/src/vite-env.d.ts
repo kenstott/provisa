@@ -92,8 +92,6 @@ declare module "*.graphql" {
   export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
-  export const JoinThroughQuery: DocumentNode;
-  export const JoinThrough: DocumentNode;
   export const DeleteMetrics: DocumentNode;
   export const DeleteSources: DocumentNode;
   export const DeleteRoles: DocumentNode;
@@ -254,8 +252,6 @@ declare module "*.gql" {
   export const PutBackSource: DocumentNode;
   export const DeleteTables: DocumentNode;
   export const DeleteRelationships: DocumentNode;
-  export const JoinThroughQuery: DocumentNode;
-  export const JoinThrough: DocumentNode;
   export const DeleteMetrics: DocumentNode;
   export const DeleteSources: DocumentNode;
   export const DeleteRoles: DocumentNode;

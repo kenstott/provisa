@@ -63,7 +63,6 @@ from provisa.api.admin.capabilities import (
 )
 from provisa.api.admin._retired_objects import RetiredObjectType
 from provisa.api.admin.types import (
-    JoinThroughType,
     JsonScalar,
     CombinedFileType,
     FileColumnsDifferType,
@@ -1332,34 +1331,6 @@ class Query:  # REQ-021, REQ-042
                     for r in listed
                 ]
                 return [t for t in answered if scope.whole or t.columns]
-
-    @strawberry.field
-    async def join_through(
-        self, info: StrawberryInfo, first_id: str, second_id: str
-    ) -> Optional["JoinThroughType"]:  # REQ-1586
-        """What joining the two relationships through the table they share makes, or null: they
-        share no middle table, or their other ends are joined through it already."""
-        from provisa.api.admin import join_through
-
-        require_capability(info, "create_relationship")
-        pool = await _get_pool()
-        async with pool.acquire() as conn:
-            planned = await join_through.plan(cast("Connection", conn), first_id, second_id)
-        if planned is None:
-            return None
-        t = planned.through
-        return JoinThroughType(
-            shape=t.shape,
-            name=planned.named.rel_id,
-            source_table=planned.source_table,
-            source_column=t.source_column,
-            target_table=planned.target_table,
-            target_column=t.target_column,
-            via_table=planned.via_table,
-            via_source_column=t.via_source_column,
-            via_target_column=t.via_target_column,
-            attributes=list(planned.attributes),
-        )
 
     @strawberry.field
     async def relationships(

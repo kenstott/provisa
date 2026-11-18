@@ -1454,28 +1454,6 @@ mutation CreateRelationship($input: RelationshipInput!) {
   }
 }
 
-# REQ-1586: two relationships sharing a middle table, joined through it.
-query JoinThroughQuery($firstId: String!, $secondId: String!) {
-  joinThrough(firstId: $firstId, secondId: $secondId) {
-    shape
-    name
-    sourceTable
-    sourceColumn
-    targetTable
-    targetColumn
-    viaTable
-    viaSourceColumn
-    viaTargetColumn
-    attributes
-  }
-}
-
-mutation JoinThrough($firstId: String!, $secondId: String!, $id: String!) {
-  joinThrough(firstId: $firstId, secondId: $secondId, id: $id) {
-    ...MutationResult
-  }
-}
-
 mutation UpdateRelationship($input: RelationshipInput!) {
   updateRelationship(input: $input) {
     ...MutationResult
