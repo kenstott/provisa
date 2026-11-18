@@ -275,6 +275,7 @@ def test_the_plugin_cache_action_primes_once_and_every_lane_restores_and_verifie
         "Download Trino plugins",
         "Cache Trino plugins",
         "Verify Trino plugins",
+        "provisa-functions key",
         "Restore the provisa-functions plugin",
         "Build the provisa-functions plugin",
         "Cache the provisa-functions plugin",
@@ -315,13 +316,21 @@ def test_the_plugin_cache_action_builds_provisa_functions_once_and_every_lane_re
     assert restored["id"] == "provisa-functions"
     assert restored["uses"] == "actions/cache/restore@v4"
     assert restored["with"]["path"] == "trino/plugins/provisa-functions"
-    # Every input of the build is in the key: the Maven project, the portable fake definitions
-    # it mounts, and the script that names the Maven image. The prefix goes first, as for the
-    # pinned jars (run 40005357162).
-    assert restored["with"]["key"] == (
-        "${{ inputs.key-prefix }}provisa-functions-${{ hashFiles('trino-functions/**', "
-        "'provisa/fakes/portable/**', 'scripts/build_trino_functions.sh') }}-jar"
+    # Every input of the build is in the key: the pom and sources, the portable fake definitions
+    # it mounts, and the script that names the Maven image; never trino-functions/target/, which
+    # the build writes. The prefix goes first, as for the pinned jars (run 40005357162). The key
+    # is computed once, before the build, and both the restore and the save read it: a hash taken
+    # again at the save included the build's output and named a key no lane restored (run
+    # 44299143758).
+    key = by_name["provisa-functions key"]
+    assert key["id"] == "provisa-functions-key"
+    assert key["env"]["KEY"] == (
+        "${{ inputs.key-prefix }}provisa-functions-${{ hashFiles('trino-functions/pom.xml', "
+        "'trino-functions/src/**', 'provisa/fakes/portable/**', "
+        "'scripts/build_trino_functions.sh') }}-jar"
     )
+    assert key["run"] == 'echo "key=$KEY" >> "$GITHUB_OUTPUT"'
+    assert restored["with"]["key"] == "${{ steps.provisa-functions-key.outputs.key }}"
     assert restored["with"]["fail-on-cache-miss"] == "${{ inputs.phase == 'restore' }}"
     miss = "inputs.phase == 'prime' && steps.provisa-functions.outputs.cache-hit != 'true'"
     built = by_name["Build the provisa-functions plugin"]
