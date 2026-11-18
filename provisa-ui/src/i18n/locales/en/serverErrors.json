@@ -922,6 +922,21 @@
     },
     "relationship": {
       "name_taken": "The name '{{name}}' is taken by relationship '{{held_by}}'. Name this one otherwise."
+    },
+    "syncing": {
+      "not_found": "There is no entry {{entry}}.",
+      "no_connection": "{{entry}} has no catalog to read.",
+      "no_role": "{{entry}} names no role to publish as, so what it is compared on is not decided. Choose a role in its settings.",
+      "read_not_supported": "Reading values back from {{provider}} is not supported yet.",
+      "no_such_difference": "There is no longer a difference {{difference}}. Read the list again.",
+      "decided_twice": "{{difference}} was decided twice.",
+      "direction_off": "{{entry}} does not sync in that direction.",
+      "import_kind_unsupported": "Taking a catalog's {{kind}} into Provisa is not supported yet.",
+      "publish_failed": "Publishing to {{entry}} did not succeed, so nothing was applied.",
+      "object_gone": "{{object}} is no longer registered in Provisa.",
+      "unknown_direction": "{{direction}} is not a direction: use Export or Import.",
+      "unknown_kind": "{{kind}} is not a kind of difference.",
+      "unknown_choice": "{{choice}} is not a standing choice."
     }
   }
 }

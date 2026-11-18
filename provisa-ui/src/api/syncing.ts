@@ -228,3 +228,128 @@ export async function publishEntry(
     "Publish",
   );
 }
+
+// --- An entry's differences with its catalog, and its standing choices (REQ-2247) ---
+
+/** The kinds of difference, in the order the review lists them. */
+export type DiffKind =
+  "description" | "column_description" | "owner" | "tag" | "glossary_link" | "term_definition";
+export const DIFF_KINDS: DiffKind[] = [
+  "description",
+  "column_description",
+  "owner",
+  "tag",
+  "glossary_link",
+  "term_definition",
+];
+
+/** The kinds a catalog's value can be taken into Provisa for; the server refuses the others. */
+export const IMPORTABLE_KINDS: DiffKind[] = [
+  "description",
+  "column_description",
+  "term_definition",
+];
+
+/** Which way a value goes: Export sends Provisa's to the system, Import takes the system's. */
+export type ExchangeDirection = "export" | "import";
+export const EXCHANGE_DIRECTIONS: ExchangeDirection[] = ["export", "import"];
+
+/** The side a decision takes: Provisa's value, or the catalog's. */
+export type DiffSide = "provisa" | "catalog";
+
+/** A value as Syncing compares it: a description, or a sorted list of names. */
+export type DiffValue = string | string[];
+
+export interface DiffRow {
+  kind: DiffKind;
+  /** The table or term the object belongs to. */
+  group: string;
+  object: string;
+  provisa: DiffValue;
+  catalog: DiffValue;
+  last_exchanged: {
+    value: DiffValue;
+    direction: ExchangeDirection;
+    decided_by: string;
+    at: string;
+  } | null;
+  /** Which side moved off the value last exchanged; null when none was exchanged yet. */
+  changed: "provisa" | "catalog" | "both" | null;
+}
+
+/** A standing choice: take Provisa's value, take the other system's, or hold. */
+export type StandingChoice = "provisa" | "catalog" | "hold";
+export const STANDING_CHOICES: StandingChoice[] = ["provisa", "catalog", "hold"];
+
+export interface DiffKindGroup {
+  kind: DiffKind;
+  count: number;
+  standing_choice: Record<ExchangeDirection, StandingChoice | null>;
+  groups: { group: string; count: number; rows: DiffRow[] }[];
+}
+
+export interface EntryReview {
+  id: string;
+  provider: string;
+  /** Which sides a decision may take: Provisa's is an Export, the catalog's an Import. */
+  directions: Record<ExchangeDirection, boolean>;
+  total: number;
+  kinds: DiffKindGroup[];
+}
+
+/** One decision: a side for a row (kind and object) or for a group (kind and table or term). */
+export type DiffDecision =
+  | { side: DiffSide; kind: DiffKind; object: string }
+  | { side: DiffSide; kind: DiffKind; group: string };
+
+export interface ApplyResult {
+  id: string;
+  applied: Record<DiffSide, number>;
+  publish: { ok: boolean; entries: PublishOutcome[] } | null;
+}
+
+export interface EntryStandingChoices {
+  id: string;
+  directions: Record<ExchangeDirection, boolean>;
+  /** Per direction, the choice of each kind that has one. */
+  standing_choices: Record<ExchangeDirection, Partial<Record<DiffKind, StandingChoice>>>;
+}
+
+const entryUrl = (id: string, tail: string) =>
+  `${API_BASE}/admin/syncing/${encodeURIComponent(id)}/${tail}`;
+
+export async function fetchReview(id: string): Promise<EntryReview> {
+  return ok(await fetch(entryUrl(id, "review")), "Review");
+}
+
+export async function applyReview(id: string, decisions: DiffDecision[]): Promise<ApplyResult> {
+  return ok(
+    await fetch(entryUrl(id, "review/apply"), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ decisions }),
+    }),
+    "Accept",
+  );
+}
+
+export async function fetchStandingChoices(id: string): Promise<EntryStandingChoices> {
+  return ok(await fetch(entryUrl(id, "standing-choices")), "Standing choices");
+}
+
+/** Sets the entry's standing choice for one direction and kind; null clears it. */
+export async function setStandingChoice(
+  id: string,
+  direction: ExchangeDirection,
+  kind: DiffKind,
+  choice: StandingChoice | null,
+): Promise<EntryStandingChoices> {
+  return ok(
+    await fetch(entryUrl(id, "standing-choices"), {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ direction, kind, choice }),
+    }),
+    "Standing choice",
+  );
+}
