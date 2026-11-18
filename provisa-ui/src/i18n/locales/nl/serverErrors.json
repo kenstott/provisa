@@ -625,7 +625,7 @@
       "schema_not_avro": "Schema {{schema_id}} in registry {{registry}} is {{kind}}, geen Avro",
       "schema_registry_error": "Schema-registry {{registry}} antwoordde met HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Schema-registry {{registry}} weigerde de inloggegevens van de bron (HTTP {{http_status}}, authenticatie '{{method}}')",
-      "schema_registry_unreachable": "Schema-registry {{registry}} is niet bereikbaar: {{error}}",
+      "schema_registry_unreachable": "Schema-registry is niet bereikbaar: {{error}}",
       "sse_limit_reached": "maximum aantal gelijktijdige SSE-abonnementen bereikt",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
       "unknown_role": "Onbekende rol '{{role}}'",

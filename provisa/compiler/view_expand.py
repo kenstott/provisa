@@ -41,6 +41,52 @@ _KW_AFTER_TABLE = (
 _ALIAS = rf'(?P<alias>\s+(?:AS\s+)?(?:"[^"]+"|(?!(?i:{_KW_AFTER_TABLE})\b)[A-Za-z_]\w*))?'
 
 
+#: The clauses whose comma-separated items are tables: a FROM list, continued past a join and
+#: its condition. A comma in any other clause separates expressions, a column among them.
+_TABLE_LIST_CLAUSES = frozenset({"FROM", "JOIN", "ON", "USING"})
+_CLAUSE_WORDS = _TABLE_LIST_CLAUSES | frozenset(
+    {
+        "SELECT",
+        "WHERE",
+        "GROUP",
+        "HAVING",
+        "ORDER",
+        "LIMIT",
+        "OFFSET",
+        "UNION",
+        "EXCEPT",
+        "INTERSECT",
+        "WINDOW",
+        "QUALIFY",
+        "VALUES",
+        "SET",
+        "RETURNING",
+    }
+)
+_TOKEN = re.compile(r"'(?:[^']|'')*'|\"(?:[^\"]|\"\")*\"|[(),]|[A-Za-z_]\w*")
+
+
+def _table_position(text: str, start: int) -> bool:
+    """Whether the reference at ``start`` of ``text`` is read as a table: right after FROM or
+    JOIN, or after a comma of a FROM list. A column shares a view's name as often as not (a
+    shared dimension is named for its column, REQ-413), and ``t.name`` is that column."""
+    clause: list[str | None] = [None]
+    last = ""
+    for m in _TOKEN.finditer(text, 0, start):
+        tok = m.group()
+        if tok == "(":
+            clause.append(None)
+        elif tok == ")":
+            if len(clause) > 1:
+                clause.pop()
+        elif tok[0] not in "'\"," and tok.upper() in _CLAUSE_WORDS:
+            clause[-1] = tok.upper()
+        last = tok.upper() if tok[0] not in "'\"" else tok
+    if last in ("FROM", "JOIN"):
+        return True
+    return last == "," and clause[-1] in _TABLE_LIST_CLAUSES
+
+
 def _expand_one(sql: str, view_table: str, view_sql: str, mark: bool = False) -> str:
     """Replace catalog- and schema-qualified refs to one view table.
 
@@ -54,6 +100,8 @@ def _expand_one(sql: str, view_table: str, view_sql: str, mark: bool = False) ->
 
     def repl(m: re.Match) -> str:
         kw = m.groupdict().get("kw") or ""
+        if not kw and not _table_position(m.string, m.start()):
+            return m.group()  # a column named like the view, not the view
         alias = m.group("alias")
         if alias:
             return f"{kw}({view_sql}){alias}"
@@ -87,6 +135,8 @@ def _expand_in_schema(sql: str, view_table: str, view_sql: str) -> str:
 
     def repl(m: re.Match) -> str:
         kw = m.groupdict().get("kw") or ""
+        if not kw and not _table_position(m.string, m.start()):
+            return m.group()  # a column named like the view, not the view
         alias = m.group("alias")
         return f"{kw}({view_sql}){alias}" if alias else f'{kw}({view_sql}) "{name}"'
 
@@ -94,6 +144,16 @@ def _expand_in_schema(sql: str, view_table: str, view_sql: str) -> str:
     sql = re.sub(rf'"[^"]+"\."{s}"\."{n}"{_ALIAS}', repl, sql)
     sql = re.sub(rf'(?<![\w."]\.)"{s}"\."{n}"{_ALIAS}', repl, sql)
     return re.sub(rf'(?<![\w."\'])(?P<kw>FROM\s+|JOIN\s+)?{s}\.{n}\b{_ALIAS}', repl, sql)
+
+
+#: What a view's reference is replaced by when only asked whether it is there.
+_PROBE = f"SELECT 1 AS {VIEW_MARK}"
+
+
+def reads_view(sql: str, view_table: str) -> bool:  # REQ-135
+    """Whether ``sql`` reads ``view_table`` as a table: what :func:`expand_view_refs` replaces.
+    A column sharing the view's name is not a read of it."""
+    return _expand_one(sql, view_table, _PROBE) != sql
 
 
 def expand_view_refs(  # REQ-135

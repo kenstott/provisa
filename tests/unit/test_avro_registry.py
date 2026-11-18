@@ -167,7 +167,10 @@ async def test_a_registry_that_cannot_be_reached_is_named():
         await registry.reach()
     assert refused.value.status == 503
     assert refused.value.code == "subscribe.schema_registry_unreachable"
-    assert refused.value.params["registry"] == "http://registry:8081"
+    assert (
+        refused.value.params["error"]
+        == "could not connect to GET http://registry:8081/subjects (connection refused)"
+    )
 
 
 async def test_a_registry_that_hangs_is_bounded_and_named():

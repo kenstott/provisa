@@ -112,11 +112,17 @@ BY_DESIGN = ("design", "client", "suite")
 #: What a group naming catalog functions says of its cases.
 FUNCTION_CASE = "^catalog function::"
 
+#: REQ-001: the group of a function the validator refuses for reading or acting on its server
+#: (V007), on every engine, and how the pgwire suite words such a case's reason.
+SERVER_FUNCTION_GROUP = "A function that reads or acts on its server is not served"
+SERVER_FUNCTION_REASON = "refused as reading or acting on its server: "
+
 #: REQ-2167 (amended 2026-10-29, INTERNAL FUNCTIONS; 2026-11-02): the only groups that may name
 #: catalog functions, exactly as here. PostgreSQL's own refusal or an internal argument puts a function in
 #: it (pgwire_catalog_types.py words its reason). Any other function not served is failed
 #: (PG_CATALOG FUNCTIONS ARE GAPS): the index support functions are served or refused by name
-#: (REQ-2171), so they have no group.
+#: (REQ-2171), so they have no group. A function the validator refuses for reading or acting on
+#: its server (REQ-001, V007) is refused on every engine, PostgreSQL included.
 FUNCTION_GROUPS = {
     "Internal functions": {"case": FUNCTION_CASE, "reason": "^no call reaches it: "},
     # REQ-2167 (amended 2026-11-02, Sequence functions are not supported; Six-argument
@@ -129,6 +135,9 @@ FUNCTION_GROUPS = {
         "reason": r"^not served: (?:ERROR:\s+)?(?:nextval|currval|setval|regexp_replace)\(\) "
         r"has no form ",
     },
+    # REQ-001: the validator's V007, read by pgwire_function_probe.not_served, the rule the
+    # function measure (function_support) reads it by too.
+    SERVER_FUNCTION_GROUP: {"case": FUNCTION_CASE, "reason": f"^{SERVER_FUNCTION_REASON}"},
 }
 
 

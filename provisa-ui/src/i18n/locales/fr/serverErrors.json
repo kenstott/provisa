@@ -625,7 +625,7 @@
       "schema_not_avro": "Le schéma {{schema_id}} du registre {{registry}} est {{kind}}, pas Avro",
       "schema_registry_error": "Le registre de schémas {{registry}} a répondu HTTP {{http_status}} : {{error}}",
       "schema_registry_refused_credentials": "Le registre de schémas {{registry}} a refusé les identifiants de la source (HTTP {{http_status}}, authentification '{{method}}')",
-      "schema_registry_unreachable": "Le registre de schémas {{registry}} est injoignable : {{error}}",
+      "schema_registry_unreachable": "Le registre de schémas est injoignable : {{error}}",
       "sse_limit_reached": "nombre maximal d'abonnements SSE simultanés atteint",
       "table_not_found": "Table « {{table}} » introuvable",
       "unknown_role": "Rôle « {{role}} » inconnu",

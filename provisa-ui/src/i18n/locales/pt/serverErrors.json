@@ -625,7 +625,7 @@
       "schema_not_avro": "O esquema {{schema_id}} no registro {{registry}} é {{kind}}, não Avro",
       "schema_registry_error": "O registro de esquemas {{registry}} respondeu HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "O registro de esquemas {{registry}} recusou as credenciais da origem (HTTP {{http_status}}, autenticação '{{method}}')",
-      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas {{registry}}: {{error}}",
+      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas: {{error}}",
       "sse_limit_reached": "máximo de assinaturas SSE simultâneas atingido",
       "table_not_found": "Tabela '{{table}}' não encontrada",
       "unknown_role": "Função desconhecida '{{role}}'",

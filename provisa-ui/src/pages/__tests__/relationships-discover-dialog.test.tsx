@@ -687,6 +687,34 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
   });
 });
 
+// The Modal's size, as the dialog sets it: Mantine writes it as the --modal-size variable.
+const modalSize = () => {
+  const sized = document.querySelector<HTMLElement>(".mantine-Modal-root");
+  return sized?.style.getPropertyValue("--modal-size");
+};
+// The setup step's size, the shared modal size "lg".
+const STANDARD = "var(--modal-size-lg)";
+
+describe("Discovery dialog: its size by what it shows", () => {
+  it("takes the standard size while setting up a run", async () => {
+    await openDialog();
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("keeps the standard size while a run is going", async () => {
+    runMock.mockResolvedValue(runOf({ status: "running", requests_total: 4, requests_done: 1 }));
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-stop", {}, SLOW);
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("takes the window's width only to show a run's results", async () => {
+    await endedRun();
+    expect(modalSize()).toBe("100%");
+  });
+});
+
 describe("Discovery dialog: an ended run's layout", () => {
   it("puts New run beside Apply, in the action row above the table", async () => {
     await endedRun();
@@ -750,7 +778,8 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
         target_in_source: 30,
       },
     }),
-    // A shared neighborhood, a key of neither table: many-to-many, under the threshold.
+    // A shared neighborhood, a key of neither table: many-to-many, under the threshold. It is
+    // accepted as a shared dimension, named for the concept.
     proposal({
       id: 602,
       source_column: "neighborhood",
@@ -760,7 +789,8 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
       score: 0.6,
       measured: true,
       reason: "below_threshold",
-      acceptable: false,
+      suggested_name: "neighborhood",
+      dimension: { name: "neighborhood", reused: false },
       measure: {
         bound: 10000,
         source: side(5, false),
@@ -821,12 +851,77 @@ describe("Discovery dialog: each pair measured on its data, ticked from the pers
     );
   });
 
-  it("a many-to-many row cannot be accepted, says why, and can be marked not to be recommended", async () => {
+  it("a many-to-many row is accepted as the shared dimension it names", async () => {
+    applyMock.mockResolvedValue([
+      { id: 602, action: "accept", ok: true, relationship_id: "neighborhood" },
+    ]);
     await measuredRun();
     const row = screen.getByTestId("proposal-602");
-    expect(within(row).queryByTestId("list-select-602")).toBeNull();
-    expect(row).toHaveTextContent("Neither column is a key, so it cannot be accepted.");
+    expect(acceptBox(602).checked).toBe(false); // scored under the threshold
+    expect(row).toHaveTextContent(
+      "Accepting makes the shared dimension neighborhood, which both columns join.",
+    );
     expect(notAgainBox(602)).toBeInTheDocument();
+    fireEvent.click(acceptBox(601));
+    fireEvent.click(acceptBox(603));
+    fireEvent.click(acceptBox(602));
+    fireEvent.click(screen.getByTestId("discover-apply"));
+    // The name sent is the dimension's.
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith(7, {
+        accept: [{ id: 602, name: "neighborhood" }],
+        not_again: [],
+      }),
+    );
+  });
+
+  it("a many-to-many row whose dimension is registered says it joins that dimension", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [
+        proposal({
+          id: 605,
+          cardinality: "many-to-many",
+          source_column: "neighborhood",
+          target_column: "neighborhood",
+          suggested_name: "complaint-neighborhood",
+          dimension: { name: "neighborhood", reused: true },
+        }),
+      ],
+      threshold: 0.7,
+      kept_at: 0.7,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    const row = await screen.findByTestId("proposal-605", {}, SLOW);
+    expect(acceptBox(605)).toBeInTheDocument();
+    expect(row).toHaveTextContent(
+      "Accepting joins both columns to the shared dimension neighborhood.",
+    );
+  });
+
+  it("a many-to-many row whose columns join two dimensions cannot be accepted and says why", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [
+        proposal({
+          id: 606,
+          cardinality: "many-to-many",
+          acceptable: false,
+          dimension: null,
+        }),
+      ],
+      threshold: 0.7,
+      kept_at: 0.7,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    const row = await screen.findByTestId("proposal-606", {}, SLOW);
+    expect(within(row).queryByTestId("list-select-606")).toBeNull();
+    expect(row).toHaveTextContent(
+      "Its columns already join two different shared dimensions, so it cannot be accepted.",
+    );
+    expect(notAgainBox(606)).toBeInTheDocument();
   });
 
   it("the threshold set in the dialog re-ticks the rows and is kept for the person", async () => {

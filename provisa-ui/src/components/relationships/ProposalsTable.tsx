@@ -17,7 +17,8 @@
 // were compared, the model's own beside it. The threshold rows start ticked from is the
 // person's own, set here. The run's actions (New run, Apply) sit in one row above the table;
 // the table scrolls under its pinned header row in the room the dialog leaves it (REQ-1587's
-// pinned list header).
+// pinned list header). A many-to-many pair (neither column a key) is accepted as a shared
+// dimension: its row names the dimension, and Apply sends that name.
 
 import { useMemo, type ReactNode } from "react";
 import { useTranslation } from "react-i18next";
@@ -59,22 +60,24 @@ export function ProposalsTable({
     return domain ? `${domain}.${table}.${column}` : `${table}.${column}`;
   };
   const nameOf = (p: RunProposal) =>
-    p.source_table_id === null || p.target_table_id === null || p.source_column === null
-      ? ""
-      : candidateName(
-          {
-            id: p.id,
-            source_table_id: p.source_table_id,
-            target_table_id: p.target_table_id,
-            source_column: p.source_column,
-            target_column: p.target_column ?? "",
-            cardinality: "many-to-one",
-            confidence: p.score ?? 0,
-            reasoning: "",
-            suggested_name: p.suggested_name ?? undefined,
-          },
-          tableNameById,
-        );
+    p.dimension
+      ? p.dimension.name
+      : p.source_table_id === null || p.target_table_id === null || p.source_column === null
+        ? ""
+        : candidateName(
+            {
+              id: p.id,
+              source_table_id: p.source_table_id,
+              target_table_id: p.target_table_id,
+              source_column: p.source_column,
+              target_column: p.target_column ?? "",
+              cardinality: "many-to-one",
+              confidence: p.score ?? 0,
+              reasoning: "",
+              suggested_name: p.suggested_name ?? undefined,
+            },
+            tableNameById,
+          );
 
   // Jev's column is shown where Jev scored a proposal of the run: its score beside the model's,
   // which is the row's (REQ-1789).
@@ -135,14 +138,22 @@ export function ProposalsTable({
           ? t("proposalsTable.applyNotAgain", { count: marking })
           : t("proposalsTable.apply");
 
+  // What accepting a many-to-many row does comes first: the cell shows three lines, and the
+  // dimension's name must be among them.
   const note = (p: RunProposal) =>
     [
+      p.dimension
+        ? t(
+            p.dimension.reused ? "proposalsTable.dimensionJoined" : "proposalsTable.dimensionMade",
+            { name: p.dimension.name },
+          )
+        : "",
+      p.decidable && !p.acceptable ? t("proposalsTable.twoDimensions") : "",
       p.reason === null
         ? ""
         : t(`proposalsTable.reason.${p.reason}`, {
             threshold: Math.round(state.keptAt * 100),
           }),
-      p.decidable && !p.acceptable ? t("proposalsTable.manyToMany") : "",
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
     ]
       .filter(Boolean)

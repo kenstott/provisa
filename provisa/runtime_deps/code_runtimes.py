@@ -483,7 +483,7 @@ def fetch_https(url: str) -> bytes:
     try:
         response = httpx.get(url, follow_redirects=True, timeout=300.0)
     except httpx.HTTPError as exc:
-        raise RuntimeUnavailable(f"failed to download {url}: {describe_http_failure(exc)}") from exc
+        raise RuntimeUnavailable(f"failed to download: {describe_http_failure(exc)}") from exc
     if response.status_code != HTTPStatus.OK:
         raise RuntimeUnavailable(f"failed to download {url}: HTTP {response.status_code}")
     return response.content
