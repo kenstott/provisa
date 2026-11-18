@@ -733,7 +733,7 @@ export default defineConfig({
             // Reduced motion: no 3D stage turns while a spec reads its page, and a camera jumps
             // where it would fly (profile3d/baseScene.ts). CI draws WebGL in software, and a stage
             // turning for a whole test held SwiftShader's GPU process at most of a core.
-            use: { reducedMotion: "reduce" },
+            use: { contextOptions: { reducedMotion: "reduce" as const } },
           },
           {
             // Run with --workers=1 (see PROVISIONING_SPECS and ASKAMERICA_SPECS).
@@ -741,7 +741,7 @@ export default defineConfig({
             testMatch: [...PROVISIONING_SPECS, ...ASKAMERICA_SPECS, ...ASKAMERICA_TITLE_SPECS],
             testIgnore: IS_AMD64 ? [] : AMD64_ONLY_SPECS,
             grepInvert: ASKAMERICA_TITLE_SPECS_OTHER_CASES,
-            use: { reducedMotion: "reduce" },
+            use: { contextOptions: { reducedMotion: "reduce" as const } },
           },
           {
             // Maintainer 2026-10-29: the live warehouses, nightly only (see WAREHOUSE_SPECS).
@@ -751,7 +751,7 @@ export default defineConfig({
             grep: new RegExp(
               `\\bcloud warehouse sources through the UI\\b|${WAREHOUSE_TITLES.source}`,
             ),
-            use: { reducedMotion: "reduce" },
+            use: { contextOptions: { reducedMotion: "reduce" as const } },
           },
         ]
       : []),

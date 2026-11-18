@@ -31,6 +31,13 @@ if [ "$(uname -s)" = Linux ]; then
   sudo sysctl -w net.ipv4.ip_local_reserved_ports=33000-39999
 fi
 
+# The lane's backends boot config/provisa-install.yaml, whose vector_models registers a local
+# sentence-transformers model (provider huggingface), as the release's install image does with its
+# default extras (Dockerfile PROVISA_EXTRAS=firebase,vector). Without the vector extra every
+# backend's glossary term embeddings task failed on "No module named 'sentence_transformers'"
+# (run 44081200735). Installed under the default umask: the packages are not credentials.
+( umask 022 && cd "${GITHUB_WORKSPACE:?}" && bash scripts/ci/install_vector_extra.sh )
+
 dir="${RUNNER_TEMP:?}/lane-credentials"
 mkdir -p "$dir"
 

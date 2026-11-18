@@ -88,7 +88,7 @@ def _lanes_selecting(test_file: Path) -> list[str]:
 def _lanes_given_the_extra() -> set[str]:
     script = (_ROOT / "scripts/ci/lanes/suite-prepare.sh").read_text()
     case = re.search(
-        r'case "\$\{1:-\}" in ([\w |]+)\)\n  uv pip install --index-url \S+/cpu torch', script
+        r'case "\$\{1:-\}" in ([\w |]+)\)\n  bash scripts/ci/install_vector_extra\.sh\n', script
     )
     assert case is not None, "suite-prepare.sh installs the vector extra for named lanes"
     return {lane.strip() for lane in case.group(1).split("|")}
@@ -110,3 +110,50 @@ def test_the_warehouse_job_prepares_as_the_warehouse_lane() -> None:
     runs = [step.get("run", "") for step in workflow["jobs"]["warehouse"]["steps"]]
     prepares = [run for run in runs if "scripts/ci/lanes/suite-prepare.sh" in run]
     assert prepares == ["bash scripts/ci/lanes/suite-prepare.sh warehouse"]
+
+
+def test_the_vector_extra_is_installed_with_cpu_only_torch() -> None:
+    script = (_ROOT / "scripts/ci/install_vector_extra.sh").read_text()
+    torch = script.index("uv pip install --index-url https://download.pytorch.org/whl/cpu torch")
+    extra = script.index(
+        "uv pip install $(uv run python scripts/demo_extras.py demo/named/sonnets)"
+    )
+    assert torch < extra
+    assert "import sentence_transformers, torch" in script[extra:]
+
+
+def test_every_ui_lane_on_the_install_config_installs_the_vector_extra() -> None:
+    """The core UI backends boot config/provisa-install.yaml, which registers a local
+    sentence-transformers model: without the vector extra every backend's glossary term
+    embeddings task failed on "No module named 'sentence_transformers'" (run 44081200735). The
+    UI jobs that prepare with ui-core-prepare.sh -- the two core jobs and the warehouse UI job --
+    install the extra there."""
+    install = yaml.safe_load((_ROOT / "config/provisa-install.yaml").read_text())
+    assert any(m.get("provider") == "huggingface" for m in install["vector_models"])
+    prepare = (_ROOT / "scripts/ci/lanes/ui-core-prepare.sh").read_text()
+    commands = [line.strip() for line in prepare.splitlines() if not line.lstrip().startswith("#")]
+    assert (
+        '( umask 022 && cd "${GITHUB_WORKSPACE:?}" && bash scripts/ci/install_vector_extra.sh )'
+        in commands
+    )
+    jobs = {
+        **{
+            f"ui-e2e-core.yml:{name}": job
+            for name, job in yaml.safe_load(
+                (_ROOT / ".github/workflows/ui-e2e-core.yml").read_text()
+            )["jobs"].items()
+        },
+        "integration-suite-lanes.yml:warehouse-ui": yaml.safe_load(
+            (_ROOT / ".github/workflows/integration-suite-lanes.yml").read_text()
+        )["jobs"]["warehouse-ui"],
+    }
+    prepared = {
+        name
+        for name, job in jobs.items()
+        if (job.get("with") or {}).get("prepare") == "scripts/ci/lanes/ui-core-prepare.sh"
+    }
+    assert prepared == {
+        "ui-e2e-core.yml:playwright",
+        "ui-e2e-core.yml:provisioning",
+        "integration-suite-lanes.yml:warehouse-ui",
+    }
