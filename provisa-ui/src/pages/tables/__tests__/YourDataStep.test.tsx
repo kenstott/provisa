@@ -26,7 +26,6 @@ const ACCESS: Record<number, TableAccess> = {
     pgwire: "postgresql://data.example.com:5433/provisa?options=-csearch_path%3Dsales",
     rest: "GET https://data.example.com/data/rest/sales/orders?limit=20",
     mcp: '{\n  "tool": "run_sql"\n}',
-    draft: false,
   },
   12: {
     graphql: "query {\n  s__customers(limit: 10) {\n    id\n  }\n}",
@@ -34,7 +33,6 @@ const ACCESS: Record<number, TableAccess> = {
     pgwire: null,
     rest: null,
     mcp: '{\n  "tool": "run_sql"\n}',
-    draft: true,
   },
 };
 const asked: [number | null, string | null][] = [];
@@ -138,14 +136,15 @@ describe("Your data, right after registering", () => {
     );
   });
 
-  it("marks the ways to reach a draft as a draft's, and no other table's", async () => {
+  // REQ-1921: there is no draft state; a registered table is live, so no table's ways to reach
+  // it are marked.
+  it("marks no table's ways to reach it as a draft's", async () => {
     renderStep();
     expect(screen.queryByTestId("your-data-draft")).toBeNull();
     await userEvent.click(screen.getByTestId("your-data-tab-customers"));
-    expect(screen.getByTestId("your-data-draft")).toHaveTextContent("Draft");
-    expect(screen.getByTestId("your-data-draft-note")).toHaveTextContent(
-      "This table is a draft: until it is released, only roles that may register tables in its domain reach it these ways.",
-    );
+    expect(screen.getByTestId("your-data-graphql")).toBeInTheDocument();
+    expect(screen.queryByTestId("your-data-draft")).toBeNull();
+    expect(screen.queryByText(/draft/i)).toBeNull();
   });
 
   it("names each table whose registration was refused, with why", () => {

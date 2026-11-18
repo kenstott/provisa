@@ -42,7 +42,7 @@ describe("TablesPage — failed tables query (REQ-1293)", () => {
   it("reports the failure instead of rendering an empty grid", async () => {
     renderTables([
       {
-        request: { query: TablesQuery },
+        request: { query: TablesQuery, variables: { includeWithdrawn: true } },
         error: new Error("Org selection required"),
       },
     ]);
@@ -57,7 +57,7 @@ describe("TablesPage — failed tables query (REQ-1293)", () => {
   it("stays silent when the query succeeds with no tables", async () => {
     renderTables([
       {
-        request: { query: TablesQuery },
+        request: { query: TablesQuery, variables: { includeWithdrawn: true } },
         result: { data: { tables: [] } },
       },
     ]);

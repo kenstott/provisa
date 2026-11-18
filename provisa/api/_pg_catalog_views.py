@@ -177,10 +177,10 @@ _CATALOG_NAMES = ", ".join(
 )
 _IS_ITSELF = f"rt.domain_id = 'meta' AND rt.table_name IN ({_CATALOG_NAMES})"
 #: Over ``rt``, a row of registered_tables: whether a catalog lists it.
-#: REQ-1921, REQ-2248: a draft, withdrawn (itself or through its source) or retired table is in no
+#: REQ-1921, REQ-2248: a withdrawn (itself or through its source) or retired table is in no
 #: catalog.
 LISTED_TABLE = (
-    "NOT rt.draft AND NOT rt.retired AND NOT rt.withdrawn "
+    "NOT rt.retired AND NOT rt.withdrawn "
     "AND rt.source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) "
     f"AND NOT ({_IS_ITSELF})"
 )
@@ -188,7 +188,7 @@ LISTED_TABLE = (
 
 def _catalog_tables() -> str:
     """Every table a catalog lists, by the name a statement queries it by, and every metric:
-    drafts are in no catalog, and these views are in none (security.rights.SQL_CATALOG_TABLES).
+    withdrawn tables are in no catalog, and these views are in none (security.rights.SQL_CATALOG_TABLES).
     The naming rules apply in order, each everywhere in the name, as naming._apply_naming_rules.
     Each step of a name is read once by a subquery held apart by OFFSET 0, and only for a table
     with no alias: written out, a step would be repeated in the next, and a statement plans

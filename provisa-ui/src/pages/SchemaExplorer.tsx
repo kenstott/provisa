@@ -19,6 +19,7 @@ import { useDomainFilter } from "../context/DomainFilterContext";
 import { useSubnavExtraSlot } from "../context/subnavExtraSlot";
 import { useTables, useAllRelationships, useDomains } from "../hooks/useAdminQueries";
 import { ErdPanel } from "../components/erd/ErdPanel";
+import { useShowWithdrawn } from "../components/erd/useShowWithdrawn";
 import { VOYAGER_THEME_CSS, VOYAGER_VARS_ID, voyagerThemeVars } from "./schemaExplorerTheme";
 
 /**
@@ -59,8 +60,9 @@ export function SchemaExplorer() {
     return () => watch.disconnect();
   }, [applyTheme]);
 
-  const { tables } = useTables();
-  const { relationships } = useAllRelationships();
+  const withdrawn = useShowWithdrawn();
+  const { tables } = useTables({ includeWithdrawn: withdrawn.include });
+  const { relationships } = useAllRelationships({ includeWithdrawn: withdrawn.include });
   const { domains: allDomains } = useDomains();
 
   const domainFiltered = checkedDomains.size > 0 && checkedDomains.size < domains.length;
@@ -175,6 +177,7 @@ setTimeout(function() {
             relationships={relationships}
             domains={allDomains}
             checkedDomains={erdCheckedDomains}
+            withdrawn={withdrawn.control}
             onTableClick={(_id, name) => navigate(`/tables?source=${encodeURIComponent(name)}`)}
           />
         )}

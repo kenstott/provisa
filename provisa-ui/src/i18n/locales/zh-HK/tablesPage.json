@@ -93,6 +93,9 @@
     "history": {
       "badge": "歷史",
       "title": "保留歷史：可按截至某日或按記錄時查詢（時光回溯）"
-    }
+    },
+    "withdrawn": "已撤回",
+    "withdrawnTitle": "已停止生產使用：在恢復之前，任何角色都無法讀取",
+    "sourceWithdrawnTitle": "其數據來源 {{source}} 已撤回：在數據來源恢復之前，任何角色都無法讀取"
   }
 }

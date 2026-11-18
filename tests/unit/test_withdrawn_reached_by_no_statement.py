@@ -8,13 +8,12 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1921, A DRAFT IS SERVED TO ORG_ADMIN (decided 2026-11-12), on the SQL surfaces (pgwire,
-/data/sql, MCP run_sql, which all reach the pipeline's top): a statement of a role holding table
-registration in the draft's domain -- org_admin, a domain steward, a role inheriting the right, or
-a meta role one of whose members carries it there -- that names a draft reads it as a served
-table is, through the one path a draft is read by (admin/table_read.plan_reading_drafts):
-governed under that role's masks, row rules and limits, nothing of it kept, and recorded as a
-draft preview. Every other role's statement naming it is refused as a draft, as before.
+"""REQ-1921: no query language reaches a withdrawn table, not even for a role holding table
+registration in its domain. On the SQL surfaces (pgwire, /data/sql, MCP run_sql, which all reach the
+pipeline's top) a statement naming it is refused as a relation that is not registered, whatever the
+role. Its stewards -- org_admin, a domain steward, a role inheriting the right -- read it only
+through the table's preview (admin/table_read.read_as_caller), governed under the caller's masks,
+row rules and limits, nothing of it kept, and recorded as a withdrawn preview.
 
 The real role build and the real governance stage, with routing stood in for: what reaches
 routing is what would be read."""
@@ -23,7 +22,6 @@ routing is what would be read."""
 
 from __future__ import annotations
 
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
@@ -59,15 +57,15 @@ def _role(
     }
 
 
-def _draft() -> dict:
-    """``refunds``, a draft of the sales domain, its columns granted to each reader."""
-    draft = _refunds()
-    return {**draft, "columns": [{**c, "visible_to": list(_READERS)} for c in draft["columns"]]}
+def _withdrawn() -> dict:
+    """``refunds``, withdrawn, of the sales domain, its columns granted to each reader."""
+    table = _refunds()
+    return {**table, "columns": [{**c, "visible_to": list(_READERS)} for c in table["columns"]]}
 
 
 @pytest.fixture
 def state(multi_domain, monkeypatch):  # noqa: F811
-    """The real role build with ``refunds`` registered as a draft: org_admin, ``steward``
+    """The real role build with ``refunds`` registered and withdrawn: org_admin, ``steward``
     inheriting from it, and ``r`` and ``s``, which hold no org_admin."""
     import provisa.api.app as appmod
     from provisa.api.app_loaders import _build_and_register_schemas
@@ -84,11 +82,12 @@ def state(multi_domain, monkeypatch):  # noqa: F811
     monkeypatch.setattr(built, "source_catalogs", {"pg": "pg"}, raising=False)
     _build_and_register_schemas(
         roles=[
-            # The right a draft is read by, in every domain (as org_admin is seeded with it)...
+            # The right a withdrawn table is previewed by, in every domain (as org_admin is
+            # seeded with it)...
             _role("org_admin", [], (_REG,), ("*",)),
             # ...inherited from it,
             _role("steward", ["org_admin"]),
-            # ...held in the draft's own domain alone,
+            # ...held in the table's own domain alone,
             _role("sales_steward", [], (_REG,)),
             # ...and held in another domain only, by a role reaching no data of its own.
             _role("finance_registrar", [], (_REG,), ("finance",)),
@@ -110,8 +109,7 @@ def state(multi_domain, monkeypatch):  # noqa: F811
         gql_object_cols={},
         rls_rules=[],
         metrics=[],
-        draft_tables=[_draft()],
-        withdrawn_tables=[],
+        withdrawn_tables=[_withdrawn()],
         withdrawn_relationships=[],
     )
     monkeypatch.setattr(built, "tables", _tables(), raising=False)
@@ -119,6 +117,7 @@ def state(multi_domain, monkeypatch):  # noqa: F811
 
 
 _STATEMENT = 'SELECT * FROM "sales"."refunds" LIMIT 5'
+_NOT_REGISTERED = "not a registered table"
 
 
 async def _sent(sql: str, role_id: str) -> Any:
@@ -127,40 +126,39 @@ async def _sent(sql: str, role_id: str) -> Any:
     return await _pipeline._govern_and_route(sql, role_id)
 
 
-@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward"])
-async def test_a_role_registering_tables_in_its_domain_reads_a_draft_it_names(  # noqa: F811
+async def _previewed(state: Any, role_id: str) -> Any:
+    return await table_read.read_as_caller(state, _REFUNDS, role_id, limit=5)
+
+
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward", "r"])
+async def test_every_roles_statement_naming_a_withdrawn_table_is_refused(  # noqa: F811
     state,
     routing,  # noqa: F811
     role_id,
 ):
-    with pytest.raises(_Routed) as routed:
+    with pytest.raises(PermissionError, match=_NOT_REGISTERED):
         await _sent(_STATEMENT, role_id)
+    routing.assert_not_awaited()
+
+
+async def test_a_meta_role_with_the_right_among_its_members_is_refused_too(state, routing):  # noqa: F811
+    from provisa.security.meta_role import ensure_meta_role
+
+    for members in (["org_admin", "r"], ["r", "s"], ["finance_registrar", "r"]):
+        with pytest.raises(PermissionError, match=_NOT_REGISTERED):
+            await _sent(_STATEMENT, ensure_meta_role(state, members))
+    routing.assert_not_awaited()
+
+
+@pytest.mark.parametrize("role_id", ["org_admin", "steward", "sales_steward"])
+async def test_its_steward_reads_it_through_the_preview_alone(state, routing, role_id):  # noqa: F811
+    with pytest.raises(_Routed) as routed:
+        await _previewed(state, role_id)
     routing.assert_awaited_once()
     assert "refunds" in routed.value.sql
 
 
-async def test_a_meta_role_with_the_right_among_its_members_reads_it(state, routing):  # noqa: F811
-    from provisa.security.meta_role import ensure_meta_role
-
-    with pytest.raises(_Routed):
-        await _sent(_STATEMENT, ensure_meta_role(state, ["org_admin", "r"]))
-    routing.assert_awaited_once()
-
-
-async def test_every_other_role_is_refused_naming_the_draft(state, routing):  # noqa: F811
-    from provisa.security.meta_role import ensure_meta_role
-
-    with pytest.raises(PermissionError, match="draft"):
-        await _sent(_STATEMENT, "r")
-    with pytest.raises(PermissionError, match="draft"):
-        await _sent(_STATEMENT, ensure_meta_role(state, ["r", "s"]))
-    # The right in another domain, beside a role reaching sales: paired with its own domain.
-    with pytest.raises(PermissionError, match="draft"):
-        await _sent(_STATEMENT, ensure_meta_role(state, ["finance_registrar", "r"]))
-    routing.assert_not_awaited()
-
-
-async def test_the_draft_is_read_under_the_roles_own_masks(state, routing):  # noqa: F811
+async def test_the_preview_is_read_under_the_roles_own_masks(state, routing):  # noqa: F811
     from provisa.security.masking import MaskingRule, MaskType
 
     state.masking_rules = {
@@ -169,46 +167,46 @@ async def test_the_draft_is_read_under_the_roles_own_masks(state, routing):  # n
         }
     }
     with pytest.raises(_Routed):
-        await _sent(_STATEMENT, "org_admin")
+        await _previewed(state, "org_admin")
     governed = " ".join(str(a) for a in routing.await_args.args) + str(routing.await_args.kwargs)
     assert "MASKED" in governed
 
 
-async def test_the_draft_is_read_under_the_roles_own_row_rule(state, routing, monkeypatch):  # noqa: F811
+async def test_the_preview_is_read_under_the_roles_own_row_rule(state, routing, monkeypatch):  # noqa: F811
     from provisa.compiler.rls import read_rule
 
     real = table_read._surface_with
 
-    def _ruled(state_: Any, role_id: str, drafts: list[dict]) -> Any:
+    def _ruled(state_: Any, role_id: str, withdrawn: list[dict]) -> Any:
         from dataclasses import replace
 
-        surface = real(state_, role_id, drafts)
+        surface = real(state_, role_id, withdrawn)
         rules = {**surface.rls.rules, _REFUNDS: read_rule("note = 'kept'")}
         return replace(surface, rls=replace(surface.rls, rules=rules))
 
     monkeypatch.setattr(table_read, "_surface_with", _ruled)
     with pytest.raises(_Routed):
-        await _sent(_STATEMENT, "org_admin")
+        await _previewed(state, "org_admin")
     governed = " ".join(str(a) for a in routing.await_args.args) + str(routing.await_args.kwargs)
     assert "'kept'" in governed
 
 
-async def test_nothing_of_the_read_is_kept_and_no_other_role_reads_it_after(state, routing):  # noqa: F811
+async def test_nothing_of_the_preview_is_kept_and_no_statement_reads_it_after(state, routing):  # noqa: F811
     tables_before, surface_before = list(state.tables), state.surfaces["org_admin"]
     with pytest.raises(_Routed):
-        await _sent(_STATEMENT, "org_admin")
+        await _previewed(state, "org_admin")
     routing.reset_mock()
     assert state.tables == tables_before and _REFUNDS not in [t["id"] for t in state.tables]
     assert state.surfaces["org_admin"] is surface_before
     surface = role_surface(state, "org_admin")
     assert surface is not None and "refunds" not in surface.context.tables
-    assert not hasattr(state, "previewed_draft_ids")
-    with pytest.raises(PermissionError, match="draft"):
-        await _sent(_STATEMENT, "r")
+    assert not hasattr(state, "previewed_withdrawn_ids")
+    with pytest.raises(PermissionError, match=_NOT_REGISTERED):
+        await _sent(_STATEMENT, "org_admin")
     routing.assert_not_awaited()
 
 
-async def test_the_read_is_recorded_as_a_draft_preview(state, routing, monkeypatch):  # noqa: F811
+async def test_the_preview_is_recorded_as_a_withdrawn_preview(state, routing, monkeypatch):  # noqa: F811
     from provisa.audit import pipeline as audit_pipeline
 
     opened: list = []
@@ -224,35 +222,32 @@ async def test_the_read_is_recorded_as_a_draft_preview(state, routing, monkeypat
 
     monkeypatch.setattr(audit_pipeline, "begin_audit", _begin)
     with pytest.raises(_Routed):
-        await _sent(_STATEMENT, "org_admin")
+        await _previewed(state, "org_admin")
     (record,) = opened
-    assert record.enforced["draft_preview"] == [_REFUNDS]
+    assert record.enforced["withdrawn_preview"] == [_REFUNDS]
 
 
-async def test_the_plan_runs_in_the_view_it_was_governed_in(state, monkeypatch):
-    """The drafts' routes and engine face are the view's: the terminal runs the plan there, and
-    no surface streams it from its own terminal around that."""
+async def test_the_preview_runs_in_the_view_it_was_governed_in(state, monkeypatch):
+    """The withdrawn table's routes and engine face are the view's: the terminal runs the plan
+    there, and the published state never names the table."""
+    from types import SimpleNamespace
+
     from provisa.pgwire import _pipeline
 
     governed_in: list = []
+    ran_in: list = []
 
     async def _govern(sql: str, role_id: str, **kw: Any) -> Any:
         governed_in.append(kw["state"])
-        return _pipeline._Plan(route=None, sql=sql, source_id=None, dialect="postgres")
+        return "the plan"
 
-    monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
-    plan = await _pipeline._govern_and_route_planned(_STATEMENT, "org_admin")
-    (seen,) = governed_in
-    assert plan.reads_in is seen and seen.previewed_draft_ids == {_REFUNDS}
-    assert not _pipeline.streams_from_terminal(plan)
-
-    ran_in: list = []
-
-    async def _bound(plan_: Any, state_: Any) -> Any:
+    async def _execute(plan_: Any, state_: Any) -> Any:
         ran_in.append(state_)
         return SimpleNamespace(column_names=[], rows=[])
 
-    monkeypatch.setattr(_pipeline, "require_governed_plan", lambda _plan: None)
-    monkeypatch.setattr(_pipeline, "_execute_plan_bound", _bound)
-    await _pipeline._execute_plan(plan)
-    assert ran_in == [seen]
+    monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
+    monkeypatch.setattr(_pipeline, "_execute_plan", _execute)
+    await _previewed(state, "org_admin")
+    (seen,) = governed_in
+    assert ran_in == [seen] and seen.previewed_withdrawn_ids == {_REFUNDS}
+    assert seen is not state

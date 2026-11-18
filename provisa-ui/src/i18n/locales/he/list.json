@@ -19,6 +19,14 @@
     "bulkRefused_other": "לא נמחקו: {{count}}",
     "dismiss": "סגירה",
     "duplicate": "שכפול",
-    "duplicateNamed": "שכפול {{name}}"
+    "duplicateNamed": "שכפול {{name}}",
+    "withdraw": "משיכה",
+    "withdrawNamed": "משיכת {{name}}",
+    "withdrawTitle": "למשוך את {{name}}?",
+    "putBack": "החזרה",
+    "putBackNamed": "החזרת {{name}}",
+    "putBackTitle": "החזרת {{name}}",
+    "putBackRegionHint": "האזור שאליו הוא חוזר, אחד שהרשאת שהיית הנתונים שלך מכסה.",
+    "putBackNoRegion": "אף הרשאת שהיית נתונים של התפקידים שלך לא מכסה אזור להחזיר אליו. מי שמחזיק בשהיית נתונים לאזור היעד מחזיר אותו."
   }
 }

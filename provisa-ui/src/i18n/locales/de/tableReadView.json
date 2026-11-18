@@ -48,10 +48,12 @@
     "writable": "Die Quelle akzeptiert",
     "noWrites": "Keine Schreibvorgänge",
     "notShown": "nicht angezeigt",
-    "draftPreviewNote": "Entwurfsvorschau: Leser können diese Tabelle noch nicht sehen.",
     "keepsHistory": "Führt Historie: jede Version, mit dem Zeitpunkt des Geschehens und dem Zeitpunkt der Erfassung.",
     "keepsHistoryQuery": "Zum Stand eines Datums oder wie erfasst abfragen",
     "deleteTitle": "Tabelle {{name}} löschen?",
-    "deleteConsequence": "Die Registrierung der Tabelle wird gelöscht."
+    "deleteConsequence": "Die Registrierung der Tabelle wird gelöscht.",
+    "withdrawConsequence": "Keine Rolle liest sie über irgendeine Schnittstelle, keine Engine bindet sie ein, und ihr Replikat wird entfernt. Definition, Berechtigungen und Beziehungen bleiben erhalten, und Zurückholen stellt sie unverändert wieder her.",
+    "withdrawnNote": "Zurückgezogen: Keine Rolle liest diese Tabelle, bis sie zurückgeholt wird. Die Vorschau liest sie weiterhin.",
+    "sourceWithdrawnNote": "Ihre Quelle {{source}} ist zurückgezogen: Keine Rolle liest diese Tabelle, bis die Quelle zurückgeholt wird."
   }
 }

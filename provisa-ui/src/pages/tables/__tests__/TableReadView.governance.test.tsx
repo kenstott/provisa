@@ -35,7 +35,8 @@ function makeTable(overrides: Partial<RegisteredTable> = {}): RegisteredTable {
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -125,6 +126,9 @@ function renderView(table: RegisteredTable, startEditing = vi.fn()) {
       reload={vi.fn()}
       startEditing={startEditing}
       handleDelete={vi.fn()}
+      onWithdraw={vi.fn()}
+      onPutBack={vi.fn()}
+      putBackRegions={null}
       handleProfile={vi.fn()}
       onPreview={vi.fn()}
     />,

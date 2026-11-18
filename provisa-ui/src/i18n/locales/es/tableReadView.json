@@ -48,10 +48,12 @@
     "writable": "La fuente acepta",
     "noWrites": "Sin escrituras",
     "notShown": "no se muestra",
-    "draftPreviewNote": "Vista previa de borrador: los lectores aún no pueden ver esta tabla.",
     "keepsHistory": "Guarda historial: cada versión, con cuándo ocurrió y cuándo se registró.",
     "keepsHistoryQuery": "Consultarlo a una fecha o tal como se registró",
     "deleteTitle": "¿Eliminar la tabla {{name}}?",
-    "deleteConsequence": "Se elimina el registro de la tabla."
+    "deleteConsequence": "Se elimina el registro de la tabla.",
+    "withdrawConsequence": "Ningún rol la lee por ninguna interfaz, ningún motor la conecta y se elimina su réplica. Su definición, permisos y relaciones se conservan, y Restituir la devuelve tal como estaba.",
+    "withdrawnNote": "Retirada: ningún rol lee esta tabla hasta que se restituya. Su vista previa sigue leyéndola.",
+    "sourceWithdrawnNote": "Su origen {{source}} está retirado: ningún rol lee esta tabla hasta que se restituya el origen."
   }
 }

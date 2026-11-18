@@ -34,6 +34,7 @@
     "focusDomains": "डोमेन: {{names}}",
     "focusTables": "तालिकाएँ: {{names}}",
     "focusMissing": "नहीं मिला: {{names}}",
-    "showAll": "सभी दिखाएँ"
+    "showAll": "सभी दिखाएँ",
+    "showWithdrawn": "वापस लिए गए दिखाएँ"
   }
 }

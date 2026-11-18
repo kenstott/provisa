@@ -194,7 +194,6 @@ def _state(
         stored_view_reads={"order_clips"},
         mv_registry=registry,
         role_build_inputs={
-            "draft_tables": [],
             "withdrawn_tables": [],
             # Every role's row rules, as stored (transform_view_rules.roles_rules).
             "rls_rules": [

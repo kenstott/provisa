@@ -14,12 +14,18 @@
 
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
-import { Button, Checkbox, Group, Select } from "@mantine/core";
+import { Button, Checkbox, Group, Select, Switch } from "@mantine/core";
 import { ChevronDown, ChevronRight } from "lucide-react";
 import { HelpBubble } from "../HelpBubble";
 import { Tip } from "../Tip";
 import type { Detail } from "./model";
 import type { LayeredOptions } from "./ProvisaGraph";
+
+/** REQ-1921: a graph's Show withdrawn switch: whether its withdrawn tables are drawn. */
+export interface ShowWithdrawn {
+  shown: boolean;
+  onChange: (shown: boolean) => void;
+}
 
 export function GraphOptionsBar({
   testId,
@@ -31,6 +37,7 @@ export function GraphOptionsBar({
   collapsed,
   onCollapsedChange,
   help,
+  showWithdrawn,
 }: {
   testId: string;
   tourId?: string;
@@ -43,6 +50,8 @@ export function GraphOptionsBar({
   collapsed: ReadonlySet<string>;
   onCollapsedChange: (next: Set<string>) => void;
   help?: { title: string; text: string };
+  /** REQ-1921: Show withdrawn, for a person who may preview withdrawn objects. */
+  showWithdrawn?: ShowWithdrawn;
 }) {
   const { t } = useTranslation();
   const allCollapsed = groupIds.length > 0 && groupIds.every((id) => collapsed.has(id));
@@ -103,6 +112,17 @@ export function GraphOptionsBar({
           data-testid={`${testId}-show-orphans`}
         />
       </Group>
+      {showWithdrawn && (
+        <Group gap="xs" h={30} align="center" wrap="nowrap">
+          <Switch
+            size="xs"
+            label={t("erdModal.showWithdrawn")}
+            checked={showWithdrawn.shown}
+            onChange={(e) => showWithdrawn.onChange(e.currentTarget.checked)}
+            data-testid={`${testId}-show-withdrawn`}
+          />
+        </Group>
+      )}
       <Tip text={toggleLabel}>
         <Button
           size="xs"

@@ -183,7 +183,7 @@ async def test_an_edit_keeps_the_stored_region(model, node):
         await _source(conn, "crm", None)
         await table_repo.upsert(conn, _orders("eu"))
         edited = _orders(None)  # the form rebuilt it without a region
-        assert await kept_placement(conn, edited) == ("eu", False, False)
+        assert await kept_placement(conn, edited) == ("eu", False)
 
 
 async def test_changing_a_sources_region_moves_no_table(model, node):
