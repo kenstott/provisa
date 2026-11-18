@@ -255,6 +255,7 @@ describe("a relationship that is part of a code resolver", () => {
         functions={[]}
         tableDomainById={{}}
         domainsEnabled={false}
+        actingRole={null}
         onChangeResolver={change}
         onRetireResolver={vi.fn()}
       />,
