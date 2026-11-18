@@ -291,8 +291,9 @@ export function ListGroupRow({
   count: number;
   collapsed: boolean;
   onToggle: () => void;
-  /** What acts on the whole group (a side taken for every row of it), at the heading's end. A
-   *  click or key inside them acts there and does not open or close the group. */
+  /** What acts on the whole group (a side taken for every row of it), after the heading's label,
+   *  where a narrow list still shows them. A click or key inside them acts there and does not
+   *  open or close the group. */
   actions?: ReactNode;
   testId?: string;
 }) {
@@ -329,7 +330,7 @@ export function ListGroupRow({
             <span style={{ fontWeight: "normal", opacity: 0.7 }}>({count})</span>
           </>
         ) : (
-          <Group justify="space-between" wrap="nowrap" gap="xs">
+          <Group wrap="wrap" gap="xs">
             <span>
               {collapsed ? "▶" : "▼"} {label}{" "}
               <span style={{ fontWeight: "normal", opacity: 0.7 }}>({count})</span>
@@ -341,7 +342,7 @@ export function ListGroupRow({
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => e.stopPropagation()}
             >
-              <Group gap="xs" wrap="nowrap">
+              <Group gap="xs" wrap="wrap">
                 {actions}
               </Group>
             </span>

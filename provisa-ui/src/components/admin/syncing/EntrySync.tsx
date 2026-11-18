@@ -150,7 +150,7 @@ function StandingSelect({
   return (
     <Select
       size="xs"
-      w={220}
+      w={180}
       data={data}
       value={value}
       clearable
@@ -163,7 +163,16 @@ function StandingSelect({
   );
 }
 
-const COLS = 6;
+const COLS = 5;
+
+/** An object's name within its table or term: a column by its own name, the table or term by
+ *  its last part. The whole name is the cell's hint when it is cut. */
+const shortName = (row: DiffRow) =>
+  row.object === row.group
+    ? (row.group.split(".").pop() as string)
+    : row.object.startsWith(`${row.group}.`)
+      ? row.object.slice(row.group.length + 1)
+      : row.object;
 
 function DifferenceList({
   review,
@@ -198,11 +207,6 @@ function DifferenceList({
       </Text>
     );
   }
-
-  const changed = (row: DiffRow) =>
-    row.changed === null
-      ? t("syncingTab.diffNeverExchanged")
-      : t(`syncingTab.changed_${row.changed}`);
 
   const rows: ReactNode[] = [];
   for (const kind of review.kinds) {
@@ -267,7 +271,7 @@ function DifferenceList({
             testId={`syncing-diff-row-${kindKey}-${row.object}`}
           >
             <Table.Td>
-              <ListCell text={row.object} />
+              <ListCell text={shortName(row)} />
             </Table.Td>
             <Table.Td>
               <Value value={row.provisa} />
@@ -276,19 +280,24 @@ function DifferenceList({
               <Value value={row.catalog} />
             </Table.Td>
             <Table.Td>
+              {/* The value last exchanged, and under it which side moved off it since. */}
               {row.last_exchanged === null ? (
                 <Text size="sm" c="dimmed">
-                  {t("syncingTab.diffNone")}
+                  {t("syncingTab.diffNeverExchanged")}
                 </Text>
               ) : (
-                <Value value={row.last_exchanged.value} />
+                <Stack gap={2}>
+                  <Value value={row.last_exchanged.value} />
+                  {row.changed !== null && (
+                    <Text size="xs" c="dimmed">
+                      {t(`syncingTab.changed_${row.changed}`)}
+                    </Text>
+                  )}
+                </Stack>
               )}
             </Table.Td>
-            <Table.Td>
-              <ListCell text={changed(row)} />
-            </Table.Td>
             <ListActions>
-              <Group gap="xs" wrap="nowrap">
+              <Stack gap={4} align="flex-start">
                 {(["provisa", "catalog"] as DiffSide[]).map((side) => (
                   <AcceptButton
                     key={side}
@@ -299,7 +308,7 @@ function DifferenceList({
                     onAccept={() => onDecide({ side, kind: kindKey, object: row.object })}
                   />
                 ))}
-              </Group>
+              </Stack>
             </ListActions>
           </ListRow>,
         );
@@ -308,14 +317,13 @@ function DifferenceList({
   }
 
   return (
-    <ListTable testId="syncing-diff-list" minWidth={900}>
+    <ListTable testId="syncing-diff-list" minWidth={560}>
       <ListHead
         columns={[
           t("syncingTab.diffObject"),
           t("syncingTab.diffProvisa"),
           t("syncingTab.diffCatalog"),
           t("syncingTab.diffLastExchanged"),
-          t("syncingTab.diffChanged"),
           <ListActionsHead key="actions" />,
         ]}
       />
