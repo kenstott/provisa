@@ -76298,7 +76298,11 @@
     is refused because a table declares no primary key. An include follows the approved relationship, and
     an included resource''s id is the value of the column that relationship points at. A root resource''s
     id is its primary key where one is declared; otherwise the column an approved relationship points at;
-    otherwise its position in the response.'
+    otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS
+    RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource
+    reached by a many-to-one relationship is identified by the column that relationship points at; one reached
+    by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its
+    position among its parent''s included resources, so every child row stays a resource of its own.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
