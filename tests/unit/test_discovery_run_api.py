@@ -229,6 +229,8 @@ class _World:
         self.classifies: dict[str, dict[str, list[str]]] = {}
         self.model_calls: list[tuple[str, str, int]] = []
         self.answers: list[str] = []
+        #: Every prompt the run sent the model.
+        self.prompts: list[str] = []
         self.on_call: Any = None
         self.launched: list[tuple] = []
         self.fk_found: list[Any] = []
@@ -268,6 +270,7 @@ class _World:
 
         def respond(client, vendor, model, prompt, system, max_tokens, *args, **kwargs):
             self.model_calls.append((vendor, model, max_tokens))
+            self.prompts.append(prompt)
             if self.on_call is not None:
                 self.on_call(len(self.model_calls))
             return Completion(
@@ -355,7 +358,7 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     await discovery.count_run(_REQUEST, _scope())
     assert world.classified == []  # the count before Run classifies nothing
-    await discovery.prepare(discovery.state, _scope().spec("org_admin"), None)
+    await discovery.prepare(discovery.state, _scope().spec("org_admin", 0.7), None)
     assert [
         (c["table_id"], c["values_per_column"], c["sample_above_cells"]) for c in world.classified
     ] == [
@@ -454,7 +457,7 @@ def _pet_world(monkeypatch, db: Database) -> _World:
 
 async def _prepared(scope: discovery.RunScope) -> Any:
     """The run's tables and requests, as the background run prepares them."""
-    spec = scope.spec("org_admin")
+    spec = scope.spec("org_admin", 0.7)
     return await discovery.prepare(discovery.state, spec, await discovery._run_model(spec))
 
 
@@ -532,7 +535,7 @@ async def test_relationship_requests_are_planned_on_reduced_information(
     prepared = await _prepared(scope)
     if not_read == len(set(source) | set(target or [])):
         assert world.classified == [] and world.reads.sql == []  # nothing in scope is read
-    sent = "\n".join(r.prompt(prepared.k) for r in prepared.requests)
+    sent = "\n".join(r.prompt(prepared.k, 0.7) for r in prepared.requests)
     assert (
         '"required_parameters":[{"column":"_nf_orderId","parameter":"orderId","type":"integer"}],'
         '"values":"not_read"'
@@ -1101,7 +1104,7 @@ async def test_the_glossary_term_bound_to_a_column_is_sent_whether_or_not_its_ta
     prepared = await _prepared(
         _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS])
     )
-    sent = prepared.requests[0].prompt(prepared.k)
+    sent = prepared.requests[0].prompt(prepared.k, 0.7)
     assert (
         '{"name":"_nf_orderId","description":null,"classes":["not_read"],"tags":[],"term":"Order"}'
     ) in sent
@@ -1808,7 +1811,8 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
     assert [r["id"] for r in everyone] == [theirs["id"]]
     own = (await discovery.list_runs(_REQUEST, limit=1, mine=True))["runs"]
     assert [r["id"] for r in own] == [mine["id"]]
-    # The run keeps every field the dialog sent, so a new run can start from them.
+    # The run keeps every field the dialog sent, so a new run can start from them, and the
+    # threshold it started with (REQ-413, amended 2026-11-18).
     assert own[0]["scope"] == {
         "kinds": ["foreign_keys"],
         "source_domains": ["sales"],
@@ -1820,6 +1824,7 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
         "model": None,
         "measure_cutoff": None,
         "sample_size": None,
+        "threshold": 0.7,
     }
 
 
@@ -2424,9 +2429,34 @@ async def test_the_threshold_is_the_persons_own_and_kept_across_a_reload(monkeyp
     assert (await discovery.get_threshold(other))["threshold"] == 0.7
     run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)])
     answered = await discovery.list_proposals(_REQUEST, run["id"])
-    assert answered["threshold"] == 0.55 and answered["kept_at"] == 0.7
+    # The run started at 0.55 keeps suggestions at 0.55 (REQ-413, amended 2026-11-18).
+    assert answered["threshold"] == 0.55 and answered["kept_at"] == 0.55
     with pytest.raises(Exception):
         discovery.ThresholdBody(threshold=1.5)
+
+
+async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model(
+    monkeypatch, tmp_path
+):
+    """REQ-413 (amended 2026-11-18): the band's top is the tick threshold of the person who starts
+    the run, taken when it starts and recorded with it; the model is told it."""
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.5))
+    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.55)])
+    assert run["scope"]["threshold"] == 0.5
+    assert run["report"]["semantics"]["threshold"] == 0.5
+    assert world.prompts
+    assert all("A relationship is suggested at 0.5 or more" in t for t in world.prompts)
+    # A change to the person's threshold after the run started does not change the run's.
+    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.9))
+    answered = await discovery.list_proposals(_REQUEST, run["id"])
+    assert answered["threshold"] == 0.9 and answered["kept_at"] == 0.5
+    # 0.55 is at or above the run's 0.5: kept on the model's confidence, never measured.
+    (row,) = [r for r in answered["proposals"] if r["kind"] == "semantics"]
+    assert row["reason"] is None and row["measured"] is False
 
 
 # --- Key value overlap: a choice with Semantic, its cutoff and sample size (REQ-413) ---------------
@@ -2434,7 +2464,7 @@ async def test_the_threshold_is_the_persons_own_and_kept_across_a_reload(monkeyp
 
 def test_key_value_overlap_is_refused_without_semantic():
     with pytest.raises(ApiError) as refused:
-        _scope(kinds=["foreign_keys", "key_values"]).spec("steward")
+        _scope(kinds=["foreign_keys", "key_values"]).spec("steward", 0.7)
     assert refused.value.code == "discovery.key_values_needs_semantics"
 
 
@@ -2442,21 +2472,21 @@ def test_key_value_overlap_needs_its_cutoff_and_sample_size_and_only_it_takes_th
     with pytest.raises(ApiError) as missing:
         discovery.RunScope.model_validate(
             {"kinds": ["semantics", "key_values"], "source_domains": ["sales"]}
-        ).spec("steward")
+        ).spec("steward", 0.7)
     assert missing.value.code == "discovery.key_values_settings_missing"
     with pytest.raises(ApiError) as unchosen:
         discovery.RunScope.model_validate(
             {"kinds": ["semantics"], "source_domains": ["sales"], **_KEY_VALUES}
-        ).spec("steward")
+        ).spec("steward", 0.7)
     assert unchosen.value.code == "discovery.key_values_settings_unchosen"
 
 
 def test_the_cutoff_and_sample_size_reach_the_run_and_unchosen_none_is_measured():
-    spec = _scope(measure_cutoff=0.35, sample_size=500).spec("steward")
+    spec = _scope(measure_cutoff=0.35, sample_size=500).spec("steward", 0.7)
     assert spec.kinds == frozenset({"semantics"})
     assert spec.key_values is not None
     assert (spec.key_values.cutoff, spec.key_values.sample_size) == (0.35, 500)
-    assert _scope(kinds=["semantics"]).spec("steward").key_values is None
+    assert _scope(kinds=["semantics"]).spec("steward", 0.7).key_values is None
 
 
 async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_states_the_settings(

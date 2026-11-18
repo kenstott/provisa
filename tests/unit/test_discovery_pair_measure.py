@@ -28,7 +28,8 @@ import pytest
 
 from provisa.discovery import gather, measure
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEPT_AT, KEY_SCORE, SHARED_CEILING
+from provisa.discovery.context import KEY_SCORE, SHARED_CEILING
+from provisa.discovery.threshold import DEFAULT as THRESHOLD
 from provisa.discovery.direction import from_answer
 from provisa.discovery.measure import Measurer, Values
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
@@ -142,7 +143,7 @@ async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_ma
     assert m.source.distinct is False and m.target.distinct is False
     # A shared value, not a key relationship: under the threshold whatever the model said.
     assert got.score == SHARED_CEILING
-    assert got.rank < KEPT_AT
+    assert got.rank < THRESHOLD
     assert got.confidence == 0.45  # the model's own is kept beside it
 
 
@@ -154,7 +155,7 @@ async def test_permit_id_contained_in_a_distinct_target_scores_as_a_key_relation
     assert (m.source_in_target, m.source.values) == (30, 30)
     assert (m.target_in_source, m.target.values) == (30, 100)
     assert m.target.distinct is True and m.source.distinct is False
-    assert got.score == KEY_SCORE and got.rank >= KEPT_AT
+    assert got.score == KEY_SCORE and got.rank >= THRESHOLD
     assert got.confidence == 0.45
 
 
@@ -165,7 +166,7 @@ async def test_a_pair_whose_values_barely_meet_scores_low_however_alike_the_name
     assert (m.source_in_target, m.source.values) == (1, 50)
     assert got.cardinality == "one-to-one"
     assert got.score is not None and got.score < 0.05
-    assert got.rank < KEPT_AT
+    assert got.rank < THRESHOLD
 
 
 async def test_a_semantic_pair_whose_source_alone_is_distinct_is_turned_to_start_at_the_referrer():
@@ -227,7 +228,7 @@ async def test_each_column_is_read_once_for_the_run():
 
 async def test_a_band_pair_is_judged_on_its_measured_score_and_the_rest_are_kept_with_why():
     reader = _Reader(DATA, measure.DISTINCT_BOUND)
-    tally = Tally(total=1)
+    tally = Tally(total=1, threshold=THRESHOLD)
     measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
     out = await judged(
         [

@@ -3828,7 +3828,19 @@
     which a pair is a key relationship, the ceiling a pair where neither side is a key scores at most, the
     number of non-null values the join count reads, and the number of distinct sample values per column
     the model is shown. None is a fixed constant in the code; each starts at its default, is recorded with
-    the run, and the values a person sets are kept for their next runs.'
+    the run, and the values a person sets are kept for their next runs. (Amended 2026-11-18, THE RESULTS
+    ARE A STANDARD LIST WITH A DEFAULT SCORE FILTER:) Maintainer 2026-11-18. A run''s results are shown
+    in the standard list (the shared list component with column sort and filters the other lists use), not
+    a table of their own. When they open, a filter of Score at least 10% is applied and shown like any other
+    filter, so it can be changed or cleared; a line says how many rows it hides. The value a person sets
+    is kept for their next runs, as Tick from is. Accept acts only on rows the filter shows. The dialog''s
+    request count shows the calls and table pairs a run will ask about, and says a pair left unanswered
+    may be asked again. (Amended 2026-11-18, THE MEASURE JOIN RUNS GOVERNED, WITHOUT THE APPROVED-RELATIONSHIP
+    CHECK:) Maintainer 2026-11-18. The key value overlap join count runs as one engine query per pair through
+    the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
+    to each table it reads. Only the check that a join follows an approved relationship is not applied,
+    and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
+    tables cannot be read is left unmeasured and says why; it does not fail the run.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -76275,7 +76287,18 @@
     paths and the response fills the relationship''s field the proto already declares; JSON:API uses include
     with fields per type. The NL page derives its gRPC, JSON:API and OpenAPI panels from the GraphQL with
     the relationships nested in each surface''s own form, so each panel shows a request its real endpoint
-    accepts and the nested data it returns.'
+    accepts and the nested data it returns. (Amended 2026-11-18, JSON:API INCLUDED FIELDS AND DOTTED INCLUDES
+    ON ROW READS; A GRPC FIELD PER RELATIONSHIP:) Maintainer 2026-11-18. A JSON:API row read honours fields[<type>]
+    for included resources and dotted includes that go more than one relationship deep, as a group-by read
+    already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship
+    name, so a read_mask path names the relationship itself and every relationship to the same table can
+    be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ
+    AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 (''pk
+    should be irrelevant. it should just work on approved relationships''). No JSON:API read or include
+    is refused because a table declares no primary key. An include follows the approved relationship, and
+    an included resource''s id is the value of the column that relationship points at. A root resource''s
+    id is its primary key where one is declared; otherwise the column an approved relationship points at;
+    otherwise its position in the response.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst

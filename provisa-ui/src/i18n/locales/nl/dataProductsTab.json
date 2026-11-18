@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Geen bevraagbare tabellen of relaties",
     "graphqlQueryAria": "Voorbeeld-GraphQL-query voor {{table}} uitvoeren",
     "sqlQueryAria": "Voorbeeld-SQL-query voor {{table}} uitvoeren",
-    "cypherQueryAria": "Voorbeeld-Cypher-query voor {{type}} uitvoeren",
     "grpcQueryAria": "Voorbeeld-gRPC-aanroep voor {{table}} uitvoeren",
     "jsonapiQueryAria": "Voorbeeld-JSON:API-verzoek voor {{table}} uitvoeren",
     "openApiQueryAria": "Voorbeeld-REST-verzoek voor {{table}} uitvoeren",

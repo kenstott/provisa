@@ -20,8 +20,9 @@ A table that requires a parameter is never read (REQ-1986): its context names it
 parameters with their types and says its values were not read, and its columns send the class
 ``not_read`` and no sample values.
 
-The instructions say what a confidence value states (:data:`RUBRIC`), by the evidence a request
-shows, so the threshold a run keeps suggestions at is a bar the model was told of.
+The instructions say what a confidence value states (:func:`rubric`), by the evidence a request
+shows, and the run's threshold (REQ-413, amended 2026-11-18: the tick threshold of the person who
+started it), so the bar a run keeps suggestions at is one the model was told of.
 
 A sample value is sent in at most :data:`SAMPLE_VALUE_CHARS` characters as the request writes it
 (:func:`sample_text`), so what a column can send has a known greatest length
@@ -154,13 +155,31 @@ _NOT_READ = (
 )
 
 
-#: The confidence a suggestion needs to be kept (REQ-413), as the instructions state it.
-KEPT_AT = 0.7
+#: The decimal places a threshold is written with (:func:`written`), so its text has a known
+#: greatest length, :data:`WIDEST_THRESHOLD`: windows are sized for it.
+THRESHOLD_DECIMALS = 4
+WIDEST_THRESHOLD = "0." + "9" * THRESHOLD_DECIMALS
+
+
+def written(threshold: float) -> str:
+    """A run's threshold as the instructions state it: at most :data:`THRESHOLD_DECIMALS`
+    decimal places, trailing zeros dropped (0.7, 0.55, 1)."""
+    return f"{threshold:.{THRESHOLD_DECIMALS}f}".rstrip("0").rstrip(".")
+
+
+def rubric(threshold: str) -> str:
+    """What a confidence value states, and ``threshold`` (as :func:`written` writes it), the run's
+    bar a relationship is suggested at."""
+    return _RUBRIC + (
+        f"A relationship is suggested at {threshold} or more; one below is kept for review as "
+        "left out, so give each the confidence its evidence has.\n"
+    )
+
 
 #: What a confidence value states, by the evidence a request shows of the two columns. A request
 #: shows a few sample values of each column, so two columns of one key seldom show the same
 #: values: values of one form count as agreeing.
-RUBRIC = (
+_RUBRIC = (
     "confidence states the evidence shown here for the relationship, on this scale:\n"
     "- 0.9 to 1.0: the target column identifies one row of its table (its key: named as the "
     "table's id or code, its sample values all different), the source column's name says it "
@@ -173,8 +192,6 @@ RUBRIC = (
     "forms; sample values that overlap under unrelated names; or the same name on a column "
     "that is a key of neither table (a status, a category, a place name, a date).\n"
     "- below 0.4: a guess.\n"
-    f"A relationship is suggested at {KEPT_AT} or more; one below is kept for review as left "
-    "out, so give each the confidence its evidence has.\n"
 )
 
 
@@ -188,7 +205,7 @@ RUBRIC = (
 #:   taking its share off.
 #: - Neither side is a key: the columns share values and no relationship starts at one and ends
 #:   at the other's key; the pair scores SHARED_CEILING times the larger of the two shares, so it
-#:   never reaches the threshold a suggestion is kept at.
+#:   never reaches the default threshold (:data:`provisa.discovery.threshold.DEFAULT`).
 #: So a pair whose values barely meet scores low however alike its names are. A pair whose values
 #: could not be compared (a side not read, or none read of the source) keeps the model's
 #: confidence, and says why.
@@ -205,11 +222,32 @@ def measured_score(contained: float, back: float, target_distinct: bool) -> floa
 
 
 def instructions(
-    group: str, at_most: int, *, either_direction: bool, not_read: bool = False
+    group: str, at_most: int, *, threshold: float, either_direction: bool, not_read: bool = False
 ) -> str:
-    """The text around the windows. ``either_direction``: the two windows are drawn from one set
-    of tables, so a relationship may start in either. ``not_read``: a table of the windows
-    requires a parameter and was never read, and the text says how to judge it."""
+    """The text around the windows. ``threshold``: the run's, the bar a relationship is suggested
+    at. ``either_direction``: the two windows are drawn from one set of tables, so a relationship
+    may start in either. ``not_read``: a table of the windows requires a parameter and was never
+    read, and the text says how to judge it."""
+    return _instructions(
+        group, at_most, written(threshold), either_direction=either_direction, not_read=not_read
+    )
+
+
+def instructions_chars(
+    group: str, at_most: int, *, either_direction: bool, not_read: bool = False
+) -> int:
+    """The most characters :func:`instructions` holds, whatever the run's threshold: it is
+    written at its widest (:data:`WIDEST_THRESHOLD`)."""
+    return len(
+        _instructions(
+            group, at_most, WIDEST_THRESHOLD, either_direction=either_direction, not_read=not_read
+        )
+    )
+
+
+def _instructions(
+    group: str, at_most: int, threshold: str, *, either_direction: bool, not_read: bool
+) -> str:
     if either_direction:
         direction = (
             "Source and target are the same set of tables: a relationship may start in either "
@@ -232,7 +270,7 @@ def instructions(
         "A shared pii tag alone is weak evidence of a relationship.\n"
         f"{direction}\n"
         f"Propose at most {at_most} relationships, the strongest first.\n"
-        f"{RUBRIC}"
+        f"{rubric(threshold)}"
         "Return ONLY a JSON array, no other text, each element:\n"
         f"{_SHAPE}\n"
         "suggested_name names the business concept the join means, not its tables or columns.\n"
@@ -245,13 +283,22 @@ def prompt(
     source: Sequence[dict[str, Any]],
     target: Sequence[dict[str, Any]] | None,
     *,
+    threshold: float,
     either_direction: bool,
 ) -> str:
     """One request: the instructions, the source window and the target window. ``target`` None:
-    the request compares one window with itself. ``either_direction``: source and target are one
-    set of tables (the target is the same as the source)."""
+    the request compares one window with itself. ``threshold``: the run's. ``either_direction``:
+    source and target are one set of tables (the target is the same as the source)."""
     not_read = any(b["table"].get("values") == NOT_READ for b in [*source, *(target or [])])
-    parts = [instructions(group, at_most, either_direction=either_direction, not_read=not_read)]
+    parts = [
+        instructions(
+            group,
+            at_most,
+            threshold=threshold,
+            either_direction=either_direction,
+            not_read=not_read,
+        )
+    ]
     if target is None:
         parts.append("## SOURCE and TARGET window\n" + render_window(source))
     else:
