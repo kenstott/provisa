@@ -3820,7 +3820,15 @@
     Maintainer 2026-11-18 (''non null values only''). The rows the join count reads from the source column,
     up to the sample size, are rows whose value is not null, and only non-null target values are counted
     as matches; a null never counts toward the overlap, toward a column being a key, or toward the sample
-    size.'
+    size. (Amended 2026-11-18, EVERY THRESHOLD AND SAMPLE SIZE A RUN USES IS SET IN THE DIALOG:) Maintainer
+    2026-11-18 (''in the ui for relationship discovery ALL thresholds and sample sizes can be modified'').
+    Every threshold and sample size a run uses is shown in the discover dialog with its value and can be
+    changed there before the run starts: the threshold rows start ticked from (Tick from), the cutoff the
+    key value overlap band starts at (Measure from), the share of source values found in a key target at
+    which a pair is a key relationship, the ceiling a pair where neither side is a key scores at most, the
+    number of non-null values the join count reads, and the number of distinct sample values per column
+    the model is shown. None is a fixed constant in the code; each starts at its default, is recorded with
+    the run, and the values a person sets are kept for their next runs.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
