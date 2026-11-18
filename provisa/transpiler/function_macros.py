@@ -2042,12 +2042,17 @@ _HELD_AS_TEXT = frozenset(
 )  # fmt: skip
 
 
-def _argument(value: exp.Expr, held: bool = False) -> exp.Expr:
+#: A text padded on the right to a count of characters, by dialect: ClickHouse's rpad counts bytes.
+_PADDED_BY_CHARACTERS = {"clickhouse": "rightPadUTF8"}
+
+
+def _argument(value: exp.Expr, held: bool = False, dialect: str = "") -> exp.Expr:
     size = _padded_to(value) if held else None
     if said_type(value) in _HELD_AS_TEXT or (held and isinstance(value.unnest(), exp.Cast)):
         value = value.unnest().this
     if size is not None:  # bpchar's input pads to its length, which the text does not hold
-        value = exp.Anonymous(this="rpad", expressions=[value, size, exp.Literal.string(" ")])
+        pad = _PADDED_BY_CHARACTERS.get(dialect, "rpad")
+        value = exp.Anonymous(this=pad, expressions=[value, size, exp.Literal.string(" ")])
     return value if isinstance(value, _ATOMIC) else exp.Paren(this=value)
 
 
@@ -2113,7 +2118,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
     held = macro.name in pg_forms_types.HELD | pg_forms_hash.HELD | pg_forms_index.HELD
     named = [c.name for c in form.find_all(exp.Column) if not c.table]
     if _repeats_volatile(named, macro.params, args):
-        each = [_argument(a, held) for a in args]
+        each = [_argument(a, held, dialect) for a in args]
         return _held_once(form, macro.params, each, node, macro.name, dialect)
     if form.find(exp.Lambda) is not None and any(a.find(exp.Select) is not None for a in args):
         return _in_a_subquery(form, macro.params, [_argument(a) for a in args])
@@ -2121,7 +2126,7 @@ def _written(macro: Macro, args: list[exp.Expr], dialect: str, node: exp.Expr) -
 
     def bound(node: exp.Expr) -> exp.Expr:
         if isinstance(node, exp.Column) and not node.table and node.name in values:
-            return _argument(values[node.name], held).copy()
+            return _argument(values[node.name], held, dialect).copy()
         return node
 
     return form.transform(bound)

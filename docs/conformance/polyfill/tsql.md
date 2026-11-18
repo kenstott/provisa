@@ -8,9 +8,9 @@ This page lists every feature that has a polyfill or a limitation on T-SQL (SQL 
 
 When T-SQL (SQL Server, Fabric, Synapse) is a serving engine reading a source it attaches directly, it may push work into that source, with the source's semantics, so a result can depend on the pair; the cases known are fixed by hints, listed under each source.
 
-Rules on this page: 315, of which 239 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
+Rules on this page: 327, of which 251 are only the name of a rewrite function. A rule is printed as the translator runs it: the PostgreSQL pattern, its holes written `$name` (typed with `::type`), then the dialect's replacement.
 
-194 of the grid's 460 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
+196 of the grid's 474 features are native on T-SQL (SQL Server, Fabric, Synapse) and left out.
 
 <table><thead><tr><th>Feature</th><th>Read polyfill</th><th>Read limitations</th><th>Write polyfill</th><th>Write limitations</th></tr></thead><tbody>
 <tr><td><strong>array_ndims</strong><br>The number of an array&#x27;s dimensions.</td><td><pre><code>array_ndims($a::anyarray)
@@ -401,6 +401,18 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>degrees</strong><br>Radians as degrees.</td><td><pre><code>degrees($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>sind</strong><br>The sin of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>sind($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>cosd</strong><br>The cos of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>cosd($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>tand</strong><br>The tan of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>tand($x)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>cotd</strong><br>The cot of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL&#x27;s.</td><td><pre><code>cotd($x)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>sign</strong><br>The sign of a value: -1, 0 or 1; 0 of NaN.</td><td><pre><code>sign($x)
@@ -822,6 +834,30 @@ function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (prov
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>ascii</strong><br>The code point of a text&#x27;s first character.</td><td><pre><code>ascii($t::text)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btnamecmp</strong><br>btree&#x27;s comparison of two names: strncmp&#x27;s difference of their first differing bytes.</td><td><pre><code>btnamecmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btnametextcmp</strong><br>btree&#x27;s comparison of a name and a text: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>btnametextcmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bttextnamecmp</strong><br>btree&#x27;s comparison of a text and a name: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>bttextnamecmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>bttext_pattern_cmp</strong><br>btree&#x27;s byte-order comparison of two texts: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>bttext_pattern_cmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>gin_cmp_tslexeme</strong><br>GIN&#x27;s comparison of two lexemes: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>gin_cmp_tslexeme($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>gin_compare_jsonb</strong><br>GIN&#x27;s comparison of two jsonb keys&#x27; texts: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>gin_compare_jsonb($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>byteacmp</strong><br>btree&#x27;s comparison of two byte strings: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>byteacmp($a, $b)
+=&gt;
+function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
+<tr><td><strong>btbpchar_pattern_cmp</strong><br>btree&#x27;s byte-order comparison of two character strings, trailing spaces as padding: memcmp&#x27;s difference of their first differing bytes.</td><td><pre><code>btbpchar_pattern_cmp($a, $b)
 =&gt;
 function provisa.transpiler.polyfill.trino.kept: The old table&#x27;s form (provisa.transpiler.function_macros): this row writes Trino&#x27;s only.</code></pre></td><td></td><td></td><td></td></tr>
 <tr><td><strong>octet_length(bytea)</strong><br>A bytea&#x27;s number of bytes.</td><td><pre><code>octet_length($a)

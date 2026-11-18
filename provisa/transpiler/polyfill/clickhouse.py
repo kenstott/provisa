@@ -1439,7 +1439,8 @@ def _scale_of(value: str) -> str:
     return f"toUInt8OrZero(extract(toTypeName({value}), 'Decimal\\\\(\\\\d+, (\\\\d+)\\\\)'))"
 
 
-#: numeric_mod: the remainder at 18 places, which keeps it exact, written at the larger scale of
+#: numeric_mod: the remainder at 38 places in a Decimal256 (an operand's 38 digits fit on either
+#: side of the point), which keeps it exact, written at the larger scale of
 #: its operands (toDecimalString writes a scale of 0 with its point, trimmed); by nullIf of the
 #: divisor, as ClickHouse folds a constant remainder by 0 whichever branch is chosen (the old table's form cut the text, which ClickHouse writes without trailing zeros:
 #: 1000 % 1000 answered '').
@@ -1447,8 +1448,8 @@ _NUMERIC_MOD = (
     "CASE WHEN $a IS NULL OR $b IS NULL THEN CAST(NULL AS Nullable(String)) "
     "WHEN $b = 0 THEN CAST(throwIf(1, 'postgresql-error 22012: division by zero"
     "<end of postgresql-error>') AS Nullable(String)) "
-    "ELSE trimRight(toDecimalString(CAST($a AS Nullable(Decimal(38, 18))) % "
-    "CAST(nullIf($b, 0) AS Nullable(Decimal(38, 18))), "
+    "ELSE trimRight(toDecimalString(CAST($a AS Nullable(Decimal(76, 38))) % "
+    "CAST(nullIf($b, 0) AS Nullable(Decimal(76, 38))), "
     f"greatest({_scale_of('$a')}, {_scale_of('$b')})), '.') END"
 )
 

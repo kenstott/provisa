@@ -20,9 +20,11 @@ from __future__ import annotations
 
 from provisa.transpiler.polyfill import (
     aggregates,
+    array_dimensions,
     array_sets,
     arrays,
     bits,
+    byte_compares,
     bytea,
     calls,
     casts,
@@ -69,7 +71,9 @@ from provisa.transpiler.polyfill.notation import Refusal, Rewrite, RuleError, ho
 
 #: The one grid: every family's features.
 GRID = Grid(
-    arrays.FEATURES
+    # an array of dimensions is read before any row of its call's name
+    array_dimensions.FEATURES
+    + arrays.FEATURES
     + array_sets.FEATURES
     + zones.FEATURES
     + records.FEATURES
@@ -100,6 +104,7 @@ GRID = Grid(
     # a text's rows are read before bytea's, whose rows of one name keep what is no bytea
     + texts.FEATURES
     + bits.FEATURES
+    + byte_compares.FEATURES
     + bytea.FEATURES
     + ported.FEATURES
 )
