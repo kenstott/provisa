@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 from collections import Counter
+from dataclasses import replace
 
 import pytest
 
@@ -39,12 +40,14 @@ from provisa.discovery.columns import (
 from provisa.discovery.direction import (
     Known,
     Proposal,
+    Removed,
     Sampled,
     decide,
     from_answer,
     inferred_role,
     settle,
 )
+from provisa.discovery.measure import Measure, Side
 from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import (
     TOKENS_PER_SUGGESTION,
@@ -841,20 +844,44 @@ async def test_two_different_columns_of_one_table_are_kept():
     assert [p.edge for p in out.kept] == [(1, "manager_id", 1, "id")]
 
 
-async def test_primary_key_to_primary_key_is_removed():
+async def test_primary_key_to_primary_key_is_listed_with_a_note():
+    # REQ-413 (amended 2026-11-18): a rule that judged a pair only sets its note.
     a = tbl(1, "a", col("id", pk=True))
     b = tbl(2, "b", col("id", pk=True))
     out = await _settle([_sem((1, "id"), (2, "id"))], a, b)
-    assert out.kept == [] and out.removed.primary_key_to_primary_key == 1
+    assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [
+        ((1, "id", 2, "id"), 0.9, "many-to-one")
+    ]
+    assert out.kept[0].reasoning == "model; both columns are primary keys"
+    assert out.left_out == []
 
 
-async def test_both_sides_repeating_in_the_sample_is_removed():
+async def test_both_sides_repeating_in_the_sample_is_listed_once_as_many_to_many():
     a = tbl(1, "a", col("k"))
     b = tbl(2, "b", col("k"))
     props = [_sem((1, "k"), (2, "k"), 0.9), _sem((2, "k"), (1, "k"), 0.9)]
     samples = _Samples({(1, "k"): True, (2, "k"): True})
     out = await _settle(props, a, b, samples=samples)
-    assert out.kept == [] and out.removed.both_repeating == 1
+    assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [
+        ((1, "k", 2, "k"), 0.9, "many-to-many")
+    ]
+    assert out.kept[0].reasoning.endswith(
+        "values repeat on both sides in a sample, so neither column is the one side"
+    )
+    assert out.left_out == [] and out.decided_by == {"fixed_order": 1}
+
+
+async def test_a_measured_many_to_many_pair_is_listed_with_its_score_and_a_note():
+    a, b = _pair_tables()
+    repeating = Side(10, False, False, None)
+    measure = Measure(repeating, repeating, 5, 5, 100)
+    many = replace(_sem((1, "customer_id"), (2, "id")), measure=measure, score=0.2)
+    out = await _settle([many], a, b)
+    assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [
+        ((1, "customer_id", 2, "id"), 0.2, "many-to-many")
+    ]
+    assert out.kept[0].reasoning == "model; neither column's values are distinct"
+    assert out.left_out == []
 
 
 @pytest.mark.parametrize("edge", [(1, "customer_id", 2, "id"), (2, "id", 1, "customer_id")])
@@ -864,26 +891,44 @@ async def test_a_relationship_that_exists_in_either_direction_is_removed(edge):
     assert out.kept == [] and out.removed.existing == 1
 
 
-async def test_a_pending_suggestion_is_removed():
+async def test_a_pair_still_waiting_from_an_earlier_run_is_listed_in_this_run():
     a, b = _pair_tables()
     known = Known(pending={(1, "customer_id", 2, "id")})
     out = await _settle([_sem((1, "customer_id"), (2, "id"))], a, b, known=known)
-    assert out.kept == [] and out.removed.pending == 1
+    assert [p.edge for p in out.kept] == [(1, "customer_id", 2, "id")]
+    assert out.kept[0].reasoning == "model; suggested by an earlier run and not yet decided"
+    assert out.left_out == []
 
 
-async def test_a_rejected_suggestion_is_removed():
+@pytest.mark.parametrize("edge", [(1, "customer_id", 2, "id"), (2, "id", 1, "customer_id")])
+async def test_a_pair_marked_not_again_in_either_direction_is_left_out(edge):
     a, b = _pair_tables()
-    known = Known(rejected={(1, "customer_id", 2, "id")})
+    known = Known(rejected={edge})
     out = await _settle([_sem((1, "customer_id"), (2, "id"))], a, b, known=known)
     assert out.kept == [] and out.removed.rejected == 1
 
 
-async def test_a_semantic_suggestion_matching_a_foreign_key_of_the_run_is_removed_and_the_key_kept():
+async def test_a_semantic_duplicate_of_a_foreign_key_is_shown_once_as_the_foreign_key():
     a, b = _pair_tables()
     fk = _fk((1, "customer_id"), (2, "id"))
-    out = await _settle([fk, _sem((2, "id"), (1, "customer_id"), cardinality="one-to-many")], a, b)
+    sem = from_answer(
+        "semantics", (2, "id"), (1, "customer_id"), "one-to-many", 0.8, "orders name a customer"
+    )
+    out = await _settle([fk, sem], a, b)
     assert [(p.kind, p.edge) for p in out.kept] == [("foreign_keys", (1, "customer_id", 2, "id"))]
-    assert out.removed.matches_foreign_key == 1
+    assert out.kept[0].reasoning == (
+        "Foreign key constraint; also proposed by the model at 80%: orders name a customer"
+    )
+    assert out.left_out == []
+
+
+async def test_two_directions_of_one_pair_are_one_row_and_neither_is_left_out():
+    a = tbl(1, "a", col("k"))
+    b = tbl(2, "b", col("k"))
+    props = [_sem((1, "k"), (2, "k"), 0.8), _sem((2, "k"), (1, "k"), 0.9)]
+    out = await _settle(props, a, b)
+    assert [p.edge for p in out.kept] == [(2, "k", 1, "k")]
+    assert out.left_out == [] and out.removed == Removed()
 
 
 async def test_only_relationships_starting_in_the_source_set_and_ending_in_the_target_set_are_kept():
@@ -986,7 +1031,7 @@ def test_a_second_scorer_that_could_not_be_asked_keeps_the_models_confidence_and
     assert tally.scoring_failed == 1 and tally.scored == 0 and tally.left_out == []
 
 
-async def test_every_removed_proposal_is_given_back_with_its_reason():
+async def test_only_existing_not_again_same_column_and_out_of_scope_leave_a_pair_out():
     orders = tbl(1, "orders", col("id", pk=True), col("customer_id"), col("ref"), col("code"))
     customers = tbl(2, "customers", col("id", pk=True), col("ref"), col("code"))
     props = [
@@ -998,26 +1043,18 @@ async def test_every_removed_proposal_is_given_back_with_its_reason():
         _sem((1, "ref"), (2, "ref"), 0.75),
         _sem((1, "code"), (2, "code"), 0.9),
     ]
-    out = await _settle(props, orders, customers, known=Known(rejected={(1, "code", 2, "code")}))
-    assert [p.edge for p in out.kept] == [(1, "customer_id", 2, "id"), (1, "ref", 2, "ref")]
+    known = Known(rejected={(1, "code", 2, "code")}, existing={(2, "ref", 1, "ref")})
+    out = await _settle(props, orders, customers, known=known)
+    assert [(p.kind, p.edge) for p in out.kept] == [
+        ("semantics", (1, "id", 2, "id")),
+        ("foreign_keys", (1, "customer_id", 2, "id")),
+    ]
     assert [(o.reason, o.proposal.edge, o.proposal.confidence) for o in out.left_out] == [
         ("same_column", (1, "customer_id", 1, "customer_id"), 0.9),
-        ("primary_key_to_primary_key", (1, "id", 2, "id"), 0.9),
-        ("matches_foreign_key", (1, "customer_id", 2, "id"), 0.8),
-        ("weaker", (1, "ref", 2, "ref"), 0.75),
+        ("existing", (1, "ref", 2, "ref"), 0.9),
         ("rejected", (1, "code", 2, "code"), 0.9),
     ]
-    assert out.removed.weaker == 1 and out.removed.rejected == 1
-
-
-async def test_a_pair_whose_both_sides_repeat_leaves_out_each_of_its_proposals():
-    a = tbl(1, "a", col("code"))
-    b = tbl(2, "b", col("code"))
-    props = [_sem((1, "code"), (2, "code"), 0.9), _sem((2, "code"), (1, "code"), 0.9)]
-    samples = _Samples({(1, "code"): True, (2, "code"): True})
-    out = await _settle(props, a, b, samples=samples)
-    assert out.kept == [] and out.removed.both_repeating == 1
-    assert [o.reason for o in out.left_out] == ["both_repeating", "both_repeating"]
+    assert out.removed == Removed(same_column=1, existing=1, rejected=1)
 
 
 # --- the second scorer is asked with what the run knows ---------------------------------------------
