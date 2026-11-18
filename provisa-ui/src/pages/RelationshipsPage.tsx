@@ -123,7 +123,7 @@ export function RelationshipsPage() {
   const { domainsEnabled, domains: filterDomains, checkedDomains } = useDomainFilter();
   const erdCheckedDomains =
     checkedDomains.size > 0 && checkedDomains.size < filterDomains.length ? checkedDomains : null;
-  const { capabilities } = useAuth();
+  const { capabilities, actingRoles } = useAuth();
   const canManage = capabilities.includes("create_relationship");
 
   const updateSearch = (v: string) => {
@@ -681,6 +681,7 @@ export function RelationshipsPage() {
       problem={saveProblem}
       tables={tables}
       functions={functions}
+      actingRole={actingRoles}
       tableDomainById={tableDomainById}
       domainsEnabled={domainsEnabled}
     />

@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "No queryable tables or relationships",
     "graphqlQueryAria": "Run example GraphQL query for {{table}}",
     "sqlQueryAria": "Run example SQL query for {{table}}",
-    "cypherQueryAria": "Run example Cypher query for {{type}}",
     "grpcQueryAria": "Run example gRPC call for {{table}}",
     "jsonapiQueryAria": "Run example JSON:API request for {{table}}",
     "openApiQueryAria": "Run example REST request for {{table}}",

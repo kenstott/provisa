@@ -87,7 +87,7 @@ async def while_saying_still_going(
 @dataclass(frozen=True)
 class KeyValueOverlap:
     """Key value overlap's settings for a run (REQ-413, amended 2026-11-16): the semantic pairs
-    whose model confidence is at ``cutoff`` or more and under the threshold are measured, each
+    whose model confidence is at ``cutoff`` or more and under the run's threshold are measured, each
     column read for at most ``sample_size`` distinct values."""
 
     cutoff: float
@@ -112,6 +112,10 @@ class RunSpec:
     role: str
     #: Key value overlap, chosen only with semantics; None: not chosen, and no pair is measured.
     key_values: KeyValueOverlap | None
+    #: The tick threshold of the person who started the run, taken when it started and recorded
+    #: with it (REQ-413, amended 2026-11-18): the model is told it, a proposal at it or above is
+    #: kept unmeasured, and the key value overlap band runs from the cutoff up to it.
+    threshold: float
 
 
 @dataclass
@@ -488,7 +492,9 @@ async def perform(
         return out
 
     outcome = await settled([], [])
-    latest = report(Tally(total=len(prepared.requests)) if model else None, outcome)
+    latest = report(
+        Tally(total=len(prepared.requests), threshold=spec.threshold) if model else None, outcome
+    )
     await progress(latest)
     if model is None:
         return report(None, outcome)
@@ -517,6 +523,7 @@ async def perform(
         model.output_tokens,
         ask,
         _Control(),
+        threshold=spec.threshold,
         key_values=_key_values(state, spec, tables, known),
         refine=await _refiner(state, tables),
         to_thread=in_flight,

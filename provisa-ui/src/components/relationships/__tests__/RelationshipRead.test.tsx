@@ -69,6 +69,7 @@ function show(rel: Relationship, domainsEnabled = true) {
       functions={[]}
       tableDomainById={{ "2": "zoo" }}
       domainsEnabled={domainsEnabled}
+      actingRole={null}
     />,
   );
 }
