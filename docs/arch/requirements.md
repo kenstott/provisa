@@ -27102,7 +27102,7 @@ Maintainer 2026-11-17 ('def need to have hyperlinks for cypher/sql/sparql/graphq
 
 **Status:** 💡 proposed · **Priority:** MUST · **Type:** behavioral
 
-Maintainer 2026-11-18 ('all AI assisted features should narrow their concerns to the filtered domains (for example the ontology relationships assistant should only work against the selected domains)'). Every AI-assisted feature works only within the domains selected in the domain filter when it is started: what it sends the model, what it proposes and what it writes are limited to the tables, columns, terms and relationships of those domains. This covers, among others, relationship discovery, the ontology's relationship suggestions and term finding, natural-language query, generated descriptions and any other feature that asks a model. A feature started with no domain selected that would otherwise reach every domain asks for a selection first, and nothing outside the selected domains is read, sent or changed.
+Maintainer 2026-11-18 ('all AI assisted features should narrow their concerns to the filtered domains (for example the ontology relationships assistant should only work against the selected domains)'). Every AI-assisted feature works only within the domains selected in the domain filter when it is started: what it sends the model, what it proposes and what it writes are limited to the tables, columns, terms and relationships of those domains. This covers, among others, relationship discovery, the ontology's relationship suggestions and term finding, natural-language query, generated descriptions and any other feature that asks a model. Nothing outside the selected domains is read, sent or changed.
 
 **Code:** —
 
