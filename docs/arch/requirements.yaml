@@ -3782,7 +3782,12 @@
     whether each column is a key is its distinct count against its row count. No column''s values are pulled
     out and compared outside the engine. The run''s sample size bounds how many distinct source values are
     joined. The model''s prompt samples only show what kind of values a column holds; they are each column''s
-    distinct values, not its first rows, and overlap is never judged from them.'
+    distinct values, not its first rows, and overlap is never judged from them. (Amended 2026-11-18, THE
+    JOIN COUNT READS A LIMITED NUMBER OF ROWS, NEVER A FULL SCAN:) Maintainer 2026-11-18 (''perhaps with
+    a limit. if that would prevent full table scans''). The join count reads at most the run''s sample size
+    of rows from the source column, as a limit the engine stops at, and looks those values up in the target
+    column; no distinct count over a whole column is taken. Whether a column is a key, and the overlap,
+    are judged on the rows read, and the measure says when it was limited.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
