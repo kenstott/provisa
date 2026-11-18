@@ -1071,7 +1071,7 @@ def test_the_reusable_workflows_are_checked_only_after_every_action_is():
     assert level_zero == {
         job for job, body in jobs.items() if str(body.get("name", "")).startswith("action / ")
     }
-    assert len(level_zero) == 13
+    assert len(level_zero) == 14
     assert jobs["level-1"]["needs"] == ["lane-results", "release-results"]
 
 
