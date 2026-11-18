@@ -242,7 +242,7 @@ async def test_govern_statement_refuses_a_table_outside_the_mask_before_any_othe
     from tests.unit.test_v003_scope_pipeline import _SQL
     from tests.unit.test_view_inputs_in_service import _OVER_A_SERVED_TABLE, _build, _view
 
-    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     monkeypatch.setattr(runtime, "request_mask", lambda _state, _role: _NothingInMask())
 
     # _SQL also trips a validate_sql rule (the unnest refusal): the mask's refusal comes first.
@@ -277,7 +277,7 @@ async def test_a_view_in_the_mask_over_a_table_outside_it_is_refused_by_the_mask
         _view,
     )
 
-    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     monkeypatch.setattr(runtime, "request_mask", lambda _state, _role: _OnlyTheView(_VIEW))
 
     with pytest.raises(GovernanceRefused, match="E001"):
@@ -290,7 +290,7 @@ async def test_a_view_outside_the_mask_is_refused_by_the_mask(monkeypatch):
     from provisa.pgwire import _pipeline
     from tests.unit.test_view_inputs_in_service import _OVER_A_SERVED_TABLE, _build, _view
 
-    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     monkeypatch.setattr(runtime, "request_mask", lambda _state, _role: _NothingInMask())
 
     with pytest.raises(GovernanceRefused, match="E001"):

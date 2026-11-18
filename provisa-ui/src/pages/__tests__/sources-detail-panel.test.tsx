@@ -155,6 +155,20 @@ describe("the Sources list's search", () => {
   });
 });
 
+// REQ-1921: a withdrawn source is marked in the list, and its panel offers Put back.
+describe("a withdrawn source", () => {
+  it("is marked Withdrawn in the list, and only it", async () => {
+    SOURCES = [source({}), source({ id: "events", type: "kafka", withdrawn: true })];
+    render(<SourcesPage />);
+    const row = await screen.findByTestId("sources-row-events");
+    expect(within(row).getByTestId("sources-withdrawn-events")).toHaveTextContent("Withdrawn");
+    expect(screen.queryByTestId("sources-withdrawn-sales-pg")).toBeNull();
+    await userEvent.click(row);
+    expect(await screen.findByTestId("source-detail-put-back")).toBeInTheDocument();
+    expect(screen.queryByTestId("source-detail-withdraw")).toBeNull();
+  });
+});
+
 describe("a source's detail is a panel at the right of the list", () => {
   it("shows nothing until a row is chosen, then that source, one at a time", async () => {
     render(<SourcesPage />);

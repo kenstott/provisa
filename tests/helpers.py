@@ -522,7 +522,7 @@ def attaching(source, catalog: str):
     return SimpleNamespace(**dict(source), catalog=catalog)
 
 
-# -- REQ-1921: a table or view registered through the admin starts as draft ---------------------
+# -- REQ-1921: a table or view registered through the admin is live ----------------------------
 
 
 def registered_id(message: str) -> int:

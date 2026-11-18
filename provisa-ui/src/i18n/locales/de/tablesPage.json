@@ -93,6 +93,9 @@
     "history": {
       "badge": "Historie",
       "title": "Führt Historie: zum Stand eines Datums oder wie erfasst abfragen (Time Travel)"
-    }
+    },
+    "withdrawn": "Zurückgezogen",
+    "withdrawnTitle": "Außer Betrieb: Keine Rolle liest sie, bis sie zurückgeholt wird",
+    "sourceWithdrawnTitle": "Ihre Quelle {{source}} ist zurückgezogen: Keine Rolle liest sie, bis die Quelle zurückgeholt wird"
   }
 }

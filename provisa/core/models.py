@@ -332,6 +332,10 @@ class Source(BaseModel):  # REQ-012, REQ-052, REQ-053, REQ-204, REQ-229, REQ-250
     # table of this source in. It decides nothing about where copies live — each table carries
     # its own — and changing it later moves no table.
     region: str | None = None
+    # REQ-1921: withdrawn -- out of production, as the store holds it: no engine attaches it and
+    # none of its tables serves any role. Carried as the store holds it, so a promotion lands a
+    # move in progress with it.
+    withdrawn: bool = False
     # REQ-1141: mark this source LOAD-PROTECTED. Like replicate 0 it removes the live route
     # AND selects the SCHEDULED freshness discipline: the query path NEVER pulls the source — reads
     # always serve the last materialized snapshot — and the source is refreshed ONLY by the
@@ -1829,6 +1833,18 @@ def _refuse_member_product_id(data: Any, member: str) -> Any:  # REQ-1634
     return data
 
 
+def _refuse_draft(data: Any) -> Any:  # REQ-1921
+    """A table declaring ``draft`` is refused by name: there is no draft state. A table out of
+    production, or midway through a move between regions, is ``withdrawn``."""
+    if isinstance(data, dict) and "draft" in data:
+        name = data.get("table") or data.get("table_name") or data.get("name")
+        raise ValueError(
+            f"table {name!r} declares draft, which is not a setting; a table out of production "
+            "is declared withdrawn: true"
+        )
+    return data
+
+
 #: ``Table.read_wait``: a read with nothing landed does not wait for it (REQ-2224).
 READ_WAIT_NO_ROWS = 0
 
@@ -1842,6 +1858,11 @@ class Table(
     @classmethod
     def _no_product_id(cls, data: Any) -> Any:  # REQ-1634
         return _refuse_member_product_id(data, "table")
+
+    @model_validator(mode="before")
+    @classmethod
+    def _no_draft(cls, data: Any) -> Any:  # REQ-1921
+        return _refuse_draft(data)
 
     @model_validator(mode="before")
     @classmethod
@@ -1890,10 +1911,10 @@ class Table(
     # REQ-1921: the org region this table's data lives in; None = no region (a copy may be kept in
     # every region). Its source's region is only the admin form's default for a new table.
     region: str | None = None
-    # REQ-1921: the waypoint of a move between regions, as the store holds it -- out of service
-    # while set. A move sets and clears it; a registration never does, so a registered table is
-    # live. Carried as the store holds it, so a promotion lands a move's waypoint with it.
-    draft: bool = False
+    # REQ-1921: withdrawn -- out of production, as the store holds it; the waypoint of a move
+    # between regions. A registration never sets it, so a registered table is live. Carried as
+    # the store holds it, so a promotion lands a move in progress with it.
+    withdrawn: bool = False
     # REQ-1141: per-table load-protection override; None = inherit the source's load_protected.
     load_protected: bool | None = None
     # REQ-1141: per-table off-peak window override ("HH:MM-HH:MM"); None = inherit source window.

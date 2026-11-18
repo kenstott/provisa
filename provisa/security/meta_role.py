@@ -459,9 +459,9 @@ def _build(
     inputs = state.role_build_inputs
     chains = {meta_id: meta_chain(meta_id, member_ids, inputs["role_chains"], qualifiers)}
     # Inheritance with several parents: every grant to a member reaches the child.
-    # REQ-1921: and on a draft, so the child is named it as its members are -- refused as draft,
-    # or read where the child holds table registration in its domain.
-    for t in [*inputs["tables"], *inputs["draft_tables"]]:
+    # REQ-1921: and on a withdrawn table, so the child's steward preview reads it as its
+    # members' would.
+    for t in [*inputs["tables"], *inputs["withdrawn_tables"]]:
         expand_grants(t.get("columns") or [], chains)
     expand_grants(inputs["metrics"], chains)
     expand_grants(inputs["functions"], chains)
@@ -487,8 +487,8 @@ def _build(
 
 
 def fold_tables(state: Any, meta_id: str, tables: list[dict]) -> Any:  # REQ-1620, REQ-1921
-    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a draft its
-    steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
+    """How the meta-role ``meta_id`` reads ``tables``, tables its build did not fold (a withdrawn
+    table its steward previews, admin/table_read.py): granted to it as :func:`_build` grants a table in
     service -- every grant to a member reaches it, expanded on ``tables`` in place -- and its row
     filters and member reads folded from its members' as :func:`_build` folds them. ``state`` is
     a view whose members' surfaces read ``tables``. Returns the folded RLSContext."""

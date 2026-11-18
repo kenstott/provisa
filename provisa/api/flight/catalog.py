@@ -113,8 +113,11 @@ async def _build_catalog_tables_async(state, role_id: str | None = None) -> list
     async with state.model_db.acquire() as conn:
         rows = await conn.fetch(
             "SELECT id, domain_id, table_name, description, modeling_role, modeling_history "
-            # REQ-1921, REQ-2248: a draft or retired table is in no catalog.
-            "FROM registered_tables WHERE NOT draft AND NOT retired ORDER BY domain_id, table_name"
+            # REQ-1921, REQ-2248: a withdrawn (itself or through its source) or retired table is
+            # in no catalog.
+            "FROM registered_tables WHERE NOT withdrawn AND NOT retired "
+            "AND source_id NOT IN (SELECT ws.id FROM sources ws WHERE ws.withdrawn) "
+            "ORDER BY domain_id, table_name"
         )
         col_rows = await conn.fetch(
             "SELECT tc.table_id, tc.column_name, tc.alias, tc.data_type, tc.description, "

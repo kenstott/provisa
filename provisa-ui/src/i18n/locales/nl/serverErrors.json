@@ -137,7 +137,6 @@
       "unknown_command": "Onbekende opdracht '{{name}}'",
       "write_not_admitted": "De rol '{{role}}' mag deze schrijfbewerking niet uitvoeren: een schrijfbewerking vereist het schrijfrecht, schrijftoegang tot elke kolom die wordt geschreven en rijen die het rijfilter van de rol toelaat.",
       "write_not_supported": "'{{table}}' accepteert geen {{operation}}: de bron kan het niet uitvoeren",
-      "table_is_draft": "{{table}} is een concept: buiten gebruik tot de eigenaren van haar domein haar vrijgeven",
       "source_unbound": "Bron '{{source}}' heeft geen verbinding in omgeving '{{env}}': bind deze of kopieer deze opnieuw vanuit de bovenliggende omgeving",
       "system_catalog_unavailable": "De catalogus '{{catalog}}' van de engine wordt geregistreerd. Probeer het zo opnieuw.",
       "domain_not_accessible": "Rol '{{role_id}}' heeft geen toegang tot domein '{{domain}}'",
@@ -154,7 +153,6 @@
       "source_starting": "De bron {{source}} wordt nog gestart. Probeer het zo opnieuw.",
       "source_unavailable": "De bron {{source}} kon niet antwoorden. Probeer het straks opnieuw.",
       "view_outside_load_window": "De view {{view}} kan alleen binnen het leesvenster worden gelezen. Het opent weer om {{opens_at}}.",
-      "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
       "graphql_body_missing": "Het verzoek heeft geen body: een GraphQL-verzoek is een JSON-object met een query.",
       "graphql_body_not_json": "De body van het verzoek is geen JSON: {{error}}",
       "graphql_request_not_object": "Een GraphQL-verzoek is een JSON-object met een query.",
@@ -166,6 +164,8 @@
       "parameter_conflict": "De parameter {{parameter}} krijgt tegelijk twee verschillende waarden ({{first}} en {{second}}). Geef hem één waarde, of som de waarden op met IN of OR.",
       "parameter_calls_over_cap": "Het statement heeft {{calls}} aanroepen naar {{table}} nodig, één voor elke waarde van zijn parameters, en per statement worden er hoogstens {{cap}} gedaan (instelling {{setting}}). Geef minder waarden op.",
       "parameter_not_written": "De relatie {{relationship}} koppelt op de parameter {{parameter}}, die een statement aan een waarde bindt en nooit schrijft. Een schrijfactie maakt {{relationship}} niet aan.",
+      "table_is_withdrawn": "{{table}} is teruggetrokken: buiten productie tot hij wordt teruggezet",
+      "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
       "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
       "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet."
     },
@@ -328,13 +328,6 @@
     "query": {
       "catalog_view_refused": "{{view}} is een catalogusview van het meta-domein en kan niet in één instructie samen met een tabel van een databron worden gelezen: lees ze in twee instructies.",
       "function_unsupported": "{{function}}() heeft geen equivalent op {{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "Redactieregel {{rule}}: {{why}}",
-      "pattern_backtracks": "Redactieregel {{rule}}: het patroon kan catastrofaal terugzoeken (een herhaling genest in een onbegrensde herhaling, of alternatieven daarin die met dezelfde tekst kunnen beginnen). Herschrijf het zonder die vorm.",
-      "pattern_unsupported": "Redactieregel {{rule}}: de regel van een organisatie kan geen terugverwijzingen, lookahead of lookbehind, atomaire groepen, bezittelijke herhalingen of voorwaardelijke groepen gebruiken.",
-      "pattern_too_large": "Redactieregel {{rule}}: het patroon is te groot als de herhalingen worden uitgeschreven. Gebruik een kleiner aantal herhalingen.",
-      "server_reference": "Redactieregel {{rule}}: een organisatie op deze server kan niet verwijzen naar de omgeving van de server. Gebruik ${secret:NAME} uit de eigen kluis van de organisatie."
     },
     "replication": {
       "answer_not_json": "Het antwoord dat voor de replica van {{table}} is gelezen, is geen geldige JSON: [{{content_type}}] {{cause}} (in de {{kib}} KiB vóór byte {{before_byte}} van het antwoord).",
@@ -565,7 +558,10 @@
       "source_withdrawn": "Bron {{source}} teruggetrokken",
       "source_put_back": "Bron {{source}} teruggezet",
       "withdrawn_source_not_previewable": "Tabel {{table}} kan niet worden bekeken: de bron {{source}} is teruggetrokken, en geen engine leest een teruggetrokken bron.",
-      "withdrawn_table_not_previewable": "Tabel {{table}} kan niet worden bekeken: hij is teruggetrokken en houdt geen replica, en de engine leest de bron alleen via een replica."
+      "withdrawn_table_not_previewable": "Tabel {{table}} kan niet worden bekeken: hij is teruggetrokken en houdt geen replica, en de engine leest de bron alleen via een replica.",
+      "table_not_withdrawn": "Tabel {{table}} is niet teruggetrokken: alleen een teruggetrokken tabel wordt teruggezet. Stel de regio in om een tabel in productie naar een andere regio te verplaatsen.",
+      "source_not_withdrawn": "Bron {{source}} is niet teruggetrokken: alleen een teruggetrokken bron wordt teruggezet. Stel de regio in om die te wijzigen.",
+      "put_back_needs_region": "Het terugzetten van {{object}} noemt een regio: geef er een, of geen voor geen regio."
     },
     "secrets": {
       "env_reference_object_locked": "Dit object is van de beheerder: het leest de eigen omgeving van de server en kan hier niet worden gewijzigd. Voeg in plaats daarvan een eigen object toe.",
@@ -578,7 +574,8 @@
     "security": {
       "unknown_mode": "onbekende beveiligingsmodus '{{mode}}'",
       "data_residency_refused": "De regio van {{object}} kan niet worden ingesteld: de data_residency-toekenning dekt {{value}} niet; een data_residency-toekenning die het noemt, staat het toe",
-      "data_residency_missing": "De regio van {{object}} kan niet worden ingesteld: geen data_residency-toekenning van de aanroeper dekt {{value}}; een data_residency-toekenning die het noemt, staat het toe"
+      "data_residency_missing": "De regio van {{object}} kan niet worden ingesteld: geen data_residency-toekenning van de aanroeper dekt {{value}}; een data_residency-toekenning die het noemt, staat het toe",
+      "withdraw_residency_refused": "{{object}} kan niet worden teruggetrokken: geen data_residency-toekenning van de aanroeper dekt {{value}}, waar het wordt bewaard; een data_residency-toekenning die het noemt, staat het toe"
     },
     "settings": {
       "auth_required": "{{field}} kan pas worden gewijzigd als verificatie is geconfigureerd.",
@@ -744,10 +741,6 @@
     "dbt_sources": {
       "unknown_role": "Er bestaat geen rol met de naam {{role}}."
     },
-    "debug_logs": {
-      "pattern_refused": "Het filterpatroon voor logboeken wordt geweigerd: {{why}}",
-      "pattern_exceeded": "Het filterpatroon voor logboeken wordt geweigerd: het overschreed zijn stappenlimiet ({{steps}} stappen) op een logregel van {{length}} tekens."
-    },
     "dbt": {
       "products": {
         "none_offered": "Bron {{source_id}} heeft geen openbaar model met een afgedwongen contract.",
@@ -906,6 +899,17 @@
     "preflight": {
       "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
       "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Redactieregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Redactieregel {{rule}}: het patroon kan catastrofaal terugzoeken (een herhaling genest in een onbegrensde herhaling, of alternatieven daarin die met dezelfde tekst kunnen beginnen). Herschrijf het zonder die vorm.",
+      "pattern_unsupported": "Redactieregel {{rule}}: de regel van een organisatie kan geen terugverwijzingen, lookahead of lookbehind, atomaire groepen, bezittelijke herhalingen of voorwaardelijke groepen gebruiken.",
+      "pattern_too_large": "Redactieregel {{rule}}: het patroon is te groot als de herhalingen worden uitgeschreven. Gebruik een kleiner aantal herhalingen.",
+      "server_reference": "Redactieregel {{rule}}: een organisatie op deze server kan niet verwijzen naar de omgeving van de server. Gebruik ${secret:NAME} uit de eigen kluis van de organisatie."
+    },
+    "debug_logs": {
+      "pattern_refused": "Het filterpatroon voor logboeken wordt geweigerd: {{why}}",
+      "pattern_exceeded": "Het filterpatroon voor logboeken wordt geweigerd: het overschreed zijn stappenlimiet ({{steps}} stappen) op een logregel van {{length}} tekens."
     },
     "import": {
       "include_outside_upload": "{{path}} ligt buiten het geüploade project; een project leest alleen zijn eigen bestanden.",

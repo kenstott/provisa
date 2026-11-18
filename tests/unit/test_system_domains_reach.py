@@ -228,10 +228,10 @@ def _ctx() -> CompilationContext:
 
 
 def _gov(role: dict):
-    from provisa.security.rights import draft_reach
+    from provisa.security.rights import withdrawn_reach
 
     ctx = _ctx()
-    # REQ-1921: the drafts it reads, asked of the roles as the build holds them.
+    # REQ-1921: the withdrawn rows it reads, asked of the roles as the build holds them.
     roles = {r["id"]: r for r in flatten_role_dicts([*_standard(), *OWN])}
     return ctx, build_governance_context(
         role["id"],
@@ -240,7 +240,7 @@ def _gov(role: dict):
         ctx,
         _tables(),
         role,
-        draft_reach=lambda: draft_reach(role, {**roles, role["id"]: role}),
+        withdrawn_reach=lambda: withdrawn_reach(role, {**roles, role["id"]: role}),
     )
 
 
@@ -516,9 +516,10 @@ def test_sql_governance_columns_follow_view_governance():
 def test_sql_rows_stay_governed_by_the_tiers_and_the_glossary():
     _, gov = _gov(_flat())
     # meta: REQ-1132's default tier: the tables it reads, not the whole catalog. Ops is not read.
-    # REQ-1921: and no draft's row, read only where a role holds table registration in its domain.
+    # REQ-1921: and no withdrawn table's row, read only where a role holds table registration in
+    # its domain.
     assert gov.rls_rules[CATALOG] == rule_of(
-        f"(id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})) AND (NOT (draft OR withdrawn))"
+        f"(id IN ({PETS},{CATALOG},{TERMS},{PRODUCTS})) AND (NOT withdrawn)"
     )
     # ontology: the glossary's own rule, scoped to the role's data domains.
     assert mentions(gov.rls_rules[TERMS], "pet-store") and mentions(gov.rls_rules[TERMS], "shelter")

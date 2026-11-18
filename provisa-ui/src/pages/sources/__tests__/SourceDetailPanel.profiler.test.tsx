@@ -31,6 +31,9 @@ function panel(type: string) {
       onDuplicate={vi.fn()}
       onNavigate={vi.fn()}
       onDelete={vi.fn()}
+      onWithdraw={vi.fn()}
+      onPutBack={vi.fn()}
+      putBackRegions={null}
     />,
   );
 }

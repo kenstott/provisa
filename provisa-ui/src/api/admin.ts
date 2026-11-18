@@ -567,7 +567,7 @@ export async function previewTable(
   columns: string[];
   rows: Record<string, unknown>[];
   rowCount: number;
-  draft: boolean;
+  withdrawn: boolean;
 }> {
   const resp = await fetch(`${API_BASE}/admin/tables/${tableId}/preview`, {
     method: "POST",

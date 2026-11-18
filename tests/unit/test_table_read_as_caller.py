@@ -9,12 +9,12 @@
 # permission from the copyright holder.
 
 """A table's Preview and Profile are read as their caller, in the table's own domain — and a
-draft can be previewed by the people who decide to release it (REQ-1921, REQ-452).
+withdrawn table can be previewed by the people who decide to put it back (REQ-1921, REQ-452).
 
-A draft is out of service: in no role's schema, refused to every statement that names it. The
-table detail's Preview and Profile read it all the same, for a caller who holds the right its
-release needs, through one entry point that writes the statement itself and governs it against
-the caller's role with that one table added. These tests run that on the real role build and the
+A withdrawn table is out of production: in no role's schema, refused to every statement that
+names it. The table detail's Preview and Profile read it all the same, for a caller who holds the
+right putting it back needs, through one entry point that writes the statement itself and governs
+it against the caller's role with that one table added. These tests run that on the real role build and the
 real governance stage, with routing stood in for: what reaches routing is what would be read.
 """
 
@@ -37,7 +37,7 @@ _ROLE = {"id": "r", "capabilities": ["usage"], "domain_access": ["sales"]}
 
 
 def _refunds(**over) -> dict:
-    """A registered table of the sales domain that is a draft."""
+    """A registered table of the sales domain that is withdrawn."""
     return {
         "id": _REFUNDS,
         "domain_id": "sales",
@@ -45,7 +45,8 @@ def _refunds(**over) -> dict:
         "schema_name": "public",
         "table_name": "refunds",
         "alias": None,
-        "draft": True,
+        "withdrawn": True,
+        "source_withdrawn": False,
         "region": None,
         "columns": [
             {
@@ -85,7 +86,7 @@ def multi_domain(monkeypatch):
 
 @pytest.fixture
 def state(multi_domain, monkeypatch):
-    """The real state after the real role build, with ``refunds`` registered as a draft."""
+    """The real state after the real role build, with ``refunds`` registered and withdrawn."""
     import provisa.api.app as appmod
 
     for name in ("meta_roles", "meta_resolved_at", "masking_rules"):
@@ -93,10 +94,7 @@ def state(multi_domain, monkeypatch):
     built = _built_roles(monkeypatch, [dict(_ROLE)])
     # As a rebuild publishes them beside the role build: the tables in service.
     monkeypatch.setattr(built, "tables", _tables(), raising=False)
-    built.role_build_inputs["draft_tables"] = [_refunds()]
-    # The role's own context names the draft only to refuse it, as the build leaves it.
-    role_surface(built, "r").context.draft_names['"sales"."refunds"'] = "refunds"
-    role_surface(built, "r").context.draft_names["sales.refunds"] = "refunds"
+    built.role_build_inputs["withdrawn_tables"] = [_refunds()]
     return built
 
 
@@ -121,13 +119,13 @@ async def _ordinary(sql: str) -> None:
 _STATEMENT = 'SELECT * FROM "sales"."refunds" LIMIT 5'
 
 
-async def test_an_ordinary_statement_naming_the_draft_is_refused(state, routing):
-    with pytest.raises(PermissionError, match="draft"):
+async def test_an_ordinary_statement_naming_the_withdrawn_table_is_refused(state, routing):
+    with pytest.raises(PermissionError, match="not a registered table"):
         await _ordinary(_STATEMENT)
     routing.assert_not_awaited()
 
 
-async def test_the_steward_read_of_a_draft_reaches_routing_governed(state, routing):
+async def test_the_steward_read_of_a_withdrawn_table_reaches_routing_governed(state, routing):
     with pytest.raises(_Routed):
         await table_read.read_as_caller(state, _REFUNDS, "r", limit=5)
     routing.assert_awaited_once()
@@ -146,7 +144,7 @@ async def test_the_same_words_are_still_refused_after_a_steward_read(state, rout
         await table_read.read_as_caller(state, _REFUNDS, "r", limit=5)
     routing.reset_mock()
 
-    with pytest.raises(PermissionError, match="draft"):
+    with pytest.raises(PermissionError, match="not a registered table"):
         await _ordinary(_STATEMENT)
     routing.assert_not_awaited()
     assert state.tables == tables_before and _REFUNDS not in [t["id"] for t in state.tables]
@@ -156,7 +154,7 @@ async def test_the_same_words_are_still_refused_after_a_steward_read(state, rout
         assert len(state.compiled_query_cache._store) == kept_before
 
 
-async def test_a_draft_is_read_under_the_callers_own_masks(state, routing):
+async def test_a_withdrawn_table_is_read_under_the_callers_own_masks(state, routing):
     from provisa.security.masking import MaskingRule, MaskType
 
     state.masking_rules = {
@@ -170,19 +168,21 @@ async def test_a_draft_is_read_under_the_callers_own_masks(state, routing):
     assert "MASKED" in governed
 
 
-async def test_a_draft_kept_in_another_region_is_not_read_here(state, routing, monkeypatch):
+async def test_a_withdrawn_table_kept_in_another_region_is_not_read_here(
+    state, routing, monkeypatch
+):
     from provisa.core import process_region
     from provisa.core.read_refusal import ReadRefused
 
     monkeypatch.setattr(process_region, "_region", "us")
-    state.role_build_inputs["draft_tables"] = [_refunds(region="eu")]
+    state.role_build_inputs["withdrawn_tables"] = [_refunds(region="eu")]
     with pytest.raises(ReadRefused) as refused:
         await table_read.read_as_caller(state, _REFUNDS, "r", limit=5)
     assert refused.value.code == "query.home_region_unavailable"
     assert refused.value.params == {"table": "refunds", "region": "eu"}
     routing.assert_not_awaited()
 
-    state.role_build_inputs["draft_tables"] = [_refunds(region="us")]
+    state.role_build_inputs["withdrawn_tables"] = [_refunds(region="us")]
     with pytest.raises(_Routed):
         await table_read.read_as_caller(state, _REFUNDS, "r", limit=5)
 
@@ -215,7 +215,7 @@ async def test_a_table_that_is_not_registered_is_not_found(state):
 # --- the right: registering tables, in the table's own domain ---------------------------------------
 
 
-def test_the_caller_needs_the_right_a_release_needs_in_the_tables_domain(state, monkeypatch):
+def test_the_caller_needs_the_right_putting_back_needs_in_the_tables_domain(state, monkeypatch):
     from provisa.api.admin import capabilities
 
     asked: list[tuple[str, str]] = []
@@ -291,7 +291,7 @@ def test_both_routes_read_through_the_one_function_and_nothing_else():
         assert "await _rows(request, table_id, x_provisa_role," in inspect.getsource(route)
 
 
-# --- the viewer of a draft: filters, sorts and pages, each a statement the SERVER writes ------------
+# --- the viewer of a withdrawn table: filters, sorts and pages, each a statement the SERVER writes ------------
 
 
 def _page(**choices):
@@ -421,7 +421,7 @@ def test_a_sort_direction_and_a_page_are_what_they_are_or_nothing():
             _page(**bad)
 
 
-async def test_after_the_viewer_has_filtered_sorted_and_paged_the_draft_is_as_refused_as_before(
+async def test_after_the_viewer_has_filtered_sorted_and_paged_the_table_is_as_refused_as_before(
     masked_and_filtered, routing
 ):
     state = masked_and_filtered
@@ -435,7 +435,7 @@ async def test_after_the_viewer_has_filtered_sorted_and_paged_the_draft_is_as_re
     routing.reset_mock()
 
     for words in (_STATEMENT, 'SELECT * FROM "sales"."refunds" WHERE "id" >= 7 LIMIT 51 OFFSET 0'):
-        with pytest.raises(PermissionError, match="draft"):
+        with pytest.raises(PermissionError, match="not a registered table"):
             await _ordinary(words)
     routing.assert_not_awaited()
     assert state.tables == tables_before and state.surfaces["r"] is surface_before
@@ -468,7 +468,7 @@ async def test_the_viewer_request_of_a_table_in_service_is_an_ordinary_bound_sta
     ]
 
 
-# --- a draft whose source the engine reaches only through a replica: landed the ordinary way -------
+# --- a withdrawn table keeps no replica: read live from its source, or refused ---------------------
 
 
 class _Face:
@@ -478,31 +478,19 @@ class _Face:
         self.engine, self._state = engine, bound_to
 
 
-@pytest.fixture
-def replica_only(state, monkeypatch):
-    """The draft's source is one the bound engine cannot read in place: its rows are reached
-    through its replica, at the address the engine's store gives it."""
+def _engine_reading(state, monkeypatch, *, through_replica: bool):
+    """The bound engine reads the table's source in place, or only through a replica."""
     from provisa.federation import registry_view, replica_routing
-    from provisa.federation.replica_address import ReplicaAddress, ReplicaRoutes
+    from provisa.federation.replica_address import ReplicaRoutes
 
     source = SimpleNamespace(id="pg", type=SimpleNamespace(value="postgresql"))
-    backend = SimpleNamespace(
-        replica_address=lambda _state, *, source_id, schema_name, table_name: ReplicaAddress(
-            "replicas", f"{source_id}__{schema_name}__{table_name}"
-        ),
-        replica_read_catalog=lambda _state: "store",
-    )
-    engine = SimpleNamespace(name="e", backend=backend)
+    engine = SimpleNamespace(name="e", backend=SimpleNamespace())
 
     async def _sources(_state):
         return [source]
 
     monkeypatch.setattr(registry_view, "registered_sources", _sources)
-    monkeypatch.setattr(replica_routing, "reads_replica", lambda *a, **kw: True)
-    monkeypatch.setattr(replica_routing, "table_floor", lambda *a, **kw: None)
-    monkeypatch.setattr(
-        replica_routing, "engine_table_keys", lambda _e, _c, schema, name: [(None, schema, name)]
-    )
+    monkeypatch.setattr(replica_routing, "reads_replica", lambda *a, **kw: through_replica)
     runtime = state._active_runtime()
     monkeypatch.setattr(runtime, "federation_engine", _Face(engine, state), raising=False)
     monkeypatch.setattr(runtime, "replica_routes", ReplicaRoutes(engine_name="e"), raising=False)
@@ -510,11 +498,12 @@ def replica_only(state, monkeypatch):
     return state
 
 
-async def test_a_replica_only_draft_is_read_at_its_replica_by_this_read_alone(
-    replica_only, monkeypatch
+async def test_a_withdrawn_table_is_previewed_live_from_its_source_by_this_read_alone(
+    state, monkeypatch
 ):
     from provisa.pgwire import _pipeline
 
+    in_place = _engine_reading(state, monkeypatch, through_replica=False)
     seen: list = []
 
     async def _govern(sql, role_id, **kw):
@@ -527,52 +516,60 @@ async def test_a_replica_only_draft_is_read_at_its_replica_by_this_read_alone(
 
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
     monkeypatch.setattr(_pipeline, "_execute_plan", _execute)
-    published = replica_only.replica_routes
-    await table_read.read_as_caller(replica_only, _REFUNDS, "r", limit=5)
+    published = in_place.replica_routes
+    await table_read.read_as_caller(in_place, _REFUNDS, "r", limit=5)
 
     governed_in, executed_in = seen
     assert governed_in is executed_in
-    key = (None, "public", "refunds")
-    route = governed_in.replica_routes.routes[key]
-    assert route.target == ("store", "replicas", "pg__public__refunds")
-    # Both stages address the statement through an engine face that reads THIS view's routes,
-    # and the read's residency step is told which draft it may wait on a replica of.
+    # Read live: no route to a replica, the table read from its source in place.
+    assert governed_in.replica_routes.routes == {}
+    assert governed_in.replica_routes.unfloored == {_REFUNDS: "pg"}
     assert governed_in.federation_engine._state is governed_in
-    assert governed_in.previewed_draft_ids == {_REFUNDS}
-    # The published routes -- every other statement's -- hold no draft, before or after.
-    assert replica_only.replica_routes is published and key not in published.routes
-    assert replica_only.federation_engine._state is replica_only
-    assert not hasattr(replica_only, "previewed_draft_ids")
+    assert governed_in.previewed_withdrawn_ids == {_REFUNDS}
+    # The published routes -- every other statement's -- never name it, before or after.
+    assert in_place.replica_routes is published and _REFUNDS not in published.unfloored
+    assert in_place.federation_engine._state is in_place
+    assert not hasattr(in_place, "previewed_withdrawn_ids")
 
 
-async def test_only_the_previews_view_has_a_draft_judged_for_a_replica(monkeypatch):
+async def test_a_withdrawn_table_the_engine_reads_only_through_a_replica_is_refused(
+    state, monkeypatch, routing
+):
+    replica_only = _engine_reading(state, monkeypatch, through_replica=True)
+    with pytest.raises(ApiError) as refused:
+        await table_read.read_as_caller(replica_only, _REFUNDS, "r", limit=5)
+    assert (refused.value.status_code, refused.value.code) == (
+        409,
+        "schema.withdrawn_table_not_previewable",
+    )
+    routing.assert_not_awaited()
+
+
+async def test_no_withdrawn_table_is_judged_for_a_replica(monkeypatch):
     from provisa.federation import registry_view
 
     in_service = [SimpleNamespace(id=1), SimpleNamespace(id=2)]
-    drafts = [SimpleNamespace(id=9), SimpleNamespace(id=10)]
 
     async def _served(_state, conn=None):
         return in_service
 
-    async def _drafts(_state):
-        return drafts
-
     monkeypatch.setattr(registry_view, "registered_tables", _served)
-    monkeypatch.setattr(registry_view, "draft_tables", _drafts)
     ordinary = await registry_view.tables_a_read_judges(SimpleNamespace())
     assert [t.id for t in ordinary] == [1, 2]
-    previewing = await registry_view.tables_a_read_judges(SimpleNamespace(previewed_draft_ids={9}))
-    assert [t.id for t in previewing] == [1, 2, 9]  # that draft, and no other
+    previewing = await registry_view.tables_a_read_judges(
+        SimpleNamespace(previewed_withdrawn_ids={9})
+    )
+    assert [t.id for t in previewing] == [1, 2]  # a withdrawn table keeps no replica
 
 
-# --- a draft VIEW: expanded for this read as a view in service is, and for no other ---------------
+# --- a withdrawn VIEW: expanded for this read as a view in service is, and for no other ---------------
 
 _REFUNDS_VIEW = 10
 
 
 @pytest.fixture
-def draft_view(state):
-    """``big_orders``: a view over the table in service, registered and still a draft."""
+def withdrawn_view(state):
+    """``big_orders``: a view over the table in service, registered and withdrawn."""
     view = _refunds(
         id=_REFUNDS_VIEW,
         source_id="__derived__",
@@ -581,11 +578,13 @@ def draft_view(state):
         view_sql='SELECT id FROM "sales"."orders" WHERE id > 5;',
         columns=[_refunds()["columns"][0]],
     )
-    state.role_build_inputs["draft_tables"] = [_refunds(), view]
+    state.role_build_inputs["withdrawn_tables"] = [_refunds(), view]
     return state
 
 
-async def test_a_draft_view_is_expanded_for_its_stewards_read_alone(draft_view, monkeypatch):
+async def test_a_withdrawn_view_is_expanded_for_its_stewards_read_alone(
+    withdrawn_view, monkeypatch
+):
     from provisa.pgwire import _pipeline
 
     seen: list = []
@@ -599,8 +598,8 @@ async def test_a_draft_view_is_expanded_for_its_stewards_read_alone(draft_view, 
 
     monkeypatch.setattr(_pipeline, "_govern_and_route_compiled", _govern)
     monkeypatch.setattr(_pipeline, "_execute_plan", _execute)
-    published = dict(draft_view.view_sql_map)
-    await table_read.read_as_caller(draft_view, _REFUNDS_VIEW, "r", limit=5)
+    published = dict(withdrawn_view.view_sql_map)
+    await table_read.read_as_caller(withdrawn_view, _REFUNDS_VIEW, "r", limit=5)
 
     sql, view = seen[0]
     assert sql == 'SELECT * FROM "sales"."big_orders" LIMIT 5'
@@ -609,11 +608,11 @@ async def test_a_draft_view_is_expanded_for_its_stewards_read_alone(draft_view, 
         'SELECT id FROM "pg"."public"."orders" AS "orders" WHERE id > 5'
     )
     # The published map -- what every other statement is expanded from -- never held it.
-    assert "big_orders" not in draft_view.view_sql_map
-    assert dict(draft_view.view_sql_map) == published
+    assert "big_orders" not in withdrawn_view.view_sql_map
+    assert dict(withdrawn_view.view_sql_map) == published
 
 
-async def test_a_draft_table_adds_nothing_to_the_view_map(state, monkeypatch):
+async def test_a_withdrawn_table_adds_nothing_to_the_view_map(state, monkeypatch):
     from provisa.pgwire import _pipeline
 
     seen: list = []
@@ -631,14 +630,16 @@ async def test_a_draft_table_adds_nothing_to_the_view_map(state, monkeypatch):
     assert seen[0].view_sql_map is state.view_sql_map
 
 
-async def test_a_draft_views_body_reaches_routing_under_the_callers_rules(draft_view, routing):
+async def test_a_withdrawn_views_body_reaches_routing_under_the_callers_rules(
+    withdrawn_view, routing
+):
     from provisa.compiler.rls import RLSContext
 
-    draft_view.rls_contexts["r"] = RLSContext(
+    withdrawn_view.rls_contexts["r"] = RLSContext(
         rules={SALES: "id > 100"}, domain_rules={}, action_rules={}
     )
     with pytest.raises(_Routed):
-        await table_read.read_as_caller(draft_view, _REFUNDS_VIEW, "r", limit=5)
+        await table_read.read_as_caller(withdrawn_view, _REFUNDS_VIEW, "r", limit=5)
     governed = _governed(routing).replace('"', "")
     assert "id > 5" in governed, "the view's own body was expanded for this read"
     assert "id > 100" in governed, "under the caller's row rule on the table it reads"

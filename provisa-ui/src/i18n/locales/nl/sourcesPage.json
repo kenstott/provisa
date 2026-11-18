@@ -45,6 +45,8 @@
     "purposeAdd": "Een bron toevoegen registreert op zichzelf geen tabellen. Gebruik Discover op de rij om de schema's te doorzoeken en de tabellen te registreren die u onder governance wilt brengen.",
     "purposeAria": "Over databronnen",
     "registrationMissing": "{{list}} bevat geen registratie voor bron {{source}}.",
-    "duplicateCredentialsNote": "De inloggegevens van {{source}} worden niet gekopieerd: voer ze hier in, of een verwijzing naar een secret."
+    "duplicateCredentialsNote": "De inloggegevens van {{source}} worden niet gekopieerd: voer ze hier in, of een verwijzing naar een secret.",
+    "withdrawn": "Teruggetrokken",
+    "withdrawnTitle": "Buiten productie: geen van haar tabellen bedient een rol totdat ze wordt teruggezet"
   }
 }

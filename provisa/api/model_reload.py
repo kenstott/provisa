@@ -148,6 +148,10 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
     changed = [sid for sid in seen if sid in known and known[sid] != seen[sid]]
     added = [sid for sid in seen if sid not in known]
     removed = [sid for sid in known if sid not in seen]
+    # REQ-1921: an added source this worker has published no catalog for -- one put back, or
+    # registered by another worker -- is attached by this worker's engine below, as the worker
+    # that registers a source attaches it in the mutation.
+    unattached = [sid for sid in added if sid not in rt.source_catalogs]
     for sid in (*changed, *removed):
         await state.source_pools.remove(sid)
     for sid in removed:
@@ -178,6 +182,20 @@ async def _reconcile_sources(rows: dict[str, dict]) -> None:
             domains=state.config.domains if state.config is not None else [],
         )
         await _build_source_pools_and_enums(cast("ProvisaConfig", shim), extra_sources=models)
+        attach = [m for m in models if m.id in unattached]
+        if attach:
+            from provisa.core.config_loader import register_sources, resolved_source
+            from provisa.core.secrets_store import bound_to_request_org
+
+            # The one call create_source and the boot make, here for the worker that did not.
+            async with bound_to_request_org():
+                failed = register_sources(
+                    state.federation_engine,
+                    [resolved_source(m) for m in attach],
+                    state.source_catalogs,
+                )
+            if failed:
+                log.error("sources not attached on this worker's engine: %s", failed)
         log.info("source state rebuilt: added=%s changed=%s", added, changed)
     if removed:
         log.info("source state dropped: %s", removed)

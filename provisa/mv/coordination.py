@@ -83,7 +83,7 @@ async def ensure_mv_row(model: "Database", state: "Database", mv: "MVDefinition"
     from provisa.core import model_change
 
     # The definition is the model's: its seeding is a model change, whoever runs the first build
-    # (a mutation's scope is joined; a draft view's preview or the scheduler opens its own).
+    # (a mutation's scope is joined; a withdrawn view's preview or the scheduler opens its own).
     async with model_change.scope(f"seed view {mv.id}"):
         await _insert_if_absent(model, definition)
     await ensure_build_row(state, mv)

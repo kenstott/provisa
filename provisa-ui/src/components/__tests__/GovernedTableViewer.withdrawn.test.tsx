@@ -8,7 +8,7 @@
 // machine learning models is strictly prohibited without explicit written
 // permission from the copyright holder.
 
-// REQ-1921: a draft's Preview is the full viewer. A draft is read by no statement a caller sends,
+// REQ-1921: a withdrawn table's Preview is the full viewer. It is read by no statement a caller sends,
 // so every page, filter and sort of it goes to the admin preview as the viewer's choices -- the
 // server writes the statement -- and never to /data/sql.
 
@@ -34,7 +34,7 @@ vi.mock("../../api/admin", () => ({
 import { GovernedTableViewer } from "../GovernedTableViewer";
 import { TablePreviewPane } from "../../pages/tables/TablePreviewPane";
 
-const DRAFT = {
+const WITHDRAWN = {
   id: 9,
   sourceId: "pg",
   domainId: "sales",
@@ -44,18 +44,19 @@ const DRAFT = {
   description: null,
   apiEndpoint: null,
   viewSql: null,
-  draft: true,
+  withdrawn: true,
+  sourceWithdrawn: false,
   columns: [],
 } as unknown as RegisteredTable;
 
 function page(from: number, count: number) {
   const rows = Array.from({ length: count }, (_, i) => ({ id: from + i, note: `n${from + i}` }));
-  return { columns: ["id", "note"], rows, rowCount: rows.length, draft: true };
+  return { columns: ["id", "note"], rows, rowCount: rows.length, withdrawn: true };
 }
 
 const requests = () => vi.mocked(previewTable).mock.calls.map((call) => call[2]);
 
-describe("GovernedTableViewer over a draft", () => {
+describe("GovernedTableViewer over a withdrawn table", () => {
   beforeEach(() => {
     vi.mocked(runSql).mockReset();
     vi.mocked(previewTable).mockReset();
@@ -64,7 +65,7 @@ describe("GovernedTableViewer over a draft", () => {
 
   it("reads its first page through the admin preview, as the role it was given", async () => {
     vi.mocked(previewTable).mockResolvedValue(page(0, 3));
-    render(<GovernedTableViewer table={DRAFT} role="steward" />);
+    render(<GovernedTableViewer table={WITHDRAWN} role="steward" />);
     expect(await screen.findByText("n2")).toBeInTheDocument();
     const [tableId, role, request] = vi.mocked(previewTable).mock.calls[0];
     expect([tableId, role]).toEqual([9, "steward"]);
@@ -77,7 +78,7 @@ describe("GovernedTableViewer over a draft", () => {
     vi.mocked(previewTable).mockImplementation(async (_id, _role, request) =>
       page(request.page * request.pageSize, request.pageSize + 1),
     );
-    render(<GovernedTableViewer table={DRAFT} role="steward" />);
+    render(<GovernedTableViewer table={WITHDRAWN} role="steward" />);
     await screen.findByText("n0");
 
     fireEvent.change(screen.getByLabelText("Filter rows… note"), { target: { value: "late" } });
@@ -99,7 +100,7 @@ describe("GovernedTableViewer over a draft", () => {
 
   it("shows the server's refusal where the rows would be", async () => {
     vi.mocked(previewTable).mockRejectedValue(new Error("No access to domain 'sales'"));
-    render(<GovernedTableViewer table={DRAFT} role="analyst" />);
+    render(<GovernedTableViewer table={WITHDRAWN} role="analyst" />);
     expect(await screen.findByText(/No access to domain 'sales'/)).toBeInTheDocument();
     expect(runSql).not.toHaveBeenCalled();
   });
@@ -111,44 +112,76 @@ describe("GovernedTableViewer over a draft", () => {
         "data.replica_building",
       ),
     );
-    render(<GovernedTableViewer table={DRAFT} role="steward" />);
+    render(<GovernedTableViewer table={WITHDRAWN} role="steward" />);
     expect(await screen.findByTestId("table-preview-building")).toHaveTextContent(
       "The copy of mail.public.messages is still being built.",
     );
     expect(screen.queryByTestId("table-preview-error")).not.toBeInTheDocument();
   });
 
-  it("a table in service is still read by the statement the viewer writes", async () => {
+  it("a table whose source is withdrawn is read through the admin preview too", async () => {
+    vi.mocked(previewTable).mockResolvedValue(page(0, 1));
+    render(
+      <GovernedTableViewer
+        table={{ ...WITHDRAWN, withdrawn: false, sourceWithdrawn: true }}
+        role="steward"
+      />,
+    );
+    expect(await screen.findByText("n0")).toBeInTheDocument();
+    expect(runSql).not.toHaveBeenCalled();
+  });
+
+  it("a table in production is still read by the statement the viewer writes", async () => {
     vi.mocked(runSql).mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
-    render(<GovernedTableViewer table={{ ...DRAFT, draft: false }} role="steward" />);
+    render(<GovernedTableViewer table={{ ...WITHDRAWN, withdrawn: false }} role="steward" />);
     await waitFor(() => expect(runSql).toHaveBeenCalled());
     expect(previewTable).not.toHaveBeenCalled();
   });
 });
 
 // The preview is a view inside the table's detail panel (it was a dialog over the page).
-describe("a table's preview in its detail panel, for a draft", () => {
+describe("a table's preview in its detail panel, for a withdrawn table", () => {
   beforeEach(() => {
     vi.mocked(runSql).mockReset();
     vi.mocked(previewTable).mockReset();
   });
 
-  it("mounts the same viewer under the line that says whom the table is not yet shown to", async () => {
+  it("mounts the same viewer under the line that says no role reads the table", async () => {
     vi.mocked(previewTable).mockResolvedValue(page(0, 2));
-    render(<TablePreviewPane table={DRAFT} role="steward" onBack={vi.fn()} />);
-    expect(await screen.findByTestId("table-preview-draft-note")).toHaveTextContent(
-      "Draft preview: readers cannot see this table yet.",
+    render(<TablePreviewPane table={WITHDRAWN} role="steward" onBack={vi.fn()} />);
+    expect(await screen.findByTestId("table-preview-withdrawn-note")).toHaveTextContent(
+      "Withdrawn: no role reads this table until it is put back. Its preview still reads it.",
     );
     expect(await screen.findByText("n1")).toBeInTheDocument();
     expect(screen.getByTestId("download-xlsx-btn")).toBeInTheDocument(); // the full viewer
     expect(runSql).not.toHaveBeenCalled();
   });
 
-  it("says nothing of drafts over a table in service", async () => {
+  it("names the withdrawn source of a table withdrawn through it", async () => {
+    vi.mocked(previewTable).mockResolvedValue(page(0, 1));
+    render(
+      <TablePreviewPane
+        table={{ ...WITHDRAWN, withdrawn: false, sourceWithdrawn: true }}
+        role="steward"
+        onBack={vi.fn()}
+      />,
+    );
+    expect(await screen.findByTestId("table-preview-withdrawn-note")).toHaveTextContent(
+      "Its source pg is withdrawn: no role reads this table until the source is put back.",
+    );
+  });
+
+  it("says nothing of withdrawal over a table in production", async () => {
     vi.mocked(runSql).mockResolvedValue({ columns: ["id"], rows: [{ id: 1 }] });
-    render(<TablePreviewPane table={{ ...DRAFT, draft: false }} role="steward" onBack={vi.fn()} />);
+    render(
+      <TablePreviewPane
+        table={{ ...WITHDRAWN, withdrawn: false }}
+        role="steward"
+        onBack={vi.fn()}
+      />,
+    );
     await waitFor(() => expect(runSql).toHaveBeenCalled());
-    expect(screen.queryByTestId("table-preview-draft-note")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("table-preview-withdrawn-note")).not.toBeInTheDocument();
   });
 });
 
@@ -162,7 +195,7 @@ describe("viewerRequest", () => {
   it("carries each usable filter as it is held, and a date filter's bounds resolved here", () => {
     const now = new Date(2026, 9, 10, 15, 30, 0);
     const request = viewerRequest(
-      DRAFT,
+      WITHDRAWN,
       {},
       [
         filter("note", "text", { op: "contains", a: "Late" }),

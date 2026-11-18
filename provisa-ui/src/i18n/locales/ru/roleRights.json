@@ -36,6 +36,6 @@
     "write_insert": "вставка",
     "write_update": "обновление",
     "write_delete": "удаление",
-    "draft": "Черновик"
+    "withdrawn": "Отозвана"
   }
 }

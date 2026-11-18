@@ -10,27 +10,19 @@
 
 """A steward's read of one registered table: the table detail's Preview and Profile.
 
-Both read the table as their caller — the caller's role, its row filters, its masks, the columns
-it may see — through the one pipeline, and both need the right to register tables in the
+Both read the table as their caller -- the caller's role, its row filters, its masks, the columns
+it may see -- through the one pipeline, and both need the right to register tables in the
 table's own domain.
 
-A table in service is read as any statement reads it. A DRAFT is out of service: it is in no
-role's schema and every statement that names it is refused (REQ-1921). The people who decide to
-release it have to see it first, so this module — and nothing else — reads a draft: for a caller
-who holds the right ``set_table_draft`` itself requires, it writes the one statement (``SELECT *``
-of that table, with a row limit; the caller supplies no SQL), and governs and routes it against
-the caller's role *with that one table added*, as the role would see it once released. It is
-read live, in the table's own region, and no plan or response of it is kept. The table is still
-in no schema, and the same words sent as an ordinary statement are refused as before.
-
-A role holding table registration in a draft's domain (A DRAFT IS SERVED TO ORG_ADMIN, decided
-2026-11-12: security.rights.registers_tables_in) reads the draft as a served table is read: a statement of its own on a SQL surface that names drafts is
-governed and run here, through the same path, with those drafts added (:func:`plan_reading_drafts`).
-Every such read is recorded as a draft preview naming the drafts it read.
-
-Where the bound engine cannot read a draft's source in place, a draft's rows are reached through
-its replica as a table in service's are: the read asks for it and waits on it (``query_residency``,
-which judges the drafts this view names), and the replica is kept. No other read is addressed there.
+A table in service is read as any statement reads it. A WITHDRAWN table is out of production: it
+is in no role's schema and no statement a caller sends names it (REQ-1921). The people who decide
+to put it back may preview it, so this module -- and nothing else -- reads a withdrawn table: for
+a caller who holds table registration in its domain, it writes the one statement (``SELECT *`` of
+that table, with a row limit, or the viewer's page; the caller supplies no SQL), and governs and
+routes it against the caller's role *with that one table added*, as the role would see it once
+put back. It is read live from its source, in the table's own region (a withdrawn table keeps no
+replica), and no plan or response of it is kept. Every such read is recorded as a withdrawn
+preview naming the table it read.
 """
 
 from __future__ import annotations
@@ -43,23 +35,20 @@ from provisa.api.role_surface import RoleSurface, role_surface
 from provisa.security.meta_role import is_meta_role_id
 
 
-class _WithDrafts:
-    """The application state as a statement that may read some drafts sees it: everything is the
-    real state's, except that the drafts are among the registered tables, the caller's role has
-    them in its compilation context, and no plan or response the read produces is kept anywhere
-    the real state reads from.
+class _Previewing:
+    """The application state as a steward's preview of withdrawn tables sees it: everything is
+    the real state's, except that the withdrawn tables are among the registered tables, the
+    caller's role has them in its compilation context, and no plan or response the read produces
+    is kept anywhere the real state reads from.
 
-    The drafts' ROWS are reached the way a table in service's are. Where the engine reads a
-    source in place, it is read there. Where the engine reaches it only through a replica, the
-    read asks for the replica and waits on it as any read does (``query_residency``, which judges
-    the drafts this view names) and is addressed at it by ``routes`` — the published routes and
-    these drafts' own. The replica is kept: a draft is offered to no other reader, and it may hold
-    its data. The engine face is bound to this view, so only this read is addressed there."""
+    A withdrawn table keeps no replica, so its rows are read live from its source, in place
+    (``routes``: the published routes with these tables read live). The engine face is bound to
+    this view, so only this read is addressed there."""
 
     def __init__(
         self,
         state: Any,
-        drafts: list[dict],
+        withdrawn: list[dict],
         role_id: str,
         surface: RoleSurface,
         routes: Any,
@@ -69,17 +58,17 @@ class _WithDrafts:
         from provisa.compiler.compiled_query_cache import CompiledQueryCache
 
         self._state = state
-        self.tables = [*state.tables, *drafts]
+        self.tables = [*state.tables, *withdrawn]
         self.surfaces = {**state.surfaces, role_id: surface}
         # Its own, empty, and dropped with this object: a plan or a validation kept for this
         # read is never found by a statement governed against the real state.
         self.compiled_query_cache = CompiledQueryCache(expires=False)
         self.routing_cache = CompiledQueryCache()
         self.response_cache_store = NoopCacheStore()
-        self.previewed_draft_ids = frozenset(d["id"] for d in drafts)
+        self.previewed_withdrawn_ids = frozenset(t["id"] for t in withdrawn)
         if view_bodies:
-            # A draft VIEW is in no published view map, so no other statement expands it. This
-            # read expands it as a view in service is expanded: its body, cut to what the
+            # A withdrawn VIEW is in no published view map, so no other statement expands it.
+            # This read expands it as a view in service is expanded: its body, cut to what the
             # caller may read of every table it names (mv/view_read.py).
             self.view_sql_map = {**state.view_sql_map, **view_bodies}
         self.replica_routes = routes
@@ -115,13 +104,11 @@ def table_sql_ref(table: dict) -> str:
     return f"{_quoted(domain_to_sql_name(table['domain_id']))}.{_quoted(own)}"
 
 
-def draft_table(state: Any, table_id: int) -> dict | None:
-    """The table ``table_id`` out of service -- a draft, or withdrawn (REQ-1921) -- or None when
-    no such table has that id. A withdrawn one is read only by its steward's preview: it is in no
-    role's context, so no statement a caller sends names it. Whom it is served to is asked
-    elsewhere (:func:`table_for_steward`, :func:`draft_served_to`)."""
-    inputs = state.role_build_inputs
-    for table in [*inputs["draft_tables"], *inputs["withdrawn_tables"]]:
+def withdrawn_table(state: Any, table_id: int) -> dict | None:
+    """The withdrawn table ``table_id`` (REQ-1921), or None when no withdrawn table has that id.
+    It is read only by its steward's preview: it is in no role's context, so no statement a
+    caller sends names it. Whom it is shown to is asked elsewhere (:func:`table_for_steward`)."""
+    for table in state.role_build_inputs["withdrawn_tables"]:
         if table["id"] == table_id:
             return table
     return None
@@ -133,8 +120,6 @@ def _require_previewable(state: Any, table: dict, source: Any) -> None:
     only through what it does not keep."""
     from provisa.federation.replica_routing import reads_replica
 
-    if not table.get("withdrawn"):
-        return
     if table.get("source_withdrawn"):
         raise ApiError(
             409,
@@ -163,35 +148,34 @@ def _in_service(state: Any, table_id: int) -> dict | None:
     return None
 
 
-def _surface_with(state: Any, role_id: str, drafts: list[dict]) -> RoleSurface:
-    """The role's surface with ``drafts`` in its compilation context — built as the role build
-    builds it (app_loaders.schema_input_with_drafts). Its schema is the published one: a role is
-    offered there already the drafts it is served (security.rights.registers_tables_in), and no
-    other role reads a draft by a document of its own."""
-    from provisa.api.app_loaders import build_context, schema_input_with_drafts
+def _surface_with(state: Any, role_id: str, withdrawn: list[dict]) -> RoleSurface:
+    """The role's surface with the ``withdrawn`` tables in its compilation context -- built as the
+    role build builds it (app_loaders.schema_input_with_withdrawn). Its schema is the published
+    one: no document names a withdrawn table."""
+    from provisa.api.app_loaders import build_context, schema_input_with_withdrawn
 
     surface = role_surface(state, role_id)
     if surface is None:
         raise ApiError(
             400, "data.no_schema_for_role", f"No schema for role {role_id!r}", role_id=role_id
         )
-    ctx = build_context(schema_input_with_drafts(state, state.roles[role_id], drafts, marked=False))
+    ctx = build_context(schema_input_with_withdrawn(state, state.roles[role_id], withdrawn))
     ctx.refusal = surface.context.refusal
     ctx.kept = dict(surface.context.kept)
     return replace(surface, context=ctx)
 
 
-def _meta_surface_with(state: Any, meta_id: str, drafts: list[dict]) -> RoleSurface:
-    """A meta-role's surface with ``drafts`` in it (REQ-1620): the union of its members' rights
-    over each draft, folded as the meta-role's build folds a table in service
-    (security/meta_role.fold_tables) -- from each member's own surface with the drafts added --
-    on copies of the drafts, so no grant list the real state holds is changed."""
+def _meta_surface_with(state: Any, meta_id: str, withdrawn: list[dict]) -> RoleSurface:
+    """A meta-role's surface with the ``withdrawn`` tables in it (REQ-1620): the union of its
+    members' rights over each, folded as the meta-role's build folds a table in service
+    (security/meta_role.fold_tables) -- from each member's own surface with them added -- on
+    copies, so no grant list the real state holds is changed."""
     from copy import deepcopy
 
     from provisa.security.meta_role import fold_tables
 
-    granted = deepcopy(drafts)
-    members = {m: _surface_with(state, m, drafts) for m in state.meta_roles[meta_id]}
+    granted = deepcopy(withdrawn)
+    members = {m: _surface_with(state, m, withdrawn) for m in state.meta_roles[meta_id]}
     folded = fold_tables(_Members(state, members), meta_id, granted)
     surface = _surface_with(state, meta_id, granted)
     rls = replace(
@@ -204,7 +188,7 @@ def _meta_surface_with(state: Any, meta_id: str, drafts: list[dict]) -> RoleSurf
 
 class _Members:
     """The state as a meta-role's fold reads its members: each member's surface is the one with
-    the draft added, everything else the real state's."""
+    the withdrawn tables added, everything else the real state's."""
 
     def __init__(self, state: Any, surfaces: dict[str, RoleSurface]) -> None:
         self._state = state
@@ -220,26 +204,26 @@ class _Members:
         return getattr(self._state, name)
 
 
-def _view_body(state: Any, draft: dict) -> str | None:
-    """What a draft VIEW's reference becomes for its steward's read; None for a table.
+def _view_body(state: Any, table: dict) -> str | None:
+    """What a withdrawn VIEW's reference becomes for its steward's read; None for a table.
 
     A view that is not materialized, and an ordinary materialized one, is its SQL: read live, as
-    a materialized view in service is while its build is not fresh. A materialized draft view's
-    build is kept registered and disabled (app_rebuild): nothing schedules it, so this read asks
-    for it — started here and not waited for — and the view is landed for its release.
+    a materialized view in service is while its build is not fresh. A materialized withdrawn
+    view's build is kept registered and disabled (app_rebuild): nothing schedules it, so this
+    read asks for it -- started here and not waited for -- and the view is built for its return.
 
     A bitemporal materialized view has no live reading: its rows are what its stored log says
     was true (mv/bitemporal.py). Until that log has been built once the read answers as any
     read does whose copy is still being built; after, it is read from the log."""
-    if not draft.get("view_sql"):
+    if not table.get("view_sql"):
         return None
     from provisa.api.app_rebuild import compile_view_sql_to_physical
 
     # Physical, as every published view's entry is (app_rebuild): the engine is handed the
     # tables' own addresses, not their model names.
-    body = compile_view_sql_to_physical(draft["view_sql"].rstrip().rstrip(";"), state.view_context)
-    # A draft view is materialized exactly when its build is registered (app_rebuild).
-    mv = state.mv_registry.get(f"view-{draft['table_name']}")
+    body = compile_view_sql_to_physical(table["view_sql"].rstrip().rstrip(";"), state.view_context)
+    # A withdrawn view is materialized exactly when its build is registered (app_rebuild).
+    mv = state.mv_registry.get(f"view-{table['table_name']}")
     if mv is None:
         return body
     from provisa.core.connection_loop import spawn_background
@@ -257,14 +241,14 @@ def _view_body(state: Any, draft: dict) -> str | None:
                 store=state.model_db,
                 ledger=state.tenant_db,
             ),
-            name=f"view-build:{draft['table_name']}",
+            name=f"view-build:{table['table_name']}",
         )
     if mv.bitemporal is None:
         return body
     if mv.last_refresh_at is None:
         from provisa.federation.replica_state import ReplicaBuilding
 
-        raise ReplicaBuilding(draft["table_name"], 0.0)
+        raise ReplicaBuilding(table["table_name"], 0.0)
     from provisa.mv.bitemporal import view_read_sql
 
     stored = mv.stored_ref()
@@ -310,7 +294,7 @@ def refuse_unparameterized(table: dict, request: Any = None) -> None:
 async def read_as_caller(
     state: Any, table_id: int, role_id: str, *, limit: int | None = None, request: Any = None
 ) -> Any:
-    """Rows of the table as ``role_id`` reads it — a ``QueryResult``: its first ``limit`` rows,
+    """Rows of the table as ``role_id`` reads it -- a ``QueryResult``: its first ``limit`` rows,
     or the page of it the viewer's ``request`` describes. Either way the statement is written
     here; the caller sends none.
 
@@ -328,106 +312,31 @@ async def read_as_caller(
         )
         return await _execute_plan(plan, state)
 
-    draft = draft_table(state, table_id)
-    if draft is None:
+    withdrawn = withdrawn_table(state, table_id)
+    if withdrawn is None:
         raise ApiError(404, "schema.table_not_found", f"Table {table_id} not found", table=table_id)
     # Refused by name before any statement is built: a column or operator the table has not.
-    sql, params = _statement(draft, limit, request)
-    plan, seen = await plan_reading_drafts(state, sql, role_id, [draft], exec_params=params or None)
+    sql, params = _statement(withdrawn, limit, request)
+    plan, seen = await plan_previewing(state, sql, role_id, [withdrawn], exec_params=params or None)
     return await _execute_plan(plan, seen)
 
 
-def _served_draft_names(state: Any, role_id: str) -> dict[str, dict]:
-    """Each name ``role_id``'s context gives a draft that is served to it, with the draft's row: a
-    draft of a domain the role holds table registration in (A DRAFT IS SERVED TO ORG_ADMIN,
-    security.rights.registers_tables_in).
-
-    The rows are one reading of the model's drafts. The surface is built from an earlier one and
-    is rebuilt after it changes (a worker serving another worker's change, REQ-1914); until then
-    its context still names a draft the model has since published or removed, and that one is no
-    draft to serve: the surface goes on refusing its name as a draft's until its rebuild."""
-    from provisa.security.rights import registers_tables_in
-
-    surface = role_surface(state, role_id)
-    if surface is None or not surface.context.draft_ids:
-        return {}
-    role = state.roles[role_id]
-    drafts = {t["id"]: t for t in state.role_build_inputs["draft_tables"]}
-    return {
-        name: drafts[table_id]
-        for name, table_id in surface.context.draft_ids.items()
-        if table_id in drafts
-        and registers_tables_in(role, state.roles, drafts[table_id]["domain_id"])
-    }
-
-
-def drafts_a_statement_names(state: Any, sql: str, role_id: str) -> list[dict]:
-    """The drafts ``sql`` names that are served to ``role_id`` (:func:`_served_draft_names`), each
-    once; any other draft it names goes on to be refused naming it as a draft, as before. A draft
-    is named by any name the role's context records for it (compiler/context._register_draft_names),
-    read as the statement's validation reads a table's name."""
-    named = _served_draft_names(state, role_id)
-    if not named:
-        return []
-    # Parsed only when a draft's name is in the text: no other statement pays for it here.
-    text = sql.lower()
-    if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
-        return []
-    from provisa.compiler.names_read import sql_relations
-
-    read: dict[int, dict] = {}
-    for said in sql_relations(sql):
-        draft = named.get(said)
-        if draft is not None:
-            read.setdefault(draft["id"], draft)
-    return list(read.values())
-
-
-def drafts_a_document_reads(state: Any, query: str, role_id: str) -> list[dict]:
-    """The drafts served to ``role_id`` (:func:`_served_draft_names`) the root fields of GraphQL
-    ``query`` name, each once, when every operation in it is a query; none otherwise, and the
-    document goes on to be refused naming a draft as before (a mutation or subscription of a
-    draft is refused, for a role it is served to too). A document that does not parse names none: its parse refuses it
-    where every document is parsed."""
-    from provisa.compiler.names_read import query_root_fields
-    from provisa.compiler.parser import table_field_candidates
-
-    named = _served_draft_names(state, role_id)
-    if not named:
-        return []
-    # Parsed only when a draft's name is in the text: no other document pays for it here.
-    text = query.lower()
-    if not any(name.rsplit(".", 1)[-1].strip('"').lower() in text for name in named):
-        return []
-    read: dict[int, dict] = {}
-    for name in query_root_fields(query):
-        for candidate in table_field_candidates(name):
-            draft = named.get(candidate)
-            if draft is not None:
-                read.setdefault(draft["id"], draft)
-    return list(read.values())
-
-
-async def plan_reading_drafts(
+async def plan_previewing(
     state: Any,
     sql: str,
     role_id: str,
-    drafts: list[dict],
+    withdrawn: list[dict],
     *,
     exec_params: list | None,
-    deliver: Any = None,
-    buffered: bool = False,
-    explain: bool | None = None,
-    as_of: str | None = None,
-) -> tuple[Any, _WithDrafts]:
-    """``sql`` governed and routed as ``role_id`` with ``drafts`` added to what it reads, and the
-    view of the state it was governed in, which is the one it runs in: the one path a draft is
-    read by, a steward's preview and a statement of a role it is served to alike (REQ-1921). Nothing of it is
-    kept: no plan, no response."""
+) -> tuple[Any, _Previewing]:
+    """``sql`` governed and routed as ``role_id`` with the ``withdrawn`` tables added to what it
+    reads, and the view of the state it was governed in, which is the one it runs in: the one
+    path a withdrawn table is read by, its steward's preview (REQ-1921). Nothing of it is kept:
+    no plan, no response."""
     from provisa.compiler.directives import NO_CACHE_HINT
     from provisa.pgwire._pipeline import _govern_and_route_compiled
 
-    seen = await reading_drafts(state, role_id, drafts)
+    seen = await previewing(state, role_id, withdrawn)
     plan = await _govern_and_route_compiled(
         sql,
         role_id,
@@ -435,70 +344,58 @@ async def plan_reading_drafts(
         state=seen,
         cache_hint=NO_CACHE_HINT,
         sdl_joins=False,
-        deliver=deliver,
-        buffered=buffered,
-        explain=explain,
-        as_of=as_of,
     )
     return plan, seen
 
 
-def surface_with_drafts(state: Any, role_id: str, drafts: list[dict]) -> RoleSurface:
-    """``role_id``'s surface with ``drafts`` in its compilation context: what a read of them is
-    governed in (:func:`reading_drafts`), and what names them. Under "Role: All" it is the
-    meta-role's: the union of its members' rights (REQ-1620)."""
+def surface_with_withdrawn(state: Any, role_id: str, withdrawn: list[dict]) -> RoleSurface:
+    """``role_id``'s surface with the ``withdrawn`` tables in its compilation context: what a
+    preview of them is governed in (:func:`previewing`). Under "Role: All" it is the meta-role's:
+    the union of its members' rights (REQ-1620)."""
     if is_meta_role_id(role_id):
-        return _meta_surface_with(state, role_id, drafts)
-    return _surface_with(state, role_id, drafts)
+        return _meta_surface_with(state, role_id, withdrawn)
+    return _surface_with(state, role_id, withdrawn)
 
 
-def draft_served_to(state: Any, role_id: str, table_id: int) -> dict | None:
-    """The draft ``table_id`` when it is served to ``role_id`` (:func:`_served_draft_names`: its
-    context names it and the role holds table registration in its domain). None otherwise: to
-    that role the table is not served, draft or not."""
-    if table_id not in {draft["id"] for draft in _served_draft_names(state, role_id).values()}:
-        return None
-    return draft_table(state, table_id)
-
-
-async def reading_drafts(state: Any, role_id: str, drafts: list[dict]) -> _WithDrafts:
-    """The view of ``state`` a read of ``drafts`` as ``role_id`` is governed and run in: the
-    role's surface with them added, their routes, and nothing it keeps reaching the real state.
-    Refused for a draft kept in another region than this node's."""
-    from provisa.federation.query_residency import require_draft_read_in_its_region
+async def previewing(state: Any, role_id: str, withdrawn: list[dict]) -> _Previewing:
+    """The view of ``state`` a preview of the ``withdrawn`` tables as ``role_id`` is governed and
+    run in: the role's surface with them added, read live from their sources, and nothing it keeps
+    reaching the real state. Refused for a table kept in another region than this node's, and for
+    one whose rows no engine reaches without the replica it does not keep."""
+    from provisa.federation.query_residency import require_preview_in_its_region
     from provisa.federation.registry_view import registered_sources
-    from provisa.federation.replica_routing import routes_with_draft
+    from provisa.federation.replica_routing import routes_with_previewed
 
     # Where a regional table may be read is the regions' rule, in its own module.
-    for draft in drafts:
-        require_draft_read_in_its_region(draft["table_name"], draft.get("region"))
+    for table in withdrawn:
+        require_preview_in_its_region(table["table_name"], table.get("region"))
     # A built-in source (a view's) is not among the registered sources and owns no replica
-    # (registry_view.registered_sources): a draft of one is read under the published routes.
+    # (registry_view.registered_sources): a withdrawn view is read under the published routes.
     sources = {s.id: s for s in await registered_sources(state)}
     routes = state.replica_routes
-    for draft in drafts:
-        source = sources.get(draft["source_id"])
-        if draft.get("withdrawn"):
-            # REQ-1921: a withdrawn table keeps no replica, whatever its replicate setting: its
-            # preview reads its source in place, or is refused.
-            from provisa.core.replicate import NEVER
+    for table in withdrawn:
+        source = sources.get(table["source_id"])
+        # REQ-1921: a withdrawn table keeps no replica, whatever its replicate setting: its
+        # preview reads its source in place, or is refused.
+        from provisa.core.replicate import NEVER
 
-            draft = {**draft, "replicate": NEVER}
-            _require_previewable(state, draft, source)
+        _require_previewable(state, {**table, "replicate": NEVER}, source)
         if source is not None:
-            routes = routes_with_draft(state, draft, source, routes)
-    surface = surface_with_drafts(state, role_id, drafts)
-    bodies = {d["table_name"]: body for d in drafts if (body := _view_body(state, d)) is not None}
-    return _WithDrafts(state, drafts, role_id, surface, routes, bodies)
+            routes = routes_with_previewed(routes, table["id"], source.id)
+    surface = surface_with_withdrawn(state, role_id, withdrawn)
+    bodies = {
+        t["table_name"]: body for t in withdrawn if (body := _view_body(state, t)) is not None
+    }
+    return _Previewing(state, withdrawn, role_id, surface, routes, bodies)
 
 
 def table_for_steward(request: Any, state: Any, table_id: int) -> dict:
-    """The registered table ``table_id`` — in service or draft — for a caller who may register
-    tables in its domain: the right a table's release needs, checked in the table's own domain.
-    Refused otherwise, as the release would be."""
+    """The registered table ``table_id`` -- in service or withdrawn -- for a caller who may
+    register tables in its domain: the right withdrawing and putting it back needs, checked in
+    the table's own domain. Refused otherwise, as those would be."""
     from provisa.api.admin.capabilities import require_capability_request, require_domain_request
 
-    table = _in_service(state, table_id) or draft_table(state, table_id)
+    table = _in_service(state, table_id) or withdrawn_table(state, table_id)
     if table is None:
         raise ApiError(404, "schema.table_not_found", f"Table {table_id} not found", table=table_id)
     require_capability_request(request, "table_registration")

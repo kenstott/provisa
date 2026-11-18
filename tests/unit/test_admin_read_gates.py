@@ -64,7 +64,7 @@ def _install_mv_state(monkeypatch, store_dsn: str = "postgresql://store-host/pro
     monkeypatch.setattr(
         appmod.state,
         "role_build_inputs",
-        {"draft_tables": [], "withdrawn_tables": []},
+        {"withdrawn_tables": []},
         raising=False,
     )
     monkeypatch.setattr(appmod.state, "mv_registry", types.SimpleNamespace(_mvs={}), raising=False)

@@ -83,7 +83,6 @@ def _state(eu_state_db, backend, monkeypatch, *, region="eu"):
     monkeypatch.setattr(registry_view, "registered_tables", _tables)
     return SimpleNamespace(
         role_build_inputs={
-            "draft_tables": [],
             "withdrawn_tables": [],
         },  # REQ-1921: none out of service
         tables=[],

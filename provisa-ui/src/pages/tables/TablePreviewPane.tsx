@@ -9,7 +9,7 @@
 // permission from the copyright holder.
 
 // A table's rows, looked at inside its detail panel: the way back to the detail, the line that
-// says a draft is not yet shown to readers, and the one governed viewer every preview uses. A
+// says a withdrawn table is shown to no reader, and the one governed viewer every preview uses. A
 // working surface is never a dialog over the page.
 
 import { Button, Text } from "@mantine/core";
@@ -43,11 +43,13 @@ export function TablePreviewPane({
           {t("tablesPage.backToDetail")}
         </Button>
       </div>
-      {/* REQ-1921: a draft's preview is the same viewer; it reads through the admin preview, as
-          the caller, and says whom the table is not yet shown to. */}
-      {table.draft && (
-        <Text size="sm" c="dimmed" data-testid="table-preview-draft-note">
-          {t("tableReadView.draftPreviewNote")}
+      {/* REQ-1921: a withdrawn table's preview is the same viewer; it reads through the admin
+          preview, as the caller, and says that no role reads the table. */}
+      {(table.withdrawn || table.sourceWithdrawn) && (
+        <Text size="sm" c="dimmed" data-testid="table-preview-withdrawn-note">
+          {table.withdrawn
+            ? t("tableReadView.withdrawnNote")
+            : t("tableReadView.sourceWithdrawnNote", { source: table.sourceId })}
         </Text>
       )}
       <GovernedTableViewer key={table.id} table={table} role={role} />

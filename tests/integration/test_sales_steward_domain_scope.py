@@ -117,7 +117,7 @@ async def plane(monkeypatch):
     monkeypatch.setattr(
         appmod.state,
         "role_build_inputs",
-        {"draft_tables": [], "withdrawn_tables": []},
+        {"withdrawn_tables": []},
         raising=False,
     )
     # Nor is any table compiled: every table is judged by its stored grants, whatever an earlier

@@ -143,6 +143,7 @@ query SourcesQuery {
     changeSignal
     rowFetchByKeys
     isSystem
+    withdrawn
     cdc {
       bootstrapServers
       topicPrefix
@@ -304,7 +305,8 @@ fragment ListedTableFields on RegisteredTableType {
   tableName
   alias
   description
-  draft
+  withdrawn
+  sourceWithdrawn
   viewSql
   materialize
   productIds
@@ -323,16 +325,16 @@ fragment ListedTableFields on RegisteredTableType {
 
 # The registered tables without their columns, for the pages that name, count or pick tables and
 # show none of their columns.
-query TableRowsQuery {
-  tables {
+query TableRowsQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
   }
 }
 
 # The registered tables with the columns the pages that list them read. TablesQuery is the
 # editor's, every field of every table.
-query TableListQuery {
-  tables {
+query TableListQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     ...ListedTableFields
     columns {
       id
@@ -350,8 +352,8 @@ query TableListQuery {
   }
 }
 
-query TablesQuery {
-  tables {
+query TablesQuery($includeWithdrawn: Boolean! = false) {
+  tables(includeWithdrawn: $includeWithdrawn) {
     id
     sourceId
     domainId
@@ -380,7 +382,8 @@ query TablesQuery {
     pagingCeilingRows
     replicate
     region
-    draft
+    withdrawn
+    sourceWithdrawn
     rowMaterialize
     loadProtected
     offPeakWindow
@@ -771,6 +774,7 @@ query RelationshipsQuery {
       sourceColumn
     }
     codeResolver
+    withdrawn
   }
 }
 
@@ -803,8 +807,8 @@ query CodeResolverIncrementalQuery($resolver: String!, $id: String!) {
   }
 }
 
-query AllRelationshipsQuery {
-  allRelationships {
+query AllRelationshipsQuery($includeWithdrawn: Boolean! = false) {
+  allRelationships(includeWithdrawn: $includeWithdrawn) {
     id
     sourceTableId
     targetTableId
@@ -833,6 +837,7 @@ query AllRelationshipsQuery {
     viaTypeColumn
     viaTypeValue
     viaLabelSource
+    withdrawn
     parameters {
       parameter
       sourceColumn
@@ -1298,7 +1303,6 @@ query TableAccess($tableId: Int!, $role: String!) {
     pgwire
     rest
     mcp
-    draft
   }
 }
 
@@ -1507,6 +1511,32 @@ mutation StageKaggleDataset($token: String!, $owner: String!, $ref: String!, $id
 
 mutation RefreshKaggleSource($sourceId: String!) {
   refreshKaggleSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+# REQ-1921: a table or view out of production and back; the same for a source.
+mutation WithdrawTable($tableId: Int!) {
+  withdrawTable(tableId: $tableId) {
+    ...MutationResult
+  }
+}
+
+# A put back names the region it returns to (null: no region), within the caller's grant.
+mutation PutBackTable($tableId: Int!, $region: String) {
+  putBackTable(tableId: $tableId, region: $region) {
+    ...MutationResult
+  }
+}
+
+mutation WithdrawSource($sourceId: String!) {
+  withdrawSource(sourceId: $sourceId) {
+    ...MutationResult
+  }
+}
+
+mutation PutBackSource($sourceId: String!, $region: String) {
+  putBackSource(sourceId: $sourceId, region: $region) {
     ...MutationResult
   }
 }

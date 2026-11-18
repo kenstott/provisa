@@ -473,7 +473,8 @@ async def _upsert_sources(conn: "Connection", config: ProvisaConfig) -> None:  #
     """Add each source the config declares to the store, or replace its definition. Stored as
     written: a credential's reference, never its value."""
     for src in config.written.sources:
-        await source_repo.upsert(conn, src)
+        # REQ-1921: a configuration carries a withdrawn source as withdrawn.
+        await source_repo.upsert(conn, src, withdrawn=src.withdrawn)
 
 
 def resolved_source(source: Source) -> Source:  # REQ-1919
@@ -764,7 +765,8 @@ async def _upsert_single_table(
     # REQ-1426: data_type is design-time metadata — the config carries it and nothing infers it
     # here. A column that reaches this point untyped means the design was never completed; the
     # repository refuses it rather than persisting a hole the catalog renders as "unknown".
-    await table_repo.upsert(conn, tbl)
+    # REQ-1921: a configuration carries a withdrawn table as withdrawn.
+    await table_repo.upsert(conn, tbl, withdrawn=tbl.withdrawn)
 
     if src and src.type.value == "openapi" and src.base_url:
         spec = openapi_specs.get(src.id, {})

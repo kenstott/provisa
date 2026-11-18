@@ -93,6 +93,9 @@
     "history": {
       "badge": "historial",
       "title": "Guarda historial: consúltelo a una fecha o tal como se registró (Viaje en el tiempo)"
-    }
+    },
+    "withdrawn": "Retirada",
+    "withdrawnTitle": "Fuera de producción: ningún rol la lee hasta que se restituya",
+    "sourceWithdrawnTitle": "Su origen {{source}} está retirado: ningún rol la lee hasta que se restituya el origen"
   }
 }

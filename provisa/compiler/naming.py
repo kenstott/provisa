@@ -238,9 +238,9 @@ def semantic_relation_names(domain_id: str, semantic: str) -> tuple[str, str]:  
 def stored_relation_names(domain_id: str, schema_name: str, table_name: str) -> list[str]:
     """The qualified names a statement gives a registered table through its stored table name:
     ``domain.table`` and ``schema.table`` (e.g. ``meta.registered_tables``,
-    ``public.registered_tables``). Served and draft tables alike are named by this one rule —
+    ``public.registered_tables``). Served and withdrawn tables alike are named by this one rule —
     governance resolves a served table under these names (``build_governance_context``) and a
-    draft is refused as draft under the same ones (REQ-1921)."""
+    view over a withdrawn one is refused naming it under the same ones (REQ-1921)."""
     if not table_name:
         return []
     names = []

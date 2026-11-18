@@ -92,7 +92,7 @@ const NO_TABLE: TablePick = {
 function TableFields({ value, onChange }: { value: TablePick; onChange: (v: TablePick) => void }) {
   const { t } = useTranslation();
   const { tables } = useTables();
-  const scannable = useMemo(() => tables.filter((tbl) => isUserTable(tbl) && !tbl.draft), [tables]);
+  const scannable = useMemo(() => tables.filter((tbl) => isUserTable(tbl) && !tbl.withdrawn), [tables]);
   const domains = useMemo(
     () =>
       [...new Set(scannable.map((tbl) => tbl.domainId))]
