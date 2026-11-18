@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Draws a graph as the UI's graph page draws it, as a PNG: the MCP server's render_graph.",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/render.mjs --external:canvas --external:jsdom --alias:elkjs=./node_modules/elkjs",
+    "build": "esbuild src/main.ts --bundle --platform=node --format=esm --target=node22 --outfile=dist/render.mjs --external:canvas --external:jsdom --alias:elkjs=./node_modules/elkjs --alias:@mantine/core=./node_modules/@mantine/core",
     "test": "node --test test/render.test.mjs",
     "typecheck": "tsc -p tsconfig.json"
   },
@@ -17,7 +17,11 @@
     "jsdom": "29.1.1"
   },
   "devDependencies": {
+    "@mantine/core": "8.3.18",
+    "@mantine/hooks": "8.3.18",
     "@types/jsdom": "21.1.7",
-    "esbuild": "0.28.2"
+    "esbuild": "0.28.2",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
   }
 }

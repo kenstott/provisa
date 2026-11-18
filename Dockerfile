@@ -106,6 +106,8 @@ RUN pip install --no-cache-dir --no-deps /tmp/provisa-wheel/provisa-*.whl \
 # bundled with the packages provisa-ui/graph-render's lockfile pins, drawn by Node into a PNG.
 # npm and the build tools stay in this stage; the runtime takes node, the bundle and the two
 # packages the bundle loads at run time (jsdom, and canvas with its native build for this arch).
+# The graph's colours come from Mantine's scales and the brand theme (provisa-graph/tokens.ts),
+# so @mantine/core is a build-only dependency of graph-render, bundled like cytoscape.
 FROM node:24.22.3-bookworm-slim@sha256:dc26ae92c9fb15cf6b1d63e20f0944b2efe0f115b20e00be48fb23fceb061c54 AS graph-render
 WORKDIR /build/provisa-ui
 COPY provisa-ui/graph-render/package.json provisa-ui/graph-render/package-lock.json ./graph-render/
@@ -113,6 +115,7 @@ RUN cd graph-render && npm ci --no-audit --no-fund
 COPY provisa-ui/graph-render/src ./graph-render/src
 COPY provisa-ui/src/components/graph ./src/components/graph
 COPY provisa-ui/src/components/provisa-graph ./src/components/provisa-graph
+COPY provisa-ui/src/theme/theme.ts ./src/theme/theme.ts
 RUN cd graph-render && npm run build && npm prune --omit=dev
 
 # Stage 4: lean runtime image — no wheels, only app source + installed packages
