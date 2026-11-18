@@ -27,7 +27,7 @@ from typing import Any
 
 from provisa.discovery import gather, measure, proposals
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEY_SCORE
+from provisa.discovery.context import CONTAINED_AT, KEY_SCORE, SHARED_CEILING, Scoring
 from provisa.discovery.direction import Proposal, from_answer
 from provisa.discovery.measure import Measurer
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
@@ -41,6 +41,8 @@ from provisa.llm.limits import DEFAULT_LIMITS
 CUTOFF = 0.2
 #: The run's threshold: the tick threshold of the person who started it.
 THRESHOLD = 0.7
+#: The measured score's settings at their defaults.
+DEFAULT_SCORING = Scoring(CONTAINED_AT, SHARED_CEILING)
 
 
 def _semantic(src: tuple[int, str], tgt: tuple[int, str], confidence: float) -> Proposal:
@@ -344,7 +346,7 @@ async def test_the_sample_size_is_the_most_non_null_values_read_of_each_column()
     reader = EngineReader(
         {("a", "x"): list(range(100)), ("b", "y"): list(range(200))}, sql_type="BIGINT"
     )
-    measurer = Measurer(reader, tables, decided=frozenset(), bound=40)
+    measurer = Measurer(reader, tables, decided=frozenset(), bound=40, scoring=DEFAULT_SCORING)
     got = await measurer.measured(_semantic((1, "x"), (2, "y"), 0.5))
     [(_, sql)] = reader.queries
     assert sql.count("IS NOT NULL LIMIT 40)") == 2

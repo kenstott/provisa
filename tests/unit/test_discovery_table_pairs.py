@@ -30,6 +30,7 @@ import pytest
 
 from provisa.discovery import gather
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
+from provisa.discovery.context import SAMPLE_VALUES
 from provisa.discovery.direction import Proposal
 from provisa.discovery.proposals import BELOW_THRESHOLD
 from provisa.discovery.runner import NOT_NAMED, Tally, execute
@@ -130,7 +131,7 @@ def test_one_set_pairs_each_two_tables_once_a_table_with_itself_included():
 
 def test_the_count_before_run_bounds_the_calls_and_counts_calls():
     source, target = [ORDERS, NOTES], [CUSTOMERS, NOTES]
-    k, calls, pairs = bound(source, target, 100_000, 150)
+    k, calls, pairs = bound(source, target, 100_000, 150, SAMPLE_VALUES)
     the_plan = plan(source, target, 100_000, 150)
     assert calls == 2
     assert len(the_plan.calls) <= calls and pairs >= the_plan.table_pairs
@@ -298,11 +299,12 @@ async def test_sample_values_are_each_column_s_distinct_values_not_its_first_row
     monkeypatch.setattr(
         gather, "_published", lambda state, tid, name: ('"d"."t"', {"a": "a", "b": "b"})
     )
-    samples = await gather._samples(object(), 1, "t", ["a", "b"])
+    # The run's samples per column, set in the dialog (REQ-413, amended 2026-11-18).
+    samples = await gather._samples(object(), 1, "t", ["a", "b"], 3)
     assert samples == {"a": ("x", "y"), "b": ("x", "y")}
     assert statements == [
-        f'SELECT DISTINCT "a" FROM "d"."t" WHERE "a" IS NOT NULL LIMIT {gather.SAMPLE_VALUES}',
-        f'SELECT DISTINCT "b" FROM "d"."t" WHERE "b" IS NOT NULL LIMIT {gather.SAMPLE_VALUES}',
+        'SELECT DISTINCT "a" FROM "d"."t" WHERE "a" IS NOT NULL LIMIT 3',
+        'SELECT DISTINCT "b" FROM "d"."t" WHERE "b" IS NOT NULL LIMIT 3',
     ]
 
 

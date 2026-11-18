@@ -264,8 +264,11 @@ def plan(
     return Plan(k, room, names, batch(pairs, names, room, k), len(pairs))
 
 
-def _widest(tables: Sequence[TableFacts]) -> list[TableFacts]:
-    return [replace(t, columns=tuple(context.widest(c) for c in t.columns)) for t in tables]
+def _widest(tables: Sequence[TableFacts], samples_per_column: int) -> list[TableFacts]:
+    return [
+        replace(t, columns=tuple(context.widest(c, samples_per_column) for c in t.columns))
+        for t in tables
+    ]
 
 
 def bound(
@@ -273,11 +276,12 @@ def bound(
     target: Sequence[TableFacts] | None,
     input_tokens: int,
     output_tokens: int,
+    samples_per_column: int,
 ) -> tuple[int, int, int]:
     """``(k, calls, table pairs)``: the pairs each call lists at most, and upper bounds on the
     calls and the table pairs :func:`plan` gives for these tables whatever their values and
     classes turn out to be, from their registration alone (REQ-413: the count before Run reads
-    no table).
+    no table), each column sending at most ``samples_per_column`` (the run's) sample values.
 
     The tables are registered ones: every column of a read table has the class unknown and meets
     every other of its type group, so the pairs counted are every pair the run's classes can give.
@@ -290,7 +294,7 @@ def bound(
     every = [*source, *(target or [])]
     names = labels(every)
     room = _room(input_tokens, k, either_direction=either, not_read=any(t.reduced for t in every))
-    heaviest = {t.table_id: t for t in _widest(every)}
+    heaviest = {t.table_id: t for t in _widest(every, samples_per_column)}
     pairs = [
         replace(p, source=heaviest[p.source.table_id], target=heaviest[p.target.table_id])
         for p in table_pairs(source, target)

@@ -31,6 +31,7 @@ from collections import Counter
 from dataclasses import replace
 
 import pytest
+from pydantic import ValidationError
 from sqlalchemy import func, insert, select
 
 from provisa.api.admin import discovery
@@ -346,15 +347,23 @@ _ASSIGNED = {"ai_models": {"relationship_inference": {"vendor": "openai", "model
 
 
 #: Key value overlap as the dialog sends it by default (REQ-413, amended 2026-11-16).
-_KEY_VALUES = {"measure_cutoff": 0.2, "sample_size": 10_000}
+_KEY_VALUES = {
+    "measure_cutoff": 0.2,
+    "sample_size": 10_000,
+    "contained_at": 0.95,
+    "shared_ceiling": 0.6,
+}
 
 
 def _scope(**over: Any) -> discovery.RunScope:
-    """A run as the dialog sends it: by default Semantic with Key value overlap and its two
-    settings, which are sent only while it is chosen."""
+    """A run as the dialog sends it: by default Semantic with Key value overlap and its
+    settings, which are sent only while it is chosen, and the threshold and samples per column
+    always (REQ-413, amended 2026-11-18), at their defaults."""
     body: dict[str, Any] = {
         "kinds": ["semantics", "key_values"],
         "source_domains": ["sales", "crm"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
         **_KEY_VALUES,
     }
     body.update(over)
@@ -406,7 +415,7 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     await discovery.count_run(_REQUEST, _scope())
     assert world.classified == []  # the count before Run classifies nothing
-    await discovery.prepare(discovery.state, _scope().spec("org_admin", 0.7), None)
+    await discovery.prepare(discovery.state, _scope().spec("org_admin"), None)
     assert [
         (c["table_id"], c["values_per_column"], c["sample_above_cells"]) for c in world.classified
     ] == [
@@ -506,13 +515,15 @@ def _pet_world(monkeypatch, db: Database) -> _World:
 
 async def _prepared(scope: discovery.RunScope) -> Any:
     """The run's tables and requests, as the background run prepares them."""
-    spec = scope.spec("org_admin", 0.7)
+    spec = scope.spec("org_admin")
     return await discovery.prepare(discovery.state, spec, await discovery._run_model(spec))
 
 
 async def _facts(db: Database, ids: list[int]) -> dict[str, Any]:
     async with db.acquire() as conn:
-        tables = await gather.table_facts(discovery.state, cast(Any, conn), ids)
+        tables = await gather.table_facts(
+            discovery.state, cast(Any, conn), ids, context.SAMPLE_VALUES
+        )
     return {t.table_name: t for t in tables}
 
 
@@ -1525,6 +1536,7 @@ def test_the_bound_holds_whatever_the_tables_hold(seed):
         None if target is None else _as_registered(target),
         input_tokens,
         4096,
+        context.SAMPLE_VALUES,
     )
     assert k == 4096 // 150
     assert len(planned.calls) <= calls, (seed, len(planned.calls), calls)
@@ -1550,10 +1562,10 @@ def test_a_scope_with_no_two_columns_to_compare_counts_no_request():
         return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
 
     one_text = [table(1, "integer", "text"), table(2, "integer")]
-    assert windows.bound(one_text, None, 100_000, 4096)[1:] == (1, 1)  # t1 x t2 alone
+    assert windows.bound(one_text, None, 100_000, 4096, 5)[1:] == (1, 1)  # t1 x t2 alone
     # The one column on both sides is not compared with itself.
-    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096)[1:] == (0, 0)
-    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096)[1:] == (0, 0)
+    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096, 5)[1:] == (0, 0)
+    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096, 5)[1:] == (0, 0)
 
 
 def test_a_sample_value_is_sent_in_a_bounded_length():
@@ -1879,9 +1891,12 @@ async def test_the_latest_run_a_person_started_is_listed_for_that_person(monkeyp
         "target_tables": None,
         "vendor": None,
         "model": None,
+        "threshold": 0.7,
+        "samples_per_column": 5,
         "measure_cutoff": None,
         "sample_size": None,
-        "threshold": 0.7,
+        "contained_at": None,
+        "shared_ceiling": None,
     }
 
 
@@ -2359,7 +2374,11 @@ async def test_the_threshold_is_the_persons_own_and_kept_across_a_reload(monkeyp
     # A reload reads it again: the person's own, from the store; another person's is untouched.
     assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.55
     assert (await discovery.get_threshold(other))["threshold"] == 0.7
-    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)])
+    # The dialog prefills Tick from with it and sends it with the run.
+    assert (await discovery.get_settings(_REQUEST))["threshold"] == 0.55
+    run, _ = await _answered(
+        world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)], threshold=0.55
+    )
     answered = await discovery.list_proposals(_REQUEST, run["id"])
     # The run started at 0.55 keeps suggestions at 0.55 (REQ-413, amended 2026-11-18).
     assert answered["threshold"] == 0.55 and answered["kept_at"] == 0.55
@@ -2371,14 +2390,17 @@ async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model
     monkeypatch, tmp_path
 ):
     """REQ-413 (amended 2026-11-18): the band's top is the tick threshold of the person who starts
-    the run, taken when it starts and recorded with it; the model is told it."""
+    the run, set in the dialog before the run (Tick from), recorded with it and kept as the
+    person's own; the model is told it."""
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _city(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     _city_values(world)
-    await discovery.put_threshold(_REQUEST, discovery.ThresholdBody(threshold=0.5))
-    run, _ = await _answered(world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.55)])
+    run, _ = await _answered(
+        world, [_suggestion((2, "permit_id"), (1, "permit_id"), 0.55)], threshold=0.5
+    )
     assert run["scope"]["threshold"] == 0.5
+    assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.5
     assert run["report"]["semantics"]["threshold"] == 0.5
     assert world.prompts
     assert all("A relationship is suggested at 0.5 or more" in t for t in world.prompts)
@@ -2396,29 +2418,43 @@ async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model
 
 def test_key_value_overlap_is_refused_without_semantic():
     with pytest.raises(ApiError) as refused:
-        _scope(kinds=["foreign_keys", "key_values"]).spec("steward", 0.7)
+        _scope(kinds=["foreign_keys", "key_values"]).spec("steward")
     assert refused.value.code == "discovery.key_values_needs_semantics"
 
 
-def test_key_value_overlap_needs_its_cutoff_and_sample_size_and_only_it_takes_them():
+_ALWAYS = {"threshold": 0.7, "samples_per_column": 5}
+
+
+@pytest.mark.parametrize("left_out", [None, *_KEY_VALUES])
+def test_key_value_overlap_needs_every_one_of_its_settings(left_out):
+    given = {} if left_out is None else {k: v for k, v in _KEY_VALUES.items() if k != left_out}
     with pytest.raises(ApiError) as missing:
         discovery.RunScope.model_validate(
-            {"kinds": ["semantics", "key_values"], "source_domains": ["sales"]}
-        ).spec("steward", 0.7)
+            {"kinds": ["semantics", "key_values"], "source_domains": ["sales"], **_ALWAYS, **given}
+        ).spec("steward")
     assert missing.value.code == "discovery.key_values_settings_missing"
+
+
+@pytest.mark.parametrize("given", list(_KEY_VALUES))
+def test_only_key_value_overlap_takes_its_settings(given):
     with pytest.raises(ApiError) as unchosen:
         discovery.RunScope.model_validate(
-            {"kinds": ["semantics"], "source_domains": ["sales"], **_KEY_VALUES}
-        ).spec("steward", 0.7)
+            {
+                "kinds": ["semantics"],
+                "source_domains": ["sales"],
+                **_ALWAYS,
+                given: _KEY_VALUES[given],
+            }
+        ).spec("steward")
     assert unchosen.value.code == "discovery.key_values_settings_unchosen"
 
 
 def test_the_cutoff_and_sample_size_reach_the_run_and_unchosen_none_is_measured():
-    spec = _scope(measure_cutoff=0.35, sample_size=500).spec("steward", 0.7)
+    spec = _scope(measure_cutoff=0.35, sample_size=500).spec("steward")
     assert spec.kinds == frozenset({"semantics"})
     assert spec.key_values is not None
     assert (spec.key_values.cutoff, spec.key_values.sample_size) == (0.35, 500)
-    assert _scope(kinds=["semantics"]).spec("steward", 0.7).key_values is None
+    assert _scope(kinds=["semantics"]).spec("steward").key_values is None
 
 
 async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_states_the_settings(
@@ -2446,7 +2482,12 @@ async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_st
     # Under the cutoff: left out unmeasured.
     assert hood["reason"] == "below_threshold" and hood["measure"] is None
     report = run["report"]
-    assert report["key_values"] == {"cutoff": 0.3, "sample_size": 500}
+    assert report["key_values"] == {
+        "cutoff": 0.3,
+        "sample_size": 500,
+        "contained_at": 0.95,
+        "shared_ceiling": 0.6,
+    }
     assert (report["semantics"]["measured"], report["semantics"]["admitted"]) == (1, 1)
 
 
@@ -2463,9 +2504,11 @@ async def test_without_key_value_overlap_a_band_pair_is_left_out_unmeasured(monk
     assert "key_values" not in run["report"]
 
 
-async def test_key_value_overlap_is_remembered_for_the_person_as_the_threshold_is(
+async def test_every_setting_is_remembered_for_the_person_and_prefills_their_next_run(
     monkeypatch, tmp_path
 ):
+    """REQ-413 (amended 2026-11-18): the values a person sets in the dialog are kept for their
+    next runs; another person keeps the defaults."""
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _city(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
@@ -2474,19 +2517,182 @@ async def test_key_value_overlap_is_remembered_for_the_person_as_the_threshold_i
         Any,
         SimpleNamespace(headers={}, state=SimpleNamespace(identity=SimpleNamespace(user_id="b"))),
     )
-    defaults = {"chosen": True, "cutoff": 0.2, "sample_size": 10_000}
-    assert await discovery.get_key_values(_REQUEST) == {**defaults, "defaults": defaults}
-    await discovery.start_run(_REQUEST, _scope(measure_cutoff=0.35, sample_size=500))
-    kept = {"chosen": True, "cutoff": 0.35, "sample_size": 500}
-    assert await discovery.get_key_values(_REQUEST) == {**kept, "defaults": defaults}
-    assert await discovery.get_key_values(other) == {**defaults, "defaults": defaults}
-    # Not chosen: remembered as not chosen, its last cutoff and sample size kept.
-    await discovery.start_run(_REQUEST, _scope(kinds=["semantics"]))
-    assert await discovery.get_key_values(_REQUEST) == {
+    key_defaults = {
+        "chosen": True,
+        "cutoff": 0.2,
+        "sample_size": 10_000,
+        "contained_at": 0.95,
+        "shared_ceiling": 0.6,
+    }
+    defaults = {"threshold": 0.7, "samples_per_column": 5, "key_values": key_defaults}
+    assert await discovery.get_settings(_REQUEST) == {**defaults, "defaults": defaults}
+    set_now = {
+        "threshold": 0.55,
+        "samples_per_column": 8,
+        "measure_cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+    await discovery.start_run(_REQUEST, _scope(**set_now))
+    key_kept = {
+        "chosen": True,
+        "cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+    kept = {"threshold": 0.55, "samples_per_column": 8, "key_values": key_kept}
+    assert await discovery.get_settings(_REQUEST) == {**kept, "defaults": defaults}
+    assert await discovery.get_settings(other) == {**defaults, "defaults": defaults}
+    # Key value overlap not chosen: remembered as not chosen, its last settings kept.
+    await discovery.start_run(
+        _REQUEST, _scope(kinds=["semantics"], threshold=0.6, samples_per_column=8)
+    )
+    assert await discovery.get_settings(_REQUEST) == {
         **kept,
-        "chosen": False,
+        "threshold": 0.6,
+        "key_values": {**key_kept, "chosen": False},
         "defaults": defaults,
     }
-    # A run without Semantic, where it is not offered, leaves it as it was.
-    await discovery.start_run(_REQUEST, _scope(kinds=["foreign_keys"]))
-    assert (await discovery.get_key_values(_REQUEST))["chosen"] is False
+    # A run without Semantic keeps its threshold; the semantic settings, not offered, stay.
+    await discovery.start_run(
+        _REQUEST, _scope(kinds=["foreign_keys"], threshold=0.65, samples_per_column=2)
+    )
+    got = await discovery.get_settings(_REQUEST)
+    assert got["threshold"] == 0.65 and got["samples_per_column"] == 8
+    assert got["key_values"]["chosen"] is False
+
+
+async def test_a_runs_settings_are_recorded_with_it(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    set_now = {
+        "threshold": 0.55,
+        "samples_per_column": 3,
+        "measure_cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+    run, _ = await _answered(world, [], **set_now)
+    assert {k: run["scope"][k] for k in set_now} == set_now
+    assert run["report"]["key_values"] == {
+        "cutoff": 0.35,
+        "sample_size": 500,
+        "contained_at": 0.85,
+        "shared_ceiling": 0.4,
+    }
+
+
+def _partly_contained(world: _World) -> None:
+    """Inspections' permits: 27 of building permits' keys and 3 that are not, so 90% of the
+    source's values are found in a key target."""
+    _city_values(world)
+    permits = world.measured.values[("building_permits", "permit_id")]
+    world.measured.values[("inspections", "permit_id")] = [*permits[:27], "X-1", "X-2", "X-3"]
+
+
+@pytest.mark.parametrize(
+    ("contained_at", "score"),
+    [
+        pytest.param(0.95, round(context.KEY_SCORE * 0.9, 4), id="default-share-partial"),
+        pytest.param(0.85, context.KEY_SCORE, id="lower-share-a-key-relationship"),
+    ],
+)
+async def test_a_runs_key_containment_share_decides_a_key_relationship(
+    monkeypatch, tmp_path, contained_at, score
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _partly_contained(world)
+    _, (row,) = await _answered(
+        world,
+        [_suggestion((2, "permit_id"), (1, "permit_id"), 0.45)],
+        measure_cutoff=0.3,
+        contained_at=contained_at,
+    )
+    assert row["measured"] is True and row["score"] == score
+
+
+@pytest.mark.parametrize("ceiling", [0.6, 0.4])
+async def test_a_runs_shared_ceiling_is_the_most_a_pair_of_no_key_scores(
+    monkeypatch, tmp_path, ceiling
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    _, (row,) = await _answered(
+        world,
+        [_suggestion((3, "hood"), (1, "hood"), 0.45)],
+        measure_cutoff=0.3,
+        shared_ceiling=ceiling,
+    )
+    assert row["measured"] is True and row["cardinality"] == "many-to-many"
+    assert row["score"] == ceiling
+
+
+@pytest.mark.parametrize("per_column", [1, 2])
+async def test_a_runs_samples_per_column_are_the_values_read_and_shown(
+    monkeypatch, tmp_path, per_column
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    run, _ = await _answered(world, [], kinds=["semantics"], samples_per_column=per_column)
+    assert run["status"] == "done", run
+    sampled = [q for q in world.reads.sql if q.startswith("SELECT DISTINCT ")]
+    assert sampled and all(q.endswith(f"LIMIT {per_column}") for q in sampled)
+    assert world.prompts
+    shown = [
+        len(c["sample_values"])
+        for p in world.prompts
+        for t in json.loads(p.split(context.TABLES_HEADER, 1)[1].split("\n", 1)[0])
+        for c in t["comparable_columns"]
+        if "sample_values" in c
+    ]
+    assert shown and max(shown) == per_column
+
+
+def test_the_count_weighs_each_column_at_the_runs_samples_per_column():
+    """More sample values per column weigh more, so a small model makes more calls."""
+
+    def table(tid: int) -> TableFacts:
+        columns = tuple(
+            ColumnFacts(
+                f"c{i}",
+                "text",
+                None,
+                (),
+                ("unknown",),
+                False,
+                (),
+                False,
+                type_groups("text", subtype=None, array_depth=0),
+            )
+            for i in range(3)
+        )
+        return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
+
+    tables = [table(i) for i in range(1, 7)]
+    few = windows.bound(tables, None, 4000, 4096, 1)[1]
+    many = windows.bound(tables, None, 4000, 4096, 40)[1]
+    assert many > few
+
+
+@pytest.mark.parametrize("missing", ["threshold", "samples_per_column"])
+def test_a_scope_without_its_threshold_or_samples_per_column_is_refused(missing):
+    """No constant stands in for a setting the dialog did not send."""
+    body: dict[str, Any] = {
+        "kinds": ["foreign_keys"],
+        "source_domains": ["sales"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
+    }
+    body.pop(missing)
+    with pytest.raises(ValidationError):
+        discovery.RunScope.model_validate(body)

@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import json
 from collections.abc import Sequence
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import Any
 
 from provisa.discovery.columns import NOT_READ, UNKNOWN, ColumnFacts, TableFacts
@@ -48,7 +48,8 @@ from provisa.discovery.columns import NOT_READ, UNKNOWN, ColumnFacts, TableFacts
 #: The characters one sample value takes in a request, as written there (escapes counted, its
 #: quotes not): a longer value is cut to fit. A uuid and a timestamp fit whole.
 SAMPLE_VALUE_CHARS = 64
-#: The distinct sample values sent of a column.
+#: The distinct sample values sent of a column by default (REQ-413, amended 2026-11-18): it only
+#: prefills the discover dialog, where a run's own number is set (``RunSpec.samples_per_column``).
 SAMPLE_VALUES = 5
 
 
@@ -103,11 +104,11 @@ def sample_text(value: Any) -> str:
     return text
 
 
-def widest(column: ColumnFacts) -> ColumnFacts:
+def widest(column: ColumnFacts, samples_per_column: int) -> ColumnFacts:
     """``column`` with the longest classes and sample values a run could send for it, whatever
     its table holds: every kind of the classifier's catalogue and no values (one of them is
-    sensitive), or the kinds that are not sensitive and :data:`SAMPLE_VALUES` values of
-    :data:`SAMPLE_VALUE_CHARS` characters, whichever is longer. A column of a table that is never
+    sensitive), or the kinds that are not sensitive and ``samples_per_column`` (the run's) values
+    of :data:`SAMPLE_VALUE_CHARS` characters, whichever is longer. A column of a table that is never
     read sends what it has: nothing is read to add to it."""
     if NOT_READ in column.classes:
         return column
@@ -120,7 +121,7 @@ def widest(column: ColumnFacts) -> ColumnFacts:
         column,
         classes=plain,
         sensitive=False,
-        samples=tuple("x" * SAMPLE_VALUE_CHARS for _ in range(SAMPLE_VALUES)),
+        samples=tuple("x" * SAMPLE_VALUE_CHARS for _ in range(samples_per_column)),
     )
     return max(every, valued, key=lambda c: len(_dump(column_context(c))))
 
@@ -212,27 +213,39 @@ _RUBRIC = (
 #: The measured score (REQ-413), the rule a proposed pair is scored by once its values are measured
 #: (:mod:`provisa.discovery.measure`); the model's confidence is kept beside it.
 #: ``contained`` is the share of the source column's distinct values found in the target column,
-#: ``back`` the reverse.
-#: - The target's values are distinct (a key): a source contained in it (CONTAINED_AT or more of
-#:   its values found) is a key relationship and scores KEY_SCORE, whatever the model rated it;
+#: ``back`` the reverse. The two settings are the run's own (:class:`Scoring`, REQ-413, amended
+#: 2026-11-18: set in the discover dialog).
+#: - The target's values are distinct (a key): a source contained in it (``contained_at`` or more
+#:   of its values found) is a key relationship and scores KEY_SCORE, whatever the model rated it;
 #:   one less contained scores KEY_SCORE times ``contained``, each value with no row to refer to
 #:   taking its share off.
 #: - Neither side is a key: the columns share values and no relationship starts at one and ends
-#:   at the other's key; the pair scores SHARED_CEILING times the larger of the two shares, so it
-#:   never reaches the default threshold (:data:`provisa.discovery.threshold.DEFAULT`).
+#:   at the other's key; the pair scores ``shared_ceiling`` times the larger of the two shares.
 #: So a pair whose values barely meet scores low however alike its names are. A pair whose values
 #: could not be compared (a side not read, or none read of the source) keeps the model's
 #: confidence, and says why.
-CONTAINED_AT = 0.95
 KEY_SCORE = 0.95
+#: The two settings' defaults: they only prefill the discover dialog.
+CONTAINED_AT = 0.95
 SHARED_CEILING = 0.6
 
 
-def measured_score(contained: float, back: float, target_distinct: bool) -> float:
-    """A measured pair's score, by the rule above."""
+@dataclass(frozen=True)
+class Scoring:
+    """A run's measured-score settings: the share of a source's values found in a key target at
+    which the pair is a key relationship, and the most a pair scores when neither side is a key."""
+
+    contained_at: float
+    shared_ceiling: float
+
+
+def measured_score(contained: float, back: float, target_distinct: bool, scoring: Scoring) -> float:
+    """A measured pair's score, by the rule above, with the run's ``scoring``."""
     if target_distinct:
-        return KEY_SCORE if contained >= CONTAINED_AT else round(KEY_SCORE * contained, 4)
-    return round(SHARED_CEILING * max(contained, back), 4)
+        if contained >= scoring.contained_at:
+            return KEY_SCORE
+        return round(KEY_SCORE * contained, 4)
+    return round(scoring.shared_ceiling * max(contained, back), 4)
 
 
 def instructions(

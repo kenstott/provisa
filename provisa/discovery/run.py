@@ -37,6 +37,7 @@ from provisa.discovery import gather
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.discovery.collector import collect_fk_for_tables
 from provisa.discovery.columns import TableFacts
+from provisa.discovery.context import Scoring
 from provisa.discovery.direction import (
     Edge,
     Kind,
@@ -86,12 +87,28 @@ async def while_saying_still_going(
 
 @dataclass(frozen=True)
 class KeyValueOverlap:
-    """Key value overlap's settings for a run (REQ-413, amended 2026-11-16): the semantic pairs
-    whose model confidence is at ``cutoff`` or more and under the run's threshold are measured, each
-    column read for at most ``sample_size`` distinct values."""
+    """Key value overlap's settings for a run (REQ-413, amended 2026-11-16 and 2026-11-18, each set
+    in the discover dialog): the semantic pairs whose model confidence is at ``cutoff`` or more and
+    under the run's threshold are measured, each column read for at most ``sample_size`` non-null
+    values; a pair whose source has ``contained_at`` of its values in a key target is a key
+    relationship, and one where neither side is a key scores at most ``shared_ceiling``."""
 
     cutoff: float
     sample_size: int
+    contained_at: float
+    shared_ceiling: float
+
+    @property
+    def scoring(self) -> Scoring:
+        return Scoring(self.contained_at, self.shared_ceiling)
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "cutoff": self.cutoff,
+            "sample_size": self.sample_size,
+            "contained_at": self.contained_at,
+            "shared_ceiling": self.shared_ceiling,
+        }
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -116,6 +133,9 @@ class RunSpec:
     #: with it (REQ-413, amended 2026-11-18): the model is told it, a proposal at it or above is
     #: kept unmeasured, and the key value overlap band runs from the cutoff up to it.
     threshold: float
+    #: The distinct sample values read and shown to the model of each compared column (REQ-413,
+    #: amended 2026-11-18: set in the discover dialog).
+    samples_per_column: int
 
 
 @dataclass
@@ -232,7 +252,10 @@ async def prepare(
         source_ids, target_ids = await table_sets(conn, spec)
         ids = set(source_ids) | set(target_ids or [])
         facts = {
-            t.table_id: t for t in await gather.table_facts(state, conn, sorted(ids), on_table)
+            t.table_id: t
+            for t in await gather.table_facts(
+                state, conn, sorted(ids), spec.samples_per_column, on_table
+            )
         }
     source = [facts[i] for i in source_ids]
     target = None if target_ids is None else [facts[i] for i in target_ids]
@@ -260,7 +283,7 @@ async def count(state: Any, spec: RunSpec, model: ChosenModel | None) -> dict[st
     k, calls, pairs = (
         (0, 0, 0)
         if model is None
-        else bound(source, target, model.input_tokens, model.output_tokens)
+        else bound(source, target, model.input_tokens, model.output_tokens, spec.samples_per_column)
     )
     return {
         "requests": calls,
@@ -392,6 +415,7 @@ def _key_values(
         tables,
         decided=known.existing | known.rejected,
         bound=spec.key_values.sample_size,
+        scoring=spec.key_values.scoring,
     )
     return KeyValues(measurer.all, spec.key_values.cutoff)
 
@@ -489,10 +513,7 @@ async def perform(
             out["semantics"] = _semantics_report(tally, outcome)
         if spec.key_values is not None:
             # REQ-413 (amended 2026-11-16): the run's summary states Key value overlap's settings.
-            out["key_values"] = {
-                "cutoff": spec.key_values.cutoff,
-                "sample_size": spec.key_values.sample_size,
-            }
+            out["key_values"] = spec.key_values.as_dict()
         if model is not None:
             out["model"] = model.describe()
         return out

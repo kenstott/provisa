@@ -54,7 +54,7 @@ from provisa.discovery.columns import (
     classes_of,
     type_groups,
 )
-from provisa.discovery.context import SAMPLE_VALUES, sample_text
+from provisa.discovery.context import sample_text
 from provisa.discovery.direction import Edge, Known, Sampled
 
 if TYPE_CHECKING:
@@ -68,8 +68,6 @@ VALUES_PER_COLUMN = 500
 #: The profiler's default sample budget (a profiler source's sample_above_cells, absent by
 #: default: the whole table is read), for a never-profiled table's classification.
 SAMPLE_ABOVE_CELLS: int | None = None
-#: The distinct values read and sent of a column (REQ-413, amended 2026-11-18).
-CONTEXT_SAMPLE_VALUES = SAMPLE_VALUES
 #: The bounded sample of a column read for repeated values when only it can choose a direction.
 UNIQUENESS_SAMPLE_ROWS = 500
 
@@ -276,10 +274,11 @@ def _quote(name: str) -> str:
 
 
 async def _samples(
-    state: Any, table_id: int, table_name: str, columns: list[str]
+    state: Any, table_id: int, table_name: str, columns: list[str], per_column: int
 ) -> dict[str, tuple[str, ...]]:
-    """Up to :data:`CONTEXT_SAMPLE_VALUES` distinct non-null values of each column (REQ-413,
-    amended 2026-11-18: each column's distinct values, not its first rows), one read per column.
+    """Up to ``per_column`` (the run's samples per column, REQ-413, amended 2026-11-18: set in the
+    discover dialog) distinct non-null values of each column (each column's distinct values, not
+    its first rows), one read per column.
     They only show what kind of values a column holds. A column the org admin's relation does not
     hold has none."""
     if not columns:
@@ -290,8 +289,7 @@ async def _samples(
         col = _quote(exposed[name])
         rows = await _rows(
             table_name,
-            f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IS NOT NULL "
-            f"LIMIT {CONTEXT_SAMPLE_VALUES}",
+            f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IS NOT NULL LIMIT {per_column}",
         )
         held: list[str] = []
         for (value,) in rows:
@@ -415,11 +413,13 @@ async def table_facts(
     state: Any,
     conn: "Connection",
     ids: Sequence[int],
+    samples_per_column: int,
     on_table: Callable[[int, int], Awaitable[None]] | None = None,
 ) -> list[TableFacts]:
     """Every table of ``ids`` with its context and its columns' facts, as a run reads them: what
     is registered (:func:`registered_facts`), and for each table that is read, its columns'
-    classes and sample values. ``on_table(read, total)`` is told after each table is read."""
+    classes and up to ``samples_per_column`` (the run's) sample values each.
+    ``on_table(read, total)`` is told after each table is read."""
     registered = await registered_facts(state, conn, ids)
     decided = await _decided(conn, [t.table_id for t in registered])
     out: list[TableFacts] = []
@@ -436,7 +436,7 @@ async def table_facts(
                 classes = classes_of(matched.get(c.name, set()), decided.get((tid, c.name), set()))
                 classed.append(replace(c, classes=classes, sensitive=_sensitive(classes)))
             sampled = [c.name for c in classed if c.groups and not c.sensitive]
-            samples = await _samples(state, tid, table.table_name, sampled)
+            samples = await _samples(state, tid, table.table_name, sampled, samples_per_column)
             table = replace(
                 table, columns=tuple(replace(c, samples=samples.get(c.name, ())) for c in classed)
             )

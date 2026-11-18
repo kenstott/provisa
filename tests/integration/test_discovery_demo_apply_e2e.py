@@ -124,6 +124,9 @@ _SCOPE = {
     "vendor": files_e2e._VENDOR,
     "model": files_e2e._MODEL,
     "source_domains": ["pet-store", "shelter"],
+    # The settings the dialog always sends, at their defaults (REQ-413, amended 2026-11-18).
+    "threshold": 0.7,
+    "samples_per_column": 5,
 }
 
 #: The legs of the demo's junction relationships: the junction's key to the end's key.

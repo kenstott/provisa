@@ -386,11 +386,16 @@ class _NoReads:
 
 
 def _measurer(known: Known):
+    from provisa.discovery.context import CONTAINED_AT, SHARED_CEILING, Scoring
     from provisa.discovery.measure import DISTINCT_BOUND, Measurer
 
     tables = {tid: _facts(tid) for tid in _SHAPES}
     return Measurer(
-        _NoReads(), tables, decided=known.existing | known.rejected, bound=DISTINCT_BOUND
+        _NoReads(),
+        tables,
+        decided=known.existing | known.rejected,
+        bound=DISTINCT_BOUND,
+        scoring=Scoring(CONTAINED_AT, SHARED_CEILING),
     )
 
 

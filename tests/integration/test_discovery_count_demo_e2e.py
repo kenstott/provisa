@@ -57,9 +57,16 @@ _HEADERS = {"X-Provisa-Role": "org_admin"}
 _MODEL = {"vendor": "anthropic", "model": "claude-haiku-4-5-20251001"}
 
 
+#: The settings the dialog always sends, at their defaults (REQ-413, amended 2026-11-18).
+_SETTINGS = {"threshold": 0.7, "samples_per_column": 5}
+
+
 def _count(inst: Instance, scope: dict) -> httpx.Response:
     return httpx.post(
-        f"{inst.url}/admin/discover/runs/count", json=scope, headers=_HEADERS, timeout=300
+        f"{inst.url}/admin/discover/runs/count",
+        json={**_SETTINGS, **scope},
+        headers=_HEADERS,
+        timeout=300,
     )
 
 

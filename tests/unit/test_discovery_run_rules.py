@@ -46,6 +46,7 @@ from provisa.discovery.direction import (
     inferred_role,
     settle,
 )
+from provisa.discovery.context import CONTAINED_AT, SAMPLE_VALUES, SHARED_CEILING, Scoring
 from provisa.discovery.measure import Measure, Side
 from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import TOKENS_PER_PAIR, bound, per_call, plan
@@ -362,7 +363,7 @@ def test_the_request_count_counts_calls_and_table_pairs():
     # customers x orders shares whole numbers and uuids; neither table pairs with itself.
     assert [p.key for c in planned.calls for p in c.pairs] == [(2, 1)]
     # The count before Run: the date column is in no group.
-    assert bound([t1, t2], None, *DEFAULT_LIMITS) == (27, 1, 1)
+    assert bound([t1, t2], None, *DEFAULT_LIMITS, SAMPLE_VALUES) == (27, 1, 1)
 
 
 async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothing():
@@ -384,8 +385,8 @@ async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothi
     )
     planned = plan([orders, shipments], None, *DEFAULT_LIMITS)
     assert planned.calls == []
-    assert bound([orders, shipments], None, *DEFAULT_LIMITS)[1:] == (0, 0)
-    assert bound([orders], [shipments], *DEFAULT_LIMITS)[1:] == (0, 0)
+    assert bound([orders, shipments], None, *DEFAULT_LIMITS, SAMPLE_VALUES)[1:] == (0, 0)
+    assert bound([orders], [shipments], *DEFAULT_LIMITS, SAMPLE_VALUES)[1:] == (0, 0)
     asked: list[str] = []
     measured: list = []
 
@@ -878,7 +879,7 @@ async def test_both_sides_repeating_in_the_sample_is_listed_once_as_many_to_many
 async def test_a_measured_many_to_many_pair_is_listed_with_its_score_and_a_note():
     a, b = _pair_tables()
     repeating = Side(10, False, False, None)
-    measure = Measure(repeating, repeating, 5, 5, 100)
+    measure = Measure(repeating, repeating, 5, 5, 100, Scoring(CONTAINED_AT, SHARED_CEILING))
     many = replace(_sem((1, "customer_id"), (2, "id")), measure=measure, score=0.2)
     out = await _settle([many], a, b)
     assert [(p.edge, p.rank, p.cardinality) for p in out.kept] == [

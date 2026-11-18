@@ -50,8 +50,10 @@ import yaml
 from provisa.discovery.context import (
     KEY_SCORE,
     PAIRS_HEADER,
+    CONTAINED_AT,
     SHARED_CEILING,
     TABLES_HEADER,
+    Scoring,
     measured_score,
 )
 from provisa.discovery.runner import NOT_NAMED
@@ -324,8 +326,12 @@ def _scope(**sets: Any) -> dict:
     """A run as the dialog sends it by default: Key value overlap chosen, with its settings."""
     return {
         "kinds": ["foreign_keys", "semantics", "key_values"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
         "measure_cutoff": 0.2,
         "sample_size": 10_000,
+        "contained_at": CONTAINED_AT,
+        "shared_ceiling": SHARED_CEILING,
         "vendor": _VENDOR,
         "model": _MODEL,
         **sets,
@@ -413,7 +419,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # Nothing read is dropped: one table of the run's proposals, the highest score (the
     # measure's) first, each with the model's confidence beside it and why it is not suggested.
     listed = _proposals(instance, run["id"])
-    address_score = measured_score(75 / 215, 75 / 128, True)
+    address_score = measured_score(75 / 215, 75 / 128, True, Scoring(CONTAINED_AT, SHARED_CEILING))
     assert [
         (_edge(files, r), r["confidence"], r["score"], r["cardinality"], r["reason"])
         for r in listed
@@ -437,7 +443,12 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     by_edge = {_edge(files, r): r for r in listed}
     assert [_edge(files, r) for r in listed if r["admitted_on_key_values"]] == [_PERMIT]
     assert (semantics["measured"], semantics["admitted"]) == (5, 1)
-    assert report["key_values"] == {"cutoff": 0.2, "sample_size": 10_000}
+    assert report["key_values"] == {
+        "cutoff": 0.2,
+        "sample_size": 10_000,
+        "contained_at": CONTAINED_AT,
+        "shared_ceiling": SHARED_CEILING,
+    }
     permit = by_edge[_PERMIT]["measure"]
     assert (permit["source_in_target"], permit["source"]["values"]) == (60, 60)
     assert permit["target"]["values"] == 128 and permit["target"]["distinct"] is True

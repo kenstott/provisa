@@ -14,8 +14,8 @@ For each pair a run measures (the semantic pairs in the band between the measure
 run's threshold, with Key value overlap chosen: :func:`provisa.discovery.runner.judged`), one query
 counts the overlap in the engine (:func:`join_count_sql`), through the one governed pipeline as the
 person who started the run (:func:`governed_reader`). Each column's non-null values are read up to
-the run's sample size (:data:`DISTINCT_BOUND` unless the dialog sets another), as a limit the engine
-stops at, and joined to the other column's non-null values: how many of the source's distinct
+the run's sample size (set in the discover dialog; :data:`DISTINCT_BOUND` prefills it), as a
+limit the engine stops at, and joined to the other column's non-null values: how many of the source's distinct
 values read find a match in the target, and the reverse. Whether a column is distinct (a key) is
 judged on the rows read: no value read repeats. No distinct count over a whole column is taken and
 no column's values leave the engine. A column holding more non-null values than the sample size is
@@ -42,13 +42,13 @@ from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Literal, Protocol
 
 from provisa.discovery.columns import TableFacts
-from provisa.discovery.context import measured_score
+from provisa.discovery.context import Scoring, measured_score
 
 if TYPE_CHECKING:
     from provisa.discovery.direction import ColumnRef, Edge, Proposal
 
-#: The sample size a run measures with unless the dialog sets another (REQ-413): the most
-#: non-null values read of one column for a pair's measure.
+#: The sample size's default (REQ-413, amended 2026-11-18): it only prefills the discover dialog,
+#: where a run's own is set: the most non-null values read of one column for a pair's measure.
 DISTINCT_BOUND = 10_000
 
 #: Why a column was not measured: its table requires a parameter and is never read
@@ -209,6 +209,8 @@ class Measure:
     source_in_target: int | None
     target_in_source: int | None
     bound: int
+    #: The run's measured-score settings (REQ-413, amended 2026-11-18).
+    scoring: Scoring
 
     @property
     def compared(self) -> bool:
@@ -250,12 +252,17 @@ class Measure:
         if contained is None:
             return None
         assert self.target.distinct is not None
-        return measured_score(contained, self.back or 0.0, self.target.distinct)
+        return measured_score(contained, self.back or 0.0, self.target.distinct, self.scoring)
 
     def turned(self) -> Measure:
         """The measure of the same pair read the other way round."""
         return Measure(
-            self.target, self.source, self.target_in_source, self.source_in_target, self.bound
+            self.target,
+            self.source,
+            self.target_in_source,
+            self.source_in_target,
+            self.bound,
+            self.scoring,
         )
 
     def as_dict(self) -> dict[str, Any]:
@@ -281,10 +288,13 @@ class Measurer:
         *,
         decided: Collection[Edge],
         bound: int,
+        scoring: Scoring,
     ) -> None:
         self._reader = reader
         #: The run's sample size: the most non-null values read of each column.
         self._bound = bound
+        #: The run's measured-score settings.
+        self._scoring = scoring
         self._decided = decided
         self._tables = tables
         self._pairs: dict[tuple[ColumnRef, ColumnRef], Measure] = {}
@@ -295,22 +305,25 @@ class Measurer:
         s = self._reader.column(tables[0], source[1])
         t = self._reader.column(tables[1], target[1])
         if isinstance(s, str) and isinstance(t, str):
-            return Measure(_unmeasured(s), _unmeasured(t), None, None, self._bound)
+            return Measure(_unmeasured(s), _unmeasured(t), None, None, self._bound, self._scoring)
         sql = join_count_sql(
             None if isinstance(s, str) else s, None if isinstance(t, str) else t, self._bound
         )
         read = [tables[i] for i, c in enumerate((s, t)) if not isinstance(c, str)]
         row = (await self._reader.rows(read, sql))[0]
         if isinstance(s, str):
-            return Measure(_unmeasured(s), _read(row[0:3], self._bound), None, None, self._bound)
+            read = _read(row[0:3], self._bound)
+            return Measure(_unmeasured(s), read, None, None, self._bound, self._scoring)
         if isinstance(t, str):
-            return Measure(_read(row[0:3], self._bound), _unmeasured(t), None, None, self._bound)
+            read = _read(row[0:3], self._bound)
+            return Measure(read, _unmeasured(t), None, None, self._bound, self._scoring)
         return Measure(
             _read(row[0:3], self._bound),
             _read(row[3:6], self._bound),
             int(row[6]),
             int(row[7]),
             self._bound,
+            self._scoring,
         )
 
     async def pair(self, source: ColumnRef, target: ColumnRef) -> Measure:

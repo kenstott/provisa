@@ -28,13 +28,17 @@ import pytest
 
 from provisa.discovery import gather, measure
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEY_SCORE, SHARED_CEILING
+from provisa.discovery.context import CONTAINED_AT, KEY_SCORE, SHARED_CEILING, Scoring
+
 from provisa.discovery.threshold import DEFAULT as THRESHOLD
 from provisa.discovery.direction import from_answer
 from provisa.discovery.measure import Measurer, Values
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
 from provisa.discovery.runner import KeyValues, Tally, judged
 from tests.unit.discovery_engine_reader import EngineReader
+
+#: The measured score's settings at their defaults.
+DEFAULT_SCORING = Scoring(CONTAINED_AT, SHARED_CEILING)
 
 
 def _column(name: str, *, parameter: str | None = None) -> ColumnFacts:
@@ -98,7 +102,9 @@ def _semantic(source: tuple[int, str], target: tuple[int, str], confidence: floa
 
 async def _measured(p, *, bound: int = measure.DISTINCT_BOUND, data=DATA):
     reader = EngineReader(data)
-    return await Measurer(reader, TABLES, decided=frozenset(), bound=bound).measured(p), reader
+    return await Measurer(
+        reader, TABLES, decided=frozenset(), bound=bound, scoring=DEFAULT_SCORING
+    ).measured(p), reader
 
 
 async def test_neighborhood_shared_by_tables_none_of_which_it_keys_is_many_to_many():
@@ -208,7 +214,9 @@ async def test_nulls_never_count_and_the_sample_size_counts_non_null_values():
 async def test_values_of_a_whole_number_column_are_matched_in_the_engine():
     data = {("complaints", "code"): [1, 2, 2, None], ("regions", "code"): [2, 3, 4]}
     reader = EngineReader(data, sql_type="BIGINT")
-    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
+    measurer = Measurer(
+        reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND, scoring=DEFAULT_SCORING
+    )
     m = (await measurer.measured(_semantic((4, "code"), (5, "code"), 0.5))).measure
     assert m is not None
     assert (m.source_in_target, m.source.values, m.source.distinct) == (1, 2, False)
@@ -217,7 +225,9 @@ async def test_values_of_a_whole_number_column_are_matched_in_the_engine():
 
 async def test_each_pair_is_measured_by_one_query_and_reused_turned_round():
     reader = EngineReader(DATA)
-    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
+    measurer = Measurer(
+        reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND, scoring=DEFAULT_SCORING
+    )
     await measurer.all(
         [
             _semantic((2, "neighborhood"), (1, "neighborhood"), 0.5),
@@ -234,7 +244,9 @@ async def test_each_pair_is_measured_by_one_query_and_reused_turned_round():
 async def test_a_band_pair_is_judged_on_its_measured_score_and_the_rest_are_kept_with_why():
     reader = EngineReader(DATA)
     tally = Tally(total=1, threshold=THRESHOLD)
-    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND)
+    measurer = Measurer(
+        reader, TABLES, decided=frozenset(), bound=measure.DISTINCT_BOUND, scoring=DEFAULT_SCORING
+    )
     out = await judged(
         [
             _semantic((3, "permit_id"), (2, "permit_id"), 0.45),
@@ -334,7 +346,7 @@ async def test_values_are_looked_up_in_another_column_as_literals_of_their_type(
 
 async def test_a_pair_is_measured_by_one_governed_query_joining_a_limited_source(pipeline):
     reader = measure.governed_reader(SimpleNamespace(), "steward")
-    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=500)
+    measurer = Measurer(reader, TABLES, decided=frozenset(), bound=500, scoring=DEFAULT_SCORING)
     pipeline.answers.append([(90, 30, 90, 100, 100, 100, 30, 30)])
     got = await measurer.measured(_semantic((3, "permit_id"), (2, "permit_id"), 0.5))
     assert len(pipeline.calls) == 1

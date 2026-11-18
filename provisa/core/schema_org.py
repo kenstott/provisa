@@ -1975,6 +1975,12 @@ user_directory = Table(
     Column("discovery_key_values", Boolean, nullable=False, server_default=true()),
     Column("discovery_measure_cutoff", Float, nullable=False, server_default="0.2"),
     Column("discovery_sample_size", Integer, nullable=False, server_default="10000"),
+    # REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    # relationship, the most a pair scores when neither side is a key, and the sample values
+    # shown per column (provisa.discovery.threshold.DEFAULTS), each set in the discover dialog.
+    Column("discovery_contained_at", Float, nullable=False, server_default="0.95"),
+    Column("discovery_shared_ceiling", Float, nullable=False, server_default="0.6"),
+    Column("discovery_samples_per_column", Integer, nullable=False, server_default="5"),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 

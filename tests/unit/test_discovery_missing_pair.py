@@ -29,7 +29,7 @@ from __future__ import annotations
 from typing import Any
 
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, comparable, type_groups
-from provisa.discovery.context import SHARED_CEILING
+from provisa.discovery.context import CONTAINED_AT, SHARED_CEILING, Scoring
 from provisa.discovery.direction import Known, Proposal, Sampled, settle
 from provisa.discovery.measure import Column, Measurer, Unmeasured
 from provisa.discovery.proposals import ACCEPTABLE, BELOW_THRESHOLD, Recorded
@@ -208,7 +208,13 @@ async def _run(given: list[dict[str, Any]]) -> tuple[list[Recorded], _Reader, li
     prompts."""
     the_plan = plan(TABLES, None, *DEFAULT_LIMITS)
     reader = _Reader()
-    measurer = Measurer(reader, BY_ID, decided=set(), bound=SAMPLE_SIZE)
+    measurer = Measurer(
+        reader,
+        BY_ID,
+        decided=set(),
+        bound=SAMPLE_SIZE,
+        scoring=Scoring(CONTAINED_AT, SHARED_CEILING),
+    )
     prompts: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:

@@ -223,7 +223,12 @@ def _columns(srv) -> dict[tuple[str, str], dict]:
 
 
 def test_a_small_discovery_runs_end_to_end(server, endpoint):
-    scope = {"kinds": ["semantics"], "source_domains": ["shop"]}
+    scope = {
+        "kinds": ["semantics"],
+        "source_domains": ["shop"],
+        "threshold": 0.7,
+        "samples_per_column": 5,
+    }
 
     models = _get(server, "/admin/discover/models")
     assert models["assigned"]["vendor"] == "test-endpoint"

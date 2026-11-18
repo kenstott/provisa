@@ -134,7 +134,7 @@ async def test_discovery_samples_a_table_through_the_governed_pipeline_at_its_pu
     monkeypatch.setattr(
         gather, "_published", lambda state, table_id, name: ('"sales"."orders"', {"id": "id"})
     )
-    samples = await gather._samples(object(), 1, "orders", ["id", "absent"])
+    samples = await gather._samples(object(), 1, "orders", ["id", "absent"], 5)
     assert samples == {"id": ("7",)}
     (sql,) = statements
     assert sql.startswith('SELECT DISTINCT "id" FROM "sales"."orders" WHERE "id" IS NOT NULL ')

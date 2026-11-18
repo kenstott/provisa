@@ -8,8 +8,8 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The score from which a discovery run's proposals start ticked, kept for the person who set it
-(REQ-413).
+"""The score from which a discovery run's proposals start ticked, and every other threshold and
+sample size a run uses, kept for the person who set them (REQ-413, amended 2026-11-18).
 
 It is kept in the person's row of ``user_directory``, the tenant's per-person store that also
 holds their email preference. A person who has set none has the column's default,
@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 from sqlalchemy import select
 
 from provisa.core.schema_org import user_directory
+from provisa.discovery.context import CONTAINED_AT, SAMPLE_VALUES, SHARED_CEILING
 from provisa.discovery.measure import DISTINCT_BOUND
 
 if TYPE_CHECKING:
@@ -61,54 +62,101 @@ async def keep(conn: "Connection", user_id: str, threshold: float) -> float:
 
 @dataclass(frozen=True)
 class KeyValueSettings:
-    """Key value overlap as the person last set it (REQ-413, amended 2026-11-16), remembered as
-    the threshold is: whether it is chosen, its measure cutoff, and its sample size."""
+    """Key value overlap as the person last set it (REQ-413, amended 2026-11-16 and 2026-11-18),
+    remembered as the threshold is: whether it is chosen, its measure cutoff, its sample size, the
+    share of values in a key target at which a pair is a key relationship, and the most a pair
+    scores when neither side is a key."""
 
     chosen: bool
     cutoff: float
     sample_size: int
+    contained_at: float
+    shared_ceiling: float
 
     def as_dict(self) -> dict[str, Any]:
-        return {"chosen": self.chosen, "cutoff": self.cutoff, "sample_size": self.sample_size}
+        return {
+            "chosen": self.chosen,
+            "cutoff": self.cutoff,
+            "sample_size": self.sample_size,
+            "contained_at": self.contained_at,
+            "shared_ceiling": self.shared_ceiling,
+        }
 
 
-#: Key value overlap of a person who has set none: the columns' defaults (REQ-413: chosen, a
-#: cutoff of 20%, a sample size of 10,000 distinct values).
-KEY_VALUES_DEFAULT = KeyValueSettings(chosen=True, cutoff=0.2, sample_size=DISTINCT_BOUND)
+@dataclass(frozen=True)
+class RunSettings:
+    """Every threshold and sample size a run uses, as the person last set them in the discover
+    dialog (REQ-413, amended 2026-11-18): their Tick from, the sample values shown per column,
+    and Key value overlap's."""
+
+    threshold: float
+    samples_per_column: int
+    key_values: KeyValueSettings
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "threshold": self.threshold,
+            "samples_per_column": self.samples_per_column,
+            "key_values": self.key_values.as_dict(),
+        }
 
 
-async def read_key_values(conn: "Connection", user_id: str) -> KeyValueSettings:
-    """The person's Key value overlap; :data:`KEY_VALUES_DEFAULT` when they have no row."""
+#: The settings of a person who has set none: the columns' defaults, which only prefill the
+#: dialog (REQ-413: a threshold of 70%; a cutoff of 20%; a sample size of 10,000 values).
+DEFAULTS = RunSettings(
+    threshold=DEFAULT,
+    samples_per_column=SAMPLE_VALUES,
+    key_values=KeyValueSettings(
+        chosen=True,
+        cutoff=0.2,
+        sample_size=DISTINCT_BOUND,
+        contained_at=CONTAINED_AT,
+        shared_ceiling=SHARED_CEILING,
+    ),
+)
+
+
+async def read_settings(conn: "Connection", user_id: str) -> RunSettings:
+    """The person's run settings; :data:`DEFAULTS` when they have no row."""
     d = user_directory.c
     row = (
         await conn.execute_core(
             select(
-                d.discovery_key_values, d.discovery_measure_cutoff, d.discovery_sample_size
+                d.discovery_threshold,
+                d.discovery_samples_per_column,
+                d.discovery_key_values,
+                d.discovery_measure_cutoff,
+                d.discovery_sample_size,
+                d.discovery_contained_at,
+                d.discovery_shared_ceiling,
             ).where(d.user_id == user_id)
         )
     ).fetchone()
     if row is None:
-        return KEY_VALUES_DEFAULT
-    return KeyValueSettings(bool(row[0]), float(row[1]), int(row[2]))
+        return DEFAULTS
+    return RunSettings(
+        float(row[0]),
+        int(row[1]),
+        KeyValueSettings(bool(row[2]), float(row[3]), int(row[4]), float(row[5]), float(row[6])),
+    )
 
 
-async def keep_key_values(
-    conn: "Connection", user_id: str, settings: KeyValueSettings
-) -> KeyValueSettings:
+async def keep_settings(conn: "Connection", user_id: str, settings: RunSettings) -> RunSettings:
     """Keep ``settings`` as the person's own."""
+    kv = settings.key_values
+    values = {
+        "discovery_threshold": settings.threshold,
+        "discovery_samples_per_column": settings.samples_per_column,
+        "discovery_key_values": kv.chosen,
+        "discovery_measure_cutoff": kv.cutoff,
+        "discovery_sample_size": kv.sample_size,
+        "discovery_contained_at": kv.contained_at,
+        "discovery_shared_ceiling": kv.shared_ceiling,
+    }
     await conn.upsert(
         user_directory,
-        {
-            "user_id": user_id,
-            "discovery_key_values": settings.chosen,
-            "discovery_measure_cutoff": settings.cutoff,
-            "discovery_sample_size": settings.sample_size,
-        },
+        {"user_id": user_id, **values},
         index_elements=["user_id"],
-        update_columns=[
-            "discovery_key_values",
-            "discovery_measure_cutoff",
-            "discovery_sample_size",
-        ],
+        update_columns=list(values),
     )
     return settings
