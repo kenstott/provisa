@@ -34,6 +34,7 @@ from collections.abc import Callable
 
 import sqlglot.expressions as exp
 
+from provisa.transpiler import zoned_instants
 from provisa.transpiler.polyfill import clickhouse, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.matching import graft
@@ -80,9 +81,9 @@ def value_of(node: exp.Expr, function: str, dialect: str) -> tuple[str, exp.Expr
 
 def held(node: exp.Expr) -> bool:
     """Whether a form may hold ``node`` as it stands: a literal, a column or a cast of one, or a
-    value already written in ClickHouse's SQL (a cast to a Nullable type, which no PostgreSQL
-    statement writes: zoned_instants writes c::text so before the grid is read)."""
-    if plain(node):
+    value already written in ClickHouse's SQL: zoned_instants' form of c::text (written before
+    the grid is read), or a cast to a Nullable type, which no PostgreSQL statement writes."""
+    if plain(node) or node.meta.get(zoned_instants.WRITTEN):
         return True
     to = node.to if isinstance(node, exp.Cast) else None
     return to is not None and bool(to.args.get("nullable"))
