@@ -204,16 +204,100 @@ def _get_relationship_fields(
     return rels
 
 
-def _key_columns(
-    ctx: Any, table_id: int, gql_scalars: list[str], physical_to_gql: dict[str, str]
-) -> list[str]:
-    """The table's key columns, physical, in key order: its declared primary key, else its ``id``
-    column (what JSON:API ids were made of before keys were read). Empty when it has neither: its
-    resources have no id, and the caller refuses the read by name."""
+def _resource_id_columns(ctx: Any, table_id: int, physical_to_gql: dict[str, str]) -> list[str]:
+    """REQ-1929: a root resource's id columns, physical, in key order: its declared primary key;
+    otherwise the column an approved relationship points at; otherwise none, and its id is its
+    position in the response. No read is refused for want of a primary key."""
     keys = ctx.pk_columns.get(table_id) or []
     if keys and all(k in physical_to_gql for k in keys):
         return list(keys)
-    return ["id"] if "id" in gql_scalars else []
+    for join in ctx.joins.values():
+        if (
+            join.target.table_id == table_id
+            and join.target_expr is None
+            and join.target_column in physical_to_gql
+        ):
+            return [join.target_column]
+    return []
+
+
+class _IncludePlan:
+    """REQ-257, REQ-1929: a row read's ``?include=`` paths, each a relationship path at any depth
+    (``a`` or ``a.b``), as the GraphQL selection that reads them and what the encoder needs to
+    write them: each path's id column (the column its relationship points at), each path's
+    GraphQL names past the first relationship, and ``fields[<type>]`` per included type."""
+
+    def __init__(self) -> None:
+        self.tree: dict[str, Any] = {}
+        self.keys: dict[str, list[str]] = {}
+        self.names: dict[str, tuple[str, dict[str, str]]] = {}
+        self.fields: dict[str, list[str]] = {}
+
+
+def _plan_includes(  # REQ-257, REQ-1929
+    ctx: Any,
+    gql_type_name: str,
+    obj_type: GraphQLObjectType,
+    paths: list[str],
+    sparse: dict[str, list[str]],
+) -> _IncludePlan | OrjsonResponse:
+    """The include plan for ``paths`` (physical, REQ-1417) from the base type, or the 400 for a
+    segment that names no approved relationship or a ``fields[<type>]`` naming no column."""
+    plan = _IncludePlan()
+    for inc in paths:
+        segments = [seg for seg in inc.split(".") if seg]
+        tree, type_name, here = plan.tree, gql_type_name, obj_type
+        path = ""
+        for depth, seg in enumerate(segments):
+            path = f"{path}.{seg}" if path else seg
+            _, rel_types = _split_scalar_and_relationship_fields(here)
+            gql_rel = {physical_rel_name(r): r for r in rel_types}.get(seg)
+            join = ctx.joins.get((type_name, gql_rel)) if gql_rel is not None else None
+            if gql_rel is None or join is None:
+                return _jsonapi_error_response(
+                    400,
+                    "Invalid Include",
+                    f"Unknown relationship {seg!r}",
+                    source_parameter="include",
+                )
+            target_type = rel_types[gql_rel]
+            if path not in plan.keys:
+                target_scalars, _ = _split_scalar_and_relationship_fields(target_type)
+                to_physical, to_gql = scalar_name_maps(ctx, join.target.table_id, target_scalars)
+                # An included resource's id is the column its relationship points at.
+                if join.target_expr is not None or join.target_column not in to_gql:
+                    return _jsonapi_error_response(
+                        400,
+                        "Invalid Include",
+                        f"Relationship {seg!r} points at no column its role can read",
+                        source_parameter="include",
+                    )
+                key = join.target_column
+                wanted = sparse.get(seg)
+                if wanted is not None:
+                    unknown = [f for f in wanted if f not in to_gql]
+                    if unknown:
+                        return _jsonapi_error_response(
+                            400,
+                            "Invalid Fieldset",
+                            f"Unknown field {unknown[0]!r}",
+                            source_parameter=f"fields[{seg}]",
+                        )
+                    plan.fields[seg] = list(wanted)
+                    selected = [to_gql[f] for f in wanted]
+                    if to_gql[key] not in selected:
+                        selected.append(to_gql[key])
+                else:
+                    selected = list(target_scalars)
+                child = tree.setdefault(gql_rel, {})
+                for name in selected:
+                    child.setdefault(name, None)
+                plan.keys[path] = [key]
+                if depth > 0:
+                    plan.names[path] = (gql_rel, to_physical)
+            tree = tree[gql_rel]
+            type_name, here = join.target.type_name, target_type
+    return plan
 
 
 def _relationship_scalars(schema: GraphQLSchema, table: str, rel_field: str) -> list[str]:
@@ -677,16 +761,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 f"No selectable fields for resource type {domain_id!r}/{table_name!r}",
             )
 
-        # A resource's id is made of its table's key columns (serializer.resource_id): every one
-        # is selected, whatever the sparse fieldset asks for.
-        base_keys = _key_columns(ctx, table_meta.table_id, all_scalars, physical_to_gql)
-        if not base_keys:
-            return _jsonapi_error_response(
-                400,
-                "Bad Request",
-                f"Resource type {domain_id!r}/{table_name!r} has no primary key, so its "
-                "resources have no id",
-            )
+        # A resource's id is made of its key columns (serializer.resource_id): every one is
+        # selected, whatever the sparse fieldset asks for. None: its id is its position (REQ-1929).
+        base_keys = _resource_id_columns(ctx, table_meta.table_id, physical_to_gql)
         selected_fields = [
             *[physical_to_gql[k] for k in base_keys if physical_to_gql[k] not in selected_fields],
             *selected_fields,
@@ -923,39 +1000,22 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 headers=build_cache_headers(agg_result.cache_entry),  # REQ-536
             )
 
-        # REQ-257: ?include=rel1,rel2 — sideload related resources as a compound document.
+        # REQ-257: ?include=rel1,rel2.rel3 — sideload related resources as a compound document,
+        # following each approved relationship to any depth (REQ-1929).
         # REQ-1417: the names are physical; they are translated to the schema's field names here.
         include_param = raw_params.get("include")
         physical_include_names = (
             [n.strip() for n in include_param.split(",") if n.strip()] if include_param else []
         )
-        for inc in physical_include_names:
-            if inc not in rel_physical_to_gql:
-                return _jsonapi_error_response(
-                    400,
-                    "Invalid Include",
-                    f"Unknown relationship {inc!r}",
-                    source_parameter="include",
-                )
-        include_names = [rel_physical_to_gql[inc] for inc in physical_include_names]
-        query_fields = list(selected_fields)
-        # Each included type's key columns, physical: its resources' ids (serializer.resource_id).
-        include_keys: dict[str, list[str]] = {}
-        for inc in include_names:
-            inc_scalars = list(rel_scalars_by_rel[inc])
-            target = ctx.joins[(table_meta.type_name, inc)].target
-            _, inc_physical_to_gql = scalar_name_maps(ctx, target.table_id, inc_scalars)
-            inc_keys = _key_columns(ctx, target.table_id, inc_scalars, inc_physical_to_gql)
-            if not inc_keys:
-                return _jsonapi_error_response(
-                    400,
-                    "Invalid Include",
-                    f"Relationship {rel_gql_to_physical[inc]!r} reaches a table with no primary "
-                    "key, so its resources have no id",
-                    source_parameter="include",
-                )
-            include_keys[rel_gql_to_physical[inc]] = inc_keys
-            query_fields.append(f"{inc} {{ {' '.join(inc_scalars)} }}")
+        all_sparse = _parse_sparse_fieldsets(raw_params)
+        base_type = _unwrap_type(query_type.fields[gql_table].type)
+        includes = _plan_includes(
+            ctx, table_meta.type_name, base_type, physical_include_names, all_sparse
+        )
+        if not isinstance(includes, _IncludePlan):
+            return includes
+        query_fields = list(selected_fields) + _render_jsonapi_include_tree(includes.tree)
+        for inc in includes.tree:
             # the FK column must be selected so the resource's relationship linkage resolves.
             # It is named from the *physical* convention (``pet`` → ``pet_id``) and translated to
             # the schema's spelling, rather than assuming one — under apollo the exposed column is
@@ -1099,6 +1159,8 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
                 extra[k] = raw_params[k]
         if sparse:
             extra[f"fields[{table_name}]"] = ",".join(sparse)
+        for inc_type, inc_fields in includes.fields.items():
+            extra[f"fields[{inc_type}]"] = ",".join(inc_fields)
         for k, v in raw_params.items():
             if k.startswith("filter["):
                 extra[k] = v
@@ -1129,7 +1191,9 @@ def create_jsonapi_router(state: Any) -> APIRouter:  # REQ-256, REQ-257, REQ-266
             rel_names=list(rel_gql_to_physical.items()),
             rel_scalar_names=rel_scalar_gql_to_physical,
             includes=physical_include_names,
-            include_keys=include_keys,
+            include_keys=includes.keys,
+            include_fields=includes.fields,
+            include_names=includes.names,
             base_path=base_path,
             link_params=list(extra.items()),
             warnings=warnings_json(as_entries()),

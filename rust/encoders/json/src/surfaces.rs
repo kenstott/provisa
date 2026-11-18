@@ -194,13 +194,22 @@ pub struct JsonApi {
     /// A probe row was fetched (no total asked for).
     pub probe: bool,
     pub total: Option<i64>,
+    /// The root resource's id columns; empty when its id is its position in the response
+    /// (REQ-1929: no primary key and no approved relationship pointing at it).
     pub id_columns: Vec<String>,
     pub scalar_names: HashMap<String, String>,
     pub rel_names: Vec<(String, String)>,
     pub rel_scalar_names: HashMap<String, HashMap<String, String>>,
-    /// `?include=` names, physical, as given (a repeat is popped twice).
+    /// `?include=` paths, physical, as given (a repeat is popped twice); a dotted path
+    /// (`a.b`) includes every resource along it (REQ-1929).
     pub includes: Vec<String>,
+    /// Each include path's id columns.
     pub include_keys: HashMap<String, Vec<String>>,
+    /// `fields[<type>]`: an included type's attributes, physical; absent, every attribute.
+    pub include_fields: HashMap<String, Vec<String>>,
+    /// Each path more than one relationship deep: its relationship's GraphQL name (its key in
+    /// the parent's object) and its scalars' GraphQL -> physical names.
+    pub include_names: HashMap<String, (String, HashMap<String, String>)>,
     pub base_path: String,
     pub link_params: Vec<(String, String)>,
     pub warnings: Option<Vec<u8>>,
@@ -427,6 +436,117 @@ fn links(out: &mut Vec<u8>, a: &JsonApi, has_next: bool) {
     out.push(b'}');
 }
 
+/// One `?include=` path: the path, its type (its last relationship's physical name), and the
+/// paths one relationship further along it.
+struct IncNode {
+    path: String,
+    name: String,
+    children: Vec<usize>,
+}
+
+/// An included type's resources, first seen first, each with its relationships to the
+/// resources included past it.
+struct Bucket {
+    name: String,
+    keys: Option<Vec<String>>,
+    items: Vec<(V, Vec<(Vec<u8>, Vec<u8>)>)>,
+    seen: std::collections::HashSet<Vec<u8>>,
+}
+
+/// The include paths as a tree (each prefix of a dotted path its own node), and its roots.
+fn include_nodes(includes: &[String]) -> (Vec<IncNode>, Vec<usize>) {
+    let mut nodes: Vec<IncNode> = Vec::new();
+    let mut roots = Vec::new();
+    for inc in includes {
+        let mut parent: Option<usize> = None;
+        let mut path = String::new();
+        for seg in inc.split('.') {
+            if !path.is_empty() {
+                path.push('.');
+            }
+            path.push_str(seg);
+            let idx = match nodes.iter().position(|n| n.path == path) {
+                Some(i) => i,
+                None => {
+                    nodes.push(IncNode { path: path.clone(), name: seg.to_string(), children: Vec::new() });
+                    let i = nodes.len() - 1;
+                    match parent {
+                        Some(p) => nodes[p].children.push(i),
+                        None => roots.push(i),
+                    }
+                    i
+                }
+            };
+            parent = Some(idx);
+        }
+    }
+    (nodes, roots)
+}
+
+/// `_extract_included`: each include at `at` taken out of object `o` into its type's bucket
+/// (deduplicated by id), recursing into the includes past it; returns `o`'s relationships.
+fn extract_included(t: &mut Tree, o: u32, at: &[usize], nodes: &[IncNode], a: &JsonApi, buckets: &mut Vec<Bucket>) -> Res<Vec<(Vec<u8>, Vec<u8>)>> {
+    let mut rl: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+    for &ni in at {
+        let node = &nodes[ni];
+        // A first relationship is already renamed to its physical name; one further along still
+        // carries its GraphQL name and scalars.
+        let names = a.include_names.get(&node.path);
+        let key = names.map_or(node.name.as_str(), |n| n.0.as_str());
+        let nested = find(t, o, key).map(|pos| t.objs[o as usize].remove(pos).1);
+        let nested = nested.map(|v| t.live(v));
+        let is_list = matches!(nested, Some(V::Arr(_)));
+        let items: Vec<V> = match nested {
+            Some(V::Arr(x)) => t.arrs[x as usize].clone(),
+            Some(v) if truthy(t, v) => vec![v],
+            _ => Vec::new(),
+        };
+        let bi = match buckets.iter().position(|b| b.name == node.name) {
+            Some(i) => i,
+            None => {
+                buckets.push(Bucket { name: node.name.clone(), keys: a.include_keys.get(&node.path).cloned(), items: Vec::new(), seen: Default::default() });
+                buckets.len() - 1
+            }
+        };
+        let keys = a.include_keys.get(&node.path).cloned().unwrap_or_default();
+        let mut idents: Vec<Vec<u8>> = Vec::new();
+        for item in items {
+            let item = t.live(item);
+            let V::Obj(mut io) = item else { return err("TypeError: an included value is not an object") };
+            if let Some((_, map)) = names {
+                io = Renamer { t: &mut *t }.rename_obj(io, map);
+            }
+            let child_links = extract_included(t, io, &node.children, nodes, a, buckets)?;
+            let rid = resource_id(t, io, &keys)?;
+            let mut ident = Vec::new();
+            identifier(&mut ident, node.name.as_bytes(), &rid)?;
+            ident.push(b'}');
+            idents.push(ident);
+            let b = &mut buckets[bi];
+            if b.seen.insert(rid) {
+                b.items.push((V::Obj(io), child_links));
+            }
+        }
+        let mut link = b"{\"data\":".to_vec();
+        if is_list {
+            link.push(b'[');
+            link.extend_from_slice(&idents.join(&b","[..]));
+            link.push(b']');
+        } else {
+            match idents.first() {
+                Some(i) => link.extend_from_slice(i),
+                None => link.extend_from_slice(b"null"),
+            }
+        }
+        link.push(b'}');
+        match rl.iter_mut().find(|e| e.0 == node.name.as_bytes()) {
+            Some(e) => e.1 = link,
+            None => rl.push((node.name.as_bytes().to_vec(), link)),
+        }
+    }
+    Ok(rl)
+}
+
 /// The JSON:API document of a table read: the rows `serialize_rows` builds, cut to the page,
 /// renamed to physical names, their included resources taken out (`_extract_included`), as
 /// `rows_to_jsonapi` writes them, with the router's meta and links.
@@ -443,65 +563,13 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
     let mut ren = Renamer { t: &mut t };
     let page: Vec<u32> = page.into_iter().map(|o| ren.row(o, &a.scalar_names, &a.rel_names, &a.rel_scalar_names)).collect();
 
-    // An include named twice is the one include (`include=a,b,a` is `include=a,b`).
-    let mut includes: Vec<&String> = Vec::new();
-    for inc in &a.includes {
-        if !includes.contains(&inc) {
-            includes.push(inc);
-        }
-    }
-    // _extract_included
-    let mut buckets: Vec<(String, Vec<V>, std::collections::HashSet<Vec<u8>>)> = Vec::new();
+    // An include named twice is the one include (`include=a,b,a` is `include=a,b`); a dotted
+    // path includes every resource along it.
+    let (nodes, roots) = include_nodes(&a.includes);
+    let mut buckets: Vec<Bucket> = Vec::new();
     let mut row_links: Vec<Vec<(Vec<u8>, Vec<u8>)>> = Vec::new();
     for &o in &page {
-        let mut rl: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
-        for &inc in &includes {
-            let nested = match find(&t, o, inc) {
-                Some(pos) => Some(t.objs[o as usize].remove(pos).1),
-                None => None,
-            };
-            let nested = nested.map(|v| t.live(v));
-            let is_list = matches!(nested, Some(V::Arr(_)));
-            let items: Vec<V> = match nested {
-                Some(V::Arr(x)) => t.arrs[x as usize].clone(),
-                Some(v) if truthy(&t, v) => vec![v],
-                _ => Vec::new(),
-            };
-            if !buckets.iter().any(|b| b.0 == *inc) {
-                buckets.push((inc.clone(), Vec::new(), Default::default()));
-            }
-            let keys = a.include_keys.get(inc).cloned().unwrap_or_default();
-            let mut idents: Vec<Vec<u8>> = Vec::new();
-            for item in items {
-                let item = t.live(item);
-                let V::Obj(io) = item else { return err("TypeError: an included value is not an object") };
-                let rid = resource_id(&t, io, &keys)?;
-                let mut ident = Vec::new();
-                identifier(&mut ident, inc.as_bytes(), &rid)?;
-                ident.push(b'}');
-                idents.push(ident);
-                let b = buckets.iter_mut().find(|b| b.0 == *inc).unwrap();
-                if b.2.insert(rid) {
-                    b.1.push(item);
-                }
-            }
-            let mut link = b"{\"data\":".to_vec();
-            if is_list {
-                link.push(b'[');
-                link.extend_from_slice(&idents.join(&b","[..]));
-                link.push(b']');
-            } else {
-                match idents.first() {
-                    Some(i) => link.extend_from_slice(i),
-                    None => link.extend_from_slice(b"null"),
-                }
-            }
-            link.push(b'}');
-            match rl.iter_mut().find(|e| e.0 == inc.as_bytes()) {
-                Some(e) => e.1 = link,
-                None => rl.push((inc.as_bytes().to_vec(), link)),
-            }
-        }
+        let rl = extract_included(&mut t, o, &roots, &nodes, a, &mut buckets)?;
         row_links.push(rl);
     }
 
@@ -513,7 +581,8 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
         if i > 0 {
             out.push(b',');
         }
-        let rid = resource_id(&t, o, &a.id_columns)?;
+        // No key columns: the resource's id is its position in the response (REQ-1929).
+        let rid = if a.id_columns.is_empty() { i.to_string().into_bytes() } else { resource_id(&t, o, &a.id_columns)? };
         let mut attrs: Vec<(u32, V)> = Vec::new();
         let mut rels: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
         // A column named id is the resource's id only when the id is that column; an id built
@@ -555,15 +624,17 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
         write_resource(&t, &mut out, ty, &rid, &attrs, &rels)?;
     }
     out.push(b']');
-    let filled: Vec<_> = buckets.iter().filter(|b| !b.1.is_empty()).collect();
+    let filled: Vec<&Bucket> = buckets.iter().filter(|b| !b.items.is_empty()).collect();
     if !filled.is_empty() {
         out.extend_from_slice(b",\"included\":[");
         let mut first = true;
-        for (inc, items, _) in filled {
-            let keys = a.include_keys.get(inc);
+        for b in filled {
+            let keys = b.keys.as_ref();
             let id_is_column = keys.is_none_or(|k| k.len() == 1 && k[0] == "id");
-            for &item in items {
-                let V::Obj(io) = item else { unreachable!() };
+            // fields[<type>] (REQ-1929): only the attributes it names.
+            let fields = a.include_fields.get(&b.name);
+            for (item, rels) in &b.items {
+                let V::Obj(io) = *item else { unreachable!() };
                 let rid = match keys {
                     Some(k) => resource_id(&t, io, k)?,
                     None => {
@@ -574,13 +645,19 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
                         s
                     }
                 };
-                let attrs: Vec<(u32, V)> =
-                    t.objs[io as usize].iter().filter(|(k, _)| !(id_is_column && t.names.raw[*k as usize] == b"id")).copied().collect();
+                let attrs: Vec<(u32, V)> = t.objs[io as usize]
+                    .iter()
+                    .filter(|(k, _)| {
+                        let name = &t.names.raw[*k as usize];
+                        !(id_is_column && name == b"id") && fields.is_none_or(|f| f.iter().any(|x| x.as_bytes() == name.as_slice()))
+                    })
+                    .copied()
+                    .collect();
                 if !first {
                     out.push(b',');
                 }
                 first = false;
-                write_resource(&t, &mut out, inc.as_bytes(), &rid, &attrs, &[])?;
+                write_resource(&t, &mut out, b.name.as_bytes(), &rid, &attrs, rels)?;
             }
         }
         out.push(b']');
