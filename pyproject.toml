@@ -70,7 +70,9 @@ dependencies = [
     # aisuite does not declare it as a dependency (it ships every provider's import as optional).
     "openai",
     "apscheduler>=3.10",
-    "inflect",
+    # REQ-194: singular and plural forms come from lemminflect's English lexicon (dictionary lookup,
+    # no suffix rules); provisa/core/inflection.py. MIT.
+    "lemminflect>=0.2,<0.3",
     "jsonpath-ng",
     # Reads an OpenAPI or Swagger spec and follows its references (provisa/openapi/mapper.py,
     # REQ-314). From the python-openapi project, over `referencing`. Apache-2.0.
