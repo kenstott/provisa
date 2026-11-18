@@ -95724,7 +95724,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     acts. With an external identity provider, it decides, and Provisa enforces whatever its claims say.
     With none, the local default applies an expiry cancel at once -- the date was agreed when the grant
     was made, so it needs no second approval -- as the matching ordinary removal, attributed to the expiry;
-    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.'
+    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.
+    (Amended 2026-11-18, AN EMAIL NAMES A KNOWN PERSON ONLY BY AN ADDRESS VERIFIED AT SIGN-IN:) Maintainer
+    2026-11-18. Each sign-in records whether the person''s email address was verified by the identity provider.
+    A write that names a person by email resolves to a known person only by an address recorded as verified;
+    an address typed by an account holder (a local account''s email) or one never verified names no one,
+    so the write waits as a pending grant and attaches at a verified sign-in with that address.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]
