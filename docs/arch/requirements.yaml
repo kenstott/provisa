@@ -3741,7 +3741,11 @@
     run''s whole life: while the run is going it shows its progress (requests done of the total, suggestions
     so far, the model) with Stop and Run in background; when the run ends the same block holds its summary,
     collapsed to its first line. Its first line is the line the Relationships page shows. Runs going at
-    once are each a line in that block.'
+    once are each a line in that block. (Amended 2026-11-16, DATE AND TIMESTAMP COLUMNS ARE NEVER KEY CANDIDATES:)
+    Maintainer 2026-11-16 (''dates are supposed to be excluded as key candidates''). Discovery does not
+    compare date or timestamp columns: they are in no compared type group, so no request asks the model
+    about them, no pair is measured on them, and no suggestion, shared dimension or junction is offered
+    on them. The dialog''s count of requests and the run''s summary say so.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
