@@ -15,13 +15,7 @@ import { useState } from "react";
  * form, so what is read in one is found in the same place in the other.
  */
 export type TableSection =
-  | "identity"
-  | "associations"
-  | "load"
-  | "query"
-  | "quality"
-  | "columns"
-  | "access"; // REQ-2162: who can read or write each column
+  "identity" | "associations" | "load" | "query" | "quality" | "columns" | "access"; // REQ-2162: who can read or write each column
 export const TABLE_SECTIONS: TableSection[] = [
   "identity",
   "associations",

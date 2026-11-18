@@ -60,6 +60,7 @@ import { KafkaFields } from "./KafkaFields";
 import { QdrantFields } from "./QdrantFields";
 import { QDRANT } from "./qdrant";
 import { WikipediaFields } from "./WikipediaFields";
+import { WikidataFields } from "./WikidataFields";
 import { LogsFields } from "./LogsFields";
 import { LOGS } from "./logs";
 import { SparqlFormSection } from "./SparqlFormSection";
@@ -676,20 +677,17 @@ export function SourceFormFieldsExtended({
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {connector && (
-        <ConnectorSetupFields
-          connector={connector}
-          fields={authFields}
-          setFields={setAuthFields}
-        />
+        <ConnectorSetupFields connector={connector} fields={authFields} setFields={setAuthFields} />
       )}
-      {!connector && CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
-        <CodeSourceFields
-          type={form.type}
-          fields={authFields}
-          setFields={setAuthFields}
-          sourceId={editingSourceId ?? undefined}
-        />
-      )}
+      {!connector &&
+        CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
+          <CodeSourceFields
+            type={form.type}
+            fields={authFields}
+            setFields={setAuthFields}
+            sourceId={editingSourceId ?? undefined}
+          />
+        )}
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
       )}
@@ -706,6 +704,7 @@ export function SourceFormFieldsExtended({
       {form.type === QDRANT && ( // REQ-1983
         <QdrantFields form={form} setForm={setForm} fields={authFields} setFields={setAuthFields} />
       )}
+      {form.type === "wikidata" && <WikidataFields /> /* REQ-1923 */}
       {form.type === "wikipedia" && (
         <WikipediaFields fields={authFields} setFields={setAuthFields} /> // REQ-1960
       )}

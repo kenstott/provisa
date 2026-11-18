@@ -206,6 +206,8 @@ export const SOURCE_TYPES = [
   { value: "stripe", label: "Stripe", category: "Enterprise", defaultPort: 443 },
   // REQ-1960: carried by the File Crawler's HTML crawl, with the site's page layout supplied.
   { value: "wikipedia", label: "Wikipedia", category: "File", defaultPort: 0 },
+  // REQ-1923: carried by the SPARQL source, with the Wikidata query service as its endpoint.
+  { value: "wikidata", label: "Wikidata", category: "Graph", defaultPort: 443 },
   { value: "splunk", label: "Splunk", category: "Enterprise", defaultPort: 8089 },
   // Data Quality (REQ-1443) — a checker scans a governed table through a Provisa pgwire endpoint,
   // whose host, port, database and account its steward enters like any database's (#276). soda is Elastic
@@ -318,6 +320,7 @@ export const BRAND_CARRIER: Record<string, string> = {
   shopify: "graphql",
   stripe: "openapi",
   wikipedia: "files", // REQ-1960
+  wikidata: "sparql",
 };
 
 // REQ-1923/REQ-1960: the credential each brand asks for, stated by the brand. None is given
@@ -330,6 +333,7 @@ export const BRAND_AUTH: Record<string, BrandAuth> = {
   shopify: "token",
   stripe: "token",
   wikipedia: "none",
+  wikidata: "none",
 };
 
 // REQ-1923: what a brand reached at a per-customer address asks for besides its credential,

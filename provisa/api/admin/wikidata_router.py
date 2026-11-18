@@ -42,7 +42,8 @@ def _refused(exc: wikidata.InvalidWikidataSource) -> ApiError:
 
 
 def _unreachable(exc: httpx.HTTPError) -> ApiError:
-    return ApiError(502, "wikidata.unreachable", describe_http_failure(exc))
+    reason = describe_http_failure(exc)
+    return ApiError(502, "wikidata.unreachable", reason, reason=reason)
 
 
 @router.get("/starters")
