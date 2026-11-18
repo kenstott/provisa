@@ -999,6 +999,10 @@ class TemplateBuilds:
         await asyncio.gather(*(_work() for _ in range(workers)))
 
 
+def step_aside() -> None:
+    """Red-first placeholder (CLOUD-TPL): replaced by the queue's own in the fix commit."""
+
+
 #: The tier's template builds (ensure_demo_templates); a visitor's open moves its demo forward.
 template_builds = TemplateBuilds()
 
