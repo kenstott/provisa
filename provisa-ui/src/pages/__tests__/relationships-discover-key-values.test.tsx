@@ -18,12 +18,12 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { screen, fireEvent, waitFor } from "@testing-library/react";
 import { type DiscoveryScope } from "../../api/admin";
 import {
-  KEY_VALUES_DEFAULT,
+  SETTINGS_DEFAULT,
   REPORT,
   SCOPE,
   SLOW,
   UNMEASURED,
-  keyValuesMock,
+  settingsMock,
   lastScope,
   openDialog,
   proposal,
@@ -114,11 +114,16 @@ describe("Discovery dialog: Key value overlap", () => {
   });
 
   it("starts as the person last set it", async () => {
-    keyValuesMock.mockResolvedValue({
-      chosen: false,
-      cutoff: 0.4,
-      sample_size: 2500,
-      defaults: KEY_VALUES_DEFAULT,
+    settingsMock.mockResolvedValue({
+      ...SETTINGS_DEFAULT,
+      key_values: {
+        chosen: false,
+        cutoff: 0.4,
+        sample_size: 2500,
+        contained_at: 0.9,
+        shared_ceiling: 0.5,
+      },
+      defaults: SETTINGS_DEFAULT,
     });
     await openDialog();
     expect(keyValuesBox()?.checked).toBe(false);
@@ -129,11 +134,16 @@ describe("Discovery dialog: Key value overlap", () => {
 
   it("New run takes the ended run's settings; Reset to defaults restores the defaults", async () => {
     const ran: DiscoveryScope = { ...SCOPE, measure_cutoff: 0.3, sample_size: 2000 };
-    keyValuesMock.mockResolvedValue({
-      chosen: false,
-      cutoff: 0.5,
-      sample_size: 700,
-      defaults: KEY_VALUES_DEFAULT,
+    settingsMock.mockResolvedValue({
+      ...SETTINGS_DEFAULT,
+      key_values: {
+        chosen: false,
+        cutoff: 0.5,
+        sample_size: 700,
+        contained_at: 0.9,
+        shared_ceiling: 0.5,
+      },
+      defaults: SETTINGS_DEFAULT,
     });
     runMock.mockResolvedValue(runOf({ status: "done", scope: ran, report: REPORT }));
     startMock.mockResolvedValue(runOf({ scope: ran }));

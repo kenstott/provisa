@@ -698,25 +698,45 @@ export interface DiscoveryScope {
   target_tables: number[] | null;
   vendor: string | null;
   model: string | null;
-  /** Key value overlap's measure cutoff (0 to 1) and sample size (the most distinct values read
-   *  of each column): given while it is chosen, else null. Absent from a run recorded before. */
-  measure_cutoff?: number | null;
-  sample_size?: number | null;
+  /** REQ-413 (amended 2026-11-18): Tick from (0 to 1), the score from which the run's proposals
+   *  start ticked; the model is told it and the key value overlap band runs up to it. */
+  threshold: number;
+  /** The distinct sample values read and shown to the model of each compared column. */
+  samples_per_column: number;
+  /** Key value overlap's settings, given while it is chosen, else null: its measure cutoff (0 to
+   *  1), its sample size (the most non-null values read of each column), the share of a source's
+   *  values in a key target at which a pair is a key relationship (0 to 1), and the most a pair
+   *  scores when neither side is a key (0 to 1). */
+  measure_cutoff: number | null;
+  sample_size: number | null;
+  contained_at: number | null;
+  shared_ceiling: number | null;
 }
 
 /** REQ-413: Key value overlap as the signed-in person last set it, remembered as the threshold
- *  is: chosen, its measure cutoff (0 to 1) and its sample size. */
+ *  is: chosen, and its settings. */
 export interface KeyValueSettings {
   chosen: boolean;
   cutoff: number;
   sample_size: number;
+  contained_at: number;
+  shared_ceiling: number;
 }
 
-/** The person's Key value overlap, and the defaults Reset to defaults restores. */
-export function fetchDiscoveryKeyValues(): Promise<
-  KeyValueSettings & { defaults: KeyValueSettings }
+/** REQ-413 (amended 2026-11-18): every threshold and sample size a run uses, as the person last
+ *  set them in the discover dialog. */
+export interface DiscoveryRunSettings {
+  threshold: number;
+  samples_per_column: number;
+  key_values: KeyValueSettings;
+}
+
+/** The person's run settings, which prefill the dialog, and the defaults Reset to defaults
+ *  restores. */
+export function fetchDiscoverySettings(): Promise<
+  DiscoveryRunSettings & { defaults: DiscoveryRunSettings }
 > {
-  return discoveryRequest("/key-values", "Key value overlap");
+  return discoveryRequest("/settings", "Discovery settings");
 }
 
 /** Where a model's two limits come from: set by hand, the vendor's published figures, or the
@@ -749,12 +769,16 @@ export interface ModelLimits {
 /** The type groups columns are compared within. */
 export type TypeGroup = "whole_number" | "decimal" | "text" | "uuid";
 
-/** At most how many model requests a run of this scope makes, by type group. The count reads no
- *  table: it is an upper bound from what is registered, and the run may make fewer. */
+/** At most how many calls to the model a run of this scope makes, and the table pairs they list.
+ *  The count reads no table: it is an upper bound from what is registered, and the run may make
+ *  fewer. */
 export interface DiscoveryCount {
   requests: number;
   requests_are: "upper_bound";
+  /** Empty: calls list table pairs, not type groups (REQ-413, amended 2026-11-18). */
   by_group: Partial<Record<TypeGroup, number>>;
+  table_pairs: number;
+  table_pairs_per_request: number;
   suggestions_per_request?: number;
   model: DiscoveryModel | null;
   source_tables: number;

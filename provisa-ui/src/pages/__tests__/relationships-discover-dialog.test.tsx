@@ -185,12 +185,12 @@ describe("Discovery dialog: the run's scope", () => {
 });
 
 describe("Discovery dialog: the request count before Run", () => {
-  it("shows at most how many requests the run makes, by type group, and that it is a bound", async () => {
+  it("shows at most how many calls the run makes, the table pairs they cover, and that it is a bound", async () => {
     await openDialog();
     await waitFor(
       () =>
         expect(screen.getByTestId("discover-count")).toHaveTextContent(
-          "At most 3 requests to the model: whole numbers 2, text 1.",
+          "At most 3 calls to the model, covering 40 table pairs. A pair left unanswered may be asked again.",
         ),
       SLOW,
     );
@@ -258,12 +258,12 @@ describe("Discovery dialog: the request count before Run", () => {
   it("counts again when the scope changes", async () => {
     await openDialog();
     await waitFor(() => expect(countMock).toHaveBeenCalled(), SLOW);
-    countMock.mockResolvedValue({ ...COUNT, requests: 5, by_group: { text: 5 } });
+    countMock.mockResolvedValue({ ...COUNT, requests: 1, table_pairs: 1 });
     await pick("Source domains", "crm");
     await waitFor(() => expect(lastScope().source_domains).toEqual(["shop", "crm"]), SLOW);
     await waitFor(() =>
       expect(screen.getByTestId("discover-count")).toHaveTextContent(
-        "At most 5 requests to the model: text 5.",
+        "At most 1 call to the model, covering 1 table pair. A pair left unanswered may be asked again.",
       ),
     );
   });
