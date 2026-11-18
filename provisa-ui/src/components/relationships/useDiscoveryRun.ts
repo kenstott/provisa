@@ -111,8 +111,12 @@ export function useDiscoveryRun(onStored: () => void): DiscoveryRunState {
       const listed = await fetchDiscoveryRuns(RUNS_READ);
       setError("");
       const live = listed.filter((r) => r.status === "running");
-      setGoing(live);
       const [newest] = listed;
+      // A run started after the listing was made is not in it: it stays among the runs going.
+      setGoing((known) => [
+        ...known.filter((r) => newest === undefined || r.id > newest.id),
+        ...live,
+      ]);
       // The server lists no run: what is shown stays (nothing, before any run).
       if (newest === undefined) return;
       setLatest(newest);
