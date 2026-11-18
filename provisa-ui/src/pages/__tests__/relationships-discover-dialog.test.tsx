@@ -712,6 +712,33 @@ describe("Discovery dialog: its size by what it shows", () => {
     await endedRun();
     expect(modalSize()).toBe("100%");
   });
+
+  it("keeps the standard size when the ended run proposed nothing", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-no-proposals", {}, SLOW);
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("returns to the standard size once Apply leaves nothing to decide", async () => {
+    await endedRun();
+    expect(modalSize()).toBe("100%");
+    applyMock.mockResolvedValue(
+      PROPOSALS.filter((p) => p.acceptable).map((p) => ({
+        id: p.id,
+        action: "accept",
+        ok: true,
+        relationship_id: `r-${p.id}`,
+      })),
+    );
+    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    fireEvent.click(applyButton());
+    await screen.findByTestId("discover-applied");
+    await screen.findByTestId("discover-no-proposals");
+    expect(modalSize()).toBe(STANDARD);
+  });
 });
 
 describe("Discovery dialog: an ended run's layout", () => {
