@@ -677,17 +677,20 @@ export function SourceFormFieldsExtended({
         <Microsoft365Fields sourceId={form.id} fields={authFields} setFields={setAuthFields} />
       )}
       {connector && (
-        <ConnectorSetupFields connector={connector} fields={authFields} setFields={setAuthFields} />
+        <ConnectorSetupFields
+          connector={connector}
+          fields={authFields}
+          setFields={setAuthFields}
+        />
       )}
-      {!connector &&
-        CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
-          <CodeSourceFields
-            type={form.type}
-            fields={authFields}
-            setFields={setAuthFields}
-            sourceId={editingSourceId ?? undefined}
-          />
-        )}
+      {!connector && CODE_SOURCE_TYPES.has(form.type) && ( // REQ-1984, REQ-1993
+        <CodeSourceFields
+          type={form.type}
+          fields={authFields}
+          setFields={setAuthFields}
+          sourceId={editingSourceId ?? undefined}
+        />
+      )}
       {heldBy && (
         <ConnectorSourceValues connector={heldBy} fields={authFields} setFields={setAuthFields} />
       )}

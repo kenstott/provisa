@@ -85,31 +85,32 @@ export function TableAssociations({
         {
           label: t("tableSections.relationships"),
           testId: "table-associations-relationships",
-          value: madeLoading ? (
-            <Text span size="sm" c="dimmed">
-              {t("common.loading")}
-            </Text>
-          ) : related.length === 0 ? (
-            <Text span size="sm" c="dimmed">
-              {t("tableSections.noRelationships")}
-            </Text>
-          ) : (
-            <Stack gap={2}>
-              {related.map((r) => (
-                <Anchor
-                  key={r.id}
-                  component={Link}
-                  to={relationshipHref(r)}
-                  size="sm"
-                  data-testid={`table-association-relationship-${r.id}`}
-                >
-                  {`${r.sourceTableName}.${r.sourceColumn} → ${r.targetTableName}${
-                    r.targetColumn ? `.${r.targetColumn}` : ""
-                  }`}
-                </Anchor>
-              ))}
-            </Stack>
-          ),
+          value:
+            madeLoading ? (
+              <Text span size="sm" c="dimmed">
+                {t("common.loading")}
+              </Text>
+            ) : related.length === 0 ? (
+              <Text span size="sm" c="dimmed">
+                {t("tableSections.noRelationships")}
+              </Text>
+            ) : (
+              <Stack gap={2}>
+                {related.map((r) => (
+                  <Anchor
+                    key={r.id}
+                    component={Link}
+                    to={relationshipHref(r)}
+                    size="sm"
+                    data-testid={`table-association-relationship-${r.id}`}
+                  >
+                    {`${r.sourceTableName}.${r.sourceColumn} → ${r.targetTableName}${
+                      r.targetColumn ? `.${r.targetColumn}` : ""
+                    }`}
+                  </Anchor>
+                ))}
+              </Stack>
+            ),
         },
         {
           // REQ-2243: the governed metrics the table uses, with the terms they name.
