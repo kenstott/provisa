@@ -767,7 +767,11 @@ class BoltSession:
         from provisa.api.app import ensure_serving_runtime, state as app_state
         from provisa.api.org_resolve import org_named_by_host_or_database, resolve_session_org
 
-        if self._identity is None:
+        if not app_state.multitenancy:
+            # A single-tenant deployment has one org, and nothing names it or opens another
+            # (REQ-1235): there is no cross-org right to judge, so no holdings are read.
+            can_act_any_org = False
+        elif self._identity is None:
             # Unsecured: the roles a driver names are taken at their word, as the HTTP middleware
             # takes X-Provisa-Role's (REQ-1952); there is no principal to read holdings for.
             can_act_any_org = can_act_cross_org(

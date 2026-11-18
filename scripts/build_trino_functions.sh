@@ -12,6 +12,11 @@
 # "AccessDeniedException: /home/runner/.m2/repository/..." (run 37824835227, core 4/6). The
 # official image's way to run as another user: MAVEN_CONFIG and user.home name a home that user
 # can write. ~/.m2 is made first, or Docker creates the mount point itself, as root.
+#
+# The image names one Maven release. Maven's default plugin versions (maven-resources-plugin,
+# maven-compiler-plugin, ...) come with the release, and CI caches the built jar under a hash of
+# this script (.github/actions/trino-plugins), so a floating tag would change what the build
+# fetches under an unchanged key.
 set -euo pipefail
 
 root="$(cd "$(dirname "$0")/.." && pwd)"
@@ -25,7 +30,7 @@ docker run --rm \
   -v "$root/provisa/fakes/portable:/provisa/fakes/portable:ro" \
   -v "$HOME/.m2:/var/maven/.m2" \
   -w /src \
-  maven:3.9-eclipse-temurin-25 \
+  maven:3.9.16-eclipse-temurin-25 \
   mvn -B -q -Duser.home=/var/maven package
 
 mkdir -p "$out"
