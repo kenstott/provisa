@@ -115,11 +115,18 @@ describe("Discovery: the run's block while it goes", () => {
     await waitFor(() => expect(discoverButton()).toHaveAttribute("data-running", "true"));
     fireEvent.click(discoverButton());
     const block = await screen.findByTestId("discover-progress");
-    expect(within(block).getByTestId("discover-going-8")).toHaveTextContent("Requests: 6 of 10");
+    // The newest is the block's first line; its own line adds the model and its Stop.
+    expect(within(block).getByTestId("discover-run-line")).toHaveTextContent(
+      "Requests: 6 of 10 · Suggestions so far: 0",
+    );
     expect(within(block).getByTestId("discover-going-8")).toHaveTextContent(
       "Model: openai:gpt-4.1",
     );
-    expect(within(block).getByTestId("discover-going-7")).toHaveTextContent("Requests: 1 of 4");
+    // The other run going is a line of its own: how far it has got, its suggestions and model.
+    const other7 = within(block).getByTestId("discover-going-7");
+    expect(other7).toHaveTextContent("Requests: 1 of 4");
+    expect(other7).toHaveTextContent("Suggestions so far: 2 · Model: anthropic:claude-haiku-4-5");
+    expect(within(block).getByTestId("discover-stop-8")).toBeEnabled();
     fireEvent.click(within(block).getByTestId("discover-stop-7"));
     await waitFor(() => expect(stopMock).toHaveBeenCalledWith(7));
   });

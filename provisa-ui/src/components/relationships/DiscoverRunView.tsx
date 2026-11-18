@@ -37,15 +37,36 @@ export interface SuggestionActions {
   onApplied: () => void;
 }
 
-/** One run going, as a line of the block: how far it has got, its suggestions and model, Stop. */
-function GoingLine({ run, onStop }: { run: DiscoveryRun; onStop: (runId: number) => void }) {
+/** One run going, as a line of the block: how far it has got, its suggestions and model, Stop.
+ *  ``titled``: the block's first line already says how far it has got and its suggestions. */
+function GoingLine({
+  run,
+  titled,
+  onStop,
+}: {
+  run: DiscoveryRun;
+  titled: boolean;
+  onStop: (runId: number) => void;
+}) {
   const { t } = useTranslation();
+  const said = [
+    ...(titled ? [] : [t("discoverDialog.suggestionsSoFar", { count: run.suggestions })]),
+    ...(run.model ? [t("discoverDialog.modelRan", { model: run.model })] : []),
+  ];
   return (
     <Stack gap={4} data-testid={`discover-going-${run.id}`}>
-      <Group justify="space-between" wrap="nowrap">
+      {!titled && (
         <Text fz="sm" fw={500}>
           {runStatus(run, t)}
         </Text>
+      )}
+      <Group gap="sm" wrap="nowrap">
+        <Progress
+          value={Math.round(runFraction(run) * 100)}
+          animated
+          aria-hidden
+          style={{ flex: 1 }}
+        />
         <Button
           variant="default"
           size="compact-sm"
@@ -56,11 +77,11 @@ function GoingLine({ run, onStop }: { run: DiscoveryRun; onStop: (runId: number)
           {t("discoverDialog.stop")}
         </Button>
       </Group>
-      <Progress value={Math.round(runFraction(run) * 100)} animated aria-hidden />
-      <Text fz="sm" c="dimmed">
-        {t("discoverDialog.suggestionsSoFar", { count: run.suggestions })}
-        {run.model ? ` · ${t("discoverDialog.modelRan", { model: run.model })}` : ""}
-      </Text>
+      {said.length > 0 && (
+        <Text fz="sm" c="dimmed">
+          {said.join(" · ")}
+        </Text>
+      )}
     </Stack>
   );
 }
@@ -130,7 +151,7 @@ export function DiscoverRunView({
                 </Stack>
               )}
               {lines.map((r) => (
-                <GoingLine key={r.id} run={r} onStop={onStop} />
+                <GoingLine key={r.id} run={r} titled={r.id === run.id} onStop={onStop} />
               ))}
             </Stack>
           </CollapsibleItem>
