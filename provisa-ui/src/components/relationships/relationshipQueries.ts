@@ -139,7 +139,10 @@ function servedEdge(
 }
 
 /** Cypher: the relationship's type between its two node labels. */
-export function relationshipCypher(rel: RelationshipQueryRef, graph: GraphSchemaDoc): string | null {
+export function relationshipCypher(
+  rel: RelationshipQueryRef,
+  graph: GraphSchemaDoc,
+): string | null {
   const edge = servedEdge(rel, graph);
   if (edge === null) return null;
   return `MATCH (a:${edge.source})-[r:${edge.type}]->(b:${edge.target}) RETURN a, r, b LIMIT ${RELATIONSHIP_QUERY_LIMIT}`;
@@ -231,7 +234,9 @@ export function relationshipQueryLinks(
     cypher: graph ? run("/graph", "query", relationshipCypher(rel, graph)) : null,
     sql: reader && readsTables(rel, reader) ? run("/sql", "sql", relationshipSql(rel)) : null,
     sparql:
-      graph && vocabulary ? run("/sparql", "query", relationshipSparql(rel, graph, vocabulary)) : null,
+      graph && vocabulary
+        ? run("/sparql", "query", relationshipSparql(rel, graph, vocabulary))
+        : null,
     graphql: reader ? run("/query", "query", relationshipGraphql(rel, reader)) : null,
     jsonapi: reader ? run("/jsonapi", "jsonapiUrl", relationshipJsonApi(rel, reader, graph)) : null,
   };
