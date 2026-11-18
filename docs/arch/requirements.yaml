@@ -3745,7 +3745,16 @@
     Maintainer 2026-11-16 (''dates are supposed to be excluded as key candidates''). Discovery does not
     compare date or timestamp columns: they are in no compared type group, so no request asks the model
     about them, no pair is measured on them, and no suggestion, shared dimension or junction is offered
-    on them. The dialog''s count of requests and the run''s summary say so.'
+    on them. The dialog''s count of requests and the run''s summary say so. (Amended 2026-11-18, A RUN SHOWS
+    EVERY PAIR IT FOUND, LEAVING OUT ONLY EXISTING AND NOT-AGAIN PAIRS:) Maintainer 2026-11-18 (''no pairs
+    should drop out. the entire list should be shown except for existing pairs or do not recommend pairs'').
+    Every pair of columns a run finds, by any check, is listed in its results, scored, for a reviewer to
+    decide. The only pairs left out are those already registered as a relationship (a junction''s legs among
+    them) and those marked not to be recommended again. No other rule removes a pair from the list: not
+    both columns repeating their values, not many-to-many, not key-to-key, not a foreign key''s semantic
+    duplicate (shown once, as the foreign key), not a pair still waiting from an earlier run. Two directions
+    of one pair are one row. Rules that judged a pair now only set its score, cardinality and note. This
+    supersedes each earlier rule that left a found pair out for any other reason.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
