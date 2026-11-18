@@ -3835,7 +3835,12 @@
     filter, so it can be changed or cleared; a line says how many rows it hides. The value a person sets
     is kept for their next runs, as Tick from is. Accept acts only on rows the filter shows. The dialog''s
     request count shows the calls and table pairs a run will ask about, and says a pair left unanswered
-    may be asked again.'
+    may be asked again. (Amended 2026-11-18, THE MEASURE JOIN RUNS GOVERNED, WITHOUT THE APPROVED-RELATIONSHIP
+    CHECK:) Maintainer 2026-11-18. The key value overlap join count runs as one engine query per pair through
+    the governed pipeline as the person who started the run: their role''s rules, masks and row rules apply
+    to each table it reads. Only the check that a join follows an approved relationship is not applied,
+    and only to this discovery measure query, since a candidate pair has no relationship yet. A pair whose
+    tables cannot be read is left unmeasured and says why; it does not fail the run.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -76287,7 +76292,22 @@
     for included resources and dotted includes that go more than one relationship deep, as a group-by read
     already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship
     name, so a read_mask path names the relationship itself and every relationship to the same table can
-    be read; field numbers stay stable for fields that already exist.'
+    be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ
+    AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 (''pk
+    should be irrelevant. it should just work on approved relationships''). No JSON:API read or include
+    is refused because a table declares no primary key. An include follows the approved relationship, and
+    an included resource''s id is the value of the column that relationship points at. A root resource''s
+    id is its primary key where one is declared; otherwise the column an approved relationship points at;
+    otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS
+    RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource
+    reached by a many-to-one relationship is identified by the column that relationship points at; one reached
+    by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its
+    position among its parent''s included resources, so every child row stays a resource of its own. (Amended
+    2026-11-18, A ONE-TO-MANY INCLUDE''S POSITION ID CARRIES ITS PARENT''S ID:) Lead 2026-11-18, making
+    the one-to-many rule exact: an included resource with no declared primary key, reached by a one-to-many
+    relationship, has the id ''<parent id>:<n>'', n its 0-based position among that parent''s included resources
+    (a '':'' or ''\\'' in the parent id escaped), so children of different parents never share an id; resource
+    linkage uses the same ids.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst

@@ -48,6 +48,14 @@
     "changeResolver": "Change code resolver",
     "retireResolver": "Retire code resolver",
     "retireResolverTitle": "Retire code resolver {{resolver}}?",
-    "retireResolverConsequence": "Its matches view and its three relationships are retired together. Their names stay taken."
+    "retireResolverConsequence": "Its matches view and its three relationships are retired together. Their names stay taken.",
+    "queryLinks": {
+      "heading": "Query it",
+      "cypher": "Read {{name}} in Cypher",
+      "sql": "Read {{name}} in SQL",
+      "sparql": "Read {{name}} in SPARQL",
+      "graphql": "Read {{name}} in GraphQL",
+      "jsonapi": "Read {{name}} in JSON:API"
+    }
   }
 }

@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "Keine abfragbaren Tabellen oder Beziehungen",
     "graphqlQueryAria": "Beispiel-GraphQL-Abfrage für {{table}} ausführen",
     "sqlQueryAria": "Beispiel-SQL-Abfrage für {{table}} ausführen",
-    "cypherQueryAria": "Beispiel-Cypher-Abfrage für {{type}} ausführen",
     "grpcQueryAria": "Beispiel-gRPC-Aufruf für {{table}} ausführen",
     "jsonapiQueryAria": "Beispiel-JSON:API-Anfrage für {{table}} ausführen",
     "openApiQueryAria": "Beispiel-REST-Anfrage für {{table}} ausführen",

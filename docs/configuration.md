@@ -1860,6 +1860,7 @@ For Google Cloud sources, set `GOOGLE_APPLICATION_CREDENTIALS` to the path of yo
 | `PROVISA_MTLS_BIND_PRINCIPAL` | `false` | Require the certificate's common name to equal the authenticating username |
 | `PROVISA_BOLT_ALLOWED_ORIGINS` | — | Comma-separated sites permitted to open a Bolt WebSocket from a browser; unset refuses every browser origin |
 | `PROVISA_EXTRAS` | `firebase,vector` | Pyproject extras baked into the app image; `scripts/provisa` derives it from `dq_checker` in `~/.provisa/config.yaml` |
+| `HF_ENDPOINT` | `https://huggingface.co` | Hugging Face hub a local embedding model is downloaded from; sets `embedding.hub_endpoint` when no value is stored. See [Runtime Settings](admin.md#runtime-settings) |
 | `PROVISA_DQ_CHECKER` | `none` | Installer-only: `none`/`soda`/`gx`, read by `first-launch.sh` in non-interactive mode and written to `config.yaml` as `dq_checker` |
 | `ANTHROPIC_API_KEY` | — | Anthropic key for an organization that stored none. Read only on an install of one organization; the other vendors' variables are in [Where an AI key comes from](secrets.md#where-an-ai-key-comes-from) |
 | `OTEL_EXPORTER_OTLP_ENDPOINT` | — | Overrides `observability.endpoint` |

@@ -48,6 +48,14 @@
     "changeResolver": "कोड रिज़ॉल्वर बदलें",
     "retireResolver": "कोड रिज़ॉल्वर सेवानिवृत्त करें",
     "retireResolverTitle": "कोड रिज़ॉल्वर {{resolver}} सेवानिवृत्त करें?",
-    "retireResolverConsequence": "इसका मिलान व्यू और इसके तीनों संबंध एक साथ सेवानिवृत्त किए जाते हैं। उनके नाम आरक्षित रहते हैं।"
+    "retireResolverConsequence": "इसका मिलान व्यू और इसके तीनों संबंध एक साथ सेवानिवृत्त किए जाते हैं। उनके नाम आरक्षित रहते हैं।",
+    "queryLinks": {
+      "heading": "क्वेरी करें",
+      "cypher": "{{name}} को Cypher में पढ़ें",
+      "sql": "{{name}} को SQL में पढ़ें",
+      "sparql": "{{name}} को SPARQL में पढ़ें",
+      "graphql": "{{name}} को GraphQL में पढ़ें",
+      "jsonapi": "{{name}} को JSON:API में पढ़ें"
+    }
   }
 }

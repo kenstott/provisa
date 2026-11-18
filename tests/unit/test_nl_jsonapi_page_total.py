@@ -60,7 +60,7 @@ def test_aggregate_and_group_by_requests_carry_no_page_parameters(plan):
 
 @pytest.mark.anyio
 async def test_the_executor_runs_a_request_that_asks_for_the_total():
-    with patch.object(executor, "_execute_domain_table", new=AsyncMock(return_value={})) as run:
+    with patch.object(executor, "_endpoint_read", new=AsyncMock(return_value={})) as run:
         await executor._execute_jsonapi(
             "/data/jsonapi/pet_store/dim_pet?page[size]=20&page[total]=true",
             "admin",
@@ -68,4 +68,7 @@ async def test_the_executor_runs_a_request_that_asks_for_the_total():
             None,
         )
     assert run.await_args is not None
-    assert run.await_args.args[:2] == ("pet_store", "dim_pet")
+    # The request reaches the JSON:API route as written, page[total] and all.
+    assert run.await_args.args[0] == (
+        "/data/jsonapi/pet_store/dim_pet?page[size]=20&page[total]=true"
+    )
