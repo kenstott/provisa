@@ -403,7 +403,7 @@ class AtlanExport(AtlasExport):  # REQ-1069
         term carries its assignments in the same bulk request (REQ-1389).
         """
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             headers = await self._headers(client)
             glossary_qn = self._glossary_qn(snapshot.org_id)

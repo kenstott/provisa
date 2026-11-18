@@ -768,6 +768,9 @@
       "private_destination": "Le origini di questa organizzazione possono raggiungere solo indirizzi pubblici; {{host}} è {{address}}, che non lo è.",
       "local_path_refused": "Le origini di questa organizzazione non leggono file dal disco del server al di fuori della propria cartella; {{path}} è uno di questi. Carica il file, oppure indicalo come {files}/… o con un indirizzo remoto."
     },
+    "egress": {
+      "private_destination": "Questa organizzazione può chiamare solo indirizzi pubblici; {{host}} è {{address}}, che non lo è."
+    },
     "sandbox": {
       "wrong_tier": "Questa sandbox è servita altrove; aprila dal suo indirizzo.",
       "unknown_demo": "Non esiste una demo pubblicata di nome {{demo}}.",
