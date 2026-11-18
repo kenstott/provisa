@@ -23,11 +23,9 @@ import pytest
 
 from provisa.discovery import context
 from provisa.discovery.columns import (
-    DATE,
     DECIMAL,
+    GROUPS,
     TEXT,
-    TIMESTAMP,
-    TIMESTAMPTZ,
     UNKNOWN,
     UUID,
     WHOLE,
@@ -148,8 +146,8 @@ def test_character_columns_are_text_and_a_text_based_subtype_is_not():
         ("character varying", {TEXT}),
         ("int4", {WHOLE}),
         ("decimal(10,2)", {DECIMAL}),
-        ("timestamp with time zone", {TIMESTAMPTZ}),
-        ("timestamp without time zone", {TIMESTAMP}),
+        ("timestamp with time zone", frozenset()),
+        ("timestamp without time zone", frozenset()),
         ("double precision", frozenset()),
         ("real", frozenset()),
         ("inet", frozenset()),
@@ -164,17 +162,28 @@ def test_a_column_is_grouped_by_the_type_its_sources_spelling_names(spelled, gro
     assert type_groups(spelled, subtype=None, array_depth=0) == groups
 
 
+def test_uuid_is_a_group_of_its_own():
+    assert type_groups("uuid", subtype=None, array_depth=0) == {UUID}
+
+
 @pytest.mark.parametrize(
-    ("spelled", "group"),
-    [("uuid", UUID), ("date", DATE), ("timestamp", TIMESTAMP), ("timestamptz", TIMESTAMPTZ)],
+    "spelled",
+    [
+        "date",
+        "timestamp",
+        "timestamptz",
+        "timestamp with time zone",
+        "timestamp without time zone",
+    ],
 )
-def test_uuid_date_and_each_timestamp_type_are_groups_of_their_own(spelled, group):
-    assert type_groups(spelled, subtype=None, array_depth=0) == {group}
+def test_a_date_and_each_timestamp_type_are_in_no_group(spelled):
+    """REQ-413 (amended 2026-11-16): dates are never key candidates."""
+    assert type_groups(spelled, subtype=None, array_depth=0) == frozenset()
 
 
-def test_the_two_timestamp_types_are_not_compared_with_each_other():
-    assert not comparable(col("at", "timestamp"), col("at", "timestamptz"), TIMESTAMP)
-    assert not comparable(col("at", "timestamp"), col("at", "timestamptz"), TIMESTAMPTZ)
+@pytest.mark.parametrize("spelled", ["date", "timestamp", "timestamptz"])
+def test_two_date_or_timestamp_columns_are_compared_in_no_group(spelled):
+    assert not any(comparable(col("at", spelled), col("at", spelled), g) for g in GROUPS)
 
 
 @pytest.mark.parametrize(
@@ -356,8 +365,49 @@ def test_the_request_count_is_given_by_group():
     t2 = tbl(2, "customers", col("id", pk=True), col("ref", "uuid"))
     _, requests = plan([t1, t2], None, *DEFAULT_LIMITS)
     assert Counter(r.group for r in requests) == {WHOLE: 1, UUID: 1}
-    # The count before Run: the one date column has nothing to be compared with.
+    # The count before Run: the date column is in no group.
     assert bound([t1, t2], None, *DEFAULT_LIMITS)[1] == {WHOLE: 1, UUID: 1}
+
+
+async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothing():
+    """REQ-413 (amended 2026-11-16): date and timestamp columns are never key candidates, so a
+    run over tables whose only columns in common are dates and timestamps has no request."""
+    orders = tbl(
+        1,
+        "orders",
+        col("placed_on", "date"),
+        col("placed_at", "timestamp"),
+        col("seen_at", "timestamptz"),
+    )
+    shipments = tbl(
+        2,
+        "shipments",
+        col("shipped_on", "date"),
+        col("shipped_at", "timestamp"),
+        col("logged_at", "timestamp with time zone"),
+    )
+    k, requests = plan([orders, shipments], None, *DEFAULT_LIMITS)
+    assert requests == []
+    assert bound([orders, shipments], None, *DEFAULT_LIMITS)[1] == {}
+    assert bound([orders], [shipments], *DEFAULT_LIMITS)[1] == {}
+    asked: list[str] = []
+    measured: list = []
+
+    def ask(prompt: str, max_tokens: int) -> Completion:
+        asked.append(prompt)
+        return _answer([])
+
+    async def measure(found: list) -> list:
+        measured.append(found)
+        return found
+
+    tally, proposals = await execute(
+        requests, k, 4_096, ask, _Watcher(), measure=measure, to_thread=_direct
+    )
+    assert asked == []
+    assert all(not found for found in measured)
+    assert proposals == []
+    assert tally.total == 0
 
 
 # --- split and retry, request count, stop ----------------------------------------------------------
