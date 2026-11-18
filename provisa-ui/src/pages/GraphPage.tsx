@@ -67,12 +67,8 @@ import { SessionPills } from "../components/graph/SessionPills";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
-import {
-  buildDropExpansion,
-  inSelectedDomains,
-  nativeFilterClauses,
-  withExpansion,
-} from "./graph-drop";
+import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-drop";
+import { inSelectedDomains } from "../components/graph/dropPath";
 import { useFramePaths, usePathScope } from "./use-frame-paths";
 import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
@@ -287,9 +283,9 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
     describeResources,
   } = useSparqlExplorer({ active: sparql, roleHeader: roleHeaderValue, framesRef, changeFrame });
 
-  // Fetch schema when role changes via dedicated graph-schema endpoint
+  // Fetch schema when role changes via dedicated graph-schema endpoint. The SPARQL view reads it too:
+  // its labels' domains are where a drop's path may go (REQ-2135).
   useEffect(() => {
-    if (sparql) return;
     setSchemaLoading(true);
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
@@ -384,9 +380,11 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         setSchemaError(e instanceof Error ? e.message : String(e));
       })
       .finally(() => setSchemaLoading(false));
-  }, [roleHeaderValue, sparql]);
+  }, [roleHeaderValue]);
 
   useEffect(() => {
+    // The counts are the Cypher sidebar's; the SPARQL view shows none.
+    if (sparql) return;
     if (schemaNodeLabels.length === 0 && schemaRels.length === 0) return;
     const headers: Record<string, string> = {};
     if (roleHeaderValue) headers["X-Provisa-Role"] = roleHeaderValue;
@@ -410,7 +408,7 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
         setCounts(null);
         setCountsError(e instanceof Error ? e.message : String(e));
       });
-  }, [schemaNodeLabels, schemaRels, roleHeaderValue, checkedDomains]);
+  }, [schemaNodeLabels, schemaRels, roleHeaderValue, checkedDomains, sparql]);
 
   // Each frame's request still out, by frame: its token and the controller that aborts it. A frame
   // shows only the answer to its latest request: a newer request, Stop, or closing the frame takes
@@ -1082,6 +1080,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 relationships={sparql ? [] : adminRels}
                 graphRelationships={sparql ? [] : graphRels}
                 schemaRels={sparql ? [] : schemaRels}
+                parameterized={parameterized}
+                pathScope={pathScope}
                 autoImpute={autoImpute}
                 language={language}
                 sparqlPrefixes={sparql ? framePrefixes : undefined}

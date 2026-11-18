@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen, deren Bewertung mindestens die Schwelle erreicht, sind von Anfang an angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
     "colScore": "Bewertung",
-    "colModel": "Modell",
+    "colConfidence": "Konfidenz",
     "colJev": "Jev",
     "colKind": "Art",
     "colMeasure": "Gemessen",

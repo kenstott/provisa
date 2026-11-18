@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "套用時會接受已剔選的列。評分至少達到閾值的列預設剔選。兩個方格都未剔選的列保持未決定。",
     "colScore": "評分",
-    "colModel": "模型",
+    "colConfidence": "信賴度",
     "colJev": "Jev",
     "colKind": "類型",
     "colMeasure": "量度結果",

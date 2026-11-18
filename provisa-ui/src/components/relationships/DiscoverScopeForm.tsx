@@ -40,14 +40,13 @@ import {
   type DiscoveryRunKind,
   type DiscoveryScope,
   type KeyValueSettings,
-  type TypeGroup,
 } from "../../api/admin";
 import { isInternalDomain } from "../../lib/internalDomains";
 import { MultiSelect, type MultiSelectOption } from "../MultiSelect";
 import { FormChecks, FormField, FormFooter, FormLayout } from "../form/FormLayout";
 import { DiscoverModelField } from "./DiscoverModelField";
 import { registeredSince, restoreSets, type LastRun, type RestoreNote } from "./restoreScope";
-import { typeGroupLabel } from "./discoveryResult";
+import { GROUP_ORDER, typeGroupLabel } from "./discoveryResult";
 
 /** A registered table, as the scope offers it. */
 export interface ScopeTable {
@@ -60,16 +59,6 @@ export interface ScopeTable {
 
 /** How long the scope stays unchanged before its requests are counted. */
 export const COUNT_DEBOUNCE_MS = 400;
-
-const GROUP_ORDER: TypeGroup[] = [
-  "whole_number",
-  "decimal",
-  "text",
-  "uuid",
-  "date",
-  "timestamp",
-  "timestamptz",
-];
 
 const errorText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 

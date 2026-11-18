@@ -301,11 +301,18 @@ jobs:
           uvx --from cyclonedx-bom cyclonedx-py requirements requirements-audit.txt \
             --of JSON -o sbom/provisa-sbom.cdx.json
 
+      # --extra-index-url: pip-audit installs the pins in a venv of its own, and the lock takes
+      # Linux torch (torch==2.15.0+cpu) from pyproject's [[tool.uv.index]] pytorch-cpu, which
+      # PyPI does not carry. -s osv: PyPI's JSON API has no local versions (+cpu), so it skips
+      # them; OSV matches them to their release's advisories. The gate fails on any skipped
+      # dependency, which pip-audit itself reports with exit 0.
       - name: CVE scan (gates PyPI publish)
         run: |
           set -o pipefail
-          uvx --python 3.12 pip-audit --timeout 60 -r requirements-audit.txt --no-deps -f json \
+          uvx --python 3.12 pip-audit --timeout 60 -r requirements-audit.txt --no-deps -s osv \
+            --extra-index-url https://download.pytorch.org/whl/cpu -f json \
             | tee sbom/provisa-cve-report.json
+          python3 scripts/ci/pip_audit_gate.py sbom/provisa-cve-report.json
 
       - name: Ensure release exists
         if: inputs.publish

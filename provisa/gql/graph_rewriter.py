@@ -88,6 +88,12 @@ def apply_graph_rewrites(  # REQ-349, REQ-350
         ):
             graph_var = table_ref
 
+        # REQ-2135: a UNION part with no value for a variable another part binds says NULL for it
+        # (a drop's branch no path joins); it stays NULL, never a node built from no table.
+        if graph_var is not None and isinstance(inner, exp.Null):
+            new_expressions.append(cast(exp.Expression, sel_expr))  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
+            continue
+
         if graph_var is not None:
             kind = graph_vars[graph_var]
             # EDGE, PATH, and PASSTHROUGH expressions are pre-built, a MAP is a property column
