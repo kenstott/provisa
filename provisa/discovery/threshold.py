@@ -21,12 +21,14 @@ ticked).
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import select
 
 from provisa.core.schema_org import user_directory
 from provisa.discovery.context import KEPT_AT
+from provisa.discovery.measure import DISTINCT_BOUND
 
 if TYPE_CHECKING:
     from provisa.core.database import Connection
@@ -55,3 +57,58 @@ async def keep(conn: "Connection", user_id: str, threshold: float) -> float:
         update_columns=["discovery_threshold"],
     )
     return threshold
+
+
+@dataclass(frozen=True)
+class KeyValueSettings:
+    """Key value overlap as the person last set it (REQ-413, amended 2026-11-16), remembered as
+    the threshold is: whether it is chosen, its measure cutoff, and its sample size."""
+
+    chosen: bool
+    cutoff: float
+    sample_size: int
+
+    def as_dict(self) -> dict[str, Any]:
+        return {"chosen": self.chosen, "cutoff": self.cutoff, "sample_size": self.sample_size}
+
+
+#: Key value overlap of a person who has set none: the columns' defaults (REQ-413: chosen, a
+#: cutoff of 20%, a sample size of 10,000 distinct values).
+KEY_VALUES_DEFAULT = KeyValueSettings(chosen=True, cutoff=0.2, sample_size=DISTINCT_BOUND)
+
+
+async def read_key_values(conn: "Connection", user_id: str) -> KeyValueSettings:
+    """The person's Key value overlap; :data:`KEY_VALUES_DEFAULT` when they have no row."""
+    d = user_directory.c
+    row = (
+        await conn.execute_core(
+            select(
+                d.discovery_key_values, d.discovery_measure_cutoff, d.discovery_sample_size
+            ).where(d.user_id == user_id)
+        )
+    ).fetchone()
+    if row is None:
+        return KEY_VALUES_DEFAULT
+    return KeyValueSettings(bool(row[0]), float(row[1]), int(row[2]))
+
+
+async def keep_key_values(
+    conn: "Connection", user_id: str, settings: KeyValueSettings
+) -> KeyValueSettings:
+    """Keep ``settings`` as the person's own."""
+    await conn.upsert(
+        user_directory,
+        {
+            "user_id": user_id,
+            "discovery_key_values": settings.chosen,
+            "discovery_measure_cutoff": settings.cutoff,
+            "discovery_sample_size": settings.sample_size,
+        },
+        index_elements=["user_id"],
+        update_columns=[
+            "discovery_key_values",
+            "discovery_measure_cutoff",
+            "discovery_sample_size",
+        ],
+    )
+    return settings

@@ -8,6 +8,7 @@
     "sqlModelingTool": "SQL-Modellierungswerkzeug",
     "viewErd": "ERD anzeigen",
     "discovering": "Die Ermittlung läuft. Öffnen Sie sie, um den Fortschritt zu sehen.",
+    "openRun": "Öffnen",
     "suggestWithAi": "Mit KI vorschlagen",
     "clearRejections": "Ablehnungen zurücksetzen",
     "clearedRejections": "{{count}} Ablehnung zurückgesetzt.",

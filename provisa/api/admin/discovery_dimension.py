@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from sqlalchemy import select
 
+from provisa.core import relationship_naming
 from provisa.core.schema_org import registered_tables
 from provisa.discovery import dimension
 from provisa.discovery import proposals as proposals_repo
@@ -89,17 +90,43 @@ def _view_input(planned: dimension.Plan, visible_to: list[str]) -> Any:
     )
 
 
-def _edge_input(edge: dimension.Edge) -> Any:
+def _edge_input(edge: dimension.Edge, named: relationship_naming.Named) -> Any:
     from provisa.api.admin.types import RelationshipInput
 
     return RelationshipInput(
-        id=edge.id,
+        id=named.rel_id,
         source_table_id=edge.source_table,
         target_table_id=edge.target_table,
         source_column=edge.source_column,
         target_column=edge.target_column,
         cardinality=edge.cardinality,
-        graphql_alias=edge.graphql_alias,
+        alias=named.alias,
+        graphql_alias=named.graphql_alias,
+    )
+
+
+async def _edge_names(
+    conn: "Connection", planned: dimension.Plan, dimension_id: int, edges: list[dimension.Edge]
+) -> list[relationship_naming.Named]:
+    """REQ-415: the names each side's edge is saved under, told apart from the relationships
+    registered and from each other (two columns of one table joining one dimension)."""
+    return await relationship_naming.unique_names(
+        conn,
+        [
+            relationship_naming.Generated(
+                rel_id=edge.id,
+                id_typed=False,
+                source_table_id=side.table_id,
+                target_table_id=dimension_id,
+                source_column=edge.source_column,
+                target_column=edge.target_column,
+                cardinality=edge.cardinality,
+                target_name=planned.name,
+                target_table=planned.name,
+                graphql_alias=edge.graphql_alias,
+            )
+            for side, edge in zip(planned.joining, edges, strict=True)
+        ],
     )
 
 
@@ -154,7 +181,8 @@ async def accept(
         raise DimensionRefused(f"Proposal {proposal_id} cannot be accepted: {two}") from two
     info = cast(Any, types.SimpleNamespace(context={"request": request}))
     view_id: int | None = None
-    if planned.table_id is None:
+    dimension_id = planned.table_id
+    if dimension_id is None:
         visible_to = await readers(conn, planned.joining)
         if not visible_to:
             raise DimensionRefused(
@@ -165,16 +193,18 @@ async def accept(
             await ops.register_table(info, _view_input(planned, visible_to)),
             f"The dimension {planned.name}",
         )
-        view_id = await _registered(conn, planned)
+        view_id = dimension_id = await _registered(conn, planned)
     made: list[str] = []
     try:
-        for side in planned.joining:
-            edge = dimension.edge(planned, side)
+        edges = [dimension.edge(planned, side) for side in planned.joining]
+        for edge, named in zip(
+            edges, await _edge_names(conn, planned, dimension_id, edges), strict=True
+        ):
             _made(
-                await _save_relationship_as_caller(info, _edge_input(edge), creating=True),
-                f"The relationship {edge.id}",
+                await _save_relationship_as_caller(info, _edge_input(edge, named), creating=True),
+                f"The relationship {named.rel_id}",
             )
-            made.append(edge.id)
+            made.append(named.rel_id)
         await proposals_repo.accepted_as_dimension(conn, run_id, proposal_id, planned.name)
     except Exception:
         await _undo(conn, made, view_id)

@@ -63,6 +63,7 @@
     },
     "dimensionMade": "L'accepter crée la dimension partagée {{name}}, à laquelle les deux colonnes sont jointes.",
     "dimensionJoined": "L'accepter joint les deux colonnes à la dimension partagée {{name}}.",
-    "twoDimensions": "Ses colonnes sont déjà jointes à deux dimensions partagées différentes, elle ne peut donc pas être acceptée."
+    "twoDimensions": "Ses colonnes sont déjà jointes à deux dimensions partagées différentes, elle ne peut donc pas être acceptée.",
+    "admittedOnKeyValues": "Admise parce que les valeurs de clé concordent dans les données ; la mesure est affichée à côté de la confiance du modèle."
   }
 }

@@ -63,6 +63,7 @@
     },
     "dimensionMade": "接受後會建立共用維度 {{name}}，兩欄都與其關聯。",
     "dimensionJoined": "接受後，兩欄都會關聯到共用維度 {{name}}。",
-    "twoDimensions": "其欄位已關聯到兩個不同的共用維度，因此無法接受。"
+    "twoDimensions": "其欄位已關聯到兩個不同的共用維度，因此無法接受。",
+    "admittedOnKeyValues": "因數據中鍵值相符而採納；測量結果顯示於模型置信度旁邊。"
   }
 }

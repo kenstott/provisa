@@ -915,6 +915,9 @@
       "include_outside_upload": "{{path}} נמצא מחוץ לפרויקט שהועלה; פרויקט קורא רק את הקבצים שלו.",
       "filter_value_refused": "{{value}} אינו יכול להיות ערך במסנן הרשאה: ערך הוא מחרוזת, מספר, true, false, null, רשימה של אלה או משתנה סשן.",
       "filter_operator_refused": "{{operator}} אינו אופרטור שבעזרתו ניתן להמיר מסנן הרשאה."
+    },
+    "relationship": {
+      "name_taken": "השם '{{name}}' כבר תפוס על ידי הקשר '{{held_by}}'. יש לתת לקשר הזה שם אחר."
     }
   }
 }

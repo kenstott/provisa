@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Gezocht naar: {{kinds}}.",
+    "keyValues": "Overlap van sleutelwaarden: paren die het model van {{cutoff}}% tot onder {{threshold}}% beoordeelde, zijn gemeten op hoogstens {{size}} verschillende waarden per kolom. {{measured}} gemeten, {{admitted}} toegelaten op overeenkomende sleutelwaarden.",
     "scopeSource": "Bron: {{count}} tabel van {{domains}}.",
     "scopeSource_other": "Bron: {{count}} tabellen van {{domains}}.",
     "scopeTargetSame": "Doel: hetzelfde als de bron.",

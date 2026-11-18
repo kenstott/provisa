@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "Procurado: {{kinds}}.",
+    "keyValues": "Sobreposição de valores-chave: os pares que o modelo avaliou de {{cutoff}}% até menos de {{threshold}}% foram medidos com no máximo {{size}} valores distintos por coluna. {{measured}} medidos, {{admitted}} admitidos por valores-chave correspondentes.",
     "scopeSource": "Origem: {{count}} tabela de {{domains}}.",
     "scopeSource_other": "Origem: {{count}} tabelas de {{domains}}.",
     "scopeTargetSame": "Destino: o mesmo que a origem.",
