@@ -209,8 +209,7 @@ class TestJunctionFieldName:
             junction_field_name("column", "one-to-many", type_value=v)
             for v in ("bonded pair", "littermate", "shares enclosure")
         }
-        # REQ-194: "littermate" has no entry in the dictionary, so it is left as written.
-        assert names == {"bondedPairs", "littermate", "sharesEnclosures"}
+        assert names == {"bondedPairs", "littermates", "sharesEnclosures"}
 
     def test_table_and_fixed_nominations(self):
         from provisa.compiler.naming import junction_field_name

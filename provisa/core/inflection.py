@@ -8,18 +8,18 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""Singular and plural noun forms by English dictionary lookup (REQ-194).
+"""Singular and plural noun forms, dictionary first (REQ-194).
 
-Every form comes from lemminflect's lexicon: a word with a noun entry takes its dictionary
-singular or plural; a word with none (an abbreviation, a coined table name) is returned as
-written. No suffix rule guesses a form -- the lexicon-only calls (``getAllLemmas`` and
-``getAllInflections``) are used, never the out-of-vocabulary rule models. This is the one
-inflection helper every naming path uses (relationship fields, aliases, glossary terms).
+A word the English dictionary (lemminflect's lexicon) knows takes only its dictionary forms: a
+noun its dictionary singular or plural, a word known only as another part of speech (``by``,
+``placed``) is left as written. A word the dictionary does not know (an abbreviation, a coined
+table name) takes lemminflect's rule-based out-of-vocabulary form. This is the one inflection
+helper every naming path uses (relationship fields, aliases, glossary terms).
 """
 
 # Requirements: REQ-194
 
-from lemminflect import getAllInflections, getAllLemmas
+from lemminflect import getAllInflections, getAllInflectionsOOV, getAllLemmas, getAllLemmasOOV
 
 
 def _match_case(form: str, written: str) -> str:
@@ -31,37 +31,47 @@ def _match_case(form: str, written: str) -> str:
     return form
 
 
-def _lemmas(word: str) -> tuple[str, ...]:
-    """The lexicon's noun lemmas of ``word``, dictionary-first; empty when it has no entry."""
-    return getAllLemmas(word.lower(), upos="NOUN").get("NOUN", ())
+def _noun_lemmas(lower: str) -> tuple[str, ...] | None:
+    """``lower``'s noun lemmas, dictionary-first; the rule-based lemma when the dictionary does
+    not know the word; None when the dictionary knows it only as another part of speech."""
+    known = getAllLemmas(lower)
+    if "NOUN" in known:
+        return known["NOUN"]
+    if known:
+        return None
+    return getAllLemmasOOV(lower, upos="NOUN")["NOUN"]
 
 
 def is_plural(word: str) -> bool:
-    """True when the dictionary lists ``word`` as the plural of a different noun."""
-    lemmas = _lemmas(word)
-    return bool(lemmas) and lemmas[0] != word.lower()
+    """True when ``word`` is the plural of a different noun."""
+    lemmas = _noun_lemmas(word.lower())
+    return lemmas is not None and lemmas[0] != word.lower()
 
 
 def singular(word: str) -> str:
-    """``word``'s dictionary singular; ``word`` as written when the lexicon has no noun entry."""
-    lemmas = _lemmas(word)
-    if not lemmas:
+    """``word``'s singular; ``word`` as written when the dictionary knows it as no noun."""
+    lemmas = _noun_lemmas(word.lower())
+    if lemmas is None:
         return word
     return _match_case(lemmas[0], word)
 
 
 def plural(word: str) -> str:
-    """``word``'s dictionary plural; ``word`` as written when it is already a plural or the
-    lexicon has no noun entry for it.
+    """``word``'s plural; ``word`` as written when it is already a plural or the dictionary
+    knows it as no noun.
 
     The lexicon lists a noun used both as a mass noun and as a count noun with its mass form
     first (``mapping``: mapping, mappings); the first listed form that differs from ``word`` is
     its count plural. A noun whose only listed plural is itself (``data``, ``sheep``) keeps it."""
-    if is_plural(word):
-        return word
     lower = word.lower()
-    forms = getAllInflections(lower, upos="NOUN").get("NNS", ())
-    if not forms:
+    lemmas = _noun_lemmas(lower)
+    if lemmas is None or lemmas[0] != lower:
         return word
+    if getAllLemmas(lower):
+        # A known noun the dictionary lists no plural for (``behalf``, ``dearth``) has none: it
+        # stays as written, never a rule form (REQ-194).
+        forms = getAllInflections(lower, upos="NOUN").get("NNS", (lower,))
+    else:
+        forms = getAllInflectionsOOV(lower, upos="NOUN")["NNS"]
     counted = [f for f in forms if f != lower]
     return _match_case(counted[0] if counted else forms[0], word)

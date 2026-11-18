@@ -8,10 +8,11 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-194 (amended 2026-11-18): singular and plural come from a dictionary lookup, never rules.
+"""REQ-194 (amended 2026-11-18): singular and plural come from the dictionary first.
 
 Every naming path -- relationship fields, OpenAPI aliases, Cypher types, glossary concepts --
-takes the dictionary form; a word the dictionary lacks is left as written.
+takes the dictionary form of a word the dictionary knows, never a rule form; only a word the
+dictionary does not know takes the rule-based form.
 """
 
 import pytest
@@ -72,15 +73,27 @@ def test_uncountable_dictionary_word_unchanged():
     assert glossary.table_concept("data") == "data"
 
 
-@pytest.mark.parametrize("word", ["fct_ordr", "ordr", "lineitm", "by"])
-def test_word_outside_dictionary_left_as_written(word):
+@pytest.mark.parametrize(
+    ("one", "many"), [("fct_ordr", "fct_ordrs"), ("lineitem", "lineitems"), ("doc", "docs")]
+)
+def test_word_outside_dictionary_takes_rule_form(one, many):
+    assert naming._rel_words(one, "one-to-many") == many
+    assert naming._rel_words(many, "one-to-many") == many
+    assert naming._rel_words(many, "many-to-one") == one
+    assert naming._rel_words(one, "many-to-one") == one
+
+
+@pytest.mark.parametrize("word", ["by", "placed", "behalf", "dearth"])
+def test_dictionary_word_never_takes_rule_form(word):
+    # Known to the dictionary with no plural listed (a non-noun, or a noun without one): the rule
+    # form ("bies", "placeds", "behalfs") is never used.
     assert naming._rel_words(word, "one-to-many") == word
     assert naming._rel_words(word, "many-to-one") == word
 
 
-def test_out_of_dictionary_cypher_and_glossary_unchanged():
-    assert relationship_names.derive_cypher_alias("ordr_id", "many-to-one") == "BELONGS_TO_ORDR"
-    assert glossary.table_concept("fct_ordr") == "fct ordr"
+def test_out_of_dictionary_cypher_and_glossary_take_rule_singular():
+    assert relationship_names.derive_cypher_alias("ordrs_id", "many-to-one") == "BELONGS_TO_ORDR"
+    assert glossary.table_concept("fct_ordrs") == "fct ordr"
 
 
 def test_helper_preserves_case():
@@ -88,4 +101,4 @@ def test_helper_preserves_case():
 
     assert inflection.plural("Address") == "Addresses"
     assert inflection.singular("LOSSES") == "LOSS"
-    assert inflection.singular("Fct_Ordr") == "Fct_Ordr"
+    assert inflection.plural("Ordr") == "Ordrs"
