@@ -67,12 +67,8 @@ import { SessionPills } from "../components/graph/SessionPills";
 import { QueryBar } from "../components/graph/QueryBar";
 import { NativeFilterModal } from "../components/graph/graph-context-menus";
 import { GraphExportModal } from "../components/graph/GraphExportModal";
-import {
-  buildDropExpansion,
-  inSelectedDomains,
-  nativeFilterClauses,
-  withExpansion,
-} from "./graph-drop";
+import { buildDropExpansion, nativeFilterClauses, withExpansion } from "./graph-drop";
+import { inSelectedDomains } from "../components/graph/dropPath";
 import { useFramePaths, usePathScope } from "./use-frame-paths";
 import { getStored, getStoredJson, removeStored, setStored } from "../lib/browserStorage";
 import { useMaxNodes } from "../components/graph/graph-drawing";
@@ -1082,6 +1078,8 @@ export function GraphPage({ language = "cypher" }: { language?: GraphLanguage } 
                 relationships={sparql ? [] : adminRels}
                 graphRelationships={sparql ? [] : graphRels}
                 schemaRels={sparql ? [] : schemaRels}
+                parameterized={parameterized}
+                pathScope={pathScope}
                 autoImpute={autoImpute}
                 language={language}
                 sparqlPrefixes={sparql ? framePrefixes : undefined}

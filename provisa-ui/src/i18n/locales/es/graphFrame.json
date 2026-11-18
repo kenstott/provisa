@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "No se puede soltar una etiqueta en una consulta con un sub-SELECT. No se añadió nada.",
     "sparqlDropNoClass": "Este resultado no nombra ninguna clase a la que unirse: dé una clase a una variable y vuelva a soltar. No se añadió nada.",
     "sparqlDropNode": "Ese nodo no es una variable de esta consulta, así que no hay nada a lo que unirlo. No se añadió nada.",
-    "sparqlDropNoPath": "{{name}} no tiene ninguna relación con {{classes}}. No se añadió nada.",
+    "sparqlDropNoPath": "{{name}} no tiene ninguna relación con {{classes}} dentro de los dominios seleccionados. No se añadió nada.",
     "sparqlDropTooFar": "{{name}} está a {{hops}} relaciones de {{classes}}, más de las {{most}} que recorre un arrastre: no hay ruta corta. No se añadió nada.",
     "sparqlDropNoEnd": "Ningún extremo de {{name}} está en este resultado. No se añadió nada.",
     "sparqlDropParameterized": "Una ruta no puede pasar por {{name}}: necesita argumentos para leerse. No se ha añadido nada.",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "Ninguna clase de este resultado tiene {{name}}. No se añadió nada.",
     "sparqlDropLeftOut": "Se añadieron {{shown}} de {{total}} rutas igual de cortas; las demás se omitieron.",
     "sparqlDropCut": "El resultado alcanzó su LIMIT de {{limit}}: las filas posteriores se omiten.",
-    "cypherPathNoKey": "Las rutas entre {{from}} y {{to}} necesitan la clave de cada nodo, y uno de ellos no tiene."
+    "cypherPathNoKey": "Las rutas entre {{from}} y {{to}} necesitan la clave de cada nodo, y uno de ellos no tiene.",
+    "cypherDropNoLabel": "Los nodos de este resultado no tienen etiqueta y su consulta no tiene ninguna relación que les dé una: dé una etiqueta a un nodo y vuelva a soltar. No se añadió nada.",
+    "cypherDropNoPair": "Ninguna relación de la consulta de este resultado une etiquetas dentro de los dominios seleccionados, así que no se pueden dar etiquetas a sus nodos. No se añadió nada.",
+    "cypherDropLabelled": "Los nodos sin etiqueta de este resultado recibieron sus etiquetas del esquema: un MATCH por cada par de etiquetas, unidos con UNION ALL."
   }
 }
