@@ -45,7 +45,7 @@ from provisa.discovery.direction import (
     inferred_role,
     settle,
 )
-from provisa.discovery.runner import Tally, execute
+from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import (
     TOKENS_PER_SUGGESTION,
     at_most,
@@ -402,10 +402,16 @@ async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothi
         return found
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(), measure=measure, to_thread=_direct
+        requests,
+        k,
+        4_096,
+        ask,
+        _Watcher(),
+        key_values=KeyValues(measure=measure, cutoff=0.0),
+        to_thread=_direct,
     )
     assert asked == []
-    assert all(not found for found in measured)
+    assert measured == []
     assert proposals == []
     assert tally.total == 0
 

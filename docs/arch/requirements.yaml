@@ -3745,7 +3745,58 @@
     Maintainer 2026-11-16 (''dates are supposed to be excluded as key candidates''). Discovery does not
     compare date or timestamp columns: they are in no compared type group, so no request asks the model
     about them, no pair is measured on them, and no suggestion, shared dimension or junction is offered
-    on them. The dialog''s count of requests and the run''s summary say so.'
+    on them. The dialog''s count of requests and the run''s summary say so. (Amended 2026-11-18, A RUN SHOWS
+    EVERY PAIR IT FOUND, LEAVING OUT ONLY EXISTING AND NOT-AGAIN PAIRS:) Maintainer 2026-11-18 (''no pairs
+    should drop out. the entire list should be shown except for existing pairs or do not recommend pairs'').
+    Every pair of columns a run finds, by any check, is listed in its results, scored, for a reviewer to
+    decide. The only pairs left out are those already registered as a relationship (a junction''s legs among
+    them) and those marked not to be recommended again. No other rule removes a pair from the list: not
+    both columns repeating their values, not many-to-many, not key-to-key, not a foreign key''s semantic
+    duplicate (shown once, as the foreign key), not a pair still waiting from an earlier run. Two directions
+    of one pair are one row. Rules that judged a pair now only set its score, cardinality and note. This
+    supersedes each earlier rule that left a found pair out for any other reason. [SUPERSEDED 2026-11-18]
+    (Amended 2026-11-18, KEY VALUE OVERLAP ALSO MEASURES THE NAME AND VALUE MATCHES THE MODEL LEFT OUT:)
+    Maintainer 2026-11-18, after a run where the model proposed 2 of the 6 same-name pairs it was shown
+    and the other 4 were never measured or listed. With key value overlap chosen, every compared pair of
+    columns (same type group, classes that meet) that shares a column name, or whose sampled values intersect,
+    is measured on its data and listed with its score, whether or not the model proposed it; the model''s
+    confidence is shown beside the measure where the model gave one, and is empty where it gave none. These
+    pairs follow the rule that a run lists every pair it found except existing and not-again pairs. This
+    widens the earlier rule that the measure covers only the pairs the semantic check proposed in its band.
+    (Amended 2026-11-18, KEY VALUE OVERLAP MEASURES ONLY THE PAIRS THE MODEL RATED IN ITS BAND:) Maintainer
+    2026-11-18 (''only test pairs that are above the threshold is the rule''; ''its important to bound key
+    overlap test because its expensive''). [SUPERSEDES the 2026-11-18 amendment ''key value overlap also
+    measures the name and value matches the model left out'', which is withdrawn.] Key value overlap measures
+    only the pairs the model rated from the run''s cutoff (''Measure from'') up to the threshold; no pair
+    the model did not propose, and none it rated below the cutoff, is read or measured. The cutoff bounds
+    the cost of the check. (Amended 2026-11-18, THE BAND''S UPPER BOUND IS THE PERSON''S TICK THRESHOLD,
+    NOT A FIXED 70%:) Maintainer 2026-11-18 (''its not a fixed 70% - its whatever the ticked threshold is'').
+    The threshold that bounds the key value overlap band from above, and above which a pair is kept without
+    being measured, is the threshold of the person who starts the run (their ''Tick from'' setting, default
+    70%), taken when the run starts and recorded with it; it is not a fixed value. The model is told that
+    threshold. A run measures the pairs the model rated from the run''s cutoff up to that threshold, and
+    no others. (Amended 2026-11-18, KEY VALUE OVERLAP IS A JOIN COUNT IN THE ENGINE:) Maintainer 2026-11-18
+    (''you join on the keys and count matches''). The key value overlap of a pair is measured in the engine
+    by joining the source column to the target column and counting matches: how many of the source column''s
+    distinct values find a match in the target, and how many of the target''s distinct values are matched;
+    whether each column is a key is its distinct count against its row count. No column''s values are pulled
+    out and compared outside the engine. The run''s sample size bounds how many distinct source values are
+    joined. The model''s prompt samples only show what kind of values a column holds; they are each column''s
+    distinct values, not its first rows, and overlap is never judged from them. (Amended 2026-11-18, THE
+    JOIN COUNT READS A LIMITED NUMBER OF ROWS, NEVER A FULL SCAN:) Maintainer 2026-11-18 (''perhaps with
+    a limit. if that would prevent full table scans''). The join count reads at most the run''s sample size
+    of rows from the source column, as a limit the engine stops at, and looks those values up in the target
+    column; no distinct count over a whole column is taken. Whether a column is a key, and the overlap,
+    are judged on the rows read, and the measure says when it was limited. (Amended 2026-11-18, THE SEMANTIC
+    CHECK SCORES TABLE PAIRS, BATCHED; A COLUMN PAIR NOT MENTIONED SCORES ZERO:) Maintainer 2026-11-18.
+    The semantic check asks the model about table pairs, not a pile of columns: each source table with each
+    target table, each side listed with only its columns that can be compared (the compared type groups;
+    dates and timestamps never). For each table pair the model names the column pairs likely to hold the
+    same or similar values, each with a score; a column pair of that table pair it does not mention scores
+    zero. Several table pairs may share one call: the prompt states that it is a batch of separate table
+    pairs and asks for each to be scored on its own, and each answer is read against its own table pair.
+    The scores then feed the key value overlap band as before. This replaces packing many tables'' columns
+    into one request and asking for links anywhere among them.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -25221,7 +25272,7 @@
   stakeholders:
   - data-engineer
 - id: REQ-812
-  status: in-progress
+  status: complete
   group: 8. Client Access & Protocols
   category: API & Integration
   feature: subscriptions-and-live-queries-sinks
@@ -25253,7 +25304,8 @@
   - tests/unit/test_subscription_sink_header.py
   - tests/integration/test_kafka_publish.py
   - tests/unit/test_subscription_operator_floor.py
-  since: 2026-04
+  - tests/unit/test_subscription_owner_bound.py
+  since: 2026-11
   scenario: 'Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
 
     When the request is accepted
@@ -48216,8 +48268,8 @@
   - pgwire.md
   - security.md
 - id: REQ-1395
-  status: in-progress
-  since: 2026-08
+  status: complete
+  since: 2026-11
   group: 13. Multi-Tenancy & Organizations
   category: Org AI Model Configuration
   feature: organizations-customization
@@ -48248,6 +48300,12 @@
   docs:
   - api-reference.md
   - architecture.md
+  tests:
+  - tests/unit/test_ai_keys_org_only.py
+  - tests/unit/test_ai_clients_explicit.py
+  - tests/unit/test_vector_keys_org_only.py
+  - tests/integration/test_org_secrets.py
+  - provisa-ui/src/__tests__/AiModelsTab.test.tsx
 - id: REQ-1402
   status: complete
   since: 2026-08
@@ -75282,7 +75340,7 @@
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1921
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Data Residency
   feature: regions-and-residency-residency-rules
@@ -75529,7 +75587,7 @@
   - REQ-544
   - REQ-1915
   - REQ-1920
-  since: 2026-10
+  since: 2026-11
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - provisa/core/regions.py
@@ -75538,6 +75596,18 @@
   - tests/unit/test_regions_model.py
   - tests/unit/test_region_defaults.py
   - provisa-ui/src/hooks/__tests__/useRegionChoice.test.tsx
+  - tests/unit/test_withdrawn.py
+  - tests/unit/test_withdrawn_reached_by_no_statement.py
+  - tests/unit/test_withdrawn_row_read_by_steward.py
+  - tests/unit/test_withdrawn_graphql_rest_reach_nothing.py
+  - tests/unit/test_withdrawn_not_exported.py
+  - tests/unit/test_withdrawn_view_build.py
+  - tests/unit/test_config_withdrawn.py
+  - tests/integration/test_withdrawn_e2e.py
+  - provisa-ui/src/pages/__tests__/SchemaExplorer.withdrawn.test.tsx
+  - provisa-ui/src/components/list/__tests__/PanelWithdraw.test.tsx
+  - provisa-ui/src/pages/sources/__tests__/SourceDetailPanel.withdraw.test.tsx
+  - provisa-ui/src/components/__tests__/GovernedTableViewer.withdrawn.test.tsx
   docs:
   - regions.md
   - security.md
@@ -96968,7 +97038,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: in-progress
+  status: complete
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -97027,6 +97097,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   tests:
   - tests/unit/test_mcp_sip_mode.py
   - provisa-ui/src/__tests__/McpServerTab.test.tsx
+  - tests/unit/test_mcp_tools_by_role.py
 - id: REQ-2247
   status: in-progress
   target: 2027-Q1
@@ -97194,7 +97265,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/test_retired_not_served.py
   - tests/unit/test_meta_seed_retires_undeclared.py
 - id: REQ-2249
-  status: in-progress
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -97258,6 +97329,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the @change function is not called
 
     '
+  tests:
+  - tests/unit/test_code_resolver_change.py
+  - tests/unit/test_code_resolver_set.py
+  - tests/unit/test_code_resolver_view_inputs.py
+  - tests/integration/test_code_resolver_change_e2e.py
+  - tests/integration/test_transform_view_reader_rules_e2e.py
+  - provisa-ui/src/components/relationships/__tests__/codeResolver.test.tsx
+  since: 2026-11
 - id: REQ-2250
   status: proposed
   group: 10. UI & Admin Surfaces
