@@ -76292,7 +76292,13 @@
     for included resources and dotted includes that go more than one relationship deep, as a group-by read
     already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship
     name, so a read_mask path names the relationship itself and every relationship to the same table can
-    be read; field numbers stay stable for fields that already exist.'
+    be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ
+    AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 (''pk
+    should be irrelevant. it should just work on approved relationships''). No JSON:API read or include
+    is refused because a table declares no primary key. An include follows the approved relationship, and
+    an included resource''s id is the value of the column that relationship points at. A root resource''s
+    id is its primary key where one is declared; otherwise the column an approved relationship points at;
+    otherwise its position in the response.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
