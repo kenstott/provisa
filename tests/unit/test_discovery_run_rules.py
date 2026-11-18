@@ -23,11 +23,9 @@ import pytest
 
 from provisa.discovery import context
 from provisa.discovery.columns import (
-    DATE,
     DECIMAL,
+    GROUPS,
     TEXT,
-    TIMESTAMP,
-    TIMESTAMPTZ,
     UNKNOWN,
     UUID,
     WHOLE,
@@ -47,7 +45,7 @@ from provisa.discovery.direction import (
     inferred_role,
     settle,
 )
-from provisa.discovery.runner import Tally, execute
+from provisa.discovery.runner import KeyValues, Tally, execute
 from provisa.discovery.windows import (
     TOKENS_PER_SUGGESTION,
     at_most,
@@ -148,8 +146,8 @@ def test_character_columns_are_text_and_a_text_based_subtype_is_not():
         ("character varying", {TEXT}),
         ("int4", {WHOLE}),
         ("decimal(10,2)", {DECIMAL}),
-        ("timestamp with time zone", {TIMESTAMPTZ}),
-        ("timestamp without time zone", {TIMESTAMP}),
+        ("timestamp with time zone", frozenset()),
+        ("timestamp without time zone", frozenset()),
         ("double precision", frozenset()),
         ("real", frozenset()),
         ("inet", frozenset()),
@@ -164,17 +162,28 @@ def test_a_column_is_grouped_by_the_type_its_sources_spelling_names(spelled, gro
     assert type_groups(spelled, subtype=None, array_depth=0) == groups
 
 
+def test_uuid_is_a_group_of_its_own():
+    assert type_groups("uuid", subtype=None, array_depth=0) == {UUID}
+
+
 @pytest.mark.parametrize(
-    ("spelled", "group"),
-    [("uuid", UUID), ("date", DATE), ("timestamp", TIMESTAMP), ("timestamptz", TIMESTAMPTZ)],
+    "spelled",
+    [
+        "date",
+        "timestamp",
+        "timestamptz",
+        "timestamp with time zone",
+        "timestamp without time zone",
+    ],
 )
-def test_uuid_date_and_each_timestamp_type_are_groups_of_their_own(spelled, group):
-    assert type_groups(spelled, subtype=None, array_depth=0) == {group}
+def test_a_date_and_each_timestamp_type_are_in_no_group(spelled):
+    """REQ-413 (amended 2026-11-16): dates are never key candidates."""
+    assert type_groups(spelled, subtype=None, array_depth=0) == frozenset()
 
 
-def test_the_two_timestamp_types_are_not_compared_with_each_other():
-    assert not comparable(col("at", "timestamp"), col("at", "timestamptz"), TIMESTAMP)
-    assert not comparable(col("at", "timestamp"), col("at", "timestamptz"), TIMESTAMPTZ)
+@pytest.mark.parametrize("spelled", ["date", "timestamp", "timestamptz"])
+def test_two_date_or_timestamp_columns_are_compared_in_no_group(spelled):
+    assert not any(comparable(col("at", spelled), col("at", spelled), g) for g in GROUPS)
 
 
 @pytest.mark.parametrize(
@@ -356,8 +365,55 @@ def test_the_request_count_is_given_by_group():
     t2 = tbl(2, "customers", col("id", pk=True), col("ref", "uuid"))
     _, requests = plan([t1, t2], None, *DEFAULT_LIMITS)
     assert Counter(r.group for r in requests) == {WHOLE: 1, UUID: 1}
-    # The count before Run: the one date column has nothing to be compared with.
+    # The count before Run: the date column is in no group.
     assert bound([t1, t2], None, *DEFAULT_LIMITS)[1] == {WHOLE: 1, UUID: 1}
+
+
+async def test_tables_sharing_only_dates_ask_the_model_nothing_and_measure_nothing():
+    """REQ-413 (amended 2026-11-16): date and timestamp columns are never key candidates, so a
+    run over tables whose only columns in common are dates and timestamps has no request."""
+    orders = tbl(
+        1,
+        "orders",
+        col("placed_on", "date"),
+        col("placed_at", "timestamp"),
+        col("seen_at", "timestamptz"),
+    )
+    shipments = tbl(
+        2,
+        "shipments",
+        col("shipped_on", "date"),
+        col("shipped_at", "timestamp"),
+        col("logged_at", "timestamp with time zone"),
+    )
+    k, requests = plan([orders, shipments], None, *DEFAULT_LIMITS)
+    assert requests == []
+    assert bound([orders, shipments], None, *DEFAULT_LIMITS)[1] == {}
+    assert bound([orders], [shipments], *DEFAULT_LIMITS)[1] == {}
+    asked: list[str] = []
+    measured: list = []
+
+    def ask(prompt: str, max_tokens: int) -> Completion:
+        asked.append(prompt)
+        return _answer([])
+
+    async def measure(found: list) -> list:
+        measured.append(found)
+        return found
+
+    tally, proposals = await execute(
+        requests,
+        k,
+        4_096,
+        ask,
+        _Watcher(),
+        key_values=KeyValues(measure=measure, cutoff=0.0),
+        to_thread=_direct,
+    )
+    assert asked == []
+    assert measured == []
+    assert proposals == []
+    assert tally.total == 0
 
 
 # --- split and retry, request count, stop ----------------------------------------------------------
@@ -373,12 +429,6 @@ class _Watcher:
 
     async def returned(self, tally: Tally, proposals: list[Proposal]) -> None:
         self.returns += 1
-
-
-async def _not_measured(found: list) -> list:
-    """No values to measure here: each proposal keeps the model's confidence, as one whose values
-    were not compared does (REQ-413). The measure itself: test_discovery_pair_measure."""
-    return found
 
 
 async def _direct(fn, *args):
@@ -420,7 +470,7 @@ async def test_the_request_count_equals_the_requests_the_run_then_makes():
         return _answer([])
 
     tally, _ = await execute(
-        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
     )
     assert len(asked) == len(requests)
     assert tally.done == tally.total == len(requests)
@@ -442,7 +492,7 @@ async def test_a_cut_off_answer_splits_the_request_and_keeps_its_complete_sugges
         return answers.pop(0)
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
     )
     assert len(asked) == 3
     assert tally.split == 1
@@ -464,7 +514,7 @@ async def test_a_full_answer_splits_the_request():
         return _answer([_item((1, "customer_id"), (2, "id"))] if len(asked) == 1 else [])
 
     tally, proposals = await execute(
-        requests, k, 150, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+        requests, k, 150, ask, _Watcher(), key_values=None, to_thread=_direct
     )
     assert tally.split >= 1
     assert len(asked) > 1
@@ -483,7 +533,7 @@ async def test_a_request_the_vendor_refuses_as_too_long_is_split_and_asked_again
         return _answer([])
 
     tally, _ = await execute(
-        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
     )
     assert tally.split == 1
     assert tally.failed == []
@@ -500,7 +550,7 @@ async def test_a_cut_off_answer_that_cannot_split_keeps_what_it_finished():
         4_096,
         lambda p, m: _answer([_item((1, "x_id"), (2, "id"))], cut_off=True, closed=False),
         _Watcher(),
-        measure=_not_measured,
+        key_values=None,
         to_thread=_direct,
     )
     assert tally.split == 0 and tally.cut_short == 1
@@ -521,7 +571,7 @@ async def test_one_failed_request_is_reported_and_the_rest_continue():
         return _answer([])
 
     tally, _ = await execute(
-        requests, k, 4_096, ask, _Watcher(), measure=_not_measured, to_thread=_direct
+        requests, k, 4_096, ask, _Watcher(), key_values=None, to_thread=_direct
     )
     assert calls == len(requests)
     assert tally.failed == [
@@ -544,7 +594,7 @@ async def test_an_unreadable_answer_is_a_failed_request_with_its_own_message():
         4_096,
         lambda p, m: Completion("no list here", "v", "m", None, False),
         _Watcher(),
-        measure=_not_measured,
+        key_values=None,
         to_thread=_direct,
     )
     assert tally.unreadable == len(requests)
@@ -606,7 +656,7 @@ async def test_stop_ends_the_run_after_the_request_in_flight_and_keeps_what_was_
         return _answer([_item((a[0].table_id, a[1].name), (b[0].table_id, b[1].name))])
 
     tally, proposals = await execute(
-        requests, k, 4_096, ask, _Watcher(stop_after=1), measure=_not_measured, to_thread=_direct
+        requests, k, 4_096, ask, _Watcher(stop_after=1), key_values=None, to_thread=_direct
     )
     assert asked == 1
     assert tally.stopped
@@ -855,7 +905,7 @@ def test_the_instructions_say_what_a_confidence_states_and_where_a_suggestion_is
 
 
 async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
-    from provisa.discovery.runner import kept, read_items
+    from provisa.discovery.runner import judged, read_items
 
     orders = tbl(
         1,
@@ -877,7 +927,7 @@ async def test_every_element_of_an_answer_is_kept_with_why_it_is_left_out():
         {**_item((1, "customer_id"), (2, "id")), "cardinality": "many-to-many"},
         "orders.customer_id -> customers.id",
     ]
-    found = await kept(*read_items(request, items, tally), _not_measured, tally)
+    found = await judged(*read_items(request, items, tally), None, None, tally)
     assert [p.edge for p in found] == [(1, "customer_id", 2, "id")]
     assert tally.proposed == 7
     assert (tally.below_threshold, tally.not_comparable, tally.invalid) == (1, 1, 4)

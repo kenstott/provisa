@@ -230,7 +230,7 @@ class PurviewExport(AtlasExport):  # REQ-2118
             return result
         tables = {t.ref.fqn(): t for t in snapshot.tables}
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             token = await self._entra_token(client, PURVIEW_SCOPE)
             catalog = {"Authorization": f"Bearer {token}"}

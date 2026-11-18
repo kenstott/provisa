@@ -768,6 +768,9 @@
       "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen.",
       "local_path_refused": "De bronnen van deze organisatie lezen geen bestand van de eigen schijf van de server buiten de eigen map; {{path}} is er zo een. Upload het bestand of geef het op als {files}/… of met een extern adres."
     },
+    "egress": {
+      "private_destination": "Deze organisatie mag alleen openbare adressen aanroepen; {{host}} is {{address}}, en dat is er geen."
+    },
     "sandbox": {
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",
       "unknown_demo": "Er is geen gepubliceerde demo met de naam {{demo}}.",
@@ -915,6 +918,9 @@
       "include_outside_upload": "{{path}} ligt buiten het geüploade project; een project leest alleen zijn eigen bestanden.",
       "filter_value_refused": "{{value}} kan geen waarde in een machtigingsfilter zijn: een waarde is een tekenreeks, een getal, true, false, null, een lijst daarvan of een sessievariabele.",
       "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
+    },
+    "relationship": {
+      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
     }
   }
 }

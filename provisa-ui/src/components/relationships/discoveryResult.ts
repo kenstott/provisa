@@ -117,8 +117,21 @@ function scopeLines(report: DiscoveryReport, t: TFunction): string[] {
   const kinds = [
     ...(report.foreign_keys ? [t("discoverDialog.foreignKeys")] : []),
     ...(report.semantics ? [t("discoverDialog.semantics")] : []),
+    ...(report.key_values ? [t("discoverDialog.keyValues")] : []),
   ];
   const lines = [t("discoverResult.scopeKinds", { kinds: kinds.join(", ") })];
+  // REQ-413: Key value overlap's cutoff and sample size, and what it measured and admitted.
+  if (report.key_values && report.semantics) {
+    lines.push(
+      t("discoverResult.keyValues", {
+        cutoff: Math.round(report.key_values.cutoff * 100),
+        threshold: Math.round(report.semantics.threshold * 100),
+        size: report.key_values.sample_size.toLocaleString(),
+        measured: report.semantics.measured,
+        admitted: report.semantics.admitted,
+      }),
+    );
+  }
   if (report.model) {
     lines.push(
       t("discoverDialog.modelRan", { model: `${report.model.vendor}:${report.model.model}` }),

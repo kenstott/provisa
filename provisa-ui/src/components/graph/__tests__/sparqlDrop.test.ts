@@ -11,8 +11,9 @@
 // REQ-2135: what a pill dropped on a SPARQL frame does to its query.
 
 import { describe, expect, it } from "vitest";
-import { droppedQuery, type SparqlDrop, type SparqlDropped } from "../sparqlDrop";
+import { droppedQuery, vocabularyScope, type SparqlDrop, type SparqlDropped } from "../sparqlDrop";
 import type { SparqlVocabulary } from "../sparql";
+import type { PathScope } from "../dropPath";
 import type { CyElement, CyInstance } from "../cytoscape-types";
 import { nodeAtPoint, nodeUnder } from "../canvas/canvas-helpers";
 
@@ -81,9 +82,28 @@ SELECT * WHERE {
 }
 LIMIT 25`;
 
+/** Every class of ``v`` as a label of the domain its IRI names; ``checked`` the selected domains
+ * (none: every domain), ``system`` the system domains. */
+const scopeOf = (
+  v: SparqlVocabulary,
+  checked: string[] = [],
+  system: string[] = [],
+): PathScope => ({
+  nodeLabels: v.classes.map((c) => {
+    const domainId = c.iri.slice(B.length + 1).split("/")[0];
+    return {
+      domainLabel: null,
+      domainId,
+      tableLabel: c.labels[0],
+      systemDomain: system.includes(domainId),
+    };
+  }),
+  checkedDomains: new Set(checked),
+});
+const SCOPE = scopeOf(vocabulary);
 const iri = (name: string) => `${B}/ps/${name}`;
 const drop = (query: string, what: SparqlDrop, on: { iri: string; label: string } | null = null) =>
-  droppedQuery(query, what, vocabulary, on, []);
+  droppedQuery(query, what, vocabulary, on, [], SCOPE);
 const queryOf = (d: SparqlDropped): string => {
   if ("refused" in d) throw new Error(d.refused.key);
   return d.query;
@@ -120,18 +140,16 @@ describe("a class dropped on a frame", () => {
     expect(refusal(d)?.values).toMatchObject({ hops: 7, most: 4 });
   });
 
-  it("adds at most five tied paths and says what it left out", () => {
+  it("keeps every relationship of a one-hop path whole, each from the one variable", () => {
     const v = {
       ...vocabulary,
       edges: [1, 2, 3, 4, 5, 6, 7].map((n) => edge(`R${n}`, "pets", "users")),
     };
     const q = `SELECT * WHERE { ?s a <${iri("pets")}> }`;
-    const d = droppedQuery(q, { kind: "class", iri: iri("users") }, v, null, []);
+    const d = droppedQuery(q, { kind: "class", iri: iri("users") }, v, null, [], scopeOf(v));
     if ("refused" in d) throw new Error(d.refused.key);
-    expect(d.query.match(/OPTIONAL/g)).toHaveLength(5);
-    expect(d.notices).toEqual([
-      { key: "graphFrame.sparqlDropLeftOut", values: { shown: 5, total: 7 } },
-    ]);
+    expect(d.query.match(/OPTIONAL \{ \?s rel:R\d /g)).toHaveLength(7);
+    expect(d.notices).toEqual([]);
   });
 
   it("keeps every variable unique over drops", () => {
@@ -286,7 +304,7 @@ describe("a domain dropped on a frame", () => {
 
   it("names the domain when nothing joins it", () => {
     const v = { ...vocabulary, edges: [] };
-    const d = droppedQuery(FRAME, { kind: "domain", prefix: "hr" }, v, null, []);
+    const d = droppedQuery(FRAME, { kind: "domain", prefix: "hr" }, v, null, [], scopeOf(v));
     expect(refusal(d)).toMatchObject({
       key: "graphFrame.sparqlDropNoPath",
       values: { name: "hr" },
@@ -336,7 +354,8 @@ describe("REQ-2135 a parameterized table on a SPARQL frame", () => {
       ...vocabulary.edges,
     ],
   };
-  const on = (what: SparqlDrop) => droppedQuery(FRAME, what, withTaken, null, []);
+  const on = (what: SparqlDrop) =>
+    droppedQuery(FRAME, what, withTaken, null, [], scopeOf(withTaken));
 
   it("is no way through: the path goes round it", () => {
     const q = queryOf(on({ kind: "class", iri: `${B}/hr/staff` }));
@@ -358,7 +377,7 @@ describe("REQ-2135 a parameterized table on a SPARQL frame", () => {
       prefixes: { ...withTaken.prefixes, only: `${B}/only/` },
       classes: [...withTaken.classes, { ...taken("x"), iri: `${B}/only/x` }],
     };
-    const d = droppedQuery(FRAME, { kind: "domain", prefix: "only" }, v, null, []);
+    const d = droppedQuery(FRAME, { kind: "domain", prefix: "only" }, v, null, [], scopeOf(v));
     expect(refusal(d)).toMatchObject({ key: "graphFrame.sparqlDropParameterized" });
   });
 
@@ -383,7 +402,7 @@ describe("REQ-2135 a join declared from both ends on a SPARQL frame", () => {
         e.type === "SUBMITTED" || e.type === "SUBMITTED_BY" ? { ...e, join: "one join" } : e,
       ),
     };
-    const d = droppedQuery(FRAME, { kind: "class", iri: iri("users") }, v, null, []);
+    const d = droppedQuery(FRAME, { kind: "class", iri: iri("users") }, v, null, [], scopeOf(v));
     const q = queryOf(d);
     expect(q.match(/OPTIONAL/g)).toHaveLength(1);
     expect("notices" in d && d.notices).toEqual([]);
@@ -405,6 +424,171 @@ describe("REQ-2135 a pill dropped on ?s ?p ?o", () => {
     const typed = `PREFIX ps: <${B}/ps/>\nSELECT * WHERE { ?s ?p ?o . ?s a ps:pets } LIMIT 25`;
     expect(queryOf(drop(typed, { kind: "class", iri: iri("inquiries") }))).toContain(
       "rel:HAS_INQUIRY",
+    );
+  });
+});
+
+describe("REQ-2135 a SPARQL drop's one path, within the selected domains", () => {
+  // The maintainer's case (2026-11-17): Domains PetStore and Shelter, users and inquiries drawn,
+  // employees dropped. The registered-tables class of the meta domain joins every table to every
+  // other (HAS_TABLE), and the drop went through it: two OPTIONALs, from ?s and from ?inquiries,
+  // their employees related by no condition, which the server refused as a cross join.
+  const META = (name: string) => ({ ...cls("meta", name) });
+  const SHOT: SparqlVocabulary = {
+    ...vocabulary,
+    prefixes: { ...vocabulary.prefixes, shelter: `${B}/shelter/`, meta: `${B}/meta/` },
+    classes: [
+      cls("ps", "users"),
+      cls("ps", "inquiries"),
+      cls("ps", "pets"),
+      cls("shelter", "employees"),
+      cls("shelter", "assignments"),
+      META("registered_tables"),
+    ],
+    edges: [
+      edge("SUBMITTED", "users", "inquiries"),
+      edge("SUBMITTED_BY", "inquiries", "users"),
+      edge("HAS_TABLE", "users", "registered_tables"),
+      edge("HAS_TABLE", "inquiries", "registered_tables"),
+      edge("HAS_TABLE", "employees", "registered_tables"),
+    ],
+  };
+  const SHOT_FRAME = `PREFIX ps: <${B}/ps/>
+PREFIX rel: <${B}/rel/>
+SELECT * WHERE {
+  ?s a ps:users .
+  OPTIONAL { ?inquiries rel:SUBMITTED_BY ?s . ?inquiries a ps:inquiries . }
+}
+LIMIT 25`;
+  const selected = (v: SparqlVocabulary) => scopeOf(v, ["ps", "shelter"], ["meta"]);
+  const employees = { kind: "class" as const, iri: `${B}/shelter/employees` };
+
+  it("never passes through the meta domain's registered tables: no path is refused by name", () => {
+    const d = droppedQuery(SHOT_FRAME, employees, SHOT, null, [], selected(SHOT));
+    expect(refusal(d)).toEqual({
+      key: "graphFrame.sparqlDropNoPath",
+      values: { name: "shelter:employees", classes: "ps:users, ps:inquiries" },
+    });
+  });
+
+  it("takes the selected domains' longer path over the meta domain's shorter one, in one OPTIONAL", () => {
+    const v: SparqlVocabulary = {
+      ...SHOT,
+      edges: [
+        ...SHOT.edges,
+        edge("ABOUT", "inquiries", "pets"),
+        edge("ASSIGNED_PET", "assignments", "pets"),
+        edge("IS_EMPLOYEE", "assignments", "employees"),
+      ],
+    };
+    const q = queryOf(droppedQuery(SHOT_FRAME, employees, v, null, [], selected(v)));
+    expect(q).not.toContain("registered_tables");
+    expect(q).not.toContain("HAS_TABLE");
+    expect(q.match(/OPTIONAL/g)).toHaveLength(2);
+    expect(q).toContain(
+      "OPTIONAL { ?inquiries rel:ABOUT ?pets . ?pets a ps:pets . " +
+        "?assignments rel:ASSIGNED_PET ?pets . ?assignments a shelter:assignments . " +
+        "?assignments rel:IS_EMPLOYEE ?employees . ?employees a shelter:employees . }",
+    );
+  });
+
+  it("never passes through a class of an unselected domain", () => {
+    const v: SparqlVocabulary = {
+      ...SHOT,
+      edges: [
+        ...SHOT.edges,
+        edge("ABOUT", "inquiries", "pets"),
+        edge("CARED", "pets", "employees"),
+      ],
+    };
+    const d = droppedQuery(SHOT_FRAME, employees, v, null, [], scopeOf(v, ["shelter"], ["meta"]));
+    expect(refusal(d)?.key).toBe("graphFrame.sparqlDropNoPath");
+  });
+
+  it("joins along one path when several are as short, from one variable", () => {
+    // ?s (pets) and ?o (inquiries) are each two hops from staff, through vets.
+    const tied: SparqlVocabulary = {
+      ...vocabulary,
+      edges: [...vocabulary.edges, edge("ANSWERED_BY", "inquiries", "vets")],
+    };
+    const q = queryOf(
+      droppedQuery(FRAME, { kind: "class", iri: `${B}/hr/staff` }, tied, null, [], scopeOf(tied)),
+    );
+    expect(q.match(/OPTIONAL/g)).toHaveLength(1);
+    expect(q).toContain(
+      "OPTIONAL { ?s rel:TREATED_BY ?vets . ?vets a ps:vets . ?vets rel:EMPLOYS ?staff . ?staff a hr:staff . }",
+    );
+  });
+});
+
+describe("REQ-2135 the selected domains in a vocabulary's own labels", () => {
+  // /data/graph-schema names a label Domain:Table; the vocabulary names it by its label-map key.
+  const graphSchema = (checked: string[]): PathScope => ({
+    nodeLabels: [
+      { domainLabel: "PetStore", domainId: "ps", tableLabel: "Users", systemDomain: false },
+      { domainLabel: "Shelter", domainId: "shelter", tableLabel: "Employees", systemDomain: false },
+      { domainLabel: "Meta", domainId: "meta", tableLabel: "RegisteredTables", systemDomain: true },
+    ],
+    checkedDomains: new Set(checked),
+  });
+  const v: SparqlVocabulary = {
+    ...vocabulary,
+    prefixes: { ...vocabulary.prefixes, shelter: `${B}/shelter/`, meta: `${B}/meta/` },
+    classes: [
+      cls("ps", "users"),
+      cls("ps", "inquiries"),
+      cls("shelter", "employees"),
+      cls("meta", "registered_tables"),
+      { ...cls("ps", "users"), iri: `${B}/term/Customer`, kind: "term" },
+    ],
+    edges: [
+      edge("SUBMITTED_BY", "inquiries", "users"),
+      edge("HAS_TABLE", "users", "registered_tables"),
+      edge("HAS_TABLE", "employees", "registered_tables"),
+    ],
+  };
+
+  it("places each table class's labels in the domain its IRI names, system as the graph schema says", () => {
+    expect(vocabularyScope(v, graphSchema(["ps", "shelter"]))).toEqual({
+      nodeLabels: [
+        { domainLabel: null, domainId: "ps", tableLabel: "users", systemDomain: false },
+        { domainLabel: null, domainId: "ps", tableLabel: "inquiries", systemDomain: false },
+        { domainLabel: null, domainId: "shelter", tableLabel: "employees", systemDomain: false },
+        {
+          domainLabel: null,
+          domainId: "meta",
+          tableLabel: "registered_tables",
+          systemDomain: true,
+        },
+      ],
+      checkedDomains: new Set(["ps", "shelter"]),
+    });
+  });
+
+  it("keeps a drop from the meta domain's registered tables", () => {
+    const q = `PREFIX ps: <${B}/ps/>\nSELECT * WHERE { ?s a ps:users } LIMIT 25`;
+    const d = droppedQuery(
+      q,
+      { kind: "class", iri: `${B}/shelter/employees` },
+      v,
+      null,
+      [],
+      vocabularyScope(v, graphSchema(["ps", "shelter"])),
+    );
+    expect(refusal(d)).toEqual({
+      key: "graphFrame.sparqlDropNoPath",
+      values: { name: "shelter:employees", classes: "ps:users" },
+    });
+  });
+
+  it("says which class is of a domain the graph schema does not list", () => {
+    const stray: SparqlVocabulary = {
+      ...v,
+      prefixes: { ...v.prefixes, hr: `${B}/hr/` },
+      classes: [...v.classes, cls("hr", "staff")],
+    };
+    expect(() => vocabularyScope(stray, graphSchema([]))).toThrow(
+      `the class ${B}/hr/staff is of no domain the graph schema lists`,
     );
   });
 });

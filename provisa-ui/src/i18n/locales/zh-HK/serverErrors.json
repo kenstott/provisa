@@ -768,6 +768,9 @@
       "private_destination": "此組織的資料來源只能存取公共地址；{{host}} 是 {{address}}，不是公共地址。",
       "local_path_refused": "此組織的資料來源不讀取伺服器本身磁碟上位於其自有資料夾以外的檔案；{{path}} 正是這樣的檔案。請上載檔案，或以 {files}/… 或遠端地址指定它。"
     },
+    "egress": {
+      "private_destination": "此組織只能呼叫公共地址；{{host}} 是 {{address}}，不是公共地址。"
+    },
     "sandbox": {
       "wrong_tier": "此沙盒由其他位置提供；請從它自己的地址開啟。",
       "unknown_demo": "沒有名為 {{demo}} 的已發佈示範。",
@@ -915,6 +918,9 @@
       "include_outside_upload": "{{path}} 位於上傳的項目之外；項目只讀取自身的檔案。",
       "filter_value_refused": "{{value}} 不能作為權限篩選器中的值：值是字串、數字、true、false、null、它們的列表或工作階段變數。",
       "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
+    },
+    "relationship": {
+      "name_taken": "名稱「{{name}}」已被關係「{{held_by}}」使用。請為此關係另行命名。"
     }
   }
 }
