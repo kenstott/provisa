@@ -1497,6 +1497,7 @@ async def _record_request_decision(
     involved, reach, user_id = await _request_decision_scope(info, req)
     await rule.record(
         await _get_pool(),
+        org_id=_resolve_admin_context(info),
         action=action,
         request=req,
         actor=user_id,
@@ -6023,6 +6024,31 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         self, info: StrawberryInfo, input: RelationshipInput
     ) -> MutationResult:
         return await _save_relationship_as_caller(info, input, creating=False)
+
+    @strawberry.mutation
+    async def join_through(  # REQ-1586
+        self, info: StrawberryInfo, first_id: str, second_id: str, id: str
+    ) -> MutationResult:
+        """One junction-backed relationship between the other ends of two relationships that share
+        a middle table, named ``id``; the two stay."""
+        from provisa.api.admin import join_through
+
+        pool = await _get_pool()
+        async with pool.acquire() as _conn:
+            conn = cast("Connection", _conn)
+            planned = await join_through.plan(conn, first_id, second_id)
+            if planned is None:
+                return MutationResult(
+                    success=False,
+                    message=(
+                        f"Relationships {first_id!r} and {second_id!r} share no middle table, "
+                        "or their other ends are joined through it already"
+                    ),
+                    code="relationship.join_through_none",
+                    params={"first": first_id, "second": second_id},
+                )
+            result, _ = await join_through.create(info, conn, planned.through, id)
+        return result
 
     @strawberry.mutation
     async def create_code_resolver(  # REQ-2249
