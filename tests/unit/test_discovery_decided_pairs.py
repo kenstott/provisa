@@ -352,7 +352,8 @@ async def test_a_pending_pair_is_still_decided_in_a_later_runs_table(tmp_path):
             )
         )
     later = await _run(db)
-    again = await _proposal(db, later, _EDGE, left_out="pending")
+    # REQ-413 (amended 2026-11-18): a pair still waiting is listed in the later run.
+    again = await _proposal(db, later, _EDGE)
     async with db.acquire() as conn:
         assert await proposals.accept(cast(Any, conn), later, again, "visit-pet") == "visit-pet"
     assert await _status(db, _EDGE) == "accepted"
