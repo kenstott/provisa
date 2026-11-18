@@ -17,7 +17,8 @@
       "webhook_exists": "ה-webhook '{{name}}' כבר קיים"
     },
     "ai_models": {
-      "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions"
+      "vector_model_fields_required": "כל רשומת vector_models דורשת id, provider ו-dimensions",
+      "embedding_library_missing": "מודל ההטמעה {{model}} משתמש בספק {{provider}}, שדורש את התוספת {{extra}} (המודול {{module}} אינו מותקן): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "נקודת הקצה של AI‏ {{vendor}} לוקחת את הכתובת שלה מסביבת השרת, שארגון בשרת זה אינו משתמש בה. הגדירו לה כתובת משלכם תחת ניהול, מודלי AI.",

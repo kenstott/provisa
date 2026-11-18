@@ -57602,7 +57602,12 @@
     names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
     stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
     proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
-    its edge the same way.'
+    its edge the same way. (Amended 2026-11-18, A JUNCTION JOINED BY ITS OWN REGISTERED RELATIONSHIPS KEEPS
+    ITS CYPHER NODE:) Maintainer 2026-11-18. A declared junction table''s node and its edges are left out
+    of the Cypher graph only when no registered relationship of its own joins it. A junction that registered
+    relationships join (as after Join through, which keeps the two hops beside the joined relationship)
+    keeps its node and those edges in Cypher, so all three relationships are offered there, as in SQL and
+    GraphQL.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -95724,7 +95729,12 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     acts. With an external identity provider, it decides, and Provisa enforces whatever its claims say.
     With none, the local default applies an expiry cancel at once -- the date was agreed when the grant
     was made, so it needs no second approval -- as the matching ordinary removal, attributed to the expiry;
-    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.'
+    access ends within the run''s interval. Provisa holds no separate read-time check of an expiry date.
+    (Amended 2026-11-18, AN EMAIL NAMES A KNOWN PERSON ONLY BY AN ADDRESS VERIFIED AT SIGN-IN:) Maintainer
+    2026-11-18. Each sign-in records whether the person''s email address was verified by the identity provider.
+    A write that names a person by email resolves to a known person only by an address recorded as verified;
+    an address typed by an account holder (a local account''s email) or one never verified names no one,
+    so the write waits as a pending grant and attaches at a verified sign-in with that address.'
   use_case: Alice holds the viewer role with tables [finance.revenue]; she sees only that table of everything
     viewer can see, while another viewer with no list sees all of it.
   scenario: 'Given two people with the viewer role, one whose grant lists tables [finance.revenue]

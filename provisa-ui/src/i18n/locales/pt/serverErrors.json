@@ -17,7 +17,8 @@
       "webhook_exists": "O webhook '{{name}}' já existe"
     },
     "ai_models": {
-      "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions"
+      "vector_model_fields_required": "cada entrada de vector_models requer id, provider e dimensions",
+      "embedding_library_missing": "O modelo de embeddings {{model}} usa o provedor {{provider}}, que precisa do extra {{extra}} (o módulo {{module}} não está instalado): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "O endpoint de IA {{vendor}} obtém seu endereço do ambiente do servidor, que uma organização neste servidor não usa. Atribua a ele um endereço próprio em Administração, Modelos de IA.",

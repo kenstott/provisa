@@ -17,7 +17,8 @@
       "webhook_exists": "Webhook '{{name}}' already exists"
     },
     "ai_models": {
-      "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions"
+      "vector_model_fields_required": "each vector_models entry requires id, provider, and dimensions",
+      "embedding_library_missing": "The embedding model {{model}} uses the {{provider}} provider, which needs the {{extra}} extra (module {{module}} is not installed): pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "key_required": "{{vendor}} has no API key. Add one under Admin, AI Models.",
