@@ -75930,7 +75930,12 @@
     REQ-1960) asks for none. (Amended 2026-11-02, Shopify:) Maintainer 2026-11-02: Shopify''s Admin GraphQL
     API is the next branded source, a GraphQL brand over the remote GraphQL source like GitHub and GitLab:
     a per-store URL carrying the API version, the X-Shopify-Access-Token header, its shipped schema, and
-    Shopify''s query-cost limits priced at table registration as GitLab''s are.'
+    Shopify''s query-cost limits priced at table registration as GitLab''s are. (Amended 2026-11-18, THE
+    SPARQL SOURCE CARRIES BRANDED SOURCES TOO; WIKIDATA IS THE FIRST:) Maintainer 2026-11-18 (''it would
+    just be a branded sparql endpoint''). The generic SPARQL source is a third carrier of branded sources.
+    Wikidata is a branded SPARQL source: its preset is the Wikidata query service endpoint, needing no credential,
+    and everything else is the generic SPARQL source as it is (its User-Agent and result-format handling
+    included); tables are defined as on any SPARQL source.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
