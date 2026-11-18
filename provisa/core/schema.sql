@@ -2228,6 +2228,14 @@ CREATE TABLE IF NOT EXISTS user_directory (
     discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE,
     discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2,
     discovery_sample_size INTEGER NOT NULL DEFAULT 10000,
+    -- REQ-413 (amended 2026-11-18): the share of values in a key target at which a pair is a key
+    -- relationship, the most a pair scores when neither side is a key, the sample values shown
+    -- per column: the person's own, each set in the discover dialog.
+    discovery_contained_at DOUBLE PRECISION NOT NULL DEFAULT 0.95,
+    discovery_shared_ceiling DOUBLE PRECISION NOT NULL DEFAULT 0.6,
+    discovery_samples_per_column INTEGER NOT NULL DEFAULT 5,
+    -- REQ-413: the filter on a run's Score column, the person's own: JSON; NULL when cleared.
+    discovery_score_filter TEXT DEFAULT '{"op": "ge", "a": "10"}',
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;

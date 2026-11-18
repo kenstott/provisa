@@ -883,9 +883,10 @@ def test_the_profilers_statement_is_the_products_and_runs_outside_the_guard():
         assert validate_sql(sql, ctx, gov, _ROLE, _KEYS, bypass_relationship_guard=True) == []
 
 
-def test_only_the_profiler_states_a_product_statement():
-    """A role's own SQL cannot reach the product's path: no surface passes the flag, and the
-    one call that does is the profiler's, with the statement it built itself."""
+def test_only_the_profiler_and_the_discovery_measure_state_a_product_statement():
+    """A role's own SQL cannot reach the product's path: no surface passes the flag. The calls
+    that do are the profiler's and discovery's key value overlap join count (REQ-413, amended
+    2026-11-18), each with the statement it built itself."""
     import pathlib
     import re
 
@@ -897,14 +898,14 @@ def test_only_the_profiler_states_a_product_statement():
         for path in root.rglob("*.py")
         if re.search(r"product_statement\s*=\s*True", path.read_text())
     )
-    assert stating == ["profiler/run.py"], stating
+    assert stating == ["discovery/gather.py", "profiler/run.py"], stating
     passing = sorted(
         str(path.relative_to(root))
         for path in root.rglob("*.py")
         if "product_statement=" in path.read_text()
     )
     # The pipeline hands it down; nothing else names it.
-    assert passing == ["pgwire/_pipeline.py", "profiler/run.py"], passing
+    assert passing == ["discovery/gather.py", "pgwire/_pipeline.py", "profiler/run.py"], passing
 
 
 def test_a_recursive_statement_relates_its_rows_along_relationships_only():

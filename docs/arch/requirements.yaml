@@ -75930,7 +75930,22 @@
     REQ-1960) asks for none. (Amended 2026-11-02, Shopify:) Maintainer 2026-11-02: Shopify''s Admin GraphQL
     API is the next branded source, a GraphQL brand over the remote GraphQL source like GitHub and GitLab:
     a per-store URL carrying the API version, the X-Shopify-Access-Token header, its shipped schema, and
-    Shopify''s query-cost limits priced at table registration as GitLab''s are.'
+    Shopify''s query-cost limits priced at table registration as GitLab''s are. (Amended 2026-11-18, THE
+    SPARQL SOURCE CARRIES BRANDED SOURCES TOO; WIKIDATA IS THE FIRST:) Maintainer 2026-11-18 (''it would
+    just be a branded sparql endpoint''). The generic SPARQL source is a third carrier of branded sources.
+    Wikidata is a branded SPARQL source: its preset is the Wikidata query service endpoint, needing no credential,
+    and everything else is the generic SPARQL source as it is (its User-Agent and result-format handling
+    included); tables are defined as on any SPARQL source. (Amended 2026-11-18, WIKIDATA: STARTER REFERENCE
+    TABLES, A TABLE OF ANY CLASS, REPLICATED BY DEFAULT:) Maintainer 2026-11-18 (''I think your more expanded
+    approach was fine''; ''you need to be able to add other classes''). Beyond the preset, the Wikidata
+    source offers: starter reference tables people join to (countries with their ISO codes, capital and
+    population; currencies; languages; administrative regions; organizations with identifiers such as LEI,
+    ticker and ISIN), each a bounded query exposed as a typed table; and a table of the instances of any
+    class, chosen by searching classes by name or browsing their broader and narrower classes (subclass
+    of), with the properties its instances most use offered as columns, the class''s instance count shown,
+    and a filter asked for when the class is too large to read whole. Every query stays within the public
+    endpoint''s time limit. Wikidata tables are replicated on a schedule by default rather than read live.
+    Glossary terms may be grounded to Wikidata items.'
   use_case: A team wants its Stripe, HubSpot or GitHub data beside its databases. A preset over a generic
     API source reaches it with no container to run, no Docker prerequisite on a desktop install, and on
     every engine, where a Postgres instance per source would be a heavy way to run a periodic fetch.
@@ -97496,3 +97511,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     patterns''). A data product''s Access section lists each relationship in the product with the same set
     of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
     component and query builder; it replaces the Cypher-only link per relationship type it shows today.'
+- id: REQ-2253
+  status: proposed
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: MUST
+  type: behavioral
+  description: 'Maintainer 2026-11-18 (''all AI assisted features should narrow their concerns to the filtered
+    domains (for example the ontology relationships assistant should only work against the selected domains)'').
+    Every AI-assisted feature works only within the domains selected in the domain filter when it is started:
+    what it sends the model, what it proposes and what it writes are limited to the tables, columns, terms
+    and relationships of those domains. This covers, among others, relationship discovery, the ontology''s
+    relationship suggestions and term finding, natural-language query, generated descriptions and any other
+    feature that asks a model. Nothing outside the selected domains is read, sent or changed.'

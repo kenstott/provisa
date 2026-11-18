@@ -1824,7 +1824,8 @@ async def govern_statement(
     """Stage one of the one pipeline: parse, validate and apply governance. Value-independent.
 
     ``product_statement`` (REQ-603): the statement is one the product wrote for its own work --
-    the profiler's read of a table, which pairs the table with itself -- not a role's query. The
+    the profiler's read of a table, which pairs the table with itself, or discovery's key value
+    overlap join count of a candidate pair, which has no relationship yet -- not a role's query. The
     relationship guard is about what a role's query may relate, so it is not held on it; every
     other check is. Stated by the product's own call site, as a GraphQL-built statement states
     ``sdl_joins``; no surface that carries a caller's SQL passes it."""
