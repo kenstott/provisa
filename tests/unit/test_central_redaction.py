@@ -134,14 +134,14 @@ def test_a_reference_that_does_not_resolve_is_named_unresolved(caplog):
     assert redaction.described("acme")["unresolved"] == ["ops"]
 
 
-def test_an_orgs_rules_apply_to_that_org_and_to_what_leaves_the_process():
+def test_an_orgs_rules_apply_to_that_orgs_text_only():
     acme = redaction.parse_rules([{"name": "badge", "pattern": r"B-\d{4}"}], "org")
     redaction.set_org("acme", acme, {}, _resolve({}))
     redaction.set_org("other", [], {}, _resolve({}))
     assert redaction.redact("B-1234", "acme") == "[REDACTED:badge]"
     assert redaction.redact("B-1234", "other") == "B-1234"
-    # Telemetry and errors carry no org: every org's rules apply together.
-    assert redaction.redact("B-1234") == "[REDACTED:badge]"
+    # A record no org produced: the deployment's rules, not any org's.
+    assert redaction.redact("B-1234") == "B-1234"
 
 
 # --- the automatic rule -------------------------------------------------------------------------
@@ -163,8 +163,14 @@ def test_a_value_shorter_than_the_minimum_is_not_matched():
 
 
 def test_a_user_value_is_matched_from_its_first_resolution():
+    from provisa.core.request_context import reset_current_org, set_current_org
+
     assert redaction.redact("personal-token-99") == "personal-token-99"
-    redaction.note_user_value("gh_token", "personal-token-99")
+    token = set_current_org("acme")  # resolved in a request of acme
+    try:
+        redaction.note_user_value("gh_token", "personal-token-99")
+    finally:
+        reset_current_org(token)
     assert redaction.redact("x personal-token-99 y") == "x [REDACTED:auto:user:gh_token] y"
     assert redaction.described("acme")["resolved_at_use"] == 1
 
@@ -480,12 +486,19 @@ def test_the_admin_trail_detail_is_redacted(monkeypatch):
             return False
 
     class _Db:
+        model = None
+
         def acquire(self):
             return _Acquire()
 
     asyncio.run(
         org_membership.record_admin_action(
-            _Db(), action="x", actor_id="a", subject_id="s", detail={"why": SECRET}
+            _Db(),
+            org_id="acme",
+            action="x",
+            actor_id="a",
+            subject_id="s",
+            detail={"why": SECRET},
         )
     )
     assert written[0]["detail"] == {"why": "[REDACTED:auto:pw]"}

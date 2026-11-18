@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "Una riga spuntata viene accettata quando si applica. Le righe con punteggio pari o superiore al {{threshold}}% partono spuntate. Una riga senza alcuna casella spuntata resta non decisa.",
+    "intro": "Una riga spuntata viene accettata quando applichi. Le righe con un punteggio almeno pari alla soglia partono spuntate. Una riga senza caselle spuntate resta da decidere.",
     "colScore": "Punteggio",
+    "colModel": "Modello",
     "colJev": "Jev",
     "colKind": "Tipo",
+    "colMeasure": "Misurato",
     "colReasoning": "Motivazione",
     "colNote": "Nota",
     "colNotAgain": "Non consigliare più",
@@ -25,7 +27,7 @@
       "invalid_shape": "Non è una relazione nella forma richiesta: un campo manca o ha una forma errata",
       "unknown_column": "Nomina una tabella o una colonna che la richiesta non ha confrontato",
       "not_comparable": "Le due colonne hanno classi diverse, quindi non vengono confrontate",
-      "below_threshold": "La confidenza del modello è sotto la soglia del {{threshold}}%.",
+      "below_threshold": "Punteggio sotto il {{threshold}}% a cui un suggerimento viene mantenuto.",
       "same_column": "Da una colonna a se stessa",
       "primary_key_to_primary_key": "Da chiave primaria a chiave primaria",
       "both_repeating": "I valori si ripetono su entrambi i lati, quindi nessuno è il lato uno",
@@ -34,7 +36,33 @@
       "rejected": "Rifiutata in precedenza",
       "matches_foreign_key": "Corrisponde a una chiave esterna trovata in questa esecuzione",
       "out_of_scope": "Fuori dalle tabelle di origine e di destinazione scelte",
-      "weaker": "È stata mantenuta una proposta più forte delle stesse due colonne"
-    }
+      "weaker": "È stata mantenuta una proposta più forte delle stesse due colonne",
+      "many_to_many": "Nessuna delle due colonne è una chiave"
+    },
+    "threshold": "Spunta da",
+    "thresholdHint": "La tua soglia, conservata per le prossime esecuzioni.",
+    "measure": {
+      "inTarget": "{{found}} di {{values}} valori dell'origine sono nella destinazione.",
+      "inTargetFirst": "{{found}} dei primi {{values}} valori dell'origine sono nella destinazione.",
+      "inSource": "{{found}} di {{values}} valori della destinazione sono nell'origine.",
+      "inSourceFirst": "{{found}} dei primi {{values}} valori della destinazione sono nell'origine.",
+      "both": "Entrambe le colonne sono chiavi.",
+      "target": "La destinazione è una chiave.",
+      "source": "L'origine è una chiave.",
+      "neither": "Nessuna delle due colonne è una chiave.",
+      "notRead": {
+        "source": "L'origine non è stata letta: la sua tabella richiede un parametro.",
+        "target": "La destinazione non è stata letta: la sua tabella richiede un parametro."
+      },
+      "notReadable": {
+        "source": "Non puoi leggere la colonna di origine.",
+        "target": "Non puoi leggere la colonna di destinazione."
+      },
+      "noValues": "L'origine non contiene valori.",
+      "modelScore": "Punteggio del modello: nessun valore è stato confrontato."
+    },
+    "dimensionMade": "Accettandola si crea la dimensione condivisa {{name}}, a cui si uniscono entrambe le colonne.",
+    "dimensionJoined": "Accettandola, entrambe le colonne si uniscono alla dimensione condivisa {{name}}.",
+    "twoDimensions": "Le sue colonne si uniscono già a due dimensioni condivise diverse, quindi non può essere accettata."
   }
 }

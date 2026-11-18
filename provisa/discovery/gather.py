@@ -514,3 +514,118 @@ def uniqueness_reader(state: Any):
         return Sampled(rows=len(seen), repeats=len(set(seen)) != len(seen))
 
     return read
+
+
+def _published_as(state: Any, role: str, table_id: int) -> tuple[str, dict[str, str]] | None:
+    """The table as ``role`` reads it: its quoted ``domain.table`` name, and each registered
+    column it can read by the name that column is published under to it. None: ``role`` cannot
+    read the table."""
+    from provisa.profiler.run import _published_name
+    from provisa.profiler.statement import qualified
+
+    ctx = state.contexts.get(role)
+    if ctx is None:
+        raise RuntimeError(f"no compiled schema for role {role!r}")
+    tm = next((m for m in ctx.tables.values() if m.table_id == table_id), None)
+    if tm is None:
+        return None
+    p2s: dict = ctx.physical_to_sql
+    exposed = {phys: p2s[(t, phys)] for (t, phys) in p2s if t == table_id}
+    return qualified(_published_name(tm)), exposed
+
+
+async def _governed_as(sql: str, role: str) -> list[tuple]:
+    """The rows of one read through the governed pipeline as ``role``: its rules, masks and
+    row rules applied, as any query of that person's is."""
+    from provisa.pgwire._pipeline import _govern_and_route
+    from provisa.profiler import run as profiler
+
+    return (await profiler._execute(await _govern_and_route(sql, role)))[1]
+
+
+def _literal(value: Any) -> str:
+    """A value read from a compared column, written as an SQL literal to look it up in another.
+    The compared type groups are whole numbers, decimals, text, uuid, dates and timestamps."""
+    from datetime import date, datetime
+    from decimal import Decimal
+    from uuid import UUID
+
+    if isinstance(value, bool):
+        raise TypeError("a boolean column is never compared")
+    if isinstance(value, (int, Decimal)):
+        return str(value)
+    if isinstance(value, (str, UUID)):
+        return "'" + str(value).replace("'", "''") + "'"
+    if isinstance(value, datetime):
+        kind = "TIMESTAMP" if value.tzinfo is None else "TIMESTAMP WITH TIME ZONE"
+        return f"{kind} '{value.isoformat(sep=' ')}'"
+    if isinstance(value, date):
+        return f"DATE '{value.isoformat()}'"
+    raise TypeError(f"a value of type {type(value).__name__} is not of a compared type group")
+
+
+#: Values looked up in one read when a column's values are looked up in another's.
+LOOKUP_CHUNK = 1_000
+
+
+def values_reader(state: Any, role: str):
+    """The reader of columns' values for a run's measure (:mod:`provisa.discovery.measure`): each
+    read through the governed pipeline as ``role``, the role of the person who started the run.
+    A table that requires a parameter is never read (REQ-1986); a table or column ``role`` cannot
+    read is not measured. Either is said on the pair."""
+    from provisa.discovery.measure import (
+        DISTINCT_BOUND,
+        NOT_READ as UNMEASURED_NOT_READ,
+        NOT_READABLE,
+        Unmeasured,
+        Values,
+        comparable_value,
+    )
+
+    class _Reader:
+        def _column(self, table: TableFacts, column: str) -> tuple[str, str] | Unmeasured:
+            if table.reduced:
+                return UNMEASURED_NOT_READ
+            published = _published_as(state, role, table.table_id)
+            if published is None or column not in published[1]:
+                return NOT_READABLE
+            relation, exposed = published
+            return relation, _quote(exposed[column])
+
+        async def values(self, table: TableFacts, column: str) -> Values | Unmeasured:
+            found = self._column(table, column)
+            if isinstance(found, str):
+                return found
+            relation, col = found
+            # Most repeated first: the first count says whether any value repeats in the column.
+            rows = await _reading(
+                table.table_name,
+                _governed_as(
+                    f"SELECT {col}, COUNT(*) FROM {relation} WHERE {col} IS NOT NULL "
+                    f"GROUP BY {col} ORDER BY 2 DESC LIMIT {DISTINCT_BOUND + 1}",
+                    role,
+                ),
+            )
+            return Values(
+                read=tuple(r[0] for r in rows[:DISTINCT_BOUND]),
+                more=len(rows) > DISTINCT_BOUND,
+                distinct=not rows or int(rows[0][1]) == 1,
+            )
+
+        async def found(self, table: TableFacts, column: str, among: Values) -> frozenset[Any]:
+            found = self._column(table, column)
+            assert not isinstance(found, str), "a column with values read was measured"
+            relation, col = found
+            out: set[Any] = set()
+            for at in range(0, len(among.read), LOOKUP_CHUNK):
+                chunk = ", ".join(_literal(v) for v in among.read[at : at + LOOKUP_CHUNK])
+                rows = await _reading(
+                    table.table_name,
+                    _governed_as(
+                        f"SELECT DISTINCT {col} FROM {relation} WHERE {col} IN ({chunk})", role
+                    ),
+                )
+                out.update(comparable_value(r[0]) for r in rows)
+            return frozenset(out)
+
+    return _Reader()

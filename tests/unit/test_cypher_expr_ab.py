@@ -12,6 +12,7 @@ engine-specific forms are added later by ``transpile_physical``). This pins the 
 fn-rewrite pipeline against a representative corpus, so any change in emitted IR is caught.
 """
 
+from provisa.core.parameters import parameter_names
 import pytest
 import sqlglot
 
@@ -66,6 +67,12 @@ def _label_map() -> CypherLabelMap:
         table_name="persons",
         properties={"name": "name", "age": "age_col"},
         native_filter_columns={"_nf_status": "varchar"},
+        # What the compilation context holds for it (CompilationContext.parameter_names).
+        parameter_names=tuple(
+            parameter_names(
+                [{"column_name": "_nf_status", "native_filter_type": "query_param"}]
+            ).items()
+        ),
     )
     knows = RelationshipMapping(
         rel_type="KNOWS",

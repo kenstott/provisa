@@ -19,6 +19,7 @@ import { screen, fireEvent, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { render } from "../../test-utils/render";
 import { RelationshipsPage } from "../RelationshipsPage";
+import type { RunProposal } from "../../api/admin";
 import {
   COUNT,
   NO_VENDOR,
@@ -48,6 +49,7 @@ import {
   runOf,
   runsMock,
   sameBox,
+  saveThresholdMock,
   semanticsBox,
   startMock,
   stopMock,
@@ -359,7 +361,7 @@ describe("Discovery dialog: the run in progress", () => {
     expect(result).toHaveTextContent("Foreign keys: 3 found, 1 suggested.");
     expect(result).toHaveTextContent("Semantics: 1 suggestion.");
     expect(result).toHaveTextContent(
-      "Not suggested: given less than 70% confidence by the model (1), already registered (2), rejected before (1).",
+      "Not suggested: scored less than 70% (1), already registered (2), rejected before (1).",
     );
   });
 
@@ -408,7 +410,7 @@ describe("Discovery dialog: the run in progress", () => {
   });
 
   it("Stop asks the server to stop and keeps what was found", async () => {
-    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7 });
+    proposalsMock.mockResolvedValue({ proposals: [proposal({})], threshold: 0.7, kept_at: 0.7 });
     runMock.mockResolvedValue(
       runOf({ requests_total: 3, requests_done: 1, suggestions: 1, report: REPORT }),
     );
@@ -527,7 +529,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     expect(constraint).toHaveTextContent("Constraint");
     expect(screen.getByTestId("proposal-501")).toHaveTextContent("Semantic");
     expect(screen.getByTestId("proposal-503")).toHaveTextContent(
-      "The model's confidence is below the 70% threshold.",
+      "Scored under the 70% a suggestion is kept at.",
     );
     // The model's score is the row's; Jev's is shown beside it, in its own column.
     expect(screen.getByTestId("discover-proposals")).toHaveTextContent("Jev");
@@ -620,6 +622,7 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     proposalsMock.mockResolvedValue({
       proposals: PROPOSALS.filter((p) => ![500, 504].includes(p.id)),
       threshold: 0.7,
+      kept_at: 0.7,
     });
     expect(applyButton()).toHaveTextContent("Accept 2, don't recommend 1 again");
     fireEvent.click(applyButton());
@@ -681,5 +684,267 @@ describe("Discovery dialog: the run's proposals, in one table", () => {
     expect(result).toHaveTextContent("Model: anthropic:claude-haiku-4-5");
     expect(result).toHaveTextContent("Source: 2 tables of shop.");
     expect(result).toHaveTextContent("Target: the same as the source.");
+  });
+});
+
+// The Modal's size, as the dialog sets it: Mantine writes it as the --modal-size variable.
+const modalSize = () => {
+  const sized = document.querySelector<HTMLElement>(".mantine-Modal-root");
+  return sized?.style.getPropertyValue("--modal-size");
+};
+// The setup step's size, the shared modal size "lg".
+const STANDARD = "var(--modal-size-lg)";
+
+describe("Discovery dialog: its size by what it shows", () => {
+  it("takes the standard size while setting up a run", async () => {
+    await openDialog();
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("keeps the standard size while a run is going", async () => {
+    runMock.mockResolvedValue(runOf({ status: "running", requests_total: 4, requests_done: 1 }));
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-stop", {}, SLOW);
+    expect(modalSize()).toBe(STANDARD);
+  });
+
+  it("takes the window's width only to show a run's results", async () => {
+    await endedRun();
+    expect(modalSize()).toBe("100%");
+  });
+});
+
+describe("Discovery dialog: an ended run's layout", () => {
+  it("puts New run beside Apply, in the action row above the table", async () => {
+    await endedRun();
+    const newRun = screen.getByTestId("discover-new-run");
+    expect(newRun.parentElement).toBe(applyButton().parentElement);
+    expect(newRun.compareDocumentPosition(applyButton()) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(
+      applyButton().compareDocumentPosition(screen.getByTestId("discover-proposals")) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  });
+
+  it("scrolls only the table, beneath its pinned header, in the height the dialog leaves", async () => {
+    await endedRun();
+    const region = screen.getByTestId("discover-proposals-scroll");
+    // The list's pinned header (REQ-1587): the region holds the list's own scrollport.
+    expect(region).toHaveClass("page-sticky-head");
+    expect(region.firstElementChild).toHaveClass("table-scroll");
+    expect(within(region).getByTestId("discover-proposals")).toBeInTheDocument();
+    const body = dialog().querySelector(".mantine-Modal-body") as HTMLElement;
+    expect(body.style.display).toBe("flex");
+    expect(body.style.flexDirection).toBe("column");
+    expect(body.style.minHeight).toBe("0px");
+    expect(screen.getByTestId("discover-result").style.flexShrink).toBe("0");
+  });
+
+  it("shows New run when the run proposed nothing", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("discover-no-proposals", {}, SLOW);
+    expect(screen.getByTestId("discover-new-run")).toBeVisible();
+    expect(screen.queryByTestId("discover-apply")).toBeNull();
+  });
+});
+
+describe("Discovery dialog: each pair measured on its data, ticked from the person's threshold", () => {
+  const side = (values: number, distinct: boolean) => ({
+    values,
+    more: false,
+    distinct,
+    unmeasured: null,
+  });
+  const MEASURED: RunProposal[] = [
+    // The permit key: the model gave 45%, its values are contained in a distinct target.
+    proposal({
+      id: 601,
+      source_column: "permit_id",
+      target_column: "permit_id",
+      confidence: 0.45,
+      score: 0.95,
+      measured: true,
+      measure: {
+        bound: 10000,
+        source: side(30, false),
+        target: side(100, true),
+        source_in_target: 30,
+        target_in_source: 30,
+      },
+    }),
+    // A shared neighborhood, a key of neither table: many-to-many, under the threshold. It is
+    // accepted as a shared dimension, named for the concept.
+    proposal({
+      id: 602,
+      source_column: "neighborhood",
+      target_column: "neighborhood",
+      cardinality: "many-to-many",
+      confidence: 0.9,
+      score: 0.6,
+      measured: true,
+      reason: "below_threshold",
+      suggested_name: "neighborhood",
+      dimension: { name: "neighborhood", reused: false },
+      measure: {
+        bound: 10000,
+        source: side(5, false),
+        target: side(5, false),
+        source_in_target: 5,
+        target_in_source: 5,
+      },
+    }),
+    // A table that requires a parameter: only the target was read.
+    proposal({
+      id: 603,
+      source_column: "owner_ref",
+      confidence: 0.8,
+      score: 0.8,
+      measured: false,
+      reduced_information: true,
+      measure: {
+        bound: 10000,
+        source: { values: null, more: false, distinct: null, unmeasured: "not_read" },
+        target: side(100, true),
+        source_in_target: null,
+        target_in_source: null,
+      },
+    }),
+    proposal({
+      id: 604,
+      source_column: "code",
+      confidence: 0.95,
+      score: 0.55,
+      measured: true,
+      reason: "below_threshold",
+    }),
+  ];
+
+  async function measuredRun(threshold = 0.7) {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({ proposals: MEASURED, threshold, kept_at: 0.7 });
+    await openDialog();
+    fireEvent.click(runButton());
+    await screen.findByTestId("proposal-601", {}, SLOW);
+  }
+
+  it("shows each row's measure, its score by the measure and the model's beside it", async () => {
+    await measuredRun();
+    expect(screen.getByTestId("proposal-score-601")).toHaveTextContent("95%");
+    expect(screen.getByTestId("proposal-model-601")).toHaveTextContent("45%");
+    expect(screen.getByTestId("proposal-measure-601")).toHaveTextContent(
+      "The target is a key. 30 of 30 source values in the target. " +
+        "30 of 100 target values in the source.",
+    );
+    expect(screen.getByTestId("proposal-cardinality-602")).toHaveTextContent("many-to-many");
+    expect(screen.getByTestId("proposal-measure-602")).toHaveTextContent(
+      "Neither column is a key.",
+    );
+    expect(screen.getByTestId("proposal-measure-603")).toHaveTextContent(
+      "The source was not read: its table requires a parameter. " +
+        "The target is a key. Scored by the model: no values were compared.",
+    );
+  });
+
+  it("a many-to-many row is accepted as the shared dimension it names", async () => {
+    applyMock.mockResolvedValue([
+      { id: 602, action: "accept", ok: true, relationship_id: "neighborhood" },
+    ]);
+    await measuredRun();
+    const row = screen.getByTestId("proposal-602");
+    expect(acceptBox(602).checked).toBe(false); // scored under the threshold
+    expect(row).toHaveTextContent(
+      "Accepting makes the shared dimension neighborhood, which both columns join.",
+    );
+    expect(notAgainBox(602)).toBeInTheDocument();
+    fireEvent.click(acceptBox(601));
+    fireEvent.click(acceptBox(603));
+    fireEvent.click(acceptBox(602));
+    fireEvent.click(screen.getByTestId("discover-apply"));
+    // The name sent is the dimension's.
+    await waitFor(() =>
+      expect(applyMock).toHaveBeenCalledWith(7, {
+        accept: [{ id: 602, name: "neighborhood" }],
+        not_again: [],
+      }),
+    );
+  });
+
+  it("a many-to-many row whose dimension is registered says it joins that dimension", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [
+        proposal({
+          id: 605,
+          cardinality: "many-to-many",
+          source_column: "neighborhood",
+          target_column: "neighborhood",
+          suggested_name: "complaint-neighborhood",
+          dimension: { name: "neighborhood", reused: true },
+        }),
+      ],
+      threshold: 0.7,
+      kept_at: 0.7,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    const row = await screen.findByTestId("proposal-605", {}, SLOW);
+    expect(acceptBox(605)).toBeInTheDocument();
+    expect(row).toHaveTextContent(
+      "Accepting joins both columns to the shared dimension neighborhood.",
+    );
+  });
+
+  it("a many-to-many row whose columns join two dimensions cannot be accepted and says why", async () => {
+    runMock.mockResolvedValue(runOf({ status: "done", report: REPORT }));
+    proposalsMock.mockResolvedValue({
+      proposals: [
+        proposal({
+          id: 606,
+          cardinality: "many-to-many",
+          acceptable: false,
+          dimension: null,
+        }),
+      ],
+      threshold: 0.7,
+      kept_at: 0.7,
+    });
+    await openDialog();
+    fireEvent.click(runButton());
+    const row = await screen.findByTestId("proposal-606", {}, SLOW);
+    expect(within(row).queryByTestId("list-select-606")).toBeNull();
+    expect(row).toHaveTextContent(
+      "Its columns already join two different shared dimensions, so it cannot be accepted.",
+    );
+    expect(notAgainBox(606)).toBeInTheDocument();
+  });
+
+  it("the threshold set in the dialog re-ticks the rows and is kept for the person", async () => {
+    await measuredRun();
+    const threshold = screen.getByTestId("discover-threshold") as HTMLInputElement;
+    expect(threshold.value).toBe("70%");
+    expect(acceptBox(601).checked).toBe(true);
+    expect(acceptBox(603).checked).toBe(true);
+    expect(acceptBox(604).checked).toBe(false);
+    fireEvent.change(threshold, { target: { value: "50" } });
+    // Under the run's own bar but above the person's: it starts ticked now.
+    await waitFor(() => expect(acceptBox(604).checked).toBe(true));
+    await waitFor(() => expect(saveThresholdMock).toHaveBeenCalledWith(0.5), SLOW);
+    expect(saveThresholdMock).toHaveBeenCalledTimes(1);
+    fireEvent.change(threshold, { target: { value: "90" } });
+    await waitFor(() => expect(acceptBox(603).checked).toBe(false));
+    expect(acceptBox(601).checked).toBe(true);
+  });
+
+  it("opens with the threshold the person kept, read back from the server", async () => {
+    await measuredRun(0.9);
+    expect((screen.getByTestId("discover-threshold") as HTMLInputElement).value).toBe("90%");
+    expect(acceptBox(601).checked).toBe(true);
+    expect(acceptBox(603).checked).toBe(false);
   });
 });

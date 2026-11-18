@@ -20,13 +20,15 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Literal, cast
 
 from fastapi import APIRouter, Request
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
+from provisa.api.admin import discovery_dimension
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
 from provisa.discovery import proposals as proposals_repo
 from provisa.discovery import runs as runs_repo
+from provisa.discovery import threshold as threshold_repo
 from provisa.discovery.run import (
     ChosenModel,
     RunSpec,
@@ -63,13 +65,15 @@ WHERE_TO_SET = "Admin, AI Models"
 class DiscoverRequest(BaseModel):
     """A discovery done while the caller waits, as a run (REQ-413): ``table`` compares the tables
     of the table's domain, ``domain`` those of the domain, ``cross-domain`` those of every
-    domain."""
+    domain. A field the route does not read is refused, never ignored; chosen domains or tables
+    are a run's (``RunScope``, ``POST /admin/discover/runs``)."""
+
+    model_config = ConfigDict(extra="forbid")
 
     scope: Literal["table", "domain", "cross-domain"]
     kinds: list[DiscoveryKind] = Field(min_length=1)
     table_id: int | None = None
     domain_id: str | None = None
-    domain_ids: list[str] | None = None
 
 
 class RejectRequest(BaseModel):
@@ -153,7 +157,8 @@ class RunScope(BaseModel):  # REQ-413
     vendor: str | None = None
     model: str | None = None
 
-    def spec(self) -> RunSpec:
+    def spec(self, role: str) -> RunSpec:
+        """The run asked for, by the person acting as ``role``: its pairs are measured as it."""
         if (self.vendor is None) != (self.model is None):
             raise ApiError(
                 400,
@@ -168,6 +173,7 @@ class RunScope(BaseModel):  # REQ-413
             target_tables=None if self.target_tables is None else tuple(self.target_tables),
             same_as_source=self.target_same_as_source,
             model=None if self.vendor is None or self.model is None else (self.vendor, self.model),
+            role=role,
         )
 
 
@@ -318,7 +324,7 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
     asked and no model is called, so it can be asked again on every change of the scope. It is
     an upper bound (``requests_are``): the run reads the tables and may make fewer."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec()
+    spec = body.spec(_acting(request))
     model = await _run_model(spec)
     await _require_tables(spec)
     try:
@@ -331,6 +337,15 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
             model=None if model is None else model.label,
             reason=str(exc),
         ) from exc
+
+
+def _acting(request: Request) -> str:
+    """The role the request runs as (REQ-273): a run's pairs are measured as it."""
+    from provisa.api.acting_role import acting_role
+    from provisa.profiler.run import PROFILE_ROLE
+
+    # REQ-273: with no role established and none named, a request runs as the org admin.
+    return acting_role(request, request.headers.get("X-Provisa-Role"), None, PROFILE_ROLE)
 
 
 def _caller(request: Request) -> str | None:
@@ -402,7 +417,7 @@ def _launch(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:
 async def start_run(request: Request, body: RunScope):  # REQ-413
     """Start a run in the background; answered at once with the run, running."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec()
+    spec = body.spec(_acting(request))
     model = await _run_model(spec)
     await _require_tables(spec)
     pool = state.model_db
@@ -465,7 +480,7 @@ async def trigger_discovery(
         async with pool.acquire() as _conn:
             domains = await _source_domains(cast("Connection", _conn), body)
         scope = RunScope(kinds=body.kinds, source_domains=domains)
-        spec = scope.spec()
+        spec = scope.spec(_acting(request))
         model = await _run_model(spec)
         async with pool.acquire() as _conn:
             run_id = await runs_repo.start(
@@ -569,8 +584,48 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
         await _held(conn, run_id)
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
-            "threshold": MIN_CONFIDENCE,
+            "threshold": await threshold_repo.read(conn, _person(request)),
+            # The score a run keeps a suggestion at: a proposal's reason below_threshold is
+            # against it, whatever the person's threshold.
+            "kept_at": MIN_CONFIDENCE,
         }
+
+
+def _person(request: Request) -> str:
+    """The signed-in person whose threshold is read and kept."""
+    caller = _caller(request)
+    if caller is None:
+        raise ApiError(401, "auth.required", "Authentication required")
+    return caller
+
+
+class ThresholdBody(BaseModel):  # REQ-413
+    """The score from which a run's proposals start ticked, from 0 to 1."""
+
+    threshold: float = Field(ge=0.0, le=1.0)
+
+
+@router.get("/threshold")
+async def get_threshold(request: Request):  # REQ-413
+    """The signed-in person's threshold: the score from which a run's proposals start ticked."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        return {"threshold": await threshold_repo.read(cast("Connection", _conn), _person(request))}
+
+
+@router.put("/threshold")
+async def put_threshold(request: Request, body: ThresholdBody):  # REQ-413
+    """Keep the threshold set in the dialog as the signed-in person's own."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        kept = await threshold_repo.keep(
+            cast("Connection", _conn), _person(request), body.threshold
+        )
+    return {"threshold": kept}
 
 
 class ApplyRequest(BaseModel):
@@ -608,7 +663,13 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
+                if await proposals_repo.shared_pair(conn, run_id, each.id):
+                    # REQ-413: a many-to-many pair is accepted as a shared dimension.
+                    relationship_id = await discovery_dimension.accept(
+                        request, conn, run_id, each.id, each.name
+                    )
+                else:
+                    relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
                 results.append(

@@ -56,7 +56,8 @@
       "username_exists": "ユーザー名は既に存在します",
       "not_permitted": "許可されていません",
       "token_scopes_required": "トークンのロールを 1 つ以上選択してください。",
-      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。"
+      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。",
+      "no_role_held": "「{{user}}」はこの組織でロールを持っていません"
     },
     "authz": {
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
@@ -163,7 +164,10 @@
       "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
       "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。",
       "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。",
-      "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります"
+      "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
+      "parameter_required": "テーブル '{{table}}' にはパラメーター {{parameters}} が必要です。それぞれに値を指定してください（SQL ではその列に対する WHERE 条件、GraphQL では引数）。",
+      "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -201,7 +205,8 @@
       "empty_answer": "モデルはテキストを返しませんでした。"
     },
     "environments": {
-      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。"
+      "in_use": "{{env}} はまだ {{count}} 件から参照されています。それぞれを削除または変更してから、もう一度削除してください。",
+      "owner_not_member": "{{user}} は環境 {{env}} を作成しましたが、{{org}} のメンバーではありません。所有者としてこの環境で操作するにはメンバーシップが必要です。"
     },
     "front_door": {
       "coordinator_waking": "環境を起動しています。約 5 分で準備が整います。",
@@ -344,7 +349,9 @@
       "org_selection_required": "組織の選択が必要です",
       "already_exists": "ロール '{{role}}' はすでに存在します",
       "description_missing": "ロール '{{role}}' には目的の説明が必要です",
-      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません"
+      "right_not_in_parents": "ロール {{role}} は {{right}} を持てません: どの親も持っていません",
+      "platform_right_requires_platform_admin": "{{rights}} を含むロールはプラットフォーム管理者が定義します",
+      "rights_not_held": "ロール {{role}} には、あなたが持っていない {{rights}} が含まれています"
     },
     "schema": {
       "allowed_domains_updated": "ソース「{{source}}」の許可ドメインを更新しました",
@@ -615,10 +622,14 @@
       "schema_not_avro": "レジストリ {{registry}} のスキーマ {{schema_id}} は {{kind}} で、Avro ではありません",
       "schema_registry_error": "スキーマレジストリ {{registry}} が HTTP {{http_status}} を返しました: {{error}}",
       "schema_registry_refused_credentials": "スキーマレジストリ {{registry}} がソースの資格情報を拒否しました（HTTP {{http_status}}、認証 '{{method}}'）",
-      "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
+      "schema_registry_unreachable": "スキーマレジストリに接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
-      "unknown_role": "不明なロール「{{role}}」です"
+      "unknown_role": "不明なロール「{{role}}」です",
+      "owner_role_lost": "サブスクリプションは終了しました: 所有者が、開始時のロールを保持していません ({{roles}})",
+      "sink_cap_reached": "実行中の Kafka シンクはすでに {{cap}} 個あり、オペレーターが許可する上限です ({{setting}})",
+      "sink_needs_write": "ロール「{{role}}」には、Kafka シンクに必要な書き込み権限がありません",
+      "owner_sign_in_expired": "サブスクリプションは終了しました: 開始時のサインインの有効期限が切れました。もう一度サインインして開始し直してください"
     },
     "users": {
       "assignment_not_found": "割り当てが見つかりません",
@@ -662,7 +673,6 @@
       "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
       "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
       "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。",
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
@@ -889,6 +899,22 @@
     "preflight": {
       "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
       "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
+    },
+    "redaction": {
+      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
+      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
+      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
+      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
+      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
+    },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} はアップロードされたプロジェクトの外にあります。プロジェクトは自身のファイルのみを読み取ります。",
+      "filter_value_refused": "{{value}} は権限フィルターの値にできません。値は文字列、数値、true、false、null、それらのリスト、またはセッション変数です。",
+      "filter_operator_refused": "{{operator}} は権限フィルターを変換できる演算子ではありません。"
     }
   }
 }

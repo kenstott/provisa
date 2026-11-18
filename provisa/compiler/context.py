@@ -198,11 +198,26 @@ def _register_table_in_ctx(
     ctx.native_filter_columns[t.table_id] = {
         nfc["column_name"]: _nfc_type(nfc) for nfc in t.native_filter_columns
     }
-    from provisa.core.parameters import parameter_facts
+    from provisa.core.parameters import parameter_facts, parameter_names
 
     ctx.parameters[t.table_id] = tuple(
         parameter_facts({**nfc, "data_type": _nfc_type(nfc)} for nfc in t.native_filter_columns)
     )
+    # A name a result column is read by stays that column's.
+    taken = [
+        name
+        for col in t.visible_columns
+        for name in (
+            col["column_name"],
+            col.get("alias") or "",
+            apply_sql_name(col["column_name"]),
+            apply_gql_name(col["column_name"], getattr(t, "gql_convention_override", None)),
+        )
+        if name
+    ]
+    names = parameter_names(t.native_filter_columns, taken)
+    if names:
+        ctx.parameter_names[t.table_id] = names
 
     for col in t.visible_columns:
         phys = col["column_name"]

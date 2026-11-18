@@ -684,7 +684,10 @@ def catalog_functions(
     type that differs, a function not served, or a refusal of this server's state (``refused_here``,
     no proof PostgreSQL cannot call it) that Provisa does not answer with the same error. A Provisa
     server is in that state, so that error is its answer (REQ-2171): it passes on its SQLSTATE and
-    message. What stays failed is taken by family."""
+    message. A call the validator refuses for reading or acting on its server (REQ-001, V007, read
+    by function_probe.not_served, as the function measure reads it) is skipped by design whatever
+    PostgreSQL answers, its refusal of this server's state included: it is so on every engine.
+    What stays failed is taken by family."""
     declared = function_probe.families()
     fns = pg_functions(pg)
     matching: list[str] = []
@@ -692,6 +695,7 @@ def catalog_functions(
     not_served: dict[str, str] = {}
     not_callable: dict[str, str] = {}
     refused_here: dict[str, str] = {}
+    server_functions: dict[str, str] = {}
     for fn in fns:
         sql = function_probe.call(fn)
         if sql is None:
@@ -702,14 +706,25 @@ def catalog_functions(
             why = f"PostgreSQL refuses the call: {want.get('error') or 'no result column'}"
             if function_probe.proves_internal(why):
                 not_callable[fn.signature] = why
-            elif want["ok"] or not same_refusal(want, called(provisa, fn, sql)):
+                continue
+            got = None if want["ok"] else called(provisa, fn, sql)
+            if (
+                got is not None
+                and not got["ok"]
+                and function_probe.not_served(fn.name, got["error"])
+            ):
+                server_functions[fn.signature] = f"{got['error']} ({why})"
+            elif got is None or not same_refusal(want, got):
                 refused_here[fn.signature] = why
             else:
                 matching.append(fn.signature)
             continue
         got = called(provisa, fn, sql)
         if not got["ok"]:
-            not_served[fn.signature] = got["error"]
+            refusals = (
+                server_functions if function_probe.not_served(fn.name, got["error"]) else not_served
+            )
+            refusals[fn.signature] = got["error"]
             continue
         expected = want["fields"][0]["type_oid"]
         oid = got["fields"][0]["type_oid"] if got["fields"] else None
@@ -725,6 +740,10 @@ def catalog_functions(
         **{signature: f"not served: {error}" for signature, error in not_served.items()},
         **{signature: f"no call reaches it: {why}" for signature, why in not_callable.items()},
         **refused_here,
+        **{
+            signature: f"{by_design.SERVER_FUNCTION_REASON}{error}"
+            for signature, error in server_functions.items()
+        },
     }
     unmet = [
         {
@@ -758,6 +777,7 @@ def catalog_functions(
         "not_served": dict(sorted(not_served.items())),
         "not_callable": dict(sorted(not_callable.items())),
         "refused_here": dict(sorted(refused_here.items())),
+        "server_functions": dict(sorted(server_functions.items())),
         "failures_by_family": {
             family: {"count": len(functions), "functions": functions}
             for family, functions in sorted(by_family.items())

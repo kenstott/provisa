@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen mit {{threshold}} % oder mehr sind anfangs angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
+    "intro": "Eine angehakte Zeile wird beim Anwenden akzeptiert. Zeilen, deren Bewertung mindestens die Schwelle erreicht, sind von Anfang an angehakt. Eine Zeile ohne Haken bleibt unentschieden.",
     "colScore": "Bewertung",
+    "colModel": "Modell",
     "colJev": "Jev",
     "colKind": "Art",
+    "colMeasure": "Gemessen",
     "colReasoning": "Begründung",
     "colNote": "Hinweis",
     "colNotAgain": "Nicht erneut empfehlen",
@@ -25,7 +27,7 @@
       "invalid_shape": "Keine Beziehung in der verlangten Form: Ein Feld fehlt oder hat die falsche Form",
       "unknown_column": "Nennt eine Tabelle oder Spalte, die die Anfrage nicht verglichen hat",
       "not_comparable": "Die beiden Spalten haben unterschiedliche Klassen und werden daher nicht verglichen",
-      "below_threshold": "Die Konfidenz des Modells liegt unter der Schwelle von {{threshold}} %.",
+      "below_threshold": "Unter den {{threshold}} % bewertet, ab denen ein Vorschlag behalten wird.",
       "same_column": "Von einer Spalte zu sich selbst",
       "primary_key_to_primary_key": "Primärschlüssel zu Primärschlüssel",
       "both_repeating": "Werte wiederholen sich auf beiden Seiten, daher ist keine die Eins-Seite",
@@ -34,7 +36,33 @@
       "rejected": "Zuvor abgelehnt",
       "matches_foreign_key": "Entspricht einem in diesem Lauf gefundenen Fremdschlüssel",
       "out_of_scope": "Außerhalb der gewählten Quell- und Zieltabellen",
-      "weaker": "Ein stärkerer Vorschlag für dieselben zwei Spalten wurde behalten"
-    }
+      "weaker": "Ein stärkerer Vorschlag für dieselben zwei Spalten wurde behalten",
+      "many_to_many": "Keine der beiden Spalten ist ein Schlüssel"
+    },
+    "threshold": "Anhaken ab",
+    "thresholdHint": "Ihre eigene Schwelle, für Ihre nächsten Läufe gespeichert.",
+    "measure": {
+      "inTarget": "{{found}} von {{values}} Quellwerten im Ziel.",
+      "inTargetFirst": "{{found}} der ersten {{values}} Quellwerte im Ziel.",
+      "inSource": "{{found}} von {{values}} Zielwerten in der Quelle.",
+      "inSourceFirst": "{{found}} der ersten {{values}} Zielwerte in der Quelle.",
+      "both": "Beide Spalten sind Schlüssel.",
+      "target": "Das Ziel ist ein Schlüssel.",
+      "source": "Die Quelle ist ein Schlüssel.",
+      "neither": "Keine der beiden Spalten ist ein Schlüssel.",
+      "notRead": {
+        "source": "Die Quelle wurde nicht gelesen: Ihre Tabelle erfordert einen Parameter.",
+        "target": "Das Ziel wurde nicht gelesen: Seine Tabelle erfordert einen Parameter."
+      },
+      "notReadable": {
+        "source": "Sie können die Quellspalte nicht lesen.",
+        "target": "Sie können die Zielspalte nicht lesen."
+      },
+      "noValues": "Die Quelle enthält keine Werte.",
+      "modelScore": "Vom Modell bewertet: Es wurden keine Werte verglichen."
+    },
+    "dimensionMade": "Beim Akzeptieren entsteht die gemeinsame Dimension {{name}}, mit der beide Spalten verknüpft werden.",
+    "dimensionJoined": "Beim Akzeptieren werden beide Spalten mit der gemeinsamen Dimension {{name}} verknüpft.",
+    "twoDimensions": "Ihre Spalten sind bereits mit zwei verschiedenen gemeinsamen Dimensionen verknüpft, daher kann sie nicht akzeptiert werden."
   }
 }

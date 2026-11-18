@@ -16,7 +16,7 @@ import { Box, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useAuth } from "../context/AuthContext";
 import { fetchBootstrapStatus } from "../api/admin";
 import { visitorActive } from "../lib/browserStorage";
-import { clearSessionState } from "../lib/session";
+import { endSession } from "../lib/session";
 import { storedToken } from "../lib/sessionToken";
 import { PageLoading } from "./PageLoading";
 import { JoinNotice } from "./JoinNotice";
@@ -75,9 +75,9 @@ export function OnboardGate({
   useEffect(() => {
     if (!credentialRejected) return;
     // REQ-1326: this ends the session, so it clears what a sign-out clears. Dropping the token
-    // alone left provisa_org/provisa_role and the persisted Apollo snapshot for the next identity.
-    clearSessionState();
-    onSessionExpired();
+    // alone left provisa_org/provisa_role and the persisted Apollo snapshot for the next identity,
+    // and a live Firebase session minting the refused bearer again (endSession).
+    void endSession().then(onSessionExpired);
   }, [credentialRejected, onSessionExpired]);
 
   // REQ-1292: an unclaimed platform-admin slot outranks org onboarding. A browser that still holds
@@ -109,9 +109,9 @@ export function OnboardGate({
   useEffect(() => {
     if (!firstLoginPending) return;
     // REQ-1326: same as above — an unclaimed admin slot invalidates the whole session, not just
-    // the credential. A stale provisa_org here rides on X-Org-Provisa into the claiming sign-in.
-    clearSessionState();
-    onSessionExpired();
+    // the credential. A stale provisa_org here rides on X-Org-Provisa into the claiming sign-in, and
+    // a Firebase session left signed in keeps a bearer on every request the sign-in page makes.
+    void endSession().then(onSessionExpired);
   }, [firstLoginPending, onSessionExpired]);
 
   if (slotError) {

@@ -25,8 +25,9 @@ The query compiler's order, on every surface: query -> ONE semantic SQL statemen
 * A view applying a column transform (REQ-2131) or calling a code command (REQ-2249) is landed
   and read only from its stored table, by every reader, as the registered table it is; the
   V-rules judge its definition for the reader (:func:`lands_stored_read`). Right after governance
-  (:func:`read_stored_views`) a transform view's reference is read under the reader's row rules on
-  its inputs and its masks (:mod:`provisa.mv.transform_view_rules`); no transform runs on a read.
+  (:func:`read_stored_views`) such a view's reference is read under the reader's row rules on
+  its inputs and its masks (:mod:`provisa.mv.transform_view_rules`); no transform or command runs
+  on a read.
 * A view that names another region (REQ-1921) is read from the copy that region keeps, by every
   reader, with the view's own rules on top: its inputs are not read here. A request-level as-of
   reads a bitemporal view from its append log (REQ-1163).
@@ -273,12 +274,12 @@ def _answered_after_governance(
 
 
 def _mentions(text: str, view: str) -> bool:
-    """Whether ``text`` may read ``view``: its name appears; for a view keyed ``schema.name`` (an
-    ontology Class, REQ-2163), its name under that schema, quoted or not."""
-    if "." not in view:
-        return view in text
-    schema, name = view.split(".", 1)
-    return view in text or f'"{schema}"."{name}"' in text
+    """Whether ``text`` reads ``view``: a reference to it as a table, quoted or not, which is what
+    its expansion replaces (``compiler.view_expand.reads_view``). A column named like the view (a
+    shared dimension is named for its column, REQ-413) is not a read of it."""
+    from provisa.compiler.view_expand import reads_view  # noqa: PLC0415
+
+    return reads_view(text, view)
 
 
 def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:
@@ -473,35 +474,40 @@ def read_views_at(sql: str, state: Any, travel: Any) -> str:
     return tree.sql(dialect="postgres") if changed else sql
 
 
-def _transform_views(state: Any) -> dict[str, str]:
-    """The stored views applying a column transform (REQ-2131), each with its definition."""
-    from provisa.codesource.columns_fold import called  # noqa: PLC0415
-
-    transforms = getattr(state, "column_transforms", None) or {}
+def _stored_views(state: Any) -> dict[str, str]:
+    """The stored views -- applying a column transform (REQ-2131) or calling a code command
+    (REQ-2249) -- each with its definition."""
     stored = _stored_reads(state)
-    if not stored or not transforms:
+    if not stored:
         return {}
     definitions = _definitions(state.view_sql_map, state)
-    return {view: definitions[view] for view in stored if called(definitions[view], transforms)}
+    return {view: definitions[view] for view in stored}
 
 
-def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> str:
-    """REQ-2131 (amended 2026-11-16): the governed ``sql`` with each reference to a view applying a
-    column transform read under the reader's rules: its row rules on the view's inputs filter the
-    stored rows, over the input columns the build kept, and an output computed from a column
-    masked for the reader is masked as that column is (:func:`transform_view_rules.reader_rows`).
-    The reference stays inside, so optimization answers it from the stored table as for every
-    reader; a reader whose rules narrow none of the view's inputs is left reading it as it is.
-    Applied to the governed statement, as a row rule is: Provisa's own read of the kept columns,
-    which no reader is offered."""
-    views = _transform_views(state)
+async def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> str:
+    """REQ-2131 (amended 2026-11-16), REQ-2249: the governed ``sql`` with each reference to a
+    stored view -- applying a column transform or calling a code command -- read under the
+    reader's rules: its row rules on the view's inputs filter the stored rows, over the input
+    columns its stored table holds, and an output computed from a column masked for the reader is
+    masked as that column is (:func:`transform_view_rules.reader_rows`). The reference stays
+    inside, so optimization answers it from the stored table as for every reader; a reader whose
+    rules narrow none of the view's inputs is left reading it as it is. Applied to the governed
+    statement, as a row rule is: Provisa's own read of the kept columns, which no reader is
+    offered."""
+    views = _stored_views(state)
     if not views:
         return sql
     import sqlglot  # noqa: PLC0415
     from sqlglot import exp  # noqa: PLC0415
 
-    from provisa.mv.transform_view_rules import reader_rows  # noqa: PLC0415
+    from provisa.mv.transform_view_rules import (  # noqa: PLC0415
+        filters_rows,
+        reader_rows,
+        stored_rule_inputs,
+    )
+    from provisa.pgwire._pipeline import view_commands  # noqa: PLC0415
 
+    commands = view_commands(state)
     definitions = _definitions(state.view_sql_map, state)
     tree = sqlglot.parse_one(sql, read="postgres")
     changed = False
@@ -512,8 +518,24 @@ def read_stored_views(sql: str, state: Any, gov: "GovernanceContext") -> str:
         if named is None:
             # Governance admitted the reference, so the reader's table map holds the view.
             raise RuntimeError(f"view {node.name!r} is read but registered for no table")
+        definition = views[node.name]
+        held = None
+        if filters_rows(definition, gov):
+            # A stored view is registered with its build (app_rebuild: landed, declared or not).
+            mv = state.mv_registry.get(f"view-{node.name}")
+            if mv is None:
+                raise RuntimeError(f"stored view {node.name!r} has no build registered")
+            held = await stored_rule_inputs(mv, state)
         read = reader_rows(
-            node.name, gov.table_map[named], node, views[node.name], gov, state, definitions
+            node.name,
+            gov.table_map[named],
+            node,
+            definition,
+            gov,
+            state,
+            definitions,
+            commands,
+            held,
         )
         if read is None:
             continue

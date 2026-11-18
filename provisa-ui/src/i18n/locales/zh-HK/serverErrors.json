@@ -56,7 +56,8 @@
       "username_exists": "使用者名稱已存在",
       "not_permitted": "不允許",
       "token_scopes_required": "請至少為權杖選擇一個角色。",
-      "token_scope_not_held": "權杖只能使用您擁有的角色。"
+      "token_scope_not_held": "權杖只能使用您擁有的角色。",
+      "no_role_held": "'{{user}}' 在此組織中沒有任何角色"
     },
     "authz": {
       "mutation_not_permitted": "不允許執行變更「{{field_name}}」：{{reason}}"
@@ -163,7 +164,10 @@
       "parameter_conflict": "參數 {{parameter}} 同時被賦予兩個不同的值({{first}} 和 {{second}})。請只給它一個值,或用 IN 或 OR 列出這些值。",
       "parameter_calls_over_cap": "該語句需要對 {{table}} 發出 {{calls}} 次呼叫(其參數的每個值一次),而一條語句最多發出 {{cap}} 次(設定 {{setting}})。請減少值的數量。",
       "parameter_not_written": "關係 {{relationship}} 透過參數 {{parameter}} 連接,語句將該參數綁定到一個值,從不寫入它。寫入操作不會建立 {{relationship}}。",
-      "table_is_withdrawn": "{{table}} 已撤下：在恢復之前不在生產中"
+      "table_is_withdrawn": "{{table}} 已撤下：在恢復之前不在生產中",
+      "view_awaits_rule_rebuild": "由於其輸入的行規則有變更，檢視 {{view}} 正在重新建置。該建置發佈後，此角色即可讀取。",
+      "parameter_required": "表 '{{table}}' 需要參數 {{parameters}}：為每個參數提供一個值（在 SQL 中是對其欄的 WHERE 條件，在 GraphQL 中是一個引數）。",
+      "parameter_wrong_type": "參數 {{parameter}} 接受 {{type}} 類型的值；'{{value}}' 不是該類型。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」的配接器未實作 discover_schema",
@@ -201,7 +205,8 @@
       "empty_answer": "模型未傳回任何文字。"
     },
     "environments": {
-      "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。"
+      "in_use": "仍有 {{count}} 項引用 {{env}}。請移除或更改每一項，然後再次刪除。",
+      "owner_not_member": "{{user}} 建立了環境 {{env}}，但不是 {{org}} 的成員；以擁有者身分在其中操作需要成員資格。"
     },
     "front_door": {
       "coordinator_waking": "環境正在啟動，大約五分鐘後就緒。",
@@ -344,7 +349,9 @@
       "org_selection_required": "需要選取組織",
       "already_exists": "角色 '{{role}}' 已存在",
       "description_missing": "角色 '{{role}}' 需要說明其用途",
-      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它"
+      "right_not_in_parents": "角色 {{role}} 不能持有 {{right}}：沒有父角色持有它",
+      "platform_right_requires_platform_admin": "包含 {{rights}} 的角色由平台管理員定義",
+      "rights_not_held": "角色 {{role}} 包含 {{rights}}，而您不持有這些權限"
     },
     "schema": {
       "allowed_domains_updated": "已更新數據來源「{{source}}」的允許領域",
@@ -615,10 +622,14 @@
       "schema_not_avro": "註冊表 {{registry}} 中的綱要 {{schema_id}} 是 {{kind}}，不是 Avro",
       "schema_registry_error": "綱要註冊表 {{registry}} 回應 HTTP {{http_status}}：{{error}}",
       "schema_registry_refused_credentials": "綱要註冊表 {{registry}} 拒絕了資料來源的憑證（HTTP {{http_status}}，驗證「{{method}}」）",
-      "schema_registry_unreachable": "無法連線綱要註冊表 {{registry}}：{{error}}",
+      "schema_registry_unreachable": "無法連線綱要註冊表：{{error}}",
       "sse_limit_reached": "已達同時 SSE 訂閱上限",
       "table_not_found": "找不到資料表「{{table}}」",
-      "unknown_role": "未知角色「{{role}}」"
+      "unknown_role": "未知角色「{{role}}」",
+      "owner_role_lost": "訂閱已結束：其擁有者不再擁有啟動時所用的角色 ({{roles}})",
+      "sink_cap_reached": "您已有 {{cap}} 個正在運行的 Kafka 接收器，已達營運方允許的上限 ({{setting}})",
+      "sink_needs_write": "角色 '{{role}}' 缺少 Kafka 接收器所需的寫入權限",
+      "owner_sign_in_expired": "訂閱已結束：啟動它時的登入已過期；請重新登入並再次啟動"
     },
     "users": {
       "assignment_not_found": "找不到指派",
@@ -662,7 +673,6 @@
       "invalid_limit": "LIMIT {{value}} 不是整數行數：LIMIT 需要 0 或以上的計數，例如 LIMIT 10。",
       "invalid_skip": "SKIP {{value}} 不是整數行數：SKIP 需要 0 或以上的計數，例如 SKIP 10。",
       "engine_refused": "引擎拒絕了查詢：{{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} 讀取了 {{variable}}，但語句沒有綁定任何變數：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。",
       "undefined_variable_property": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestion}} 嗎？{{owner}} 綁定到 :{{label}}，它有屬性 {{variable}}。",
       "undefined_variable_properties": "{{clause}} 讀取了 {{variable}}，但語句中沒有任何部分綁定它：變數由 MATCH 模式、WITH、UNWIND 或 CALL 綁定。此處已綁定：{{bound}}。 您是指 {{suggestions}} 嗎？它們各自綁定到具有屬性 {{variable}} 的標籤。",
@@ -889,6 +899,22 @@
     "preflight": {
       "confined_unavailable": "{{subject}} 的預檢未執行：在此組織中它只在受限程序中執行，而該程序無法啟動（{{reason}}）。",
       "confined_failed": "{{subject}} 的預檢未傳回結論：其受限程序已先行結束（{{reason}}）。"
+    },
+    "redaction": {
+      "rule_invalid": "遮蔽規則 {{rule}}：{{why}}",
+      "pattern_backtracks": "遮蔽規則 {{rule}}：此模式可能導致災難性回溯（無界重複中巢狀的重複，或其中可能以相同文字開頭的分支）。請改寫為不含此結構的形式。",
+      "pattern_unsupported": "遮蔽規則 {{rule}}：機構的規則不能使用反向參照、前瞻或後顧斷言、原子組、佔有型重複或條件組。",
+      "pattern_too_large": "遮蔽規則 {{rule}}：展開重複後模式過大。請使用較少的重複次數。",
+      "server_reference": "遮蔽規則 {{rule}}：此伺服器上的機構不能參照伺服器的環境。請使用機構自己保管庫中的 ${secret:NAME}。"
+    },
+    "debug_logs": {
+      "pattern_refused": "日誌篩選模式被拒絕：{{why}}",
+      "pattern_exceeded": "日誌篩選模式被拒絕：在一行 {{length}} 個字元的日誌上超出了其步數上限（{{steps}} 步）。"
+    },
+    "import": {
+      "include_outside_upload": "{{path}} 位於上傳的項目之外；項目只讀取自身的檔案。",
+      "filter_value_refused": "{{value}} 不能作為權限篩選器中的值：值是字串、數字、true、false、null、它們的列表或工作階段變數。",
+      "filter_operator_refused": "{{operator}} 不是可用於轉換權限篩選器的運算子。"
     }
   }
 }

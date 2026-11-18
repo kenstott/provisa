@@ -125,7 +125,7 @@ _ARGUMENT = "Neo.ClientError.Statement.ArgumentError"
 def _refusals() -> list[tuple[str, BaseException, str]]:
     """(id, the refusal, the code it is answered with), one per class."""
     from provisa.compiler.sql_validator import GovernanceRefused, ValidationViolation
-    from provisa.core.parameters import ParameterRequired
+    from provisa.core.parameter_binding import ParameterRequired
     from provisa.cypher.command_call import CommandCallRefused
     from provisa.cypher.expr_parser import CypherExprParseError
     from provisa.cypher.params import CypherParamError
@@ -164,7 +164,7 @@ def _refusals() -> list[tuple[str, BaseException, str]]:
         ("path", PathTranslateError("a path needs a relationship"), _SYNTAX),
         ("path-depth", PathDepthExceeded(10), _SYNTAX),
         ("assembly", CypherAssemblyError("Malformed JSON in column 'n'"), _SYNTAX),
-        ("parameter-required", ParameterRequired("orders", "region"), _SYNTAX),
+        ("parameter-required", ParameterRequired("orders", ["region"]), _SYNTAX),
         ("replica-building", ReplicaBuilding("sales_pg", 12.0), _SYNTAX),
         (
             "engine",

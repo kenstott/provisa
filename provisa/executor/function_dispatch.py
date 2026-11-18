@@ -90,7 +90,12 @@ async def _http_call(
     """Invoke an http-kind function endpoint, return the decoded JSON body."""
     import httpx
 
-    async with httpx.AsyncClient(timeout=timeout) as client:
+    from provisa.security import sandbox_egress
+
+    # REQ-2006: a held org's call reaches public destinations only, each request checked.
+    async with httpx.AsyncClient(
+        timeout=timeout, event_hooks=sandbox_egress.http_event_hooks()
+    ) as client:
         resp = await client.request(method, url, json=payload, headers=headers)
     resp.raise_for_status()
     return resp.json()
@@ -305,7 +310,8 @@ def _require(
 # Egress control (REQ-885 security_constraint) — deny-by-default allow-list.   #
 # --------------------------------------------------------------------------- #
 
-# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress.
+# Loopback is the Provisa pgwire boundary — implicitly reachable, never external egress, on an
+# install whose org is not held (REQ-2006: a held org's call reaches public destinations only).
 _LOOPBACK_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "[::1]"})
 
 
@@ -322,18 +328,31 @@ def _endpoint_host(endpoint: str, kind: str) -> tuple[str, str]:
     return host, endpoint
 
 
+def _endpoint_port(hostport: str) -> int | None:
+    """The port a ``host:port`` names, or None when it names none."""
+    port = hostport.rpartition(":")[2] if ":" in hostport else ""
+    return int(port) if port.isdigit() else None
+
+
 def _check_egress(state, endpoint: str, kind: str) -> None:
     """Refuse an external call whose host is not on the deny-by-default egress allow-list.
 
     The allow-list (``state.udf_egress_allowlist``) enumerates the http/grpc endpoints a
     deployment permits hosted functions to reach; loopback (Provisa pgwire) is always
     allowed. An empty/absent list denies all external egress — no silent default (REQ-885).
+
+    For a held org (``sandbox_egress.held``) loopback is not exempt, and a host on the list is
+    reached only when every address it resolves to is public (REQ-2006, amended 2026-11-16).
     """
+    from provisa.security import sandbox_egress
+
     host, hostport = _endpoint_host(endpoint, kind)
-    if host in _LOOPBACK_HOSTS:
+    held = sandbox_egress.held_here()
+    if host in _LOOPBACK_HOSTS and not held:
         return
     allowlist = getattr(state, "udf_egress_allowlist", None) or []
     if host in allowlist or hostport in allowlist:
+        sandbox_egress.require_allowed(host, _endpoint_port(hostport))
         return
     raise ApiError(
         403,

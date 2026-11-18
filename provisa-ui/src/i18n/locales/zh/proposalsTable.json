@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "应用时会接受已勾选的行。评分为 {{threshold}}% 或以上的行默认勾选。两个框都未勾选的行保持未决定。",
+    "intro": "应用时会接受已勾选的行。评分至少达到阈值的行默认勾选。两个框都未勾选的行保持未决定。",
     "colScore": "评分",
+    "colModel": "模型",
     "colJev": "Jev",
     "colKind": "类型",
+    "colMeasure": "测量结果",
     "colReasoning": "理由",
     "colNote": "备注",
     "colNotAgain": "不再推荐",
@@ -25,7 +27,7 @@
       "invalid_shape": "不是所要求形式的关系：缺少字段或字段形式有误",
       "unknown_column": "引用了请求未比较的表或列",
       "not_comparable": "两列的类别不同，因此不作比较",
-      "below_threshold": "模型的置信度低于 {{threshold}}% 的阈值。",
+      "below_threshold": "评分低于保留建议所需的 {{threshold}}%。",
       "same_column": "从某列指向其自身",
       "primary_key_to_primary_key": "主键到主键",
       "both_repeating": "两侧均有重复值，因此任何一侧都不是“一”的一方",
@@ -34,7 +36,33 @@
       "rejected": "之前已拒绝",
       "matches_foreign_key": "与本次运行中找到的外键相同",
       "out_of_scope": "不在所选的源表和目标表之内",
-      "weaker": "同样两列已保留了更强的提议"
-    }
+      "weaker": "同样两列已保留了更强的提议",
+      "many_to_many": "两列都不是键"
+    },
+    "threshold": "勾选起点",
+    "thresholdHint": "你自己的阈值，会为你之后的运行保留。",
+    "measure": {
+      "inTarget": "源的 {{values}} 个值中有 {{found}} 个在目标中。",
+      "inTargetFirst": "源的前 {{values}} 个值中有 {{found}} 个在目标中。",
+      "inSource": "目标的 {{values}} 个值中有 {{found}} 个在源中。",
+      "inSourceFirst": "目标的前 {{values}} 个值中有 {{found}} 个在源中。",
+      "both": "两列都是键。",
+      "target": "目标是键。",
+      "source": "源是键。",
+      "neither": "两列都不是键。",
+      "notRead": {
+        "source": "未读取源：其表需要参数。",
+        "target": "未读取目标：其表需要参数。"
+      },
+      "notReadable": {
+        "source": "你无法读取源列。",
+        "target": "你无法读取目标列。"
+      },
+      "noValues": "源中没有值。",
+      "modelScore": "模型评分：未比较任何值。"
+    },
+    "dimensionMade": "接受后会创建共享维度 {{name}}，两列都与其关联。",
+    "dimensionJoined": "接受后，两列都会关联到共享维度 {{name}}。",
+    "twoDimensions": "其列已关联到两个不同的共享维度，因此无法接受。"
   }
 }

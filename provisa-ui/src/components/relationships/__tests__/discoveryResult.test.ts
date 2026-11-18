@@ -67,7 +67,7 @@ describe("discoveryResultLines", () => {
     expect(why("requests_failed")).not.toContain("proposed no relationships");
     expect(why("none_proposed")).toBe("Semantics: none. The model proposed no relationships.");
     expect(why("below_threshold")).toBe(
-      "Semantics: none. Every suggestion was below the 70% confidence threshold.",
+      "Semantics: none. Every proposal scored under the 70% a suggestion is kept at.",
     );
     expect(why("filtered")).toBe(
       "Semantics: none. Every suggestion was left out, for the reasons below.",
@@ -302,7 +302,7 @@ describe("discoveryResultLines", () => {
     ]);
   });
 
-  it("counts the model's own low confidence and the other reasons, Jev's apart", () => {
+  it("counts what scored under the threshold and the other reasons, Jev's apart", () => {
     const lines = found(
       report({
         removed: { weaker: 2 },
@@ -324,7 +324,7 @@ describe("discoveryResultLines", () => {
       "Jev scored 1 proposal under 70%. It is shown beside the model's score, which decides.",
     );
     expect(lines[lines.length - 1]).toBe(
-      "Not suggested: given less than 70% confidence by the model (4), " +
+      "Not suggested: scored less than 70% (4), " +
         "between columns of different classes (5), " +
         "repeating a pair of columns a stronger proposal was kept for (2).",
     );

@@ -56,7 +56,8 @@
       "username_exists": "Gebruikersnaam bestaat al",
       "not_permitted": "Niet toegestaan",
       "token_scopes_required": "Kies ten minste één rol voor het token.",
-      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt."
+      "token_scope_not_held": "Een token kan alleen rollen gebruiken die u hebt.",
+      "no_role_held": "'{{user}}' heeft geen rol in deze organisatie"
     },
     "authz": {
       "mutation_not_permitted": "Mutatie '{{field_name}}' niet toegestaan: {{reason}}"
@@ -163,7 +164,10 @@
       "parameter_conflict": "De parameter {{parameter}} krijgt tegelijk twee verschillende waarden ({{first}} en {{second}}). Geef hem één waarde, of som de waarden op met IN of OR.",
       "parameter_calls_over_cap": "Het statement heeft {{calls}} aanroepen naar {{table}} nodig, één voor elke waarde van zijn parameters, en per statement worden er hoogstens {{cap}} gedaan (instelling {{setting}}). Geef minder waarden op.",
       "parameter_not_written": "De relatie {{relationship}} koppelt op de parameter {{parameter}}, die een statement aan een waarde bindt en nooit schrijft. Een schrijfactie maakt {{relationship}} niet aan.",
-      "table_is_withdrawn": "{{table}} is teruggetrokken: buiten productie tot hij wordt teruggezet"
+      "table_is_withdrawn": "{{table}} is teruggetrokken: buiten productie tot hij wordt teruggezet",
+      "view_awaits_rule_rebuild": "De view {{view}} wordt opnieuw opgebouwd vanwege een wijziging in de rijregels op de invoer. Deze rol kan hem lezen zodra die build is gepubliceerd.",
+      "parameter_required": "Tabel '{{table}}' vereist de parameter(s) {{parameters}}: geef elk een waarde (een WHERE-voorwaarde op de kolom in SQL, een argument in GraphQL).",
+      "parameter_wrong_type": "De parameter {{parameter}} neemt een waarde van type {{type}}; '{{value}}' is dat niet."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter voor '{{source_type}}' implementeert discover_schema niet",
@@ -201,7 +205,8 @@
       "empty_answer": "Het model gaf geen tekst terug."
     },
     "environments": {
-      "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw."
+      "in_use": "Naar {{env}} wordt nog verwezen door {{count}} item(s). Verwijder of wijzig elk daarvan en verwijder daarna opnieuw.",
+      "owner_not_member": "{{user}} heeft omgeving {{env}} gemaakt, maar is geen lid van {{org}}; om erin als eigenaar te handelen is lidmaatschap vereist."
     },
     "front_door": {
       "coordinator_waking": "De omgeving wordt gestart. Deze is over ongeveer vijf minuten gereed.",
@@ -344,7 +349,9 @@
       "org_selection_required": "Organisatieselectie vereist",
       "already_exists": "Rol '{{role}}' bestaat al",
       "description_missing": "De rol '{{role}}' heeft een beschrijving nodig van waar hij voor is",
-      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het"
+      "right_not_in_parents": "Rol {{role}} kan {{right}} niet hebben: geen enkele ouder heeft het",
+      "platform_right_requires_platform_admin": "Een rol met {{rights}} wordt gedefinieerd door een platformbeheerder",
+      "rights_not_held": "Rol {{role}} bevat {{rights}}, die u niet hebt"
     },
     "schema": {
       "allowed_domains_updated": "Toegestane domeinen bijgewerkt voor bron '{{source}}'",
@@ -615,10 +622,14 @@
       "schema_not_avro": "Schema {{schema_id}} in registry {{registry}} is {{kind}}, geen Avro",
       "schema_registry_error": "Schema-registry {{registry}} antwoordde met HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Schema-registry {{registry}} weigerde de inloggegevens van de bron (HTTP {{http_status}}, authenticatie '{{method}}')",
-      "schema_registry_unreachable": "Schema-registry {{registry}} is niet bereikbaar: {{error}}",
+      "schema_registry_unreachable": "Schema-registry is niet bereikbaar: {{error}}",
       "sse_limit_reached": "maximum aantal gelijktijdige SSE-abonnementen bereikt",
       "table_not_found": "Tabel '{{table}}' niet gevonden",
-      "unknown_role": "Onbekende rol '{{role}}'"
+      "unknown_role": "Onbekende rol '{{role}}'",
+      "owner_role_lost": "Het abonnement is beëindigd: de eigenaar heeft niet langer de rol waaronder het is gestart ({{roles}})",
+      "sink_cap_reached": "U hebt al {{cap}} actieve Kafka-sinks, het maximum dat de operator toestaat ({{setting}})",
+      "sink_needs_write": "Rol '{{role}}' mist het schrijfrecht dat een Kafka-sink nodig heeft",
+      "owner_sign_in_expired": "Het abonnement is beëindigd: de aanmelding waaronder het is gestart, is verlopen; meld u opnieuw aan en start het opnieuw"
     },
     "users": {
       "assignment_not_found": "Toewijzing niet gevonden",
@@ -662,7 +673,6 @@
       "invalid_limit": "LIMIT {{value}} is geen geheel aantal rijen: LIMIT verwacht een aantal van 0 of meer, bijv. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} is geen geheel aantal rijen: SKIP verwacht een aantal van 0 of meer, bijv. SKIP 10.",
       "engine_refused": "De engine heeft de query geweigerd: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} leest {{variable}}, maar de opdracht bindt geen enkele variabele: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL.",
       "undefined_variable_property": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestion}}? {{owner}} is gebonden aan :{{label}}, dat een eigenschap {{variable}} heeft.",
       "undefined_variable_properties": "{{clause}} leest {{variable}}, die nergens in de opdracht wordt gebonden: een variabele wordt gebonden door een MATCH-patroon, WITH, UNWIND of CALL. Hier gebonden: {{bound}}. Bedoelde u {{suggestions}}? Elk is gebonden aan een label met een eigenschap {{variable}}.",
@@ -889,6 +899,22 @@
     "preflight": {
       "confined_unavailable": "De voorcontrole van {{subject}} is niet uitgevoerd: in deze organisatie draait ze alleen in een afgeschermd proces, en zo'n proces kon niet worden gestart ({{reason}}).",
       "confined_failed": "De voorcontrole van {{subject}} gaf geen oordeel: het afgeschermde proces eindigde eerder ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Redactieregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Redactieregel {{rule}}: het patroon kan catastrofaal terugzoeken (een herhaling genest in een onbegrensde herhaling, of alternatieven daarin die met dezelfde tekst kunnen beginnen). Herschrijf het zonder die vorm.",
+      "pattern_unsupported": "Redactieregel {{rule}}: de regel van een organisatie kan geen terugverwijzingen, lookahead of lookbehind, atomaire groepen, bezittelijke herhalingen of voorwaardelijke groepen gebruiken.",
+      "pattern_too_large": "Redactieregel {{rule}}: het patroon is te groot als de herhalingen worden uitgeschreven. Gebruik een kleiner aantal herhalingen.",
+      "server_reference": "Redactieregel {{rule}}: een organisatie op deze server kan niet verwijzen naar de omgeving van de server. Gebruik ${secret:NAME} uit de eigen kluis van de organisatie."
+    },
+    "debug_logs": {
+      "pattern_refused": "Het filterpatroon voor logboeken wordt geweigerd: {{why}}",
+      "pattern_exceeded": "Het filterpatroon voor logboeken wordt geweigerd: het overschreed zijn stappenlimiet ({{steps}} stappen) op een logregel van {{length}} tekens."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} ligt buiten het geüploade project; een project leest alleen zijn eigen bestanden.",
+      "filter_value_refused": "{{value}} kan geen waarde in een machtigingsfilter zijn: een waarde is een tekenreeks, een getal, true, false, null, een lijst daarvan of een sessievariabele.",
+      "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     }
   }
 }

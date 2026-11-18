@@ -3701,7 +3701,47 @@
     in its own column. A many-to-many pair (neither side a key) is accepted as a shared dimension: accepting
     it creates a derived table of the pair''s distinct values and a many-to-one relationship from each side
     to it, so both sides join through it on every front door; the dimension is an ordinary view that can
-    be renamed or extended.'
+    be renamed or extended. (Amended 2026-11-16, ONLY PAIRS BETWEEN THE MEASURE CUTOFF AND THE THRESHOLD
+    ARE MEASURED:) Maintainer 2026-11-16. A proposed pair is measured on its data only when the model''s
+    confidence lies between the measure cutoff and the acceptance threshold. Below the cutoff it is never
+    measured and is left out as before; at or above the threshold it is suggested on the model''s confidence
+    and is never measured. A pair in that band whose measure shows matching key values is admitted as a
+    suggestion, and its reason says it was admitted on key values matching in the data, with the measure
+    beside the model''s confidence. The cutoff is set in the discovery dialog beside the threshold, remembered
+    the same way, and defaults to 20%. A run measures every pair in the band; stopping the run is how a
+    person bounds it. (Amended 2026-11-16, THE CHECKS RUN FOREIGN KEYS, SEMANTIC, JEV, THEN THE KEY-VALUE
+    MEASURE:) Maintainer 2026-11-16. A run''s checks go in order of cost: declared foreign keys; the model''s
+    semantic proposals; Jev''s re-score of them where a Jev key is configured, kept beside the model''s
+    confidence; then the key-value measure, of only the pairs in the band between the measure cutoff and
+    the threshold. The band is judged on the model''s confidence, never Jev''s. (Amended 2026-11-16, KEY
+    VALUE OVERLAP IS A THIRD CHOICE IN THE DIALOG, DEPENDING ON SEMANTIC:) Maintainer 2026-11-16. The discovery
+    dialog offers Key value overlap beside Foreign keys and Semantic. It measures the pairs the semantic
+    check proposed, so it is available only while Semantic is chosen; the measure cutoff is set with it
+    and applies only while it is chosen. It is chosen by default and remembered as the threshold is. The
+    run''s summary lists it among what it looked for. Without it, a pair below the threshold is left out
+    as below the threshold, unmeasured. (Amended 2026-11-16, KEY VALUE OVERLAP SHOWS UNDER SEMANTIC, WITH
+    ITS CUTOFF AND SAMPLE SIZE:) Maintainer 2026-11-16. The Key value overlap choice appears in the dialog
+    once Semantic is chosen. Chosen, it shows its two settings: the measure cutoff (default 20%) and the
+    sample size, the most distinct values read of each column for a pair''s measure (default 10,000, the
+    bound used today). Both are remembered as the threshold is, and the run''s summary states them. (Amended
+    2026-11-16, A RUNNING DISCOVERY CAN BE SENT TO THE BACKGROUND BY A BUTTON:) Maintainer 2026-11-16 (''it
+    can take hours ... a Run in Background button''). While a run is going, the dialog offers Run in background
+    beside Stop: it closes the dialog and the run goes on on the server, as it already does when the dialog
+    is closed. The Relationships page then shows the run is going (its progress, as the dialog shows it)
+    with a way to open it again, and shows when it has ended, so a person who left it for hours sees its
+    result on return. (Amended 2026-11-16, THE RUN SUMMARY LIVES IN THE DIALOG, COLLAPSIBLE; THE PAGE SHOWS
+    ONE LINE:) Maintainer 2026-11-16 (''the message at the top should be collapsible''; ''this message seems
+    out of place here''). In the dialog a run''s summary (what it looked for, the model, source and target,
+    the counts and what was left out and why) is collapsible, shown collapsed to its first line once the
+    run has ended. The Relationships page does not show that summary: it shows only one line about the latest
+    run (going, with its progress, or ended, with how many suggestions wait), with a way to open it in the
+    dialog; the line goes once the run''s suggestions are all decided. (Amended 2026-11-16, ONE COLLAPSIBLE
+    RUN BLOCK SHOWS PROGRESS WHILE RUNNING AND THE SUMMARY AFTER:) Maintainer 2026-11-16 (''you could repurpose
+    this to include progress on a run(s)''). The dialog''s collapsible run block is one component for a
+    run''s whole life: while the run is going it shows its progress (requests done of the total, suggestions
+    so far, the model) with Stop and Run in background; when the run ends the same block holds its summary,
+    collapsed to its first line. Its first line is the line the Relationships page shows. Runs going at
+    once are each a line in that block.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -3778,7 +3818,16 @@
   feature: hasura-migration-converters
   priority: MAY
   type: behavioral
-  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.'
+  description: 'The `hasura_v2_relationship_style` option controls whether FK-derived relationships use
+    Hasura V2''s naming conventions: singular for many-to-one, plural for one-to-many using inflection.
+    (Amended 2026-11-16, EVERY GENERATED RELATIONSHIP NAME IS DISAMBIGUATED AUTOMATICALLY:) Maintainer 2026-11-16.
+    When two generated relationships would carry the same name (the relationship''s name, its GraphQL field
+    or its Cypher type, wherever that name must be unique) but join different source and target columns,
+    the names are disambiguated automatically, as foreign-key aliases already are (_by_<column>, then the
+    table where the column alone does not separate them). This holds for every way a relationship is generated:
+    declared foreign keys, discovery''s semantic and measured suggestions, and accepting several suggestions
+    at once, judged against the relationships already registered and the others accepted with it. A name
+    a person typed is never changed; a clash with one is refused by name.'
   use_case: V2-compatible relationship naming enables teams to adopt Hasura conventions without schema
     migration.
   code:
@@ -6720,9 +6769,14 @@
   feature: vector-search-models
   priority: MUST
   type: structural
-  description: A model registry must be declared in Provisa config listing available embedding models
-    with id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
-    cannot be used for embedding generation or query vectorization.
+  description: A model registry must be declared in Provisa config listing available embedding models with
+    id, provider, dimensions, API key env var or base URL, and enabled flag. Models not in the registry
+    cannot be used for embedding generation or query vectorization. (Amended 2026-11-16, EVERY INSTALL SHIPS
+    THE EMBEDDING LIBRARY FOR THE DEFAULT MODEL:) Maintainer 2026-11-16 ('Ship it in every install'). Every
+    install (DMG, AppImage, Windows, the container image, pip provisa[embedded]) carries the library the
+    default embedding model needs (sentence-transformers on a CPU-only torch, never a CUDA build), so the
+    default model works with no added step. A configured model whose library is missing is refused by name
+    at startup, never failing later in a background task.
   use_case: Explicit model registry enables air-gapped deployments and audit trails for embedding model
     usage.
   code:
@@ -25182,7 +25236,11 @@
     its field in the settings UI; a request past the cap is refused. The cap''s default value is not settled.
     (Amended 2026-11-16, THE SINK CAP DEFAULTS TO 5:) Maintainer 2026-11-16. The cap on running sinks per
     principal defaults to 5; this settles the default left open in A SINK OR STREAM ENDS WITH ITS OWNER''S
-    ROLE; SINKS ARE CAPPED.'
+    ROLE; SINKS ARE CAPPED. (Amended 2026-11-16, STARTING A SINK NEEDS THE WRITE CAPABILITY:) Maintainer
+    2026-11-16. Starting a Kafka sink writes query results into a topic on the operator''s cluster, which
+    Provisa may also read back as a source, so it is a write: it needs the write capability (REQ-868) of
+    the role the sink starts under, besides read access to what it subscribes to. A caller without it is
+    refused by name before anything is produced.'
   use_case: An X-Provisa-Sink header lets a client wire a live subscription directly into a Kafka topic
     for downstream stream processing without holding an SSE connection.
   code:
@@ -41593,26 +41651,32 @@
   feature: sign-in-and-identity-credentials
   priority: MUST
   type: behavioral
-  description: Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
+  description: 'Personal Access Tokens (PATs) enable long-lived credentials for NON-BROWSER protocol access
     (pgwire/Postgres, Bolt/Neo4j, Arrow Flight, gRPC, MCP). Tokens are user-generated in the UI, stored
     hashed with owner + org + scopes/role + expiry + last-used. Every protocol resolves tokens to AuthIdentity
     via a single AuthProvider.validate_token method, reusing the central identity provider and enforcing
-    per-org scope. A validated token resolves to its OWNER'S account — user id, email and display name from
-    the user profile — so audit and usage reporting attribute the act to the person, identically to an interactive
-    session; the token's own label is carried as a separate claim recording WHICH of that person's credentials
-    was used. Token management is self-service on the user's own profile, where the secret is displayed
-    exactly once at issuance and the listing shows only a display prefix and lifecycle timestamps. (Amended
-    2026-11-16, A TOKEN'S ROLE NARROWS IT:) Maintainer 2026-11-16 ('should narrow'). A personal access token
-    that names a role acts only as that role, on every transport and in both assignment modes; it never
-    reaches another role its owner holds. A token may name only a role its issuer holds when it is issued
-    (REQ-2076). Whether a token's scopes are enforced or removed, and what each scope would allow, is not
-    settled. (Amended 2026-11-16, A TOKEN'S SCOPES ARE THE ROLES IT MAY USE:) Maintainer 2026-11-16 ('scope
-    is always a role name'; 'the PAT creator must assign specific roles'). This completes A TOKEN'S ROLE
-    NARROWS IT, whose last sentence (scopes not settled) and whose single named role are [SUPERSEDED by
-    this amendment]. A token carries one non-empty list of role names, its scopes; the separate single-role
-    field is gone. The token acts only as a role in its scopes. Each scope must be a role the issuer holds
-    when the token is issued and still holds when it is used; a token with no scopes is not issued. The
-    token form picks the roles with the standard multi-select.
+    per-org scope. A validated token resolves to its OWNER''S account — user id, email and display name
+    from the user profile — so audit and usage reporting attribute the act to the person, identically to
+    an interactive session; the token''s own label is carried as a separate claim recording WHICH of that
+    person''s credentials was used. Token management is self-service on the user''s own profile, where the
+    secret is displayed exactly once at issuance and the listing shows only a display prefix and lifecycle
+    timestamps. (Amended 2026-11-16, A TOKEN''S ROLE NARROWS IT:) Maintainer 2026-11-16 (''should narrow'').
+    A personal access token that names a role acts only as that role, on every transport and in both assignment
+    modes; it never reaches another role its owner holds. A token may name only a role its issuer holds
+    when it is issued (REQ-2076). Whether a token''s scopes are enforced or removed, and what each scope
+    would allow, is not settled. (Amended 2026-11-16, A TOKEN''S SCOPES ARE THE ROLES IT MAY USE:) Maintainer
+    2026-11-16 (''scope is always a role name''; ''the PAT creator must assign specific roles''). This completes
+    A TOKEN''S ROLE NARROWS IT, whose last sentence (scopes not settled) and whose single named role are
+    [SUPERSEDED by this amendment]. A token carries one non-empty list of role names, its scopes; the separate
+    single-role field is gone. The token acts only as a role in its scopes. Each scope must be a role the
+    issuer holds when the token is issued and still holds when it is used; a token with no scopes is not
+    issued. The token form picks the roles with the standard multi-select. (Amended 2026-11-16, IN CLAIMS
+    MODE A TOKEN''S ROLES LAST NO LONGER THAN ITS OWNER''S LAST SIGN-IN:) Maintainer 2026-11-16. Where the
+    identity provider supplies the roles, a personal access token acts with the roles its owner holds now:
+    a provider that can be asked again is asked at each use; for one that cannot (OIDC, Keycloak, SAML),
+    the roles mirrored from the owner''s last sign-in hold only until that sign-in expires, after which
+    the token is refused by name until the owner signs in again. A role removed at the provider therefore
+    stops applying at the next re-read or at that expiry.'
   use_case: Allows programmatic clients (Python/Node scripts, BI tools, ETL pipelines) to authenticate
     against all Provisa protocols using the same role/scope model as browser auth, eliminating the need
     for separate credential management per client type.
@@ -57434,7 +57498,17 @@
     2026-11-13, A DROP''S PATH STAYS IN THE SELECTED DOMAINS:) Maintainer 2026-11-12 (also REQ-2135): the
     paths a pill dropped on a graph frame writes, and the paths between two nodes dragged together, pass
     only through labels of the selected domains and never through a system domain''s nodes unless an end
-    of the path is of that domain; with no such path the drop says so by name and changes nothing.'
+    of the path is of that domain; with no such path the drop says so by name and changes nothing. (Amended
+    2026-11-16, TWO RELATIONSHIPS SHARING A MIDDLE TABLE CAN BE JOINED THROUGH IT FROM THE LIST:) Maintainer
+    2026-11-16. On the Relationships list, two ticked relationships that share a middle table offer an action
+    to join them through it, creating one junction-backed relationship (via_table) between their other ends.
+    It qualifies when the two share a common source that refers to both ends (a junction: J.a -> A, J.b
+    -> B; J''s other columns become the edge''s attributes) or a common target both refer to (a shared dimension:
+    A.x -> D, B.y -> D). The action opens one short form with the name (from the two, disambiguated as generated
+    names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
+    stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
+    proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
+    its edge the same way.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -86964,7 +87038,16 @@ And a constant naming a secret that does not exist fails the query, naming the c
     message returned inside a successful HTTP answer (a GraphQL errors list in a 200 body) is redacted the
     same way as one in a 400 or above: where the text travels does not change the rule. Text sent to a model
     (a prompt, an embedding input) carries the bare marker too. The named marker [REDACTED:<rule>] is kept
-    only in logs, spans and audit records.'
+    only in logs, spans and audit records. (Amended 2026-11-16, AN ORGANIZATION''S REDACTION RULES APPLY
+    TO ITS OWN TEXT ONLY, AND CANNOT STALL OR READ THE SERVER:) Lead 2026-11-16, following the security
+    audit (item T4); this supersedes the earlier wording that telemetry and errors are redacted by every
+    organization''s rules together. An organization''s patterns and reference values apply only to text
+    that organization produced (its spans, its log records, its audit entries, its client text); a record
+    no organization produced gets the deployment''s rules and every secret value. An organization''s pattern
+    is refused when saved if it could backtrack catastrophically (nested or overlapping repeats, lookaround,
+    back references) or is too large, and runs with a step limit linear in the text''s length; past the
+    limit the text is withheld and the rule is named to its administrators. A held organization''s rule
+    cannot reference the server''s environment. The deployment''s own rules keep the full pattern syntax.'
   use_case: "A warehouse password reaches a connection error; the error the client receives, the span exported to the collector and the container log all read [REDACTED:auto:warehouse_pw] instead of the password."
   scenario: "Given the org's vault holds warehouse_pw and the org adds a rule employee_id with pattern EMP-\\d{6}
 
@@ -89230,7 +89313,15 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     or refused by name, never with an engine error. (Amended 2026-11-16, UNTIL THE REBUILD AFTER A RULE
     CHANGE HAS PUBLISHED, THE VIEW IS REFUSED BY NAME:) Lead 2026-11-16, correcting the amendment just above:
     until the build that follows a change to a row rule or a mask has published, a reader whose rules changed
-    is refused by name; the view is never read under the rules it had before the change.'
+    is refused by name; the view is never read under the rules it had before the change. (Amended 2026-11-16,
+    A CODE-COMMAND VIEW''S BRIDGE ROWS ARE FILTERED BY THE READER''S RULE ON EACH INPUT, THROUGH ITS RELATIONSHIP:)
+    Lead 2026-11-16, narrowing the amendment of this day that refused every reader with a row rule on a
+    table read inside another view, so that REQ-2249''s rule (row rules apply at each hop) holds. For a
+    view that calls a code command, the stored bridge rows are filtered by the reader''s row rule on each
+    input table through the input''s registered relationship to the view (an EXISTS over the input under
+    the reader''s rule). An output that is an input''s relationship key is derived from that key column
+    only, so a mask elsewhere on the input does not mask it. A row rule on an input that has no relationship
+    from the view is still refused by name.'
   use_case: >-
     A data team cleanses free-text supplier addresses with one @columns function that sends each batch
     of rows to the org's LLM and returns street, city and country; the cleansed columns sit in a
@@ -96850,7 +96941,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: complete
+  status: in-progress
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -96869,7 +96960,17 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     after which the client''s list holds that group too. Nothing is unreachable in sip mode, and a group
     costs tokens only once it is added. A tool''s rights are unchanged: what a role may call is decided
     as in full mode. Full mode lists every tool, as before. Sip mode changes only which tools are listed;
-    result sizes keep their own settings.'
+    result sizes keep their own settings. (Amended 2026-11-16, AN MCP SESSION LISTS ONLY WHAT ITS ROLES
+    MAY USE, AND EACH VISIBLE COMMAND IS ITS OWN TOOL:) Maintainer 2026-11-16. As a principal''s GraphQL
+    schema is reduced to its roles, so is its MCP tool list: tools/list names only the built-in tools the
+    principal''s roles'' capabilities allow, within the session''s mode. Each command visible to the role,
+    where its MCP binding offers it, is listed as its own typed tool (its name from the binding, its input
+    schema from the command''s arguments) and runs the command under that role. Over remote HTTP the role
+    is resolved from the bearer token when the list is asked for; over stdio it is the pinned mcp.role.
+    A call to a tool the list does not offer is refused by name, as before. (Amended 2026-11-16, COMMAND
+    TOOLS ARE LISTED IN FULL MODE ONLY:) Maintainer 2026-11-16. A session in sip mode keeps its short list:
+    commands are not listed as their own tools there and stay reachable through list_commands and run_sql.
+    A session in full mode lists each command visible to its role as its own tool.'
   scenario: 'Given an MCP client that connects in sip mode
 
     When it lists the tools
@@ -97187,3 +97288,28 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     the descriptor as data, with every existing set generated from it and a test that the generated set
     equals the hand-kept one; the hand-kept sets removed; the type branches moved into hooks one at a
     time, each with its existing tests; the endpoint and the UI; the two checks.'
+- id: REQ-2252
+  status: proposed
+  group: 3. Source Registration & Data Modeling
+  category: Registration & Governance
+  feature: semantic-model-relationships
+  priority: SHOULD
+  type: ui
+  description: 'Maintainer 2026-11-17 (''def need to have hyperlinks for cypher/sql/sparql/graphql - to
+    see a relationship ... similar to ones we have in the data products screens''; ''we could create queries
+    for relationships across all surfaces as well''). A relationship''s detail panel on the Relationships
+    page has one link per query language the relationship can be read in, on every surface that exposes
+    it, drawn as the data product Access section draws its per-table links (the same icons, tips and component):
+    Cypher, SQL, SPARQL, GraphQL, and JSON:API, REST and gRPC where those reach the relationship (a JSON:API
+    include, the REST and gRPC forms the relationship is served in). Each opens that language''s Explore
+    editor with a query that reads the relationship, run at once: Cypher matches the relationship''s type
+    between its two node labels; SQL joins the source table to the target table on the relationship''s columns;
+    SPARQL selects subject and object over the relationship''s predicate; GraphQL reads the source type
+    with the relationship''s field nested; JSON:API, REST and gRPC read the source with the relationship
+    followed in their own form. Each query uses the names the role sees (the aliases in the panel) and a
+    row limit. A language the relationship is not exposed in (for example excluded from Cypher) shows no
+    link. (Amended 2026-11-16, THE DATA PRODUCT ACCESS SECTION LINKS EACH OF ITS RELATIONSHIPS THE SAME
+    WAY:) Maintainer 2026-11-16 (''add that to the relationship detail panel AND the data product access
+    patterns''). A data product''s Access section lists each relationship in the product with the same set
+    of links as the relationship''s detail panel, one per surface that exposes it, built by the one shared
+    component and query builder; it replaces the Cypher-only link per relationship type it shows today.'

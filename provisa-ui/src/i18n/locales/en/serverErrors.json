@@ -56,7 +56,8 @@
       "username_exists": "Username already exists",
       "not_permitted": "Not permitted",
       "token_scopes_required": "Pick at least one role for the token.",
-      "token_scope_not_held": "A token can use only roles you hold."
+      "token_scope_not_held": "A token can use only roles you hold.",
+      "no_role_held": "'{{user}}' holds no role in this organization"
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' not permitted: {{reason}}"
@@ -163,7 +164,10 @@
       "parameter_conflict": "The parameter {{parameter}} is given two different values at once ({{first}} and {{second}}). Give it one value, or list the values with IN or OR.",
       "parameter_calls_over_cap": "The statement needs {{calls}} calls to {{table}}, one for each value given to its parameters, and at most {{cap}} are made for one statement (the setting {{setting}}). Give fewer values.",
       "parameter_not_written": "The relationship {{relationship}} joins on the parameter {{parameter}}, which a statement binds to a value and never writes. A write does not make {{relationship}}.",
-      "table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back"
+      "table_is_withdrawn": "{{table}} is withdrawn: out of production until it is put back",
+      "view_awaits_rule_rebuild": "The view {{view}} is being built again for a change to the row rules on its inputs. This role can read it once that build has published.",
+      "parameter_required": "Table '{{table}}' requires the parameter(s) {{parameters}}: give each a value (a WHERE condition on its column in SQL, an argument in GraphQL).",
+      "parameter_wrong_type": "The parameter {{parameter}} takes a value of type {{type}}; '{{value}}' is not one."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter for '{{source_type}}' does not implement discover_schema",
@@ -201,7 +205,8 @@
       "empty_answer": "The model returned no text."
     },
     "environments": {
-      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again."
+      "in_use": "{{env}} is still referred to by {{count}} item(s). Remove or change each one, then delete it again.",
+      "owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership."
     },
     "front_door": {
       "coordinator_waking": "The environment is starting. It will be ready in about five minutes.",
@@ -344,7 +349,9 @@
       "org_selection_required": "Org selection required",
       "already_exists": "Role '{{role}}' already exists",
       "description_missing": "Role '{{role}}' needs a description of what it is for",
-      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it"
+      "right_not_in_parents": "Role {{role}} cannot hold {{right}}: no parent holds it",
+      "platform_right_requires_platform_admin": "A role carrying {{rights}} is defined by a platform administrator",
+      "rights_not_held": "Role {{role}} carries {{rights}}, which you do not hold"
     },
     "schema": {
       "allowed_domains_updated": "Allowed domains updated for source '{{source}}'",
@@ -615,10 +622,14 @@
       "schema_not_avro": "Schema {{schema_id}} in registry {{registry}} is {{kind}}, not Avro",
       "schema_registry_error": "Schema registry {{registry}} answered HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Schema registry {{registry}} refused the source's credentials (HTTP {{http_status}}, authentication '{{method}}')",
-      "schema_registry_unreachable": "Schema registry {{registry}} cannot be reached: {{error}}",
+      "schema_registry_unreachable": "Schema registry cannot be reached: {{error}}",
       "sse_limit_reached": "max concurrent SSE subscriptions reached",
       "table_not_found": "Table '{{table}}' not found",
-      "unknown_role": "Unknown role '{{role}}'"
+      "unknown_role": "Unknown role '{{role}}'",
+      "owner_role_lost": "The subscription ended: its owner no longer holds the role it was started under ({{roles}})",
+      "sink_cap_reached": "You already hold {{cap}} running Kafka sinks, the most the operator allows ({{setting}})",
+      "sink_needs_write": "Role '{{role}}' lacks the write right a Kafka sink needs",
+      "owner_sign_in_expired": "The subscription ended: the sign-in it was started under has expired; sign in again and start it again"
     },
     "users": {
       "assignment_not_found": "Assignment not found",
@@ -662,7 +673,6 @@
       "invalid_limit": "LIMIT {{value}} is not a whole number of rows: LIMIT takes a count of 0 or more, e.g. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} is not a whole number of rows: SKIP takes a count of 0 or more, e.g. SKIP 10.",
       "engine_refused": "The engine refused the query: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} reads {{variable}}, but the statement binds no variable: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL.",
       "undefined_variable_property": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestion}}? {{owner}} is bound to :{{label}}, which has a property {{variable}}.",
       "undefined_variable_properties": "{{clause}} reads {{variable}}, which nothing in the statement binds: a variable is bound by a MATCH pattern, WITH, UNWIND or CALL. Bound here: {{bound}}. Did you mean {{suggestions}}? Each is bound to a label with a property {{variable}}.",
@@ -889,6 +899,22 @@
     "preflight": {
       "confined_unavailable": "The preflight of {{subject}} was not run: in this organization it runs only in a confined process, and one could not be started ({{reason}}).",
       "confined_failed": "The preflight of {{subject}} returned no verdict: its confined process ended first ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Redaction rule {{rule}}: {{why}}",
+      "pattern_backtracks": "Redaction rule {{rule}}: the pattern can backtrack catastrophically (a repeat nested inside an unbounded repeat, or alternatives inside one that can begin with the same text). Rewrite it without that shape.",
+      "pattern_unsupported": "Redaction rule {{rule}}: an organization's rule cannot use backreferences, lookahead or lookbehind, atomic groups, possessive repeats or conditional groups.",
+      "pattern_too_large": "Redaction rule {{rule}}: the pattern is too large once its repeats are counted out. Use a smaller repeat count.",
+      "server_reference": "Redaction rule {{rule}}: an organization on this server cannot reference the server's environment. Use ${secret:NAME} from the organization's own vault."
+    },
+    "debug_logs": {
+      "pattern_refused": "The log filter pattern is refused: {{why}}",
+      "pattern_exceeded": "The log filter pattern is refused: it exceeded its step limit ({{steps}} steps) on a log line of {{length}} characters."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} is outside the uploaded project; a project reads only its own files.",
+      "filter_value_refused": "{{value}} cannot be a value in a permission filter: a value is a string, a number, true, false, null, a list of these, or a session variable.",
+      "filter_operator_refused": "{{operator}} is not an operator a permission filter can be converted with."
     }
   }
 }

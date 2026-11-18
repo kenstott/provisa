@@ -57,15 +57,34 @@ export function DiscoverDialog({
     if (run !== null && run.status !== "running") setLeft(run.id);
     onClose();
   };
+  // Only a run's results take the wide size: setting up and a run going keep the setup step's
+  // standard size.
+  const results = run !== null && run.status !== "running";
   return (
     <Modal
       opened={opened}
       onClose={close}
       title={t("discoverDialog.title")}
-      // A run lists its proposals in one table, whose columns need the room: the window's width
-      // less the page gutter the lists keep.
-      size={run ? "100%" : "lg"}
-      xOffset={run ? "var(--page-gutter)" : undefined}
+      // A run's results list its proposals in one table, whose columns need the room: the
+      // window's width less the page gutter the lists keep.
+      size={results ? "100%" : "lg"}
+      xOffset={results ? "var(--page-gutter)" : undefined}
+      // A run's results never scroll as a whole: the dialog is at most the window's height, its
+      // title and the run's result and actions stay in view, and only the proposals table, which
+      // takes the height left, scrolls beneath its pinned header row.
+      styles={
+        results
+          ? {
+              content: { display: "flex", flexDirection: "column" },
+              body: {
+                flex: "1 1 auto",
+                minHeight: 0,
+                display: "flex",
+                flexDirection: "column",
+              },
+            }
+          : undefined
+      }
       centered
       data-testid="discover-dialog"
     >

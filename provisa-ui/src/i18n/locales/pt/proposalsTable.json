@@ -1,9 +1,11 @@
 {
   "proposalsTable": {
-    "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de {{threshold}}% ou mais começam marcadas. Uma linha sem nenhuma caixa marcada fica sem decisão.",
+    "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de pelo menos o limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indecisa.",
     "colScore": "Pontuação",
+    "colModel": "Modelo",
     "colJev": "Jev",
     "colKind": "Tipo",
+    "colMeasure": "Medido",
     "colReasoning": "Raciocínio",
     "colNote": "Observação",
     "colNotAgain": "Não recomendar de novo",
@@ -25,7 +27,7 @@
       "invalid_shape": "Não é um relacionamento na forma pedida: falta um campo ou ele tem a forma errada",
       "unknown_column": "Cita uma tabela ou coluna que a solicitação não comparou",
       "not_comparable": "As duas colunas têm classes diferentes, então não são comparadas",
-      "below_threshold": "A confiança do modelo está abaixo do limiar de {{threshold}}%.",
+      "below_threshold": "Pontuação abaixo dos {{threshold}}% com que uma sugestão é mantida.",
       "same_column": "De uma coluna para ela mesma",
       "primary_key_to_primary_key": "Chave primária para chave primária",
       "both_repeating": "Os valores se repetem nos dois lados, então nenhum é o lado um",
@@ -34,7 +36,33 @@
       "rejected": "Rejeitada antes",
       "matches_foreign_key": "Igual a uma chave estrangeira encontrada nesta execução",
       "out_of_scope": "Fora das tabelas de origem e destino escolhidas",
-      "weaker": "Uma proposta mais forte das mesmas duas colunas foi mantida"
-    }
+      "weaker": "Uma proposta mais forte das mesmas duas colunas foi mantida",
+      "many_to_many": "Nenhuma das colunas é uma chave"
+    },
+    "threshold": "Marcar a partir de",
+    "thresholdHint": "Seu próprio limite, guardado para suas próximas execuções.",
+    "measure": {
+      "inTarget": "{{found}} de {{values}} valores da origem estão no destino.",
+      "inTargetFirst": "{{found}} dos primeiros {{values}} valores da origem estão no destino.",
+      "inSource": "{{found}} de {{values}} valores do destino estão na origem.",
+      "inSourceFirst": "{{found}} dos primeiros {{values}} valores do destino estão na origem.",
+      "both": "As duas colunas são chaves.",
+      "target": "O destino é uma chave.",
+      "source": "A origem é uma chave.",
+      "neither": "Nenhuma das colunas é uma chave.",
+      "notRead": {
+        "source": "A origem não foi lida: sua tabela exige um parâmetro.",
+        "target": "O destino não foi lido: sua tabela exige um parâmetro."
+      },
+      "notReadable": {
+        "source": "Você não pode ler a coluna de origem.",
+        "target": "Você não pode ler a coluna de destino."
+      },
+      "noValues": "A origem não contém valores.",
+      "modelScore": "Pontuação do modelo: nenhum valor foi comparado."
+    },
+    "dimensionMade": "Aceitar cria a dimensão compartilhada {{name}}, à qual as duas colunas se juntam.",
+    "dimensionJoined": "Aceitar junta as duas colunas à dimensão compartilhada {{name}}.",
+    "twoDimensions": "Suas colunas já se juntam a duas dimensões compartilhadas diferentes, então não pode ser aceita."
   }
 }

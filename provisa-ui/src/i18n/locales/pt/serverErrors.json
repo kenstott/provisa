@@ -56,7 +56,8 @@
       "username_exists": "Nome de usuário já existe",
       "not_permitted": "Não permitido",
       "token_scopes_required": "Escolha pelo menos uma função para o token.",
-      "token_scope_not_held": "Um token só pode usar funções que você tem."
+      "token_scope_not_held": "Um token só pode usar funções que você tem.",
+      "no_role_held": "'{{user}}' não tem nenhum papel nesta organização"
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"
@@ -163,7 +164,10 @@
       "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
       "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores.",
       "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}.",
-      "table_is_withdrawn": "{{table}} está retirada: fora de produção até ser reposta"
+      "table_is_withdrawn": "{{table}} está retirada: fora de produção até ser reposta",
+      "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
+      "parameter_required": "A tabela '{{table}}' requer o(s) parâmetro(s) {{parameters}}: dê um valor a cada um (uma condição WHERE sobre a sua coluna em SQL, um argumento em GraphQL).",
+      "parameter_wrong_type": "O parâmetro {{parameter}} recebe um valor do tipo {{type}}; '{{value}}' não é um."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -201,7 +205,8 @@
       "empty_answer": "O modelo não retornou nenhum texto."
     },
     "environments": {
-      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente."
+      "in_use": "{{env}} ainda é referenciado por {{count}} item(ns). Remova ou altere cada um e exclua novamente.",
+      "owner_not_member": "{{user}} criou o ambiente {{env}}, mas não é membro de {{org}}; atuar nele como proprietário exige ser membro."
     },
     "front_door": {
       "coordinator_waking": "O ambiente está a iniciar. Estará pronto dentro de cerca de cinco minutos.",
@@ -344,7 +349,9 @@
       "org_selection_required": "Seleção de organização necessária",
       "already_exists": "A função '{{role}}' já existe",
       "description_missing": "A função '{{role}}' precisa de uma descrição da sua finalidade",
-      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém"
+      "right_not_in_parents": "A função {{role}} não pode deter {{right}}: nenhum pai o detém",
+      "platform_right_requires_platform_admin": "Uma função com {{rights}} é definida por um administrador da plataforma",
+      "rights_not_held": "A função {{role}} inclui {{rights}}, que você não detém"
     },
     "schema": {
       "allowed_domains_updated": "Domínios permitidos atualizados para a fonte '{{source}}'",
@@ -615,10 +622,14 @@
       "schema_not_avro": "O esquema {{schema_id}} no registro {{registry}} é {{kind}}, não Avro",
       "schema_registry_error": "O registro de esquemas {{registry}} respondeu HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "O registro de esquemas {{registry}} recusou as credenciais da origem (HTTP {{http_status}}, autenticação '{{method}}')",
-      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas {{registry}}: {{error}}",
+      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas: {{error}}",
       "sse_limit_reached": "máximo de assinaturas SSE simultâneas atingido",
       "table_not_found": "Tabela '{{table}}' não encontrada",
-      "unknown_role": "Função desconhecida '{{role}}'"
+      "unknown_role": "Função desconhecida '{{role}}'",
+      "owner_role_lost": "A assinatura terminou: seu proprietário não tem mais a função sob a qual ela foi iniciada ({{roles}})",
+      "sink_cap_reached": "Você já tem {{cap}} sinks do Kafka em execução, o máximo que o operador permite ({{setting}})",
+      "sink_needs_write": "O papel '{{role}}' não tem o direito de escrita que um sink do Kafka exige",
+      "owner_sign_in_expired": "A assinatura terminou: o login sob o qual ela foi iniciada expirou; entre novamente e inicie-a outra vez"
     },
     "users": {
       "assignment_not_found": "Atribuição não encontrada",
@@ -662,7 +673,6 @@
       "invalid_limit": "LIMIT {{value}} não é um número inteiro de linhas: LIMIT espera uma contagem de 0 ou mais, p. ex. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} não é um número inteiro de linhas: SKIP espera uma contagem de 0 ou mais, p. ex. SKIP 10.",
       "engine_refused": "O mecanismo recusou a consulta: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lê {{variable}}, mas a instrução não vincula nenhuma variável: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
       "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
@@ -889,6 +899,22 @@
     "preflight": {
       "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
       "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
+      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
+      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
+      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
+      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
+    },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",
+      "filter_value_refused": "{{value}} não pode ser um valor em um filtro de permissão: um valor é uma string, um número, true, false, null, uma lista destes ou uma variável de sessão.",
+      "filter_operator_refused": "{{operator}} não é um operador com o qual um filtro de permissão possa ser convertido."
     }
   }
 }

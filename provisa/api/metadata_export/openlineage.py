@@ -46,6 +46,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -456,7 +457,9 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
         events = to_events(snapshot, event_time=datetime.now(UTC))
         result = PublishResult(provider_name=self.provider_name)
         url = self._lineage_url()
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             for event in events:
                 response = await client.post(url, json=event.payload, headers=self._headers())
                 if response.status_code >= 400:
@@ -474,6 +477,8 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
 
     async def health(self) -> None:
         url = f"{self._config.endpoint.rstrip('/')}/api/v1/namespaces"
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             response = await client.get(url, headers=self._headers())
         response.raise_for_status()

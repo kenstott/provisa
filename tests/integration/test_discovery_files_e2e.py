@@ -20,9 +20,12 @@ The model is an OpenAI-compatible endpoint served by this test on the loopback: 
 request and answers with the relationships a reader of those files would name, each only when its
 two columns are compared in the request, one of them at a confidence under the threshold.
 
-A run over the five tables suggests the key relationship and lists every proposal it read, the
-one under the threshold included; a reviewer accepts one, marks one not to be recommended again
-and leaves the rest undecided. A run over the demo's own domains compares none of the five and
+A run over the five tables measures every pair it proposes on the files' own values, read as the
+person who started it: inspections.permit_id is contained in building_permits.permit_id, a key,
+and is suggested whatever the model rated it; neighborhood is a key of no table, so its pairs are
+many-to-many and scored under the threshold; complaints' addresses barely meet the permits'. It
+lists every proposal it read; a reviewer accepts two, marks one not to be recommended again and
+leaves the rest undecided. A run over the demo's own domains compares none of the five and
 says which domains it compared; a run over every domain reads the key relationship among the other
 tables.
 """
@@ -43,6 +46,7 @@ import httpx
 import pytest
 import yaml
 
+from provisa.discovery.context import KEY_SCORE, SHARED_CEILING, measured_score
 from tests.helpers import registered_id
 from tests.smoke import test_main_is_startable as smoke
 from tests.smoke.test_main_is_startable import REPO, Instance
@@ -109,9 +113,11 @@ class _Endpoint:
                         "cardinality": "many-to-one",
                         "confidence": confidence,
                         "reasoning": f"{st}.{sc} names {tt}.{tc}",
-                        "suggested_name": f"{st}-{sc}-{tt}".replace("_", "-"),
+                        "suggested_name": named[0]
+                        if named
+                        else f"{st}-{sc}-{tt}".replace("_", "-"),
                     }
-                    for st, sc, tt, tc, confidence in _ANSWERS
+                    for st, sc, tt, tc, confidence, *named in _ANSWERS
                     if (st, sc) in compared and (tt, tc) in compared
                 ]
                 payload = json.dumps(
@@ -366,27 +372,47 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # The request says what a confidence states and where a suggestion is kept.
     assert "A relationship is suggested at 0.7 or more" in text
 
+    # Each pair is scored by its measure: the key relationship is the one suggestion.
     semantics = report["semantics"]
-    assert (semantics["proposed"], semantics["suggested"]) == (5, 4)
-    assert semantics["below_threshold"] == 1 and semantics["invalid"] == 0
+    assert (semantics["proposed"], semantics["suggested"]) == (5, 1)
+    assert semantics["below_threshold"] == 4 and semantics["invalid"] == 0
     assert semantics["scored"] == 0 and semantics["scored_below_threshold"] == 0
     mine = [c for c in _candidates(instance) if c["scope"] == f"run:{run['id']}"]
     suggested = {_edge(files, c): c["confidence"] for c in mine}
-    assert suggested[_PERMIT] == 0.95
-    assert len(suggested) == 4
+    assert suggested == {_PERMIT: KEY_SCORE}
 
-    # Nothing read is dropped: one table of the run's proposals, the highest score first, the one
-    # the model rated 0.4 with why it is not suggested.
+    # Nothing read is dropped: one table of the run's proposals, the highest score (the
+    # measure's) first, each with the model's confidence beside it and why it is not suggested.
     listed = _proposals(instance, run["id"])
-    assert [(_edge(files, r), r["confidence"], r["reason"], r["decidable"]) for r in listed] == [
-        (_PERMIT, 0.95, None, True),
+    address_score = measured_score(75 / 215, 75 / 128, True)
+    assert [
+        (_edge(files, r), r["confidence"], r["score"], r["cardinality"], r["reason"])
+        for r in listed
+    ] == [
+        # 60 inspections, each of a different permit, all 60 among the 128 permits.
+        (_PERMIT, 0.95, KEY_SCORE, "one-to-one", None),
+        # Six neighborhoods on every side, repeated in each file: a key of none.
         *(
-            ((table, "neighborhood", "budget_2026__budget", "neighborhood"), 0.8, None, True)
+            (
+                (table, "neighborhood", "budget_2026__budget", "neighborhood"),
+                0.8,
+                SHARED_CEILING,
+                "many-to-many",
+                "below_threshold",
+            )
             for table in ("complaints_2026_08", "complaints_2026_09", "building_permits")
         ),
-        (_ADDRESS, 0.4, "below_threshold", True),
+        # 75 of the complaints' 215 addresses are among the permits' 128, each permit's own.
+        (_ADDRESS, 0.4, address_score, "many-to-one", "below_threshold"),
     ]
     by_edge = {_edge(files, r): r for r in listed}
+    permit = by_edge[_PERMIT]["measure"]
+    assert (permit["source_in_target"], permit["source"]["values"]) == (60, 60)
+    assert permit["target"]["values"] == 128 and permit["target"]["distinct"] is True
+    address = by_edge[_ADDRESS]["measure"]
+    assert (address["source_in_target"], address["source"]["values"]) == (75, 215)
+    # A many-to-many pair is accepted as a shared dimension (REQ-413): every row can be.
+    assert [r["acceptable"] for r in listed] == [True, True, True, True, True]
     assert by_edge[_ADDRESS]["reasoning"] == (
         "complaints_2026_08.address names building_permits.address"
     )
@@ -421,15 +447,15 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
         assert {"id": name, "sourceColumn": column, "targetColumn": column} in (
             registered["relationships"]
         )
-    # What was decided leaves the run's table; the two left alone are undecided and still
-    # waiting as suggestions.
+    # What was decided leaves the run's table; the two left alone are undecided. Scored under
+    # the threshold, they were never suggestions, so none is waiting.
     remaining = _proposals(instance, run["id"])
     assert sorted(_edge(files, r)[0] for r in remaining) == [
         "complaints_2026_08",
         "complaints_2026_09",
     ]
     waiting = {_edge(files, c) for c in _candidates(instance) if c["scope"] == f"run:{run['id']}"}
-    assert waiting == {_edge(files, r) for r in remaining}
+    assert waiting == set()
 
 
 def test_a_run_over_other_domains_says_which_and_compares_none_of_the_files(
@@ -458,8 +484,8 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     """All three domains, with the limits of a model that holds a whole type group in one request:
     the permit columns share the text request with every other text column, and every proposal is
     read again. What the first run's reviewer decided shows: the accepted ones are registered and
-    cannot be decided, the one marked is said to be rejected before, and those left undecided are
-    ordinary rows that can still be accepted."""
+    cannot be decided, the one marked keeps its decision and cannot be decided, and the other
+    neighborhood pairs, a key of no table, are scored under the threshold again."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
     prompts = endpoint.prompts[before:]
@@ -479,16 +505,17 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     }
     assert read == {
         _PERMIT: ("existing", False),
+        # Marked not to be recommended again: it keeps that decision and is not measured anew.
         ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood"): (
             "rejected",
-            True,
+            False,
         ),
         ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "pending",
+            "below_threshold",
             True,
         ),
         ("complaints_2026_09", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "pending",
+            "below_threshold",
             True,
         ),
         # Rated 0.4 again, and registered since: said as registered, not to be accepted twice.

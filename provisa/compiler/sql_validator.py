@@ -352,19 +352,27 @@ def view_command_inputs(tree: exp.Expr, view_commands: Mapping[str, dict]) -> li
         command = view_command(tbl, view_commands)
         if command is None:
             continue
-        values = list(tbl.this.expressions)
-        for i, argument in enumerate(command.get("arguments") or []):
-            if argument.get("arg_kind") not in _TABLE_ARGUMENTS or i >= len(values):
-                continue
-            value = values[i]
-            named = (
-                sqlglot.parse_one(value.this, into=exp.Table, dialect="postgres")
-                if isinstance(value, exp.Literal) and value.is_string
-                else exp.table_(value.sql(dialect="postgres"))
-            )
+        for named in command_table_arguments(tbl, command):
             if named.sql() not in {t.sql() for t in read}:
                 read.append(named)
     return read
+
+
+def command_table_arguments(tbl: exp.Table, command: dict) -> list[exp.Table]:
+    """The tables the call ``tbl`` of ``command`` is given as its table arguments (REQ-2226), as
+    relations, in argument order."""
+    values = list(tbl.this.expressions)
+    named: list[exp.Table] = []
+    for i, argument in enumerate(command.get("arguments") or []):
+        if argument.get("arg_kind") not in _TABLE_ARGUMENTS or i >= len(values):
+            continue
+        value = values[i]
+        named.append(
+            sqlglot.parse_one(value.this, into=exp.Table, dialect="postgres")
+            if isinstance(value, exp.Literal) and value.is_string
+            else exp.table_(value.sql(dialect="postgres"))
+        )
+    return named
 
 
 def _check_registered_relations(  # REQ-001, REQ-266

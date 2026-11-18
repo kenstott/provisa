@@ -24,7 +24,7 @@
 #   scripts/deploy-cloud.sh cfg    # shipped configs -> /app/config (restarts both)
 #   scripts/deploy-cloud.sh all    # all three, one restart at the end
 #   scripts/deploy-cloud.sh reset  # accounts/orgs -> none, demo data re-seeded
-#   scripts/deploy-cloud.sh patch  # like all, but KEEPS accounts and orgs
+#   scripts/deploy-cloud.sh patch  # the same steps as all
 #   scripts/deploy-cloud.sh sandbox-reset  # the sandbox tier alone: its orgs -> none, no build
 #
 # Every arm that pushes first ensures the observability and demo overlays are installed on the
@@ -32,10 +32,13 @@
 # without a collector, and the demo config's OpenAPI/GraphQL/gRPC sources are unresolvable without
 # the mock backends (REQ-1468). Both are content-compared; already-current is a no-op.
 #
-# api/all/reset also wipe the control plane back to the first-start state (no
-# claimed super-admin, no accounts, no tenant orgs) and let the restart re-seed
-# the bootstrap org's demo data set from the deployment config. Use `patch` when
-# a sign-in session or a hand-built org under test has to survive the deploy.
+# Only `reset` wipes the control plane back to the first-start state (no claimed
+# super-admin, no accounts, no tenant orgs, no invites) and lets the restart re-seed
+# the bootstrap org's demo data set from the deployment config, and the sandbox org
+# with its public invite (provisa/api/sandbox_org.py). Every arm that deploys code
+# (ui, api, cfg, all, patch) keeps accounts and orgs: deploying code and returning
+# the deployment to its first start are two acts, and an `all` that did both wiped
+# cloud-dev on 2026-11-16.
 #
 # Every arm that pushes the python package to a sandbox VM also resets the sandbox tier there
 # (reset_sandbox_state: its sandboxes and every demo template not built under the pushed code's
@@ -100,7 +103,7 @@ preflight_engine() {
     exit 1
   fi
   for k in $ENGINE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -q "^$k=." || missing="$missing $k"
+    grep -q "^$k=." <<<"$env_dump" || missing="$missing $k"
   done
   if [ -n "$missing" ]; then
     echo "$API_CONTAINER is missing engine settings:$missing" >&2
@@ -157,7 +160,7 @@ push_commerce_env() {
   local env_dump changed=""
   env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS $COMMERCE_CREDENTIAL_KEYS; do
-    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" && continue
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" && continue
     local want
     want="$(sed -n "s/^$k=//p" "$REPO/.env" 2>/dev/null | tail -1)"
     [ -n "$want" ] || continue
@@ -186,12 +189,12 @@ preflight_commerce() {
   local env_dump missing="" k
   env_dump="$(ssh_node "sudo docker exec $API_CONTAINER printenv | grep -E '^STRIPE_' || true" | tr -d '\r')"
   for k in $COMMERCE_KEYS; do
-    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" || missing="$missing $k"
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" || missing="$missing $k"
   done
   local mode
   mode="$(printf '%s\n' "$env_dump" | sed -n 's/^STRIPE_MODE=//p' | tr -d ' \r')"
   for k in $(commerce_mode_keys "$env_dump"); do
-    printf '%s\n' "$env_dump" | grep -Eq "^$k=.*[^[:space:]]" \
+    grep -Eq "^$k=.*[^[:space:]]" <<<"$env_dump" \
       || missing="$missing $k(STRIPE_MODE=${mode:-<unset>})"
   done
   if [ -n "$missing" ]; then
@@ -222,6 +225,16 @@ build_ui() {
   local base
   base="$(org_base_domain)" || exit 1
   echo "== building UI (org base domain: $base)"
+  # The UI builds on the repository's Node pin (.nvmrc), as CI and the image do.
+  local want
+  want="v$(cat "$REPO/.nvmrc")"
+  export NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+  # shellcheck disable=SC1091
+  [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" && nvm use "$want" >/dev/null
+  if [ "$(node --version)" != "$want" ]; then
+    echo "The UI builds on Node $want (.nvmrc); node on PATH is $(node --version). nvm install ${want#v}" >&2
+    exit 1
+  fi
   (cd "$REPO/provisa-ui" && VITE_ORG_BASE_DOMAIN="$base" npm run build)
   # index.html carries the hashed bundle names, so it ships with the assets it references.
   # auth-relay.html is the second HTML entry (REQ-1348) and does the same for the relay bundle;
@@ -608,8 +621,13 @@ push_obs() {
   # OTEL_EXPORTER_OTLP_ENDPOINT is set from the resolved compose set at `provisa start`.
   echo "== observability: recreating stack"
   ssh_node "sudo systemctl restart provisa"
-  ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT" \
-    | grep -q . || { echo "observability installed but the app exports no OTLP endpoint" >&2; exit 1; }
+  local otlp
+  # printenv exits 1 for an unset variable: that, a failed ssh and an empty value are the same refusal.
+  if ! otlp="$(ssh_node "sudo docker exec $API_CONTAINER printenv OTEL_EXPORTER_OTLP_ENDPOINT")" \
+    || [ -z "$otlp" ]; then
+    echo "observability installed but the app exports no OTLP endpoint" >&2
+    exit 1
+  fi
 }
 
 # REQ-1428: the collector's own config, which the overlay bind-mounts from
@@ -981,7 +999,7 @@ push_demo() {
   # The mocks are what the demo config's sources resolve to, so their absence is a broken deploy,
   # not a cosmetic gap. Compose names them <project>-<service>-1; match on the service name.
   for svc in petstore-mock graphql-demo grpc-demo; do
-    ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'" | grep -q . \
+    [ -n "$(ssh_node "sudo docker ps --filter name=$svc --format '{{.Names}} {{.Status}}'")" ] \
       || { echo "demo overlay installed but $svc is not running" >&2; exit 1; }
   done
 }
@@ -1406,14 +1424,14 @@ case "$TARGET" in
   ui)
     { sandbox_on_own_vm || preflight_sandbox_ai; }; push_overlay; build_ui; push_ui; verify; verify_org_base ;;
   api)
-    # reset before restart: the wipe drops the tenant schemas and the org_registry view, and it
-    # is the restart that re-seeds the bootstrap org and rebuilds that view.
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_api; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_api; push_plugins; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   cfg)
     # Restarts: the config is read once at startup, so a pushed file is inert until then.
     { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   all)
-    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; reset_state; restart; verify; verify_api; verify_demo; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
+    # Keeps accounts and orgs: only 'reset' wipes them. verify_demo is a statement about a reset.
+    { sandbox_on_own_vm || preflight_sandbox_ai; }; preflight_engine; push_commerce_env; build_ui; build_api; build_cfg; clear_dead_engine_files; push_store_env; push_app; push_cp_compose; preflight_commerce; push_mail_env; push_obs; push_obs_config; push_demo; push_demo_stores; push_overlay; push_ui; push_api; push_plugins; push_cfg; restart; verify; verify_api; verify_engine; verify_org_base; verify_commerce; deploy_sandbox_vm ;;
   sandbox-reset)
     # No build and no push: the sandbox tier's orgs reset and the tier restarted (its VM's
     # overlay, demo stores and settings are synced as on every deploy that reaches it). It needs

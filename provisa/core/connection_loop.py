@@ -423,6 +423,26 @@ _bg_pool: concurrent.futures.ThreadPoolExecutor | None = None
 _bg_inflight: "dict[concurrent.futures.Future[Any], tuple[str, _TaskSlot]]" = {}
 _bg_timer: "_TimerThread | None" = None
 _bg_long_lived: "set[LongLived]" = set()
+# True while shutdown_background runs: the pool and the timer have been taken from the process, so
+# a submission meanwhile (a task still running, submitting more) is refused -- never started on a
+# fresh pool or timer that would outlive the shutdown and use the databases it is about to close.
+_bg_stopping = False
+
+
+class BackgroundShuttingDown(RuntimeError):
+    """Background work submitted while :func:`shutdown_background` runs."""
+
+    def __init__(self, name: str) -> None:
+        super().__init__(
+            f"background task {name!r} not started: the process's background work is shutting down"
+        )
+
+
+def _refuse_while_stopping(name: str) -> None:
+    """Raise :class:`BackgroundShuttingDown` for ``name`` when shutdown is under way. Called with
+    ``_bg_lock`` held."""
+    if _bg_stopping:
+        raise BackgroundShuttingDown(name)
 
 
 def set_process_loop(loop: asyncio.AbstractEventLoop) -> None:
@@ -455,9 +475,10 @@ def configure_background_workers(workers: int) -> None:
         _bg_workers = workers
 
 
-def _pool() -> concurrent.futures.ThreadPoolExecutor:
+def _pool(name: str) -> concurrent.futures.ThreadPoolExecutor:
     global _bg_pool
     with _bg_lock:
+        _refuse_while_stopping(name)
         if _bg_pool is None:
             _bg_pool = concurrent.futures.ThreadPoolExecutor(
                 max_workers=_bg_workers, thread_name_prefix="provisa-bg"
@@ -532,7 +553,7 @@ def _submit(
 ) -> concurrent.futures.Future[None]:
     slot = _TaskSlot(coro)
     try:
-        fut = _pool().submit(_run_detached, coro, name, ctx, slot)
+        fut = _pool(name).submit(_run_detached, coro, name, ctx, slot)
     except RuntimeError:
         coro.close()
         raise
@@ -601,7 +622,12 @@ def spawn_after(delay: float, coro: Coroutine[Any, Any, Any], *, name: str) -> N
 
     The delay is held by one timer thread, not by a worker: a TTL of hours pins nothing."""
     ctx = _caller_context()
-    _timer().schedule(time.monotonic() + max(0.0, delay), coro, name, ctx)
+    try:
+        timer = _timer(name)
+    except BackgroundShuttingDown:
+        coro.close()
+        raise
+    timer.schedule(time.monotonic() + max(0.0, delay), coro, name, ctx)
 
 
 class _TimerThread:
@@ -660,9 +686,10 @@ class _TimerThread:
             return len(self._heap)
 
 
-def _timer() -> _TimerThread:
+def _timer(name: str) -> _TimerThread:
     global _bg_timer
     with _bg_lock:
+        _refuse_while_stopping(name)
         if _bg_timer is None:
             _bg_timer = _TimerThread()
         return _bg_timer
@@ -718,6 +745,9 @@ def spawn_long_lived(coro: Coroutine[Any, Any, Any], *, name: str) -> LongLived:
     """Start ``coro`` on a dedicated thread (see :class:`LongLived`); stopped at shutdown."""
     handle = LongLived(coro, name, _caller_context())
     with _bg_lock:
+        if _bg_stopping:
+            coro.close()
+            raise BackgroundShuttingDown(name)
         _bg_long_lived.add(handle)
     return handle.start()
 
@@ -725,7 +755,20 @@ def spawn_long_lived(coro: Coroutine[Any, Any, Any], *, name: str) -> LongLived:
 def shutdown_background(timeout: float = 10.0) -> None:
     """Stop background work (process shutdown): drop delayed entries not yet due, cancel queued
     submissions, cancel running ones and long-lived threads and give them ``timeout`` seconds to
-    end, and log whatever did not finish. Resets so a later start (tests re-running the lifespan) begins clean."""
+    end, and log whatever did not finish. Work submitted while this runs is refused
+    (:class:`BackgroundShuttingDown`). Resets so a later start (tests re-running the lifespan)
+    begins clean."""
+    global _bg_stopping
+    with _bg_lock:
+        _bg_stopping = True
+    try:
+        _stop_background(timeout)
+    finally:
+        with _bg_lock:
+            _bg_stopping = False
+
+
+def _stop_background(timeout: float) -> None:
     global _bg_pool, _bg_timer
     with _bg_lock:
         timer, _bg_timer = _bg_timer, None

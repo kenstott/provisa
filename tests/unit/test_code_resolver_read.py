@@ -168,13 +168,40 @@ def _state(
         tables=copy.deepcopy(tables),
         source_types={"pg": "postgresql"},
         source_catalogs={},
-        relationships=[],
+        # The set's two plain relationships, as registered (REQ-2249): orders to the bridge, the
+        # bridge to clips.
+        relationships=[
+            {
+                "source_table_id": 1,
+                "target_table_id": 3,
+                "source_column": "id",
+                "target_column": "order_id",
+                "via_table_id": None,
+                "target_function_name": None,
+            },
+            {
+                "source_table_id": 3,
+                "target_table_id": 2,
+                "source_column": "clip_id",
+                "target_column": "id",
+                "via_table_id": None,
+                "target_function_name": None,
+            },
+        ],
         metrics={},
         federation_engine=None,
         view_sql_map={"order_clips": f"SELECT * FROM {_STORED}"},
         stored_view_reads={"order_clips"},
         mv_registry=registry,
-        role_build_inputs={"withdrawn_tables": []},
+        role_build_inputs={
+            "withdrawn_tables": [],
+            # Every role's row rules, as stored (transform_view_rules.roles_rules).
+            "rls_rules": [
+                {"role_id": "analyst", "table_id": t, "filter_expr": read_rule(r)}
+                for t, r in (rules or {}).items()
+            ],
+            "tables": copy.deepcopy(tables),
+        },
         tracked_functions={"match_region": copy.deepcopy(_MATCH_REGION)},
         security_high=False,
         schema_boot_id="test-boot",
@@ -332,6 +359,16 @@ async def test_a_row_rule_on_the_target_holds_at_its_hop(monkeypatch):
 async def test_a_row_rule_on_the_source_holds_at_its_hop(monkeypatch):
     governed = await _govern(monkeypatch, _FOLLOW, _state(rules={1: "region = 'emea'"}))
     assert "region = 'emea'" in governed.replace('"', ""), governed
+
+
+@pytest.mark.asyncio
+async def test_a_direct_read_of_the_bridge_is_filtered_by_the_rule_on_each_input(monkeypatch):
+    """REQ-2131 (amended b0823d303a): the bridge's stored rows carry no row of either input, so
+    the reader's rule on each is held through that input's relationship to the bridge."""
+    governed = await _govern(monkeypatch, _READ_BRIDGE, _state(rules={2: "id = 1"}))
+    flat = governed.replace('"', "")
+    assert "EXISTS(SELECT 1 FROM clips AS __rule_2 WHERE __rule_2.id = m.clip_id" in flat, governed
+    assert "__rule_2.id = 1" in flat, governed
 
 
 @pytest.mark.asyncio

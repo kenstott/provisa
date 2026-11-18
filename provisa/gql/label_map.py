@@ -67,6 +67,10 @@ class NodeMapping:
     # The table's parameters as its metadata states them (core.parameters.ParameterFact,
     # REQ-1986): name, type, kind, opaque or a real column, required.
     parameters: tuple[Any, ...] = ()
+    # Every name its parameters are bound under, lowercased, to the parameter column (REQ-1986:
+    # CompilationContext.parameter_names): its column, its own name, its alias. (name, column)
+    # pairs, a tuple as property_types is.
+    parameter_names: tuple[tuple[str, str], ...] = ()
     physical_table_name: str = ""  # physical DB table name; "" means same as table_name
     traversal_only: bool = False  # True = cross-domain node; may not be a MATCH starting node
     domain_id: str | None = None  # raw domain id, e.g. "pet-store"; None if no domain
@@ -136,17 +140,12 @@ class NodeMapping:
 
     def parameter_column(self, name: str) -> str | None:
         """The parameter column a property ``name`` binds (REQ-1986), or None for no parameter:
-        a parameter is named by its column (``_nf_petId``) or as a caller names it (``petId``,
-        published so by graph-schema), in any spelling of that name (``pet_id``, ``_petId``)."""
-        from provisa.core.parameters import canonical_name, parameter_name
+        a parameter is bound under its column (``_nf_petId``), its own name (``petId``, published
+        so by graph-schema) and its alias, in any spelling of those (``pet_id``, ``_petId``) --
+        the names every front binds it under (core.parameters.parameter_names)."""
+        from provisa.core.parameters import parameter_column
 
-        if name in self.native_filter_columns:
-            return name
-        wanted = canonical_name(name)
-        for column in self.native_filter_columns:
-            if canonical_name(parameter_name({"column_name": column})) == wanted:
-                return column
-        return None
+        return parameter_column(dict(self.parameter_names), name)
 
     @property
     def required_parameters(self) -> list[str]:
@@ -906,6 +905,7 @@ def _build_node_mappings(
             physical_properties=phys_props,
             native_filter_columns=nf_cols,
             parameters=ctx_typed.parameters.get(table_meta.table_id, ()),
+            parameter_names=tuple(ctx_typed.parameter_names.get(table_meta.table_id, {}).items()),
             physical_table_name=physical_table_name,
             map_properties=map_props,
             property_types=tuple(

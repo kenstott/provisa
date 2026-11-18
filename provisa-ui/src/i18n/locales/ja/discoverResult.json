@@ -24,7 +24,7 @@
     "partial": "{{count}} 件中 {{failed}} 件のリクエストが失敗したため、結果は部分的です。",
     "partial_other": "{{count}} 件中 {{failed}} 件のリクエストが失敗したため、結果は部分的です。",
     "semanticsNoneProposed": "セマンティクス: なし。モデルはリレーションシップを提案しませんでした。",
-    "semanticsBelowThreshold": "セマンティクス: なし。すべての提案が信頼度しきい値 {{threshold}}% を下回りました。",
+    "semanticsBelowThreshold": "セマンティクス: なし。すべての提案が、提案が保持される {{threshold}}% を下回るスコアでした。",
     "semanticsFiltered": "セマンティクス: なし。すべての提案が下記の理由で除外されました。",
     "split": "{{count}} 件のリクエストを半分に分割して再送しました。",
     "split_other": "{{count}} 件のリクエストを半分に分割して再送しました。",
@@ -38,7 +38,7 @@
     "leftOut": "提案されなかったもの: {{list}}。",
     "leftOutItem": "{{label}} ({{count}})",
     "removed": {
-      "below_threshold": "モデルの信頼度が {{threshold}}% 未満",
+      "below_threshold": "スコアが {{threshold}}% 未満",
       "invalid": "比較対象の 2 列を指定していない",
       "not_comparable": "クラスの異なる列どうし",
       "same_column": "列からその列自身へ",
@@ -49,7 +49,8 @@
       "rejected": "以前に却下",
       "matches_foreign_key": "この実行で見つかった外部キーと一致",
       "out_of_scope": "選んだテーブルの範囲外",
-      "weaker": "より強い候補を残した列の組の重複"
+      "weaker": "より強い候補を残した列の組の重複",
+      "many_to_many": "どちらの列もキーではない"
     }
   }
 }

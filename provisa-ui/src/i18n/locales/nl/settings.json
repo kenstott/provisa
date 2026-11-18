@@ -874,6 +874,12 @@
         "label": "Aanroepen per statement naar een geparametriseerde tabel",
         "help": "Het maximale aantal aanroepen dat één statement naar één geparametriseerde tabel doet. Elke waarde die een statement aan een parameter geeft, is één aanroep van de bron: elke waarde van een IN-lijst, elke tak van een OR, elke unieke sleutel van een join. Een statement dat er meer nodig heeft, wordt geweigerd."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Actieve Kafka-sinks per persoon",
+        "help": "Hoeveel Kafka-sinks één persoon tegelijk actief mag hebben. Een verzoek om er nog een te starten wordt geweigerd tot een van de eigen sinks stopt."
+      }
     }
   }
 }

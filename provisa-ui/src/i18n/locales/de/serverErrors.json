@@ -56,7 +56,8 @@
       "username_exists": "Benutzername existiert bereits",
       "not_permitted": "Nicht erlaubt",
       "token_scopes_required": "Wählen Sie mindestens eine Rolle für das Token aus.",
-      "token_scope_not_held": "Ein Token kann nur Rollen verwenden, die Sie innehaben."
+      "token_scope_not_held": "Ein Token kann nur Rollen verwenden, die Sie innehaben.",
+      "no_role_held": "'{{user}}' hat in dieser Organisation keine Rolle"
     },
     "authz": {
       "mutation_not_permitted": "Mutation '{{field_name}}' nicht zulässig: {{reason}}"
@@ -163,7 +164,10 @@
       "parameter_conflict": "Der Parameter {{parameter}} erhält gleichzeitig zwei verschiedene Werte ({{first}} und {{second}}). Geben Sie ihm einen Wert oder führen Sie die Werte mit IN oder OR auf.",
       "parameter_calls_over_cap": "Die Anweisung benötigt {{calls}} Aufrufe an {{table}}, einen für jeden Wert ihrer Parameter, und für eine Anweisung werden höchstens {{cap}} ausgeführt (Einstellung {{setting}}). Geben Sie weniger Werte an.",
       "parameter_not_written": "Die Beziehung {{relationship}} verbindet über den Parameter {{parameter}}, den eine Anweisung an einen Wert bindet und nie schreibt. Ein Schreibvorgang erzeugt {{relationship}} nicht.",
-      "table_is_withdrawn": "{{table}} ist zurückgezogen: außer Produktion, bis sie wieder in Betrieb genommen wird"
+      "table_is_withdrawn": "{{table}} ist zurückgezogen: außer Produktion, bis sie wieder in Betrieb genommen wird",
+      "view_awaits_rule_rebuild": "Die Ansicht {{view}} wird wegen einer Änderung der Zeilenregeln für ihre Eingaben neu erstellt. Diese Rolle kann sie lesen, sobald dieser Build veröffentlicht ist.",
+      "parameter_required": "Die Tabelle '{{table}}' erfordert den Parameter bzw. die Parameter {{parameters}}: Geben Sie jedem einen Wert (in SQL eine WHERE-Bedingung auf seiner Spalte, in GraphQL ein Argument).",
+      "parameter_wrong_type": "Der Parameter {{parameter}} nimmt einen Wert vom Typ {{type}}; '{{value}}' ist keiner."
     },
     "discovery": {
       "adapter_missing_discover_schema": "Adapter für '{{source_type}}' implementiert discover_schema nicht",
@@ -201,7 +205,8 @@
       "empty_answer": "Das Modell hat keinen Text zurückgegeben."
     },
     "environments": {
-      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut."
+      "in_use": "Auf {{env}} verweisen noch {{count}} Element(e). Entfernen oder ändern Sie jedes davon und löschen Sie dann erneut.",
+      "owner_not_member": "{{user}} hat die Umgebung {{env}} erstellt, ist aber kein Mitglied von {{org}}; um darin als Eigentümer zu handeln, ist eine Mitgliedschaft erforderlich."
     },
     "front_door": {
       "coordinator_waking": "Die Umgebung wird gestartet. Sie ist in etwa fünf Minuten bereit.",
@@ -344,7 +349,9 @@
       "org_selection_required": "Organisationsauswahl erforderlich",
       "already_exists": "Die Rolle '{{role}}' existiert bereits",
       "description_missing": "Die Rolle '{{role}}' braucht eine Beschreibung, wofür sie da ist",
-      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es"
+      "right_not_in_parents": "Rolle {{role}} kann {{right}} nicht haben: Keine übergeordnete Rolle hat es",
+      "platform_right_requires_platform_admin": "Eine Rolle mit {{rights}} wird von einem Plattformadministrator definiert",
+      "rights_not_held": "Rolle {{role}} umfasst {{rights}}, die Sie nicht haben"
     },
     "schema": {
       "allowed_domains_updated": "Zulässige Domänen für Quelle '{{source}}' aktualisiert",
@@ -615,10 +622,14 @@
       "schema_not_avro": "Schema {{schema_id}} in der Registry {{registry}} ist {{kind}}, nicht Avro",
       "schema_registry_error": "Die Schema-Registry {{registry}} antwortete mit HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "Die Schema-Registry {{registry}} hat die Zugangsdaten der Quelle abgelehnt (HTTP {{http_status}}, Authentifizierung '{{method}}')",
-      "schema_registry_unreachable": "Die Schema-Registry {{registry}} ist nicht erreichbar: {{error}}",
+      "schema_registry_unreachable": "Die Schema-Registry ist nicht erreichbar: {{error}}",
       "sse_limit_reached": "Maximale Anzahl gleichzeitiger SSE-Abonnements erreicht",
       "table_not_found": "Tabelle '{{table}}' nicht gefunden",
-      "unknown_role": "Unbekannte Rolle '{{role}}'"
+      "unknown_role": "Unbekannte Rolle '{{role}}'",
+      "owner_role_lost": "Das Abonnement wurde beendet: Sein Eigentümer hat die Rolle nicht mehr, unter der es gestartet wurde ({{roles}})",
+      "sink_cap_reached": "Sie haben bereits {{cap}} laufende Kafka-Sinks, das Maximum, das der Betreiber erlaubt ({{setting}})",
+      "sink_needs_write": "Der Rolle '{{role}}' fehlt das Schreibrecht, das eine Kafka-Sink braucht",
+      "owner_sign_in_expired": "Das Abonnement wurde beendet: Die Anmeldung, unter der es gestartet wurde, ist abgelaufen; melden Sie sich erneut an und starten Sie es neu"
     },
     "users": {
       "assignment_not_found": "Zuweisung nicht gefunden",
@@ -662,7 +673,6 @@
       "invalid_limit": "LIMIT {{value}} ist keine ganze Zeilenzahl: LIMIT erwartet eine Anzahl ab 0, z. B. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} ist keine ganze Zeilenzahl: SKIP erwartet eine Anzahl ab 0, z. B. SKIP 10.",
       "engine_refused": "Die Engine hat die Abfrage abgelehnt: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} liest {{variable}}, aber die Anweisung bindet keine Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden.",
       "undefined_variable_property": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestion}}? {{owner}} ist an :{{label}} gebunden, das eine Eigenschaft {{variable}} hat.",
       "undefined_variable_properties": "{{clause}} liest {{variable}}, aber nichts in der Anweisung bindet diese Variable: Eine Variable wird durch ein MATCH-Muster, WITH, UNWIND oder CALL gebunden. Hier gebunden: {{bound}}. Meinten Sie {{suggestions}}? Jede ist an ein Label mit einer Eigenschaft {{variable}} gebunden.",
@@ -889,6 +899,22 @@
     "preflight": {
       "confined_unavailable": "Die Vorabprüfung von {{subject}} wurde nicht ausgeführt: In dieser Organisation läuft sie nur in einem abgeschotteten Prozess, und ein solcher konnte nicht gestartet werden ({{reason}}).",
       "confined_failed": "Die Vorabprüfung von {{subject}} hat kein Urteil geliefert: Ihr abgeschotteter Prozess endete vorher ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Schwärzungsregel {{rule}}: {{why}}",
+      "pattern_backtracks": "Schwärzungsregel {{rule}}: Das Muster kann katastrophales Backtracking auslösen (eine Wiederholung innerhalb einer unbegrenzten Wiederholung oder Alternativen darin, die mit demselben Text beginnen können). Formulieren Sie es ohne diese Form.",
+      "pattern_unsupported": "Schwärzungsregel {{rule}}: Die Regel einer Organisation kann keine Rückverweise, Lookahead oder Lookbehind, atomaren Gruppen, possessiven Wiederholungen oder bedingten Gruppen verwenden.",
+      "pattern_too_large": "Schwärzungsregel {{rule}}: Das Muster ist zu groß, wenn seine Wiederholungen ausgezählt werden. Verwenden Sie eine kleinere Wiederholungsanzahl.",
+      "server_reference": "Schwärzungsregel {{rule}}: Eine Organisation auf diesem Server kann nicht auf die Umgebung des Servers verweisen. Verwenden Sie ${secret:NAME} aus dem eigenen Tresor der Organisation."
+    },
+    "debug_logs": {
+      "pattern_refused": "Das Filtermuster für Protokolle wird abgelehnt: {{why}}",
+      "pattern_exceeded": "Das Filtermuster für Protokolle wird abgelehnt: Es hat sein Schrittlimit ({{steps}} Schritte) bei einer Protokollzeile mit {{length}} Zeichen überschritten."
+    },
+    "import": {
+      "include_outside_upload": "{{path}} liegt außerhalb des hochgeladenen Projekts; ein Projekt liest nur seine eigenen Dateien.",
+      "filter_value_refused": "{{value}} kann kein Wert in einem Berechtigungsfilter sein: Ein Wert ist eine Zeichenkette, eine Zahl, true, false, null, eine Liste davon oder eine Sitzungsvariable.",
+      "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     }
   }
 }

@@ -81,6 +81,7 @@ DERIVED_WRITES = "derived_writes"  # lineage edges, checker targets written
 NAMES_TABLE = "names_table"  # prod: the stored names table written
 ANNOUNCE = "announce"  # offers re-derived, catalogs told
 LIFECYCLE = "lifecycle"  # push listeners, ingest engines, poll and row-materialize jobs
+VIEW_REBUILDS = "view_rebuilds"  # stored views whose kept rule inputs the rules changed, built
 WARM_UP = "warm_up"  # every role's surface built
 
 PHASES: tuple[str, ...] = (
@@ -106,7 +107,14 @@ PHASES: tuple[str, ...] = (
     CONVERGE,
 )
 
-AFTER_PHASES: tuple[str, ...] = (DERIVED_WRITES, NAMES_TABLE, ANNOUNCE, LIFECYCLE, WARM_UP)
+AFTER_PHASES: tuple[str, ...] = (
+    DERIVED_WRITES,
+    NAMES_TABLE,
+    ANNOUNCE,
+    LIFECYCLE,
+    VIEW_REBUILDS,
+    WARM_UP,
+)
 
 # The causes that are not a writer: every other cause is the calling function, by name.
 BOOT = "boot"  # the process's own build of the deployment org at startup
