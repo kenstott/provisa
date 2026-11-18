@@ -31,6 +31,7 @@ import { oneDark } from "@codemirror/theme-one-dark";
 import { EditorView } from "@codemirror/view";
 import type { Extension } from "@codemirror/state";
 import { nlToSql } from "../../api/admin";
+import { useViewDomains } from "../../lib/viewDomains";
 import type { SqlTab } from "./types";
 import type { RegisteredTable } from "../../types/admin";
 import { Tip } from "../../components/Tip";
@@ -144,6 +145,8 @@ export function SqlEditorPanel({
   // Follows the app colour scheme; undefined = CodeMirror's own light theme.
   const cmTheme = useComputedColorScheme("light") === "dark" ? oneDark : undefined;
   const [nlStrict, setNlStrict] = React.useState(true);
+  // REQ-2253: NL-to-SQL works only within the navbar's selected domains.
+  const viewDomains = useViewDomains();
   // Why the last "Update view" was not saved: the server's refusal, or the error it raised.
   const [viewSaveError, setViewSaveError] = React.useState("");
 
@@ -152,7 +155,7 @@ export function SqlEditorPanel({
     setNlLoading(true);
     setNlError("");
     try {
-      const result = await nlToSql(nlText.trim(), role, nlStrict);
+      const result = await nlToSql(nlText.trim(), role, nlStrict, viewDomains);
       if (result.error) {
         setNlError(result.error);
       } else {
