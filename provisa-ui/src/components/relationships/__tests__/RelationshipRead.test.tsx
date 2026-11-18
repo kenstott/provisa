@@ -38,6 +38,7 @@ const base: Relationship = {
   autoSuggested: false,
   disableCypher: false,
   sameEntity: false,
+  withdrawn: false,
   parameters: [],
   viaTableId: 9,
   viaTableName: "pet_relations",

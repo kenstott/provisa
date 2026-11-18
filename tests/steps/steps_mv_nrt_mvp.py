@@ -124,7 +124,7 @@ def _register(ctx, monkeypatch):
     try:
         asyncio.run(
             schema_common._sync_view_mv(
-                "v", ctx["sql"], 300, draft=False, region=None, bitemporal_columns=[]
+                "v", ctx["sql"], 300, withdrawn=False, region=None, bitemporal_columns=[]
             )
         )
         ctx["error"] = None

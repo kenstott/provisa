@@ -146,6 +146,23 @@ def _model_tables() -> list[SATable]:
     return [t for t in schema_org.metadata.sorted_tables if t.name not in STATE | RECORD]
 
 
+def _platform_tables() -> list[SATable]:
+    """The platform tables the search reads: the registry's, through ``admin_db`` (REQ-1922).
+
+    The registry handle refuses the deployment's operating state (``platform_state_db``:
+    cluster nodes, coordinator catalogs, running sinks). That holds what the deployment is doing,
+    not a stored value resolved as a secret reference, so no reference can take effect there. The
+    vault itself holds the secrets, not references to them.
+    """
+    from provisa.core.platform_state import TABLES as PLATFORM_STATE
+
+    return [
+        t
+        for t in schema_admin.metadata.sorted_tables
+        if t.name not in _VAULT_TABLES and t.name not in PLATFORM_STATE
+    ]
+
+
 def reference_text(name: str) -> str:
     """The literal text that refers to the org secret ``name``."""
     return "${secret:" + name + "}"
@@ -268,9 +285,7 @@ async def references(
     finally:
         reset_current_org(token)
     async with admin_db.acquire() as conn:
-        for table in schema_admin.metadata.sorted_tables:
-            if table.name in _VAULT_TABLES:
-                continue
+        for table in _platform_tables():
             if table.name == "orgs":
                 scope = table.c.id == org_id
             elif "org_id" in table.c:
@@ -349,9 +364,7 @@ async def referenced_names(
     finally:
         reset_current_org(token)
     scoped: list[tuple[SATable, Any]] = []
-    for table in schema_admin.metadata.sorted_tables:
-        if table.name in _VAULT_TABLES:
-            continue
+    for table in _platform_tables():
         if table.name == "orgs":
             scoped.append((table, table.c.id == org_id))
         elif "org_id" in table.c:

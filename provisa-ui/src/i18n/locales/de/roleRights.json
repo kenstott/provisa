@@ -36,6 +36,6 @@
     "write_insert": "einfügen",
     "write_update": "aktualisieren",
     "write_delete": "löschen",
-    "draft": "Entwurf"
+    "withdrawn": "Zurückgezogen"
   }
 }

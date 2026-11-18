@@ -405,11 +405,11 @@ class _Binder:
                 if isinstance(_unwrap(other), exp.Any):
                     values = self._values(_unwrap(other))
                     if values is not None:
-                        return [{key: v} for v in values]
+                        return [{key: self._typed(parameter[1], v)} for v in values]
                     break
                 value = self._value(other)
                 if value is not _NOT_LITERAL:
-                    return [{key: value}]
+                    return [{key: self._typed(parameter[1], value)}]
                 join = self._join_key(other, parameter[0], select)
                 if join is not None:
                     return [{key: join}]
@@ -420,13 +420,21 @@ class _Binder:
             values = [self._value(v) for v in cond.expressions]
             if parameter is not None and all(v is not _NOT_LITERAL for v in values):
                 key = (id(parameter[0]), parameter[1].lower(), parameter[1])
-                return [{key: v} for v in values]
+                return [{key: self._typed(parameter[1], v)} for v in values]
         if isinstance(cond, exp.In) and cond.args.get("query") is not None:
             parameter = self._parameter(cond.this, select)
             if parameter is not None:
                 key = (id(parameter[0]), parameter[1].lower(), parameter[1])
                 return [{key: self._listed_key(cond.args["query"], parameter[1])}]
         return self._refuse(cond, select)
+
+    def _typed(self, parameter: str, value: Any) -> Any:
+        """``value``, assigned to ``parameter``: refused before any call when the parameter's
+        registered type does not take it (``parameter_binding.check_value``)."""
+        from provisa.core.parameter_binding import check_value
+
+        check_value(parameter, self.types.get(parameter.lower()), value)
+        return value
 
     def _inlined(self, node: exp.Expr) -> exp.Expr | None:  # pyright: ignore[reportPrivateImportUsage]  # lib omits __all__
         """``node`` with each bound ``$N`` as its value; None when one is not bound yet."""
@@ -1153,12 +1161,12 @@ def drop_union_branches_for_table(sql: str, table_name: str) -> str:  # REQ-599,
     return root.sql(dialect="postgres")
 
 
-def apply_dropped_tables(sql: str, dropped: dict[str, str]) -> str:  # REQ-599
+def apply_dropped_tables(sql: str, dropped: dict[str, list[str]]) -> str:  # REQ-599
     """Drop UNION branches for each table in *dropped*; raise the table's own reason for any
     that survive.
 
-    ``dropped`` maps a table the query cannot address (unsatisfied required_args / path params)
-    to a human reason; an unreachable remote or a failed fetch is never here -- it fails the query
+    ``dropped`` maps a table the query cannot address to the required parameters (required_args /
+    path params) it is given no value for; an unreachable remote or a failed fetch is never here -- it fails the query
     (REQ-1661, amended 2026-09-30). A table referenced inside a UNION
     (a relationship join, a multi-label sweep) is simply excluded from the sweep — the ordinary
     REQ-848/REQ-941 behavior. A table that is the SOLE FROM target has no branch to drop, would
@@ -1166,12 +1174,12 @@ def apply_dropped_tables(sql: str, dropped: dict[str, str]) -> str:  # REQ-599
     instead of the caller-facing reason recorded here — so it raises loud instead (matches the
     pgwire ``_optimize_and_route`` no-op detection, generalized to every settled-pipeline caller).
     """
-    from provisa.core.parameters import ParameterRequired
+    from provisa.core.parameter_binding import ParameterRequired
 
-    for table_name, reason in dropped.items():
+    for table_name, missing in dropped.items():
         sql = drop_union_branches_for_table(sql, table_name)
         if table_name in find_api_table_names(sql):
-            raise ParameterRequired(table_name, reason)
+            raise ParameterRequired(table_name, missing)
     return sql
 
 
@@ -1185,3 +1193,65 @@ def where_referenced_tables(sql: str) -> set[str]:  # REQ-599
             if tbl:
                 names.add(tbl)
     return names
+
+
+def name_parameters_by_column(tree: exp.Expr, ctx: Any) -> bool:  # pyright: ignore[reportPrivateImportUsage]  # REQ-1986
+    """Rename, IN PLACE, each reference to a table's parameter by another of the names it is bound
+    under (its own name, its alias: ``CompilationContext.parameter_names``) to its parameter
+    column, before the statement is governed and bound -- the one step a SQL statement's
+    parameter names go through, so the binder reads every parameter by its column. A renamed
+    parameter selected bare keeps the name it was given as its output name. An unqualified name
+    is renamed only where exactly one source of its scope can hold it. True when one was
+    renamed."""
+    names_by_id: Mapping[int, Mapping[str, str]] = ctx.parameter_names
+    other = {n for m in names_by_id.values() for n, column in m.items() if n != column.lower()}
+    if not other or not any(c.name.lower() in other for c in tree.find_all(exp.Column)):
+        return False
+    from sqlglot.optimizer.scope import traverse_scope
+
+    from provisa.compiler.naming import table_id_of
+    from provisa.compiler.stage2 import context_table_map
+
+    table_map = context_table_map(ctx)
+    held: dict[int, set[str]] = {}
+    for (table_id, physical), published in ctx.physical_to_sql.items():
+        held.setdefault(table_id, set()).update((physical.lower(), published.lower()))
+    changed = False
+    for scope in traverse_scope(tree):
+        parameterized: dict[str, Mapping[str, str]] = {}
+        others: list[set[str] | None] = []
+        for name, source in scope.sources.items():
+            table_id = table_id_of(source, table_map) if isinstance(source, exp.Table) else None
+            if table_id is not None and table_id in names_by_id:
+                parameterized[name] = names_by_id[table_id]
+            elif table_id is not None:
+                others.append(held.get(table_id, set()))
+            else:
+                # A derived table, a CTE, a function: it may hold any name.
+                others.append(None)
+        if not parameterized:
+            continue
+        renamed: dict[int, str] = {}
+        for col in scope.columns:
+            key = col.name.lower()
+            if key not in other:
+                continue
+            if col.table:
+                names = parameterized.get(col.table)
+                column = None if names is None else names.get(key)
+            else:
+                owners = [m[key] for m in parameterized.values() if key in m]
+                clear = all(o is not None and key not in o for o in others)
+                column = owners[0] if len(owners) == 1 and clear else None
+            if column is None:
+                continue
+            renamed[id(col)] = col.name
+            col.set("this", exp.to_identifier(column, quoted=True))
+            changed = True
+        select = scope.expression
+        if not isinstance(select, exp.Select):
+            continue
+        for projection in list(select.expressions):
+            if isinstance(projection, exp.Column) and id(projection) in renamed:
+                projection.replace(exp.alias_(projection.copy(), renamed[id(projection)]))
+    return changed

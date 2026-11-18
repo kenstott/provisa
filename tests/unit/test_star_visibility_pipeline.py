@@ -49,7 +49,6 @@ async def _raw(monkeypatch, sql: str, *, tables: list[dict], views: dict | None 
     if views:
         state.view_sql_map = views
         state.role_build_inputs = {
-            "draft_tables": [],
             "withdrawn_tables": [],
         }  # every input of the view in service
     monkeypatch.setattr(app_mod, "state", state, raising=False)

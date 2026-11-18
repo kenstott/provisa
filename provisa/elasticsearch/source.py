@@ -204,9 +204,13 @@ def fetch_index_mapping(host: str, port: int, index: str, use_ssl: bool = False)
     """
     import httpx
 
+    from provisa.security import sandbox_egress
+
     scheme = "https" if use_ssl else "http"
     url = f"{scheme}://{host}:{port}/{index}/_mapping"
-    resp = httpx.get(url, timeout=10.0)
+    # REQ-2006: a held org's source is checked at each connection, each request.
+    with httpx.Client(timeout=10.0, event_hooks=sandbox_egress.http_sync_event_hooks()) as client:
+        resp = client.get(url)
     resp.raise_for_status()
     return extract_mapping_properties(resp.json(), index)
 

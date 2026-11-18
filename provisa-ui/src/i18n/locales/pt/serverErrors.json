@@ -57,7 +57,8 @@
       "username_exists": "Nome de usuário já existe",
       "not_permitted": "Não permitido",
       "token_scopes_required": "Escolha pelo menos uma função para o token.",
-      "token_scope_not_held": "Um token só pode usar funções que você tem."
+      "token_scope_not_held": "Um token só pode usar funções que você tem.",
+      "no_role_held": "'{{user}}' não tem nenhum papel nesta organização"
     },
     "authz": {
       "mutation_not_permitted": "Mutação '{{field_name}}' não permitida: {{reason}}"
@@ -137,7 +138,6 @@
       "unknown_command": "Comando desconhecido '{{name}}'",
       "write_not_admitted": "O papel '{{role}}' não pode fazer esta escrita: uma escrita exige o direito de escrita, acesso de escrita a cada coluna escrita e linhas que o filtro de linhas do papel admita.",
       "write_not_supported": "'{{table}}' não aceita {{operation}}: sua origem não consegue executá-lo",
-      "table_is_draft": "{{table}} é um rascunho: fora de serviço até que os responsáveis pelo seu domínio a liberem",
       "source_unbound": "A origem '{{source}}' não tem conexão no ambiente '{{env}}': vincule-a ou copie-a novamente do ambiente pai",
       "system_catalog_unavailable": "O catálogo '{{catalog}}' do mecanismo está sendo registrado. Tente novamente em instantes.",
       "domain_not_accessible": "A função '{{role_id}}' não tem acesso ao domínio '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "A origem {{source}} ainda está sendo iniciada. Tente novamente em instantes.",
       "source_unavailable": "A origem {{source}} não pôde responder. Tente novamente em breve.",
       "view_outside_load_window": "A view {{view}} só pode ser lida dentro da sua janela de leitura. Ela abre novamente às {{opens_at}}.",
-      "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
       "graphql_body_missing": "A requisição não tem corpo: uma requisição GraphQL é um objeto JSON com uma consulta.",
       "graphql_body_not_json": "O corpo da requisição não é JSON: {{error}}",
       "graphql_request_not_object": "Uma requisição GraphQL é um objeto JSON com uma consulta.",
@@ -165,7 +164,11 @@
       "parameter_unbound_on_branch": "O parâmetro {{parameter}} recebe um valor num ramo de um OR e nenhum noutro. Dê um valor a {{parameter}} em todos os ramos.",
       "parameter_conflict": "O parâmetro {{parameter}} recebe dois valores diferentes ao mesmo tempo ({{first}} e {{second}}). Dê-lhe um único valor ou liste os valores com IN ou OR.",
       "parameter_calls_over_cap": "A instrução precisa de {{calls}} chamadas a {{table}}, uma por cada valor dado aos seus parâmetros, e são feitas no máximo {{cap}} por instrução (definição {{setting}}). Indique menos valores.",
-      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}."
+      "parameter_not_written": "O relacionamento {{relationship}} faz junção pelo parâmetro {{parameter}}, que uma instrução vincula a um valor e nunca grava. Uma gravação não cria {{relationship}}.",
+      "table_is_withdrawn": "{{table}} está retirada: fora de produção até ser reposta",
+      "view_awaits_rule_rebuild": "A view {{view}} está sendo reconstruída por uma alteração nas regras de linha de suas entradas. Esta função poderá lê-la quando essa construção for publicada.",
+      "parameter_required": "A tabela '{{table}}' requer o(s) parâmetro(s) {{parameters}}: dê um valor a cada um (uma condição WHERE sobre a sua coluna em SQL, um argumento em GraphQL).",
+      "parameter_wrong_type": "O parâmetro {{parameter}} recebe um valor do tipo {{type}}; '{{value}}' não é um."
     },
     "discovery": {
       "adapter_missing_discover_schema": "O adaptador para '{{source_type}}' não implementa discover_schema",
@@ -326,13 +329,6 @@
     "query": {
       "catalog_view_refused": "{{view}} é uma exibição de catálogo do domínio meta e não pode ser lida em uma instrução junto com uma tabela de uma fonte de dados: leia-as em duas instruções.",
       "function_unsupported": "{{function}}() não tem equivalente em {{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
-      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
-      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
-      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
-      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
     },
     "replication": {
       "answer_not_json": "A resposta lida para a réplica de {{table}} não é JSON válido: [{{content_type}}] {{cause}} (nos {{kib}} KiB anteriores ao byte {{before_byte}} da resposta).",
@@ -563,7 +559,10 @@
       "source_withdrawn": "Fonte {{source}} retirada",
       "source_put_back": "Fonte {{source}} reposta",
       "withdrawn_source_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: a sua fonte {{source}} está retirada e nenhum motor lê uma fonte retirada.",
-      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma."
+      "withdrawn_table_not_previewable": "Não é possível pré-visualizar a tabela {{table}}: está retirada e não mantém réplica, e o motor só lê a sua fonte através de uma.",
+      "table_not_withdrawn": "A tabela {{table}} não está retirada: só se repõe uma tabela retirada. Para mover para outra região uma tabela em produção, defina a sua região.",
+      "source_not_withdrawn": "A fonte {{source}} não está retirada: só se repõe uma fonte retirada. Para mudar a sua região, defina a sua região.",
+      "put_back_needs_region": "Repor {{object}} indica uma região: indique uma, ou nenhuma para nenhuma região."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto é do operador: ele lê o ambiente próprio do servidor e não pode ser alterado aqui. Adicione um seu em vez disso.",
@@ -576,7 +575,8 @@
     "security": {
       "unknown_mode": "modo de segurança desconhecido '{{mode}}'",
       "data_residency_refused": "Não é possível definir a região de {{object}}: a concessão data_residency não cobre {{value}}; uma concessão data_residency que o liste permite isso",
-      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso"
+      "data_residency_missing": "Não é possível definir a região de {{object}}: nenhuma concessão data_residency do chamador cobre {{value}}; uma concessão data_residency que o liste permite isso",
+      "withdraw_residency_refused": "Não é possível retirar {{object}}: nenhuma concessão data_residency de quem chama cobre {{value}}, onde é mantido; uma concessão data_residency que o liste permite isso"
     },
     "settings": {
       "auth_required": "{{field}} não pode ser alterado até que a autenticação seja configurada.",
@@ -623,10 +623,14 @@
       "schema_not_avro": "O esquema {{schema_id}} no registro {{registry}} é {{kind}}, não Avro",
       "schema_registry_error": "O registro de esquemas {{registry}} respondeu HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "O registro de esquemas {{registry}} recusou as credenciais da origem (HTTP {{http_status}}, autenticação '{{method}}')",
-      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas {{registry}}: {{error}}",
+      "schema_registry_unreachable": "Não é possível acessar o registro de esquemas: {{error}}",
       "sse_limit_reached": "máximo de assinaturas SSE simultâneas atingido",
       "table_not_found": "Tabela '{{table}}' não encontrada",
-      "unknown_role": "Função desconhecida '{{role}}'"
+      "unknown_role": "Função desconhecida '{{role}}'",
+      "owner_role_lost": "A assinatura terminou: seu proprietário não tem mais a função sob a qual ela foi iniciada ({{roles}})",
+      "sink_cap_reached": "Você já tem {{cap}} sinks do Kafka em execução, o máximo que o operador permite ({{setting}})",
+      "sink_needs_write": "O papel '{{role}}' não tem o direito de escrita que um sink do Kafka exige",
+      "owner_sign_in_expired": "A assinatura terminou: o login sob o qual ela foi iniciada expirou; entre novamente e inicie-a outra vez"
     },
     "users": {
       "assignment_not_found": "Atribuição não encontrada",
@@ -670,7 +674,6 @@
       "invalid_limit": "LIMIT {{value}} não é um número inteiro de linhas: LIMIT espera uma contagem de 0 ou mais, p. ex. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} não é um número inteiro de linhas: SKIP espera uma contagem de 0 ou mais, p. ex. SKIP 10.",
       "engine_refused": "O mecanismo recusou a consulta: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lê {{variable}}, mas a instrução não vincula nenhuma variável: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tem uma propriedade {{variable}}.",
       "undefined_variable_properties": "{{clause}} lê {{variable}}, que nada na instrução vincula: uma variável é vinculada por um padrão MATCH, WITH, UNWIND ou CALL. Vinculadas aqui: {{bound}}. Você quis dizer {{suggestions}}? Cada uma está vinculada a um rótulo com uma propriedade {{variable}}.",
@@ -738,10 +741,6 @@
     },
     "dbt_sources": {
       "unknown_role": "Não existe nenhuma função chamada {{role}}."
-    },
-    "debug_logs": {
-      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
-      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
     },
     "dbt": {
       "products": {
@@ -901,6 +900,17 @@
     "preflight": {
       "confined_unavailable": "A verificação prévia de {{subject}} não foi executada: nesta organização ela só roda em um processo confinado, e não foi possível iniciar um ({{reason}}).",
       "confined_failed": "A verificação prévia de {{subject}} não retornou nenhum veredito: seu processo confinado terminou antes ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Regra de ocultação {{rule}}: {{why}}",
+      "pattern_backtracks": "Regra de ocultação {{rule}}: o padrão pode causar retrocesso catastrófico (uma repetição aninhada numa repetição ilimitada, ou alternativas dentro dela que podem começar pelo mesmo texto). Reescreva-o sem essa forma.",
+      "pattern_unsupported": "Regra de ocultação {{rule}}: a regra de uma organização não pode usar referências retroativas, lookahead ou lookbehind, grupos atômicos, repetições possessivas nem grupos condicionais.",
+      "pattern_too_large": "Regra de ocultação {{rule}}: o padrão é grande demais depois de expandidas as repetições. Use uma contagem de repetições menor.",
+      "server_reference": "Regra de ocultação {{rule}}: uma organização neste servidor não pode referenciar o ambiente do servidor. Use ${secret:NAME} do cofre da própria organização."
+    },
+    "debug_logs": {
+      "pattern_refused": "O padrão de filtro de logs foi recusado: {{why}}",
+      "pattern_exceeded": "O padrão de filtro de logs foi recusado: excedeu o seu limite de passos ({{steps}} passos) numa linha de log de {{length}} caracteres."
     },
     "import": {
       "include_outside_upload": "{{path}} está fora do projeto enviado; um projeto lê apenas os seus próprios arquivos.",

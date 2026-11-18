@@ -57,7 +57,8 @@
       "username_exists": "Ce nom d'utilisateur existe déjà",
       "not_permitted": "Non autorisé",
       "token_scopes_required": "Choisissez au moins un rôle pour le jeton.",
-      "token_scope_not_held": "Un jeton ne peut utiliser que des rôles que vous détenez."
+      "token_scope_not_held": "Un jeton ne peut utiliser que des rôles que vous détenez.",
+      "no_role_held": "'{{user}}' n'a aucun rôle dans cette organisation"
     },
     "authz": {
       "mutation_not_permitted": "Mutation « {{field_name}} » non autorisée : {{reason}}"
@@ -137,7 +138,6 @@
       "unknown_command": "Commande « {{name}} » inconnue",
       "write_not_admitted": "Le rôle '{{role}}' ne peut pas effectuer cette écriture : une écriture exige le droit d'écriture, l'accès en écriture à chaque colonne écrite et des lignes admises par le filtre de lignes du rôle.",
       "write_not_supported": "'{{table}}' n'accepte pas {{operation}} : sa source ne peut pas l'exécuter",
-      "table_is_draft": "{{table}} est un brouillon : hors service jusqu'à ce que les responsables de son domaine la publient",
       "source_unbound": "La source '{{source}}' n'a pas de connexion dans l'environnement '{{env}}' : liez-la ou recopiez-la depuis l'environnement parent",
       "system_catalog_unavailable": "Le catalogue '{{catalog}}' du moteur est en cours d'enregistrement. Réessayez dans un instant.",
       "domain_not_accessible": "Le rôle '{{role_id}}' n'a pas accès au domaine '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "La source {{source}} est encore en cours de démarrage. Réessayez dans un instant.",
       "source_unavailable": "La source {{source}} n'a pas pu répondre. Réessayez sous peu.",
       "view_outside_load_window": "La vue {{view}} ne peut être lue que pendant sa fenêtre de lecture. Elle rouvre à {{opens_at}}.",
-      "view_awaits_rule_rebuild": "La vue {{view}} est en cours de reconstruction suite à une modification des règles de ligne sur ses entrées. Ce rôle pourra la lire une fois cette construction publiée.",
       "graphql_body_missing": "La requête n'a pas de corps : une requête GraphQL est un objet JSON contenant une requête.",
       "graphql_body_not_json": "Le corps de la requête n'est pas du JSON : {{error}}",
       "graphql_request_not_object": "Une requête GraphQL est un objet JSON contenant une requête.",
@@ -165,7 +164,11 @@
       "parameter_unbound_on_branch": "Le paramètre {{parameter}} reçoit une valeur dans une branche d'un OR et aucune dans une autre. Donnez une valeur à {{parameter}} dans chaque branche.",
       "parameter_conflict": "Le paramètre {{parameter}} reçoit deux valeurs différentes à la fois ({{first}} et {{second}}). Donnez-lui une seule valeur, ou énumérez les valeurs avec IN ou OR.",
       "parameter_calls_over_cap": "L'instruction demande {{calls}} appels à {{table}}, un par valeur donnée à ses paramètres, et {{cap}} au plus sont effectués par instruction (paramètre {{setting}}). Donnez moins de valeurs.",
-      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}."
+      "parameter_not_written": "La relation {{relationship}} est jointe sur le paramètre {{parameter}}, qu'une instruction lie à une valeur et n'écrit jamais. Une écriture ne crée pas {{relationship}}.",
+      "table_is_withdrawn": "{{table}} est retirée : hors production jusqu'à sa remise en service",
+      "view_awaits_rule_rebuild": "La vue {{view}} est en cours de reconstruction suite à une modification des règles de ligne sur ses entrées. Ce rôle pourra la lire une fois cette construction publiée.",
+      "parameter_required": "La table '{{table}}' exige le ou les paramètres {{parameters}} : donnez une valeur à chacun (une condition WHERE sur sa colonne en SQL, un argument en GraphQL).",
+      "parameter_wrong_type": "Le paramètre {{parameter}} prend une valeur de type {{type}} ; '{{value}}' n'en est pas une."
     },
     "discovery": {
       "adapter_missing_discover_schema": "L'adaptateur pour « {{source_type}} » n'implémente pas discover_schema",
@@ -326,13 +329,6 @@
     "query": {
       "catalog_view_refused": "{{view}} est une vue de catalogue du domaine meta et ne peut pas être lue dans une même instruction avec une table d'une source de données : lisez-les en deux instructions.",
       "function_unsupported": "{{function}}() n'a pas d'équivalent sur {{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "Règle de masquage {{rule}} : {{why}}",
-      "pattern_backtracks": "Règle de masquage {{rule}} : le motif peut provoquer un retour arrière catastrophique (une répétition imbriquée dans une répétition illimitée, ou des alternatives à l'intérieur qui peuvent commencer par le même texte). Réécrivez-le sans cette forme.",
-      "pattern_unsupported": "Règle de masquage {{rule}} : la règle d'une organisation ne peut pas utiliser de références arrière, de lookahead ou de lookbehind, de groupes atomiques, de répétitions possessives ni de groupes conditionnels.",
-      "pattern_too_large": "Règle de masquage {{rule}} : le motif est trop grand une fois ses répétitions développées. Utilisez un nombre de répétitions plus petit.",
-      "server_reference": "Règle de masquage {{rule}} : une organisation sur ce serveur ne peut pas faire référence à l'environnement du serveur. Utilisez ${secret:NAME} depuis le coffre propre de l'organisation."
     },
     "replication": {
       "answer_not_json": "La réponse lue pour la réplique de {{table}} n'est pas du JSON valide : [{{content_type}}] {{cause}} (dans les {{kib}} Kio précédant l'octet {{before_byte}} de la réponse).",
@@ -563,7 +559,10 @@
       "source_withdrawn": "Source {{source}} retirée",
       "source_put_back": "Source {{source}} remise en service",
       "withdrawn_source_not_previewable": "Impossible de prévisualiser la table {{table}} : sa source {{source}} est retirée, et aucun moteur ne lit une source retirée.",
-      "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique."
+      "withdrawn_table_not_previewable": "Impossible de prévisualiser la table {{table}} : elle est retirée et ne conserve aucune réplique, et le moteur ne lit sa source qu'à travers une réplique.",
+      "table_not_withdrawn": "La table {{table}} n'est pas retirée : seule une table retirée est remise en service. Pour déplacer une table en production vers une autre région, définissez sa région.",
+      "source_not_withdrawn": "La source {{source}} n'est pas retirée : seule une source retirée est remise en service. Pour changer sa région, définissez sa région.",
+      "put_back_needs_region": "Remettre en service {{object}} nomme une région : indiquez-en une, ou aucune pour aucune région."
     },
     "secrets": {
       "env_reference_object_locked": "Cet objet appartient à l'opérateur : il lit l'environnement propre du serveur et ne peut pas être modifié ici. Ajoutez plutôt le vôtre.",
@@ -576,7 +575,8 @@
     "security": {
       "unknown_mode": "mode de sécurité « {{mode}} » inconnu",
       "data_residency_refused": "La région de {{object}} ne peut pas être définie : l'autorisation data_residency ne couvre pas {{value}} ; une autorisation data_residency qui l'inclut le permet",
-      "data_residency_missing": "La région de {{object}} ne peut pas être définie : aucune autorisation data_residency de l'appelant ne couvre {{value}} ; une autorisation data_residency qui l'inclut le permet"
+      "data_residency_missing": "La région de {{object}} ne peut pas être définie : aucune autorisation data_residency de l'appelant ne couvre {{value}} ; une autorisation data_residency qui l'inclut le permet",
+      "withdraw_residency_refused": "{{object}} ne peut pas être retiré : aucune autorisation data_residency de l'appelant ne couvre {{value}}, où il est conservé ; une autorisation data_residency qui l'inclut le permet"
     },
     "settings": {
       "auth_required": "{{field}} ne peut pas être modifié tant que l'authentification n'est pas configurée.",
@@ -623,10 +623,14 @@
       "schema_not_avro": "Le schéma {{schema_id}} du registre {{registry}} est {{kind}}, pas Avro",
       "schema_registry_error": "Le registre de schémas {{registry}} a répondu HTTP {{http_status}} : {{error}}",
       "schema_registry_refused_credentials": "Le registre de schémas {{registry}} a refusé les identifiants de la source (HTTP {{http_status}}, authentification '{{method}}')",
-      "schema_registry_unreachable": "Le registre de schémas {{registry}} est injoignable : {{error}}",
+      "schema_registry_unreachable": "Le registre de schémas est injoignable : {{error}}",
       "sse_limit_reached": "nombre maximal d'abonnements SSE simultanés atteint",
       "table_not_found": "Table « {{table}} » introuvable",
-      "unknown_role": "Rôle « {{role}} » inconnu"
+      "unknown_role": "Rôle « {{role}} » inconnu",
+      "owner_role_lost": "L'abonnement a pris fin : son propriétaire n'a plus le rôle sous lequel il a été démarré ({{roles}})",
+      "sink_cap_reached": "Vous avez déjà {{cap}} sinks Kafka en cours d'exécution, le maximum autorisé par l'opérateur ({{setting}})",
+      "sink_needs_write": "Le rôle '{{role}}' n'a pas le droit d'écriture qu'exige un sink Kafka",
+      "owner_sign_in_expired": "L'abonnement a pris fin : la connexion sous laquelle il a été démarré a expiré ; reconnectez-vous et redémarrez-le"
     },
     "users": {
       "assignment_not_found": "Affectation introuvable",
@@ -670,7 +674,6 @@
       "invalid_limit": "LIMIT {{value}} n'est pas un nombre entier de lignes : LIMIT attend un nombre supérieur ou égal à 0, par ex. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} n'est pas un nombre entier de lignes : SKIP attend un nombre supérieur ou égal à 0, par ex. SKIP 10.",
       "engine_refused": "Le moteur a refusé la requête : {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lit {{variable}}, mais l'instruction ne lie aucune variable : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL.",
       "undefined_variable_property": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestion}} ? {{owner}} est liée à :{{label}}, qui a une propriété {{variable}}.",
       "undefined_variable_properties": "{{clause}} lit {{variable}}, que rien dans l'instruction ne lie : une variable est liée par un motif MATCH, WITH, UNWIND ou CALL. Liées ici : {{bound}}. Vouliez-vous dire {{suggestions}} ? Chacune est liée à un libellé ayant une propriété {{variable}}.",
@@ -738,10 +741,6 @@
     },
     "dbt_sources": {
       "unknown_role": "Aucun rôle nommé {{role}} n’existe."
-    },
-    "debug_logs": {
-      "pattern_refused": "Le motif de filtrage des journaux est refusé : {{why}}",
-      "pattern_exceeded": "Le motif de filtrage des journaux est refusé : il a dépassé sa limite d'étapes ({{steps}} étapes) sur une ligne de journal de {{length}} caractères."
     },
     "dbt": {
       "products": {
@@ -901,6 +900,17 @@
     "preflight": {
       "confined_unavailable": "Le contrôle préalable de {{subject}} n'a pas été exécuté : dans cette organisation, il ne s'exécute que dans un processus confiné, et aucun n'a pu être démarré ({{reason}}).",
       "confined_failed": "Le contrôle préalable de {{subject}} n'a rendu aucun verdict : son processus confiné s'est terminé avant ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Règle de masquage {{rule}} : {{why}}",
+      "pattern_backtracks": "Règle de masquage {{rule}} : le motif peut provoquer un retour arrière catastrophique (une répétition imbriquée dans une répétition illimitée, ou des alternatives à l'intérieur qui peuvent commencer par le même texte). Réécrivez-le sans cette forme.",
+      "pattern_unsupported": "Règle de masquage {{rule}} : la règle d'une organisation ne peut pas utiliser de références arrière, de lookahead ou de lookbehind, de groupes atomiques, de répétitions possessives ni de groupes conditionnels.",
+      "pattern_too_large": "Règle de masquage {{rule}} : le motif est trop grand une fois ses répétitions développées. Utilisez un nombre de répétitions plus petit.",
+      "server_reference": "Règle de masquage {{rule}} : une organisation sur ce serveur ne peut pas faire référence à l'environnement du serveur. Utilisez ${secret:NAME} depuis le coffre propre de l'organisation."
+    },
+    "debug_logs": {
+      "pattern_refused": "Le motif de filtrage des journaux est refusé : {{why}}",
+      "pattern_exceeded": "Le motif de filtrage des journaux est refusé : il a dépassé sa limite d'étapes ({{steps}} étapes) sur une ligne de journal de {{length}} caractères."
     },
     "import": {
       "include_outside_upload": "{{path}} est hors du projet téléversé ; un projet ne lit que ses propres fichiers.",

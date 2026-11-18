@@ -93,6 +93,9 @@
     "history": {
       "badge": "histórico",
       "title": "Guarda histórico: consulte-o em uma data ou como registrado (Viagem no tempo)"
-    }
+    },
+    "withdrawn": "Retirada",
+    "withdrawnTitle": "Fora de produção: nenhum papel a lê até que seja restabelecida",
+    "sourceWithdrawnTitle": "Sua fonte {{source}} está retirada: nenhum papel a lê até que a fonte seja restabelecida"
   }
 }

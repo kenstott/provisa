@@ -198,11 +198,26 @@ def _register_table_in_ctx(
     ctx.native_filter_columns[t.table_id] = {
         nfc["column_name"]: _nfc_type(nfc) for nfc in t.native_filter_columns
     }
-    from provisa.core.parameters import parameter_facts
+    from provisa.core.parameters import parameter_facts, parameter_names
 
     ctx.parameters[t.table_id] = tuple(
         parameter_facts({**nfc, "data_type": _nfc_type(nfc)} for nfc in t.native_filter_columns)
     )
+    # A name a result column is read by stays that column's.
+    taken = [
+        name
+        for col in t.visible_columns
+        for name in (
+            col["column_name"],
+            col.get("alias") or "",
+            apply_sql_name(col["column_name"]),
+            apply_gql_name(col["column_name"], getattr(t, "gql_convention_override", None)),
+        )
+        if name
+    ]
+    names = parameter_names(t.native_filter_columns, taken)
+    if names:
+        ctx.parameter_names[t.table_id] = names
 
     for col in t.visible_columns:
         phys = col["column_name"]
@@ -711,7 +726,6 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
     domain_alias_map = _domain_alias_map(si.domains)
     tables = _build_visible_tables(si, for_sql=True)
     if not tables:
-        _register_draft_names(si, ctx, domain_alias_map)  # REQ-1921: drafts are named still
         _register_missing_capabilities(si, ctx, domain_alias_map)  # REQ-1132
         return ctx
     _assign_names(
@@ -743,35 +757,10 @@ def build_context(  # REQ-008, REQ-009, REQ-151, REQ-393
 
     ctx.gql_governed_object_cols = si.gql_governed_object_cols or set()
     ctx.columns_outside_relation = si.columns_outside_relation
-    _register_draft_names(si, ctx, domain_alias_map)
     _register_missing_capabilities(si, ctx, domain_alias_map)
     _register_listed_only(si, ctx, domain_alias_map)
 
     return ctx
-
-
-def _register_draft_names(  # REQ-1921
-    si: object,  # object-ok: SchemaInput, imported inside build_context (circular boundary)
-    ctx: CompilationContext,
-    domain_alias_map: dict[str, str],
-) -> None:
-    """Every name a statement could give a draft table this role would otherwise read, so a
-    statement naming one is refused as draft, not as unknown. A draft
-    table in a domain the role does not reach, or with no column it sees, is not named: to that
-    role it does not exist, draft or not."""
-    from provisa.compiler.schema_gen import SchemaInput
-    from provisa.security.visibility import visible_tables
-
-    assert isinstance(si, SchemaInput)
-    role = si.role
-    for row in si.draft_tables:
-        # REQ-2152: a draft is listed to a role served one of its columns, by the one rule
-        # (its domain reach included).
-        if not visible_tables([row], role):
-            continue
-        for said in _names_of_table(si, row, domain_alias_map):
-            ctx.draft_names[said] = row["table_name"]
-            ctx.draft_ids[said] = row["id"]
 
 
 def _register_missing_capabilities(  # REQ-1132

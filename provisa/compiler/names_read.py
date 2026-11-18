@@ -9,8 +9,7 @@
 # permission from the copyright holder.
 
 """The relations a request names, read before it is governed: the names a SQL statement gives
-its tables, and the root fields of a GraphQL document that only reads. A draft named by either
-is read through the drafts' own view (REQ-1921, admin/table_read)."""
+its tables, and the root fields of a GraphQL document that only reads."""
 
 # Requirements: REQ-1921
 

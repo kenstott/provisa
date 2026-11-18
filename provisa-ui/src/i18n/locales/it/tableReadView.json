@@ -48,10 +48,12 @@
     "writable": "La sorgente accetta",
     "noWrites": "Nessuna scrittura",
     "notShown": "non mostrato",
-    "draftPreviewNote": "Anteprima della bozza: i lettori non possono ancora vedere questa tabella.",
     "keepsHistory": "Conserva la cronologia: ogni versione, con quando è accaduto e quando è stato registrato.",
     "keepsHistoryQuery": "Interrogala a una data o come registrata",
     "deleteTitle": "Eliminare la tabella {{name}}?",
-    "deleteConsequence": "La registrazione della tabella viene eliminata."
+    "deleteConsequence": "La registrazione della tabella viene eliminata.",
+    "withdrawConsequence": "Nessun ruolo la legge da alcuna interfaccia, nessun motore la collega e la sua replica viene rimossa. Definizione, autorizzazioni e relazioni restano, e Ripristina la riporta com'era.",
+    "withdrawnNote": "Ritirata: nessun ruolo legge questa tabella finché non viene ripristinata. L'anteprima la legge ancora.",
+    "sourceWithdrawnNote": "La sua origine {{source}} è ritirata: nessun ruolo legge questa tabella finché l'origine non viene ripristinata."
   }
 }

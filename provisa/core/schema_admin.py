@@ -855,6 +855,23 @@ cluster_nodes = Table(
     Column("last_seen", DateTime(timezone=True), nullable=False),
 )
 
+# REQ-812: the PLATFORM STATE STORE's client-started Kafka sinks now running
+# (provisa/core/platform_state/sinks.py), each on whichever process of whichever node started it,
+# beating while it runs. Its owner (user, org, and the roles it acts as) is what caps how many sinks
+# one principal holds across the deployment. Per deployment; never an org's model.
+running_sinks = Table(
+    "running_sinks",
+    metadata,
+    Column("sink_id", Text, primary_key=True),
+    Column("user_id", Text, nullable=False),
+    Column("org_id", Text, nullable=True),
+    Column("roles", JSON, nullable=False),
+    Column("topic", Text, nullable=False),
+    Column("table_name", Text, nullable=False),
+    Column("started_at", DateTime(timezone=True), nullable=False),
+    Column("last_seen", DateTime(timezone=True), nullable=False),
+)
+
 # The PLATFORM STATE STORE's record of each coordinator's system catalogs
 # (provisa/core/platform_state/catalogs.py): the hash of the spec a catalog was last created
 # from, by coordinator address and catalog name. Trino cannot read a catalog's properties back,
@@ -1037,6 +1054,7 @@ REGISTRY_TABLES = [
     config_stamp,
     cluster_nodes,
     engine_system_catalogs,
+    running_sinks,
 ]
 
 

@@ -57,7 +57,8 @@
       "username_exists": "El nombre de usuario ya existe",
       "not_permitted": "No permitido",
       "token_scopes_required": "Elija al menos un rol para el token.",
-      "token_scope_not_held": "Un token solo puede usar roles que usted tiene."
+      "token_scope_not_held": "Un token solo puede usar roles que usted tiene.",
+      "no_role_held": "'{{user}}' no tiene ningún rol en esta organización"
     },
     "authz": {
       "mutation_not_permitted": "Mutación '{{field_name}}' no permitida: {{reason}}"
@@ -137,7 +138,6 @@
       "unknown_command": "Comando desconocido: '{{name}}'",
       "write_not_admitted": "El rol '{{role}}' no puede realizar esta escritura: una escritura requiere el derecho de escritura, acceso de escritura a cada columna que escribe y filas que admita el filtro de filas del rol.",
       "write_not_supported": "'{{table}}' no admite {{operation}}: su origen no puede realizarlo",
-      "table_is_draft": "{{table}} es un borrador: fuera de servicio hasta que los responsables de su dominio la liberen",
       "source_unbound": "El origen '{{source}}' no tiene conexión en el entorno '{{env}}': vincúlelo o vuelva a copiarlo del entorno principal",
       "system_catalog_unavailable": "El catálogo '{{catalog}}' del motor se está registrando. Vuelva a intentarlo en breve.",
       "domain_not_accessible": "El rol '{{role_id}}' no tiene acceso al dominio '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "El origen {{source}} todavía se está iniciando. Vuelva a intentarlo en un momento.",
       "source_unavailable": "El origen {{source}} no pudo responder. Inténtelo de nuevo en breve.",
       "view_outside_load_window": "La vista {{view}} solo se puede leer dentro de su ventana de lectura. Vuelve a abrirse a las {{opens_at}}.",
-      "view_awaits_rule_rebuild": "La vista {{view}} se está volviendo a crear por un cambio en las reglas de fila de sus entradas. Este rol podrá leerla cuando esa compilación se haya publicado.",
       "graphql_body_missing": "La solicitud no tiene cuerpo: una solicitud GraphQL es un objeto JSON con una consulta.",
       "graphql_body_not_json": "El cuerpo de la solicitud no es JSON: {{error}}",
       "graphql_request_not_object": "Una solicitud GraphQL es un objeto JSON con una consulta.",
@@ -165,7 +164,11 @@
       "parameter_unbound_on_branch": "El parámetro {{parameter}} recibe un valor en una rama de un OR y ninguno en otra. Dé un valor a {{parameter}} en cada rama.",
       "parameter_conflict": "El parámetro {{parameter}} recibe dos valores distintos a la vez ({{first}} y {{second}}). Dele un solo valor o enumere los valores con IN u OR.",
       "parameter_calls_over_cap": "La sentencia necesita {{calls}} llamadas a {{table}}, una por cada valor dado a sus parámetros, y se hacen como máximo {{cap}} por sentencia (ajuste {{setting}}). Indique menos valores.",
-      "parameter_not_written": "La relación {{relationship}} se une por el parámetro {{parameter}}, que una instrucción vincula a un valor y nunca escribe. Una escritura no crea {{relationship}}."
+      "parameter_not_written": "La relación {{relationship}} se une por el parámetro {{parameter}}, que una instrucción vincula a un valor y nunca escribe. Una escritura no crea {{relationship}}.",
+      "table_is_withdrawn": "{{table}} está retirada: fuera de producción hasta que se restablezca",
+      "view_awaits_rule_rebuild": "La vista {{view}} se está volviendo a crear por un cambio en las reglas de fila de sus entradas. Este rol podrá leerla cuando esa compilación se haya publicado.",
+      "parameter_required": "La tabla '{{table}}' requiere el parámetro o los parámetros {{parameters}}: dé un valor a cada uno (una condición WHERE sobre su columna en SQL, un argumento en GraphQL).",
+      "parameter_wrong_type": "El parámetro {{parameter}} toma un valor de tipo {{type}}; '{{value}}' no lo es."
     },
     "discovery": {
       "adapter_missing_discover_schema": "El adaptador para '{{source_type}}' no implementa discover_schema",
@@ -326,13 +329,6 @@
     "query": {
       "catalog_view_refused": "{{view}} es una vista de catálogo del dominio meta y no se puede leer en una instrucción junto con una tabla de un origen de datos: léalas en dos instrucciones.",
       "function_unsupported": "{{function}}() no tiene equivalente en {{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "Regla de redacción {{rule}}: {{why}}",
-      "pattern_backtracks": "Regla de redacción {{rule}}: el patrón puede provocar un retroceso catastrófico (una repetición anidada dentro de una repetición ilimitada, o alternativas dentro de ella que pueden empezar con el mismo texto). Reescríbalo sin esa forma.",
-      "pattern_unsupported": "Regla de redacción {{rule}}: la regla de una organización no puede usar referencias inversas, lookahead ni lookbehind, grupos atómicos, repeticiones posesivas ni grupos condicionales.",
-      "pattern_too_large": "Regla de redacción {{rule}}: el patrón es demasiado grande al desplegar sus repeticiones. Use un número de repeticiones menor.",
-      "server_reference": "Regla de redacción {{rule}}: una organización en este servidor no puede hacer referencia al entorno del servidor. Use ${secret:NAME} del almacén propio de la organización."
     },
     "replication": {
       "answer_not_json": "La respuesta leída para la réplica de {{table}} no es JSON válido: [{{content_type}}] {{cause}} (en los {{kib}} KiB anteriores al byte {{before_byte}} de la respuesta).",
@@ -563,7 +559,10 @@
       "source_withdrawn": "Origen {{source}} retirado",
       "source_put_back": "Origen {{source}} restablecido",
       "withdrawn_source_not_previewable": "No se puede previsualizar la tabla {{table}}: su origen {{source}} está retirado y ningún motor lee un origen retirado.",
-      "withdrawn_table_not_previewable": "No se puede previsualizar la tabla {{table}}: está retirada y no conserva réplica, y el motor solo lee su origen a través de una."
+      "withdrawn_table_not_previewable": "No se puede previsualizar la tabla {{table}}: está retirada y no conserva réplica, y el motor solo lee su origen a través de una.",
+      "table_not_withdrawn": "La tabla {{table}} no está retirada: solo se restablece una tabla retirada. Para mover a otra región una tabla en producción, establezca su región.",
+      "source_not_withdrawn": "El origen {{source}} no está retirado: solo se restablece un origen retirado. Para cambiar su región, establezca su región.",
+      "put_back_needs_region": "Restablecer {{object}} nombra una región: indique una, o ninguna para ninguna región."
     },
     "secrets": {
       "env_reference_object_locked": "Este objeto es del operador: lee el entorno propio del servidor y no puede cambiarse aquí. Añada uno propio en su lugar.",
@@ -576,7 +575,8 @@
     "security": {
       "unknown_mode": "modo de seguridad desconocido: '{{mode}}'",
       "data_residency_refused": "No se puede establecer la región de {{object}}: la concesión data_residency no cubre {{value}}; una concesión data_residency que lo incluya lo permite",
-      "data_residency_missing": "No se puede establecer la región de {{object}}: ninguna concesión data_residency del usuario cubre {{value}}; una concesión data_residency que lo incluya lo permite"
+      "data_residency_missing": "No se puede establecer la región de {{object}}: ninguna concesión data_residency del usuario cubre {{value}}; una concesión data_residency que lo incluya lo permite",
+      "withdraw_residency_refused": "No se puede retirar {{object}}: ninguna concesión data_residency del llamante cubre {{value}}, donde se conserva; una concesión data_residency que lo incluya lo permite"
     },
     "settings": {
       "auth_required": "{{field}} no se puede cambiar hasta que se configure la autenticación.",
@@ -623,10 +623,14 @@
       "schema_not_avro": "El esquema {{schema_id}} del registro {{registry}} es {{kind}}, no Avro",
       "schema_registry_error": "El registro de esquemas {{registry}} respondió HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "El registro de esquemas {{registry}} rechazó las credenciales del origen (HTTP {{http_status}}, autenticación '{{method}}')",
-      "schema_registry_unreachable": "No se puede acceder al registro de esquemas {{registry}}: {{error}}",
+      "schema_registry_unreachable": "No se puede acceder al registro de esquemas: {{error}}",
       "sse_limit_reached": "se alcanzó el máximo de suscripciones SSE simultáneas",
       "table_not_found": "No se encontró la tabla '{{table}}'",
-      "unknown_role": "Rol desconocido: '{{role}}'"
+      "unknown_role": "Rol desconocido: '{{role}}'",
+      "owner_role_lost": "La suscripción terminó: su propietario ya no tiene el rol con el que se inició ({{roles}})",
+      "sink_cap_reached": "Ya tienes {{cap}} sinks de Kafka en ejecución, el máximo que permite el operador ({{setting}})",
+      "sink_needs_write": "El rol '{{role}}' no tiene el permiso de escritura que necesita un sink de Kafka",
+      "owner_sign_in_expired": "La suscripción terminó: el inicio de sesión con el que se inició ha caducado; vuelve a iniciar sesión e iníciala de nuevo"
     },
     "users": {
       "assignment_not_found": "No se encontró la asignación",
@@ -670,7 +674,6 @@
       "invalid_limit": "LIMIT {{value}} no es un número entero de filas: LIMIT espera una cantidad de 0 o más, p. ej. LIMIT 10.",
       "invalid_skip": "SKIP {{value}} no es un número entero de filas: SKIP espera una cantidad de 0 o más, p. ej. SKIP 10.",
       "engine_refused": "El motor rechazó la consulta: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} lee {{variable}}, pero la sentencia no vincula ninguna variable: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL.",
       "undefined_variable_property": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestion}}? {{owner}} está vinculada a :{{label}}, que tiene una propiedad {{variable}}.",
       "undefined_variable_properties": "{{clause}} lee {{variable}}, que nada en la sentencia vincula: una variable se vincula con un patrón MATCH, WITH, UNWIND o CALL. Vinculadas aquí: {{bound}}. ¿Quería decir {{suggestions}}? Cada una está vinculada a una etiqueta con una propiedad {{variable}}.",
@@ -738,10 +741,6 @@
     },
     "dbt_sources": {
       "unknown_role": "No existe ningún rol llamado {{role}}."
-    },
-    "debug_logs": {
-      "pattern_refused": "Se rechaza el patrón de filtro de registros: {{why}}",
-      "pattern_exceeded": "Se rechaza el patrón de filtro de registros: superó su límite de pasos ({{steps}} pasos) en una línea de registro de {{length}} caracteres."
     },
     "dbt": {
       "products": {
@@ -901,6 +900,17 @@
     "preflight": {
       "confined_unavailable": "La comprobación previa de {{subject}} no se ejecutó: en esta organización solo se ejecuta en un proceso confinado, y no se pudo iniciar ninguno ({{reason}}).",
       "confined_failed": "La comprobación previa de {{subject}} no devolvió ningún veredicto: su proceso confinado terminó antes ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "Regla de redacción {{rule}}: {{why}}",
+      "pattern_backtracks": "Regla de redacción {{rule}}: el patrón puede provocar un retroceso catastrófico (una repetición anidada dentro de una repetición ilimitada, o alternativas dentro de ella que pueden empezar con el mismo texto). Reescríbalo sin esa forma.",
+      "pattern_unsupported": "Regla de redacción {{rule}}: la regla de una organización no puede usar referencias inversas, lookahead ni lookbehind, grupos atómicos, repeticiones posesivas ni grupos condicionales.",
+      "pattern_too_large": "Regla de redacción {{rule}}: el patrón es demasiado grande al desplegar sus repeticiones. Use un número de repeticiones menor.",
+      "server_reference": "Regla de redacción {{rule}}: una organización en este servidor no puede hacer referencia al entorno del servidor. Use ${secret:NAME} del almacén propio de la organización."
+    },
+    "debug_logs": {
+      "pattern_refused": "Se rechaza el patrón de filtro de registros: {{why}}",
+      "pattern_exceeded": "Se rechaza el patrón de filtro de registros: superó su límite de pasos ({{steps}} pasos) en una línea de registro de {{length}} caracteres."
     },
     "import": {
       "include_outside_upload": "{{path}} está fuera del proyecto subido; un proyecto solo lee sus propios archivos.",

@@ -26,7 +26,6 @@ import sys
 import threading
 import time
 import uuid
-from collections import deque
 from collections.abc import Awaitable, Callable, Collection, Mapping, MutableMapping
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -3251,7 +3250,7 @@ async def _install_cloned_env_schema(prod_rt: "OrgRuntime") -> None:
     _rt.relationships = prod_rt.relationships
     _rt.roles = prod_rt.roles
     _rt.role_chains = prod_rt.role_chains
-    _rt.draft_table_ids = prod_rt.draft_table_ids
+    _rt.withdrawn_table_ids = prod_rt.withdrawn_table_ids
     _rt.view_context = prod_rt.view_context
     _rt.view_path_map = prod_rt.view_path_map
     _rt.names_table = prod_rt.names_table
@@ -3526,8 +3525,6 @@ async def _rebuild_schemas_impl(
         from provisa.synthetic.datasets import as_generated, synthetic_sources
 
         tables = as_generated(tables, await synthetic_sources(_pg))
-        # REQ-1921: out of service — offered in no schema, refused by name when named.
-        draft_tables = await _fetch_tables(_pg, draft=True)
         # REQ-1921: withdrawn -- serves no role and is named by no context; kept only for its
         # steward's preview (admin/table_read.py).
         withdrawn_tables = await _fetch_tables(_pg, withdrawn=True)
@@ -3798,10 +3795,10 @@ async def _rebuild_schemas_impl(
         roles = flatten_role_dicts(
             _domain_tree.flatten_role_domains(with_own_domains(roles), _domain_parents)
         )
-        # REQ-1921: a draft's grants too, so a role inheriting from one granted it is named
-        # it -- to be refused as draft, or read by a role holding org_admin.
-        expand_column_grants([*tables, *draft_tables, *withdrawn_tables], role_chains_by_id)
-        narrow_own_domain_grants([*tables, *draft_tables, *withdrawn_tables], roles)
+        # REQ-1921: a withdrawn table's grants too, so its steward's preview reads it as the
+        # role would once it is put back.
+        expand_column_grants([*tables, *withdrawn_tables], role_chains_by_id)
+        narrow_own_domain_grants([*tables, *withdrawn_tables], roles)
         expand_meta_grants(tables, roles)  # REQ-1132
         expand_write_grants(tables, role_parents_by_id)  # REQ-2074
         state.role_chains = role_chains_by_id
@@ -3818,7 +3815,6 @@ async def _rebuild_schemas_impl(
         _build.phase(rebuild_trace.VIEWS)
         _build.count(
             tables=len(tables),
-            draft_tables=len(draft_tables),
             withdrawn_tables=len(withdrawn_tables),
             views=sum(1 for _t in tables if _t.get("view_sql")),
             columns=sum(len(_t.get("columns") or []) for _t in tables),
@@ -3832,9 +3828,7 @@ async def _rebuild_schemas_impl(
 
         state.federation_engine.reseed_ops(_OPS_VIEWS)
 
-        await _register_user_views_in_state(
-            conn, raw_config, tables, [*draft_tables, *withdrawn_tables]
-        )
+        await _register_user_views_in_state(conn, raw_config, tables, withdrawn_tables)
         # REQ-2163: the ontology schema's Class tables, over the tables this build serves.
         from provisa.api._ontology_classes import register_class_tables
 
@@ -3991,15 +3985,15 @@ async def _rebuild_schemas_impl(
 
         # The data writes each table's source can take, decided once here and carried on its
         # record (executor/write_capability.py): the write admission, the GraphQL and gRPC write
-        # surfaces and the admin table page all read it. A draft's too: its steward's preview
-        # builds the role's context with the draft among the tables (REQ-1921).
+        # surfaces and the admin table page all read it. A withdrawn table's too: its steward's
+        # preview builds the role's context with it among the tables (REQ-1921).
         from provisa.executor.write_capability import (
             table_write_ops,
             table_write_refused_forms,
             table_write_returns_rows,
         )
 
-        for _t in [*tables, *draft_tables, *withdrawn_tables]:
+        for _t in [*tables, *withdrawn_tables]:
             if _t.get("source_withdrawn"):
                 # REQ-1921: a withdrawn source is attached by no engine and has no pool: its
                 # tables take no write, and its type is not among the sources this build read.
@@ -4044,7 +4038,6 @@ async def _rebuild_schemas_impl(
             rls_rules=rls_rules,
             metrics=_metric_dicts,  # REQ-1319
             field_numbers=_field_numbers,
-            draft_tables=draft_tables,  # REQ-1921
             withdrawn_tables=withdrawn_tables,  # REQ-1921
             withdrawn_relationships=withdrawn_relationships,  # REQ-1921
         )
@@ -4089,12 +4082,12 @@ async def _rebuild_schemas_impl(
     # same registry the admin surfaces read — runtime-registered metrics included).
     state.metrics = {m.name: m for m in _metric_models}
 
-    # REQ-1921: no reader is answered from a table or view that has gone draft since the last
-    # build: its cached responses go. (A table keeps the replica it has; a view's build goes with
-    # the reclamation sweep.) Entries are kept by place, not by table, so the place is purged.
-    from provisa.cache.tenancy import purge_when_drafted
+    # REQ-1921: no reader is answered from a table or view that has been withdrawn since the last
+    # build: its cached responses go. Entries are kept by place, not by table, so the place is
+    # purged.
+    from provisa.cache.tenancy import purge_when_withdrawn
 
-    await purge_when_drafted(state, frozenset(t["id"] for t in [*draft_tables, *withdrawn_tables]))
+    await purge_when_withdrawn(state, frozenset(t["id"] for t in withdrawn_tables))
 
     # Cache raw build data for on-demand domain-filtered schema generation
     state.schema_build_cache = {
@@ -4365,21 +4358,6 @@ async def _rewire_lifecycle() -> None:
             )
 
 
-class _DebugLogBufferHandler(logging.Handler):
-    """In-memory ring buffer of routing/auth diagnostics, read back via /debug/logs."""
-
-    def __init__(self, capacity: int = 5000) -> None:
-        super().__init__()
-        self.buffer: deque[str] = deque(maxlen=capacity)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        # Routing/auth diagnostics only -- apscheduler/trino background chatter fires every
-        # few seconds and would otherwise evict these entries long before anyone reads them.
-        if not record.name.startswith("provisa.api."):
-            return
-        self.buffer.append(self.format(record))
-
-
 def _boot_generation(launch: str | None) -> str | None:  # REQ-1900
     """The generation this process's once-per-launch boot work belongs to, or ``None`` for a
     process that is not a worker of a launch. Everything that work is derived from is in it — the
@@ -4426,7 +4404,9 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
         raise_open_file_limit(_log)
     # Set up in-memory log buffer for debugging (max 1000 lines)
-    buffer_handler = _DebugLogBufferHandler(capacity=5000)
+    from provisa.api.debug_logs import DebugLogBufferHandler
+
+    buffer_handler = DebugLogBufferHandler(capacity=5000)
     buffer_handler.setFormatter(
         logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
     )
@@ -4437,6 +4417,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     send_module_logs_to_server_log()
     state.schema_boot_id = uuid.uuid4().hex
+    # REQ-1316: an engine an earlier lifespan in this process closed refuses work until a lifespan
+    # opens it (NativeEngineBackend.open). The shared engine outlives each app; so may an org's.
+    for _oid in state.org_registry.all_org_ids():
+        _rt = state.org_registry.get(_oid)
+        if _rt is not None and _rt.federation_engine is not None:
+            _rt.federation_engine.open()
     # REQ-074: the audit writer lives as long as the application — started here, before anything
     # serves a request, and stopped in the shutdown below. A request only enqueues to it.
     from provisa.audit.writer import start_audit_writer
@@ -5225,16 +5211,16 @@ def create_app() -> FastAPI:
             headers={"Retry-After": "1"},
         )
 
-    from provisa.compiler.definitions import TableIsDraft as _TableIsDraft
+    from provisa.compiler.definitions import TableIsWithdrawn as _TableIsWithdrawn
 
-    @app.exception_handler(_TableIsDraft)
-    async def _table_is_draft_handler(_req: _Request, exc: _TableIsDraft):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
-        # REQ-1921: a draft table or view is out of service, and the refusal says so by name.
+    @app.exception_handler(_TableIsWithdrawn)
+    async def _table_is_withdrawn_handler(_req: _Request, exc: _TableIsWithdrawn):  # noqa: F841  # pyright: ignore[reportUnusedFunction, reportUnusedVariable]
+        # REQ-1921: a view over a withdrawn table is refused, naming it.
         return _JSONResponse(
             status_code=409,
             content={
                 "detail": str(exc),
-                "code": "data.table_is_draft",
+                "code": "data.table_is_withdrawn",
                 "params": {"table": exc.table},
             },
         )
@@ -6024,25 +6010,10 @@ def create_app() -> FastAPI:
 
     _mount_leak_probe(app)
 
-    @app.api_route("/debug/logs", methods=["GET"])
-    async def debug_logs(pattern: str | None = None, limit: int = 100):  # noqa: F841  # pyright: ignore[reportUnusedFunction]
-        """Return recent logs, optionally filtered by pattern. For debugging only."""
-        # Get the root logger and look for our custom buffer handler
-        root_logger = logging.getLogger()
-        buffer_handler = next(
-            (h for h in root_logger.handlers if isinstance(h, _DebugLogBufferHandler)), None
-        )
+    # REQ-1327: the process's diagnostics buffer is the platform plane's.
+    from provisa.api.debug_logs import router as _debug_logs_router
 
-        if buffer_handler is None:
-            return {"error": "log buffer not initialized", "logs": []}
-
-        logs = list(buffer_handler.buffer)
-        if pattern:
-            from provisa.api.debug_log_filter import lines_matching
-
-            logs = lines_matching(pattern, logs)  # bounded: the pattern is the client's
-
-        return {"count": len(logs), "logs": logs[-limit:]}
+    app.include_router(_debug_logs_router)
 
     # REQ-1882 (amended 2026-09-29): every HTTP and WebSocket request — data, admin, UI APIs,
     # discovery, static — runs entirely on its own request thread and loop. Registered LAST so it

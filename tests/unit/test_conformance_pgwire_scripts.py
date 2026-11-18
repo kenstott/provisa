@@ -570,6 +570,98 @@ def test_a_refusal_of_this_server_s_state_proves_nothing_and_stays_failed(monkey
     assert report["failures_by_family"]["System"]["functions"] == ["pg_wal_replay_pause()"]
 
 
+# --- the validator's refusal of a function that reads or acts on its server (REQ-001, V007) -----
+
+
+def _validator_refusal(name: str) -> str:
+    """The validator's own V007 refusal of a call of ``name``, as pgwire sends it: its wording is
+    the rule's, so the suite's reading fails here when the rule's wording moves."""
+    import sqlglot
+
+    from provisa.compiler.sql_validator import GovernanceRefused, _check_server_functions  # noqa: PLC2701
+
+    sql = f'SELECT pg_catalog."{name}"(NULL) AS v FROM s.t'
+    violations = _check_server_functions(sqlglot.parse_one(sql, read="postgres"))
+    assert violations, sql
+    return f"ERROR:  {GovernanceRefused(violations)}"
+
+
+#: PostgreSQL 17's own refusal of pg_sync_replication_slots on the job's server, a primary.
+STANDBY_REFUSAL = "ERROR:  replication slots can only be synchronized to a standby server"
+
+
+def _validator_refuses(functions, refused, pg_refused=None) -> dict:
+    m = _load("pgwire_catalog_types")
+    return m.catalog_functions(
+        _Probe(functions, refused=pg_refused or {}),
+        _Probe(functions, refused=refused, sqlstate="42501"),
+        {23: "int4", 25: "text"},
+    )
+
+
+def test_a_function_the_validator_refuses_as_reading_its_server_is_skipped_by_design():
+    import by_design
+
+    functions = [
+        ("ts_stat", "query text", ("text",)),
+        ("ts_rewrite", "tsquery, text", ("tsquery", "text")),
+        ("abs", "", ()),
+    ]
+    report = _validator_refuses(
+        functions, {n: _validator_refusal(n) for n in ("ts_stat", "ts_rewrite")}
+    )
+    assert (report["passed"], report["by_design"], report["failed"]) == (1, 2, 0)
+    assert report["not_served"] == {}
+    assert list(report["server_functions"]) == ["ts_rewrite(tsquery, text)", "ts_stat(query text)"]
+    (group,) = report["by_design_groups"]
+    assert group["group"] == by_design.SERVER_FUNCTION_GROUP
+    assert group["requirement"] == "REQ-001"
+    assert all(
+        c["reason"].startswith(by_design.SERVER_FUNCTION_REASON + "ERROR:  [V007] ")
+        for c in group["cases"]
+    )
+
+
+def test_a_call_postgresql_refuses_for_its_state_and_the_validator_refuses_is_by_design():
+    # pg_sync_replication_slots: PostgreSQL refuses it on a primary; the validator refuses it on
+    # every engine, so the answer PostgreSQL gives is no measure of Provisa's.
+    import by_design
+
+    functions = [("pg_sync_replication_slots", "", ())]
+    report = _validator_refuses(
+        functions,
+        {"pg_sync_replication_slots": _validator_refusal("pg_sync_replication_slots")},
+        pg_refused={"pg_sync_replication_slots": STANDBY_REFUSAL},
+    )
+    assert (report["passed"], report["by_design"], report["failed"]) == (0, 1, 0)
+    assert report["refused_here"] == {}
+    (group,) = report["by_design_groups"]
+    assert group["group"] == by_design.SERVER_FUNCTION_GROUP
+    (case,) = group["cases"]
+    assert case["case"] == "catalog function::pg_sync_replication_slots()"
+    assert case["reason"].endswith(f"(PostgreSQL refuses the call: {STANDBY_REFUSAL})")
+
+
+def test_a_v007_refusal_naming_another_function_stays_failed():
+    # The refusal is a decision about the function it names, and only one on the validator's list.
+    functions = [("abs", "", ()), ("ts_stat", "query text", ("text",))]
+    report = _validator_refuses(
+        functions,
+        {"abs": _validator_refusal("pg_read_file"), "ts_stat": _validator_refusal("pg_read_file")},
+    )
+    assert (report["passed"], report["by_design"], report["failed"]) == (0, 0, 2)
+    assert report["server_functions"] == {}
+    assert all(f["reason"].startswith("not served: ") for f in report["failures"])
+
+
+def test_the_suite_and_the_function_measure_read_v007_by_one_rule():
+    import by_design
+    import function_support
+
+    assert function_support.not_served is function_probe.not_served
+    assert function_support.SERVER_FUNCTION_GROUP is by_design.SERVER_FUNCTION_GROUP
+
+
 def _state_refusal(monkeypatch, provisa_sqlstate: str) -> dict:
     """A refusal of the server's state, which Provisa answers with ``provisa_sqlstate``."""
     m = _load("pgwire_catalog_types")
@@ -762,7 +854,11 @@ def test_the_shipped_groups_naming_catalog_functions_are_exactly_those_allowed()
     groups = by_design.groups("pgwire")
     assert groups
     named = [g.group for g in groups if g.case and "catalog function" in g.case.pattern]
-    assert named == ["Internal functions", "Not supported"] == list(by_design.FUNCTION_GROUPS)
+    assert (
+        named
+        == ["Internal functions", "Not supported", by_design.SERVER_FUNCTION_GROUP]
+        == list(by_design.FUNCTION_GROUPS)
+    )
     assert [g.group for g in by_design.function_groups("pgwire")] == named
     assert {g.family for g in groups} == {""}
 

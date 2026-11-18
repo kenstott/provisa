@@ -179,12 +179,6 @@ class CompilationContext:
 
     # Root query field_name → TableMeta
     tables: dict[str, TableMeta] = field(default_factory=dict)
-    # REQ-1921: every name a statement could give a draft table this role would see (field name,
-    # table name, alias, schema.table) → the table's name. In no schema; refused as draft.
-    draft_names: dict[str, str] = field(default_factory=dict)
-    # REQ-1921: each of those names to the draft's registered table id, for the role that reads
-    # a draft (A DRAFT IS SERVED TO ORG_ADMIN: admin/table_read.drafts_a_statement_names).
-    draft_ids: dict[str, int] = field(default_factory=dict)
     # REQ-1132: each name of a system domain's table the role holds no capability for -> the domain.
     missing_capability: dict[str, str] = field(default_factory=dict)
     # REQ-1132: each name of a table the role can only list -> the table.
@@ -229,6 +223,10 @@ class CompilationContext:
     # core.parameters.parameter_facts): name, type, kind, opaque or a real column, required. What
     # a reader that counts, profiles, samples or scans a table asks before reading it.
     parameters: dict[int, tuple[ParameterFact, ...]] = field(default_factory=dict)
+    # table_id -> every name its parameters are bound under, lowercased, to the parameter column
+    # (REQ-1986, core.parameters.parameter_names): its column, its own name, its alias. The one
+    # map every front resolves a parameter name by.
+    parameter_names: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → literal_value}
     virtual_columns: dict[int, dict[str, str]] = field(default_factory=dict)
     # table_id → {virtual_col_name → (key column, {key value → literal})}: a virtual column whose

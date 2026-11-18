@@ -35,7 +35,7 @@ async def _govern(sql: str = _SQL) -> None:
 
 
 async def test_pg_catalog_unnest_is_admitted_on_a_catalog_statement(monkeypatch):
-    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     token = current_request.set(SimpleNamespace(role_id="r"))  # type: ignore[arg-type]
     try:
         await _govern()
@@ -44,7 +44,7 @@ async def test_pg_catalog_unnest_is_admitted_on_a_catalog_statement(monkeypatch)
 
 
 async def test_pg_catalog_unnest_is_refused_on_any_other_statement(monkeypatch):
-    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     with pytest.raises(PermissionError, match="UNNEST|unnest"):
         await _govern()
 
@@ -65,7 +65,7 @@ async def test_a_function_that_is_not_postgresql_unnest_is_refused_on_a_catalog_
 ):
     # RV597 H3: only pg_catalog's own unnest is the client table function, never another schema's
     # function of that name or sqlglot's other Explode functions.
-    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), drafts=[])
+    _build(monkeypatch, view=_view(_OVER_A_SERVED_TABLE), withdrawn=[])
     token = current_request.set(SimpleNamespace(role_id="r"))  # type: ignore[arg-type]
     try:
         with pytest.raises(PermissionError, match="(?i)unnest|explode"):

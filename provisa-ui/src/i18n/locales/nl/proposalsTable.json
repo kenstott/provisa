@@ -61,6 +61,8 @@
       "noValues": "De bron bevat geen waarden.",
       "modelScore": "Score van het model: er zijn geen waarden vergeleken."
     },
-    "manyToMany": "Geen van beide kolommen is een sleutel, dus deze kan niet worden geaccepteerd."
+    "dimensionMade": "Accepteren maakt de gedeelde dimensie {{name}}, waaraan beide kolommen worden gekoppeld.",
+    "dimensionJoined": "Accepteren koppelt beide kolommen aan de gedeelde dimensie {{name}}.",
+    "twoDimensions": "De kolommen zijn al gekoppeld aan twee verschillende gedeelde dimensies, dus deze kan niet worden geaccepteerd."
   }
 }

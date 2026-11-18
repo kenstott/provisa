@@ -880,6 +880,12 @@
         "label": "Adresse du hub Hugging Face",
         "help": "Le hub Hugging Face depuis lequel un modèle d'embeddings local est téléchargé, par exemple un miroir dans votre réseau. S'applique au prochain téléchargement de modèle."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sinks Kafka en cours d'exécution par personne",
+        "help": "Nombre de sinks Kafka qu'une personne peut exécuter en même temps. Une demande d'en démarrer un autre est refusée jusqu'à ce que l'un des siens s'arrête."
+      }
     }
   }
 }

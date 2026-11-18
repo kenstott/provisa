@@ -45,6 +45,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import TYPE_CHECKING, Any, Literal
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.core import offer_grant
 from provisa.core.assignments_source import CLAIMS
 from provisa.core.repositories import data_product_offer as offers
@@ -216,7 +217,9 @@ async def deliver(target: HookTarget, body: Mapping[str, Any]) -> None:
         async with httpx.AsyncClient(timeout=30.0) as client:
             answer = await client.post(target.url, content=raw, headers=headers)
     except httpx.HTTPError as exc:
-        raise HookFailed(f"the request hook at {target.url} could not be reached: {exc}") from exc
+        raise HookFailed(
+            f"the request hook could not be reached: {describe_http_failure(exc)}"
+        ) from exc
     if not answer.is_success:
         raise HookFailed(
             f"the request hook at {target.url} answered {answer.status_code}: {answer.text[:200]}"

@@ -15,6 +15,8 @@
     "profilerNoMembers": "Keine Tabelle gehört zu diesem Profiler.",
     "profilerRan": "{{table}}: profiliert",
     "profilerFailed": "{{table}}: {{error}}",
-    "profilerNotRead": "{{table}}: nicht gelesen. Sie verlangt {{parameters}} und kann daher nicht gezählt oder profiliert werden."
+    "profilerNotRead": "{{table}}: nicht gelesen. Sie verlangt {{parameters}} und kann daher nicht gezählt oder profiliert werden.",
+    "withdrawConsequence": "Keine Rolle liest eine ihrer Tabellen, keine Engine bindet sie ein, und die Replikate ihrer Tabellen werden entfernt. Definition, Tabellen und Berechtigungen bleiben erhalten, und Zurückholen stellt sie unverändert wieder her.",
+    "withdrawnNote": "Zurückgezogen: Keine ihrer Tabellen bedient eine Rolle, bis sie zurückgeholt wird."
   }
 }

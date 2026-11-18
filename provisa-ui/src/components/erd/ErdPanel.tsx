@@ -50,6 +50,7 @@ export function ErdPanel({
   placesRef,
   layoutMenu,
   overlay,
+  withdrawn,
 }: ErdPanelProps) {
   const { t } = useTranslation();
   const [options, changeOptions] = useErdOptions();
@@ -199,6 +200,7 @@ export function ErdPanel({
             testId="erd"
             tourId="rels-erd-modal"
             lead={layoutMenu}
+            showWithdrawn={withdrawn}
             options={graphOptions}
             onOptions={setOptions}
             groupIds={visibleDomainIds.map(groupOf)}

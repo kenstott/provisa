@@ -235,9 +235,9 @@ def members_of(role_id: str) -> tuple[str, ...]:  # REQ-2188
     return tuple(role_id[len(META_PREFIX) :].split("+"))
 
 
-def _draft_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
-    """The domains ``role`` holds the right a draft is read by: table registration, the right a
-    draft's preview needs (A DRAFT IS SERVED TO ORG_ADMIN, decided 2026-11-12). Held as every
+def _preview_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1921
+    """The domains ``role`` holds the right a withdrawn table is previewed by: table
+    registration, the right withdrawing and putting it back needs. Held as every
     right is: by the role, a role it inherits from, or a member of a meta role (``acting_chain``,
     REQ-2188), each paired with the domains of the role carrying it (REQ-1944,
     :func:`domain_access_for_capability`). The one place the right is named."""
@@ -248,15 +248,15 @@ def _draft_right_reach(role: dict, roles: dict[str, dict]) -> set[str]:  # REQ-1
 
 def registers_tables_in(role: dict, roles: dict[str, dict], domain_id: str) -> bool:  # REQ-1921
     """Whether ``role`` (a built role, state.roles) holds table registration reaching
-    ``domain_id``: a draft of that domain is served to it."""
-    reach = _draft_right_reach(role, roles)
+    ``domain_id``: a withdrawn table of that domain may be previewed by it."""
+    reach = _preview_right_reach(role, roles)
     return bool(reach) and reaches_domain(sorted(reach), domain_id)
 
 
-def draft_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
-    """The domains whose drafts are served to ``role``: those it holds table registration in
-    (:func:`registers_tables_in`); None for every data domain, empty for none."""
-    reach = _draft_right_reach(role, roles)
+def withdrawn_reach(role: dict, roles: dict[str, dict]) -> frozenset[str] | None:  # REQ-1921
+    """The domains whose withdrawn tables ``role`` may preview: those it holds table
+    registration in (:func:`registers_tables_in`); None for every data domain, empty for none."""
+    reach = _preview_right_reach(role, roles)
     if not reach:
         return frozenset()
     if reaches_all_domains(sorted(reach)):
@@ -838,10 +838,10 @@ def has_capability(
 # The meta views whose ROWS describe registered tables/columns and are therefore subject to the
 # REQ-1132 row-level neighbourhood scoping. Each maps to the meta-view columns that carry the
 # DESCRIBED tables' ids, so the row filter is "<column> IN (<reachable table ids>)" for each.
-#: REQ-1921: the meta view holding a draft's row (``draft`` true), which a role holding table
-#: registration in the draft's domain reads and no other role does (compiler/stage2;
-#: :func:`draft_reach`).
-DRAFT_ROWS_VIEW = "registered_tables_meta"
+#: REQ-1921: the meta view holding a withdrawn table's row (``withdrawn`` true), which a role
+#: holding table registration in its domain reads and no other role does (compiler/stage2;
+#: :func:`withdrawn_reach`).
+WITHDRAWN_ROWS_VIEW = "registered_tables_meta"
 
 META_ROW_SCOPED_VIEWS: dict[str, tuple[str, ...]] = {
     "registered_tables_meta": ("id",),
@@ -921,7 +921,7 @@ SQL_ONLY_TABLES |= SQL_CATALOG_TABLES
 def lists_table(table: dict) -> bool:
     """Whether every role of the org lists ``table``: it holds a listed column (REQ-2153), in a
     data domain."""
-    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("draft"):
+    if table.get("domain_id") in SYSTEM_DOMAINS or table.get("withdrawn"):
         return False
     return any(c.get("scope") == SCOPE_LISTED for c in table.get("columns") or [])
 

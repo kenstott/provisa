@@ -178,6 +178,20 @@ DECLARED: list[Setting] = [
         min=1,
         unit="rows",
     ),
+    # --- A principal's Kafka sinks (REQ-812) ----------------------------------------------------
+    # Live: read when a sink is started. A client-started sink runs until its owner loses the
+    # role it was started under, so how many one principal holds at once is bounded.
+    Setting(
+        key="subscriptions.max_sinks_per_principal",
+        card="limits",
+        type="int",
+        effect="live",
+        req="REQ-812",  # 5 (maintainer 2026-11-16); a sink past it is refused by name
+        env="PROVISA_MAX_SINKS_PER_PRINCIPAL",
+        default=5,
+        min=1,
+        unit="sinks",
+    ),
     # --- A principal's graph session (REQ-2176) ------------------------------------------------
     # Live: read at each sweep. A graph session unused this long is ended.
     Setting(

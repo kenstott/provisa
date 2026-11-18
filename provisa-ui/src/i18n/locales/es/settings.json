@@ -880,6 +880,12 @@
         "label": "Dirección del hub de Hugging Face",
         "help": "El hub de Hugging Face desde el que se descarga un modelo de embeddings local, como un espejo dentro de su red. Se aplica a la próxima descarga de un modelo."
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "Sinks de Kafka en ejecución por persona",
+        "help": "Cuántos sinks de Kafka puede tener una persona en ejecución a la vez. Una solicitud para iniciar otro se rechaza hasta que se detenga uno de los suyos."
+      }
     }
   }
 }

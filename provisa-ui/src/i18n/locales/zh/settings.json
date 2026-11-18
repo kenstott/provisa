@@ -880,6 +880,12 @@
         "label": "Hugging Face Hub 地址",
         "help": "下载本地嵌入模型所用的 Hugging Face Hub，例如您网络内的镜像。从下一次模型下载起生效。"
       }
+    },
+    "subscriptions": {
+      "max_sinks_per_principal": {
+        "label": "每人正在运行的 Kafka 接收器数",
+        "help": "一个人可以同时运行的 Kafka 接收器数量。在其某个接收器停止之前，启动新接收器的请求会被拒绝。"
+      }
     }
   }
 }

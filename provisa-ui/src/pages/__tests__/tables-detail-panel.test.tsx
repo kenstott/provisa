@@ -33,7 +33,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
   useAuth: () => ({
     role: "admin",
-    selectedRoles: ["admin"],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], effectiveResidencyValues: [] }],
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
@@ -78,7 +78,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -134,6 +135,7 @@ function table(
   };
 }
 
+const detailsAsked = vi.hoisted(() => [] as unknown[]);
 const TABLES = [
   table(7, "orders", [], {
     region: "eu",
@@ -148,7 +150,7 @@ const TABLES = [
       } as unknown as RegisteredTable["columns"][number],
     ],
   }),
-  table(8, "staging", [], { region: "eu", draft: true }),
+  table(8, "staging", [], { region: "eu", withdrawn: true }),
 ];
 const SOURCES = [
   {
@@ -201,7 +203,10 @@ vi.mock("../../hooks/useAdminOpsQueries", async (importOriginal) => ({
 vi.mock("../../hooks/useAdminQueries", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../hooks/useAdminQueries")>()),
   useTables: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
-  useTableDetails: () => ({ tables: TABLES, loading: false, refetch: vi.fn() }),
+  useTableDetails: (opts?: unknown) => {
+    detailsAsked.push(opts);
+    return { tables: TABLES, loading: false, refetch: vi.fn() };
+  },
   useSources: () => ({ sources: SOURCES, loading: false, refetch: vi.fn() }),
   useDomains: () => ({ domains: DOMAINS, loading: false, refetch: vi.fn() }),
   useRoles: () => ({ roles: ROLES, loading: false, refetch: vi.fn() }),
@@ -230,6 +235,29 @@ async function select(name: string) {
   await userEvent.click(row.querySelector("td:not(.list-select)") as HTMLElement);
   return row;
 }
+
+// REQ-1921: the page lists the withdrawn tables, marked, so they can be put back.
+describe("TablesPage — withdrawn tables", () => {
+  beforeEach(() => localStorage.clear());
+
+  it("asks for the withdrawn tables, and marks only them Withdrawn", async () => {
+    render(<TablesPage />);
+    const list = await screen.findByTestId("tables-list");
+    expect(detailsAsked.at(-1)).toEqual({ includeWithdrawn: true });
+    expect(within(list).getByTestId("tables-withdrawn-staging")).toHaveTextContent("Withdrawn");
+    expect(within(list).queryByTestId("tables-withdrawn-orders")).toBeNull();
+  });
+
+  it("offers Put back on a withdrawn table's panel, and Withdraw on one in production", async () => {
+    render(<TablesPage />);
+    await select("staging");
+    const panel = await screen.findByTestId("tables-split-panel");
+    expect(within(panel).getByTestId("table-read-view-put-back")).toBeInTheDocument();
+    expect(within(panel).queryByTestId("table-read-view-withdraw")).toBeNull();
+    await select("orders");
+    expect(await within(panel).findByTestId("table-read-view-withdraw")).toBeInTheDocument();
+  });
+});
 
 describe("TablesPage — the detail panel", () => {
   beforeEach(() => localStorage.clear());

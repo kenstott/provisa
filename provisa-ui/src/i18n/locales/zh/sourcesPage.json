@@ -45,6 +45,8 @@
     "purposeAdd": "仅添加数据源不会注册任何表。请在该行使用 Discover 浏览其模式，并注册你希望纳入治理的表。",
     "purposeAria": "关于数据源",
     "registrationMissing": "{{list}} 中没有数据源 {{source}} 的注册。",
-    "duplicateCredentialsNote": "{{source}} 的凭据不会被复制：请在此输入，或输入对密钥的引用。"
+    "duplicateCredentialsNote": "{{source}} 的凭据不会被复制：请在此输入，或输入对密钥的引用。",
+    "withdrawn": "已撤回",
+    "withdrawnTitle": "已停止生产使用：在恢复之前，其任何表都不为任何角色提供服务"
   }
 }

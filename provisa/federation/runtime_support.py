@@ -72,6 +72,15 @@ def release_shielded(release: Callable[[], None]) -> None:
         release()
 
 
+class EngineClosed(RuntimeError):
+    """Work that reached a native engine after its lifespan closed it (REQ-1316): a runtime built
+    then would attach its sources again -- the control plane among them -- and nothing would close
+    it. Refused by name, naming the engine and what was asked of it."""
+
+    def __init__(self, engine: str, what: str) -> None:
+        super().__init__(f"engine {engine!r} is closed: {what}")
+
+
 def open_cursor(conn: Any) -> Any:
     """A cursor on ``conn``, taken under the shield (:func:`take_shielded`)."""
     return take_shielded(conn.cursor)

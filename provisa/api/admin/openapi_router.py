@@ -469,6 +469,10 @@ async def put_openapi_spec(source_id: str, request: Request):  # REQ-315, REQ-31
         servers = spec.get("servers", [])
         if servers:
             base_url = servers[0].get("url", "")
+    if "://" in base_url:
+        # REQ-2006: the address the spec's calls go to; a held org's is a public destination. A
+        # server URL relative to the spec names no address of its own.
+        sandbox_egress.require_url_allowed(base_url)
 
     if not hasattr(state, "openapi_specs"):
         state.openapi_specs = {}

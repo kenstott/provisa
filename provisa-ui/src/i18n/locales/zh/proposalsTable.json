@@ -61,6 +61,8 @@
       "noValues": "源中没有值。",
       "modelScore": "模型评分：未比较任何值。"
     },
-    "manyToMany": "两列都不是键，因此无法接受。"
+    "dimensionMade": "接受后会创建共享维度 {{name}}，两列都与其关联。",
+    "dimensionJoined": "接受后，两列都会关联到共享维度 {{name}}。",
+    "twoDimensions": "其列已关联到两个不同的共享维度，因此无法接受。"
   }
 }

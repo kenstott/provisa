@@ -169,7 +169,7 @@ export function TermEditForm({
   const claimOptions = useMemo(() => {
     const out: (Option & { from: ColumnTerm | null })[] = [];
     for (const tb of tables) {
-      if (tb.draft) continue;
+      if (tb.withdrawn) continue;
       for (const c of tb.columns ?? []) {
         const key = columnKey(tb.id, c.columnName);
         if (own.has(key)) continue;
@@ -185,7 +185,7 @@ export function TermEditForm({
   const tableOptions = useMemo(
     () =>
       tables
-        .filter((tb) => !tb.draft)
+        .filter((tb) => !tb.withdrawn)
         .map((tb) => ({ value: String(tb.id), label: relationName(tb) }))
         .sort((a, b) => a.label.localeCompare(b.label)),
     [tables],

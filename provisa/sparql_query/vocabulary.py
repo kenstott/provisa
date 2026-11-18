@@ -42,6 +42,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from urllib.parse import quote
 
+from provisa.core.parameters import given_names
 from provisa.gql.label_map import CypherLabelMap
 
 RDF = "http://www.w3.org/1999/02/22-rdf-syntax-ns#"
@@ -197,6 +198,16 @@ def build_vocabulary(
                 else [column_iri(base, nm.domain_id, nm.model_name, nm.property_model_name(prop))]
             )
             for iri in iris:
+                columns[iri].append(cp)
+                columns_of[label].append((iri, cp))
+        # REQ-1986: a parameter is given a value under its own name and its alias alike; a name
+        # one of the node's columns is published under stays that column's.
+        for fact in nm.parameters:
+            cp = ColumnPredicate(label, fact.column, xsd_of(fact.type or "varchar"))
+            for name in given_names(fact):
+                iri = column_iri(base, nm.domain_id, nm.model_name, name)
+                if any(iri == held for held, _ in columns_of[label]):
+                    continue
                 columns[iri].append(cp)
                 columns_of[label].append((iri, cp))
 

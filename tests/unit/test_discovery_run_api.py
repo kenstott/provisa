@@ -38,7 +38,7 @@ from provisa.api.errors import ApiError
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core import schema_org as so
 from provisa.core.database import Database, create_engine_from_url
-from provisa.core.parameters import ParameterRequired, missing_reason
+from provisa.core.parameter_binding import ParameterRequired
 from provisa.core.read_refusal import SourceUnavailable
 from provisa.discovery import context, gather, windows
 from provisa.discovery.columns import NOT_READ, ColumnFacts, TableFacts, classes_meet, type_groups
@@ -107,7 +107,7 @@ class _Reads:
     def refuse(self, table: str) -> None:
         if table in self.never_read:
             self.attempted.append(table)
-            raise ParameterRequired(table, missing_reason(["orderId"]))
+            raise ParameterRequired(table, ["orderId"])
         if table in self.failing:
             raise self.failing[table]
 
@@ -611,7 +611,7 @@ async def test_a_column_is_read_by_the_name_it_is_published_under(monkeypatch):
             id="source-unavailable",
         ),
         pytest.param(
-            ParameterRequired("pets", missing_reason(["status"])),
+            ParameterRequired("pets", ["status"]),
             "classification",
             "requires the parameter(s) ['status']",
             id="a-parameter-its-registration-does-not-record",
@@ -1997,7 +1997,8 @@ async def test_each_proposed_pair_is_measured_as_the_runs_person_and_its_row_sho
     assert hood["cardinality"] == "many-to-many"
     assert hood["score"] == context.SHARED_CEILING and hood["confidence"] == 0.9
     assert hood["reason"] == "below_threshold"
-    assert hood["decidable"] is True and hood["acceptable"] is False
+    assert hood["decidable"] is True and hood["acceptable"] is True
+    assert hood["dimension"] == {"name": "purchase_history", "reused": False}
     assert hood["measure"]["source_in_target"] == hood["measure"]["source"]["values"] == 3
     # The highest score first: the measure's, not the model's.
     assert [r["source_column"] for r in listed] == ["permit_id", "hood"]
@@ -2007,20 +2008,233 @@ async def test_each_proposed_pair_is_measured_as_the_runs_person_and_its_row_sho
     ] == [(2, "many-to-one", context.KEY_SCORE)]
 
 
-async def test_a_many_to_many_pair_is_refused_on_accept_and_can_be_marked_not_again(
+class _Made:
+    """The mutations accepting a shared dimension makes it through (registerTable,
+    createRelationship), each storing what it was given as the store holds it. A relationship
+    named in ``refused`` is refused as the mutation refuses one."""
+
+    def __init__(self, monkeypatch, db: Database):
+        from provisa.api.admin import discovery_dimension
+        from provisa.api.admin.types import MutationResult
+        from provisa.core.models import DERIVED_SOURCE_ID
+
+        self.views: list[Any] = []
+        self.edges: list[Any] = []
+        self.refused: set[str] = set()
+        self.rebuilt = 0
+
+        async def register_table(info, input):
+            self.views.append(input)
+            tid = 100 + len(self.views)
+            # A later run reads it as any registered table.
+            _PUBLISHED[tid] = (input.domain_id, [c.name for c in input.columns])
+            _TABLE_NAMES[tid] = input.table_name
+            async with db.acquire() as conn:
+                await conn.execute_core(
+                    insert(so.registered_tables).values(
+                        id=tid,
+                        source_id=DERIVED_SOURCE_ID,
+                        domain_id=input.domain_id,
+                        schema_name=input.schema_name,
+                        table_name=input.table_name,
+                        view_sql=input.view_sql,
+                    )
+                )
+                for c in input.columns:
+                    await conn.execute_core(
+                        insert(so.table_columns).values(
+                            table_id=tid,
+                            domain_id=input.domain_id,
+                            column_name=c.name,
+                            data_type=c.data_type,
+                            is_primary_key=c.is_primary_key,
+                        )
+                    )
+            return MutationResult(success=True, message=f"registered (id={tid})")
+
+        async def save_relationship(info, input, *, creating):
+            assert creating
+            self.edges.append(input)
+            if input.id in self.refused:
+                return MutationResult(success=False, message=f"{input.id} is refused")
+            async with db.acquire() as conn:
+                ids = {
+                    r.table_name: r.id
+                    for r in (
+                        await conn.execute_core(
+                            select(so.registered_tables.c.id, so.registered_tables.c.table_name)
+                        )
+                    ).fetchall()
+                }
+                await conn.execute_core(
+                    insert(so.relationships).values(
+                        id=input.id,
+                        source_table_id=ids[input.source_table_id],
+                        source_column=input.source_column,
+                        target_table_id=ids[input.target_table_id],
+                        target_column=input.target_column,
+                        cardinality=input.cardinality,
+                        graphql_alias=input.graphql_alias,
+                    )
+                )
+            return MutationResult(success=True, message="saved")
+
+        async def readers(conn, sides):
+            return ["steward"]
+
+        async def discard(conn, table_id):
+            await conn.execute_core(
+                so.table_columns.delete().where(so.table_columns.c.table_id == table_id)
+            )
+            await conn.execute_core(
+                so.registered_tables.delete().where(so.registered_tables.c.id == table_id)
+            )
+
+        async def rebuild():
+            self.rebuilt += 1
+
+        monkeypatch.setattr("provisa.api.admin.schema_mutation_ops.register_table", register_table)
+        monkeypatch.setattr(
+            "provisa.api.admin.schema_mutation._save_relationship_as_caller", save_relationship
+        )
+        monkeypatch.setattr(discovery_dimension, "readers", readers)
+        monkeypatch.setattr("provisa.core.repositories.table.discard", discard)
+        monkeypatch.setattr("provisa.api.admin.schema_helpers._rebuild_schemas", rebuild)
+
+    async def tables(self, db: Database) -> dict[str, str | None]:
+        async with db.acquire() as conn:
+            rows = (
+                await conn.execute_core(
+                    select(so.registered_tables.c.table_name, so.registered_tables.c.view_sql)
+                )
+            ).fetchall()
+        return {r.table_name: r.view_sql for r in rows}
+
+    async def relationships(self, db: Database) -> set[tuple]:
+        async with db.acquire() as conn:
+            rows = (await conn.execute_core(select(so.relationships))).fetchall()
+        return {
+            (r.source_table_id, r.source_column, r.target_table_id, r.cardinality) for r in rows
+        }
+
+
+def _shared(src: tuple[int, str], tgt: tuple[int, str]) -> dict:
+    return {**_suggestion(src, tgt, 0.9), "suggested_name": "neighborhood"}
+
+
+async def _city_with_budget(db: Database) -> None:
+    await _city(db)
+    await _table(db, 4, "sales", "budget", [("hood", "text", False)])
+
+
+async def test_a_many_to_many_pair_is_accepted_as_a_shared_dimension_both_sides_join(
     monkeypatch, tmp_path
 ):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city_with_budget(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    world.measured.values[("budget", "hood")] = ["Riverside", "Harbor", "Downtown"] * 2
+    made = _Made(monkeypatch, db)
+    run, listed = await _answered(world, [_shared((1, "hood"), (4, "hood"))])
+    (pair,) = listed
+    assert pair["cardinality"] == "many-to-many"
+    # The accept box returns for the pair, with the dimension accepting it makes named.
+    assert pair["acceptable"] is True
+    assert pair["dimension"] == {"name": "neighborhood", "reused": False}
+
+    applied = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(accept=[(pair["id"], "neighborhood")])
+    )
+    assert applied["results"] == [
+        {"id": pair["id"], "action": "accept", "ok": True, "relationship_id": "neighborhood"}
+    ]
+    # The view: each value of the two columns once, through the registration of a view.
+    (view,) = made.views
+    assert (view.table_name, view.schema_name, view.domain_id) == (
+        "neighborhood",
+        "views",
+        "sales",
+    )
+    assert view.view_sql == (
+        'SELECT "hood" AS "neighborhood" FROM sales.building_permits WHERE "hood" IS NOT NULL '
+        'UNION SELECT "hood" AS "neighborhood" FROM sales.budget WHERE "hood" IS NOT NULL'
+    )
+    assert [(c.name, c.data_type, c.is_primary_key, c.visible_to) for c in view.columns] == [
+        ("neighborhood", "text", True, ["steward"])
+    ]
+    # A many-to-one relationship from each side to it, through the relationship's creation.
+    assert await made.relationships(db) == {
+        (1, "hood", 101, "many-to-one"),
+        (4, "hood", 101, "many-to-one"),
+    }
+    assert {e.graphql_alias for e in made.edges} == {"neighborhood_dimension"}
+    # The pair is decided: accepted, so a later run never reopens it.
+    assert (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"] == []
+    assert [(c["cardinality"], c["status"]) for c in await _candidates(db)] == [
+        ("many-to-many", "accepted")
+    ]
+
+
+async def test_a_second_pair_on_the_same_values_reuses_the_dimension(monkeypatch, tmp_path):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city_with_budget(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    world.measured.values[("budget", "hood")] = ["Riverside", "Harbor", "Downtown"] * 2
+    made = _Made(monkeypatch, db)
+    run, (first,) = await _answered(world, [_shared((1, "hood"), (4, "hood"))])
+    await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(accept=[(first["id"], "neighborhood")])
+    )
+    run, (second,) = await _answered(world, [_shared((3, "hood"), (1, "hood"))])
+    assert second["cardinality"] == "many-to-many" and second["acceptable"] is True
+    assert second["dimension"] == {"name": "neighborhood", "reused": True}
+    applied = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(accept=[(second["id"], "neighborhood")])
+    )
+    assert applied["results"][0]["ok"] is True, applied
+    # No second view: the complaints join the dimension the permits already join.
+    assert len(made.views) == 1
+    assert await made.relationships(db) == {
+        (1, "hood", 101, "many-to-one"),
+        (4, "hood", 101, "many-to-one"),
+        (3, "hood", 101, "many-to-one"),
+    }
+
+
+async def test_a_dimension_whose_relationship_is_refused_is_not_left_half_made(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _city_with_budget(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    _city_values(world)
+    world.measured.values[("budget", "hood")] = ["Riverside", "Harbor", "Downtown"] * 2
+    made = _Made(monkeypatch, db)
+    made.refused.add("budget-hood-to-neighborhood")
+    run, (pair,) = await _answered(world, [_shared((1, "hood"), (4, "hood"))])
+    applied = await discovery.apply_decisions(
+        _REQUEST, run["id"], _apply(accept=[(pair["id"], "neighborhood")])
+    )
+    (result,) = applied["results"]
+    assert result["ok"] is False
+    assert "budget-hood-to-neighborhood is refused" in result["error"]
+    # The view and the relationship made before the refusal are removed; the pair stays undecided.
+    assert "neighborhood" not in await made.tables(db)
+    assert await made.relationships(db) == set()
+    assert made.rebuilt == 1
+    (still,) = (await discovery.list_proposals(_REQUEST, run["id"]))["proposals"]
+    assert still["id"] == pair["id"]
+
+
+async def test_a_many_to_many_pair_can_be_marked_not_again(monkeypatch, tmp_path):
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     await _city(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     _city_values(world)
     run, listed = await _answered(world, [_suggestion((3, "hood"), (1, "hood"), 0.9)])
     (hood,) = listed
-    refused = await discovery.apply_decisions(
-        _REQUEST, run["id"], _apply(accept=[(hood["id"], "x")])
-    )
-    assert refused["results"][0]["ok"] is False
-    assert "neither column's values are distinct" in refused["results"][0]["error"]
     marked = await discovery.apply_decisions(_REQUEST, run["id"], _apply(not_again=[hood["id"]]))
     assert marked["results"] == [{"id": hood["id"], "action": "not_again", "ok": True}]
 

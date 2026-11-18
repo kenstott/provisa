@@ -426,20 +426,15 @@ async def save_carried_region(
     table_id: int,
     *,
     stored_region: str | None,
-    stored_draft: bool,
-    draft: bool,
 ) -> None:
     """Move a stored table to the region an update carries, judged as setTableRegion judges it:
-    the caller's residency grant (a draft table, as stored or as saved now, is claimed by its
-    destination alone) and the platform's regions. Raises TableSaveRefused."""
+    the caller's residency grant and the platform's regions. Raises TableSaveRefused."""
     from provisa.api.admin.schema_mutation import _residency_refusal
     from provisa.core.repositories import region as region_repo
 
     if not carried(inp.region) or inp.region == stored_region:
         return
-    refusal = _residency_refusal(
-        info, f"table {inp.table_name}", stored_region, inp.region, draft=stored_draft or draft
-    )
+    refusal = _residency_refusal(info, f"table {inp.table_name}", stored_region, inp.region)
     if refusal is not None:
         raise TableSaveRefused(refusal)
     try:

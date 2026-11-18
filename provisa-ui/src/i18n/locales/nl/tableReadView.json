@@ -48,10 +48,12 @@
     "writable": "De bron accepteert",
     "noWrites": "Geen schrijfacties",
     "notShown": "niet getoond",
-    "draftPreviewNote": "Conceptvoorbeeld: lezers kunnen deze tabel nog niet zien.",
     "keepsHistory": "Bewaart historie: elke versie, met wanneer het gebeurde en wanneer het werd vastgelegd.",
     "keepsHistoryQuery": "Bevraag het per een datum of zoals vastgelegd",
     "deleteTitle": "Tabel {{name}} verwijderen?",
-    "deleteConsequence": "De registratie van de tabel wordt verwijderd."
+    "deleteConsequence": "De registratie van de tabel wordt verwijderd.",
+    "withdrawConsequence": "Geen rol leest haar via welke interface ook, geen engine koppelt haar en haar replica wordt verwijderd. Definitie, rechten en relaties blijven, en Terugzetten herstelt haar zoals ze was.",
+    "withdrawnNote": "Teruggetrokken: geen rol leest deze tabel totdat ze wordt teruggezet. Het voorbeeld leest haar nog wel.",
+    "sourceWithdrawnNote": "Haar bron {{source}} is teruggetrokken: geen rol leest deze tabel totdat de bron wordt teruggezet."
   }
 }

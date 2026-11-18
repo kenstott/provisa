@@ -28,6 +28,7 @@ import httpx
 
 from sqlalchemy import func, or_, select
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.rebuild_trace import passes_on
 from provisa.core.org_settings import graphql_remote_max_rows
 from provisa.core.schema_org import (
@@ -77,12 +78,20 @@ async def _dynamic_openapi_columns(base_url: str, query) -> list[dict]:
     import httpx
     from provisa.openapi.register import _openapi_to_provisa_type
 
+    from provisa.security import sandbox_egress
+
     url = base_url.rstrip("/") + query.path
     params = {p["name"]: "" for p in query.query_params}
     try:
-        r = httpx.get(url, params=params, timeout=10, follow_redirects=True)
+        # REQ-2006: a held org's endpoint is a public destination, each redirect checked.
+        with httpx.Client(
+            timeout=10, follow_redirects=True, event_hooks=sandbox_egress.http_sync_event_hooks()
+        ) as client:
+            r = client.get(url, params=params)
         r.raise_for_status()
         data = r.json()
+    except sandbox_egress.PrivateDestinationRefused:
+        raise  # refused by name, never read as an endpoint with no columns
     except Exception:
         return []
     if isinstance(data, list):
@@ -361,8 +370,9 @@ async def table_listing(conn, rows: list[dict]) -> TableListing:
         except (httpx.HTTPError, OSError) as exc:
             # A document out of reach (its host, its file) is that source's alone: named on its
             # tables and logged, the rest listed.
+            reason = describe_http_failure(exc) if isinstance(exc, httpx.HTTPError) else str(exc)
             endpoint_errors[source_id] = (
-                f"the API document of source {source_id!r} could not be read: {exc}"
+                f"the API document of source {source_id!r} could not be read: {reason}"
             )
             log.warning("%s", endpoint_errors[source_id])
             continue
@@ -516,7 +526,6 @@ async def _fetch_table_with_columns(
         cache_ttl=row.get("cache_ttl"),
         replicate=row["replicate"],  # REQ-826
         region=row["region"],  # REQ-1921
-        draft=row["draft"],  # REQ-1921
         withdrawn=row["withdrawn"],  # REQ-1921
         source_withdrawn=row["source_id"] in listing.withdrawn_sources,  # REQ-1921
         row_materialize=row["row_materialize"],  # REQ-1865

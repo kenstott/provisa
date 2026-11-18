@@ -57,7 +57,8 @@
       "username_exists": "ユーザー名は既に存在します",
       "not_permitted": "許可されていません",
       "token_scopes_required": "トークンのロールを 1 つ以上選択してください。",
-      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。"
+      "token_scope_not_held": "トークンは、保持しているロールのみ使用できます。",
+      "no_role_held": "「{{user}}」はこの組織でロールを持っていません"
     },
     "authz": {
       "mutation_not_permitted": "ミューテーション「{{field_name}}」は許可されていません：{{reason}}"
@@ -137,7 +138,6 @@
       "unknown_command": "不明なコマンド「{{name}}」です",
       "write_not_admitted": "ロール '{{role}}' はこの書き込みを実行できません。書き込みには、書き込み権限、書き込む各列への書き込みアクセス、およびロールの行フィルターが許可する行が必要です。",
       "write_not_supported": "'{{table}}' は {{operation}} を受け付けません: そのソースでは実行できません",
-      "table_is_draft": "{{table}} は下書きです: ドメインの所有者が公開するまで停止中です",
       "source_unbound": "ソース '{{source}}' は環境 '{{env}}' に接続がありません: バインドするか、親から再コピーしてください",
       "system_catalog_unavailable": "エンジンのカタログ '{{catalog}}' を登録中です。しばらくしてからもう一度お試しください。",
       "domain_not_accessible": "ロール「{{role_id}}」はドメイン「{{domain}}」にアクセスできません",
@@ -154,7 +154,6 @@
       "source_starting": "ソース {{source}} はまだ起動中です。しばらくしてからもう一度お試しください。",
       "source_unavailable": "ソース {{source}} は応答できませんでした。しばらくしてからもう一度お試しください。",
       "view_outside_load_window": "ビュー {{view}} は読み取り時間帯の間だけ読み取れます。次に開くのは {{opens_at}} です。",
-      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
       "graphql_body_missing": "リクエストに本文がありません。GraphQL リクエストはクエリを含む JSON オブジェクトです。",
       "graphql_body_not_json": "リクエスト本文が JSON ではありません: {{error}}",
       "graphql_request_not_object": "GraphQL リクエストはクエリを含む JSON オブジェクトです。",
@@ -165,7 +164,11 @@
       "parameter_unbound_on_branch": "パラメータ {{parameter}} は OR の一方の分岐で値が与えられ、もう一方では与えられていません。すべての分岐で {{parameter}} に値を与えてください。",
       "parameter_conflict": "パラメータ {{parameter}} に同時に 2 つの異なる値({{first}} と {{second}})が与えられています。値を 1 つにするか、IN または OR で値を列挙してください。",
       "parameter_calls_over_cap": "このステートメントは {{table}} に {{calls}} 回の呼び出しを必要とします(パラメータに与えた値ごとに 1 回)。1 つのステートメントで行われるのは最大 {{cap}} 回です(設定 {{setting}})。値を減らしてください。",
-      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。"
+      "parameter_not_written": "リレーションシップ {{relationship}} はパラメータ {{parameter}} で結合します。パラメータはステートメントが値にバインドするもので、書き込まれることはありません。書き込みで {{relationship}} は作成されません。",
+      "table_is_withdrawn": "{{table}} は取り下げられています: 元に戻されるまで本番環境の外にあります",
+      "view_awaits_rule_rebuild": "入力の行ルールが変更されたため、ビュー {{view}} を再構築しています。このロールは、そのビルドが公開された後に読み取れます。",
+      "parameter_required": "テーブル '{{table}}' にはパラメーター {{parameters}} が必要です。それぞれに値を指定してください（SQL ではその列に対する WHERE 条件、GraphQL では引数）。",
+      "parameter_wrong_type": "パラメーター {{parameter}} は型 {{type}} の値を取ります。'{{value}}' はその型の値ではありません。"
     },
     "discovery": {
       "adapter_missing_discover_schema": "「{{source_type}}」のアダプターは discover_schema を実装していません",
@@ -326,13 +329,6 @@
     "query": {
       "catalog_view_refused": "{{view}} は meta ドメインのカタログビューであり、データソースのテーブルと同じ 1 つのステートメントでは読み取れません。2 つのステートメントに分けて読み取ってください。",
       "function_unsupported": "{{function}}() には {{dialect}} での対応する形式がありません。"
-    },
-    "redaction": {
-      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
-      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
-      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
-      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
-      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
     },
     "replication": {
       "answer_not_json": "{{table}} のレプリカ用に読み取った応答は有効な JSON ではありません: [{{content_type}}] {{cause}}（応答のバイト {{before_byte}} より前の {{kib}} KiB 内）。",
@@ -563,7 +559,10 @@
       "source_withdrawn": "ソース {{source}} を取り下げました",
       "source_put_back": "ソース {{source}} を元に戻しました",
       "withdrawn_source_not_previewable": "テーブル {{table}} はプレビューできません: ソース {{source}} が取り下げられており、取り下げられたソースを読むエンジンはありません。",
-      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。"
+      "withdrawn_table_not_previewable": "テーブル {{table}} はプレビューできません: 取り下げられていてレプリカを保持しておらず、エンジンはレプリカ経由でしかそのソースを読めません。",
+      "table_not_withdrawn": "テーブル {{table}} は取り下げられていません: 元に戻せるのは取り下げられたテーブルだけです。本番環境のテーブルを別のリージョンへ移すには、そのリージョンを設定してください。",
+      "source_not_withdrawn": "ソース {{source}} は取り下げられていません: 元に戻せるのは取り下げられたソースだけです。リージョンを変えるには、そのリージョンを設定してください。",
+      "put_back_needs_region": "{{object}} を元に戻すにはリージョンを指定します: 1 つ指定するか、リージョンなしなら指定なしにしてください。"
     },
     "secrets": {
       "env_reference_object_locked": "このオブジェクトは運用者のものです。サーバー自身の環境を読み取るため、ここでは変更できません。代わりに独自のものを追加してください。",
@@ -576,7 +575,8 @@
     "security": {
       "unknown_mode": "不明なセキュリティモード「{{mode}}」です",
       "data_residency_refused": "{{object}} のリージョンを設定できません: data_residency の付与は {{value}} を含みません。それを含む data_residency 付与があれば可能です",
-      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です"
+      "data_residency_missing": "{{object}} のリージョンを設定できません: 呼び出し元の data_residency 付与はいずれも {{value}} を含みません。それを含む data_residency 付与があれば可能です",
+      "withdraw_residency_refused": "{{object}} を取り下げられません: 保持されている {{value}} を含む data_residency 付与が呼び出し元にありません。それを含む data_residency 付与があれば可能です"
     },
     "settings": {
       "auth_required": "認証が設定されるまで {{field}} は変更できません。",
@@ -623,10 +623,14 @@
       "schema_not_avro": "レジストリ {{registry}} のスキーマ {{schema_id}} は {{kind}} で、Avro ではありません",
       "schema_registry_error": "スキーマレジストリ {{registry}} が HTTP {{http_status}} を返しました: {{error}}",
       "schema_registry_refused_credentials": "スキーマレジストリ {{registry}} がソースの資格情報を拒否しました（HTTP {{http_status}}、認証 '{{method}}'）",
-      "schema_registry_unreachable": "スキーマレジストリ {{registry}} に接続できません: {{error}}",
+      "schema_registry_unreachable": "スキーマレジストリに接続できません: {{error}}",
       "sse_limit_reached": "同時 SSE サブスクリプションの上限に達しました",
       "table_not_found": "テーブル「{{table}}」が見つかりません",
-      "unknown_role": "不明なロール「{{role}}」です"
+      "unknown_role": "不明なロール「{{role}}」です",
+      "owner_role_lost": "サブスクリプションは終了しました: 所有者が、開始時のロールを保持していません ({{roles}})",
+      "sink_cap_reached": "実行中の Kafka シンクはすでに {{cap}} 個あり、オペレーターが許可する上限です ({{setting}})",
+      "sink_needs_write": "ロール「{{role}}」には、Kafka シンクに必要な書き込み権限がありません",
+      "owner_sign_in_expired": "サブスクリプションは終了しました: 開始時のサインインの有効期限が切れました。もう一度サインインして開始し直してください"
     },
     "users": {
       "assignment_not_found": "割り当てが見つかりません",
@@ -670,7 +674,6 @@
       "invalid_limit": "LIMIT {{value}} は行数を表す整数ではありません: LIMIT には 0 以上の数を指定します (例: LIMIT 10)。",
       "invalid_skip": "SKIP {{value}} は行数を表す整数ではありません: SKIP には 0 以上の数を指定します (例: SKIP 10)。",
       "engine_refused": "エンジンがクエリを拒否しました: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} は {{variable}} を読みますが、文は変数を一つもバインドしていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。",
       "undefined_variable_property": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestion}} のことですか? {{owner}} は :{{label}} にバインドされており、プロパティ {{variable}} があります。",
       "undefined_variable_properties": "{{clause}} が読む {{variable}} は文中のどこでもバインドされていません: 変数は MATCH パターン、WITH、UNWIND、CALL でバインドされます。ここでバインドされている変数: {{bound}}。 {{suggestions}} のことですか? いずれもプロパティ {{variable}} を持つラベルにバインドされています。",
@@ -738,10 +741,6 @@
     },
     "dbt_sources": {
       "unknown_role": "{{role}} という名前のロールはありません。"
-    },
-    "debug_logs": {
-      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
-      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
     },
     "dbt": {
       "products": {
@@ -901,6 +900,17 @@
     "preflight": {
       "confined_unavailable": "{{subject}} のプリフライトチェックは実行されませんでした。この組織では隔離されたプロセス内でのみ実行されますが、そのプロセスを起動できませんでした ({{reason}})。",
       "confined_failed": "{{subject}} のプリフライトチェックは判定を返しませんでした。隔離されたプロセスが先に終了しました ({{reason}})。"
+    },
+    "redaction": {
+      "rule_invalid": "マスキングルール {{rule}}: {{why}}",
+      "pattern_backtracks": "マスキングルール {{rule}}: このパターンは壊滅的なバックトラックを起こす可能性があります（無制限の繰り返しの中に入れ子になった繰り返し、またはその中で同じテキストから始まりうる選択肢）。その形を使わずに書き直してください。",
+      "pattern_unsupported": "マスキングルール {{rule}}: 組織のルールでは、後方参照、先読みまたは後読み、アトミックグループ、強欲な繰り返し、条件付きグループは使用できません。",
+      "pattern_too_large": "マスキングルール {{rule}}: 繰り返しを展開するとパターンが大きすぎます。繰り返し回数を小さくしてください。",
+      "server_reference": "マスキングルール {{rule}}: このサーバー上の組織はサーバーの環境を参照できません。組織自身の保管庫の ${secret:NAME} を使用してください。"
+    },
+    "debug_logs": {
+      "pattern_refused": "ログのフィルターパターンは拒否されました: {{why}}",
+      "pattern_exceeded": "ログのフィルターパターンは拒否されました: {{length}} 文字のログ行でステップ上限（{{steps}} ステップ）を超えました。"
     },
     "import": {
       "include_outside_upload": "{{path}} はアップロードされたプロジェクトの外にあります。プロジェクトは自身のファイルのみを読み取ります。",

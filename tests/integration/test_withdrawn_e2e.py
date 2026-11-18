@@ -12,13 +12,16 @@
 returns it (REQ-1921, amended 2026-11-16), on a real pg-engine server over a real source.
 
 * Registered through the admin, a table is live at once: read over GraphQL and through a real
-  PostgreSQL driver on pgwire, and its ways to reach it carry no draft mark.
+  PostgreSQL driver on pgwire. There is no draft.
 * Withdrawn, it serves no role: the pgwire driver's statement naming it is refused, the GraphQL
   schema offers it no more, the admin's lists and the graph schema leave it out (and show it,
   marked, when asked), its replica is retired, and its steward's preview reads it in place.
 * Put back, it is read again, through the same driver; replicated, its replica is built again.
 * A withdrawn source takes its tables out the same way, and is put back by one action.
-* A view whose input is withdrawn is refused; put back, the view is answered again.
+* A view whose input is withdrawn is refused naming it; put back, the view is answered again.
+* A move between regions passes through withdrawn: put back names a region (none here: this
+  server declares no regions), is refused without one, and is refused for a table or source
+  that is not withdrawn.
 """
 
 # Requirements: REQ-1921
@@ -147,7 +150,7 @@ def _listed(srv, *, include_withdrawn: bool) -> dict[str, dict]:
     tables = _admin(
         srv,
         "query($w: Boolean!) { tables(includeWithdrawn: $w) "
-        "{ id tableName draft withdrawn sourceWithdrawn } }",
+        "{ id tableName withdrawn sourceWithdrawn } }",
         {"w": include_withdrawn},
     )["tables"]
     return {t["tableName"]: t for t in tables}
@@ -224,7 +227,7 @@ def test_a_registered_table_is_live_withdrawn_refused_by_a_real_driver_and_put_b
     assert _read(srv) == _ID_AMOUNT
     assert _pgwire(srv, _ORDERS_SQL) == _ID_AMOUNT
     listed = _listed(srv, include_withdrawn=False)["orders"]
-    assert (listed["draft"], listed["withdrawn"]) == (False, False)
+    assert listed["withdrawn"] is False and "draft" not in listed
 
     # Withdrawn: no role is served it, on any front door.
     assert _mutate(srv, f"withdrawTable(tableId: {table_id})")["code"] == "schema.table_withdrawn"
@@ -244,7 +247,10 @@ def test_a_registered_table_is_live_withdrawn_refused_by_a_real_driver_and_put_b
     assert [(r["id"], r["amount"]) for r in previewed.json()["rows"]] == _ID_AMOUNT
 
     # Put back: read again through the same driver.
-    assert _mutate(srv, f"putBackTable(tableId: {table_id})")["code"] == "schema.table_put_back"
+    assert (
+        _mutate(srv, f"putBackTable(tableId: {table_id}, region: null)")["code"]
+        == "schema.table_put_back"
+    )
     assert _pgwire(srv, _ORDERS_SQL) == _ID_AMOUNT
     assert _read(srv) == _ID_AMOUNT
     assert "Orders" in _graph_labels(srv, include_withdrawn=False)
@@ -272,7 +278,7 @@ def test_a_withdrawn_table_keeps_no_replica_and_put_back_is_replicated_again(ser
     assert previewed.json()["code"] == "schema.withdrawn_table_not_previewable", previewed.text
     assert _replica_rows(pg) is None
 
-    _mutate(srv, f"putBackTable(tableId: {table_id})")
+    _mutate(srv, f"putBackTable(tableId: {table_id}, region: null)")
     _wait(lambda: _replica_rows(pg) == len(_ROWS), seconds=90, what="the replica built again")
     assert _pgwire(srv, _ORDERS_SQL) == _ID_AMOUNT
 
@@ -292,7 +298,10 @@ def test_a_withdrawn_source_takes_its_tables_out_and_put_back_returns_them(serve
     sources = _admin(srv, "{ sources { id withdrawn } }")["sources"]
     assert {s["id"]: s["withdrawn"] for s in sources}["src"] is True
 
-    assert _mutate(srv, 'putBackSource(sourceId: "src")')["code"] == "schema.source_put_back"
+    assert (
+        _mutate(srv, 'putBackSource(sourceId: "src", region: null)')["code"]
+        == "schema.source_put_back"
+    )
     assert _pgwire(srv, _ORDERS_SQL) == _ID_AMOUNT
     assert _read(srv) == _ID_AMOUNT
 
@@ -319,12 +328,52 @@ def test_a_view_over_a_withdrawn_table_is_refused_and_answered_once_it_is_put_ba
 
     _mutate(srv, f"withdrawTable(tableId: {table_id})")
     refused = through_the_view()
-    assert refused.status_code != 200, refused.text
+    assert refused.status_code == 409, refused.text
+    assert refused.json()["code"] == "data.table_is_withdrawn", refused.text
+    assert refused.json()["params"] == {"table": "orders"}, refused.text
 
-    _mutate(srv, f"putBackTable(tableId: {table_id})")
+    _mutate(srv, f"putBackTable(tableId: {table_id}, region: null)")
     again = through_the_view()
     assert again.status_code == 200, again.text
     assert again.json() == answered.json()
+
+
+def _refused(srv, mutation: str) -> dict:
+    (result,) = _admin(
+        srv, "mutation { " + mutation + " { success message code params } }"
+    ).values()
+    assert not result["success"], result
+    return result
+
+
+def test_a_move_through_withdrawn_puts_back_naming_a_region_and_nothing_else(server):
+    """Put back names a region: refused without one, refused for what is not withdrawn (that is a
+    region change, by setTableRegion), and with one it returns the table to production there."""
+    srv, pg = server
+    _source(srv, pg)
+    table_id = _register_orders(srv)
+
+    live = _refused(srv, f"putBackTable(tableId: {table_id}, region: null)")
+    assert (live["code"], live["params"]) == ("schema.table_not_withdrawn", {"table": "orders"})
+    live_source = _refused(srv, 'putBackSource(sourceId: "src", region: null)')
+    assert live_source["code"] == "schema.source_not_withdrawn"
+
+    _mutate(srv, f"withdrawTable(tableId: {table_id})")
+    unnamed = _refused(srv, f"putBackTable(tableId: {table_id})")
+    assert (unnamed["code"], unnamed["params"]) == (
+        "schema.put_back_needs_region",
+        {"object": f"table {table_id}"},
+    )
+    _refused_by_pgwire(srv)  # still withdrawn
+
+    back = _mutate(srv, f"putBackTable(tableId: {table_id}, region: null)")
+    assert back["code"] == "schema.table_put_back"
+    assert _pgwire(srv, _ORDERS_SQL) == _ID_AMOUNT
+    regions = _admin(srv, "{ tables { tableName region withdrawn } }")["tables"]
+    assert {t["tableName"]: (t["region"], t["withdrawn"]) for t in regions}["orders"] == (
+        None,
+        False,
+    )
 
 
 def _view_builds(srv) -> dict[str, dict]:
@@ -358,7 +407,7 @@ def test_a_materialized_view_withdrawn_is_offered_to_no_reader_and_put_back_is_b
     assert refused.status_code != 200, refused.text
     assert "view-order_amounts" in _view_builds(srv)  # kept, unscheduled
 
-    _mutate(srv, f"putBackTable(tableId: {view_id})")
+    _mutate(srv, f"putBackTable(tableId: {view_id}, region: null)")
     read = _sql(srv, "SELECT id, amount FROM order_amounts ORDER BY id")
     assert read.status_code == 200, read.text
     assert [(r["id"], r["amount"]) for r in read.json()["data"]["sql"]] == _ID_AMOUNT

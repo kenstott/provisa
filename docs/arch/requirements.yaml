@@ -3723,7 +3723,25 @@
     ITS CUTOFF AND SAMPLE SIZE:) Maintainer 2026-11-16. The Key value overlap choice appears in the dialog
     once Semantic is chosen. Chosen, it shows its two settings: the measure cutoff (default 20%) and the
     sample size, the most distinct values read of each column for a pair''s measure (default 10,000, the
-    bound used today). Both are remembered as the threshold is, and the run''s summary states them.'
+    bound used today). Both are remembered as the threshold is, and the run''s summary states them. (Amended
+    2026-11-16, A RUNNING DISCOVERY CAN BE SENT TO THE BACKGROUND BY A BUTTON:) Maintainer 2026-11-16 (''it
+    can take hours ... a Run in Background button''). While a run is going, the dialog offers Run in background
+    beside Stop: it closes the dialog and the run goes on on the server, as it already does when the dialog
+    is closed. The Relationships page then shows the run is going (its progress, as the dialog shows it)
+    with a way to open it again, and shows when it has ended, so a person who left it for hours sees its
+    result on return. (Amended 2026-11-16, THE RUN SUMMARY LIVES IN THE DIALOG, COLLAPSIBLE; THE PAGE SHOWS
+    ONE LINE:) Maintainer 2026-11-16 (''the message at the top should be collapsible''; ''this message seems
+    out of place here''). In the dialog a run''s summary (what it looked for, the model, source and target,
+    the counts and what was left out and why) is collapsible, shown collapsed to its first line once the
+    run has ended. The Relationships page does not show that summary: it shows only one line about the latest
+    run (going, with its progress, or ended, with how many suggestions wait), with a way to open it in the
+    dialog; the line goes once the run''s suggestions are all decided. (Amended 2026-11-16, ONE COLLAPSIBLE
+    RUN BLOCK SHOWS PROGRESS WHILE RUNNING AND THE SUMMARY AFTER:) Maintainer 2026-11-16 (''you could repurpose
+    this to include progress on a run(s)''). The dialog''s collapsible run block is one component for a
+    run''s whole life: while the run is going it shows its progress (requests done of the total, suggestions
+    so far, the model) with Stop and Run in background; when the run ends the same block holds its summary,
+    collapsed to its first line. Its first line is the line the Relationships page shows. Runs going at
+    once are each a line in that block.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
@@ -57480,7 +57498,17 @@
     2026-11-13, A DROP''S PATH STAYS IN THE SELECTED DOMAINS:) Maintainer 2026-11-12 (also REQ-2135): the
     paths a pill dropped on a graph frame writes, and the paths between two nodes dragged together, pass
     only through labels of the selected domains and never through a system domain''s nodes unless an end
-    of the path is of that domain; with no such path the drop says so by name and changes nothing.'
+    of the path is of that domain; with no such path the drop says so by name and changes nothing. (Amended
+    2026-11-16, TWO RELATIONSHIPS SHARING A MIDDLE TABLE CAN BE JOINED THROUGH IT FROM THE LIST:) Maintainer
+    2026-11-16. On the Relationships list, two ticked relationships that share a middle table offer an action
+    to join them through it, creating one junction-backed relationship (via_table) between their other ends.
+    It qualifies when the two share a common source that refers to both ends (a junction: J.a -> A, J.b
+    -> B; J''s other columns become the edge''s attributes) or a common target both refer to (a shared dimension:
+    A.x -> D, B.y -> D). The action opens one short form with the name (from the two, disambiguated as generated
+    names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
+    stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
+    proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
+    its edge the same way.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -89676,7 +89704,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     could still extend fails by name ("variable-length path exceeded the maximum depth N") instead of returning
     a cut result with the statement.path_cut warning; SPARQL property paths keep the warning. graph.depth_limit
     defaults to 1000, a very large fixed number, since a Cypher walk never repeats a relationship and so
-    ends on its own long before it.'
+    ends on its own long before it. (Amended 2026-11-16, A DROP ONTO A RESULT WITH UNLABELLED NODES LABELS
+    THEM FROM THE SCHEMA, THEN JOINS:) Maintainer 2026-11-16 (''you could just do this when dragging a node
+    onto the result and you have anonymous nodes in the query''). When a node or label is dropped onto a
+    result whose query has nodes with no label, the drop is not refused: the unlabelled endpoints are given
+    their labels from the schema, one MATCH per label pair the relationship joins within the selected domains,
+    unioned, each returning its endpoints; the dropped label then joins from those labelled nodes with OPTIONAL
+    MATCH. The rewritten query is put in the editor and run, with a one-line note that the endpoints were
+    labelled. Show children uses the same rewrite, and both keep to the selected domains. (Amended 2026-11-16,
+    ONE PATH FINDER FOR DROPS IN CYPHER AND SPARQL, WITHIN THE SELECTED DOMAINS:) Maintainer 2026-11-16
+    (''the cypher path finding ... is different than sparql, and further it should restrict the path to
+    nodes within the selected domains''). A drop onto a result finds the path to the dropped class with
+    one path finder shared by the Cypher and SPARQL views (one implementation, each view writing the path
+    in its own language). The path uses only classes in the selected domains: it never passes through a
+    class of an unselected domain (the meta domain''s registered tables included). It joins the dropped
+    class along one path from the result''s nodes, so the query never combines branches with no condition
+    relating them; when no path exists within the selected domains, the drop is refused by name and nothing
+    is added.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

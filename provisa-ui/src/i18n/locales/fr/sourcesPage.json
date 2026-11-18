@@ -45,6 +45,8 @@
     "purposeAdd": "Ajouter une source n'enregistre aucune table en soi. Utilisez Découvrir sur la ligne pour parcourir ses schémas et enregistrer les tables que vous voulez gouverner.",
     "purposeAria": "À propos des sources de données",
     "registrationMissing": "{{list}} ne contient aucun enregistrement pour la source {{source}}.",
-    "duplicateCredentialsNote": "Les identifiants de {{source}} ne sont pas copiés : saisissez-les ici, ou une référence de secret."
+    "duplicateCredentialsNote": "Les identifiants de {{source}} ne sont pas copiés : saisissez-les ici, ou une référence de secret.",
+    "withdrawn": "Retirée",
+    "withdrawnTitle": "Hors production : aucune de ses tables n'est servie à aucun rôle tant qu'elle n'est pas remise"
   }
 }

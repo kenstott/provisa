@@ -57,7 +57,8 @@
       "username_exists": "שם המשתמש כבר קיים",
       "not_permitted": "אין הרשאה",
       "token_scopes_required": "בחרו לפחות תפקיד אחד עבור האסימון.",
-      "token_scope_not_held": "אסימון יכול להשתמש רק בתפקידים שברשותכם."
+      "token_scope_not_held": "אסימון יכול להשתמש רק בתפקידים שברשותכם.",
+      "no_role_held": "ל-'{{user}}' אין תפקיד בארגון הזה"
     },
     "authz": {
       "mutation_not_permitted": "המוטציה '{{field_name}}' אינה מורשית: {{reason}}"
@@ -137,7 +138,6 @@
       "unknown_command": "פקודה לא מוכרת '{{name}}'",
       "write_not_admitted": "התפקיד '{{role}}' אינו רשאי לבצע כתיבה זו: כתיבה דורשת את הרשאת הכתיבה, גישת כתיבה לכל עמודה שנכתבת, ושורות שמסנן השורות של התפקיד מתיר.",
       "write_not_supported": "'{{table}}' אינה מקבלת {{operation}}: המקור שלה אינו יכול לבצע זאת",
-      "table_is_draft": "{{table}} היא טיוטה: מחוץ לשירות עד שבעלי התחום שלה ישחררו אותה",
       "source_unbound": "למקור '{{source}}' אין חיבור בסביבה '{{env}}': יש לקשר אותו או להעתיק אותו מחדש מסביבת האב",
       "system_catalog_unavailable": "הקטלוג '{{catalog}}' של המנוע נמצא בתהליך רישום. יש לנסות שוב בעוד רגע.",
       "domain_not_accessible": "לתפקיד '{{role_id}}' אין גישה לתחום '{{domain}}'",
@@ -154,7 +154,6 @@
       "source_starting": "המקור {{source}} עדיין מופעל. נסה שוב בעוד רגע.",
       "source_unavailable": "המקור {{source}} לא הצליח להשיב. נסה שוב בקרוב.",
       "view_outside_load_window": "ניתן לקרוא את ה-view ‏{{view}} רק בתוך חלון הקריאה שלו. הוא נפתח שוב ב-{{opens_at}}.",
-      "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
       "graphql_body_missing": "לבקשה אין גוף: בקשת GraphQL היא אובייקט JSON עם שאילתה.",
       "graphql_body_not_json": "גוף הבקשה אינו JSON: {{error}}",
       "graphql_request_not_object": "בקשת GraphQL היא אובייקט JSON עם שאילתה.",
@@ -165,7 +164,11 @@
       "parameter_unbound_on_branch": "הפרמטר {{parameter}} מקבל ערך בענף אחד של OR ואינו מקבל ערך בענף אחר. תנו ל-{{parameter}} ערך בכל ענף.",
       "parameter_conflict": "הפרמטר {{parameter}} מקבל שני ערכים שונים בו-זמנית ({{first}} ו-{{second}}). תנו לו ערך אחד, או פרטו את הערכים באמצעות IN או OR.",
       "parameter_calls_over_cap": "המשפט דורש {{calls}} קריאות ל-{{table}}, אחת לכל ערך שניתן לפרמטרים שלה, ולכל משפט מבוצעות לכל היותר {{cap}} (ההגדרה {{setting}}). תנו פחות ערכים.",
-      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}."
+      "parameter_not_written": "הקשר {{relationship}} מצטרף לפי הפרמטר {{parameter}}, שהצהרה קושרת לערך ולעולם אינה כותבת. כתיבה אינה יוצרת את {{relationship}}.",
+      "table_is_withdrawn": "{{table}} הוסרה מהייצור: מחוץ לייצור עד שתוחזר",
+      "view_awaits_rule_rebuild": "התצוגה {{view}} נבנית מחדש בעקבות שינוי בכללי השורות של הקלטים שלה. תפקיד זה יוכל לקרוא אותה לאחר שהבנייה תפורסם.",
+      "parameter_required": "הטבלה '{{table}}' דורשת את הפרמטר או הפרמטרים {{parameters}}: תנו לכל אחד ערך (תנאי WHERE על העמודה שלו ב-SQL, ארגומנט ב-GraphQL).",
+      "parameter_wrong_type": "הפרמטר {{parameter}} מקבל ערך מסוג {{type}}; '{{value}}' אינו כזה."
     },
     "discovery": {
       "adapter_missing_discover_schema": "המתאם עבור '{{source_type}}' אינו מממש discover_schema",
@@ -326,13 +329,6 @@
     "query": {
       "catalog_view_refused": "{{view}} היא תצוגת קטלוג של תחום meta ולא ניתן לקרוא אותה בהוראה אחת יחד עם טבלה של מקור נתונים: קראו אותן בשתי הוראות.",
       "function_unsupported": "ל-{{function}}() אין מקבילה ב-{{dialect}}."
-    },
-    "redaction": {
-      "rule_invalid": "כלל השחרה {{rule}}: {{why}}",
-      "pattern_backtracks": "כלל השחרה {{rule}}: התבנית עלולה לגרום לחזרה לאחור קטסטרופלית (חזרה המקוננת בתוך חזרה בלתי מוגבלת, או חלופות בתוכה שעשויות להתחיל באותו טקסט). כתבו אותה מחדש ללא מבנה זה.",
-      "pattern_unsupported": "כלל השחרה {{rule}}: כלל של ארגון אינו יכול להשתמש בהפניות לאחור, lookahead או lookbehind, קבוצות אטומיות, חזרות רכושניות או קבוצות מותנות.",
-      "pattern_too_large": "כלל השחרה {{rule}}: התבנית גדולה מדי לאחר פריסת החזרות שלה. השתמשו במספר חזרות קטן יותר.",
-      "server_reference": "כלל השחרה {{rule}}: ארגון בשרת זה אינו יכול להפנות לסביבת השרת. השתמשו ב-${secret:NAME} מהכספת של הארגון עצמו."
     },
     "replication": {
       "answer_not_json": "התשובה שנקראה עבור הרפליקה של {{table}} אינה JSON תקין: [{{content_type}}] {{cause}} (ב-{{kib}} KiB שלפני בית {{before_byte}} בתשובה).",
@@ -563,7 +559,10 @@
       "source_withdrawn": "המקור {{source}} הוסר מהייצור",
       "source_put_back": "המקור {{source}} הוחזר",
       "withdrawn_source_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: המקור שלה {{source}} הוסר מהייצור, ואף מנוע אינו קורא מקור שהוסר.",
-      "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה."
+      "withdrawn_table_not_previewable": "לא ניתן להציג תצוגה מקדימה של הטבלה {{table}}: היא הוסרה מהייצור ואינה שומרת רפליקה, והמנוע קורא את המקור שלה רק דרך רפליקה.",
+      "table_not_withdrawn": "הטבלה {{table}} לא הוסרה מהייצור: רק טבלה שהוסרה מהייצור מוחזרת. כדי להעביר טבלה בייצור לאזור אחר, הגדירו את האזור שלה.",
+      "source_not_withdrawn": "המקור {{source}} לא הוסר מהייצור: רק מקור שהוסר מהייצור מוחזר. כדי לשנות את האזור שלו, הגדירו את האזור שלו.",
+      "put_back_needs_region": "החזרת {{object}} מציינת אזור: ציינו אזור, או אף אחד ללא אזור."
     },
     "secrets": {
       "env_reference_object_locked": "אובייקט זה שייך למפעיל: הוא קורא את סביבת השרת עצמו ואי אפשר לשנותו כאן. יש להוסיף אובייקט משלך במקומו.",
@@ -576,7 +575,8 @@
     "security": {
       "unknown_mode": "מצב אבטחה לא מוכר '{{mode}}'",
       "data_residency_refused": "לא ניתן להגדיר את האזור של {{object}}: הרשאת data_residency אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת",
-      "data_residency_missing": "לא ניתן להגדיר את האזור של {{object}}: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת"
+      "data_residency_missing": "לא ניתן להגדיר את האזור של {{object}}: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}; הרשאת data_residency שכוללת אותו מתירה זאת",
+      "withdraw_residency_refused": "לא ניתן להסיר את {{object}} מהייצור: אף הרשאת data_residency של המבקש אינה מכסה את {{value}}, שבו הוא נשמר; הרשאת data_residency שכוללת אותו מתירה זאת"
     },
     "settings": {
       "auth_required": "לא ניתן לשנות את {{field}} עד שהאימות יוגדר.",
@@ -623,10 +623,14 @@
       "schema_not_avro": "סכמה {{schema_id}} ברישום {{registry}} היא {{kind}}, לא Avro",
       "schema_registry_error": "רישום הסכמות {{registry}} השיב HTTP {{http_status}}: {{error}}",
       "schema_registry_refused_credentials": "רישום הסכמות {{registry}} דחה את פרטי הגישה של המקור (HTTP {{http_status}}, אימות '{{method}}')",
-      "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות {{registry}}: {{error}}",
+      "schema_registry_unreachable": "לא ניתן להגיע לרישום הסכמות: {{error}}",
       "sse_limit_reached": "הגעת למספר המרבי של מנויי SSE במקביל",
       "table_not_found": "הטבלה '{{table}}' לא נמצאה",
-      "unknown_role": "תפקיד לא מוכר '{{role}}'"
+      "unknown_role": "תפקיד לא מוכר '{{role}}'",
+      "owner_role_lost": "המנוי הסתיים: לבעליו אין עוד את התפקיד שתחתיו הוא הופעל ({{roles}})",
+      "sink_cap_reached": "כבר יש לך {{cap}} יעדי Kafka פעילים, המספר המרבי שהמפעיל מתיר ({{setting}})",
+      "sink_needs_write": "לתפקיד '{{role}}' אין את הרשאת הכתיבה שיעד Kafka דורש",
+      "owner_sign_in_expired": "המנוי הסתיים: ההתחברות שתחתיה הוא הופעל פגה; התחבר שוב והפעל אותו מחדש"
     },
     "users": {
       "assignment_not_found": "ההקצאה לא נמצאה",
@@ -670,7 +674,6 @@
       "invalid_limit": "LIMIT {{value}} אינו מספר שלם של שורות: LIMIT מקבל מספר של 0 ומעלה, למשל LIMIT 10.",
       "invalid_skip": "SKIP {{value}} אינו מספר שלם של שורות: SKIP מקבל מספר של 0 ומעלה, למשל SKIP 10.",
       "engine_refused": "המנוע דחה את השאילתה: {{error}}",
-      "parameter_required": "{{reason}}",
       "no_variables": "{{clause}} קורא את {{variable}}, אך המשפט אינו קושר אף משתנה: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL.",
       "undefined_variable_property": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestion}}? {{owner}} קשור ל-:{{label}}, שיש לו מאפיין {{variable}}.",
       "undefined_variable_properties": "{{clause}} קורא את {{variable}}, ששום דבר במשפט אינו קושר: משתנה נקשר בתבנית MATCH, ב-WITH, ב-UNWIND או ב-CALL. קשורים כאן: {{bound}}. האם התכוונתם ל-{{suggestions}}? כל אחד מהם קשור לתווית שיש לה מאפיין {{variable}}.",
@@ -738,10 +741,6 @@
     },
     "dbt_sources": {
       "unknown_role": "אין תפקיד בשם {{role}}."
-    },
-    "debug_logs": {
-      "pattern_refused": "תבנית סינון היומן נדחתה: {{why}}",
-      "pattern_exceeded": "תבנית סינון היומן נדחתה: היא חרגה ממגבלת הצעדים שלה ({{steps}} צעדים) בשורת יומן של {{length}} תווים."
     },
     "dbt": {
       "products": {
@@ -901,6 +900,17 @@
     "preflight": {
       "confined_unavailable": "בדיקת הקדם של {{subject}} לא הורצה: בארגון הזה היא רצה רק בתהליך מבודד, ולא ניתן היה להפעיל תהליך כזה ({{reason}}).",
       "confined_failed": "בדיקת הקדם של {{subject}} לא החזירה פסיקה: התהליך המבודד שלה הסתיים קודם לכן ({{reason}})."
+    },
+    "redaction": {
+      "rule_invalid": "כלל השחרה {{rule}}: {{why}}",
+      "pattern_backtracks": "כלל השחרה {{rule}}: התבנית עלולה לגרום לחזרה לאחור קטסטרופלית (חזרה המקוננת בתוך חזרה בלתי מוגבלת, או חלופות בתוכה שעשויות להתחיל באותו טקסט). כתבו אותה מחדש ללא מבנה זה.",
+      "pattern_unsupported": "כלל השחרה {{rule}}: כלל של ארגון אינו יכול להשתמש בהפניות לאחור, lookahead או lookbehind, קבוצות אטומיות, חזרות רכושניות או קבוצות מותנות.",
+      "pattern_too_large": "כלל השחרה {{rule}}: התבנית גדולה מדי לאחר פריסת החזרות שלה. השתמשו במספר חזרות קטן יותר.",
+      "server_reference": "כלל השחרה {{rule}}: ארגון בשרת זה אינו יכול להפנות לסביבת השרת. השתמשו ב-${secret:NAME} מהכספת של הארגון עצמו."
+    },
+    "debug_logs": {
+      "pattern_refused": "תבנית סינון היומן נדחתה: {{why}}",
+      "pattern_exceeded": "תבנית סינון היומן נדחתה: היא חרגה ממגבלת הצעדים שלה ({{steps}} צעדים) בשורת יומן של {{length}} תווים."
     },
     "import": {
       "include_outside_upload": "{{path}} נמצא מחוץ לפרויקט שהועלה; פרויקט קורא רק את הקבצים שלו.",

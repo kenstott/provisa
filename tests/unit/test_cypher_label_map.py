@@ -154,6 +154,7 @@ def _make_ctx(owned_table_id: int = 1):
         pk_columns={},
         native_filter_columns={},
         parameters={},
+        parameter_names={},
         physical_to_sql={},
         gql_governed_object_cols=set(),
         gql_json_columns=set(),

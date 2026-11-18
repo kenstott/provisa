@@ -120,7 +120,7 @@ async def test_hot_tables_stamps_each_row_with_its_tables_region(monkeypatch):
     monkeypatch.setattr(
         app_module.state,
         "role_build_inputs",
-        {"draft_tables": [], "withdrawn_tables": []},
+        {"withdrawn_tables": []},
         raising=False,
     )
     monkeypatch.setattr("provisa.federation.replica_hot.busy_replicas", _busy)

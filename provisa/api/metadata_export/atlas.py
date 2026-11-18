@@ -44,6 +44,7 @@ from typing import TYPE_CHECKING, Any
 
 import httpx
 
+from provisa.core.http_failure import describe_http_failure
 from provisa.api.metadata_export.provider import (
     AssetError,
     AssetRefStub,
@@ -52,6 +53,7 @@ from provisa.api.metadata_export.provider import (
 )
 from provisa.api.metadata_export.model import junction_payload
 from provisa.api.metadata_export.registry import register_provider
+from provisa.security import sandbox_egress  # REQ-2006: held to public destinations
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import (
@@ -1159,7 +1161,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         resp.raise_for_status()
             except httpx.HTTPError as exc:
                 result.errors.append(
-                    AssetError(asset=entity.asset, message=f"classification merge: {exc}")
+                    AssetError(
+                        asset=entity.asset,
+                        message=f"classification merge: {describe_http_failure(exc)}",
+                    )
                 )
 
     async def publish(self, snapshot: MetadataSnapshot) -> PublishResult:
@@ -1167,7 +1172,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
         if snapshot.glossary_terms or self._departed_terms(snapshot):
             # REQ-1387: the glossary publishes even when no entity does — an abstract term
             # is user vocabulary, not physical binding, and exists without a data product.
-            async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+            async with httpx.AsyncClient(
+                timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            ) as client:
                 headers = await self._headers(client)
                 await self._publish_glossary(client, headers, snapshot, result)
         return result
@@ -1359,7 +1366,10 @@ class AtlasExport(MetadataExport):  # REQ-1069
             glossary_guid = await self._ensure_glossary(client, headers, snapshot.org_id, result)
         except httpx.HTTPError as exc:
             result.errors.append(
-                AssetError(asset=AssetRefStub(GLOSSARY_NAME), message=f"glossary: {exc}")
+                AssetError(
+                    asset=AssetRefStub(GLOSSARY_NAME),
+                    message=f"glossary: {describe_http_failure(exc)}",
+                )
             )
             return
         result.published["glossary"] = 1
@@ -1377,7 +1387,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(term.semantic_uri),
-                        message=f"glossary term: {exc}",
+                        message=f"glossary term: {describe_http_failure(exc)}",
                     )
                 )
                 continue
@@ -1467,7 +1477,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             try:
                 await self._sync_assignments(client, headers, term_guid, entities, result)
             except httpx.HTTPError as exc:
-                message = str(exc)
+                message = describe_http_failure(exc)
                 if isinstance(exc, httpx.HTTPStatusError):
                     # Atlas's errorCode and message are in the body; the status line alone
                     # does not say which guid or check it refused.
@@ -1585,7 +1595,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                 result.errors.append(
                     AssetError(
                         asset=AssetRefStub(f"term:{from_id}"),
-                        message=f"term relations: {exc}",
+                        message=f"term relations: {describe_http_failure(exc)}",
                     )
                 )
 
@@ -1605,7 +1615,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
             # for what is a model state.
             return result
         defs = classification_defs(snapshot)
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
             entities = await self._canonicalize_identity(client, headers, entities, result)
@@ -1624,7 +1636,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
                         AssetError(
                             asset=AssetRefStub("classificationDefs"),
                             message=(
-                                f"classification typedefs: {exc}. Governance signals were not "
+                                f"classification typedefs: {describe_http_failure(exc)}. Governance signals were not "
                                 "published; every asset was."
                             ),
                         )
@@ -1788,7 +1800,9 @@ class AtlasExport(MetadataExport):  # REQ-1069
         # A freshly-started Atlas can reset a connection moments after its own Docker
         # healthcheck passes (Tomcat still settling under QEMU emulation) — retry
         # transport-level failures a few times before treating the service as down.
-        async with httpx.AsyncClient(timeout=self._config.timeout_seconds) as client:
+        async with httpx.AsyncClient(
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:
             headers = await self._headers(client)
             response = await self._get_with_retry(client, headers)
         response.raise_for_status()

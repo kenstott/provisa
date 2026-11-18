@@ -19,6 +19,7 @@ import threading
 from abc import ABC, abstractmethod
 from typing import Any
 
+from provisa.security import sandbox_egress  # REQ-2006
 from provisa.vector.registry import VectorModel
 
 # Requirements: REQ-420, REQ-431, REQ-1827
@@ -127,7 +128,9 @@ class OpenAICompatibleProvider(EmbeddingProvider):  # REQ-420
         key = await vector_model_key(model)
         if key:
             headers["Authorization"] = f"Bearer {key}"
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(
+            timeout=30, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.post(
                 f"{base}/embeddings", headers=headers, json={"model": model.id, "input": texts}
             )
@@ -155,7 +158,9 @@ class OllamaProvider(EmbeddingProvider):  # REQ-420
 
         base = await _ollama_address(model)
         out: list[list[float]] = []
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(
+            timeout=60, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             for text in texts:
                 resp = await client.post(
                     f"{base}/api/embeddings", json={"model": model.id, "prompt": text}
@@ -172,7 +177,9 @@ class OllamaProvider(EmbeddingProvider):  # REQ-420
         import httpx
 
         base = await _ollama_address(model)
-        async with httpx.AsyncClient(timeout=30) as client:
+        async with httpx.AsyncClient(
+            timeout=30, event_hooks=sandbox_egress.http_event_hooks()
+        ) as client:  # REQ-2006
             resp = await client.get(f"{base}/api/tags")
             resp.raise_for_status()
             listed = resp.json().get("models")
