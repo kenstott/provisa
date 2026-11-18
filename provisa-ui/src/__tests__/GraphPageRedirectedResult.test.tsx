@@ -145,6 +145,8 @@ describe("GraphFrame — a result delivered to a file", () => {
             onClose={() => {}}
             onRerun={() => {}}
             schemaRels={[]}
+            parameterized={new Set()}
+            pathScope={{ nodeLabels: [], checkedDomains: new Set() }}
             colorOverrides={{}}
             sizeOverrides={{}}
             labelProperty={{}}
