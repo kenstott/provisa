@@ -324,6 +324,64 @@ async def test_runs_at_once_each_reach_their_own_verdict(held_org):
     assert len(held_org) == 1
 
 
+#: A check in a loop that never reads a row: a cancel sent to the host never reaches it.
+_SPINS = """
+def preflight(streams, ctx):
+    n = 0
+    while True:
+        n += 1
+"""
+
+
+def test_a_cancel_ends_the_worker_of_a_check_that_never_reads(held_org):
+    import time
+
+    from provisa.core import request_deadline
+    from provisa.mv import preflight_confined
+
+    process = preflight_confined.worker("acme", "a test")._process
+    assert process is not None
+    started = time.monotonic()
+    with pytest.raises(TimeoutError):
+        with request_deadline.within(0.5):
+            preflight_confined._ask(
+                "acme",
+                _SPINS,
+                preflight_confined._ctx_fields(_ctx()),
+                {"orders": _ROWS},
+                "table orders",
+                (),
+                preflight_confined.CODE,
+            )
+    until = time.monotonic() + 5.0
+    while process.poll() is None and time.monotonic() < until:
+        time.sleep(0.02)
+    assert process.poll() is not None, "the check runs on in its worker after the cancel"
+    assert time.monotonic() - started < 5.0
+
+
+@pytest.mark.asyncio
+async def test_after_a_cancel_the_next_check_runs_in_a_new_worker(held_org):
+    from provisa.core import request_deadline
+    from provisa.mv import preflight_confined
+
+    first = _worker_pid()
+    with pytest.raises(TimeoutError):
+        with request_deadline.within(0.5):
+            preflight_confined._ask(
+                "acme",
+                _SPINS,
+                preflight_confined._ctx_fields(_ctx()),
+                {"orders": _ROWS},
+                "table orders",
+                (),
+                preflight_confined.CODE,
+            )
+    ctx = _ctx()
+    await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
+    assert int(ctx.warns[0]) not in (first, os.getpid())
+
+
 # -- (d) a single-organization install: in the server, as before ----------------------------------
 
 
@@ -689,6 +747,28 @@ async def test_with_no_sandbox_a_held_organizations_check_is_refused_by_name(mon
         "reason": "a code source cannot run on Windows: it has no code-source sandbox",
     }
     assert ctx.warns == [], "the check ran in the server instead"
+
+
+if sys.platform == "darwin":
+    # The kernel's sandbox on macOS is sandbox-exec, on every Mac: this starts the worker under
+    # it. On Linux the confined start is tests/integration/test_preflight_sandboxed.py's.
+
+    @pytest.mark.asyncio
+    async def test_on_macos_the_worker_starts_under_the_sandbox_and_runs_the_check(monkeypatch):
+        """A python.org (framework) interpreter re-executes its Python.app as it starts; the
+        profile lets it, so the check runs in the confined worker instead of being refused."""
+        monkeypatch.setattr(
+            "provisa.api.app.state", SimpleNamespace(admin_db=object()), raising=False
+        )
+        _deployment(monkeypatch, many=True)
+        token = set_current_org("acme")
+        try:
+            ctx = _ctx()
+            await _at_landed_source(_SAYS_ITS_PROCESS, _ROWS, ctx)
+        finally:
+            reset_current_org(token)
+        seen, counted = ctx.warns
+        assert counted == "orders=3" and int(seen) != os.getpid()
 
 
 def _host(monkeypatch, argv: list[str]) -> None:

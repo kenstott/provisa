@@ -837,6 +837,10 @@
       "health_poll_interval": {
         "label": "Pollinterval voor connectorstatus",
         "help": "Hoe vaak elk Provisa-proces de host van een connector naar zijn status vraagt en het resultaat bij de bron toont. Een herstarte host wordt bij de volgende poll opgemerkt, waarna zijn on-start-functie opnieuw wordt uitgevoerd."
+      },
+      "worker_idle_timeout": {
+        "label": "Inactiviteitstime-out voor codeworkers",
+        "help": "Hoe lang de worker van een codebron, of de preflight-worker van een organisatie, ongebruikt mag blijven voordat Provisa het proces beëindigt. De volgende aanroep start een nieuwe."
       }
     },
     "config": {

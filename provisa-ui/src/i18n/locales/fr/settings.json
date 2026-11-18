@@ -837,6 +837,10 @@
       "health_poll_interval": {
         "label": "Intervalle d'interrogation de l'état des connecteurs",
         "help": "Fréquence à laquelle chaque processus Provisa interroge l'hôte d'un connecteur sur son état et affiche le résultat sur la source. Un hôte redémarré est détecté à l'interrogation suivante, qui relance sa fonction on-start."
+      },
+      "worker_idle_timeout": {
+        "label": "Délai d'inactivité des workers de code",
+        "help": "Durée pendant laquelle le worker d'une source de code, ou le worker de preflight d'une organisation, peut rester inutilisé avant que Provisa n'arrête son processus. L'appel suivant en démarre un nouveau."
       }
     },
     "config": {

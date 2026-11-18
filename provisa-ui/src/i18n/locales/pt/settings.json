@@ -837,6 +837,10 @@
       "health_poll_interval": {
         "label": "Intervalo de verificação de integridade do conector",
         "help": "Com que frequência cada processo do Provisa pergunta ao host de um conector pelo seu estado e mostra o resultado na origem. Um host reiniciado é detetado na verificação seguinte, que executa novamente a sua função on-start."
+      },
+      "worker_idle_timeout": {
+        "label": "Tempo limite de inatividade do worker de código",
+        "help": "Quanto tempo o worker de uma fonte de código, ou o worker de preflight de uma organização, pode ficar sem uso antes que o Provisa encerre seu processo. A próxima chamada inicia um novo."
       }
     },
     "config": {
