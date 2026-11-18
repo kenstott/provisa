@@ -769,6 +769,9 @@
       "private_destination": "Die Quellen dieser Organisation dürfen nur öffentliche Adressen erreichen; {{host}} ist {{address}}, und das ist keine.",
       "local_path_refused": "Die Quellen dieser Organisation lesen keine Datei auf dem eigenen Datenträger des Servers außerhalb ihres eigenen Ordners; {{path}} ist eine solche. Laden Sie die Datei hoch oder geben Sie sie als {files}/… oder über eine entfernte Adresse an."
     },
+    "egress": {
+      "private_destination": "Diese Organisation darf nur öffentliche Adressen aufrufen; {{host}} ist {{address}}, und das ist keine."
+    },
     "sandbox": {
       "wrong_tier": "Diese Sandbox wird anderswo bereitgestellt; öffnen Sie sie über ihre eigene Adresse.",
       "unknown_demo": "Es gibt keine veröffentlichte Demo namens {{demo}}.",

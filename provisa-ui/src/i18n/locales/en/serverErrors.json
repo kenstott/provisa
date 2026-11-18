@@ -769,6 +769,9 @@
       "private_destination": "This org's sources may reach only public addresses; {{host}} is {{address}}, which is not one.",
       "local_path_refused": "This organization's sources read no file on the server's own disk outside its own folder; {{path}} is one. Upload the file, or name it as {files}/… or by a remote address."
     },
+    "egress": {
+      "private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
+    },
     "sandbox": {
       "wrong_tier": "This sandbox is served elsewhere; open it from its own address.",
       "unknown_demo": "There is no published demo named {{demo}}.",

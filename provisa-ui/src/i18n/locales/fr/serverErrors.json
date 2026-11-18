@@ -769,6 +769,9 @@
       "private_destination": "Les sources de cette organisation ne peuvent atteindre que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une.",
       "local_path_refused": "Les sources de cette organisation ne lisent aucun fichier sur le disque du serveur en dehors de son propre dossier ; {{path}} en est un. Téléversez le fichier, ou désignez-le par {files}/… ou par une adresse distante."
     },
+    "egress": {
+      "private_destination": "Cette organisation ne peut appeler que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une."
+    },
     "sandbox": {
       "wrong_tier": "Ce bac à sable est servi ailleurs ; ouvrez-le depuis sa propre adresse.",
       "unknown_demo": "Aucune démo publiée ne s'appelle {{demo}}.",

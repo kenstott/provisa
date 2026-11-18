@@ -94,7 +94,7 @@ async def _http_call(
 
     # REQ-2006: a held org's call reaches public destinations only, each request checked.
     async with httpx.AsyncClient(
-        timeout=timeout, event_hooks=sandbox_egress.http_event_hooks()
+        timeout=timeout, event_hooks=sandbox_egress.endpoint_event_hooks()
     ) as client:
         resp = await client.request(method, url, json=payload, headers=headers)
     resp.raise_for_status()
@@ -145,7 +145,10 @@ async def _grpc_call(
     """
     path = _grpc_method_path(method)
     request = json.dumps(payload).encode()
-    channel = open_channel(target, tls)
+    from provisa.security.sandbox_egress import PrivateEndpointRefused
+
+    # REQ-2006: a held org's command dials the address its check resolved; refused as a command.
+    channel = open_channel(target, tls, refusal=PrivateEndpointRefused)
     try:
         rpc = channel.unary_unary(
             path, request_serializer=_grpc_identity, response_deserializer=_grpc_identity
@@ -352,7 +355,9 @@ def _check_egress(state, endpoint: str, kind: str) -> None:
         return
     allowlist = getattr(state, "udf_egress_allowlist", None) or []
     if host in allowlist or hostport in allowlist:
-        sandbox_egress.require_allowed(host, _endpoint_port(hostport))
+        sandbox_egress.require_allowed(
+            host, _endpoint_port(hostport), refusal=sandbox_egress.PrivateEndpointRefused
+        )
         return
     raise ApiError(
         403,

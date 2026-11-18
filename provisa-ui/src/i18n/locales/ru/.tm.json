@@ -10932,5 +10932,9 @@
   "discoverDialog.json::discoverDialog.runInBackground": "Run in background",
   "discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
   "discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
-  "relationshipsPage.json::relationshipsPage.openRun": "Open"
+  "relationshipsPage.json::relationshipsPage.openRun": "Open",
+  "ru/graphFrame.json::graphFrame.cypherDropNoLabel": "This result's nodes have no label, and its query has no relationship to give them one: give a node a label, then drop again. Nothing was added.",
+  "ru/graphFrame.json::graphFrame.cypherDropNoPair": "No relationship in this result's query joins labels within the selected domains, so its nodes can't be given labels. Nothing was added.",
+  "ru/graphFrame.json::graphFrame.cypherDropLabelled": "This result's unlabelled nodes were given their labels from the schema, one MATCH per label pair.",
+  "ru/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
 }
