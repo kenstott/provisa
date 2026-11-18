@@ -1646,7 +1646,8 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     assert semantics["below_threshold"] - semantics["zero_scored"] == 1
     assert semantics["invalid"] == 2
     assert semantics["not_comparable"] == 0 and semantics["scored"] == 0
-    assert report["removed"]["matches_foreign_key"] == 1
+    # REQ-413 (amended 2026-11-18): the semantic duplicate of the foreign key is its row.
+    assert "matches_foreign_key" not in report["removed"]
     # What the run compared is said, so what it did not is plain.
     assert report["source_domains"] == report["target_domains"] == ["crm", "sales"]
     assert report["target_same_as_source"] is True
@@ -1660,8 +1661,10 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
         ("semantics", "unknown_column", None, None),
         ("semantics", "invalid_shape", None, None),
         ("semantics", "below_threshold", "customer_id", 3),
-        ("semantics", "matches_foreign_key", "region_id", 2),
     ]
+    assert kept[0]["reasoning"] == (
+        "Foreign key constraint; also proposed by the model at 90%: orders name their customer"
+    )
     assert kept[4]["confidence"] == 0.55 and kept[4]["reasoning"] == "orders name their customer"
     assert kept[4]["score"] == _HALF_IN_A_KEY
     assert json.loads(kept[2]["answer"])["target_table"] == "no such table"
@@ -1674,14 +1677,13 @@ async def test_a_run_keeps_every_proposal_it_read_with_why_it_was_left_out(monke
     assert [(r["kind"], r["reason"], r["decidable"], r["confidence"]) for r in listed] == [
         ("foreign_keys", None, True, 1.0),
         ("semantics", None, True, 0.95),
-        ("semantics", "matches_foreign_key", False, 0.9),
         ("semantics", "below_threshold", True, 0.55),
         ("semantics", "unknown_column", False, None),
         ("semantics", "invalid_shape", False, None),
     ]
-    assert listed[3]["source_table_id"] == 1 and listed[3]["target_column"] == "id"
-    assert listed[3]["suggested_name"] == "purchase-history"
-    assert listed[3]["cardinality"] == "many-to-one" and listed[4]["cardinality"] is None
+    assert listed[2]["source_table_id"] == 1 and listed[2]["target_column"] == "id"
+    assert listed[2]["suggested_name"] == "purchase-history"
+    assert listed[2]["cardinality"] == "many-to-one" and listed[3]["cardinality"] is None
     assert not any(r["reduced_information"] for r in listed)
 
 
@@ -1747,9 +1749,9 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     remaining = _named((await discovery.list_proposals(_REQUEST, run["id"]))["proposals"])
     assert [r["id"] for r in remaining] == [undecided["id"]]
 
-    # A later run reads them again: the undecided one as an ordinary row, the accepted ones as
-    # registered (the one the model rates low too), the one marked as rejected before, which keeps
-    # that decision and cannot be decided again (REQ-413, amended 2026-11-16).
+    # A later run reads them again: the undecided one is listed as an ordinary row; the accepted
+    # ones are registered (the one the model rates low too) and the one marked not again keeps
+    # that decision, so neither is listed (REQ-413, amended 2026-11-16 and 2026-11-18).
     _, again = await _answered(
         world,
         [
@@ -1761,12 +1763,7 @@ async def test_applying_accepts_what_is_ticked_marks_what_is_not_wanted_and_leav
     )
     assert [
         (r["source_table_id"], r["target_table_id"], r["reason"], r["decidable"]) for r in again
-    ] == [
-        (1, 2, "existing", False),
-        (3, 1, "rejected", False),
-        (3, 2, "pending", True),
-        (1, 3, "existing", False),
-    ]
+    ] == [(3, 2, None, True)]
 
 
 async def test_a_proposal_that_cannot_be_decided_is_refused_and_the_rest_are_applied(
