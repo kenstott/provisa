@@ -921,7 +921,8 @@
       "filter_operator_refused": "{{operator}} ist kein Operator, mit dem ein Berechtigungsfilter umgewandelt werden kann."
     },
     "relationship": {
-      "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders."
+      "name_taken": "Der Name '{{name}}' ist bereits von der Beziehung '{{held_by}}' belegt. Benennen Sie diese anders.",
+      "join_through_none": "Die Beziehungen '{{first}}' und '{{second}}' haben keine gemeinsame Zwischentabelle, oder ihre anderen Enden sind bereits darüber verknüpft."
     }
   }
 }

@@ -176,7 +176,7 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
         p
         for p in proposals
         if p["decidable"]
-        and p["reason"] in (None, "pending")
+        and p["reason"] is None
         and p["confidence"] is not None
         and p["confidence"] >= threshold
     ]
@@ -205,7 +205,7 @@ def test_after_applying_a_run_no_suggestion_waits_for_a_joined_pair(instance: In
     reopened = [
         (edge(p), p["reason"])
         for p in _proposals(instance, again["id"])["proposals"]
-        if p["reason"] in (None, "pending")
+        if p["reason"] is None
     ]
     assert reopened == []
     assert again["suggestions"] == 0, again

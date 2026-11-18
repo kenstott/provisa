@@ -1981,6 +1981,10 @@ user_directory = Table(
     Column("discovery_contained_at", Float, nullable=False, server_default="0.95"),
     Column("discovery_shared_ceiling", Float, nullable=False, server_default="0.6"),
     Column("discovery_samples_per_column", Integer, nullable=False, server_default="5"),
+    # REQ-413 (amended 2026-11-18): the filter on a run's Score column, the person's own as the
+    # threshold is: JSON {"op", "a", "b"} as the list's column filter holds it; NULL when they
+    # cleared it. A person who has set none has Score >= 10%.
+    Column("discovery_score_filter", Text, nullable=True, server_default='{"op": "ge", "a": "10"}'),
     Column("updated_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
@@ -2760,6 +2764,12 @@ discovery_run_proposals = Table(
     Column("answer", Text, nullable=True),
     Column("decision", Text, nullable=True),
     Column("accepted_as", Text, nullable=True),
+    # REQ-1586: a suggestion joining two ends through a junction both its legs refer from: the
+    # junction and its two referring columns (source_column = via_source_column, via_target_column
+    # = target_column). Null for every other proposal.
+    Column("via_table_id", Integer, ForeignKey("registered_tables.id"), nullable=True),
+    Column("via_source_column", Text, nullable=True),
+    Column("via_target_column", Text, nullable=True),
     Column("tenant_id", Uuid),
 )
 

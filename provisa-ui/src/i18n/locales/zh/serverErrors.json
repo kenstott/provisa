@@ -921,7 +921,8 @@
       "filter_operator_refused": "{{operator}} 不是可用于转换权限过滤器的运算符。"
     },
     "relationship": {
-      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。"
+      "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。",
+      "join_through_none": "关系 '{{first}}' 和 '{{second}}' 没有共同的中间表，或者它们的另一端已经通过该表连接。"
     }
   }
 }

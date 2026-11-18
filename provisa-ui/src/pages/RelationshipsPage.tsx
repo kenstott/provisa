@@ -65,6 +65,7 @@ import { matchesQuery } from "../lib/searchItems";
 
 import { useListSelection } from "../components/list/listSelection";
 import { ListBulkBar } from "../components/list/ListBulkBar";
+import { JoinThroughAction } from "../components/relationships/JoinThroughAction";
 export function RelationshipsPage() {
   // REQ-1918: a delete is refused while anything depends on the object; this lists them.
   const refusal = useDependentsDialog();
@@ -840,6 +841,20 @@ export function RelationshipsPage() {
                   return `${found.sourceTableName} -> ${found.targetTableName}`;
                 }}
                 onDelete={deleteRelationships}
+                actions={
+                  <JoinThroughAction
+                    ids={shownRelIds.filter((k) => selection.selected.has(k))}
+                    onJoined={(id) => {
+                      // The joined relationship opens in the panel; the two stay ticked no more.
+                      selection.clear();
+                      setSaveProblem("");
+                      setEditingRel(null);
+                      setReverseForm(null);
+                      setShowForm(false);
+                      setExpanded(id);
+                    }}
+                  />
+                }
                 testId="relationships-bulk"
               />
               <ListTable testId="relationships-list" selection={selection}>

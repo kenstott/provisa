@@ -159,6 +159,9 @@ class JoinMeta:
         None  # when set, propagate as parent_src_val to child joins instead of sub_src
     )
     via: "JunctionMeta | None" = None  # REQ-1586: set on a junction-backed edge, None on FK/PK
+    #: REQ-1586: True where a registered relationship row declares this join; False on a
+    #: synthetic one (HAS_TABLE, an ops link), which no relationship of a table's own declares.
+    registered: bool = False
 
 
 @dataclass

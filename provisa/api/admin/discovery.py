@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
-from provisa.api.admin import discovery_dimension
+from provisa.api.admin import discovery_dimension, join_through
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.core.relationship_naming import RelationshipNameTaken
@@ -652,6 +652,9 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
             "threshold": await threshold_repo.read(conn, _person(request)),
+            # The person's filter on the Score column, applied when the results open
+            # (REQ-413, amended 2026-11-18); None when they cleared it.
+            "score_filter": await threshold_repo.read_score_filter(conn, _person(request)),
             # The score the run keeps a suggestion at: the threshold it was started with
             # (REQ-413, amended 2026-11-18); a proposal's reason below_threshold is against it,
             # whatever the person's threshold is now.
@@ -731,6 +734,36 @@ async def put_threshold(request: Request, body: ThresholdBody):  # REQ-413
     return {"threshold": kept}
 
 
+class ScoreFilter(BaseModel):  # REQ-413
+    """A filter on a run's Score column, as the list's column filter holds it: an operator and
+    its operands, in percent."""
+
+    op: Literal["eq", "ne", "lt", "le", "gt", "ge", "between", "isEmpty", "notEmpty", "in"]
+    a: str | None = None
+    b: str | None = None
+    values: list[str] | None = None
+
+
+class ScoreFilterBody(BaseModel):  # REQ-413
+    """The Score filter a person set in a run's results; None: they cleared it."""
+
+    filter: ScoreFilter | None
+
+
+@router.put("/score-filter")
+async def put_score_filter(request: Request, body: ScoreFilterBody):  # REQ-413
+    """Keep the Score filter set in a run's results as the signed-in person's own."""
+    require_capability_request(request, "create_relationship")
+    pool = state.model_db
+    assert pool is not None
+    spec = None if body.filter is None else body.filter.model_dump(exclude_none=True)
+    async with pool.acquire() as _conn:
+        kept = await threshold_repo.keep_score_filter(
+            cast("Connection", _conn), _person(request), spec
+        )
+    return {"filter": kept}
+
+
 class ApplyRequest(BaseModel):
     """What a reviewer decided in a run's result: the proposals to accept, each with the name its
     relationship takes, and those not to recommend again. A proposal in neither stays undecided."""
@@ -766,7 +799,12 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                if await proposals_repo.shared_pair(conn, run_id, each.id):
+                if await proposals_repo.junction_of(conn, run_id, each.id) is not None:
+                    # REQ-1586: a junction suggestion joins its two ends through the junction.
+                    relationship_id = await join_through.accept_proposal(
+                        request, conn, run_id, each.id, each.name
+                    )
+                elif await proposals_repo.shared_pair(conn, run_id, each.id):
                     # REQ-413: a many-to-many pair is accepted as a shared dimension.
                     relationship_id = await discovery_dimension.accept(
                         request, conn, run_id, each.id, each.name

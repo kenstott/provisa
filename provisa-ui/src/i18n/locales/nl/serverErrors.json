@@ -921,7 +921,8 @@
       "filter_operator_refused": "{{operator}} is geen operator waarmee een machtigingsfilter kan worden omgezet."
     },
     "relationship": {
-      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam."
+      "name_taken": "De naam '{{name}}' is al in gebruik door relatie '{{held_by}}'. Geef deze een andere naam.",
+      "join_through_none": "De relaties '{{first}}' en '{{second}}' delen geen tussentabel, of hun andere uiteinden zijn er al via gekoppeld."
     }
   }
 }

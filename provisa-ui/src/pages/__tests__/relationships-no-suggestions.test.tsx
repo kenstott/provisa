@@ -99,7 +99,9 @@ vi.mock("../../api/admin", async (importOriginal) => ({
   startDiscoveryRun: vi.fn(),
   fetchDiscoveryRun: vi.fn(),
   fetchDiscoveryRuns: vi.fn(),
-  fetchRunProposals: vi.fn().mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7 }),
+  fetchRunProposals: vi
+    .fn()
+    .mockResolvedValue({ proposals: [], threshold: 0.7, kept_at: 0.7, score_filter: null }),
   // REQ-413: the run settings of a person who has set none; the form waits for them.
   fetchDiscoverySettings: vi.fn().mockImplementation(async () => {
     const defaults = {
@@ -248,6 +250,7 @@ describe("RelationshipsPage: a run's result leaves the page without a suggested 
       proposals: waiting,
       threshold: 0.7,
       kept_at: 0.7,
+      score_filter: null,
     });
     render(<RelationshipsPage />);
     await screen.findByTestId("relationships-split");
