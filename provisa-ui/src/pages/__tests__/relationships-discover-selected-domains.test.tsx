@@ -90,10 +90,11 @@ describe("Discovery dialog: within the selected domains", () => {
   it("asks with no narrowing when the Domains picker narrows nothing", async () => {
     FILTER.checkedDomains = new Set(FILTER.domains);
     await openDialog();
+    await waitFor(() => expect(countMock).toHaveBeenCalled(), SLOW);
+    expect(countMock.mock.calls[countMock.mock.calls.length - 1][1]).toBeNull();
     fireEvent.click(runButton());
     await waitFor(() => expect(startMock).toHaveBeenCalled());
     expect(startMock.mock.calls[0][1]).toBeNull();
-    expect(countMock.mock.calls[countMock.mock.calls.length - 1][1]).toBeNull();
   });
 
   it("leaves out a domain of the run before that is not ticked, and says so", async () => {

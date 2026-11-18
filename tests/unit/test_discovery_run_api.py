@@ -448,7 +448,9 @@ async def test_a_run_never_reads_or_proposes_a_named_table_outside_the_selected_
     )
     assert ended["status"] == "done"
     assert world.reads.sql and not any('"customers"' in sql for sql in world.reads.sql)
-    assert world.prompts and all("customers" not in prompt for prompt in world.prompts)
+    # The prompts name each table quoted; the instructions' own example names customers.id.
+    assert world.prompts and all('"customers"' not in prompt for prompt in world.prompts)
+    assert any('"invoices"' in prompt for prompt in world.prompts)
     assert ended["report"]["source_tables"] == 2 and ended["report"]["source_left_out"] == 1
     stored = {(c["source_table_id"], c["target_table_id"]) for c in await _candidates(db)}
     assert stored == {(3, 1)}
