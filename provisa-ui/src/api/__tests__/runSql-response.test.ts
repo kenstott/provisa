@@ -123,7 +123,7 @@ describe("runSql — a statement the server refused", () => {
         params: { view: "v", opens_at: "02:00" },
       }),
     );
-    expect((await nlToSql("what closed?")).error).toBe(
+    expect((await nlToSql("what closed?", "org_admin", true, null)).error).toBe(
       "The view v can be read only within its read window. It next opens at 02:00.",
     );
   });
