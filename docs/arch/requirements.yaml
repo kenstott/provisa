@@ -3796,7 +3796,16 @@
     zero. Several table pairs may share one call: the prompt states that it is a batch of separate table
     pairs and asks for each to be scored on its own, and each answer is read against its own table pair.
     The scores then feed the key value overlap band as before. This replaces packing many tables'' columns
-    into one request and asking for links anywhere among them.'
+    into one request and asking for links anywhere among them. (Amended 2026-11-18, EVERY TABLE IS COMPARED
+    WITH EVERY TABLE: CODE LISTS THE TABLE PAIRS, EACH CALL ANSWERS EVERY PAIR IT LISTS:) Maintainer 2026-11-18
+    (''that''s the right approach ... so the llm calls make sure to compare every table to every table'').
+    A run first lists every table pair of its scope (each source table with each target table that shares
+    a compared type group with it), then batches those table pairs into calls. Each call lists its tables
+    once, with their comparable columns and sample values, and then lists its table pairs explicitly, numbered;
+    the model answers under each number, with the column pairs and their scores or with none. The model
+    never chooses which tables to compare. A listed table pair left without an answer is asked again, and
+    if it is still unanswered the run says so by name; it is never taken as a zero. A column pair of an
+    answered table pair that the answer does not mention scores zero.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
