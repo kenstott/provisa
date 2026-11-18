@@ -3816,7 +3816,11 @@
     alias''.] The model is given each table and each compared column by the name people see: its alias where
     one is set, otherwise its name as the model presents it; a physical name is never sent beside an alias.
     Its description, bound glossary term and tags go with it. The model''s answers name columns the same
-    way and are mapped back by the run.'
+    way and are mapped back by the run. (Amended 2026-11-18, THE JOIN COUNT READS NON-NULL VALUES ONLY:)
+    Maintainer 2026-11-18 (''non null values only''). The rows the join count reads from the source column,
+    up to the sample size, are rows whose value is not null, and only non-null target values are counted
+    as matches; a null never counts toward the overlap, toward a column being a key, or toward the sample
+    size.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
