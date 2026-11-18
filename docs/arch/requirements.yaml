@@ -25221,7 +25221,7 @@
   stakeholders:
   - data-engineer
 - id: REQ-812
-  status: in-progress
+  status: complete
   group: 8. Client Access & Protocols
   category: API & Integration
   feature: subscriptions-and-live-queries-sinks
@@ -25253,7 +25253,8 @@
   - tests/unit/test_subscription_sink_header.py
   - tests/integration/test_kafka_publish.py
   - tests/unit/test_subscription_operator_floor.py
-  since: 2026-04
+  - tests/unit/test_subscription_owner_bound.py
+  since: 2026-11
   scenario: 'Given a subscription request with the header "X-Provisa-Sink" set to a Kafka target
 
     When the request is accepted
@@ -48216,8 +48217,8 @@
   - pgwire.md
   - security.md
 - id: REQ-1395
-  status: in-progress
-  since: 2026-08
+  status: complete
+  since: 2026-11
   group: 13. Multi-Tenancy & Organizations
   category: Org AI Model Configuration
   feature: organizations-customization
@@ -48248,6 +48249,12 @@
   docs:
   - api-reference.md
   - architecture.md
+  tests:
+  - tests/unit/test_ai_keys_org_only.py
+  - tests/unit/test_ai_clients_explicit.py
+  - tests/unit/test_vector_keys_org_only.py
+  - tests/integration/test_org_secrets.py
+  - provisa-ui/src/__tests__/AiModelsTab.test.tsx
 - id: REQ-1402
   status: complete
   since: 2026-08
@@ -75282,7 +75289,7 @@
   - tests/unit/test_config_stamp.py
   notes: 'Roadmap audit 2026-10-13: delivered; verified against the code'
 - id: REQ-1921
-  status: in-progress
+  status: complete
   group: 1. Access Governance & Security
   category: Data Residency
   feature: regions-and-residency-residency-rules
@@ -75529,7 +75536,7 @@
   - REQ-544
   - REQ-1915
   - REQ-1920
-  since: 2026-10
+  since: 2026-11
   notes: 'Accepted by the maintainer 2026-10-03 for the feature-complete line; audit found it not built. Roadmap audit 2026-10-13: delivered; verified against the code'
   code:
   - provisa/core/regions.py
@@ -75538,6 +75545,18 @@
   - tests/unit/test_regions_model.py
   - tests/unit/test_region_defaults.py
   - provisa-ui/src/hooks/__tests__/useRegionChoice.test.tsx
+  - tests/unit/test_withdrawn.py
+  - tests/unit/test_withdrawn_reached_by_no_statement.py
+  - tests/unit/test_withdrawn_row_read_by_steward.py
+  - tests/unit/test_withdrawn_graphql_rest_reach_nothing.py
+  - tests/unit/test_withdrawn_not_exported.py
+  - tests/unit/test_withdrawn_view_build.py
+  - tests/unit/test_config_withdrawn.py
+  - tests/integration/test_withdrawn_e2e.py
+  - provisa-ui/src/pages/__tests__/SchemaExplorer.withdrawn.test.tsx
+  - provisa-ui/src/components/list/__tests__/PanelWithdraw.test.tsx
+  - provisa-ui/src/pages/sources/__tests__/SourceDetailPanel.withdraw.test.tsx
+  - provisa-ui/src/components/__tests__/GovernedTableViewer.withdrawn.test.tsx
   docs:
   - regions.md
   - security.md
@@ -96968,7 +96987,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
 
     '
 - id: REQ-2246
-  status: in-progress
+  status: complete
   since: 2026-11
   target: 2026-Q4
   group: 10. UI & Admin Surfaces
@@ -97027,6 +97046,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   tests:
   - tests/unit/test_mcp_sip_mode.py
   - provisa-ui/src/__tests__/McpServerTab.test.tsx
+  - tests/unit/test_mcp_tools_by_role.py
 - id: REQ-2247
   status: in-progress
   target: 2027-Q1
@@ -97194,7 +97214,7 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
   - tests/unit/test_retired_not_served.py
   - tests/unit/test_meta_seed_retires_undeclared.py
 - id: REQ-2249
-  status: in-progress
+  status: complete
   target: 2026-Q4
   group: 4. Source Connectors
   category: Source Connectors
@@ -97258,6 +97278,14 @@ And a source saved with excel_hints.column_gap: 0 is refused naming column_gap"
     Then the @change function is not called
 
     '
+  tests:
+  - tests/unit/test_code_resolver_change.py
+  - tests/unit/test_code_resolver_set.py
+  - tests/unit/test_code_resolver_view_inputs.py
+  - tests/integration/test_code_resolver_change_e2e.py
+  - tests/integration/test_transform_view_reader_rules_e2e.py
+  - provisa-ui/src/components/relationships/__tests__/codeResolver.test.tsx
+  since: 2026-11
 - id: REQ-2250
   status: proposed
   group: 10. UI & Admin Surfaces
