@@ -334,7 +334,9 @@ async def test_a_suggestion_the_foreign_keys_found_is_already_present(monkeypatc
     d.answer = json.dumps([_suggestion((1, "customer_id"), (2, "id"))])
     found = await d.run("foreign_keys", "semantics")
     assert found["foreign_keys"] == {"found": 1, "suggested": 1}
-    assert found["run"]["report"]["removed"]["matches_foreign_key"] == 1
+    # REQ-413 (amended 2026-11-18): the semantic duplicate is shown once, as the foreign key,
+    # and is not counted as left out.
+    assert "matches_foreign_key" not in found["run"]["report"]["removed"]
     assert found["semantics"]["suggested"] == 0
     assert len(found["stored_ids"]) == 1
 
