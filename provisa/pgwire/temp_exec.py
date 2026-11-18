@@ -524,6 +524,8 @@ async def apply(
         ]
         _within_rows(name, len(held) + len(added))
         await _land(state, session, name, _batch(table.columns, [*held, *added]), table.columns)
+        # New rows: an answer kept for the session was read before them.
+        session.generation += 1
         return QueryResult(rows=[], column_names=[], rowcount=len(added))
     assert action.kind == "rewrite"
     # ``result`` is every row of the table as the statement leaves it, read through the pipeline
@@ -542,6 +544,8 @@ async def apply(
     after = [tuple(r[:width]) for r in result.rows if not (action.marks_gone and r[width])]
     _within_rows(name, len(after))
     await _land(state, session, name, _batch(table.columns, after), table.columns)
+    # Rows changed or gone: an answer kept for the session was read before them.
+    session.generation += 1
     # A DELETE removes the rows that are gone; an UPDATE keeps every row, changed or not.
     return QueryResult(rows=[], column_names=[], rowcount=held - len(after))
 
@@ -696,4 +700,6 @@ async def copy_into(
     ]
     _within_rows(name, len(held) + len(added))
     await _land(state, session, name, _batch(table.columns, [*held, *added]), table.columns)
+    # New rows: an answer kept for the session was read before them.
+    session.generation += 1
     return len(added)
