@@ -12,6 +12,7 @@ import { labelColor, darkenColor, propertyValue } from "./graph-model";
 import type { GNode, RelLineOverride } from "./graph-model";
 import type { CyElement } from "./cytoscape-types";
 import { resolveNodeLabel } from "./canvas/canvas-helpers";
+import type { GraphTokens } from "../provisa-graph/tokens";
 
 export const PIN_SVG =
   "data:image/svg+xml;utf8," +
@@ -22,16 +23,6 @@ export const PIN_SVG =
       `<line x1='8' y1='11' x2='8' y2='16' stroke='%2392400e' stroke-width='1.5' stroke-linecap='round'/>` +
       `</svg>`,
   );
-
-/** The colours the drawing takes from the page's theme (theme/tokens.css): cytoscape draws on a
- * canvas and cannot read CSS variables, so they are resolved here, per colour scheme. A label
- * boxed against the lines it crosses sits on the frame's own --surface; captions beneath a node
- * are the page's text, edge labels its muted text. Held to tokens.css by graphThemeLook.test. */
-export const GRAPH_LOOK = {
-  light: { surface: "#ffffff", caption: "#1a1d27", edgeText: "#55596b", metaText: "#4f46e5" },
-  dark: { surface: "#1a1d27", caption: "#d6d8e2", edgeText: "#6b6f82", metaText: "#a5b4fc" },
-} as const;
-export type GraphScheme = keyof typeof GRAPH_LOOK;
 
 interface StylesheetRefs {
   colorOverridesRef: { current: Record<string, string> };
@@ -93,8 +84,7 @@ export function buildGraphStylesheet({
   sizeOverridesRef,
   labelPropertyRef,
   relLineOverridesRef,
-}: StylesheetRefs, scheme: GraphScheme): unknown[] {
-  const look = GRAPH_LOOK[scheme];
+}: StylesheetRefs, t: GraphTokens): unknown[] {
   return [
     {
       selector: "node",
@@ -117,7 +107,7 @@ export function buildGraphStylesheet({
             : captionLines(cap, ele.width() + OUTSIDE_MARGIN, font);
         },
         color: (ele: CyElement) =>
-          insideCaption(ele, labelPropertyRef.current) ? "#fff" : look.caption,
+          insideCaption(ele, labelPropertyRef.current) ? "#fff" : t.text,
         "font-size": fontOf,
         "text-valign": (ele: CyElement) =>
           insideCaption(ele, labelPropertyRef.current) ? "center" : "bottom",
@@ -185,7 +175,7 @@ export function buildGraphStylesheet({
         "curve-style": "bezier",
         label: "data(label)",
         "font-size": 8,
-        color: look.edgeText,
+        color: t.textMuted,
         "text-background-opacity": 0,
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mappers receive untyped elements; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>
@@ -220,9 +210,9 @@ export function buildGraphStylesheet({
         "curve-style": "bezier",
         label: "data(label)",
         "font-size": 9,
-        color: look.metaText,
+        color: t.accent,
         "text-background-opacity": 0.7,
-        "text-background-color": look.surface,
+        "text-background-color": t.canvas,
         "text-background-padding": "2px",
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>

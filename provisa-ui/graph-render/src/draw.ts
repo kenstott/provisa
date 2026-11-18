@@ -14,6 +14,7 @@
 
 import { JSDOM } from "jsdom";
 import { buildGraphStylesheet } from "../../src/components/graph/graph-stylesheet";
+import { graphTokens } from "../../src/components/provisa-graph/tokens";
 import provisaElk, { LAYOUT_FAIL } from "../../src/components/provisa-graph/elkLayout";
 import { BACKGROUND, LAYOUTS, type LayoutName, type Theme } from "./look";
 
@@ -103,7 +104,7 @@ export async function drawPng(req: DrawRequest): Promise<Buffer> {
           labelPropertyRef: none,
           relLineOverridesRef: none,
         },
-        req.theme,
+        graphTokens(req.theme === "dark"),
       ) as never,
       layout: { name: "null" },
     });

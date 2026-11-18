@@ -23,7 +23,7 @@ export const LAYOUTS = {
 export type LayoutName = keyof typeof LAYOUTS;
 
 /** What the graph canvas sits on: the page's --bg (theme/tokens.css); the stylesheet takes its
- *  label colours for the same theme (GRAPH_LOOK). Held equal to the tokens by the provisa-ui test
+ *  label colours for the same theme (graphTokens). Held equal to the tokens by the provisa-ui test
  *  graphRenderLook.test.ts. */
 export const BACKGROUND = { light: "#ffffff", dark: "#0f1117" } as const;
 export type Theme = keyof typeof BACKGROUND;

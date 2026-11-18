@@ -9,13 +9,11 @@
 // permission from the copyright holder.
 
 // The Cypher graph's labels follow the theme. Reported 2026-11-17: in the light theme, the label
-// on the edge between two collapsed clusters was drawn on a dark box. Every label the stylesheet
-// draws a box behind sits on the page's own --surface (the frame's background), and its text is
-// the page's text colour, in light and in dark, and again after the theme is switched without
-// a reload.
+// on the edge between two collapsed clusters was drawn on a dark box. The stylesheet draws from the
+// graph's one token set (provisa-graph/tokens.ts): every label box on the scheme's canvas, captions
+// and edge labels in its text colours, in light and in dark, and again after the theme is switched
+// without a reload.
 
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { render } from "@testing-library/react";
@@ -63,22 +61,14 @@ const { cy, cytoscape } = vi.hoisted(() => {
 vi.mock("cytoscape", () => ({ default: cytoscape }));
 
 import { GraphCanvas } from "../GraphCanvas";
-import { buildGraphStylesheet, GRAPH_LOOK } from "../graph-stylesheet";
+import { buildGraphStylesheet } from "../graph-stylesheet";
+import { graphTokens } from "../../provisa-graph/tokens";
 import type { CanvasProps } from "../canvas/canvas-types";
 
 type Rule = { selector: string; style: Record<string, unknown> };
 type Scheme = "light" | "dark";
 
-const tokens = readFileSync(resolve(__dirname, "../../../theme/tokens.css"), "utf8");
-
-function pageToken(scheme: Scheme, name: string): string {
-  const at = tokens.indexOf(`:root[data-mantine-color-scheme="${scheme}"] {`);
-  expect(at, scheme).toBeGreaterThan(-1);
-  const block = tokens.slice(at, tokens.indexOf("}", at));
-  const m = new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6});`).exec(block);
-  expect(m, `${scheme} --${name}`).not.toBeNull();
-  return m![1].toLowerCase();
-}
+const look = (scheme: Scheme) => graphTokens(scheme === "dark");
 
 const none = { current: {} };
 const sheet = (scheme: Scheme) =>
@@ -89,7 +79,7 @@ const sheet = (scheme: Scheme) =>
       labelPropertyRef: none,
       relLineOverridesRef: none,
     },
-    scheme,
+    look(scheme),
   ) as Rule[];
 
 const rule = (rules: Rule[], selector: string) => {
@@ -106,35 +96,29 @@ const outsideCaption = (rules: Rule[]) => {
 };
 
 describe("the Cypher graph's look follows the theme", () => {
-  it("takes the page's surface and text colours for each theme", () => {
-    for (const scheme of ["light", "dark"] as const) {
-      expect(GRAPH_LOOK[scheme].surface, scheme).toBe(pageToken(scheme, "surface"));
-    }
-    expect(GRAPH_LOOK.light.caption).toBe(pageToken("light", "text"));
-    expect(GRAPH_LOOK.light.edgeText).toBe(pageToken("light", "text-muted"));
-  });
-
   it.each(["light", "dark"] as const)(
-    "draws every label box on the %s surface, never a fixed colour",
+    "draws every label box on the %s canvas, never a fixed colour",
     (scheme) => {
       const rules = sheet(scheme);
       const boxed = rules.filter((r) => "text-background-color" in r.style);
       expect(boxed.map((r) => r.selector)).toContain("edge[?_metaEdge]");
       for (const r of boxed) {
-        expect(r.style["text-background-color"], r.selector).toBe(GRAPH_LOOK[scheme].surface);
+        expect(r.style["text-background-color"], r.selector).toBe(look(scheme).canvas);
       }
     },
   );
 
   it.each(["light", "dark"] as const)("captions and edge labels in the %s text colours", (scheme) => {
     const rules = sheet(scheme);
-    expect(outsideCaption(rules)).toBe(GRAPH_LOOK[scheme].caption);
-    expect(rule(rules, "edge").color).toBe(GRAPH_LOOK[scheme].edgeText);
-    expect(rule(rules, "edge[?_metaEdge]").color).toBe(GRAPH_LOOK[scheme].metaText);
+    expect(outsideCaption(rules)).toBe(look(scheme).text);
+    expect(rule(rules, "edge").color).toBe(look(scheme).textMuted);
+    expect(rule(rules, "edge[?_metaEdge]").color).toBe(look(scheme).accent);
   });
 
   it("the light cluster-edge label is not drawn on a dark box (the 2026-11-17 report)", () => {
-    expect(rule(sheet("light"), "edge[?_metaEdge]")["text-background-color"]).toBe("#ffffff");
+    const box = rule(sheet("light"), "edge[?_metaEdge]")["text-background-color"];
+    expect(box).toBe(graphTokens(false).canvas);
+    expect(box).not.toBe(graphTokens(true).canvas);
   });
 });
 
@@ -203,7 +187,7 @@ describe("a theme switch restyles the drawn graph without a reload", () => {
       </Providers>,
     );
     const created = cytoscape.mock.calls.at(-1)![0] as { style: unknown };
-    expect(metaBox(created.style)).toBe(GRAPH_LOOK.light.surface);
+    expect(metaBox(created.style)).toBe(look("light").canvas);
     const builds = cytoscape.mock.calls.length;
 
     rerender(
@@ -212,14 +196,14 @@ describe("a theme switch restyles the drawn graph without a reload", () => {
       </Providers>,
     );
     expect(cy.style).toHaveBeenCalled();
-    expect(metaBox(cy.style.mock.calls.at(-1)![0])).toBe(GRAPH_LOOK.dark.surface);
+    expect(metaBox(cy.style.mock.calls.at(-1)![0])).toBe(look("dark").canvas);
 
     rerender(
       <Providers scheme="light">
         <GraphCanvas {...BASE_PROPS} />
       </Providers>,
     );
-    expect(metaBox(cy.style.mock.calls.at(-1)![0])).toBe(GRAPH_LOOK.light.surface);
+    expect(metaBox(cy.style.mock.calls.at(-1)![0])).toBe(look("light").canvas);
     // Restyled in place: the drawing (and its layout) is not rebuilt for a theme switch.
     expect(cytoscape.mock.calls.length).toBe(builds);
   });

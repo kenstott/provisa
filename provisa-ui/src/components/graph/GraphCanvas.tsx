@@ -28,6 +28,7 @@ import {
   type ClusterLevel,
 } from "./graph-clusters";
 import { buildGraphStylesheet, nodeCaption } from "./graph-stylesheet";
+import { graphTokens } from "../provisa-graph/tokens";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -107,10 +108,10 @@ export function GraphCanvas({
   sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
-  // The theme the drawing's colours are taken from (GRAPH_LOOK); a switch restyles it in place.
-  const scheme = useComputedColorScheme("light");
-  const schemeRef = useRef(scheme);
-  schemeRef.current = scheme;
+  // The theme the drawing's colours are taken from (graphTokens); a switch restyles it in place.
+  const isDark = useComputedColorScheme("light") === "dark";
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
   const nodeDraggedRef = useRef(onNodeDragged);
   nodeDraggedRef.current = onNodeDragged;
   const nodeDroppedRef = useRef(onNodeDroppedOnNode);
@@ -468,7 +469,7 @@ export function GraphCanvas({
       elements: els,
       style: buildGraphStylesheet(
         { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
-        schemeRef.current,
+        graphTokens(isDarkRef.current),
       ),
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
@@ -808,10 +809,10 @@ export function GraphCanvas({
     cy.style(
       buildGraphStylesheet(
         { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
-        scheme,
+        graphTokens(isDark),
       ),
     );
-  }, [scheme]);
+  }, [isDark]);
 
   // Update node colors when colorOverrides changes without rebuilding the graph
   useEffect(() => {
