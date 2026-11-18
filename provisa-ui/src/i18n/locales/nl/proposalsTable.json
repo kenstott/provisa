@@ -63,6 +63,7 @@
     },
     "dimensionMade": "Accepteren maakt de gedeelde dimensie {{name}}, waaraan beide kolommen worden gekoppeld.",
     "dimensionJoined": "Accepteren koppelt beide kolommen aan de gedeelde dimensie {{name}}.",
-    "twoDimensions": "De kolommen zijn al gekoppeld aan twee verschillende gedeelde dimensies, dus deze kan niet worden geaccepteerd."
+    "twoDimensions": "De kolommen zijn al gekoppeld aan twee verschillende gedeelde dimensies, dus deze kan niet worden geaccepteerd.",
+    "admittedOnKeyValues": "Toegelaten omdat de sleutelwaarden in de gegevens overeenkomen; de meting staat naast de betrouwbaarheid van het model."
   }
 }

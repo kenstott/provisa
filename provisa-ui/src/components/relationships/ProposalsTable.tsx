@@ -155,6 +155,7 @@ export function ProposalsTable({
             threshold: Math.round(state.keptAt * 100),
           }),
       p.reduced_information ? t("candidatesTable.reducedInformation") : "",
+      p.admitted_on_key_values ? t("proposalsTable.admittedOnKeyValues") : "",
     ]
       .filter(Boolean)
       .join(" ");
@@ -220,7 +221,7 @@ export function ProposalsTable({
           {newRun}
           {proposals.length > 0 && (
             <Button
-              onClick={() => void state.apply(nameOf)}
+              onClick={() => void state.apply()}
               disabled={accepting + marking === 0}
               loading={state.applying}
               data-testid="discover-apply"

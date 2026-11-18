@@ -1,6 +1,7 @@
 {
   "discoverResult": {
     "scopeKinds": "खोजा गया: {{kinds}}।",
+    "keyValues": "कुंजी मान ओवरलैप: जिन जोड़ियों को मॉडल ने {{cutoff}}% से {{threshold}}% से कम तक आँका, उन्हें हर कॉलम के अधिकतम {{size}} अलग-अलग मानों पर मापा गया। {{measured}} मापे गए, {{admitted}} मेल खाते कुंजी मानों पर स्वीकार किए गए।",
     "scopeSource": "स्रोत: {{domains}} की {{count}} तालिका।",
     "scopeSource_other": "स्रोत: {{domains}} की {{count}} तालिकाएँ।",
     "scopeTargetSame": "लक्ष्य: स्रोत के समान।",

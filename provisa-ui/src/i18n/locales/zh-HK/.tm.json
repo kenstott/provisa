@@ -10921,5 +10921,16 @@
   "zh-HK/serverErrors.json::serverErrors.environments.owner_not_member": "{{user}} created environment {{env}} but is not a member of {{org}}; acting in it as its owner requires membership.",
   "zh-HK/graphFrame.json::graphFrame.cypherDropNoLabel": "This result's nodes have no label, and its query has no relationship to give them one: give a node a label, then drop again. Nothing was added.",
   "zh-HK/graphFrame.json::graphFrame.cypherDropNoPair": "No relationship in this result's query joins labels within the selected domains, so its nodes can't be given labels. Nothing was added.",
-  "zh-HK/graphFrame.json::graphFrame.cypherDropLabelled": "This result's unlabelled nodes were given their labels from the schema, one MATCH per label pair."
+  "zh-HK/graphFrame.json::graphFrame.cypherDropLabelled": "This result's unlabelled nodes were given their labels from the schema, one MATCH per label pair.",
+  "discoverDialog.json::discoverDialog.keyValues": "Key value overlap",
+  "discoverDialog.json::discoverDialog.cutoff": "Measure from",
+  "discoverDialog.json::discoverDialog.cutoffHint": "Pairs the model rated from this score up to the threshold are measured on their data.",
+  "discoverDialog.json::discoverDialog.sampleSize": "Sample size",
+  "discoverDialog.json::discoverDialog.sampleSizeHint": "The most distinct values read of each column.",
+  "discoverResult.json::discoverResult.keyValues": "Key value overlap: pairs the model rated from {{cutoff}}% to under {{threshold}}% were measured on at most {{size}} distinct values of each column. {{measured}} measured, {{admitted}} admitted on matching key values.",
+  "proposalsTable.json::proposalsTable.admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence.",
+  "discoverDialog.json::discoverDialog.runInBackground": "Run in background",
+  "discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
+  "discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
+  "relationshipsPage.json::relationshipsPage.openRun": "Open"
 }

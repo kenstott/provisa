@@ -63,12 +63,13 @@ _DOMAIN = "city-files"
 _SOURCE = "drop-test"
 
 #: What a reader of the files would propose: (source table, column, target table, column,
-#: confidence). The last is a guess the model itself rates low.
+#: confidence). Each is rated between the measure cutoff and the threshold, so each is measured
+#: (REQ-413, amended 2026-11-16); the last is a guess the model itself rates lowest.
 _ANSWERS = [
-    ("inspections", "permit_id", "building_permits", "permit_id", 0.95),
-    ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood", 0.8),
-    ("complaints_2026_09", "neighborhood", "budget_2026__budget", "neighborhood", 0.8),
-    ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood", 0.8),
+    ("inspections", "permit_id", "building_permits", "permit_id", 0.55),
+    ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood", 0.5),
+    ("complaints_2026_09", "neighborhood", "budget_2026__budget", "neighborhood", 0.5),
+    ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood", 0.5),
     ("complaints_2026_08", "address", "building_permits", "address", 0.4),
 ]
 
@@ -308,7 +309,15 @@ def _proposals(inst: Instance, run_id: int) -> list[dict]:
 
 
 def _scope(**sets: Any) -> dict:
-    return {"kinds": ["foreign_keys", "semantics"], "vendor": _VENDOR, "model": _MODEL, **sets}
+    """A run as the dialog sends it by default: Key value overlap chosen, with its settings."""
+    return {
+        "kinds": ["foreign_keys", "semantics", "key_values"],
+        "measure_cutoff": 0.2,
+        "sample_size": 10_000,
+        "vendor": _VENDOR,
+        "model": _MODEL,
+        **sets,
+    }
 
 
 def _edge(ids: dict[str, int], row: dict) -> tuple:
@@ -354,8 +363,9 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     assert report["target_same_as_source"] is True and report["tables_not_read"] == 0
 
     # One request per type group; the text one holds both permit columns and every neighborhood.
+    # The files' date and timestamp columns are in no group (REQ-413): no request asks about them.
     groups = [p.split("type group '", 1)[1].split("'", 1)[0] for p in prompts]
-    assert sorted(groups) == ["date", "text", "timestamp", "whole_number"]
+    assert sorted(groups) == ["text", "whole_number"]
     (text,) = [p for p in prompts if "type group 'text'" in p]
     compared = _compared(text)
     for table, column in (
@@ -372,7 +382,8 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # The request says what a confidence states and where a suggestion is kept.
     assert "A relationship is suggested at 0.7 or more" in text
 
-    # Each pair is scored by its measure: the key relationship is the one suggestion.
+    # Each pair is in the band, so scored by its measure: the key relationship is the one
+    # suggestion, admitted on matching key values.
     semantics = report["semantics"]
     assert (semantics["proposed"], semantics["suggested"]) == (5, 1)
     assert semantics["below_threshold"] == 4 and semantics["invalid"] == 0
@@ -390,12 +401,12 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
         for r in listed
     ] == [
         # 60 inspections, each of a different permit, all 60 among the 128 permits.
-        (_PERMIT, 0.95, KEY_SCORE, "one-to-one", None),
+        (_PERMIT, 0.55, KEY_SCORE, "one-to-one", None),
         # Six neighborhoods on every side, repeated in each file: a key of none.
         *(
             (
                 (table, "neighborhood", "budget_2026__budget", "neighborhood"),
-                0.8,
+                0.5,
                 SHARED_CEILING,
                 "many-to-many",
                 "below_threshold",
@@ -406,6 +417,9 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
         (_ADDRESS, 0.4, address_score, "many-to-one", "below_threshold"),
     ]
     by_edge = {_edge(files, r): r for r in listed}
+    assert [_edge(files, r) for r in listed if r["admitted_on_key_values"]] == [_PERMIT]
+    assert (semantics["measured"], semantics["admitted"]) == (5, 1)
+    assert report["key_values"] == {"cutoff": 0.2, "sample_size": 10_000}
     permit = by_edge[_PERMIT]["measure"]
     assert (permit["source_in_target"], permit["source"]["values"]) == (60, 60)
     assert permit["target"]["values"] == 128 and permit["target"]["distinct"] is True

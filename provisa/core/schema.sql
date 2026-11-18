@@ -2224,6 +2224,10 @@ CREATE TABLE IF NOT EXISTS user_directory (
     email_opt_in BOOLEAN NOT NULL DEFAULT TRUE,
     -- REQ-413: the score from which a discovery run's proposals start ticked, the person's own.
     discovery_threshold DOUBLE PRECISION NOT NULL DEFAULT 0.7,
+    -- REQ-413: Key value overlap, the person's own: chosen, its measure cutoff, its sample size.
+    discovery_key_values BOOLEAN NOT NULL DEFAULT TRUE,
+    discovery_measure_cutoff DOUBLE PRECISION NOT NULL DEFAULT 0.2,
+    discovery_sample_size INTEGER NOT NULL DEFAULT 10000,
     updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 ALTER TABLE user_directory ADD COLUMN IF NOT EXISTS email_opt_in BOOLEAN NOT NULL DEFAULT TRUE;

@@ -8,6 +8,7 @@
     "sqlModelingTool": "SQL Modeling tool",
     "viewErd": "View ERD",
     "discovering": "Discovery is running. Open it to see its progress.",
+    "openRun": "Open",
     "suggestWithAi": "Suggest with AI",
     "clearRejections": "Clear Rejections",
     "clearedRejections": "Cleared {{count}} rejection.",
