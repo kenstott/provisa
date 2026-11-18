@@ -398,6 +398,7 @@ _CREATE_ONLY = {
     ),
     "catalog_bindings": "id semantic_uri vendor_ref physical_key updated_at",
     "catalog_exchanges": "id entry direction kind object value decided_by updated_at tenant_id",
+    "catalog_standing_choices": "id entry direction kind choice decided_by updated_at tenant_id",
     "checker_latest_runs": "table_id scan_id scan_time outcome",
     "checker_targets": "table_id checked_table_id",
     "code_source_builds": (

@@ -109,9 +109,10 @@ def differences(
     return sorted(out, key=lambda d: (order[d.ours.kind], d.ours.group, d.ours.object))
 
 
-def grouped(diffs: list[Difference]) -> dict[str, Any]:
-    """The review's shape: kinds in order, each with its count and groups, each group with its
-    count and rows. ``standing_choice`` is the entry's choice for the kind, set by a later page."""
+def grouped(diffs: list[Difference], standing: dict[str, dict[str, str]]) -> dict[str, Any]:
+    """The review's shape: kinds in order, each with its count, its standing choice per direction
+    (``standing``, as :func:`catalog_standing_choice.held` reads it; ``None`` where the kind has
+    none) and its groups, each group with its count and rows."""
     by_kind: dict[str, dict[str, list[Difference]]] = defaultdict(lambda: defaultdict(list))
     for diff in diffs:
         by_kind[diff.ours.kind][diff.ours.group].append(diff)
@@ -121,7 +122,9 @@ def grouped(diffs: list[Difference]) -> dict[str, Any]:
             {
                 "kind": kind,
                 "count": sum(len(rows) for rows in groups.values()),
-                "standing_choice": None,
+                "standing_choice": {
+                    direction: choices.get(kind) for direction, choices in standing.items()
+                },
                 "groups": [
                     {"group": group, "count": len(rows), "rows": [r.view() for r in rows]}
                     for group, rows in groups.items()

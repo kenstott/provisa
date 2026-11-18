@@ -216,6 +216,8 @@ NEVER_RUNTIME: frozenset[str] = frozenset(
         "catalog_bindings",
         # REQ-2247: what this environment last exchanged with its own Syncing entries' systems.
         "catalog_exchanges",
+        # REQ-2247: the standing choices of this environment's own Syncing entries.
+        "catalog_standing_choices",
         "email_send_authority_audit",
         # REQ-1742: grpc_remote_router.py's own per-table registration log for this process's
         # grpc_remote sources — nothing else reads it, and it belongs to the environment that

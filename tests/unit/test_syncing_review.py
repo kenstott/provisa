@@ -249,7 +249,7 @@ async def test_the_review_lists_differences_grouped_with_counts_and_last_exchang
         (sv.COLUMN_DESCRIPTION, 2),
         (sv.TAG, 1),
     ]
-    assert all(k["standing_choice"] is None for k in body["kinds"])
+    assert all(k["standing_choice"] == {"export": None, "import": None} for k in body["kinds"])
     columns = body["kinds"][1]
     assert [(g["group"], g["count"]) for g in columns["groups"]] == [(GROUP, 2)]
     assert [r["object"] for r in columns["groups"][0]["rows"]] == [

@@ -447,6 +447,13 @@ async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any
     return snapshot, syncing_review.differences(provisa_values(snapshot), theirs, last)
 
 
+async def _standing_choices(entry_id: str) -> dict[str, dict[str, str]]:
+    from provisa.core.repositories import catalog_standing_choice
+
+    async with _model_db().acquire() as conn:
+        return await catalog_standing_choice.held(conn, entry_id)
+
+
 @router.get("/admin/syncing/{entry_id}/review")
 async def review_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, REQ-2122
     """The entry's differences with its catalog: each with Provisa's value, the catalog's and the
@@ -462,8 +469,74 @@ async def review_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, RE
         "provider": entry.provider,
         # Which sides a decision may take: Provisa's is an Export, the catalog's an Import.
         "directions": {"export": entry.exports, "import": entry.imports},
-        **syncing_review.grouped(diffs),
+        **syncing_review.grouped(diffs, await _standing_choices(entry_id)),
     }
+
+
+def _standing_view(entry: CatalogConnection, standing: dict[str, dict[str, str]]) -> dict:
+    return {
+        "id": entry.id,
+        "directions": {"export": entry.exports, "import": entry.imports},
+        "standing_choices": standing,
+    }
+
+
+@router.get("/admin/syncing/{entry_id}/standing-choices")
+async def get_standing_choices(request: Request, entry_id: str) -> dict:  # REQ-2247
+    """The entry's standing choices: per direction, the choice of each kind that has one."""
+    require_org_settings(request)
+    require_active_org_id(request)
+    entry = _entry(await stored_settings(), entry_id)
+    return _standing_view(entry, await _standing_choices(entry_id))
+
+
+@router.put("/admin/syncing/{entry_id}/standing-choices")
+async def set_standing_choice(request: Request, entry_id: str) -> dict:  # REQ-2247
+    """Set or clear (``choice`` null) the entry's standing choice for one direction and kind:
+    ``provisa`` takes Provisa's value, ``catalog`` the other system's, ``hold`` leaves the
+    difference for a steward. A direction, kind or choice outside these is refused by name."""
+    from provisa.api.metadata_export.sync_values import KINDS
+    from provisa.core.repositories import catalog_standing_choice
+    from provisa.core.repositories.catalog_exchange import DIRECTIONS
+
+    require_org_settings(request)
+    require_active_org_id(request)
+    body = await request.json()
+    entry = _entry(await stored_settings(), entry_id)
+    direction, kind, choice = body.get("direction"), body.get("kind"), body.get("choice")
+    if direction not in DIRECTIONS:
+        raise ApiError(
+            400,
+            "syncing.unknown_direction",
+            f"direction must be one of {', '.join(DIRECTIONS)}",
+            direction=str(direction),
+        )
+    if kind not in KINDS:
+        raise ApiError(
+            400,
+            "syncing.unknown_kind",
+            f"kind must be one of {', '.join(KINDS)}",
+            kind=str(kind),
+        )
+    if choice is not None and choice not in catalog_standing_choice.CHOICES:
+        raise ApiError(
+            400,
+            "syncing.unknown_choice",
+            f"a standing choice is one of {', '.join(catalog_standing_choice.CHOICES)}, or null",
+            choice=str(choice),
+        )
+    identity = getattr(request.state, "identity", None)
+    async with _model_db().acquire() as conn:
+        await catalog_standing_choice.set_choice(
+            conn,
+            entry_id,
+            direction,
+            kind,
+            choice,
+            decided_by=getattr(identity, "user_id", "anonymous"),
+        )
+        standing = await catalog_standing_choice.held(conn, entry_id)
+    return _standing_view(entry, standing)
 
 
 @router.post("/admin/syncing/{entry_id}/review/apply")
