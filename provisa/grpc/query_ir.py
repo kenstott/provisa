@@ -122,16 +122,47 @@ def _norm_name(name: str) -> str:
 
 
 @dataclass(frozen=True)
-class ReadMask:
-    """A validated ``read_mask``: the columns the query selects, and the JSON sub-path selections."""
+class RelationMask:  # REQ-1929
+    """What a ``read_mask`` reads through one relation field of a ``{Type}`` message."""
 
+    field: str  # the relation's proto field: the related table's proto field name (proto_gen)
+    graphql_field: str  # the relationship field the role's GraphQL schema declares for it
+    many: bool  # one-to-many: the proto field is repeated, one message per related row
+    path: str  # the first request path naming it, verbatim
+    mask: "ReadMask"  # what is read of the related table
+
+
+@dataclass(frozen=True)
+class ReadMask:
+    """A validated ``read_mask``: the columns the query selects, the JSON sub-path selections,
+    and the relations read nested (REQ-1929)."""
+
+    table_id: int
     columns: tuple[str, ...]  # in the table's own column order, each once
     sub_paths: Mapping[str, MaskTree]  # normalized column name → selection inside its JSON value
+    relations: tuple[RelationMask, ...] = ()  # by proto field name
 
     def restrictions(self, column_names: Sequence[str]) -> list[MaskTree | None]:
         """One entry per result column: its JSON selection, or None when its whole value is
         returned. Resolved once per result set, not per row."""
         return [self.sub_paths.get(_norm_name(c)) for c in column_names]
+
+    def restrict_row(self, row: dict[str, Any]) -> dict[str, Any]:
+        """A nested row (keyed by proto field) with each JSON sub-path selection applied, at
+        every relation's depth: a to-one's object, each object of a to-many's list."""
+        out = {}
+        for key, value in row.items():
+            tree = self.sub_paths.get(_norm_name(key))
+            out[key] = value if tree is None else restrict_json(value, tree)
+        for relation in self.relations:
+            value = out.get(relation.field)
+            if isinstance(value, dict):
+                out[relation.field] = relation.mask.restrict_row(value)
+            elif isinstance(value, list):
+                out[relation.field] = [
+                    relation.mask.restrict_row(v) if isinstance(v, dict) else v for v in value
+                ]
+        return out
 
 
 def _json_valued(data_type: str) -> bool:
@@ -273,40 +304,106 @@ def resolve_read_mask(ctx: Any, type_name: str, paths: Sequence[str]) -> ReadMas
     """Validate a request's ``read_mask`` paths against the table matching ``type_name``.
 
     None when the mask is empty/absent (every column is selected) or no table matches (the caller's
-    own lookup reports that). A path's first segment must be a column this role can read — a
-    column it cannot read, a relation field (``Query{Type}`` reads the table's own columns and
-    never populates one) and a name that does not exist are the same error, so the mask reveals
-    nothing the role's schema does not. Further segments select inside the value and are accepted
-    only on a JSON-valued column. Raises :class:`ReadMaskError` naming the offending path."""
+    own lookup reports that). A path's first segment is a column this role can read or a relation
+    field (REQ-1929): the related table's proto field name, as proto_gen declares it on the
+    ``{Type}`` message, for a relationship this role's schema has. A path naming a relation alone
+    reads every column of it the role can read; further segments are a path into the related
+    table, resolved by these same rules. Further segments after a column select inside its value
+    and are accepted only on a JSON-valued column. A column or relation the role cannot read and a
+    name that does not exist are the same error, so the mask reveals nothing the role's schema
+    does not. Raises :class:`ReadMaskError` naming the offending path."""
     if not paths:
         return None
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
+    entries = []
+    for path in paths:
+        segments = path.split(".")
+        if not all(segments):
+            raise ReadMaskError(path, type_name, "empty path segment")
+        entries.append((path, segments))
+    return _resolve_mask(ctx, meta, type_name, entries)
+
+
+def _relation_field(ctx: Any, meta: Any, field: str) -> tuple[str, Any] | None:  # REQ-1929
+    """``(GraphQL relationship field, JoinMeta)`` for the relation field ``field`` of ``meta``'s
+    ``{Type}`` message. proto_gen names a relation field for the related table and declares one
+    per related table, the first relationship to it; the role's joins are in that same order."""
+    from provisa.grpc.proto_gen import _to_proto_field_name
+
+    for (source_type, graphql_field), join in ctx.joins.items():
+        if source_type != meta.type_name or graphql_field == "_meta":
+            continue
+        if _to_proto_field_name(join.target.field_name) == field:
+            return graphql_field, join
+    return None
+
+
+def _resolve_mask(
+    ctx: Any, meta: Any, type_name: str, entries: list[tuple[str, list[str]]]
+) -> ReadMask:
+    """The mask of ``entries`` — ``(request path, its segments below meta's table)`` — on
+    ``meta``'s table; errors name the request path and the requested ``type_name``."""
     table_columns = ctx.aggregate_columns.get(meta.table_id, [])
     by_field = _readable_fields(ctx, meta)
 
     whole: set[str] = set()
     trees: dict[str, MaskTree] = {}
-    for path in paths:
-        segments = path.split(".")
-        if not all(segments):
-            raise ReadMaskError(path, type_name, "empty path segment")
-        if segments[0] not in by_field:
-            raise ReadMaskError(path, type_name, "not a readable field")
-        column, data_type = by_field[segments[0]]
+    related: dict[str, tuple[str, Any, list[tuple[str, list[str]]]]] = {}
+    for path, segments in entries:
+        head = segments[0]
+        if head not in by_field:
+            found = _relation_field(ctx, meta, head)
+            if found is None:
+                raise ReadMaskError(path, type_name, "not a readable field")
+            graphql_field, join = found
+            below = related.setdefault(head, (graphql_field, join, []))[2]
+            if len(segments) > 1:
+                below.append((path, segments[1:]))
+            else:
+                target_columns = ctx.aggregate_columns.get(join.target.table_id, [])
+                if not target_columns:
+                    raise ReadMaskError(path, type_name, "not a readable field")
+                below.extend((path, [c]) for c, _t in target_columns)
+            continue
+        column, data_type = by_field[head]
         if len(segments) == 1:
             whole.add(column)
             continue
         if not _json_valued(data_type):
-            raise ReadMaskError(path, type_name, f"{segments[0]!r} is not a JSON-valued field")
+            raise ReadMaskError(path, type_name, f"{head!r} is not a JSON-valued field")
         _add_sub_path(trees.setdefault(column, {}), segments[1:])
 
+    relations = tuple(
+        RelationMask(
+            field=field,
+            graphql_field=graphql_field,
+            many=join.cardinality == "one-to-many",
+            path=below[0][0],
+            mask=_resolve_mask(ctx, join.target, type_name, below),
+        )
+        for field, (graphql_field, join, below) in sorted(related.items())
+    )
     selected = whole | trees.keys()
     return ReadMask(
+        table_id=meta.table_id,
         columns=tuple(c for c, _t in table_columns if c in selected),
         sub_paths={_norm_name(c): tree for c, tree in trees.items() if c not in whole},
+        relations=relations,
     )
+
+
+def check_relation_fields(descriptor: Any, mask: ReadMask, type_name: str) -> None:  # REQ-1929
+    """Refuse, naming its path, a relation of ``mask`` the served ``{Type}`` message
+    (``descriptor``) does not declare as a message field of its cardinality: the nested row is
+    written by field name, so a relation the message lacks would be dropped from the answer."""
+    for relation in mask.relations:
+        field = descriptor.fields_by_name.get(relation.field)
+        repeated = field is not None and field.label == _REPEATED
+        if field is None or field.message_type is None or repeated != relation.many:
+            raise ReadMaskError(relation.path, type_name, "not a readable field")
+        check_relation_fields(field.message_type, relation.mask, type_name)
 
 
 def _restrict_decoded(value: Any, tree: MaskTree) -> Any:
@@ -366,11 +463,6 @@ def grpc_table_to_graphql(
     meta = _find_table_meta(ctx, type_name)
     if meta is None:
         return None
-    selected: Sequence[str] = (
-        read_mask.columns
-        if read_mask is not None
-        else [c for c, _t in ctx.aggregate_columns.get(meta.table_id, [])]
-    )
 
     def _gql(column: str) -> str:
         return ctx.physical_to_gql[(meta.table_id, column)]
@@ -401,9 +493,31 @@ def grpc_table_to_graphql(
         arguments.append(f"offset: {int(offset)}")
     arguments += variables.arguments
     args = f"({', '.join(arguments)})" if arguments else ""
-    fields = " ".join(c if _gql(c) == c else f"{c}: {_gql(c)}" for c in selected)
+    fields = _row_selection(ctx, meta.table_id, read_mask)
     text = variables.operation(f"{{ {meta.field_name}{args} {{ {fields} }} }}")
     return text, dict(variables.values)
+
+
+def _row_selection(ctx: Any, table_id: int, read_mask: ReadMask | None) -> str:
+    """The GraphQL selection of a row read of ``table_id``: the table's readable columns, or
+    ``read_mask``'s, each aliased to its proto field (its physical name), and each relation of the
+    mask (REQ-1929) as its relationship field aliased to the proto relation field, with its own
+    selection nested. A row's keys are the ``{Type}`` message's field names."""
+    columns: Sequence[str] = (
+        read_mask.columns
+        if read_mask is not None
+        else [c for c, _t in ctx.aggregate_columns.get(table_id, [])]
+    )
+    fields = []
+    for column in columns:
+        gql = ctx.physical_to_gql[(table_id, column)]
+        fields.append(column if gql == column else f"{column}: {gql}")
+    for relation in read_mask.relations if read_mask is not None else ():
+        name = relation.graphql_field
+        alias = name if relation.field == name else f"{relation.field}: {name}"
+        inner = _row_selection(ctx, relation.mask.table_id, relation.mask)
+        fields.append(f"{alias} {{ {inner} }}")
+    return " ".join(fields)
 
 
 def _aggregate_field_name(field_name: str) -> str:

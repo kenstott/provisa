@@ -768,6 +768,9 @@
       "private_destination": "Las fuentes de esta organización solo pueden llegar a direcciones públicas; {{host}} es {{address}}, que no lo es.",
       "local_path_refused": "Las fuentes de esta organización no leen archivos del propio disco del servidor fuera de su carpeta; {{path}} es uno de ellos. Suba el archivo o indíquelo como {files}/… o con una dirección remota."
     },
+    "egress": {
+      "private_destination": "Esta organización solo puede llamar a direcciones públicas; {{host}} es {{address}}, que no lo es."
+    },
     "sandbox": {
       "wrong_tier": "Este sandbox se sirve en otro lugar; ábralo desde su propia dirección.",
       "unknown_demo": "No hay ninguna demostración publicada llamada {{demo}}.",
