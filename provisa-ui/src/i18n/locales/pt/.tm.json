@@ -10932,5 +10932,6 @@
   "pt/tablesPage.json::tablesPage.withdrawnTitle": "Out of production: no role reads it until it is put back",
   "pt/list.json::list.putBackNoRegion": "None of your roles' data residency grants covers a region to put it back into. A holder of data residency for the region it goes to puts it back.",
   "pt/list.json::list.putBackRegionHint": "The region it returns to, one your data residency grant covers.",
-  "pt/list.json::list.putBackTitle": "Put back {{name}}"
+  "pt/list.json::list.putBackTitle": "Put back {{name}}",
+  "pt/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
 }

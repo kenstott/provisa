@@ -458,7 +458,7 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
         result = PublishResult(provider_name=self.provider_name)
         url = self._lineage_url()
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             for event in events:
                 response = await client.post(url, json=event.payload, headers=self._headers())
@@ -478,7 +478,7 @@ class OpenLineageExport(MetadataExport):  # REQ-1069
     async def health(self) -> None:
         url = f"{self._config.endpoint.rstrip('/')}/api/v1/namespaces"
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             response = await client.get(url, headers=self._headers())
         response.raise_for_status()
