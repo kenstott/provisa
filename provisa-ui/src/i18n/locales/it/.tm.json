@@ -10947,5 +10947,14 @@
   "it/proposalsTable.json::proposalsTable.manyToMany": "Neither column is a key, so it cannot be accepted.",
   "it/serverErrors.json::serverErrors.ai_models.embedding_library_missing": "The embedding model {{model}} uses the {{provider}} provider, which needs the {{extra}} extra (module {{module}} is not installed): pip install 'provisa[{{extra}}]'.",
   "it/settings.json::settings.embedding.hub_endpoint.label": "Hugging Face hub address",
-  "it/settings.json::settings.embedding.hub_endpoint.help": "The Hugging Face hub a local embedding model is downloaded from, such as a mirror inside your network. Applies to the next model download."
+  "it/settings.json::settings.embedding.hub_endpoint.help": "The Hugging Face hub a local embedding model is downloaded from, such as a mirror inside your network. Applies to the next model download.",
+  "it/relationshipRow.json::relationshipRow.queryLinks.rest": "Read {{name}} in REST",
+  "it/relationshipRow.json::relationshipRow.queryLinks.grpc": "Read {{name}} in gRPC",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.cypher": "Cypher",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.sql": "SQL",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.sparql": "SPARQL",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.graphql": "GraphQL",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.rest": "REST",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.grpc": "gRPC",
+  "it/relationshipRow.json::relationshipRow.queryLinks.surfaces.jsonapi": "JSON:API"
 }
