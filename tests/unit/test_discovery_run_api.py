@@ -330,6 +330,7 @@ class _World:
         monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
         monkeypatch.setattr(gather, "_published_as", self.measured.published_as)
         monkeypatch.setattr(gather, "_governed_as", self.measured.governed_as)
+        monkeypatch.setattr(gather, "_measured_as", self.measured.governed_as)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
         monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)

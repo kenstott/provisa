@@ -420,7 +420,8 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     ] == [
         # 60 inspections, each of a different permit, all 60 among the 128 permits.
         (_PERMIT, 0.55, KEY_SCORE, "one-to-one", None),
-        # Six neighborhoods on every side, repeated in each file: a key of none.
+        # Six neighborhoods on every side, repeated in each file: a key of none. Scored alike,
+        # they keep the order the call lists their tables in (by name).
         *(
             (
                 (table, "neighborhood", "budget_2026__budget", "neighborhood"),
@@ -429,7 +430,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
                 "many-to-many",
                 "below_threshold",
             )
-            for table in ("complaints_2026_08", "complaints_2026_09", "building_permits")
+            for table in ("building_permits", "complaints_2026_08", "complaints_2026_09")
         ),
         # 75 of the complaints' 215 addresses are among the permits' 128, each permit's own.
         (_ADDRESS, 0.4, address_score, "many-to-one", "below_threshold"),
