@@ -17,7 +17,7 @@
 import { useEffect, useState } from "react";
 import { Button, MultiSelect, SegmentedControl, Select, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { FormField } from "../../components/form/FormLayout";
+import { FieldGroup, FormField } from "../../components/form/FormLayout";
 import {
   buildWikidataClassTable,
   fetchWikidataClass,
@@ -180,34 +180,36 @@ export function WikidataTableChooser({ language, onChoose }: Props) {
           </FormField>
           {klass && (
             <>
-              <FormField size="long">
+              <FormField size="full">
                 <Text size="sm" data-testid="wikidata-class-count">
                   {t("wikidataTable.instances", {
                     value: klass.instance_count.toLocaleString(language),
                   })}
                 </Text>
               </FormField>
-              <FormField size="medium">
-                <Select
-                  label={t("wikidataTable.broader")}
-                  value={null}
-                  onChange={(id) => neighbour("broader", id)}
-                  data={neighbourData("broader")}
-                  disabled={klass.broader.length === 0}
-                  data-testid="wikidata-class-broader"
-                />
-              </FormField>
-              <FormField size="medium">
-                <Select
-                  label={t("wikidataTable.narrower")}
-                  searchable
-                  value={null}
-                  onChange={(id) => neighbour("narrower", id)}
-                  data={neighbourData("narrower")}
-                  disabled={klass.narrower.length === 0}
-                  data-testid="wikidata-class-narrower"
-                />
-              </FormField>
+              <FieldGroup row>
+                <FormField size="medium">
+                  <Select
+                    label={t("wikidataTable.broader")}
+                    value={null}
+                    onChange={(id) => neighbour("broader", id)}
+                    data={neighbourData("broader")}
+                    disabled={klass.broader.length === 0}
+                    data-testid="wikidata-class-broader"
+                  />
+                </FormField>
+                <FormField size="medium">
+                  <Select
+                    label={t("wikidataTable.narrower")}
+                    searchable
+                    value={null}
+                    onChange={(id) => neighbour("narrower", id)}
+                    data={neighbourData("narrower")}
+                    disabled={klass.narrower.length === 0}
+                    data-testid="wikidata-class-narrower"
+                  />
+                </FormField>
+              </FieldGroup>
               <FormField size="long" hint={t("wikidataTable.columnsHint")}>
                 <MultiSelect
                   label={t("wikidataTable.columns")}
@@ -219,7 +221,7 @@ export function WikidataTableChooser({ language, onChoose }: Props) {
                 />
               </FormField>
               {klass.filter_required && (
-                <>
+                <FieldGroup row>
                   <FormField
                     size="medium"
                     hint={t("wikidataTable.filterRequired", {
@@ -252,7 +254,7 @@ export function WikidataTableChooser({ language, onChoose }: Props) {
                       data-testid="wikidata-filter-value"
                     />
                   </FormField>
-                </>
+                </FieldGroup>
               )}
               <FormField size="medium">
                 <Button
