@@ -28,6 +28,7 @@ from provisa.compiler.schema_gen import (
     _build_domain_alias_map,
     _build_visible_tables,
     _can_see_relationship,
+    relationship_field_name,
 )
 from provisa.compiler.schema_types import offers_domain
 from provisa.security.rights import META_DOMAIN_ID, SQL_CATALOG_TABLES
@@ -397,13 +398,20 @@ def generate_proto(
         domain_prefix=si.domain_prefix,
         domain_alias_map=domain_alias_map,
     )
+    table_lookup = {t.table_id: t for t in tables}
+    visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
+    # REQ-1929: each relationship is a field of its source's {Type} message named by its GraphQL
+    # relationship field, read off the GraphQL-style names before they are proto-cased below.
+    rel_field_names = {
+        r["id"]: name
+        for r in visible_rels
+        if (name := relationship_field_name(r, table_lookup)) is not None
+    }
+
     # Convert GQL-style names (PS__Pets / ps__pets) to proto3 conventions (PsPets / ps_pets)
     for t in tables:
         t.type_name = _to_proto_type_name(t.type_name)
         t.field_name = _to_proto_field_name(t.field_name)
-
-    table_lookup = {t.table_id: t for t in tables}
-    visible_rels = [r for r in si.relationships if _can_see_relationship(r, table_lookup)]
 
     all_columns: list[tuple[str, str]] = []
     for t in tables:
@@ -449,16 +457,21 @@ def generate_proto(
             c["column_name"] for c in sorted_cols if t.column_metadata.get(c["column_name"])
         ]
 
+        # REQ-1929: one field per relationship, named by its GraphQL relationship field, so
+        # several relationships to one table are each a field. Two relationships of one type
+        # never share a field (refused where their joins register, compiler/context.py).
         used_fields: set[str] = set(col_names)
-        rel_fields: list[tuple[dict, Any]] = []
+        rel_fields: list[tuple[dict, Any, str]] = []
         for rel in visible_rels:
-            if rel["source_table_id"] == t.table_id:
-                target = table_lookup.get(rel["target_table_id"])
-                if target is None or target.field_name in used_fields:
-                    continue
-                used_fields.add(target.field_name)
-                rel_fields.append((rel, target))
-        rel_names = [target.field_name for _rel, target in rel_fields]
+            if rel["source_table_id"] != t.table_id or rel["id"] not in rel_field_names:
+                continue
+            target = table_lookup[rel["target_table_id"]]
+            name = _to_proto_field_name(rel_field_names[rel["id"]])
+            if name in used_fields:
+                continue
+            used_fields.add(name)
+            rel_fields.append((rel, target, name))
+        rel_names = [name for _rel, _target, name in rel_fields]
 
         # REQ-1903: columns + relation fields share ONE number space per table (they're all fields
         # of the same {Type} message), numbered stably across regenerations.
@@ -481,12 +494,12 @@ def generate_proto(
             presence = "" if proto_type == "google.protobuf.Timestamp" else "optional "
             lines.append(f"  {presence}{proto_type} {col['column_name']} = {field_num};")
 
-        for rel, target in rel_fields:
-            field_num = row_numbers[target.field_name]
+        for rel, target, name in rel_fields:
+            field_num = row_numbers[name]
             if rel["cardinality"] in ("many-to-one", "one-to-one"):
-                lines.append(f"  {target.type_name} {target.field_name} = {field_num};")
+                lines.append(f"  {target.type_name} {name} = {field_num};")
             elif rel["cardinality"] == "one-to-many":
-                lines.append(f"  repeated {target.type_name} {target.field_name} = {field_num};")
+                lines.append(f"  repeated {target.type_name} {name} = {field_num};")
             else:
                 raise ValueError(
                     f"unhandled relationship cardinality {rel['cardinality']!r} for {rel['id']!r}"

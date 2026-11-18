@@ -125,7 +125,7 @@ def _norm_name(name: str) -> str:
 class RelationMask:  # REQ-1929
     """What a ``read_mask`` reads through one relation field of a ``{Type}`` message."""
 
-    field: str  # the relation's proto field: the related table's proto field name (proto_gen)
+    field: str  # the relation's proto field: its GraphQL relationship field, proto-cased
     graphql_field: str  # the relationship field the role's GraphQL schema declares for it
     many: bool  # one-to-many: the proto field is repeated, one message per related row
     path: str  # the first request path naming it, verbatim
@@ -305,8 +305,8 @@ def resolve_read_mask(ctx: Any, type_name: str, paths: Sequence[str]) -> ReadMas
 
     None when the mask is empty/absent (every column is selected) or no table matches (the caller's
     own lookup reports that). A path's first segment is a column this role can read or a relation
-    field (REQ-1929): the related table's proto field name, as proto_gen declares it on the
-    ``{Type}`` message, for a relationship this role's schema has. A path naming a relation alone
+    field (REQ-1929): a relationship this role's schema has, by its GraphQL relationship field
+    proto-cased, as proto_gen declares it on the ``{Type}`` message. A path naming a relation alone
     reads every column of it the role can read; further segments are a path into the related
     table, resolved by these same rules. Further segments after a column select inside its value
     and are accepted only on a JSON-valued column. A column or relation the role cannot read and a
@@ -328,14 +328,14 @@ def resolve_read_mask(ctx: Any, type_name: str, paths: Sequence[str]) -> ReadMas
 
 def _relation_field(ctx: Any, meta: Any, field: str) -> tuple[str, Any] | None:  # REQ-1929
     """``(GraphQL relationship field, JoinMeta)`` for the relation field ``field`` of ``meta``'s
-    ``{Type}`` message. proto_gen names a relation field for the related table and declares one
-    per related table, the first relationship to it; the role's joins are in that same order."""
+    ``{Type}`` message. proto_gen declares one relation field per relationship, named by its
+    GraphQL relationship field (proto-cased), so the relation field names the relationship."""
     from provisa.grpc.proto_gen import _to_proto_field_name
 
     for (source_type, graphql_field), join in ctx.joins.items():
         if source_type != meta.type_name or graphql_field == "_meta":
             continue
-        if _to_proto_field_name(join.target.field_name) == field:
+        if _to_proto_field_name(graphql_field) == field:
             return graphql_field, join
     return None
 

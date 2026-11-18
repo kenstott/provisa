@@ -151,11 +151,9 @@ class AggregationPlan(NamedTuple):
     The ``row_*`` fields carry a plain row read's selection, relationships nested (REQ-1929,
     amended 2026-11-16), in each surface's own form: ``row_paths`` are REST ``?fields=`` dot-paths
     by GraphQL name (``buildingPermit.permitNumber``); ``row_paths_grpc`` are ``read_mask`` paths,
-    a column by its physical (proto) name and a relationship by the related table's proto field;
-    ``row_fields_api`` is JSON:API's sparse fieldset of the base resource (physical) and
-    ``row_include_api`` its ``include`` (physical relationship paths). ``row_grpc_refusal`` says
-    why the gRPC ``{Type}`` message cannot read a selected relationship: it declares one relation
-    field per related table, the first relationship to it.
+    a column by its physical (proto) name and a relationship by its relation field (its GraphQL
+    relationship field, proto-cased); ``row_fields_api`` is JSON:API's sparse fieldset of the base
+    resource (physical) and ``row_include_api`` its ``include`` (physical relationship paths).
     """
 
     meta: Any
@@ -167,7 +165,6 @@ class AggregationPlan(NamedTuple):
     dim_paths_api: list[str] = []
     row_paths: list[str] = []
     row_paths_grpc: list[str] = []
-    row_grpc_refusal: str | None = None
     row_fields_api: list[str] = []
     row_include_api: list[str] = []
 
@@ -296,7 +293,6 @@ def _plan_for_root_field(ctx: Any, meta: Any, field_node: Any) -> AggregationPla
         dim_paths_api,
         row.paths,
         row.paths_grpc,
-        row.grpc_refusal,
         row.fields_api,
         list(dict.fromkeys(row.include_api)),
     )
@@ -309,7 +305,6 @@ class _RowSelection:
     def __init__(self) -> None:
         self.paths: list[str] = []
         self.paths_grpc: list[str] = []
-        self.grpc_refusal: str | None = None
         self.fields_api: list[str] = []
         self.include_api: list[str] = []
 
@@ -325,7 +320,6 @@ class _RowSelection:
         from graphql import FieldNode
 
         from provisa.grpc.proto_gen import _to_proto_field_name
-        from provisa.grpc.query_ir import _relation_field
 
         for sel in node.selection_set.selections:
             if not isinstance(sel, FieldNode) or sel.name.value.startswith("__"):
@@ -340,15 +334,9 @@ class _RowSelection:
                 continue
             # The query is schema-validated, so a field with a selection is a relationship the
             # compiler registered a join for.
+            # REQ-1929: the {Type} message's relation field is the relationship's own name.
             join = ctx.joins[(meta.type_name, name)]
-            proto = _to_proto_field_name(join.target.field_name)
-            read_by = _relation_field(ctx, meta, proto)
-            if self.grpc_refusal is None and (read_by is None or read_by[0] != name):
-                held = "no relationship" if read_by is None else f"relationship {read_by[0]!r}"
-                self.grpc_refusal = (
-                    f"the gRPC {_to_proto_type_name(meta.type_name)} message has no field for "
-                    f"relationship {name!r}: its {proto!r} field reads {held}"
-                )
+            proto = _to_proto_field_name(name)
             rel_api = [*api_path, physical_rel_name(name)]
             self.include_api.append(".".join(rel_api))
             self.walk(ctx, sel, join.target, [*gql_path, name], [*grpc_path, proto], rel_api)
@@ -533,11 +521,9 @@ def _generate_grpc_query(
                 return f"Query{proto_type}Aggregate({funcs_arg})", None
             return f"Query{proto_type}Aggregate", None
         if not plan.group_cols:
-            if plan.row_grpc_refusal is not None:
-                return None, plan.row_grpc_refusal
             if plan.row_paths_grpc:
-                # REQ-1929: read_mask names the GraphQL selection, a relationship by the related
-                # table's proto field, so the row's relationships come back nested.
+                # REQ-1929: read_mask names the GraphQL selection, a relationship by its relation
+                # field, so the row's relationships come back nested.
                 return f"Query{proto_type}(read_mask=[{', '.join(plan.row_paths_grpc)}])", None
             return f"Query{proto_type}", None
         args = [f"by=[{', '.join(plan.group_cols)}]"]

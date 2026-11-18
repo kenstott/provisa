@@ -149,12 +149,12 @@ def _sql(surface, gql: str) -> list[str]:
 # -- each panel's request: the relationship nested in the surface's own form ----------------------
 
 
-def test_the_grpc_request_names_the_relationship_by_its_proto_field(surface):
+def test_the_grpc_request_names_the_relationship_by_its_relation_field(surface):
     query, error = _generate_grpc_query(_plan(surface), set(), {})
     assert error is None
     assert query == (
         "QueryInspections(read_mask=[id, result, "
-        "buildingPermits.permit_number, buildingPermits.street_address])"
+        "buildingPermit.permit_number, buildingPermit.street_address])"
     )
 
 
@@ -176,10 +176,10 @@ def test_the_rest_request_names_the_relationship_in_fields_dot_paths(surface):
     )
 
 
-def test_grpc_is_not_available_when_its_relation_field_reads_another_relationship():
-    """gRPC's ``{Type}`` message declares one relation field per related table, for the first
-    relationship to it; a GraphQL relationship that is not that one has no read_mask path, and a
-    request naming the table's field would read the other relationship's rows."""
+def test_grpc_reads_a_second_relationship_to_the_same_table_by_its_own_field():
+    """gRPC's ``{Type}`` message declares a relation field per relationship, named by it
+    (REQ-1929), so a relationship registered after another to the same table is read by its own
+    read_mask path, not refused."""
     _naming.configure(gql="apollo_graphql", sql="snake")
     try:
         si = _schema_input(extra_relationship=True)
@@ -187,10 +187,25 @@ def test_grpc_is_not_available_when_its_relation_field_reads_another_relationshi
         plan = _aggregation_plan_from_graphql(ctx, _GRAPHQL)
         assert plan is not None
         query, error = _generate_grpc_query(plan, set(), {})
+        both = _aggregation_plan_from_graphql(
+            ctx,
+            "{ inspections { id buildingPermit { permitNumber }"
+            " reinspectionPermit { permitNumber } } }",
+        )
+        assert both is not None
+        query_both, error_both = _generate_grpc_query(both, set(), {})
     finally:
         _naming.configure()
-    assert query is None
-    assert error is not None and "buildingPermit" in error
+    assert error is None
+    assert query == (
+        "QueryInspections(read_mask=[id, result, "
+        "buildingPermit.permit_number, buildingPermit.street_address])"
+    )
+    assert error_both is None
+    assert query_both == (
+        "QueryInspections(read_mask=[id, buildingPermit.permit_number, "
+        "reinspectionPermit.permit_number])"
+    )
 
 
 # -- each request through its real endpoint: the building permit nested in each inspection -------
@@ -258,8 +273,8 @@ async def test_the_grpc_panel_returns_the_permit_nested(monkeypatch, surface):
     state, _pipeline = _state(monkeypatch, surface, [(1, "pass", json.dumps(permit))])
     answer = await executor.execute(query, "grpc", _ROLE, state, deliver=None)
     assert answer == {
-        "columns": ["id", "result", "buildingPermits"],
-        "rows": [{"id": 1, "result": "pass", "buildingPermits": permit}],
+        "columns": ["id", "result", "buildingPermit"],
+        "rows": [{"id": 1, "result": "pass", "buildingPermit": permit}],
     }
 
 
