@@ -509,3 +509,10 @@ def test_clickhouse_raises_postgresql_s_error(runtime, sql, state):
 def test_a_numeric_stays_refused_by_name(name):
     with pytest.raises(FunctionRefused):
         transpile(f"SELECT {name}(2.5::numeric)", "clickhouse")
+
+
+def test_exp_past_a_double_raises_overflow(runtime):
+    with pytest.raises(Exception) as raised:
+        _answer(runtime, 'SELECT pg_catalog."exp"(710.0::double precision) AS v')
+    error = from_engine(raised.value)
+    assert error is not None and error.sqlstate == "22003"

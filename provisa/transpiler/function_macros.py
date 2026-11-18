@@ -2838,11 +2838,36 @@ def _said_scale(scale: exp.Expr, called: str, dialect: str) -> int | None:
         said = said.this.unnest()
     if isinstance(said, exp.Null):
         return None
+    negated = said.this.unnest() if isinstance(said, exp.Neg) else None
+    if isinstance(negated, exp.Cast):  # -1::integer is -(1::integer): the cast reads 1 first
+        inner = _constant(negated.this)
+        if inner is None:
+            raise FunctionRefused(called, dialect)
+        if inner > _INT4_GREATEST:
+            raise PostgresError("22003", "integer out of range")  # the cast, before the negation
+        said = exp.Neg(this=exp.Literal.number(inner))
     digits = _constant(said)
+    if digits is None and isinstance(said, exp.Literal) and said.is_string:
+        digits = _integer_text(said.this)  # '0'::integer
     most = _DUCKDB_MOST_SCALE if dialect in _DUCKDB else _MOST_SCALE
-    if digits is None or digits > most or (dialect not in _DUCKDB and digits < 0):
+    negative_kept = dialect in _DUCKDB or dialect == "clickhouse"  # ClickHouse's round takes -38..
+    if digits is None or digits > most or (not negative_kept and digits < 0):
         raise FunctionRefused(called, dialect)
     return digits
+
+
+_INT4_GREATEST = 2147483647
+#: The fewest digits ClickHouse's round and trunc of a Decimal take; below it every numeric a
+#: Decimal holds (38 digits) is 0, as PostgreSQL's round and trunc answer it.
+_CLICKHOUSE_LEAST_SCALE = -38
+
+
+def _integer_text(text: str) -> int | None:
+    """The integer an integer's text says, as int4in reads it; None for any other text."""
+    try:
+        return int(text.strip())
+    except ValueError:
+        return None
 
 
 def _answered_by_a_row(node: exp.Expr, dialect: str) -> bool:
@@ -3001,7 +3026,10 @@ def inline(tree: exp.Expr, dialect: str) -> exp.Expr:
         if digits is not None:  # an engine takes a scale only as a constant
             args = [args[0], exp.Literal.number(digits)]
         # transform does not revisit what a replaced node holds: a call in an argument.
-        written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
+        if digits is not None and dialect == "clickhouse" and digits < _CLICKHOUSE_LEAST_SCALE:
+            written = exp.Mul(this=args[0].transform(rewrite), expression=exp.Literal.number(0))
+        else:
+            written = _written(macro, [a.transform(rewrite) for a in args], dialect, node)
         if digits is not None:  # the scale PostgreSQL's numeric answers with, 0 for one below it
             scaled = f"DECIMAL(38, {max(digits, 0)})"
             written = exp.Cast(this=written, to=exp.DataType.build(scaled, dialect="postgres"))
