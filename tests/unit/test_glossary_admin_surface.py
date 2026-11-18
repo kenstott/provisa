@@ -32,6 +32,7 @@ from provisa.api.admin import glossary_router
 from provisa.api.errors import ApiError
 from provisa.core.models import Column, Table
 from provisa.core.repositories import table as table_repo
+from provisa.llm.client import Completion
 from provisa.core.schema_org import (
     domains,
     sources,
@@ -402,17 +403,17 @@ async def test_relationship_assistant_steers_to_grounding_types(control_plane, m
         '              "component_type": ["  ", "purchase moment"], "common_whole": "party"}}]'
     )
 
-    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> str:
+    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
         prompts.append(prompt)
         assert operation == "glossary_relationships"
-        return reply
+        return Completion(reply, "anthropic", "m", None, False)
 
     async def _no_jev(_pool, _vendor):
         return None
 
     from provisa.core import org_secrets
 
-    monkeypatch.setattr(schema_helpers, "_call_llm", _fake_llm)
+    monkeypatch.setattr(schema_helpers, "_call_llm_detailed", _fake_llm)
     monkeypatch.setattr(org_secrets, "org_ai_key_or_none", _no_jev)
     async with _surface(control_plane, monkeypatch) as (_db, notified):
         result = await glossary_router.generate_relationships(_request())

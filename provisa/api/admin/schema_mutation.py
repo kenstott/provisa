@@ -1497,6 +1497,7 @@ async def _record_request_decision(
     involved, reach, user_id = await _request_decision_scope(info, req)
     await rule.record(
         await _get_pool(),
+        org_id=_resolve_admin_context(info),
         action=action,
         request=req,
         actor=user_id,

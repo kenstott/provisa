@@ -29,15 +29,9 @@
       "not_comparable": "两列的类别不同，因此不作比较",
       "below_threshold": "评分低于保留建议所需的 {{threshold}}%。",
       "same_column": "从某列指向其自身",
-      "primary_key_to_primary_key": "主键到主键",
-      "both_repeating": "两侧均有重复值，因此任何一侧都不是“一”的一方",
       "existing": "已注册",
-      "pending": "已在建议中等待",
       "rejected": "之前已拒绝",
-      "matches_foreign_key": "与本次运行中找到的外键相同",
-      "out_of_scope": "不在所选的源表和目标表之内",
-      "weaker": "同样两列已保留了更强的提议",
-      "many_to_many": "两列都不是键"
+      "out_of_scope": "不在所选的源表和目标表之内"
     },
     "threshold": "勾选起点",
     "thresholdHint": "你自己的阈值，会为你之后的运行保留。",
@@ -63,7 +57,10 @@
     },
     "dimensionMade": "接受后会创建共享维度 {{name}}，两列都与其关联。",
     "dimensionJoined": "接受后，两列都会关联到共享维度 {{name}}。",
+    "through": "经由 {{table}}。",
     "twoDimensions": "其列已关联到两个不同的共享维度，因此无法接受。",
-    "admittedOnKeyValues": "因数据中键值匹配而采纳；测量结果显示在模型置信度旁边。"
+    "admittedOnKeyValues": "因数据中键值匹配而采纳；测量结果显示在模型置信度旁边。",
+    "hiddenByFilter_one": "筛选器隐藏了 {{count}} 行。",
+    "hiddenByFilter_other": "筛选器隐藏了 {{count}} 行。"
   }
 }
