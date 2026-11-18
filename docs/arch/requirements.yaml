@@ -3754,15 +3754,22 @@
     both columns repeating their values, not many-to-many, not key-to-key, not a foreign key''s semantic
     duplicate (shown once, as the foreign key), not a pair still waiting from an earlier run. Two directions
     of one pair are one row. Rules that judged a pair now only set its score, cardinality and note. This
-    supersedes each earlier rule that left a found pair out for any other reason. (Amended 2026-11-18, KEY
-    VALUE OVERLAP ALSO MEASURES THE NAME AND VALUE MATCHES THE MODEL LEFT OUT:) Maintainer 2026-11-18, after
-    a run where the model proposed 2 of the 6 same-name pairs it was shown and the other 4 were never measured
-    or listed. With key value overlap chosen, every compared pair of columns (same type group, classes that
-    meet) that shares a column name, or whose sampled values intersect, is measured on its data and listed
-    with its score, whether or not the model proposed it; the model''s confidence is shown beside the measure
-    where the model gave one, and is empty where it gave none. These pairs follow the rule that a run lists
-    every pair it found except existing and not-again pairs. This widens the earlier rule that the measure
-    covers only the pairs the semantic check proposed in its band.'
+    supersedes each earlier rule that left a found pair out for any other reason. [SUPERSEDED 2026-11-18]
+    (Amended 2026-11-18, KEY VALUE OVERLAP ALSO MEASURES THE NAME AND VALUE MATCHES THE MODEL LEFT OUT:)
+    Maintainer 2026-11-18, after a run where the model proposed 2 of the 6 same-name pairs it was shown
+    and the other 4 were never measured or listed. With key value overlap chosen, every compared pair of
+    columns (same type group, classes that meet) that shares a column name, or whose sampled values intersect,
+    is measured on its data and listed with its score, whether or not the model proposed it; the model''s
+    confidence is shown beside the measure where the model gave one, and is empty where it gave none. These
+    pairs follow the rule that a run lists every pair it found except existing and not-again pairs. This
+    widens the earlier rule that the measure covers only the pairs the semantic check proposed in its band.
+    (Amended 2026-11-18, KEY VALUE OVERLAP MEASURES ONLY THE PAIRS THE MODEL RATED IN ITS BAND:) Maintainer
+    2026-11-18 (''only test pairs that are above the threshold is the rule''; ''its important to bound key
+    overlap test because its expensive''). [SUPERSEDES the 2026-11-18 amendment ''key value overlap also
+    measures the name and value matches the model left out'', which is withdrawn.] Key value overlap measures
+    only the pairs the model rated from the run''s cutoff (''Measure from'') up to the threshold; no pair
+    the model did not propose, and none it rated below the cutoff, is read or measured. The cutoff bounds
+    the cost of the check.'
   use_case: Auto-generated FK relationships reduce manual relationship registration overhead while preserving
     steward control.
   code:
