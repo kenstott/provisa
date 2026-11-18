@@ -55,7 +55,18 @@
       "sql": "Ler {{name}} em SQL",
       "sparql": "Ler {{name}} em SPARQL",
       "graphql": "Ler {{name}} em GraphQL",
-      "jsonapi": "Ler {{name}} em JSON:API"
+      "rest": "Ler {{name}} em REST",
+      "grpc": "Ler {{name}} em gRPC",
+      "jsonapi": "Ler {{name}} em JSON:API",
+      "surfaces": {
+        "cypher": "Cypher",
+        "sql": "SQL",
+        "sparql": "SPARQL",
+        "graphql": "GraphQL",
+        "rest": "REST",
+        "grpc": "gRPC",
+        "jsonapi": "JSON:API"
+      }
     }
   }
 }

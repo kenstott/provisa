@@ -31,6 +31,7 @@ from provisa.core.models import Column, Table
 from provisa.core.repositories import glossary as glossary_repo
 from provisa.core.repositories import table as table_repo
 from provisa.core.schema_org import domains, sources
+from provisa.llm.client import Completion
 from tests.unit.gate_identity import serve_every_column
 
 if TYPE_CHECKING:
@@ -114,14 +115,32 @@ def _model(monkeypatch, reply: str) -> list[str]:
     return prompts
 
 
+def _relationship_model(monkeypatch, *answers: tuple[str, bool]) -> list[str]:
+    """The relationship assistant reads each answer with its cut-off flag (J1482): one
+    ``(text, cut_off)`` per ask, in order."""
+    prompts: list[str] = []
+    queue = list(answers)
+
+    async def _fake_llm(prompt: str, operation: str, max_tokens: int = 256) -> Completion:
+        prompts.append(prompt)
+        text, cut_off = queue.pop(0)
+        return Completion(text, "anthropic", "m", None, cut_off)
+
+    monkeypatch.setattr(schema_helpers, "_call_llm_detailed", _fake_llm)
+    return prompts
+
+
 async def test_the_relationship_assistant_sees_and_writes_only_the_selected_domains(
     control_plane, monkeypatch
 ):
-    prompts = _model(
+    prompts = _relationship_model(
         monkeypatch,
-        '[{"from": "order date", "to": "customer", "rel_type": "PART_OF"},'
-        ' {"from": "hire date", "to": "customer", "rel_type": "PART_OF"},'
-        ' {"from": "order date", "to": "hire date", "rel_type": "RELATED_TO"}]',
+        (
+            '[{"from": "order date", "to": "customer", "rel_type": "PART_OF"},'
+            ' {"from": "hire date", "to": "customer", "rel_type": "PART_OF"},'
+            ' {"from": "order date", "to": "hire date", "rel_type": "RELATED_TO"}]',
+            False,
+        ),
     )
     async with _two_domains(control_plane, monkeypatch) as conn:
         result = await glossary_router.generate_relationships(_request(), domains=["sales"])
@@ -139,11 +158,42 @@ async def test_the_relationship_assistant_sees_and_writes_only_the_selected_doma
 async def test_without_a_selection_the_relationship_assistant_reaches_every_domain(
     control_plane, monkeypatch
 ):
-    prompts = _model(monkeypatch, "[]")
+    prompts = _relationship_model(monkeypatch, ("[]", False))
     async with _two_domains(control_plane, monkeypatch):
         await glossary_router.generate_relationships(_request())
         assert "hire date" in prompts[0]
         assert "order date" in prompts[0]
+
+
+async def test_a_cut_off_answers_re_ask_sends_only_the_selected_domains(control_plane, monkeypatch):
+    prompts = _relationship_model(
+        monkeypatch,
+        # Cut off after one complete relationship: the rest is asked for.
+        ('[{"from": "order date", "to": "customer", "rel_type": "PART_OF"}, {"from": "hi', True),
+        (
+            '[{"from": "hire date", "to": "customer", "rel_type": "PART_OF"},'
+            ' {"from": "customer", "to": "order date", "rel_type": "RELATED_TO"}]',
+            False,
+        ),
+    )
+    async with _two_domains(control_plane, monkeypatch) as conn:
+        result = await glossary_router.generate_relationships(_request(), domains=["sales"])
+        assert len(prompts) == 2
+        assert "already proposed" in prompts[1]
+        for prompt in prompts:
+            assert "- order date [property]" in prompt
+            assert "- customer [property]" in prompt
+            assert "hire date" not in prompt
+        # The re-ask's answer named hr's term anyway: that edge is not written.
+        assert result["added"] == 2
+        ids = await _ids(conn)
+        edges = sorted(await glossary_repo.term_edges(conn))
+        assert edges == sorted(
+            [
+                (ids["order date"], ids["customer"], "PART_OF"),
+                (ids["customer"], ids["order date"], "RELATED_TO"),
+            ]
+        )
 
 
 async def test_bulk_definitions_fill_only_the_selected_domains_terms(control_plane, monkeypatch):

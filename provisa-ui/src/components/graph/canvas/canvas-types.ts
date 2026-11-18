@@ -13,6 +13,7 @@ import type { Relationship } from "../../../types/admin";
 import type { GNode, GEdge, GraphStats, RelLineOverride } from "../graph-model";
 import type { ClusterLevel } from "../graph-clusters";
 import type { CyLayoutOptions, CyInstance } from "../cytoscape-types";
+import { idealEdgeLength } from "./edge-length";
 
 export interface CanvasProps {
   /** A short note drawn over the canvas itself (the frame's first-N note). */
@@ -91,7 +92,7 @@ export const LAYOUT_OPTIONS: Record<LayoutMode, CyLayoutOptions> = {
     animate: false,
     packComponents: true,
     nodeRepulsion: () => 10000,
-    idealEdgeLength: () => 80,
+    idealEdgeLength: idealEdgeLength(80),
     gravity: 0.25,
     numIter: 2500,
     nodeSeparation: 80,
