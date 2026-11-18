@@ -263,17 +263,14 @@ def generate_jsonapi_openapi_spec(
         }
 
         # REQ-1929: GET /<type>/<id> only for a type whose id is a real identifier.
-        table_meta = surface.context.tables.get(field_name)
-        if table_meta is not None:
-            scalar_names = [c for c, _, _ in columns if not (c.startswith("_") and c.endswith("_"))]
-            _, physical_to_gql = scalar_name_maps(
-                surface.context, table_meta.table_id, scalar_names
+        table_id = surface.context.tables[field_name].table_id
+        scalar_names = [c for c, _, _ in columns if not (c.startswith("_") and c.endswith("_"))]
+        _, physical_to_gql = scalar_name_maps(surface.context, table_id, scalar_names)
+        id_columns = resource_id_columns(surface.context, table_id, physical_to_gql)
+        if id_columns:
+            paths[f"/{domain_id}/{table_name}/{{id}}"] = _lookup_path(
+                field_name, domain_id, table_name, id_columns, resource_schema, parameters
             )
-            id_columns = resource_id_columns(surface.context, table_meta.table_id, physical_to_gql)
-            if id_columns:
-                paths[f"/{domain_id}/{table_name}/{{id}}"] = _lookup_path(
-                    field_name, domain_id, table_name, id_columns, resource_schema, parameters
-                )
 
     return {
         "openapi": "3.1.0",
