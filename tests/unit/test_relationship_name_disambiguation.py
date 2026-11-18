@@ -271,3 +271,32 @@ async def test_registering_foreign_keys_again_adds_nothing(tmp_path, monkeypatch
         before = await _names(conn)
         assert await _register_orders_keys(conn, monkeypatch) == 0
         assert await _names(conn) == before
+
+
+@pytest.mark.asyncio
+async def test_two_sides_of_one_table_joining_one_dimension_get_different_fields(tmp_path):
+    """A shared dimension's edges carry a generated field, ``<dimension>_dimension``: two columns
+    of one table joining it are told apart by their columns."""
+    from provisa.core.relationship_naming import Generated, unique_names
+
+    def side(column: str) -> Generated:
+        return Generated(
+            rel_id=f"listings-{column}-to-neighbourhoods",
+            id_typed=False,
+            source_table_id=_LISTINGS,
+            target_table_id=_NEIGHBOURHOODS,
+            source_column=column,
+            target_column="neighbourhood",
+            cardinality="many-to-one",
+            target_name="neighbourhoods",
+            target_table="neighbourhoods",
+            graphql_alias="neighbourhood_dimension",
+        )
+
+    db = await _store(tmp_path)
+    async with db.acquire() as conn:
+        one, two = await unique_names(conn, [side("neighbourhood"), side("neighbourhood_id")])
+
+    assert one.graphql_alias == "neighbourhood_dimension"
+    assert two.graphql_alias == "neighbourhood_dimension_by_neighbourhood_id"
+    assert one.rel_id != two.rel_id

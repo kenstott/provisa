@@ -56,7 +56,9 @@ class Generated:
     unless ``id_typed`` (a person named it, or it is unique by construction): a typed id that is
     taken is refused. ``alias`` is a generated alias (a foreign key's), made unique on its source
     table. ``target_name`` is the target's alias or table name, the noun its derived GraphQL field
-    is named for; ``target_table`` its table name, the second thing names are told apart by."""
+    is named for; ``target_table`` its table name, the second thing names are told apart by.
+    ``graphql_alias`` is a generated field it is pinned to (a shared dimension's edge), made unique
+    on its source table as the derived one is."""
 
     rel_id: str
     id_typed: bool
@@ -68,6 +70,7 @@ class Generated:
     target_name: str
     target_table: str
     alias: str | None = None
+    graphql_alias: str | None = None
 
 
 @dataclass(frozen=True)
@@ -202,12 +205,14 @@ def _named(g: Generated, held: list[_Held], convention: str) -> tuple[Named, _He
     aliases = [h.alias for h in same_source if h.alias]
     alias = None if g.alias is None else disambiguated(g.alias, column, g.target_table, aliases)
 
-    graphql_alias = None
-    field = _field_of(None, g.target_name, g.cardinality)
+    graphql_alias = g.graphql_alias
+    field = _field_of(g.graphql_alias, g.target_name, g.cardinality)
     fields = [h.field for h in same_source if h.served and h.field]
     if field is not None and field.casefold() in {f.casefold() for f in fields}:
         field = disambiguated(field, column, g.target_table, fields)
-        graphql_alias = apply_convention(field, convention)
+        # A generated pinned field keeps its own spelling (snake case); a derived one takes the
+        # naming convention's, as the field it replaces would have.
+        graphql_alias = field if g.graphql_alias else apply_convention(field, convention)
 
     def cypher(of_alias: str | None) -> str | None:
         return effective_cypher_type(
