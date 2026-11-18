@@ -1,0 +1,65 @@
+name: zaychik image cache
+description: >-
+  The container suite's core services include zaychik (docker-compose.core.yml), an image built
+  from zaychik/ by Maven. A lane that started it with the image missing built it there, and each
+  build asked Maven Central for its Maven plugins: the kafka lane's prefix lookup for
+  `dependency:` failed after 752 s and the lane never started (run 44379779451).
+
+  `phase: prime` is one job's: it restores the image, and on a miss builds it (the build compose
+  runs: ./zaychik, tagged zaychik:latest) and saves it. `phase: restore` is every lane's, in a job
+  that `needs:` the priming one: the cache must hit (a miss fails the step), and the image is
+  loaded, so compose finds zaychik:latest and builds nothing. A lane with an image cache of its
+  own restores this after that cache, so a zaychik:latest kept there from an older zaychik/ is
+  replaced.
+inputs:
+  phase:
+    description: prime | restore
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: zaychik image phase
+      shell: bash
+      env:
+        PHASE: ${{ inputs.phase }}
+      run: |
+        if [ "$PHASE" != prime ] && [ "$PHASE" != restore ]; then
+          echo "::error::phase must be prime or restore, not '$PHASE'"; exit 1
+        fi
+
+    # The key is computed once, before the build, from the build's inputs: everything the build
+    # context holds (as the provisa-functions key in .github/actions/trino-plugins is).
+    - name: zaychik image key
+      id: zaychik-key
+      shell: bash
+      env:
+        KEY: zaychik-image-${{ hashFiles('zaychik/**') }}
+      run: echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+    - name: Restore the zaychik image
+      id: zaychik-image
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/zaychik-image
+        key: ${{ steps.zaychik-key.outputs.key }}
+        fail-on-cache-miss: ${{ inputs.phase == 'restore' }}
+
+    - name: Build the zaychik image
+      if: inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        docker build -t zaychik:latest ./zaychik
+        mkdir -p ~/zaychik-image
+        docker save -o ~/zaychik-image/zaychik.tar zaychik:latest
+
+    - name: Cache the zaychik image
+      if: inputs.phase == 'prime' && steps.zaychik-image.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v4
+      with:
+        path: ~/zaychik-image
+        key: ${{ steps.zaychik-key.outputs.key }}
+
+    - name: Load the zaychik image
+      if: inputs.phase == 'restore'
+      shell: bash
+      run: docker load -i ~/zaychik-image/zaychik.tar
