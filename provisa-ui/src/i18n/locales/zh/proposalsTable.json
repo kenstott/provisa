@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "应用时会接受已勾选的行。评分至少达到阈值的行默认勾选。两个框都未勾选的行保持未决定。",
     "colScore": "评分",
-    "colModel": "模型",
+    "colConfidence": "置信度",
     "colJev": "Jev",
     "colKind": "类型",
     "colMeasure": "测量结果",

@@ -40,10 +40,7 @@
       "whole_number": "números inteiros",
       "decimal": "decimais",
       "text": "texto",
-      "uuid": "UUIDs",
-      "date": "datas",
-      "timestamp": "carimbos de data/hora",
-      "timestamptz": "carimbos de data/hora com fuso horário"
+      "uuid": "UUIDs"
     },
     "starting": "Iniciando...",
     "reading": "Lendo tabelas: {{done}} de {{total}}",

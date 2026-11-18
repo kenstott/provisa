@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "チェックした行は適用時に承認されます。スコアがしきい値以上の行は最初からチェックされています。どちらのボックスもチェックしていない行は未決定のままです。",
     "colScore": "スコア",
-    "colModel": "モデル",
+    "colConfidence": "信頼度",
     "colJev": "Jev",
     "colKind": "種類",
     "colMeasure": "測定結果",

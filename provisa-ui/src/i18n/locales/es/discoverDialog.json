@@ -40,10 +40,7 @@
       "whole_number": "números enteros",
       "decimal": "decimales",
       "text": "texto",
-      "uuid": "UUID",
-      "date": "fechas",
-      "timestamp": "marcas de tiempo",
-      "timestamptz": "marcas de tiempo con zona horaria"
+      "uuid": "UUID"
     },
     "starting": "Iniciando...",
     "reading": "Leyendo tablas: {{done}} de {{total}}",
