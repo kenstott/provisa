@@ -91,7 +91,7 @@ from provisa.pgwire import advisory_locks
 from provisa.federation.duckdb_pg_xml import xml_out
 from provisa.pgwire.cast_types import XML_ARRAY
 from provisa.pgwire.constant_arguments import evaluable, is_constant
-from provisa.security.rights import can_act_cross_org, capabilities_for_claims
+from provisa.security.rights import capabilities_for_claims
 
 log = logging.getLogger(__name__)
 _tracer = _get_tracer(__name__)
@@ -431,12 +431,14 @@ async def _resolve_and_build_org(
     # REQ-1235: the database name (psql -d acme, a BI tool's database field) names the org too.
     requested_org = org_named_by_host_or_database(requested_org, database)
 
-    # REQ-1337: resolve the claims to RIGHTS and test cross_org — never the role name.
-    caps = capabilities_for_claims(getattr(identity, "roles", []) or [], state_.platform_roles)
+    from provisa.auth.held_assignments import may_act_cross_org
+
+    # REQ-1337, REQ-802: the cross_org RIGHT of the roles the principal holds — never the role
+    # name, and never the role claims the credential carries.
     org_id = await resolve_session_org(
         state_,
         user_id=getattr(identity, "user_id", None),
-        can_act_any_org=can_act_cross_org(caps),
+        can_act_any_org=await may_act_cross_org(state_, identity),
         requested_org=requested_org,
         credential_org=getattr(identity, "active_org_id", None),  # REQ-1235
         named_by=(

@@ -134,9 +134,20 @@ def test_a_pgwire_sign_in_selects_a_role_granted_in_the_control_plane(granted):
     assert granted == ["acme"]
 
 
-def test_a_sign_in_that_names_no_role_reads_nothing(granted):
+def test_a_sign_in_that_names_no_role_still_acts_as_a_role_it_holds(granted):
+    """REQ-120 (amended 2026-11-01), REQ-802: where Provisa holds the assignments, a sign-in that
+    names no role is read too, and acts as the role it is granted, not the default analyst."""
     acts_as, may_name = asyncio.run(
         held_assignments.sign_in_roles(_state(), _USER, "acme", naming=False)
+    )
+    assert (acts_as, may_name) == ("steward", ["steward"])
+    assert granted == ["acme"]
+
+
+def test_with_claims_as_the_source_a_sign_in_that_names_no_role_reads_nothing(granted):
+    claimed = AuthIdentity(user_id="u-1", email=None, display_name=None, roles=["steward"])
+    acts_as, may_name = asyncio.run(
+        held_assignments.sign_in_roles(_state("claims"), claimed, None, naming=False)
     )
     assert (acts_as, may_name) == ("analyst", ["analyst"])
     assert granted == []

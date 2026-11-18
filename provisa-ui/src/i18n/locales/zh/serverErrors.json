@@ -56,7 +56,8 @@
       "username_exists": "用户名已存在",
       "not_permitted": "不允许",
       "token_scopes_required": "请至少为令牌选择一个角色。",
-      "token_scope_not_held": "令牌只能使用您拥有的角色。"
+      "token_scope_not_held": "令牌只能使用您拥有的角色。",
+      "no_role_held": "'{{user}}' 在此组织中没有任何角色"
     },
     "authz": {
       "mutation_not_permitted": "不允许执行变更 '{{field_name}}'：{{reason}}"
