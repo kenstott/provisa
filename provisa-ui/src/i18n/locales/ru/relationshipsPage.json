@@ -8,6 +8,7 @@
     "sqlModelingTool": "Инструмент моделирования SQL",
     "viewErd": "Показать ERD",
     "discovering": "Поиск связей выполняется. Откройте его, чтобы увидеть ход выполнения.",
+    "openRun": "Открыть",
     "suggestWithAi": "Предложить с помощью ИИ",
     "clearRejections": "Очистить отклонения",
     "clearedRejections": "Очищено {{count}} отклонение.",

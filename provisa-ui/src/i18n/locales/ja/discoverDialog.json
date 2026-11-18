@@ -51,10 +51,13 @@
     "suggestionsSoFar": "これまでの提案: {{count}}",
     "modelRan": "モデル: {{model}}",
     "stop": "停止",
+    "runInBackground": "バックグラウンドで実行",
     "stopping": "処理中のリクエストの後で停止します。見つかったものは保持されます。",
     "done": "完了しました。",
     "stopped": "停止しました。見つかったものは保持されます。",
     "failed": "実行に失敗しました: {{error}}",
+    "waiting_one": "{{count}} 件の提案が判断を待っています。",
+    "waiting_other": "{{count}} 件の提案が判断を待っています。",
     "newRun": "新しい実行",
     "noSuggestions": "この実行の提案で保留中のものはありません。",
     "restore": {

@@ -51,10 +51,13 @@
     "suggestionsSoFar": "הצעות עד כה: {{count}}",
     "modelRan": "מודל: {{model}}",
     "stop": "עצירה",
+    "runInBackground": "הרצה ברקע",
     "stopping": "נעצר אחרי הבקשה שבביצוע. מה שנמצא נשמר.",
     "done": "הסתיים.",
     "stopped": "נעצר. מה שנמצא נשמר.",
     "failed": "ההרצה נכשלה: {{error}}",
+    "waiting_one": "הצעה {{count}} ממתינה להחלטה.",
+    "waiting_other": "{{count}} הצעות ממתינות להחלטה.",
     "newRun": "הרצה חדשה",
     "noSuggestions": "אין הצעות מהרצה זו שממתינות.",
     "restore": {

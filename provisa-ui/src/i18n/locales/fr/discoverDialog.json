@@ -51,10 +51,13 @@
     "suggestionsSoFar": "Suggestions jusqu'ici : {{count}}",
     "modelRan": "Modèle : {{model}}",
     "stop": "Arrêter",
+    "runInBackground": "Exécuter en arrière-plan",
     "stopping": "Arrêt après la requête en cours. Ce qui a été trouvé est conservé.",
     "done": "Terminé.",
     "stopped": "Arrêté. Ce qui a été trouvé est conservé.",
     "failed": "L'exécution a échoué : {{error}}",
+    "waiting_one": "{{count}} suggestion attend une décision.",
+    "waiting_other": "{{count}} suggestions attendent une décision.",
     "newRun": "Nouvelle exécution",
     "noSuggestions": "Aucune suggestion de cette exécution n'est en attente.",
     "restore": {

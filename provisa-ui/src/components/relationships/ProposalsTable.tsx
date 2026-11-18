@@ -221,7 +221,7 @@ export function ProposalsTable({
           {newRun}
           {proposals.length > 0 && (
             <Button
-              onClick={() => void state.apply(nameOf)}
+              onClick={() => void state.apply()}
               disabled={accepting + marking === 0}
               loading={state.applying}
               data-testid="discover-apply"

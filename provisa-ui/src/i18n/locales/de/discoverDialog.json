@@ -51,10 +51,13 @@
     "suggestionsSoFar": "Bisherige Vorschläge: {{count}}",
     "modelRan": "Modell: {{model}}",
     "stop": "Stoppen",
+    "runInBackground": "Im Hintergrund ausführen",
     "stopping": "Wird nach der laufenden Anfrage gestoppt. Das Gefundene bleibt erhalten.",
     "done": "Abgeschlossen.",
     "stopped": "Gestoppt. Das Gefundene bleibt erhalten.",
     "failed": "Der Lauf ist fehlgeschlagen: {{error}}",
+    "waiting_one": "{{count}} Vorschlag wartet auf eine Entscheidung.",
+    "waiting_other": "{{count}} Vorschläge warten auf eine Entscheidung.",
     "newRun": "Neuer Lauf",
     "noSuggestions": "Keine Vorschläge dieses Laufs warten auf eine Entscheidung.",
     "restore": {

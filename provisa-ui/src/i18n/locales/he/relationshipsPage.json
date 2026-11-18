@@ -8,6 +8,7 @@
     "sqlModelingTool": "כלי מידול SQL",
     "viewErd": "הצגת ERD",
     "discovering": "הגילוי פועל. פתחו אותו כדי לראות את ההתקדמות.",
+    "openRun": "פתיחה",
     "suggestWithAi": "הצעה באמצעות AI",
     "clearRejections": "ניקוי דחיות",
     "clearedRejections": "נוקתה {{count}} דחייה.",

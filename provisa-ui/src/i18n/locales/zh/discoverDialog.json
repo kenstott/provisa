@@ -51,10 +51,13 @@
     "suggestionsSoFar": "目前的建议：{{count}}",
     "modelRan": "模型：{{model}}",
     "stop": "停止",
+    "runInBackground": "在后台运行",
     "stopping": "将在当前请求完成后停止。已找到的内容会保留。",
     "done": "已完成。",
     "stopped": "已停止。已找到的内容会保留。",
     "failed": "运行失败：{{error}}",
+    "waiting_one": "{{count}} 条建议等待决定。",
+    "waiting_other": "{{count}} 条建议等待决定。",
     "newRun": "新的运行",
     "noSuggestions": "本次运行没有待处理的建议。",
     "restore": {

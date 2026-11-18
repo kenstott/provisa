@@ -10898,5 +10898,9 @@
   "discoverDialog.json::discoverDialog.sampleSizeHint": "The most distinct values read of each column.",
   "discoverResult.json::discoverResult.keyValues": "Key value overlap: pairs the model rated from {{cutoff}}% to under {{threshold}}% were measured on at most {{size}} distinct values of each column. {{measured}} measured, {{admitted}} admitted on matching key values.",
   "proposalsTable.json::proposalsTable.admittedOnKeyValues": "Admitted on key values matching in the data; the measure is shown beside the model's confidence.",
-  "ru/serverErrors.json::serverErrors.auth.no_role_held": "'{{user}}' holds no role in this organization"
+  "ru/serverErrors.json::serverErrors.auth.no_role_held": "'{{user}}' holds no role in this organization",
+  "discoverDialog.json::discoverDialog.runInBackground": "Run in background",
+  "discoverDialog.json::discoverDialog.waiting_one": "{{count}} suggestion waits for a decision.",
+  "discoverDialog.json::discoverDialog.waiting_other": "{{count}} suggestions wait for a decision.",
+  "relationshipsPage.json::relationshipsPage.openRun": "Open"
 }
