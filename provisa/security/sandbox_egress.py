@@ -66,6 +66,24 @@ class PrivateDestinationRefused(PermissionError):
         self.params = {"host": host, "address": address}
 
 
+class PrivateEndpointRefused(PrivateDestinationRefused):
+    """A held org's webhook, scheduled trigger, command, Syncing or metadata-export endpoint -- a
+    destination that is not a source -- is not on the public internet."""
+
+    code = "egress.private_destination"
+
+    def __init__(self, host: str, address: str) -> None:
+        PermissionError.__init__(
+            self,
+            f"This org may call only public addresses; {host!r} is {address}, which is not one",
+        )
+        self.params = {"host": host, "address": address}
+
+
+#: Which refusal a check raises: a source's, or another destination's (:class:`PrivateEndpointRefused`).
+Refusal = type[PrivateDestinationRefused]
+
+
 def confined(org_id: str | None) -> bool:
     """Whether ``org_id`` is a sandbox org: its sources are held to public destinations and to the
     address each was checked at, apart from what its demo declares."""
@@ -124,15 +142,22 @@ def resolve(host: str, port: int | None = None) -> list[str]:
     return sorted({str(info[4][0]) for info in infos})
 
 
-def require_public_destination(host: str | None, port: int | None = None) -> list[str]:
-    """The addresses ``host`` resolves to, refused by name when any is not public. A source with
-    no network host (an uploaded file, an embedded store) has nothing to check."""
+def require_public_destination(
+    host: str | None, port: int | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> list[str]:
+    """The addresses ``host`` resolves to, refused by name (``refusal``) when any is not public.
+    A source with no network host (an uploaded file, an embedded store) has nothing to check."""
     if not host:
         return []
-    addresses = resolve(host, port)
+    try:
+        addresses = resolve(host, port)
+    except PrivateDestinationRefused as unresolved:
+        if refusal is PrivateDestinationRefused:
+            raise
+        raise refusal(host, unresolved.params["address"]) from unresolved
     for address in addresses:
         if not _public(ipaddress.ip_address(address)):
-            raise PrivateDestinationRefused(host, address)
+            raise refusal(host, address)
     return addresses
 
 
@@ -323,7 +348,12 @@ def held_here(org_id: str | None = None) -> bool:
     return held(_org(org_id))
 
 
-def require_allowed(host: str, port: int | None, org_id: str | None = None) -> None:
+def require_allowed(
+    host: str,
+    port: int | None,
+    org_id: str | None = None,
+    refusal: Refusal = PrivateDestinationRefused,
+) -> None:
     """Refuse, by name, ``host`` for a held org (:func:`held`) unless its demo declares it or every
     address it resolves to is public. Any other org reaches what it names."""
     org = _org(org_id)
@@ -332,10 +362,12 @@ def require_allowed(host: str, port: int | None, org_id: str | None = None) -> N
     assert org is not None
     if (host.lower(), port) in _demo_destinations.get(org, frozenset()):
         return
-    require_public_destination(host, port)
+    require_public_destination(host, port, refusal)
 
 
-def require_url_allowed(url: str, org_id: str | None = None) -> None:
+def require_url_allowed(
+    url: str, org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> None:
     """:func:`require_allowed` for the host and port ``url`` names, any secret reference in it
     resolved first: what a held org's webhook, scheduled trigger, Syncing or metadata-export
     endpoint calls is held to public destinations as a source's is (REQ-2006, amended
@@ -349,10 +381,17 @@ def require_url_allowed(url: str, org_id: str | None = None) -> None:
     try:
         host, port = parts.hostname, parts.port
     except ValueError:
-        raise PrivateDestinationRefused(plain, "a URL with no valid port") from None
+        raise refusal(plain, "a URL with no valid port") from None
     if not host:
-        raise PrivateDestinationRefused(plain, "a URL that names no host")
-    require_allowed(host, port, org)
+        raise refusal(plain, "a URL that names no host")
+    require_allowed(host, port, org, refusal)
+
+
+def require_endpoint_url_allowed(url: str, org_id: str | None = None) -> None:
+    """:func:`require_url_allowed` for a destination that is not a source -- a webhook, a
+    scheduled trigger, a Syncing or metadata-export endpoint -- refused as one
+    (:class:`PrivateEndpointRefused`)."""
+    require_url_allowed(url, org_id, PrivateEndpointRefused)
 
 
 def require_source_allowed(fields: dict, org_id: str | None = None) -> None:
@@ -380,7 +419,9 @@ def source_fields(source: object) -> dict:  # object-ok: a Source (models import
     }
 
 
-def http_event_hooks(org_id: str | None = None) -> dict:
+def http_event_hooks(
+    org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> dict:
     """httpx event hooks that check each request a held org's source makes -- every redirect
     is a request of its own -- and send it to the address checked (:func:`_pin_request`). Empty
     for any other org."""
@@ -391,12 +432,20 @@ def http_event_hooks(org_id: str | None = None) -> dict:
     assert org is not None
 
     async def _acheck(request: "httpx.Request") -> None:
-        _pin_request(request, org)
+        _pin_request(request, org, refusal)
 
     return {"request": [_acheck]}
 
 
-def http_sync_event_hooks(org_id: str | None = None) -> dict:
+def endpoint_event_hooks(org_id: str | None = None) -> dict:
+    """:func:`http_event_hooks` for a destination that is not a source (a webhook, a trigger, a
+    command, a Syncing or metadata-export endpoint): refused as one (:class:`PrivateEndpointRefused`)."""
+    return http_event_hooks(org_id, PrivateEndpointRefused)
+
+
+def http_sync_event_hooks(
+    org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> dict:
     """:func:`http_event_hooks` for a synchronous ``httpx.Client``."""
     org = _org(org_id)
     if not held(org):
@@ -405,9 +454,14 @@ def http_sync_event_hooks(org_id: str | None = None) -> dict:
     assert org is not None
 
     def _check(request: "httpx.Request") -> None:
-        _pin_request(request, org)
+        _pin_request(request, org, refusal)
 
     return {"request": [_check]}
+
+
+def endpoint_sync_event_hooks(org_id: str | None = None) -> dict:
+    """:func:`endpoint_event_hooks` for a synchronous ``httpx.Client``."""
+    return http_sync_event_hooks(org_id, PrivateEndpointRefused)
 
 
 def checked_get(url: str, *, timeout: float) -> "httpx.Response":
@@ -421,7 +475,9 @@ def checked_get(url: str, *, timeout: float) -> "httpx.Response":
         return client.get(url)
 
 
-def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str, str]:
+def pinned_address(
+    server_address: str, org_id: str | None = None, refusal: Refusal = PrivateDestinationRefused
+) -> tuple[str, str]:
     """A ``host:port`` target (a gRPC channel's) as a sandbox org dials it: ``(target, name)``,
     the target carrying the checked address and the name kept for TLS. Any other org's is
     itself."""
@@ -429,11 +485,50 @@ def pinned_address(server_address: str, org_id: str | None = None) -> tuple[str,
     if not host:
         host, port = server_address, ""
     name = host.strip("[]")
-    address = pin(name, int(port) if port.isdigit() else None, org_id)
+    address = pin(name, int(port) if port.isdigit() else None, org_id, refusal)
     if address == name:
         return server_address, name
     literal = f"[{address}]" if ":" in address else address
     return (f"{literal}:{port}" if port else literal), name
+
+
+def pinned_url(url: str, org_id: str | None = None) -> tuple[str, str]:
+    """``url`` as a held org connects to it, for a client that resolves its own host (a Qdrant
+    client): ``(url, name)``, the URL carrying the address its check resolved and the name kept
+    for Host and TLS (:func:`named_request_hooks`). Any other org's, and a demo's own, is itself."""
+    parts = urlsplit(url)
+    try:
+        name, port = parts.hostname, parts.port
+    except ValueError:
+        raise PrivateDestinationRefused(url, "a URL with no valid port") from None
+    if not name:
+        raise PrivateDestinationRefused(url, "a URL that names no host")
+    address = pin(name, port, org_id)
+    if address == name:
+        return url, name
+    literal = f"[{address}]" if ":" in address else address
+    netloc = f"{literal}:{port}" if port else literal
+    if parts.username or parts.password:
+        netloc = parts.netloc.rpartition("@")[0] + "@" + netloc
+    return parts._replace(netloc=netloc).geturl(), name
+
+
+def named_request_hooks(name: str, address_url: str) -> dict:
+    """httpx event hooks for a synchronous client built on ``address_url`` (:func:`pinned_url`):
+    each request to its address is sent with ``name`` for the Host header and TLS. A request to
+    any other host is refused: it would resolve its own address."""
+    address = urlsplit(address_url).hostname
+    if address == name:
+        return {}
+
+    def _name(request: "httpx.Request") -> None:
+        url = request.url
+        if url.host != address:
+            raise PrivateDestinationRefused(url.host, "not the address the check resolved")
+        request.headers["Host"] = f"{name}:{url.port}" if url.port else name
+        request.extensions["sni_hostname"] = name
+
+    return {"request": [_name]}
 
 
 # --- pinning: the address checked is the address connected to ----------------------------------
@@ -474,7 +569,12 @@ def _declared(org: str, host: str, port: int | None) -> bool:
     return (host.lower(), port) in _demo_destinations.get(org, frozenset())
 
 
-def pin(host: str, port: int | None, org_id: str | None = None) -> str:
+def pin(
+    host: str,
+    port: int | None,
+    org_id: str | None = None,
+    refusal: Refusal = PrivateDestinationRefused,
+) -> str:
     """The address to connect to for ``host``: for a held org, a checked address it resolves
     to (a demo's own destinations are connected to by name); for any other org, ``host``."""
     org = _org(org_id)
@@ -483,7 +583,7 @@ def pin(host: str, port: int | None, org_id: str | None = None) -> str:
     assert org is not None
     if _declared(org, host, port):
         return host
-    return require_public_destination(host, port)[0]
+    return require_public_destination(host, port, refusal)[0]
 
 
 def pin_host(host: str, port: int | None, source_type: str, org_id: str | None = None) -> str:
@@ -571,11 +671,13 @@ def pinned_source(
     return source.model_copy(update={"host": address})  # type: ignore[attr-defined]
 
 
-def _pin_request(request: "httpx.Request", org: str) -> None:
+def _pin_request(
+    request: "httpx.Request", org: str, refusal: Refusal = PrivateDestinationRefused
+) -> None:
     """Send ``request`` to its host's checked address, keeping the name for Host and TLS."""
     url = request.url
     host, port = url.host, url.port
-    address = pin(host, port, org)
+    address = pin(host, port, org, refusal)
     if address == host:
         return
     request.headers["Host"] = url.netloc.decode("ascii")

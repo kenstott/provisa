@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Een aangevinkte rij wordt geaccepteerd wanneer je toepast. Rijen met een score van ten minste de drempel staan bij het begin aangevinkt. Een rij zonder vinkje blijft onbeslist.",
     "colScore": "Score",
-    "colModel": "Model",
+    "colConfidence": "Betrouwbaarheid",
     "colJev": "Jev",
     "colKind": "Soort",
     "colMeasure": "Gemeten",

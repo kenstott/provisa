@@ -367,7 +367,7 @@ describe("Discovery dialog: the run in progress", () => {
   });
 
   it("a run whose every request failed says so in the dialog's run block, never on the page", async () => {
-    const failed = (group: "whole_number" | "date") => ({
+    const failed = (group: "whole_number" | "text") => ({
       group,
       code: "llm.request_failed",
       params: { reason: "overloaded" },
@@ -385,7 +385,7 @@ describe("Discovery dialog: the run in progress", () => {
         requests_done: 2,
         proposed: 0,
         below_threshold: 0,
-        failed: [failed("whole_number"), failed("date")],
+        failed: [failed("whole_number"), failed("text")],
       },
     };
     runMock.mockResolvedValue(
@@ -401,7 +401,7 @@ describe("Discovery dialog: the run in progress", () => {
       "For whole numbers columns: The request to the model failed: overloaded",
     );
     expect(shown).toHaveTextContent(
-      "For dates columns: The request to the model failed: overloaded",
+      "For text columns: The request to the model failed: overloaded",
     );
     expect(shown).not.toHaveTextContent("proposed no relationships");
     // REQ-413 (amended 2026-11-16): the page shows no run summary, and with no suggestion

@@ -845,6 +845,19 @@ DECLARED: list[Setting] = [
         guard="confirm",
     ),
     Setting(
+        key="embedding.hub_endpoint",
+        card="network",
+        type="str",
+        effect="live",  # read at each fetch of a local embedding model (provisa/vector/providers.py)
+        # REQ-420: the Hugging Face hub a local embedding model is fetched from (a mirror behind a
+        # firewall). Read here, given to every fetch: huggingface_hub would otherwise read
+        # HF_ENDPOINT itself, once, at import.
+        req="REQ-420",
+        env="HF_ENDPOINT",
+        config_path=("embedding", "hub_endpoint"),
+        default="https://huggingface.co",
+    ),
+    Setting(
         key="server.flight_compression",
         card="network",
         type="enum",

@@ -17,7 +17,8 @@
       "webhook_exists": "Le webhook « {{name}} » existe déjà"
     },
     "ai_models": {
-      "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions"
+      "vector_model_fields_required": "chaque entrée vector_models requiert id, provider et dimensions",
+      "embedding_library_missing": "Le modèle d'embeddings {{model}} utilise le fournisseur {{provider}}, qui nécessite l'extra {{extra}} (le module {{module}} n'est pas installé) : pip install 'provisa[{{extra}}]'."
     },
     "ai": {
       "endpoint_address_from_server": "Le point de terminaison IA {{vendor}} prend son adresse dans l'environnement du serveur, qu'une organisation de ce serveur n'utilise pas. Donnez-lui une adresse qui vous est propre dans Admin, Modèles IA.",
@@ -767,6 +768,9 @@
     "sources": {
       "private_destination": "Les sources de cette organisation ne peuvent atteindre que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une.",
       "local_path_refused": "Les sources de cette organisation ne lisent aucun fichier sur le disque du serveur en dehors de son propre dossier ; {{path}} en est un. Téléversez le fichier, ou désignez-le par {files}/… ou par une adresse distante."
+    },
+    "egress": {
+      "private_destination": "Cette organisation ne peut appeler que des adresses publiques ; {{host}} est {{address}}, qui n'en est pas une."
     },
     "sandbox": {
       "wrong_tier": "Ce bac à sable est servi ailleurs ; ouvrez-le depuis sa propre adresse.",

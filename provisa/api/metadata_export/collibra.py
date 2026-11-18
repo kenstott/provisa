@@ -707,7 +707,7 @@ class CollibraExport(MetadataExport):  # REQ-1069
         result = PublishResult(provider_name=self.provider_name)
         rows = to_rows(snapshot, self.community, self.domain)
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             # REQ-1387: terms ride the same import job, contained in Provisa's own glossary
             # domain — created first, since the import rejects rows naming an absent domain.
@@ -910,7 +910,7 @@ class CollibraExport(MetadataExport):  # REQ-1069
 
     async def health(self) -> None:
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             response = await client.get(self._url(self.health_path), headers=self._headers())
         response.raise_for_status()

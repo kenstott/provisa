@@ -40,10 +40,7 @@
       "whole_number": "Ganzzahlen",
       "decimal": "Dezimalzahlen",
       "text": "Text",
-      "uuid": "UUIDs",
-      "date": "Datumswerte",
-      "timestamp": "Zeitstempel",
-      "timestamptz": "Zeitstempel mit Zeitzone"
+      "uuid": "UUIDs"
     },
     "starting": "Wird gestartet...",
     "reading": "Tabellen werden gelesen: {{done}} von {{total}}",

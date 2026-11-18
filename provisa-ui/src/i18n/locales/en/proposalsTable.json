@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "A ticked row is accepted when you apply. Rows scoring at least the threshold start ticked. A row with neither box ticked stays undecided.",
     "colScore": "Score",
-    "colModel": "Model",
+    "colConfidence": "Confidence",
     "colJev": "Jev",
     "colKind": "Kind",
     "colMeasure": "Measured",

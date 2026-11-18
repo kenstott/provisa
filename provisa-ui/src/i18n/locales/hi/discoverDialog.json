@@ -40,10 +40,7 @@
       "whole_number": "पूर्ण संख्याएँ",
       "decimal": "दशमलव",
       "text": "टेक्स्ट",
-      "uuid": "UUID",
-      "date": "तिथियाँ",
-      "timestamp": "टाइमस्टैम्प",
-      "timestamptz": "समय क्षेत्र सहित टाइमस्टैम्प"
+      "uuid": "UUID"
     },
     "starting": "शुरू हो रहा है...",
     "reading": "तालिकाएँ पढ़ी जा रही हैं: {{total}} में से {{done}}",
