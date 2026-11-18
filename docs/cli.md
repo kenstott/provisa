@@ -9,6 +9,22 @@ and the embedded PostgreSQL model store:
 pip install 'provisa[embedded]'
 ```
 
+On Linux, add PyTorch's CPU index:
+
+```bash
+pip install 'provisa[embedded]' --extra-index-url https://download.pytorch.org/whl/cpu
+```
+
+The extra carries the embedding library for the default embedding model (sentence-transformers on a
+CPU-only PyTorch), as every installer does. PyPI's Linux PyTorch wheel is the CUDA build, which pulls
+in about 2.5 GB of GPU libraries Provisa never loads; the CPU index keeps them out. macOS and Windows
+wheels on PyPI are CPU-only already, so the plain command is enough there.
+
+The embedding library adds about 700 MB to the install, most of it PyTorch. The default model itself
+(about 180 MB) is downloaded from the Hugging Face hub the first time it is used. Behind a firewall,
+point that download at a mirror with the `embedding.hub_endpoint` setting; see
+[Runtime Settings](admin.md#runtime-settings).
+
 **Platform requirements.** `provisa run` requires Python 3.12 and a platform with a pgserver
 wheel: linux x86_64, macOS, or Windows x86_64. Linux aarch64 has no pgserver wheel and no source
 distribution, so the embedded tier does not run there. Use the container tier on aarch64.
