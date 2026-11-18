@@ -54,9 +54,6 @@ _tracer = _get_tracer(__name__)
 
 router = APIRouter(prefix="/admin/discover")
 
-#: The confidence a semantic suggestion needs to be kept.
-MIN_CONFIDENCE = 0.7
-
 #: The kinds of discovery a run can be asked for: foreign keys read from the sources' own
 #: constraints, and semantics inferred by the model assigned to relationship inference.
 DiscoveryKind = Literal["foreign_keys", "semantics"]
@@ -195,8 +192,9 @@ class RunScope(BaseModel):  # REQ-413
             )
         return KeyValueOverlap(self.measure_cutoff, self.sample_size)
 
-    def spec(self, role: str) -> RunSpec:
-        """The run asked for, by the person acting as ``role``: its pairs are measured as it."""
+    def spec(self, role: str, threshold: float) -> RunSpec:
+        """The run asked for, by the person acting as ``role``: its pairs are measured as it.
+        ``threshold``: that person's tick threshold, taken now (REQ-413, amended 2026-11-18)."""
         if (self.vendor is None) != (self.model is None):
             raise ApiError(
                 400,
@@ -213,6 +211,7 @@ class RunScope(BaseModel):  # REQ-413
             model=None if self.vendor is None or self.model is None else (self.vendor, self.model),
             role=role,
             key_values=self.key_values(),
+            threshold=threshold,
         )
 
 
@@ -363,7 +362,7 @@ async def count_run(request: Request, body: RunScope):  # REQ-413
     asked and no model is called, so it can be asked again on every change of the scope. It is
     an upper bound (``requests_are``): the run reads the tables and may make fewer."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), await _person_threshold(request))
     model = await _run_model(spec)
     await _require_tables(spec)
     try:
@@ -456,7 +455,7 @@ def _launch(run_id: int, spec: RunSpec, model: ChosenModel | None) -> None:
 async def start_run(request: Request, body: RunScope):  # REQ-413
     """Start a run in the background; answered at once with the run, running."""
     require_capability_request(request, "create_relationship")
-    spec = body.spec(_acting(request))
+    spec = body.spec(_acting(request), await _person_threshold(request))
     model = await _run_model(spec)
     await _require_tables(spec)
     pool = state.model_db
@@ -465,7 +464,7 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
         conn = cast("Connection", _conn)
         run_id = await runs_repo.start(
             conn,
-            scope=body.model_dump(),
+            scope=_recorded(body, spec),
             model=None if model is None else model.label,
             started_by=_caller(request),
         )
@@ -474,6 +473,20 @@ async def start_run(request: Request, body: RunScope):  # REQ-413
     assert started is not None
     _launch(run_id, spec, model)
     return {"run": started.view()}
+
+
+def _recorded(body: RunScope, spec: RunSpec) -> dict[str, Any]:
+    """The scope a run is recorded with: what was asked, and the threshold it runs against
+    (REQ-413, amended 2026-11-18: taken when the run starts and recorded with it)."""
+    return {**body.model_dump(), "threshold": spec.threshold}
+
+
+async def _person_threshold(request: Request) -> float:
+    """The tick threshold of the signed-in person, as a run they start now takes it."""
+    pool = state.model_db
+    assert pool is not None
+    async with pool.acquire() as _conn:
+        return await threshold_repo.read(cast("Connection", _conn), _person(request))
 
 
 async def _source_domains(conn: "Connection", body: DiscoverRequest) -> list[str]:
@@ -520,12 +533,12 @@ async def trigger_discovery(
         async with pool.acquire() as _conn:
             domains = await _source_domains(cast("Connection", _conn), body)
         scope = RunScope(kinds=list[RunKind](body.kinds), source_domains=domains)
-        spec = scope.spec(_acting(request))
+        spec = scope.spec(_acting(request), await _person_threshold(request))
         model = await _run_model(spec)
         async with pool.acquire() as _conn:
             run_id = await runs_repo.start(
                 cast("Connection", _conn),
-                scope=scope.model_dump(),
+                scope=_recorded(scope, spec),
                 model=None if model is None else model.label,
                 started_by=_caller(request),
             )
@@ -621,13 +634,14 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
     assert pool is not None
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
-        await _held(conn, run_id)
+        held = await _held(conn, run_id)
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
             "threshold": await threshold_repo.read(conn, _person(request)),
-            # The score a run keeps a suggestion at: a proposal's reason below_threshold is
-            # against it, whatever the person's threshold.
-            "kept_at": MIN_CONFIDENCE,
+            # The score the run keeps a suggestion at: the threshold it was started with
+            # (REQ-413, amended 2026-11-18); a proposal's reason below_threshold is against it,
+            # whatever the person's threshold is now.
+            "kept_at": held.scope["threshold"],
         }
 
 
