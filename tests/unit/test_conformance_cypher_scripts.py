@@ -38,7 +38,8 @@ def _load(name: str):
     return module
 
 
-by_design = _load("by_design")  # the scripts import it as their sibling
+import by_design  # noqa: E402  # the scripts' sibling: one module object, never re-executed
+
 bolt = _load("cypher_tck_bolt")  # cypher_tck's sibling too
 procedures = _load("cypher_tck_procedures")  # and this
 tck = _load("cypher_tck")
