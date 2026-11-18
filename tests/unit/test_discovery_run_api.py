@@ -46,6 +46,7 @@ from provisa.discovery.direction import Sampled
 from provisa.llm.client import Completion
 from provisa.profiler.classify import catalogue
 from provisa.profiler.run import ProfileError
+from tests.unit.discovery_answers import from_ids
 
 _REQUEST = cast(
     Any,
@@ -273,9 +274,9 @@ class _World:
             self.prompts.append(prompt)
             if self.on_call is not None:
                 self.on_call(len(self.model_calls))
-            return Completion(
-                self.answers.pop(0) if self.answers else "[]", vendor, model, None, False
-            )
+            text = self.answers.pop(0) if self.answers else "[]"
+            # REQ-413 (amended 2026-11-18): the answer is read per listed table pair.
+            return Completion(from_ids(prompt, text, _TABLE_NAMES), vendor, model, None, False)
 
         async def fk(source_pools, source_types, conn, table_ids):
             return [c for c in self.fk_found if c.source_table_id in table_ids]
@@ -375,7 +376,7 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
 # --- the request count ---------------------------------------------------------------------------------
 
 
-async def test_the_count_is_given_by_group_before_any_model_call(monkeypatch):
+async def test_the_count_is_given_in_calls_before_any_model_call(monkeypatch):
     db = await _store()
     await _orders_customers(db)
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
@@ -383,9 +384,10 @@ async def test_the_count_is_given_by_group_before_any_model_call(monkeypatch):
     assert world.model_calls == []
     assert counted["requests"] == 1
     assert counted["requests_are"] == "upper_bound"
-    assert counted["by_group"] == {"whole_number": 1}
+    # REQ-413 (amended 2026-11-18): calls list table pairs: customers x orders, orders x orders.
+    assert counted["table_pairs"] == 2 and counted["by_group"] == {}
     assert counted["model"]["vendor"] == "openai" and counted["model"]["model"] == "gpt-test"
-    assert counted["suggestions_per_request"] == 4_096 // 150
+    assert counted["table_pairs_per_request"] == 4_096 // 150
 
 
 async def test_foreign_keys_alone_count_no_request(monkeypatch):
@@ -412,7 +414,7 @@ async def test_the_count_is_sized_from_the_chosen_models_limits(monkeypatch):
     assigned = await discovery.count_run(_REQUEST, _scope())
     chosen = await discovery.count_run(_REQUEST, _scope(vendor="mistral", model="tiny"))
     assert chosen["model"]["input_tokens"] == 1000 and chosen["model"]["output_tokens"] == 300
-    assert chosen["suggestions_per_request"] == 2
+    assert chosen["table_pairs_per_request"] == 2
     assert chosen["requests"] > assigned["requests"]
 
 
@@ -530,12 +532,12 @@ async def test_relationship_requests_are_planned_on_reduced_information(
     counted = await discovery.count_run(_REQUEST, scope)
     assert world.reads.attempted == []
     assert counted["tables_not_read"] == not_read
-    assert counted["by_group"]["whole_number"] >= 1
+    assert counted["table_pairs"] >= 1
     assert world.classified == [] and world.reads.sql == []  # the count reads nothing
     prepared = await _prepared(scope)
     if not_read == len(set(source) | set(target or [])):
         assert world.classified == [] and world.reads.sql == []  # nothing in scope is read
-    sent = "\n".join(r.prompt(prepared.k, 0.7) for r in prepared.requests)
+    sent = "\n".join(c.prompt(0.7) for c in prepared.plan.calls)
     assert (
         '"required_parameters":[{"column":"_nf_orderId","parameter":"orderId","type":"integer"}],'
         '"values":"not_read"'
@@ -1104,7 +1106,7 @@ async def test_the_glossary_term_bound_to_a_column_is_sent_whether_or_not_its_ta
     prepared = await _prepared(
         _scope(source_domains=["pet-store"], source_tables=[_ORDER_BY_ID, _ORDERS])
     )
-    sent = prepared.requests[0].prompt(prepared.k, 0.7)
+    sent = prepared.plan.calls[0].prompt(0.7)
     assert (
         '{"name":"_nf_orderId","description":null,"classes":["not_read"],"tags":[],"term":"Order"}'
     ) in sent
@@ -1289,7 +1291,7 @@ async def test_the_count_before_run_reads_no_table_and_calls_no_source(monkeypat
         assert counted["tables_not_read"] == 2
     if "semantics" in scope["kinds"]:
         assert counted["requests"] >= 1
-        assert sum(counted["by_group"].values()) == counted["requests"]
+        assert counted["table_pairs"] >= counted["requests"]
     else:
         assert counted["requests"] == 0 and counted["by_group"] == {}
 
@@ -1332,8 +1334,8 @@ async def test_a_run_never_makes_more_requests_than_the_count_gave(
     monkeypatch, tmp_path, input_tokens, values, kinds, same_as_source
 ):
     """The bound (REQ-413): for never-profiled, profiled and parameterized tables, whatever the
-    run then reads (long values, every kind matched), its requests are at most the count's, in
-    all and in each group."""
+    run then reads (long values, every kind matched), its calls are at most the count's, and its
+    table pairs at most the count's."""
     db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
     config = {
         **_ASSIGNED,
@@ -1390,14 +1392,13 @@ async def test_a_run_never_makes_more_requests_than_the_count_gave(
     counted = await discovery.count_run(_REQUEST, scope)
     assert world.reads.sql == [] and world.classified == []
     prepared = await _prepared(scope)
-    planned = Counter(r.group for r in prepared.requests)
-    assert planned, "the fixture gives the run something to ask"
-    assert len(prepared.requests) <= counted["requests"]
-    for group, asked in planned.items():
-        assert asked <= counted["by_group"][group], (group, planned, counted["by_group"])
+    calls = prepared.plan.calls
+    assert calls, "the fixture gives the run something to ask"
+    assert len(calls) <= counted["requests"]
+    assert prepared.plan.table_pairs <= counted["table_pairs"]
     run = await _run(world, scope)
     assert run["status"] == "done", run
-    assert run["requests_total"] == len(world.model_calls) == len(prepared.requests)
+    assert run["requests_total"] == len(world.model_calls) == len(calls)
     assert len(world.model_calls) <= counted["requests"]
     assert world.reads.attempted == []
 
@@ -1460,20 +1461,19 @@ def test_the_bound_holds_whatever_the_tables_hold(seed):
     target = None if rng.random() < 0.5 else read[cut - 1 :]
     source = read if target is None else read[:cut]
     input_tokens = rng.choice([1000, 1150, 1550, 3350, 100_000])
-    _, requests = windows.plan(source, target, input_tokens, 4096)
-    k, by_group = windows.bound(
+    planned = windows.plan(source, target, input_tokens, 4096)
+    k, calls, pairs = windows.bound(
         _as_registered(source),
         None if target is None else _as_registered(target),
         input_tokens,
         4096,
     )
-    planned = Counter(r.group for r in requests)
     assert k == 4096 // 150
-    for group, asked in planned.items():
-        assert asked <= by_group.get(group, 0), (seed, group, planned, by_group)
+    assert len(planned.calls) <= calls, (seed, len(planned.calls), calls)
+    assert planned.table_pairs <= pairs, (seed, planned.table_pairs, pairs)
 
 
-def test_a_group_with_no_two_columns_to_compare_counts_no_request():
+def test_a_scope_with_no_two_columns_to_compare_counts_no_request():
     def table(tid: int, *types: str) -> TableFacts:
         columns = tuple(
             ColumnFacts(
@@ -1492,10 +1492,10 @@ def test_a_group_with_no_two_columns_to_compare_counts_no_request():
         return TableFacts(tid, "d", "public", f"t{tid}", None, (), None, columns)
 
     one_text = [table(1, "integer", "text"), table(2, "integer")]
-    assert windows.bound(one_text, None, 100_000, 4096)[1] == {"whole_number": 1}
+    assert windows.bound(one_text, None, 100_000, 4096)[1:] == (1, 1)  # t1 x t2 alone
     # The one column on both sides is not compared with itself.
-    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096)[1] == {}
-    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096)[1] == {}
+    assert windows.bound([table(1, "text")], [table(1, "text")], 100_000, 4096)[1:] == (0, 0)
+    assert windows.bound([table(1, "text")], [table(2, "date")], 100_000, 4096)[1:] == (0, 0)
 
 
 def test_a_sample_value_is_sent_in_a_bounded_length():

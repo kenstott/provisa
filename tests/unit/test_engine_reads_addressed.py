@@ -128,7 +128,7 @@ async def test_discovery_samples_a_table_through_the_governed_pipeline_at_its_pu
 
     async def governed(sql: str) -> tuple[list[str], list[tuple]]:
         statements.append(sql)
-        return ["id"], [(7,), (7,), (None,)]
+        return ["id"], [(7,)]
 
     monkeypatch.setattr(profiler, "_governed", governed)
     monkeypatch.setattr(
@@ -137,7 +137,7 @@ async def test_discovery_samples_a_table_through_the_governed_pipeline_at_its_pu
     samples = await gather._samples(object(), 1, "orders", ["id", "absent"])
     assert samples == {"id": ("7",)}
     (sql,) = statements
-    assert sql.startswith('SELECT "id" FROM "sales"."orders" LIMIT ')
+    assert sql.startswith('SELECT DISTINCT "id" FROM "sales"."orders" WHERE "id" IS NOT NULL ')
     assert "src.public.orders" not in sql.replace('"', "")
 
 

@@ -30,8 +30,10 @@ from provisa.core import schema_org as so
 from provisa.core.database import Database
 from provisa.discovery.analyzer import RelationshipCandidate
 from provisa.llm.client import Completion
+from tests.unit.discovery_answers import from_ids
 from tests.unit.test_discovery_run_api import (
     _REQUEST,
+    _TABLE_NAMES,
     _World,
     _candidates,
     _nothing_published,  # noqa: F401 -- the autouse fixture the store's tables rely on
@@ -70,7 +72,9 @@ class _Discovery:
             world.model_calls.append((vendor, model, max_tokens))
             if isinstance(self.answer, Exception):
                 raise self.answer
-            answer, self.answer = self.answer, "[]"  # a split request's halves propose none
+            answer, self.answer = self.answer, "[]"  # a later call's pairs propose none
+            # REQ-413 (amended 2026-11-18): the answer is read per listed table pair.
+            answer = from_ids(prompt, answer, _TABLE_NAMES)
             return Completion(answer, vendor, model, None, self.cut_off)
 
         async def fk(source_pools, source_types, conn, table_ids):

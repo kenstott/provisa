@@ -95,3 +95,42 @@ def answer(
 ) -> str:
     """:func:`answer_items` as the model's text."""
     return json.dumps(answer_items(prompt, pairs, omit))
+
+
+def from_ids(prompt: str, text: str, names: dict[int, str]) -> str:
+    """A stub's answer written as a flat list of column pairs naming tables by id
+    (``source_table_id``/``target_table_id``), as the call reads it: each placed under its listed
+    table pair by the tables' ``names``, every other listed pair answered "none". An empty list
+    answers every listed pair "none". Any other text (an unreadable or cut-off answer, or one
+    already per number) is the answer as written."""
+    try:
+        items = json.loads(text)
+    except json.JSONDecodeError:
+        return text
+    if not isinstance(items, list) or not all(
+        isinstance(i, dict) and "source_table_id" in i and "target_table_id" in i for i in items
+    ):
+        return text
+    pairs = []
+    for i in items:
+        pair = dict(i)
+        # A table id the run does not have is written as a name no listed table has.
+        pair["source_table"] = names.get(int(pair.pop("source_table_id")), "no such table")
+        pair["target_table"] = names.get(int(pair.pop("target_table_id")), "no such table")
+        pairs.append(pair)
+    out = answer_items(prompt, pairs)
+    placed = [
+        id(c)
+        for item in out
+        if isinstance(item["column_pairs"], list)
+        for c in item["column_pairs"]
+    ]
+    stray = [c for c in pairs if id(c) not in placed]
+    if stray and out:
+        # A column pair whose tables no listed pair names is answered under the first pair.
+        first = out[0]
+        first["column_pairs"] = [
+            *([] if first["column_pairs"] == "none" else first["column_pairs"]),
+            *stray,
+        ]
+    return json.dumps(out)

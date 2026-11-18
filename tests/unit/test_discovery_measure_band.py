@@ -33,6 +33,7 @@ from provisa.discovery.measure import Measurer, Values
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
 from provisa.discovery.runner import KeyValues, Tally, execute, judged
 from provisa.discovery.windows import plan
+from tests.unit.discovery_answers import from_ids
 from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
 
@@ -215,6 +216,10 @@ async def _direct(fn, *args):
     return fn(*args)
 
 
+#: The tables of the runs below, by id.
+_NAMES = {1: "orders", 2: "customers"}
+
+
 def _item(src: str, confidence: float) -> dict:
     return {
         "source_table_id": 1,
@@ -230,17 +235,16 @@ def _item(src: str, confidence: float) -> dict:
 async def test_a_run_asks_the_model_then_jev_then_measures_only_the_band():
     orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
     customers = _tbl(2, "customers", _col("id", pk=True))
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    planned = plan([orders], [customers], *DEFAULT_LIMITS)
     events: list[tuple[str, list]] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         events.append(("model", []))
         answer = [_item("customer_id", 0.9), _item("store_id", 0.4)]
-        return Completion(json.dumps(answer), "acme", "m", None, False)
+        return Completion(from_ids(prompt, json.dumps(answer), _NAMES), "acme", "m", None, False)
 
     tally, found = await execute(
-        requests,
-        k,
+        planned,
         4_096,
         ask,
         _Watcher(),
@@ -305,18 +309,17 @@ async def test_the_runs_threshold_is_the_one_its_summary_reports():
 async def test_a_run_tells_the_model_its_threshold_and_judges_against_it():
     orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
     customers = _tbl(2, "customers", _col("id", pk=True))
-    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    planned = plan([orders], [customers], *DEFAULT_LIMITS)
     events: list[tuple[str, list]] = []
     prompts: list[str] = []
 
     def ask(prompt: str, max_tokens: int) -> Completion:
         prompts.append(prompt)
         answer = [_item("customer_id", 0.6), _item("store_id", 0.85)]
-        return Completion(json.dumps(answer), "acme", "m", None, False)
+        return Completion(from_ids(prompt, json.dumps(answer), _NAMES), "acme", "m", None, False)
 
     tally, found = await execute(
-        requests,
-        k,
+        planned,
         4_096,
         ask,
         _Watcher(),
