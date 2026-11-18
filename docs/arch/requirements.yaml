@@ -3092,7 +3092,12 @@
     2026-11-18, THE DICTIONARY IS A GENERAL ENGLISH ONE:) Maintainer 2026-11-18. The dictionary the naming
     authority looks words up in is a general English noun-forms dictionary (so person and people, loss and
     losses take their everyday forms), bundled with Provisa under a licence compatible with Provisa''s own;
-    a specialist lexicon is not used as the dictionary. Words it lacks take a rule-based form.'
+    a specialist lexicon is not used as the dictionary. Words it lacks take a rule-based form. (Amended
+    2026-11-18, THE EVERYDAY FORM WINS; A WORD KNOWN ONLY IN ANOTHER SENSE IS NOT INFLECTED:) Maintainer
+    2026-11-18. Where the dictionary gives a noun more than one form, the naming authority takes the one
+    in everyday use (schema to schemas; data stays data, its own singular and plural; person to people).
+    A word the dictionary knows only in an unrelated sense of the same spelling, such as by (read as the
+    noun bye), is not inflected. This is part of the rule, not a per-word list.'
   use_case: Consistent multi-language naming with a single authority ensures client-facing names are predictable
     and independent of physical schema.
   code:
