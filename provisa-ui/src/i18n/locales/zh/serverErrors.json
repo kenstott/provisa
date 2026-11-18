@@ -922,6 +922,15 @@
     },
     "relationship": {
       "name_taken": "名称“{{name}}”已被关系“{{held_by}}”使用。请为此关系另行命名。"
+    },
+    "wikidata": {
+      "no_credential": "Wikidata 查询服务不需要凭据",
+      "bad_id": "{{value}} 不是 Wikidata {{kind}}",
+      "bad_language": "{{language}} 不是语言代码",
+      "bad_column_type": "Wikidata 属性不提供的列类型：{{types}}",
+      "filter_required": "此类有 {{count}} 个实例，超过 {{limit}}：请选择筛选条件",
+      "filter_too_wide": "筛选后仍有 {{count}} 个实例，超过 {{limit}}",
+      "unreachable": "无法访问 Wikidata：{{reason}}"
     }
   }
 }

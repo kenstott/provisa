@@ -115,7 +115,7 @@ describe("WikidataTableChooser", () => {
     fireEvent.click(screen.getByRole("radio", { name: "Table of a class" }));
     await searchAndPick("wikidata-class-search", "city", "city (Q515)");
     expect(api.searchWikidata).toHaveBeenCalledWith("city", "en");
-    expect(await screen.findByTestId("wikidata-class-count")).toHaveTextContent("10,542 instances");
+    expect(await screen.findByTestId("wikidata-class-count")).toHaveTextContent("Instances: 10,542");
     expect(api.fetchWikidataClass).toHaveBeenCalledWith("Q515", "en");
     expect(screen.queryByTestId("wikidata-filter-property")).toBeNull();
     fireEvent.click(screen.getByTestId("wikidata-class-use"));

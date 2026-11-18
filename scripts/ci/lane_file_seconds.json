@@ -153,6 +153,7 @@
   "tests/integration/test_dq_registration_path.py": 4.8,
   "tests/integration/test_dq_scan_history_e2e.py": 57.4,
   "tests/integration/test_withdrawn_e2e.py": 410.0,
+  "tests/integration/test_wikidata_live.py": 120.0,
   "tests/integration/test_drop_paths_on_engines.py": 62.1,
   "tests/integration/test_druid_pipeline_e2e.py": 0.0,
   "tests/integration/test_druid_source_e2e.py": 73.8,

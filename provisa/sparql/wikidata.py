@@ -286,7 +286,7 @@ def _client() -> httpx.AsyncClient:
     return httpx.AsyncClient(event_hooks=sandbox_egress.http_event_hooks())
 
 
-async def _sparql(query: str) -> list[dict]:
+async def select(query: str) -> list[dict]:
     """The bindings the query service answers ``query`` with."""
     from provisa.sparql.source import sparql_headers
 
@@ -404,7 +404,7 @@ async def count_instances(class_id: str, row_filter: RowFilter | None = None) ->
         "SELECT (COUNT(DISTINCT ?item) AS ?count) WHERE { "
         f"?item wdt:P31 wd:{class_id} .{_filter_triple(row_filter)} }}"
     )
-    rows = await _sparql(query)
+    rows = await select(query)
     return int(rows[0]["count"]["value"])
 
 
@@ -420,7 +420,7 @@ async def _neighbours(class_id: str, language: str) -> tuple[list[dict], list[di
     )
     broader: list[dict] = []
     narrower: list[dict] = []
-    for row in await _sparql(query):
+    for row in await select(query):
         entry = {"id": _entity_id(row["cls"]), "label": _text(row, "label")}
         (broader if row["direction"]["value"] == "broader" else narrower).append(entry)
     return broader, narrower
@@ -445,7 +445,7 @@ async def _properties(class_id: str, language: str) -> list[ClassProperty]:
             item=row["kind"]["value"] == _ITEM_TYPE,
             uses=int(row["uses"]["value"]),
         )
-        for row in await _sparql(query)
+        for row in await select(query)
     ]
 
 

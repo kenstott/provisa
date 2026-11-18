@@ -183,7 +183,6 @@ export function WikidataTableChooser({ language, onChoose }: Props) {
               <FormField size="long">
                 <Text size="sm" data-testid="wikidata-class-count">
                   {t("wikidataTable.instances", {
-                    count: klass.instance_count,
                     value: klass.instance_count.toLocaleString(language),
                   })}
                 </Text>

@@ -228,6 +228,7 @@
     "qbRefreshTokenHint": "Permite que o Provisa leia a empresa. Entre com o QuickBooks para obter um, ou cole um do OAuth 2.0 Playground da Intuit com o escopo Accounting. O QuickBooks o substitui a cada uso, e o Provisa guarda o mais recente. Um novo inserido aqui substitui o guardado ao salvar.",
     "qbSignIn": "Entrar com o QuickBooks",
     "qbSignedIn": "Conectado à empresa {{realm}}. Salve a fonte para mantê-la.",
-    "qbSignInFailed": "Não foi possível concluir o login."
+    "qbSignInFailed": "Não foi possível concluir o login.",
+    "wikidataEndpointHint": "O serviço de consultas do Wikidata. Sem credencial; as tabelas são atualizadas diariamente."
   }
 }
