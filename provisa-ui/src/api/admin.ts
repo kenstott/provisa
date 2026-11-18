@@ -747,8 +747,7 @@ export interface ModelLimits {
 }
 
 /** The type groups columns are compared within. */
-export type TypeGroup =
-  "whole_number" | "decimal" | "text" | "uuid" | "date" | "timestamp" | "timestamptz";
+export type TypeGroup = "whole_number" | "decimal" | "text" | "uuid";
 
 /** At most how many model requests a run of this scope makes, by type group. The count reads no
  *  table: it is an upper bound from what is registered, and the run may make fewer. */

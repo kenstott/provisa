@@ -28,6 +28,8 @@ from pathlib import Path
 import grpc
 import grpc.aio
 
+from provisa.security.sandbox_egress import PrivateDestinationRefused, Refusal, pinned_address
+
 log = logging.getLogger(__name__)
 
 
@@ -88,12 +90,13 @@ def _build_request(pb2, input_message_name: str, args: dict):
 # ---------------------------------------------------------------------------
 
 
-def open_channel(server_address: str, tls: bool) -> grpc.aio.Channel:
-    """Open a gRPC channel to a remote service, secure or insecure."""
-    from provisa.security.sandbox_egress import pinned_address
-
+def open_channel(
+    server_address: str, tls: bool, *, refusal: Refusal = PrivateDestinationRefused
+) -> grpc.aio.Channel:
+    """Open a gRPC channel to a remote service, secure or insecure. ``refusal`` is what a held
+    org's private destination is refused as: a source's unless another is given (a command's)."""
     # REQ-2006: a sandbox org's channel dials the address its check resolved, its name kept for TLS.
-    target, name = pinned_address(server_address)
+    target, name = pinned_address(server_address, refusal=refusal)
     if tls:
         credentials = grpc.ssl_channel_credentials()
         options = [("grpc.ssl_target_name_override", name)] if target != server_address else []

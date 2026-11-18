@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Uma linha marcada é aceita ao aplicar. As linhas com pontuação de pelo menos o limite começam marcadas. Uma linha sem nenhuma caixa marcada fica indecisa.",
     "colScore": "Pontuação",
-    "colModel": "Modelo",
+    "colConfidence": "Confiança",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Medido",
