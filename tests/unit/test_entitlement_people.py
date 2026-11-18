@@ -232,6 +232,19 @@ async def test_an_email_of_a_known_person_is_that_persons_write(api):
     assert await _rows(api, entitlement_pending) == []
 
 
+async def test_a_local_accounts_typed_address_names_no_one(api):
+    """REQ-1261 (as SEC-H3 holds at sign-in): a local account's address is whatever was typed
+    when it was made, so nothing proves it is that person's. A write naming that address grants
+    no one now: it waits, as a pending grant, for a sign-in that verifies the address."""
+    response = await api.client.put("/admin/entitlements/lists", json=_by_email("BOB@acme.test"))
+    assert response.status_code == 200, response.text
+    assert response.json()["pending"] is True
+    assert _as(api, "l-bob") is None
+    assert await _rows(api, entitlements) == []
+    listed = (await api.client.get("/admin/entitlements/pending")).json()
+    assert [g["email"] for g in listed] == ["bob@acme.test"]
+
+
 async def test_an_email_matching_no_one_is_stored_as_a_pending_grant(api):
     response = await api.client.put("/admin/entitlements/lists", json=_by_email(" Dave@New.test "))
     assert response.status_code == 200, response.text
