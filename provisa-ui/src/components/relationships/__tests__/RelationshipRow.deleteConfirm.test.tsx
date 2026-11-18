@@ -45,6 +45,7 @@ function row(onDelete: () => void) {
     functions: [],
     tableDomainById: {},
     domainsEnabled: true,
+    actingRole: null,
   } as unknown as Props;
   return <RelationshipDetail {...props} />;
 }

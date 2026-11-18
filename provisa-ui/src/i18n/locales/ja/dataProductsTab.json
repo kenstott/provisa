@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "クエリ可能なテーブルまたはリレーションシップはありません",
     "graphqlQueryAria": "{{table}} の GraphQL クエリ例を実行",
     "sqlQueryAria": "{{table}} の SQL クエリ例を実行",
-    "cypherQueryAria": "{{type}} の Cypher クエリ例を実行",
     "grpcQueryAria": "{{table}} の gRPC 呼び出し例を実行",
     "jsonapiQueryAria": "{{table}} の JSON:API リクエスト例を実行",
     "openApiQueryAria": "{{table}} の REST リクエスト例を実行",

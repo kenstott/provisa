@@ -57619,7 +57619,10 @@
     of the Cypher graph only when no registered relationship of its own joins it. A junction that registered
     relationships join (as after Join through, which keeps the two hops beside the joined relationship)
     keeps its node and those edges in Cypher, so all three relationships are offered there, as in SQL and
-    GraphQL.'
+    GraphQL. (Amended 2026-11-18, A RELATIONSHIP NOT SERVED TO CYPHER DOES NOT KEEP A JUNCTION''S NODE:)
+    Lead 2026-11-18, clarifying the junction-node rule: only relationships served to Cypher count as joining
+    a junction; a relationship excluded from Cypher (such as the meta catalog''s own hop rows into the glossary
+    junctions, which serve GraphQL only) does not keep the junction''s node.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
@@ -76292,7 +76295,22 @@
     for included resources and dotted includes that go more than one relationship deep, as a group-by read
     already does. In gRPC each relationship has its own field on the row message, named by its GraphQL relationship
     name, so a read_mask path names the relationship itself and every relationship to the same table can
-    be read; field numbers stay stable for fields that already exist.'
+    be read; field numbers stay stable for fields that already exist. (Amended 2026-11-18, A JSON:API READ
+    AND ITS INCLUDES NEED NO PRIMARY KEY; THEY FOLLOW APPROVED RELATIONSHIPS:) Maintainer 2026-11-18 (''pk
+    should be irrelevant. it should just work on approved relationships''). No JSON:API read or include
+    is refused because a table declares no primary key. An include follows the approved relationship, and
+    an included resource''s id is the value of the column that relationship points at. A root resource''s
+    id is its primary key where one is declared; otherwise the column an approved relationship points at;
+    otherwise its position in the response. (Amended 2026-11-18, A ONE-TO-MANY INCLUDE NEVER COLLAPSES ITS
+    RESOURCES:) Lead 2026-11-18, refining the no-primary-key rule so no row is lost: an included resource
+    reached by a many-to-one relationship is identified by the column that relationship points at; one reached
+    by a one-to-many relationship is identified by its primary key where one is declared, otherwise by its
+    position among its parent''s included resources, so every child row stays a resource of its own. (Amended
+    2026-11-18, A ONE-TO-MANY INCLUDE''S POSITION ID CARRIES ITS PARENT''S ID:) Lead 2026-11-18, making
+    the one-to-many rule exact: an included resource with no declared primary key, reached by a one-to-many
+    relationship, has the id ''<parent id>:<n>'', n its 0-based position among that parent''s included resources
+    (a '':'' or ''\\'' in the parent id escaped), so children of different parents never share an id; resource
+    linkage uses the same ids.'
   use_case: An operator who assigns a command to a role, hides a column, or moves an object to another
     domain changes what every API offers in one place, and no surface can offer what another surface hides.
   scenario: 'Given a query-kind command find_pets in domain petstore, assigned to role analyst
