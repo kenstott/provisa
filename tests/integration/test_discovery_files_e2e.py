@@ -515,9 +515,9 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     instance: Instance, endpoint: _Endpoint, files
 ):
     """All three domains, with the limits of a model that holds every table pair in one call: the
-    permit columns share the call with every other table's, and every proposal is read again. What the first run's reviewer decided shows: the accepted ones are registered and
-    cannot be decided, the one marked keeps its decision and cannot be decided, and the other
-    neighborhood pairs, a key of no table, are scored under the threshold again."""
+    permit columns share the call with every other table's, and every proposal is read again. What the first run's reviewer decided holds: the accepted ones are registered and the one
+    marked keeps its decision, so none of them is listed, and the other neighborhood pairs, a
+    key of no table, are scored under the threshold again."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
     prompts = endpoint.prompts[before:]
@@ -534,13 +534,10 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
         for r in _proposals(instance, run["id"])
         if r["kind"] == "semantics"
     }
+    # REQ-413 (amended 2026-11-18): a pair registered since (the key and the address) and one
+    # marked not to be recommended again keep that decision and are not listed; the other
+    # neighborhood pairs are scored under the threshold again.
     assert read == {
-        _PERMIT: ("existing", False),
-        # Marked not to be recommended again: it keeps that decision and is not measured anew.
-        ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "rejected",
-            False,
-        ),
         ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
             "below_threshold",
             True,
@@ -549,6 +546,4 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
             "below_threshold",
             True,
         ),
-        # Rated 0.4 again, and registered since: said as registered, not to be accepted twice.
-        _ADDRESS: ("existing", False),
     }
