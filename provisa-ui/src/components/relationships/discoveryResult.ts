@@ -32,6 +32,10 @@ const REMOVED_ORDER: RemovedKind[] = [
   "weaker",
 ];
 
+/** The compared type groups, as the server orders them (provisa/discovery/columns.py GROUPS).
+ *  A date or timestamp is never a key candidate, so neither is a group (REQ-413). */
+export const GROUP_ORDER: readonly TypeGroup[] = ["whole_number", "decimal", "text", "uuid"];
+
 export function typeGroupLabel(group: TypeGroup, t: TFunction): string {
   return t(`discoverDialog.group.${group}`);
 }

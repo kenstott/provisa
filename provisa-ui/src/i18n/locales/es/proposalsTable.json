@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Una fila marcada se acepta al aplicar. Las filas cuya puntuación alcanza al menos el umbral empiezan marcadas. Una fila sin ninguna casilla marcada queda sin decidir.",
     "colScore": "Puntuación",
-    "colModel": "Modelo",
+    "colConfidence": "Confianza",
     "colJev": "Jev",
     "colKind": "Tipo",
     "colMeasure": "Medido",

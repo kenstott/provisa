@@ -35,6 +35,8 @@ from collections.abc import Mapping
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from provisa.core.db import Database
 
 # REQ-1398: aisuite vendors whose provider takes a plain `api_key` string (config `{vendor:
@@ -450,15 +452,46 @@ def endpoint_address(endpoint: Mapping[str, object]) -> str:
 # --- embedding models (REQ-420) ------------------------------------------------------------------
 
 
+#: How a core-layer read reaches the model store of the organization this request runs as, where
+#: its stored vendor keys are (:func:`read_org_api_keys`). ``core`` cannot import the API layer's
+#: AppState, so the API layer installs this at import, the seam
+#: provisa.core.secrets_store.set_request_org_resolver is.
+_request_model_db: "Callable[[], Database | None] | None" = None
+
+
+def set_request_model_db_resolver(resolver: "Callable[[], Database | None]") -> None:
+    """Install the API layer's answer to 'which model store is the running org's'. Called once, at
+    import."""
+    global _request_model_db
+    _request_model_db = resolver
+
+
+async def _request_org_ai_key(vendor: str) -> str:
+    """:func:`ai_key` for the organization this request runs as."""
+    if _request_model_db is None:
+        raise RuntimeError(
+            "No request model-store resolver is installed, so the organization's stored keys "
+            "cannot be read here. The API layer installs it at import (provisa.api.app)."
+        )
+    return await org_ai_key(_request_model_db(), vendor)
+
+
 async def vector_model_key(model: Any) -> str | None:
     """The key an embedding model (provisa.vector.registry.VectorModel) is called with: what its
-    ``api_key_env`` resolves to (provisa.core.secrets.resolve_api_key_field); None for a model
-    that declares no key. REQ-1395 as amended 2026-11-16: on a server of many organizations a key
-    read from the server's environment (a bare variable name, ``${env:...}``) is refused, as an AI
-    endpoint's is; no embedding model is the sandbox tier's (REQ-2006), so none is excepted. A key
-    that resolves to nothing is refused."""
+    ``api_key_env`` resolves to (provisa.core.secrets.resolve_api_key_field). REQ-1395 as amended
+    2026-11-16: on a server of many organizations a key read from the server's environment (a bare
+    variable name, ``${env:...}``) is refused, as an AI endpoint's is; no embedding model is the
+    sandbox tier's (REQ-2006), so none is excepted. A key that resolves to nothing is refused.
+
+    A model that declares no key: an ``openai`` model reached at OpenAI's own address (no
+    ``base_url``) is called with the OpenAI key the organization stored (:func:`ai_key`, which on
+    an install of one reads the deployment's OPENAI_API_KEY when none is stored), refused when there
+    is none; any other is called with none. The stored OpenAI key goes to OpenAI only, never to a
+    ``base_url`` that is not its address."""
     field = model.api_key_env
     if not field:
+        if model.provider == "openai" and not model.base_url:
+            return await _request_org_ai_key("openai")
         return None
     from provisa.core.env_reference_guard import refuse_named_by_org
 
@@ -484,12 +517,13 @@ async def vector_model_key(model: Any) -> str | None:
     return key
 
 
-def vector_model_address(model: Any, vendor_address: str, *, local_server: bool) -> str:
-    """The base address an embedding model is reached at: its ``base_url``; with none,
-    ``vendor_address``. REQ-1395 as amended 2026-11-16: on a server of many organizations an
-    address from the server's environment (``${env:...}``) is refused, and so is a local model
-    server (``local_server``: Ollama) at the server's own address, which is where it is reached
-    with no ``base_url``; an organization declares its own."""
+async def vector_model_address(model: Any, vendor_address: str, *, local_server: bool) -> str:
+    """The base address an embedding model is reached at: its ``base_url``, a reference in it
+    (``${env:...}``, ``${secret:...}``) resolved (provisa.core.secrets_store.resolved_credential);
+    with none, ``vendor_address``. REQ-1395 as amended 2026-11-16: on a server of many
+    organizations an address from the server's environment (``${env:...}``) is refused, and so is
+    a local model server (``local_server``: Ollama) at the server's own address, which is where it
+    is reached with no ``base_url``; an organization declares its own."""
     address = model.base_url
     if address:
         if _many() and "${env:" in address:
@@ -500,7 +534,9 @@ def vector_model_address(model: Any, vendor_address: str, *, local_server: bool)
                 f"environment, which an organization on this server does not use. Give it an "
                 f"address of its own under {WHERE_TO_ADD_AI_KEY}.",
             )
-        return address
+        from provisa.core.secrets_store import resolved_credential
+
+        return await resolved_credential(address)
     if local_server and _many():
         raise AiKeyRequired(
             model.id,
@@ -519,6 +555,16 @@ def hub_token() -> bool | None:
     (REQ-1395 as amended 2026-11-16). On an install of one, ``None``: the deployment's, as
     huggingface_hub reads it."""
     return False if _many() else None
+
+
+def hub_endpoint() -> str:
+    """The Hugging Face hub address a local model is fetched from: the operator setting
+    ``embedding.hub_endpoint`` (provisa.core.settings_registry: stored, then HF_ENDPOINT, then the
+    config file, then the hub's own address). Given to every fetch, so huggingface_hub's own read
+    of HF_ENDPOINT at import never decides it."""
+    from provisa.core import settings_registry
+
+    return str(settings_registry.value("embedding.hub_endpoint")).rstrip("/")
 
 
 # --- the vendors' own clients ----------------------------------------------------------------------

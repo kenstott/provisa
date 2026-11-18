@@ -2,7 +2,7 @@
   "proposalsTable": {
     "intro": "Une ligne cochée est acceptée à l'application. Les lignes dont le score atteint au moins le seuil sont cochées au départ. Une ligne sans case cochée reste non décidée.",
     "colScore": "Score",
-    "colModel": "Modèle",
+    "colConfidence": "Confiance",
     "colJev": "Jev",
     "colKind": "Type",
     "colMeasure": "Mesuré",

@@ -40,10 +40,7 @@
       "whole_number": "整数",
       "decimal": "小数",
       "text": "文本",
-      "uuid": "UUID",
-      "date": "日期",
-      "timestamp": "时间戳",
-      "timestamptz": "带时区的时间戳"
+      "uuid": "UUID"
     },
     "starting": "正在启动...",
     "reading": "正在读取表：{{done}} / {{total}}",

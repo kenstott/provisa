@@ -863,7 +863,7 @@ async def create_webhook(
     """Create a tracked webhook."""
     require_capability_request(request, "table_registration")
     # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
-    sandbox_egress.require_url_allowed(body.url)
+    sandbox_egress.require_endpoint_url_allowed(body.url)
     body.domainId = _saved_domain(request, body.name, body.domainId)
     from provisa.api.app import state
 
@@ -949,7 +949,7 @@ async def update_webhook(request: Request, name: str, body: WebhookInput):  # RE
     """Update a tracked webhook by name."""
     require_capability_request(request, "table_registration")
     # REQ-2006: a held org's webhook reaches public destinations only; refused by name.
-    sandbox_egress.require_url_allowed(body.url)
+    sandbox_egress.require_endpoint_url_allowed(body.url)
     body.domainId = _saved_domain(request, name, body.domainId)
     from provisa.api.app import state
 

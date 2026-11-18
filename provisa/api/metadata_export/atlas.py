@@ -1173,7 +1173,8 @@ class AtlasExport(MetadataExport):  # REQ-1069
             # REQ-1387: the glossary publishes even when no entity does — an abstract term
             # is user vocabulary, not physical binding, and exists without a data product.
             async with httpx.AsyncClient(
-                timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+                timeout=self._config.timeout_seconds,
+                event_hooks=sandbox_egress.endpoint_event_hooks(),
             ) as client:
                 headers = await self._headers(client)
                 await self._publish_glossary(client, headers, snapshot, result)
@@ -1616,7 +1617,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
             return result
         defs = classification_defs(snapshot)
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             headers = await self._headers(client)
             await self._ensure_type_system(client, headers)
@@ -1801,7 +1802,7 @@ class AtlasExport(MetadataExport):  # REQ-1069
         # healthcheck passes (Tomcat still settling under QEMU emulation) — retry
         # transport-level failures a few times before treating the service as down.
         async with httpx.AsyncClient(
-            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.http_event_hooks()
+            timeout=self._config.timeout_seconds, event_hooks=sandbox_egress.endpoint_event_hooks()
         ) as client:
             headers = await self._headers(client)
             response = await self._get_with_retry(client, headers)

@@ -50,7 +50,7 @@
     "sparqlDropSubquery": "Een pil kan niet op een query met een sub-SELECT worden neergezet. Er is niets toegevoegd.",
     "sparqlDropNoClass": "Dit resultaat noemt geen klasse om aan te koppelen: geef een variabele een klasse en zet opnieuw neer. Er is niets toegevoegd.",
     "sparqlDropNode": "Dat knooppunt is geen variabele van deze query, dus er is niets om aan te koppelen. Er is niets toegevoegd.",
-    "sparqlDropNoPath": "{{name}} heeft geen relatie met {{classes}}. Er is niets toegevoegd.",
+    "sparqlDropNoPath": "{{name}} heeft binnen de geselecteerde domeinen geen relatie met {{classes}}. Er is niets toegevoegd.",
     "sparqlDropTooFar": "{{name}} ligt {{hops}} relaties van {{classes}}, voorbij de {{most}} die een neerzetting doorloopt: geen kort pad. Er is niets toegevoegd.",
     "sparqlDropNoEnd": "Geen van beide uiteinden van {{name}} zit in dit resultaat. Er is niets toegevoegd.",
     "sparqlDropParameterized": "Een pad kan niet door {{name}} lopen: lezen vraagt om argumenten. Er is niets toegevoegd.",
@@ -58,6 +58,9 @@
     "sparqlDropNoProperty": "Geen enkele klasse in dit resultaat heeft {{name}}. Er is niets toegevoegd.",
     "sparqlDropLeftOut": "{{shown}} van {{total}} even korte paden toegevoegd; de andere zijn weggelaten.",
     "sparqlDropCut": "Het resultaat heeft zijn LIMIT van {{limit}} bereikt: rijen daarna zijn weggelaten.",
-    "cypherPathNoKey": "De paden tussen {{from}} en {{to}} hebben de sleutel van elk knooppunt nodig, en een van beide heeft er geen."
+    "cypherPathNoKey": "De paden tussen {{from}} en {{to}} hebben de sleutel van elk knooppunt nodig, en een van beide heeft er geen.",
+    "cypherDropNoLabel": "De knooppunten van dit resultaat hebben geen label, en de query heeft geen relatie die ze er een geeft: geef een knooppunt een label en zet opnieuw neer. Er is niets toegevoegd.",
+    "cypherDropNoPair": "Geen relatie in de query van dit resultaat verbindt labels binnen de geselecteerde domeinen, dus de knooppunten kunnen geen labels krijgen. Er is niets toegevoegd.",
+    "cypherDropLabelled": "De knooppunten zonder label van dit resultaat hebben hun labels uit het schema gekregen, één MATCH per labelpaar."
   }
 }
