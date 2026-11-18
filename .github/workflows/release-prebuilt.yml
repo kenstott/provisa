@@ -57,16 +57,13 @@ jobs:
       # The pinned jars (tests/trino_plugins.py: versions and sha256s), the same ones every test
       # lane mounts: this job primes their cache, a hit or one checksum-verified fetch from Maven
       # Central (.github/actions/trino-plugins). Each jar is shaded and carries its own
-      # META-INF/services/io.trino.spi.Plugin, so one jar per directory is a complete plugin.
+      # META-INF/services/io.trino.spi.Plugin, so one jar per directory is a complete plugin. The
+      # same action restores (or, on a miss, builds once) Provisa's own function plugin
+      # (REQ-1494), provisa-functions, beside them.
       - name: Trino plugins
         uses: ./.github/actions/trino-plugins
         with:
           phase: prime
-
-      # REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
-      # trino-functions/ in a Maven container; the engine's compose mounts it beside the others.
-      - name: Build the provisa-functions Trino plugin
-        run: scripts/build_trino_functions.sh
 
       - name: Upload plugin directories
         uses: actions/upload-artifact@v4
