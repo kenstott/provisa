@@ -186,6 +186,12 @@ fn csv_row(out: &mut Vec<u8>, fields: Vec<Option<Vec<u8>>>) {
 
 // ---------------------------------------------------------------- JSON:API
 
+/// A path's relationship's GraphQL name and its scalars' GraphQL -> physical names.
+pub type IncludeNames = (String, HashMap<String, String>);
+
+/// A resource's relationships: each name with its `{"data": ...}` linkage.
+type Links = Vec<(Vec<u8>, Vec<u8>)>;
+
 /// What the router hands the document: the names (REQ-1417), the keys, the page.
 pub struct JsonApi {
     pub resource_type: String,
@@ -209,7 +215,7 @@ pub struct JsonApi {
     pub include_fields: HashMap<String, Vec<String>>,
     /// Each path more than one relationship deep: its relationship's GraphQL name (its key in
     /// the parent's object) and its scalars' GraphQL -> physical names.
-    pub include_names: HashMap<String, (String, HashMap<String, String>)>,
+    pub include_names: HashMap<String, IncludeNames>,
     pub base_path: String,
     pub link_params: Vec<(String, String)>,
     pub warnings: Option<Vec<u8>>,
@@ -449,7 +455,7 @@ struct IncNode {
 struct Bucket {
     name: String,
     keys: Option<Vec<String>>,
-    items: Vec<(V, Vec<(Vec<u8>, Vec<u8>)>)>,
+    items: Vec<(V, Links)>,
     seen: std::collections::HashSet<Vec<u8>>,
 }
 
@@ -485,8 +491,8 @@ fn include_nodes(includes: &[String]) -> (Vec<IncNode>, Vec<usize>) {
 
 /// `_extract_included`: each include at `at` taken out of object `o` into its type's bucket
 /// (deduplicated by id), recursing into the includes past it; returns `o`'s relationships.
-fn extract_included(t: &mut Tree, o: u32, at: &[usize], nodes: &[IncNode], a: &JsonApi, buckets: &mut Vec<Bucket>) -> Res<Vec<(Vec<u8>, Vec<u8>)>> {
-    let mut rl: Vec<(Vec<u8>, Vec<u8>)> = Vec::new();
+fn extract_included(t: &mut Tree, o: u32, at: &[usize], nodes: &[IncNode], a: &JsonApi, buckets: &mut Vec<Bucket>) -> Res<Links> {
+    let mut rl: Links = Vec::new();
     for &ni in at {
         let node = &nodes[ni];
         // A first relationship is already renamed to its physical name; one further along still
@@ -567,7 +573,7 @@ pub fn jsonapi(batches: &[Batch], spec: &[Col], a: &JsonApi) -> Res<(Vec<u8>, Ve
     // path includes every resource along it.
     let (nodes, roots) = include_nodes(&a.includes);
     let mut buckets: Vec<Bucket> = Vec::new();
-    let mut row_links: Vec<Vec<(Vec<u8>, Vec<u8>)>> = Vec::new();
+    let mut row_links: Vec<Links> = Vec::new();
     for &o in &page {
         let rl = extract_included(&mut t, o, &roots, &nodes, a, &mut buckets)?;
         row_links.push(rl);

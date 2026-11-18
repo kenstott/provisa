@@ -257,7 +257,7 @@ fn encode_jsonapi<'py>(
     truncation: (String, String),
     warnings: Option<Vec<u8>>,
     include_fields: Option<HashMap<String, Vec<String>>>,
-    include_names: Option<HashMap<String, (String, HashMap<String, String>)>>,
+    include_names: Option<HashMap<String, surfaces::IncludeNames>>,
 ) -> PyResult<(Bound<'py, PyBytes>, Vec<String>)> {
     let spec = spec_of(columns);
     let a = surfaces::JsonApi {
