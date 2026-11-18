@@ -4408,6 +4408,12 @@ async def lifespan(_app: FastAPI):  # pyright: ignore[reportUnusedParameter, rep
 
     send_module_logs_to_server_log()
     state.schema_boot_id = uuid.uuid4().hex
+    # REQ-1316: an engine an earlier lifespan in this process closed refuses work until a lifespan
+    # opens it (NativeEngineBackend.open). The shared engine outlives each app; so may an org's.
+    for _oid in state.org_registry.all_org_ids():
+        _rt = state.org_registry.get(_oid)
+        if _rt is not None and _rt.federation_engine is not None:
+            _rt.federation_engine.open()
     # REQ-074: the audit writer lives as long as the application — started here, before anything
     # serves a request, and stopped in the shutdown below. A request only enqueues to it.
     from provisa.audit.writer import start_audit_writer
