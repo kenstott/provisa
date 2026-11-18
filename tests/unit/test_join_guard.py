@@ -1308,3 +1308,33 @@ def test_the_connection_check_agrees_with_listing_every_set(seed):
         exact = _Pieces(members, edges, set(), shared).whole(choice)
         assert all(len(parts) < 2 for parts in exact) is expected
     assert disconnected > 100  # the draw exercised refusals as well as passes
+
+
+#: A shared dimension (REQ-413): the view ``dim`` of each value a, b and c hold, which each of them
+#: joins many-to-one on k; ``records`` stands for a fourth table with no relationship to it.
+_DIMENSION = _marked("records", "SELECT k FROM a UNION SELECT k FROM b UNION SELECT k FROM c")
+_TO_DIMENSION = {
+    pair for side in (1, 2, 3) for pair in ((side, 10, "k", "k"), (10, side, "k", "k"))
+}
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        f"SELECT m.k FROM {_DIMENSION} AS m WHERE EXISTS (SELECT 1 FROM b WHERE b.k = m.k)",
+        f"SELECT a.k FROM a LEFT JOIN {_DIMENSION} AS m ON a.k = m.k "
+        "AND EXISTS (SELECT 1 FROM b WHERE b.k = m.k)",
+        f"SELECT m.k FROM {_DIMENSION} AS m WHERE m.k IN (SELECT b.k FROM b)",
+    ],
+    ids=["exists", "exists_in_on", "in"],
+)
+def test_a_subquery_related_to_a_view_along_its_relationship_is_no_product(sql):
+    """A subquery's table compared with a view's column is related to the view along the
+    relationship between them, as a join on it is: never a product of the view's branches."""
+    assert _marked_check(sql, _TO_DIMENSION) == []
+
+
+def test_a_subquery_related_to_a_view_with_no_relationship_is_refused():
+    """The same subquery of d, which no relationship joins to the view, is refused."""
+    sql = f"SELECT m.k FROM {_DIMENSION} AS m WHERE EXISTS (SELECT 1 FROM d WHERE d.k = m.k)"
+    assert _marked_check(sql, _TO_DIMENSION)
