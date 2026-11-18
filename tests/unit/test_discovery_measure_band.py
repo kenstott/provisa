@@ -27,7 +27,7 @@ from typing import Any
 
 from provisa.discovery import gather, measure, proposals
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, type_groups
-from provisa.discovery.context import KEPT_AT, KEY_SCORE
+from provisa.discovery.context import KEY_SCORE
 from provisa.discovery.direction import Proposal, from_answer
 from provisa.discovery.measure import Measurer, Values
 from provisa.discovery.proposals import BELOW_THRESHOLD, NOT_COMPARABLE
@@ -37,6 +37,8 @@ from provisa.llm.client import Completion
 from provisa.llm.limits import DEFAULT_LIMITS
 
 CUTOFF = 0.2
+#: The run's threshold: the tick threshold of the person who started it.
+THRESHOLD = 0.7
 
 
 def _semantic(src: tuple[int, str], tgt: tuple[int, str], confidence: float) -> Proposal:
@@ -65,17 +67,26 @@ def _jev(events: list[tuple[str, list]], score: float | None = None):
 
 
 HIGH = _semantic((1, "high"), (2, "id"), 0.9)
-AT = _semantic((1, "at"), (2, "id"), KEPT_AT)
+AT = _semantic((1, "at"), (2, "id"), THRESHOLD)
 BAND = _semantic((1, "band"), (2, "id"), 0.45)
 EDGE = _semantic((1, "edge"), (2, "id"), CUTOFF)
 LOW = _semantic((1, "low"), (2, "id"), 0.1)
 APART = _semantic((1, "apart"), (2, "id"), 0.5)
 
 
-async def _judged(found, apart=(), *, key_values=True, refine=None, scores=None):
+async def _judged(
+    found,
+    apart=(),
+    *,
+    key_values=True,
+    refine=None,
+    scores=None,
+    threshold=THRESHOLD,
+    cutoff=CUTOFF,
+):
     events: list[tuple[str, list]] = []
-    tally = Tally(total=1)
-    kv = KeyValues(_Measure(events, scores), CUTOFF) if key_values else None
+    tally = Tally(total=1, threshold=threshold)
+    kv = KeyValues(_Measure(events, scores), cutoff) if key_values else None
     out = await judged(list(found), list(apart), kv, refine(events) if refine else None, tally)
     return out, tally, events
 
@@ -101,7 +112,7 @@ async def test_a_pair_at_or_above_the_threshold_is_suggested_on_the_models_confi
     out, tally, events = await _judged([HIGH, AT])
     assert [(p.start[1], p.measure, p.score, p.rank) for p in out] == [
         ("high", None, None, 0.9),
-        ("at", None, None, KEPT_AT),
+        ("at", None, None, THRESHOLD),
     ]
     assert events == []
     assert tally.measured == 0
@@ -233,6 +244,7 @@ async def test_a_run_asks_the_model_then_jev_then_measures_only_the_band():
         4_096,
         ask,
         _Watcher(),
+        threshold=THRESHOLD,
         key_values=KeyValues(_Measure(events), CUTOFF),
         refine=_jev(events, 0.6),
         to_thread=_direct,
@@ -244,6 +256,80 @@ async def test_a_run_asks_the_model_then_jev_then_measures_only_the_band():
         "store_id": (KEY_SCORE, 0.6),
     }
     assert (tally.measured, tally.admitted) == (1, 1)
+
+
+# --- the band's top is the run's threshold, the starting person's tick threshold -----------------
+# REQ-413 (amended 2026-11-18): not a fixed 0.7.
+
+
+async def test_a_pair_at_or_above_a_threshold_of_half_is_kept_unmeasured():
+    pair = _semantic((1, "at_55"), (2, "id"), 0.55)
+    out, tally, events = await _judged([pair], threshold=0.5)
+    assert [(p.start[1], p.score) for p in out] == [("at_55", None)]
+    assert events == [] and tally.measured == 0
+
+
+async def test_a_pair_between_the_cutoff_and_a_threshold_of_half_is_measured():
+    pair = _semantic((1, "at_40"), (2, "id"), 0.4)
+    out, tally, events = await _judged([pair], threshold=0.5, cutoff=0.2)
+    assert events == [("measure", [(1, "at_40")])]
+    assert tally.measured == 1
+
+
+async def test_a_pair_under_a_threshold_of_0_8_is_measured_though_over_0_7():
+    pair = _semantic((1, "at_60"), (2, "id"), 0.6)
+    _, tally, events = await _judged([pair], threshold=0.8, cutoff=0.2)
+    assert events == [("measure", [(1, "at_60")])]
+    assert tally.measured == 1
+
+
+async def test_a_pair_under_the_cutoff_is_not_measured_whatever_the_threshold():
+    pair = _semantic((1, "at_10"), (2, "id"), 0.1)
+    out, tally, events = await _judged([pair], threshold=0.5, cutoff=0.2)
+    assert out == [] and events == []
+    assert _reasons(tally) == {"at_10": BELOW_THRESHOLD}
+
+
+async def test_a_measured_pair_is_admitted_at_the_runs_threshold_not_a_fixed_one():
+    pair = _semantic((1, "band"), (2, "id"), 0.3)
+    out, tally, _ = await _judged([pair], threshold=0.5, scores={"band": 0.55})
+    assert [(p.start[1], p.score) for p in out] == [("band", 0.55)]
+    assert tally.admitted == 1
+
+
+async def test_the_runs_threshold_is_the_one_its_summary_reports():
+    _, tally, _ = await _judged([], threshold=0.55)
+    assert tally.as_dict()["threshold"] == 0.55
+
+
+async def test_a_run_tells_the_model_its_threshold_and_judges_against_it():
+    orders = _tbl(1, "orders", _col("id", pk=True), _col("customer_id"), _col("store_id"))
+    customers = _tbl(2, "customers", _col("id", pk=True))
+    k, requests = plan([orders], [customers], *DEFAULT_LIMITS)
+    events: list[tuple[str, list]] = []
+    prompts: list[str] = []
+
+    def ask(prompt: str, max_tokens: int) -> Completion:
+        prompts.append(prompt)
+        answer = [_item("customer_id", 0.6), _item("store_id", 0.85)]
+        return Completion(json.dumps(answer), "acme", "m", None, False)
+
+    tally, found = await execute(
+        requests,
+        k,
+        4_096,
+        ask,
+        _Watcher(),
+        threshold=0.8,
+        key_values=KeyValues(_Measure(events, {"customer_id": 0.3}), CUTOFF),
+        to_thread=_direct,
+    )
+    assert prompts and all("A relationship is suggested at 0.8 or more" in t for t in prompts)
+    assert not any("suggested at 0.7" in t for t in prompts)
+    # 0.6 is under 0.8, so it is measured; 0.85 is kept on the model's confidence.
+    assert events == [("measure", [(1, "customer_id")])]
+    assert [p.start[1] for p in found] == ["store_id"]
+    assert tally.as_dict()["threshold"] == 0.8
 
 
 # --- the sample size reaches the measurer ----------------------------------------------------------

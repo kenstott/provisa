@@ -33,7 +33,6 @@ from typing import Any, Protocol
 
 from provisa.discovery.analyzer import read_answer_list
 from provisa.discovery.columns import comparable
-from provisa.discovery.context import KEPT_AT
 from provisa.discovery.direction import Proposal, from_answer
 from provisa.discovery.proposals import (
     BELOW_THRESHOLD,
@@ -44,10 +43,6 @@ from provisa.discovery.proposals import (
 )
 from provisa.discovery.windows import Request
 from provisa.llm.client import failure
-
-#: The confidence a semantic suggestion needs to be kept (as the discovery router's
-#: MIN_CONFIDENCE), which the request's instructions state to the model.
-MIN_CONFIDENCE = KEPT_AT
 
 # What a vendor says when it refuses a request as longer than the model reads: Anthropic's
 # "prompt is too long", OpenAI's "context_length_exceeded" / "maximum context length", and the
@@ -82,9 +77,12 @@ def too_long(exc: BaseException) -> bool:
 
 @dataclass
 class Tally:
-    """What the semantic requests have done so far."""
+    """What the semantic requests have done so far, against the run's ``threshold`` (REQ-413,
+    amended 2026-11-18): the tick threshold of the person who started it, taken when it started.
+    A proposal at it or above is kept; the key value overlap band runs from the cutoff up to it."""
 
     total: int
+    threshold: float
     done: int = 0
     split: int = 0
     proposed: int = 0
@@ -92,15 +90,15 @@ class Tally:
     invalid: int = 0
     #: Proposals whose two columns are not compared: their classes do not meet.
     not_comparable: int = 0
-    #: Proposals left out under :data:`MIN_CONFIDENCE`: by their measure where they were measured,
+    #: Proposals left out under :attr:`threshold`: by their measure where they were measured,
     #: else by the model's confidence.
     below_threshold: int = 0
-    #: Pairs in the band between the measure cutoff and :data:`MIN_CONFIDENCE` measured on their
+    #: Pairs in the band between the measure cutoff and :attr:`threshold` measured on their
     #: data, and those of them admitted on matching key values (REQ-413).
     measured: int = 0
     admitted: int = 0
     #: Proposals a second scorer was asked about, and those of them it scored under
-    #: :data:`MIN_CONFIDENCE`. Its score removes none (REQ-1789).
+    #: :attr:`threshold`. Its score removes none (REQ-1789).
     scored: int = 0
     scored_below_threshold: int = 0
     #: Requests whose proposals the second scorer could not score: they kept the model's.
@@ -128,7 +126,7 @@ class Tally:
             "scored": self.scored,
             "scored_below_threshold": self.scored_below_threshold,
             "scoring_failed": self.scoring_failed,
-            "threshold": MIN_CONFIDENCE,
+            "threshold": self.threshold,
             "cut_short": self.cut_short,
             "unreadable": self.unreadable,
             "failed": list(self.failed),
@@ -220,8 +218,8 @@ Measure = Callable[[list[Proposal]], Awaitable[list[Proposal]]]
 @dataclass(frozen=True)
 class KeyValues:
     """Key value overlap, chosen for a run (REQ-413, amended 2026-11-16): ``measure`` measures
-    the semantic pairs whose MODEL confidence is at ``cutoff`` or more and under
-    :data:`MIN_CONFIDENCE`; no other pair is measured."""
+    the semantic pairs whose MODEL confidence is at ``cutoff`` or more and under the run's
+    threshold (:attr:`Tally.threshold`); no other pair is measured."""
 
     measure: Measure
     cutoff: float
@@ -236,7 +234,7 @@ def rescored(
     found: list[Proposal], scores: list[float | None] | None, tally: Tally
 ) -> list[Proposal]:
     """``found``, each with the second scorer's confidence beside the model's (REQ-1789). The
-    model's decides which are suggestions; those the scorer put under :data:`MIN_CONFIDENCE` are
+    model's decides which are suggestions; those the scorer put under the run's threshold are
     counted, and none is removed."""
     if scores is None:
         tally.scoring_failed += 1
@@ -245,7 +243,7 @@ def rescored(
     for proposal, score in zip(found, scores, strict=True):
         if score is not None:
             tally.scored += 1
-            if score < MIN_CONFIDENCE:
+            if score < tally.threshold:
                 tally.scored_below_threshold += 1
         out.append(replace(proposal, scored=score))
     return out
@@ -260,29 +258,30 @@ async def judged(
 ) -> list[Proposal]:
     """An answer's proposals judged in order of cost (REQ-413, amended 2026-11-16): Jev's
     re-score (``refine``) kept beside the model's confidence; then the key-value measure of only
-    the pairs whose model confidence lies in the band from the cutoff to :data:`MIN_CONFIDENCE`.
-    At or above :data:`MIN_CONFIDENCE` a proposal is kept on the model's confidence, unmeasured;
-    below the band, or in it without ``key_values``, it is left out below the threshold,
-    unmeasured. A band pair is kept when its measure scores it at :data:`MIN_CONFIDENCE` or more
-    (admitted on matching key values), and is left out with its measure otherwise. Proposals
-    whose columns are not compared are left out unmeasured."""
+    the pairs whose model confidence lies in the band from the cutoff up to the run's threshold
+    (:attr:`Tally.threshold`, REQ-413 amended 2026-11-18). At or above the threshold a proposal is
+    kept on the model's confidence, unmeasured; below the band, or in it without ``key_values``,
+    it is left out below the threshold, unmeasured. A band pair is kept when its measure scores
+    it at the threshold or more (admitted on matching key values), and is left out with its
+    measure otherwise. Proposals whose columns are not compared are left out unmeasured."""
+    threshold = tally.threshold
     tally.left_out.extend(Recorded("semantics", NOT_COMPARABLE, p) for p in apart)
     if refine is not None and found:
         found = rescored(found, await refine(found), tally)
-    out = [p for p in found if p.confidence >= MIN_CONFIDENCE]
+    out = [p for p in found if p.confidence >= threshold]
     band = (
         []
         if key_values is None
-        else [p for p in found if key_values.cutoff <= p.confidence < MIN_CONFIDENCE]
+        else [p for p in found if key_values.cutoff <= p.confidence < threshold]
     )
     in_band = {id(p) for p in band}
-    below = [p for p in found if p.confidence < MIN_CONFIDENCE and id(p) not in in_band]
+    below = [p for p in found if p.confidence < threshold and id(p) not in in_band]
     if band:
         assert key_values is not None
         measured = await key_values.measure(band)
         tally.measured += len(measured)
         for proposal in measured:
-            if proposal.rank >= MIN_CONFIDENCE:
+            if proposal.rank >= threshold:
                 tally.admitted += 1
                 out.append(proposal)
             else:
@@ -300,16 +299,18 @@ async def execute(
     ask: Ask,
     control: Control,
     *,
+    threshold: float,
     key_values: KeyValues | None,
     refine: Rescore | None = None,
     to_thread: Callable[..., Awaitable[Any]] = asyncio.to_thread,
 ) -> tuple[Tally, list[Proposal]]:
-    """Ask every request in order, splitting as it must; stop when the control asks. Each
+    """Ask every request in order, splitting as it must; stop when the control asks. Each request
+    states the run's ``threshold`` to the model, and the proposals are judged against it. Each
     answer's proposals are judged in order of cost (:func:`judged`): ``refine`` re-scores them
     (REQ-1789, when a Jev key is configured), its confidence kept beside the model's; then, with
     Key value overlap chosen (``key_values``), the pairs in its band are measured on their data."""
     queue = list(requests)
-    tally = Tally(total=len(queue))
+    tally = Tally(total=len(queue), threshold=threshold)
     proposals: list[Proposal] = []
     while queue:
         if await control.stop_asked():
@@ -317,7 +318,7 @@ async def execute(
             break
         request = queue.pop(0)
         try:
-            answer = await to_thread(ask, request.prompt(k), max_tokens)
+            answer = await to_thread(ask, request.prompt(k, threshold), max_tokens)
         except Exception as exc:  # one failed request is reported, the rest go on (REQ-413)
             if too_long(exc) and request.splittable:
                 halves = request.halves()

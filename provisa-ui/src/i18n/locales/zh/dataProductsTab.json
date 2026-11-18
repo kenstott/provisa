@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "没有可查询的表或关系",
     "graphqlQueryAria": "运行 {{table}} 的 GraphQL 示例查询",
     "sqlQueryAria": "运行 {{table}} 的 SQL 示例查询",
-    "cypherQueryAria": "运行 {{type}} 的 Cypher 示例查询",
     "grpcQueryAria": "运行 {{table}} 的 gRPC 示例调用",
     "jsonapiQueryAria": "运行 {{table}} 的 JSON:API 示例请求",
     "openApiQueryAria": "运行 {{table}} 的 REST 示例请求",
