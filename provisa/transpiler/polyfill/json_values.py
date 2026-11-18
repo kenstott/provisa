@@ -34,7 +34,7 @@ from __future__ import annotations
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import json_built, trino
+from provisa.transpiler.polyfill import json_built, json_members, trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.notation import Refusal, Refused, Rewrite
 from provisa.transpiler.polyfill.server import plain
@@ -150,23 +150,34 @@ FEATURES: tuple[Feature, ...] = (
             FAMILY,
             "A JSON object of keys and values; each key is cast to its text.",
             read=Side(
-                rules=(Rule(None, trino.on_trino(Rewrite(object_keys_as_text))),),
-                limitations=dict.fromkeys(
-                    trino.TRINO,
-                    (
-                        _PLAIN_ONLY,
-                        Limitation(
-                            "A key of a type the statement says other than text, an integer or a "
-                            "boolean, or a NULL key: refused by name, as Trino's text of it may "
-                            "differ."
-                        ),
-                        Limitation(
-                            "An odd count of arguments is refused as the statement is read, not "
-                            "where it runs.",
-                            ODD,
-                        ),
+                rules=(
+                    Rule(
+                        None,
+                        {
+                            **trino.on_trino(Rewrite(object_keys_as_text)),
+                            "clickhouse": json_built.for_name(name, json_members.built_object),
+                        },
                     ),
                 ),
+                limitations={
+                    "clickhouse": (json_built.TYPES, json_members.ODD_COUNT),
+                    **dict.fromkeys(
+                        trino.TRINO,
+                        (
+                            _PLAIN_ONLY,
+                            Limitation(
+                                "A key of a type the statement says other than text, an integer or a "
+                                "boolean, or a NULL key: refused by name, as Trino's text of it may "
+                                "differ."
+                            ),
+                            Limitation(
+                                "An odd count of arguments is refused as the statement is read, not "
+                                "where it runs.",
+                                ODD,
+                            ),
+                        ),
+                    ),
+                },
             ),
         )
         for name in _OBJECTS

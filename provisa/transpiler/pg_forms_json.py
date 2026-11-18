@@ -983,8 +983,10 @@ def lowered(
                 return _extracted(node, rewrite)
             steps = _steps("#>>" if scalar else "#>", path)
             return _path(node.this.transform(rewrite), steps, scalar)
-        if isinstance(node, exp.JSONExtract | exp.JSONExtractScalar) and not isinstance(
-            node.expression, exp.JSONPath
+        if (
+            isinstance(node, exp.JSONExtract | exp.JSONExtractScalar)
+            and not isinstance(node.expression, exp.JSONPath)
+            and not by_a_row(node)  # json_extract_path(v, VARIADIC path), read as ->
         ):
             stepped = _stepped(node, dialect, rewrite)
             if stepped is not None:
