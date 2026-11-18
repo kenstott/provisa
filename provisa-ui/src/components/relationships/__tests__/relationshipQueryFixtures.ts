@@ -44,6 +44,20 @@ export const TAGS: RelationshipQueryTable = {
   tableName: "tags",
   alias: null,
 };
+/** A table whose neighborhood a discovery accept joined to a shared dimension (REQ-413). */
+export const BUILDING_PERMITS: RelationshipQueryTable = {
+  id: 5,
+  domainId: "shelter",
+  tableName: "building_permits",
+  alias: null,
+};
+/** The shared dimension: a derived view holding each neighborhood once. */
+export const PERMIT_NEIGHBORHOOD: RelationshipQueryTable = {
+  id: 6,
+  domainId: "shelter",
+  tableName: "permit_neighborhood",
+  alias: null,
+};
 
 /** The role's GraphQL schema; ``clientColumns`` are the columns it reads of customers. */
 export function reader(clientColumns: string[] = ["id", "name"]): MetaReader {
@@ -58,6 +72,8 @@ export function reader(clientColumns: string[] = ["id", "name"]): MetaReader {
             { name: "sales__clients", type: list("SalesClients") },
             { name: "sales__orderTags", type: list("SalesOrderTags") },
             { name: "sales__tags", type: list("SalesTags") },
+            { name: "shelter__buildingPermits", type: list("ShelterBuildingPermits") },
+            { name: "shelter__permitNeighborhood", type: list("ShelterPermitNeighborhood") },
           ],
         },
         {
@@ -74,6 +90,18 @@ export function reader(clientColumns: string[] = ["id", "name"]): MetaReader {
         },
         { name: "SalesOrderTags", fields: [{ name: "orderId", type: scalar("Int") }] },
         { name: "SalesTags", fields: [{ name: "id", type: scalar("Int") }] },
+        {
+          name: "ShelterBuildingPermits",
+          fields: [
+            { name: "id", type: scalar("Int") },
+            { name: "neighborhood", type: scalar("String") },
+            { name: "permit_neighborhood_dimension", type: object("ShelterPermitNeighborhood") },
+          ],
+        },
+        {
+          name: "ShelterPermitNeighborhood",
+          fields: [{ name: "permit_neighborhood", type: scalar("String") }],
+        },
       ],
     },
   });
@@ -84,8 +112,25 @@ export function reader(clientColumns: string[] = ["id", "name"]): MetaReader {
       ["sales.customers", "sales__clients"],
       ["sales.order_tags", "sales__orderTags"],
       ["sales.tags", "sales__tags"],
+      ["shelter.building_permits", "shelter__buildingPermits"],
+      ["shelter.permit_neighborhood", "shelter__permitNeighborhood"],
     ]),
   };
+}
+
+/** An edge's join as /data/graph-schema serves it (provisa/gql/label_map.py
+ * RelationshipMapping.join): its two ends sorted, each JSON-encoded as [node key, column, source
+ * expression, source constant, junction columns], then the junction table and its type. */
+export function joinOf(
+  source: [string, string, string[] | null],
+  target: [string, string, string[] | null],
+  junction: { table: [string, string, string]; type: [string | null, string | null] } | null = null,
+): string {
+  const ends = [
+    JSON.stringify([source[0], source[1], null, null, source[2]]),
+    JSON.stringify([target[0], target[1], null, null, target[2]]),
+  ].sort();
+  return JSON.stringify([ends, junction?.table ?? null, junction?.type ?? null]);
 }
 
 export const GRAPH: GraphSchemaDoc = {
@@ -93,20 +138,66 @@ export const GRAPH: GraphSchemaDoc = {
     { label: "Orders", table_id: 1, pk_columns: ["id"] },
     { label: "Clients", table_id: 2, pk_columns: ["id"] },
     { label: "Tags", table_id: 4, pk_columns: ["id"] },
+    { label: "Shelter:BuildingPermits", table_id: 5, pk_columns: ["id"] },
+    { label: "Shelter:PermitNeighborhood", table_id: 6, pk_columns: ["permitNeighborhood"] },
   ],
   relationship_types: [
-    { type: "PLACED_BY", source: "Orders", target: "Clients" },
-    { type: "TAGGED", source: "Orders", target: "Tags" },
+    {
+      type: "PLACED_BY",
+      source: "Orders",
+      target: "Clients",
+      junction_table_name: null,
+      join: joinOf(["SalesOrders", "customer_id", null], ["SalesClients", "id", null]),
+    },
+    {
+      type: "TAGGED",
+      source: "Orders",
+      target: "Tags",
+      junction_table_name: "order_tags",
+      join: joinOf(["SalesOrders", "id", ["order_id"]], ["SalesTags", "id", ["tag_id"]], {
+        table: ["pg", "sales", "order_tags"],
+        type: ["kind", "label"],
+      }),
+    },
+    // Served under the type the schema build names an unaliased edge by, from its GraphQL field
+    // (IS_<FIELD>), not the stored BELONGS_TO_<COLUMN> the admin list shows.
+    {
+      type: "IS_PERMIT_NEIGHBORHOOD_DIMENSION",
+      source: "Shelter:BuildingPermits",
+      target: "Shelter:PermitNeighborhood",
+      junction_table_name: null,
+      join: joinOf(
+        ["ShelterBuildingPermits", "neighborhood", null],
+        ["ShelterPermitNeighborhood", "permit_neighborhood", null],
+      ),
+    },
   ],
 };
 
 export const VOCABULARY: SparqlVocabulary = {
   base: "https://provisa.example/",
-  prefixes: { sales: "https://provisa.example/sales/", rel: "https://provisa.example/rel/" },
-  classes: ["orders", "clients", "tags"].map((name) => ({
-    iri: `https://provisa.example/sales/${name}`,
+  prefixes: {
+    sales: "https://provisa.example/sales/",
+    shelter: "https://provisa.example/shelter/",
+    rel: "https://provisa.example/rel/",
+  },
+  classes: [
+    ...["orders", "clients", "tags"].map((name) => ({
+      iri: `https://provisa.example/sales/${name}`,
+      label: name[0].toUpperCase() + name.slice(1),
+    })),
+    {
+      iri: "https://provisa.example/shelter/building_permits",
+      label: "Shelter:BuildingPermits",
+    },
+    {
+      iri: "https://provisa.example/shelter/permit_neighborhood",
+      label: "Shelter:PermitNeighborhood",
+    },
+  ].map(({ iri, label }) => ({
+    iri,
     kind: "table" as const,
-    labels: [name[0].toUpperCase() + name.slice(1)],
+    labels: [label],
     parameterized: false,
     parameterized_labels: [],
     superclasses: [],
@@ -126,6 +217,13 @@ export const VOCABULARY: SparqlVocabulary = {
       source: "Orders",
       target: "Tags",
       join: "id=id",
+    },
+    {
+      iri: "https://provisa.example/rel/IS_PERMIT_NEIGHBORHOOD_DIMENSION",
+      type: "IS_PERMIT_NEIGHBORHOOD_DIMENSION",
+      source: "Shelter:BuildingPermits",
+      target: "Shelter:PermitNeighborhood",
+      join: "neighborhood=permit_neighborhood",
     },
   ],
   concepts: [],
@@ -190,4 +288,22 @@ export const tagged = (): Relationship =>
     viaLabelSource: "fixed",
   });
 
-export const TABLES = [ORDERS, CUSTOMERS, ORDER_TAGS, TAGS];
+/** building_permits -> its shared neighborhood dimension, as a discovery accept made it and the
+ * admin list serves it: no alias, so the stored type is derived from its column. */
+export const toDimension = (): Relationship =>
+  placedBy({
+    id: "building_permits-neighborhood-to-permit_neighborhood" as unknown as number,
+    sourceTableId: 5,
+    targetTableId: 6,
+    sourceTableName: "building_permits",
+    sourceDomainId: "shelter",
+    targetTableName: "permit_neighborhood",
+    sourceColumn: "neighborhood",
+    targetColumn: "permit_neighborhood",
+    graphqlAlias: "permit_neighborhood_dimension",
+    physicalName: "permit_neighborhood_dimension",
+    computedCypherAlias: "BELONGS_TO_NEIGHBORHOOD",
+    cypherType: "BELONGS_TO_NEIGHBORHOOD",
+  });
+
+export const TABLES = [ORDERS, CUSTOMERS, ORDER_TAGS, TAGS, BUILDING_PERMITS, PERMIT_NEIGHBORHOOD];
