@@ -57602,7 +57602,12 @@
     names are), the cardinality (many-to-many) and the two ends filled in, to confirm. The two relationships
     stay: all three are offered in SQL, GraphQL and Cypher. A discovery run that finds both legs of a junction
     proposes the combined relationship as one suggestion, and accepting a shared dimension (REQ-413) creates
-    its edge the same way.'
+    its edge the same way. (Amended 2026-11-18, A JUNCTION JOINED BY ITS OWN REGISTERED RELATIONSHIPS KEEPS
+    ITS CYPHER NODE:) Maintainer 2026-11-18. A declared junction table''s node and its edges are left out
+    of the Cypher graph only when no registered relationship of its own joins it. A junction that registered
+    relationships join (as after Join through, which keeps the two hops beside the joined relationship)
+    keeps its node and those edges in Cypher, so all three relationships are offered there, as in SQL and
+    GraphQL.'
   use_case: A steward walks a glossary hierarchy three levels deep in one Cypher pattern, and filters
     the edges by an attribute stored on the junction row, instead of traversing a reified node whose half-hops
     make variable-length depth meaningless.
