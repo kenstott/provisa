@@ -23,6 +23,16 @@ export const PIN_SVG =
       `</svg>`,
   );
 
+/** The colours the drawing takes from the page's theme (theme/tokens.css): cytoscape draws on a
+ * canvas and cannot read CSS variables, so they are resolved here, per colour scheme. A label
+ * boxed against the lines it crosses sits on the frame's own --surface; captions beneath a node
+ * are the page's text, edge labels its muted text. Held to tokens.css by graphThemeLook.test. */
+export const GRAPH_LOOK = {
+  light: { surface: "#ffffff", caption: "#1a1d27", edgeText: "#55596b", metaText: "#4f46e5" },
+  dark: { surface: "#1a1d27", caption: "#d6d8e2", edgeText: "#6b6f82", metaText: "#a5b4fc" },
+} as const;
+export type GraphScheme = keyof typeof GRAPH_LOOK;
+
 interface StylesheetRefs {
   colorOverridesRef: { current: Record<string, string> };
   sizeOverridesRef: { current: Record<string, number> };
@@ -83,7 +93,8 @@ export function buildGraphStylesheet({
   sizeOverridesRef,
   labelPropertyRef,
   relLineOverridesRef,
-}: StylesheetRefs): unknown[] {
+}: StylesheetRefs, scheme: GraphScheme): unknown[] {
+  const look = GRAPH_LOOK[scheme];
   return [
     {
       selector: "node",
@@ -106,7 +117,7 @@ export function buildGraphStylesheet({
             : captionLines(cap, ele.width() + OUTSIDE_MARGIN, font);
         },
         color: (ele: CyElement) =>
-          insideCaption(ele, labelPropertyRef.current) ? "#fff" : "#d6d8e2",
+          insideCaption(ele, labelPropertyRef.current) ? "#fff" : look.caption,
         "font-size": fontOf,
         "text-valign": (ele: CyElement) =>
           insideCaption(ele, labelPropertyRef.current) ? "center" : "bottom",
@@ -174,7 +185,7 @@ export function buildGraphStylesheet({
         "curve-style": "bezier",
         label: "data(label)",
         "font-size": 8,
-        color: "#6b6f82",
+        color: look.edgeText,
         "text-background-opacity": 0,
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mappers receive untyped elements; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>
@@ -209,9 +220,9 @@ export function buildGraphStylesheet({
         "curve-style": "bezier",
         label: "data(label)",
         "font-size": 9,
-        color: "#a5b4fc",
+        color: look.metaText,
         "text-background-opacity": 0.7,
-        "text-background-color": "#1a1d2e",
+        "text-background-color": look.surface,
         "text-background-padding": "2px",
         /* eslint-disable @typescript-eslint/no-explicit-any -- cytoscape style mapper receives an untyped element; the stylesheet function signature is not modeled by our local CyInstance shim */
         width: ((ele: any) =>

@@ -96,12 +96,15 @@ export async function drawPng(req: DrawRequest): Promise<Buffer> {
       ],
       // The page's stylesheet with nothing the user has set on it: no colour, size, label or
       // line overrides, as a graph page opened fresh.
-      style: buildGraphStylesheet({
-        colorOverridesRef: none,
-        sizeOverridesRef: none,
-        labelPropertyRef: none,
-        relLineOverridesRef: none,
-      }) as never,
+      style: buildGraphStylesheet(
+        {
+          colorOverridesRef: none,
+          sizeOverridesRef: none,
+          labelPropertyRef: none,
+          relLineOverridesRef: none,
+        },
+        req.theme,
+      ) as never,
       layout: { name: "null" },
     });
     await new Promise<void>((done, failed) => {

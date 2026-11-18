@@ -16,6 +16,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useComputedColorScheme } from "@mantine/core";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import { LITERAL_LABEL } from "./sparql";
@@ -106,6 +107,10 @@ export function GraphCanvas({
   sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
+  // The theme the drawing's colours are taken from (GRAPH_LOOK); a switch restyles it in place.
+  const scheme = useComputedColorScheme("light");
+  const schemeRef = useRef(scheme);
+  schemeRef.current = scheme;
   const nodeDraggedRef = useRef(onNodeDragged);
   nodeDraggedRef.current = onNodeDragged;
   const nodeDroppedRef = useRef(onNodeDroppedOnNode);
@@ -461,12 +466,10 @@ export function GraphCanvas({
     const cy = cytoscape({
       container: containerRef.current,
       elements: els,
-      style: buildGraphStylesheet({
-        colorOverridesRef,
-        sizeOverridesRef,
-        labelPropertyRef,
-        relLineOverridesRef,
-      }),
+      style: buildGraphStylesheet(
+        { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
+        schemeRef.current,
+      ),
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
@@ -796,6 +799,19 @@ export function GraphCanvas({
     /* eslint-disable-next-line react-hooks/exhaustive-deps --
        re-apply overlay nodes/edges only when the overlay data or clustering changes; the imperative apply helpers are stable refs and intentionally excluded */
   }, [overlayNodes, overlayEdges, clusterLevel]);
+
+  // A theme switch restyles the drawing in place: the stylesheet for the new scheme, the same
+  // elements, positions and per-element overrides (cytoscape keeps bypass styles across a sheet).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.style(
+      buildGraphStylesheet(
+        { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
+        scheme,
+      ),
+    );
+  }, [scheme]);
 
   // Update node colors when colorOverrides changes without rebuilding the graph
   useEffect(() => {
