@@ -48,10 +48,12 @@
     "writable": "資料來源接受",
     "noWrites": "無寫入",
     "notShown": "未顯示",
-    "draftPreviewNote": "草稿預覽：讀者目前仍看不到此資料表。",
     "keepsHistory": "保留歷史：每個版本，包括何時發生和何時記錄。",
     "keepsHistoryQuery": "按截至某日或按記錄時查詢",
     "deleteTitle": "刪除表 {{name}}？",
-    "deleteConsequence": "該表的註冊將被刪除。"
+    "deleteConsequence": "該表的註冊將被刪除。",
+    "withdrawConsequence": "任何角色都無法透過任何介面讀取它，任何引擎都不會掛載它，其副本將被移除。其定義、授權和關係保留不變，「恢復」會將其回復原狀。",
+    "withdrawnNote": "已撤回：在恢復之前，任何角色都無法讀取此數據表。其預覽仍可讀取。",
+    "sourceWithdrawnNote": "其數據來源 {{source}} 已撤回：在數據來源恢復之前，任何角色都無法讀取此數據表。"
   }
 }

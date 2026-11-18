@@ -51,6 +51,7 @@ from provisa.core.session_time_zone import StatementZone, carrying_zone, told_as
 from provisa.federation.land_guard import LandGuard
 from provisa.federation.replica_address import is_replicas_schema
 from provisa.federation.runtime_support import (
+    EngineClosed,
     close_cursor,
     columns_from_describe,
     open_cursor,
@@ -220,6 +221,72 @@ _CAST_TO_A_SCHEMAS_TYPE = re.compile(
 )
 
 
+class _OpenStream:
+    """A statement's result still being read (run_sync, run_arrow_stream): its private cursor, the
+    Arrow reader over it, and the catalog read hold it keeps until it ends. DuckDB's reader keeps
+    the database instance alive after its cursor and the connection are closed -- and with it every
+    pool the instance's postgres attaches hold, the control plane's among them -- so the runtime
+    ends each stream still open when it closes (REQ-1316). It ends once, whichever comes first:
+    its consumer's close, its last batch, or the runtime's close."""
+
+    def __init__(self, runtime: DuckDBFederationRuntime, cur: Any, reader: Any) -> None:
+        self._runtime = runtime
+        self._cur = cur
+        self._reader = reader
+        # Held while a batch is read and while the stream ends: the reader is never closed under a
+        # read in progress (the runtime's close interrupts that read first).
+        self._lock = threading.Lock()
+        # Taken only for the cursor's close and its interrupt, so the runtime's close can interrupt
+        # a read that holds ``_lock`` without ever reaching a cursor already closed.
+        self._cursor_lock = threading.Lock()
+        self._cursor_open = True
+        self._ended = False
+        self._shut = False  # ended by the runtime's close, not by its consumer
+
+    def batches(self) -> Iterator[Any]:
+        """The reader's batches; once the runtime has closed, refused by name."""
+        batches = iter(self._reader)
+        while True:
+            with self._lock:
+                if self._shut:
+                    raise EngineClosed(self._runtime.engine_name, "its open results end with it")
+                if self._ended:
+                    return
+                try:
+                    batch = next(batches)
+                except StopIteration:
+                    return
+                except BaseException as exc:
+                    if self._shut:
+                        raise EngineClosed(
+                            self._runtime.engine_name, "its open results end with it"
+                        ) from exc
+                    raise
+            yield batch
+
+    def end(self) -> None:
+        """Close the reader and the cursor and give the catalog read hold back (once)."""
+        with self._lock:
+            if self._ended:
+                return
+            self._ended = True
+            self._reader.close()
+            with self._cursor_lock:
+                self._cursor_open = False
+                close_cursor(self._cur)
+        self._runtime._stream_ended(self)
+
+    def end_at_close(self) -> None:
+        """The runtime is closing: a batch being read is interrupted, then the stream ends."""
+        self._shut = True
+        with self._cursor_lock:
+            if self._cursor_open:
+                # A read in progress holds ``_lock``; the interrupt makes it return, so end() can
+                # take it next.
+                self._cur.interrupt()
+        self.end()
+
+
 class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
     def __init__(
         self, *, materialize_dsn: str | None = None, store_engine: Any | None = None
@@ -333,6 +400,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # for it — a read-triggered land stays on its request's thread (REQ-1882), where a
         # one-worker pool took it off.
         self._land_guard = LandGuard("DuckDB store")
+        # REQ-1316: every result still being read (``_OpenStream``), ended by close; once closed,
+        # no stream is opened.
+        self._streams: set[_OpenStream] = set()
+        self._streams_lock = threading.Lock()
+        self._closed = False
 
     # -- source exposure -------------------------------------------------------
 
@@ -1641,13 +1713,15 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._catalog_gate.release_read()
             raise
 
-        def _close(*_: Any) -> None:
+        if reader is None:
             close_cursor(cur)
             self._catalog_gate.release_read()
-
-        if reader is None:
-            _close()
             return QueryResult(rows=[], column_names=[])
+        stream = self._open_stream(cur, reader)
+
+        def _close(*_: Any) -> None:
+            stream.end()
+
         # DuckDB's description carries each column's declared DuckDBPyType ("BIGINT",
         # "DECIMAL(18,2)"), even for a zero-row result — the pgwire Describe relies on it.
         types = [str(d[1]) for d in rel.description]
@@ -1655,7 +1729,11 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
         # has each batch turned into them as it pulls it (duckdb_arrow.arrow_rows); an engine error
         # met in a later batch is PostgreSQL's own (duckdb_arrow.answered_batches).
         return ArrowStreamResult(
-            reader.schema, answered_batches(reader), types, to_rows=arrow_rows, on_close=_close
+            reader.schema,
+            answered_batches(stream.batches()),
+            types,
+            to_rows=arrow_rows,
+            on_close=_close,
         )
 
     def describe_sync(self, duck_sql: str, params: list | None = None) -> ResultStream:
@@ -1740,17 +1818,48 @@ class DuckDBFederationRuntime:  # REQ-825, REQ-840, REQ-844
             self._catalog_gate.release_read()
             raise
 
+        stream = self._open_stream(cur, reader)
+
         def _batches():
             try:
-                for batch in reader:
-                    yield batch
+                yield from stream.batches()
             finally:
-                close_cursor(cur)
-                self._catalog_gate.release_read()
+                stream.end()
 
         return schema, _batches()
 
+    @property
+    def engine_name(self) -> str:
+        """The engine this runtime serves, as a refusal names it."""
+        return self._store_engine.name
+
+    def _open_stream(self, cur: Any, reader: Any) -> _OpenStream:
+        """Hold ``cur`` and ``reader`` as a stream the runtime's close ends (REQ-1316). A runtime
+        already closed (a statement that raced its shutdown) ends it at once and refuses."""
+        stream = _OpenStream(self, cur, reader)
+        with self._streams_lock:
+            closed = self._closed
+            if not closed:
+                self._streams.add(stream)
+        if closed:
+            stream.end()
+            raise EngineClosed(self.engine_name, "no result is opened after its shutdown")
+        return stream
+
+    def _stream_ended(self, stream: _OpenStream) -> None:
+        with self._streams_lock:
+            self._streams.discard(stream)
+        self._catalog_gate.release_read()
+
     def close(self) -> None:
+        """Close the runtime and release its database instance (REQ-1316): every result still
+        being read is ended first -- its reader would keep the instance, and the pools of the
+        postgres databases it attached, alive past the connection's close."""
+        with self._streams_lock:
+            self._closed = True
+            streams = list(self._streams)
+        for stream in streams:
+            stream.end_at_close()
         for raw_alias in list(self._file_holders):
             self._let_file_go(raw_alias)
         self._con.close()

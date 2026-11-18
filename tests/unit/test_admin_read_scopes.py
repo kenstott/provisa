@@ -90,7 +90,7 @@ async def _read_sources(monkeypatch, info):
     monkeypatch.setattr(
         appmod.state,
         "role_build_inputs",
-        {"draft_tables": [], "withdrawn_tables": []},
+        {"withdrawn_tables": []},
         raising=False,
     )
 

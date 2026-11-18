@@ -96,7 +96,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
 
     await store_effective_names(conn)
     tables = as_generated(await fetch_tables(conn), await synthetic_sources(conn))
-    draft_tables = await fetch_tables(conn, draft=True)
+    withdrawn_tables = await fetch_tables(conn, withdrawn=True)
     try:
         _assert_domain_table_unique(tables)
     except RuntimeError as clash:  # the build's own type for it; a refusal of this model here
@@ -153,7 +153,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
     )
 
     _merged_types = {**state.source_types, **source_types}
-    for _t in [*tables, *draft_tables]:
+    for _t in [*tables, *withdrawn_tables]:
         _stype = None if _t.get("view_sql") else _merged_types.get(_t["source_id"])
         _spath = None if _t.get("view_sql") else sources.get(_t["source_id"], {}).get("path")
         _t["write_ops"] = sorted(
@@ -215,8 +215,7 @@ async def check_model_build(conn: "Connection", config: "ProvisaConfig") -> None
             rls_rules=[],
             metrics=metrics,
             field_numbers=None,
-            draft_tables=draft_tables,
-            withdrawn_tables=await fetch_tables(conn, withdrawn=True),  # REQ-1921
+            withdrawn_tables=withdrawn_tables,  # REQ-1921
             withdrawn_relationships=await fetch_relationships(conn, withdrawn=True),
             remote_sources=remote_sources,
         ),

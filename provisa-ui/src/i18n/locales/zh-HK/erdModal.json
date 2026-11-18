@@ -34,6 +34,7 @@
     "focusDomains": "領域：{{names}}",
     "focusTables": "資料表：{{names}}",
     "focusMissing": "找不到：{{names}}",
-    "showAll": "全部顯示"
+    "showAll": "全部顯示",
+    "showWithdrawn": "顯示已撤回"
   }
 }

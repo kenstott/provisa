@@ -36,7 +36,7 @@ def _row(primary_key: list[str]) -> dict:
         "table_name": "payments",
         "view_sql": None,
         "region": None,
-        "draft": False,
+        "withdrawn": False,
         "business_key": ["payment_id"],
         "valid_time": "business_date",
         "recorded_time": "updated_at",
@@ -244,8 +244,8 @@ async def test_a_table_no_longer_updated_in_place_has_its_log_dropped():
         registry.get("versions-7").refresh_interval,
         registry.get("versions-7").allowed_lateness,
     ) == (60, 900.0)
-    # a draft table keeps its log, uncaptured
-    capture.register_logs(state, [{**row, "draft": True}], 300)
+    # a withdrawn table keeps its log, uncaptured
+    capture.register_logs(state, [{**row, "withdrawn": True}], 300)
     assert registry.get("versions-7").enabled is False
     capture.register_logs(state, [_row(["row_id"])], 300)
     assert registry.get("versions-7") is None

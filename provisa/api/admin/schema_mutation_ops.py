@@ -851,7 +851,7 @@ async def register_table(
             allowed_lateness=input.mv_allowed_lateness,  # REQ-961
             expected_events=input.mv_expected_events,  # REQ-961
             business_day_grain=input.mv_business_day_grain,  # REQ-962
-            draft=model.draft,  # REQ-1921
+            withdrawn=False,  # REQ-1921: a registration is live
             region=model.region,  # REQ-1921
         )
 
@@ -893,7 +893,7 @@ async def register_table(
 
     # A newly-created materialized view is materialized immediately and its refresh job registered, so
     # it lands FRESH instead of STALE-until-restart (the event loop otherwise wires only at boot).
-    if _effective_view_sql and input.materialize and not model.draft:
+    if _effective_view_sql and input.materialize:
         from provisa.api.admin.schema_common import activate_view_mv
 
         await activate_view_mv(input.table_name)

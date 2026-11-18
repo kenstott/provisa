@@ -41,6 +41,7 @@ import {
   type ErdPlaces,
 } from "./erd-saved-layout";
 import { useErdView } from "./useErdView";
+import { useShowWithdrawn } from "./useShowWithdrawn";
 
 /** Names the focus, says what of it does not exist, and clears it. */
 function ErdFocusBar({ resolved, onClear }: { resolved: ResolvedErdFocus; onClear: () => void }) {
@@ -90,8 +91,11 @@ export function ErdView({
   const { focus, setFocus, collapsed, layout, setLayout, takeFocus } = useErdView();
   const [collapsedDomains, setCollapsedDomains] = useState<string[] | "all">([]);
   const { checkedDomains, domains: filterDomains } = useDomainFilter();
-  const { tables, loading: tablesLoading } = useTables();
-  const { relationships, loading: relationshipsLoading } = useAllRelationships();
+  const withdrawn = useShowWithdrawn();
+  const { tables, loading: tablesLoading } = useTables({ includeWithdrawn: withdrawn.include });
+  const { relationships, loading: relationshipsLoading } = useAllRelationships({
+    includeWithdrawn: withdrawn.include,
+  });
   const { domains, loading: domainsLoading } = useDomains();
   const resolved = useMemo(
     () =>
@@ -273,6 +277,7 @@ export function ErdView({
               />
             )
           }
+          withdrawn={withdrawn.control}
           highlightTableIds={highlightTableIds}
           highlightRelationshipIds={highlightRelationshipIds}
           search={search}

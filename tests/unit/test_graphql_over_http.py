@@ -52,7 +52,7 @@ def client(monkeypatch):
 
     state = RoleState(
         schemas={"analyst": _SCHEMA},
-        contexts={"analyst": SimpleNamespace(draft_ids={})},  # a context naming no draft
+        contexts={"analyst": SimpleNamespace()},
         rls_contexts={"analyst": object()},
         roles={"analyst": {"id": "analyst"}},
         compiled_query_cache=None,
@@ -66,7 +66,6 @@ def client(monkeypatch):
     monkeypatch.setattr(endpoint, "_check_role_capability", lambda role, cap: None)
     monkeypatch.setattr("provisa.security.rights.require_role", lambda roles, rid: roles[rid])
     # The schema here has no tables: a field that fails validation names none to refuse by.
-    monkeypatch.setattr(parser, "_refuse_draft_fields", lambda document, ctx: None)
     monkeypatch.setattr(parser, "_refuse_missing_capability", lambda document, ctx: None)
     monkeypatch.setattr(parser, "_refuse_unoffered_writes", lambda document, schema, ctx: None)
 

@@ -93,6 +93,9 @@
     "history": {
       "badge": "cronologia",
       "title": "Conserva la cronologia: interrogala a una data o come registrata (Viaggio nel tempo)"
-    }
+    },
+    "withdrawn": "Ritirata",
+    "withdrawnTitle": "Fuori produzione: nessun ruolo la legge finché non viene ripristinata",
+    "sourceWithdrawnTitle": "La sua origine {{source}} è ritirata: nessun ruolo la legge finché l'origine non viene ripristinata"
   }
 }

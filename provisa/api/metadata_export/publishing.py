@@ -206,6 +206,8 @@ async def _model_for_export() -> "ProvisaConfig":
             "database": r["database"],
             # REQ-2118: a member's freshness inherits its source's when it declares none.
             "cache_ttl": r.get("cache_ttl"),
+            # REQ-1921: a withdrawn source's tables are in no catalog publish.
+            "withdrawn": r["withdrawn"],
         }
         for r in source_rows
         if r["id"] != DERIVED_SOURCE_ID

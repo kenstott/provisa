@@ -15,6 +15,8 @@
     "profilerNoMembers": "没有表加入此画像器。",
     "profilerRan": "{{table}}：已画像",
     "profilerFailed": "{{table}}：{{error}}",
-    "profilerNotRead": "{{table}}：未读取。它需要 {{parameters}}，因此无法计数或生成概要。"
+    "profilerNotRead": "{{table}}：未读取。它需要 {{parameters}}，因此无法计数或生成概要。",
+    "withdrawConsequence": "任何角色都无法读取其任何表，任何引擎都不会挂载它，其表的副本将被移除。其定义、表和授权保留不变，“恢复”会将其恢复原样。",
+    "withdrawnNote": "已撤回：在恢复之前，其任何表都不为任何角色提供服务。"
   }
 }

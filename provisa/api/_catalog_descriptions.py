@@ -384,8 +384,6 @@ COLUMN_DESCRIPTIONS: dict[str, dict[str, str]] = {
         "latest_outcome": "For a checker table, its latest scan's outcome: pass when every check "
         "passed, fail otherwise; empty when it has never run",
         "latest_run_at": "For a checker table, when its latest scan ran",
-        "draft": "Whether the table is midway through a move between regions, out of service "
-        "until the move ends",
         # REQ-1986
         "requires_parameters": "Whether a read of the table must give a parameter; such a table "
         "gives no row count, profile or sample without it. Its parameters are in table_columns",

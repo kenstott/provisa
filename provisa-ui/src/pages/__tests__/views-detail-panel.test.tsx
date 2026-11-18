@@ -36,7 +36,7 @@ vi.mock("../../context/AuthContext", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../context/AuthContext")>()),
   useAuth: () => ({
     role: "admin",
-    selectedRoles: ["admin"],
+    selectedRoles: [{ id: "admin", effectiveCapabilities: [], effectiveResidencyValues: [] }],
     // REQ-1944: the table editor's right -- without it the page is the governance-only view.
     capabilities: ["admin", "table_registration"],
     domainAccess: ["*"],
@@ -81,7 +81,8 @@ function table(
     pagingCeilingRows: null,
     replicate: null,
     region: null,
-    draft: false,
+    withdrawn: false,
+    sourceWithdrawn: false,
     rowMaterialize: false,
     loadProtected: null,
     offPeakWindow: null,
@@ -137,10 +138,7 @@ function table(
   };
 }
 
-let TABLES = [
-  table(7, "orders", [], { region: "eu" }),
-  table(8, "staging", [], { region: "eu", draft: true }),
-];
+let TABLES = [table(7, "orders", [], { region: "eu" }), table(8, "staging", [], { region: "eu" })];
 const SOURCES = [
   {
     id: "sales-pg",
@@ -318,10 +316,10 @@ describe("the Views page", () => {
     await userEvent.click(screen.getByTestId("table-section-load"));
     await userEvent.click(screen.getByRole("checkbox", { name: /Materialized View/ }));
     expect(screen.getByTestId("time-travel-section")).toBeInTheDocument();
-    // The list as the server has it once the view exists: a draft, as every new view is.
+    // The list as the server has it once the view exists: live, as every new view is.
     registerTable.mockResolvedValue({ ...ok, params: { id: 9 } });
     refetchTables.mockImplementation(async () => {
-      TABLES = [...TABLES, view(9, "rev_by_region", { draft: true })];
+      TABLES = [...TABLES, view(9, "rev_by_region", {})];
       return { data: { tables: TABLES } };
     });
     await userEvent.click(within(panel()!).getByTestId("table-edit-save"));
@@ -389,7 +387,7 @@ describe("the Tables page's register step", () => {
     registerTable.mockResolvedValue({ ...ok, params: { id: 10 } });
     // Stored under another schema than the form sent, as an ingest table is: found by its id.
     refetchTables.mockImplementation(async () => {
-      TABLES = [...TABLES, table(10, "returns", [], { draft: true, schemaName: "org_default" })];
+      TABLES = [...TABLES, table(10, "returns", [], { schemaName: "org_default" })];
       return { data: { tables: TABLES } };
     });
     await userEvent.click(within(panel()!).getByTestId("table-edit-save"));

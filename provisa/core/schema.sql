@@ -249,11 +249,9 @@ CREATE TABLE IF NOT EXISTS registered_tables (
     role_ttl    JSONB NOT NULL DEFAULT '{}',  -- REQ-1907: role -> TTL seconds; effective = max(cache_ttl, role_ttl)
     replicate   INTEGER,  -- REQ-826: NULL = inherit source; -1 never, N > 0 once it passes N statements per interval, 0 always
     region      TEXT,     -- REQ-1921: the org region its data lives in; NULL = no region
-    -- REQ-1921: the waypoint of a move between regions -- out of service while set, read and
-    -- written nowhere, offered in no schema, copied nowhere. Set by the move, never chosen.
-    draft       BOOLEAN NOT NULL DEFAULT FALSE,
     -- REQ-1921: withdrawn -- out of production while set: serves no role, attached by no engine,
-    -- keeps no replica; its definition, grants and relationships stay. Put back by one action.
+    -- keeps no replica; its definition, grants and relationships stay. Put back by one action,
+    -- naming a region: the waypoint of a move between regions.
     withdrawn   BOOLEAN NOT NULL DEFAULT FALSE,
     load_protected BOOLEAN,  -- REQ-1141: NULL = inherit source; overrides scheduled-refresh-only load protection
     off_peak_window TEXT,    -- REQ-1141: per-table "HH:MM-HH:MM" window override; NULL = inherit source
@@ -317,7 +315,6 @@ ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS status_at TIMESTAMPTZ;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS role_ttl JSONB NOT NULL DEFAULT '{}';
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS replicate INTEGER;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS region TEXT;
-ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS draft BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS withdrawn BOOLEAN NOT NULL DEFAULT FALSE;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS load_protected BOOLEAN;
 ALTER TABLE registered_tables ADD COLUMN IF NOT EXISTS off_peak_window TEXT;

@@ -15,7 +15,7 @@ REQ-848 PIPELINE_LAND) instead of a Provisa listener relaying its messages.
   unchanged (it keeps its offsets). A changed definition gets a new pipeline and the old one is
   dropped. A new pipeline starts at the topic's latest offsets, as the relay consumer does.
 - :func:`sweep` drops this org and region's Kafka pipelines whose table is no longer wired: the
-  table was set as draft, deleted or retired. App shutdown never stops a pipeline. It lives in the
+  table was withdrawn, deleted or retired. App shutdown never stops a pipeline. It lives in the
   database and serves every worker.
 - :func:`ripple_new_batches` is the region's scheduled poll. It reads each pipeline's new successful
   batches from SingleStore's batch metadata (no rows) and ripples the table's change to the views

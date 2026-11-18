@@ -89704,7 +89704,23 @@ Then each unrestricted column appears as a ridge with its quantile marks and nul
     could still extend fails by name ("variable-length path exceeded the maximum depth N") instead of returning
     a cut result with the statement.path_cut warning; SPARQL property paths keep the warning. graph.depth_limit
     defaults to 1000, a very large fixed number, since a Cypher walk never repeats a relationship and so
-    ends on its own long before it.'
+    ends on its own long before it. (Amended 2026-11-16, A DROP ONTO A RESULT WITH UNLABELLED NODES LABELS
+    THEM FROM THE SCHEMA, THEN JOINS:) Maintainer 2026-11-16 (''you could just do this when dragging a node
+    onto the result and you have anonymous nodes in the query''). When a node or label is dropped onto a
+    result whose query has nodes with no label, the drop is not refused: the unlabelled endpoints are given
+    their labels from the schema, one MATCH per label pair the relationship joins within the selected domains,
+    unioned, each returning its endpoints; the dropped label then joins from those labelled nodes with OPTIONAL
+    MATCH. The rewritten query is put in the editor and run, with a one-line note that the endpoints were
+    labelled. Show children uses the same rewrite, and both keep to the selected domains. (Amended 2026-11-16,
+    ONE PATH FINDER FOR DROPS IN CYPHER AND SPARQL, WITHIN THE SELECTED DOMAINS:) Maintainer 2026-11-16
+    (''the cypher path finding ... is different than sparql, and further it should restrict the path to
+    nodes within the selected domains''). A drop onto a result finds the path to the dropped class with
+    one path finder shared by the Cypher and SPARQL views (one implementation, each view writing the path
+    in its own language). The path uses only classes in the selected domains: it never passes through a
+    class of an unselected domain (the meta domain''s registered tables included). It joins the dropped
+    class along one path from the result''s nodes, so the query never combines branches with no condition
+    relating them; when no path exists within the selected domains, the drop is refused by name and nothing
+    is added.'
   use_case: >-
     A knowledge-graph team queries the governed model with the language and RDF clients it already
     uses, and gets the same rows, rules and routing as a SQL or Cypher query, with nothing copied

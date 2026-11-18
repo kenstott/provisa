@@ -335,7 +335,11 @@ class ViewLoopRefused(ValueError):
 
 
 async def upsert(
-    conn: "Connection", table: Table, *, declared: "DeclaredKeys | None" = None
+    conn: "Connection",
+    table: Table,
+    *,
+    declared: "DeclaredKeys | None" = None,
+    withdrawn: bool | None = None,
 ) -> int | None:  # REQ-013, REQ-016, REQ-133, REQ-155, REQ-156, REQ-260, REQ-334, REQ-393, REQ-399
     """Upsert a registered table and its columns. Returns the table row id.
 
@@ -353,7 +357,11 @@ async def upsert(
     read it; a column is a primary or alternate key when the source declares it one, when the
     registration's input does, or (an alternate key) when a relationship is keyed on it. None:
     this registration read no declaration (no driver for the source here), and the input's marks
-    are the table's."""
+    are the table's.
+
+    REQ-1921: ``withdrawn`` is written only when given -- by a configuration, which carries it as
+    the store holds it. Every other save keeps what is held (a new table is live): a table is
+    withdrawn and put back only by ``withdrawTable`` / ``putBackTable``."""
     model_change.name("upsert", model_change.uri(model_uri.table_uri, table))  # REQ-1524
     async with conn.transaction():
         view_sql = getattr(table, "view_sql", None)
@@ -361,7 +369,7 @@ async def upsert(
             loop = await view_loop(conn, table.table_name, view_sql)
             if loop:
                 raise ViewLoopRefused(loop)
-        table_id = await _upsert(conn, table, declared)
+        table_id = await _upsert(conn, table, declared, withdrawn)
         if table_id is not None:
             from provisa.dq.regulation import uncite_removed
 
@@ -508,7 +516,9 @@ async def _require_landed_if_member(  # REQ-1634
         )
 
 
-async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | None") -> int | None:
+async def _upsert(
+    conn: "Connection", table: Table, declared: "DeclaredKeys | None", withdrawn: bool | None
+) -> int | None:
     domain_id = domain_policy.resolve_domain_id(table.domain_id)
     await _require_not_retired(conn, table)
     await _require_free_sql_address(conn, table, domain_id)
@@ -636,7 +646,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected": getattr(table, "load_protected", None),  # REQ-1141
         "replicate": getattr(table, "replicate", None),  # REQ-826
         "region": getattr(table, "region", None),  # REQ-1921
-        "draft": table.draft,  # REQ-1921
         "off_peak_window": getattr(table, "off_peak_window", None),  # REQ-1141
         "off_peak_tz": getattr(table, "off_peak_tz", None),  # REQ-1141
         # REQ-1865: never written here despite fetch_tables() SELECTing both columns and
@@ -711,7 +720,6 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "load_protected",  # REQ-1141
         "replicate",  # REQ-826
         "region",  # REQ-1921
-        "draft",  # REQ-1921
         "off_peak_window",  # REQ-1141
         "off_peak_tz",  # REQ-1141
         "row_materialize",  # REQ-1865
@@ -735,6 +743,9 @@ async def _upsert(conn: "Connection", table: Table, declared: "DeclaredKeys | No
         "query_template",
         "relay_pagination",
     ]
+    if withdrawn is not None:  # REQ-1921: a configuration's, as the store holds it
+        values["withdrawn"] = withdrawn
+        _update_columns.append("withdrawn")
     table_id = await conn.upsert_returning(
         registered_tables,
         values,
