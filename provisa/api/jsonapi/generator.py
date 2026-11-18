@@ -221,10 +221,25 @@ def _resource_id_columns(ctx: Any, table_id: int, physical_to_gql: dict[str, str
     return []
 
 
+def _included_id_columns(ctx: Any, join: Any, to_gql: dict[str, str]) -> list[str] | None:
+    """REQ-1929: an included resource's id columns, physical. Reached by a many-to-one (or
+    one-to-one) relationship: the column it points at, or None when the role cannot read it.
+    Reached by a one-to-many relationship: its declared primary key; otherwise none, and its id
+    is its position among its parent's included resources, so no child row collapses into
+    another that shares its foreign key."""
+    if join.cardinality == "one-to-many":
+        keys = ctx.pk_columns.get(join.target.table_id) or []
+        return list(keys) if keys and all(k in to_gql for k in keys) else []
+    if join.target_expr is not None or join.target_column not in to_gql:
+        return None
+    return [join.target_column]
+
+
 class _IncludePlan:
     """REQ-257, REQ-1929: a row read's ``?include=`` paths, each a relationship path at any depth
     (``a`` or ``a.b``), as the GraphQL selection that reads them and what the encoder needs to
-    write them: each path's id column (the column its relationship points at), each path's
+    write them: each path's id columns (see ``_included_id_columns``; none means a position),
+    each path's
     GraphQL names past the first relationship, and ``fields[<type>]`` per included type."""
 
     def __init__(self) -> None:
@@ -264,15 +279,14 @@ def _plan_includes(  # REQ-257, REQ-1929
             if path not in plan.keys:
                 target_scalars, _ = _split_scalar_and_relationship_fields(target_type)
                 to_physical, to_gql = scalar_name_maps(ctx, join.target.table_id, target_scalars)
-                # An included resource's id is the column its relationship points at.
-                if join.target_expr is not None or join.target_column not in to_gql:
+                keys = _included_id_columns(ctx, join, to_gql)
+                if keys is None:
                     return _jsonapi_error_response(
                         400,
                         "Invalid Include",
                         f"Relationship {seg!r} points at no column its role can read",
                         source_parameter="include",
                     )
-                key = join.target_column
                 wanted = sparse.get(seg)
                 if wanted is not None:
                     unknown = [f for f in wanted if f not in to_gql]
@@ -285,14 +299,13 @@ def _plan_includes(  # REQ-257, REQ-1929
                         )
                     plan.fields[seg] = list(wanted)
                     selected = [to_gql[f] for f in wanted]
-                    if to_gql[key] not in selected:
-                        selected.append(to_gql[key])
+                    selected += [to_gql[k] for k in keys if to_gql[k] not in selected]
                 else:
                     selected = list(target_scalars)
                 child = tree.setdefault(gql_rel, {})
                 for name in selected:
                     child.setdefault(name, None)
-                plan.keys[path] = [key]
+                plan.keys[path] = keys
                 if depth > 0:
                     plan.names[path] = (gql_rel, to_physical)
             tree = tree[gql_rel]
