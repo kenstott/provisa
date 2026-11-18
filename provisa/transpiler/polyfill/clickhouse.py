@@ -71,6 +71,7 @@ from __future__ import annotations
 import calendar
 import decimal
 import functools
+import math
 import re
 import struct
 
@@ -796,6 +797,71 @@ REAL = Feature(
     ),
 )
 
+#: The integers a double holds exactly, which ClickHouse's cast reads as they are.
+_DOUBLE_EXACT_INTEGERS = 1 << 53
+
+
+def double_read(node: exp.Expr, dialect: str) -> exp.Expr | None:
+    """A literal cast to a double, read as float8in reads its digits (strtod's nearest double, a
+    tie to the even one): ClickHouse's cast of a text to a Float64 is no nearest value without
+    precise_float_parsing ('4.029840426088479e+17' read as 4.0298404260884794e+17), where its
+    number literal is. The nearest double is written as its shortest digits, a number literal.
+    Past the type, and a value that is no zero read as zero, PostgreSQL's 22003. NaN, infinity
+    and a zero (its sign kept) ClickHouse reads as they are."""
+    cast = _plain_cast(node, exp.DataType.Type.DOUBLE)
+    if cast is None:
+        return None
+    text = _text_of(cast.this)
+    if text is not None:
+        if not _REAL_TEXT.fullmatch(text):
+            return None  # NaN, infinity, or a text the input refuses: ClickHouse's own
+        value = decimal.Decimal(text.strip())
+    else:
+        number = _number(cast.this)
+        if number is None:
+            return None
+        value = number
+    if value == value.to_integral_value() and abs(value) <= _DOUBLE_EXACT_INTEGERS:
+        return None  # an integer a double holds (a zero too), which ClickHouse casts as it is
+    double = float(value)  # the nearest double, as Python's decimal-to-float conversion rounds
+    if math.isinf(double) or double == 0:
+        said = text if text is not None else format(value, "f")
+        raise Refused(
+            Refusal("22003", f'"{said.strip()}" is out of range for type double precision')
+        )
+    return exp.Cast(this=_as_number(decimal.Decimal(repr(double))), to=cast.to.copy())
+
+
+DOUBLE = Feature(
+    "double precision",
+    FAMILY,
+    "A literal cast to a double.",
+    read=Side(
+        rules=(
+            Rule(
+                None,
+                {
+                    "clickhouse": Rewrite(
+                        double_read,
+                        mentions=r"[\d'.]\s*\)?\s*(?:::|\bas)\s*\"?(?:double\s+precision|float8)\b"
+                        r"|\b(?:double\s+precision|float8)\s+'",
+                    )
+                },
+            ),
+        ),
+        limitations={
+            "clickhouse": (
+                Limitation(
+                    "A number or a text the statement writes is read as float8in reads it: the "
+                    "double nearest its digits, a tie to the even one; past the type, or a value "
+                    "that is no zero read as zero, it raises 22003. A column's cast keeps "
+                    "ClickHouse's own, which reads a text to a Float64 less exactly."
+                ),
+            )
+        },
+    ),
+)
+
 #: An oid's text as PostgreSQL 16's oidin reads it (uint32in_subr): white space, a sign, decimal
 #: digits, white space.
 _OID_TEXT = re.compile(r"\s*([+-]?\d+)\s*", re.ASCII)
@@ -1503,6 +1569,7 @@ FEATURES: tuple[Feature, ...] = (
     TIME,
     INTEGER,
     REAL,
+    DOUBLE,
     OID_LITERAL,
     TID_EXTREMES,
     NUMERIC,

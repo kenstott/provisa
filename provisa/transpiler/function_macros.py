@@ -2359,12 +2359,12 @@ _EXACT = {
     "clickhouse": {
         "sorted": "arraySort(groupArray({k}))",
         "descending": "arrayReverseSort(groupArray({k}))",
-        "bound": "arrayElement(arrayMap(_s -> {answer}, [{sorted}]), 1)",
+        # No keys answer NULL, the array of fractions' answers too: ClickHouse holds no
+        # Nullable(Array), and reads if(..., NULL, an array) as a Variant whose NULL is NULL.
+        "bound": "arrayElement(arrayMap(_s -> if(length(_s) = 0, NULL, {answer}), [{sorted}]), 1)",
         "each": "arrayMap(_f -> {answer}, [{fractions}])",
-        "disc": ("if(length(_s) = 0, NULL, _s[toUInt64(greatest(ceil({f} * length(_s)), 1))])"),
-        "cont": (
-            "if(length(_s) = 0, NULL, _s[{low}] + (_s[{high}] - _s[{low}]) * ({place} - {low}))"
-        ),
+        "disc": "_s[toUInt64(greatest(ceil({f} * length(_s)), 1))]",
+        "cont": "_s[{low}] + (_s[{high}] - _s[{low}]) * ({place} - {low})",
         "place": "({f} * (length(_s) - 1) + 1)",
         "low": "toUInt64(floor({place}))",
         "high": "toUInt64(ceil({place}))",

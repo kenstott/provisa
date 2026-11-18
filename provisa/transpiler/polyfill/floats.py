@@ -34,6 +34,7 @@ from __future__ import annotations
 import sqlglot.expressions as exp
 
 from provisa.pgwire import function_types
+from provisa.transpiler import pg_forms
 from provisa.transpiler.polyfill import notation, trino
 from provisa.transpiler.polyfill.matching import graft, match
 from provisa.transpiler.polyfill.notation import Rewrite, replacement
@@ -287,6 +288,55 @@ SIGN = Feature(
     read=Side(rules=(Rule("sign($x)", _ch("if(isNaN(toFloat64($x)), 0, sign($x))")),)),
 )
 
+#: 2^e mod 360 for e from 0 to 14; past 2 its period is 12 (2^e is 0 mod 8, and 2 has order 12 mod 45).
+_TWO_TO_THE_MOD_360 = [pow(2, e, 360) for e in range(15)]
+
+
+def _fmod_360(x: str) -> str:
+    """C's fmod(x, 360.0) of a finite double ``x``, exact, its sign kept (a minus zero too), where
+    ClickHouse's % of a float is inexact past 2^53. ``x`` is m * 2^e, m the 53 bits of its
+    mantissa: past 360, e is 43 or less below zero, where the remainder is m's remainder of 360 *
+    2^-e scaled back by a power of two; at zero or above it is (m mod 360) * (2^e mod 360) mod 360."""
+    bits = f"reinterpretAsUInt64({x})"
+    e = f"(toInt32(bitAnd(bitShiftRight({bits}, 52), 2047)) - 1075)"
+    m = f"bitOr(bitAnd({bits}, 4503599627370495), 4503599627370496)"
+    fraction = (
+        f"toFloat64(({m}) % bitShiftLeft(toUInt64(360), -({e}))) / "
+        f"reinterpretAsFloat64(bitShiftLeft(toUInt64(1023 - ({e})), 52))"
+    )
+    power = f"arrayElement({_TWO_TO_THE_MOD_360}, if({e} < 3, {e}, 3 + ({e} - 3) % 12) + 1)"
+    whole = f"toFloat64((({m}) % 360) * {power} % 360)"
+    return f"if(abs({x}) < 360.0, {x}, if({x} < 0, -1.0, 1.0) * if({e} < 0, {fraction}, {whole}))"
+
+
+def _degrees_of(name: str) -> Feature:
+    """``name`` (sind, cosd, tand or cotd) of a double: float.c's, its angle folded by an exact
+    fmod; NaN of NaN, 22003 of an infinity."""
+    answer = pg_forms.degree_answers("_r", minus_zero=True)[name]
+    folded = f"arrayElement(arrayMap(_r -> {answer}, [{_fmod_360('_v')}]), 1)"
+    form = ch_checked(
+        [_OUT_OF_RANGE.format(condition="isInfinite(_v)")],
+        f"if(isNaN(_v), _v, {folded})",
+    )
+    return Feature(
+        name,
+        FAMILY,
+        f"The {name[:-1]} of an angle in degrees, exact at 0, 30, 45, 60 and 90 as PostgreSQL's.",
+        read=Side(
+            rules=(
+                Rule(
+                    f"{name}($x)",
+                    _ch(f"arrayElement(arrayMap(_v -> {form}, [toFloat64($x)]), 1)"),
+                ),
+            )
+        ),
+    )
+
+
+DEGREE_TRIGONOMETRY: tuple[Feature, ...] = tuple(
+    _degrees_of(name) for name in ("sind", "cosd", "tand", "cotd")
+)
+
 #: Each integer type ClickHouse holds a PostgreSQL integer in, and PostgreSQL's name of it.
 _INTEGER_TYPES = {"Int16": "smallint", "Int32": "integer", "Int64": "bigint"}
 
@@ -501,6 +551,7 @@ FEATURES: tuple[Feature, ...] = (
     *LOGS,
     *POWERS,
     DEGREES,
+    *DEGREE_TRIGONOMETRY,
     SIGN,
     ABS,
     LCM,
