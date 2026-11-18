@@ -18,7 +18,7 @@ chosen for that run only.
 The count before Run reads nothing: it is answered with every read seam and every source call
 refusing, and it is never lower than the requests the run then makes."""
 
-# Requirements: REQ-413, REQ-464, REQ-1986, REQ-2031, REQ-2147
+# Requirements: REQ-413, REQ-464, REQ-1986, REQ-2031, REQ-2147, REQ-2253
 
 from __future__ import annotations
 
@@ -35,7 +35,7 @@ import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, insert, select
 
-from provisa.api.admin import discovery
+from provisa.api.admin import capabilities, discovery
 from provisa.api.errors import ApiError
 from provisa.compiler.naming import domain_to_sql_name
 from provisa.core import schema_org as so
@@ -280,6 +280,9 @@ class _World:
         for env in _KEY_ENVS:
             monkeypatch.delenv(env, raising=False)
         monkeypatch.setattr(discovery, "require_capability_request", lambda request, cap: None)
+        #: The domains the caller may reach (REQ-1591); None: every domain.
+        self.authority: frozenset[str] | None = None
+        monkeypatch.setattr(capabilities, "allowed_domains_request", lambda request: self.authority)
         monkeypatch.setattr(
             discovery,
             "state",
@@ -385,8 +388,10 @@ async def test_system_domains_are_never_included_even_when_asked():
     await _table(db, 4, "ops", "queries", [("id", "integer", True)])
     await _table(db, 5, "ontology", "terms", [("id", "integer", True)])
     async with db.acquire() as conn:
-        by_domain = await gather.scope_table_ids(conn, ["sales", "meta", "ops", "ontology"], None)
-        by_table = await gather.scope_table_ids(conn, [], [1, 3, 4, 5])
+        by_domain = await gather.scope_table_ids(
+            conn, ["sales", "meta", "ops", "ontology"], None, None
+        )
+        by_table = await gather.scope_table_ids(conn, [], [1, 3, 4, 5], None)
     assert by_domain == [1]
     assert by_table == [1]
 
@@ -395,8 +400,100 @@ async def test_tables_default_to_every_table_of_the_chosen_domains():
     db = await _store()
     await _orders_customers(db)
     async with db.acquire() as conn:
-        assert await gather.scope_table_ids(conn, ["sales", "crm"], None) == [1, 2]
-        assert await gather.scope_table_ids(conn, ["sales", "crm"], [2]) == [2]
+        assert await gather.scope_table_ids(conn, ["sales", "crm"], None, None) == [1, 2]
+        assert await gather.scope_table_ids(conn, ["sales", "crm"], [2], None) == [2]
+
+
+# --- within the selected domains (REQ-2253) --------------------------------------------------------
+
+
+async def test_a_table_named_outside_the_selected_domains_is_not_in_either_set():
+    db = await _store()
+    await _orders_customers(db)
+    async with db.acquire() as conn:
+        assert await gather.scope_table_ids(conn, [], [1, 2], frozenset({"sales"})) == [1]
+        assert await gather.scope_table_ids(conn, ["sales", "crm"], None, frozenset({"crm"})) == [2]
+
+
+async def test_the_count_leaves_out_a_named_table_outside_the_selected_domains(monkeypatch):
+    db = await _store()
+    await _orders_customers(db)
+    _World(monkeypatch, db, config=_ASSIGNED, api_keys={})
+    scope = _scope(kinds=["foreign_keys"], source_tables=[1, 2])
+    assert (await discovery.count_run(_REQUEST, scope))["source_tables"] == 2
+    counted = await discovery.count_run(_REQUEST, scope, domains=["sales"])
+    assert counted["source_tables"] == 1 and counted["target_tables"] == 1
+
+
+async def test_a_run_never_reads_or_proposes_a_named_table_outside_the_selected_domains(
+    monkeypatch, tmp_path
+):
+    db = await _store(f"sqlite+pysqlite:///{tmp_path / 'store.db'}")
+    await _orders_customers(db)
+    await _table(
+        db, 3, "sales", "invoices", [("id", "integer", True), ("customer_id", "integer", False)]
+    )
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
+    # The model names the table left out as well: it is not proposed.
+    world.answers = [
+        json.dumps(
+            [
+                _suggestion((3, "customer_id"), (1, "id")),
+                _suggestion((1, "customer_id"), (2, "id")),
+            ]
+        )
+    ]
+    ended = await _run(
+        world, _scope(kinds=["semantics"], source_tables=[1, 2, 3]), domains=["sales"]
+    )
+    assert ended["status"] == "done"
+    assert world.reads.sql and not any('"customers"' in sql for sql in world.reads.sql)
+    assert world.prompts and all("customers" not in prompt for prompt in world.prompts)
+    assert ended["report"]["source_tables"] == 2 and ended["report"]["source_left_out"] == 1
+    stored = {(c["source_table_id"], c["target_table_id"]) for c in await _candidates(db)}
+    assert stored == {(3, 1)}
+
+
+@pytest.mark.parametrize("route", ["count", "start"])
+async def test_naming_only_tables_outside_the_selected_domains_is_refused_by_name(
+    monkeypatch, route
+):
+    db = await _store()
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={})
+    call = discovery.count_run if route == "count" else discovery.start_run
+    with pytest.raises(ApiError) as refused:
+        await call(_REQUEST, _scope(kinds=["foreign_keys"], source_tables=[2]), domains=["sales"])
+    assert refused.value.code == "discovery.source_tables_outside_domains"
+    assert "crm.customers" in str(refused.value)
+    assert world.launched == [] and world.reads.sql == []
+
+
+async def test_a_named_target_outside_the_selected_domains_is_refused_by_name(monkeypatch):
+    db = await _store()
+    await _orders_customers(db)
+    _World(monkeypatch, db, config=_ASSIGNED, api_keys={})
+    scope = _scope(
+        kinds=["foreign_keys"],
+        source_domains=["sales"],
+        target_same_as_source=False,
+        target_domains=["crm"],
+        target_tables=[2],
+    )
+    with pytest.raises(ApiError) as refused:
+        await discovery.count_run(_REQUEST, scope, domains=["sales"])
+    assert refused.value.code == "discovery.target_tables_outside_domains"
+
+
+async def test_the_selection_never_widens_the_callers_authority(monkeypatch):
+    db = await _store()
+    await _orders_customers(db)
+    world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={})
+    world.authority = frozenset({"crm"})
+    scope = _scope(kinds=["foreign_keys"], source_tables=[1, 2])
+    assert (await discovery.count_run(_REQUEST, scope))["source_tables"] == 1
+    counted = await discovery.count_run(_REQUEST, scope, domains=["sales", "crm"])
+    assert counted["source_tables"] == 1
 
 
 # --- classification during the run ------------------------------------------------------------------
@@ -410,7 +507,7 @@ async def test_a_never_profiled_table_is_classified_with_the_profiler_defaults_a
     world = _World(monkeypatch, db, config=_ASSIGNED, api_keys={"openai": "k"})
     await discovery.count_run(_REQUEST, _scope())
     assert world.classified == []  # the count before Run classifies nothing
-    await discovery.prepare(discovery.state, _scope().spec("org_admin"), None)
+    await discovery.prepare(discovery.state, _scope().spec("org_admin", None), None)
     assert [
         (c["table_id"], c["values_per_column"], c["sample_above_cells"]) for c in world.classified
     ] == [
@@ -510,7 +607,7 @@ def _pet_world(monkeypatch, db: Database) -> _World:
 
 async def _prepared(scope: discovery.RunScope) -> Any:
     """The run's tables and requests, as the background run prepares them."""
-    spec = scope.spec("org_admin")
+    spec = scope.spec("org_admin", None)
     return await discovery.prepare(discovery.state, spec, await discovery._run_model(spec))
 
 
@@ -762,9 +859,10 @@ def _suggestion(src: tuple[int, str], tgt: tuple[int, str], confidence: float = 
     }
 
 
-async def _run(world: _World, scope: discovery.RunScope) -> dict:
-    """Start a run and do its background work here, then read it back."""
-    started = (await discovery.start_run(_REQUEST, scope))["run"]
+async def _run(world: _World, scope: discovery.RunScope, domains: list[str] | None = None) -> dict:
+    """Start a run and do its background work here, then read it back; ``domains``: the navbar
+    filter's selection."""
+    started = (await discovery.start_run(_REQUEST, scope, domains=domains))["run"]
     assert started["status"] == "running"
     (run_id, spec, model) = world.launched.pop()
     await discovery.run_discovery(run_id, spec, model)
@@ -2457,7 +2555,7 @@ async def test_a_run_takes_its_starters_threshold_records_it_and_tells_the_model
 
 def test_key_value_overlap_is_refused_without_semantic():
     with pytest.raises(ApiError) as refused:
-        _scope(kinds=["foreign_keys", "key_values"]).spec("steward")
+        _scope(kinds=["foreign_keys", "key_values"]).spec("steward", None)
     assert refused.value.code == "discovery.key_values_needs_semantics"
 
 
@@ -2470,7 +2568,7 @@ def test_key_value_overlap_needs_every_one_of_its_settings(left_out):
     with pytest.raises(ApiError) as missing:
         discovery.RunScope.model_validate(
             {"kinds": ["semantics", "key_values"], "source_domains": ["sales"], **_ALWAYS, **given}
-        ).spec("steward")
+        ).spec("steward", None)
     assert missing.value.code == "discovery.key_values_settings_missing"
 
 
@@ -2484,16 +2582,16 @@ def test_only_key_value_overlap_takes_its_settings(given):
                 **_ALWAYS,
                 given: _KEY_VALUES[given],
             }
-        ).spec("steward")
+        ).spec("steward", None)
     assert unchosen.value.code == "discovery.key_values_settings_unchosen"
 
 
 def test_the_cutoff_and_sample_size_reach_the_run_and_unchosen_none_is_measured():
-    spec = _scope(measure_cutoff=0.35, sample_size=500).spec("steward")
+    spec = _scope(measure_cutoff=0.35, sample_size=500).spec("steward", None)
     assert spec.kinds == frozenset({"semantics"})
     assert spec.key_values is not None
     assert (spec.key_values.cutoff, spec.key_values.sample_size) == (0.35, 500)
-    assert _scope(kinds=["semantics"]).spec("steward").key_values is None
+    assert _scope(kinds=["semantics"]).spec("steward", None).key_values is None
 
 
 async def test_a_band_pair_whose_key_values_match_is_admitted_and_the_summary_states_the_settings(

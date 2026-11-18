@@ -963,12 +963,38 @@ export function fetchModelLimits(vendor: string, model: string): Promise<ModelLi
   return discoveryRequest(`/limits?${q}`, "Model limits");
 }
 
-export function countDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryCount> {
-  return discoveryRequest("/runs/count", "Discovery count", postJson(scope));
+// REQ-2253: a run carries the navbar filter's selection (useViewDomains; null asks for no
+// narrowing) as repeated ``domains=`` parameters, so the server reads, counts and proposes no table
+// outside it. Repeated rather than comma-joined: the no-domain domain's id is the empty string.
+function selectedDomainsQuery(domains: ReadonlySet<string> | null): string {
+  if (domains === null) return "";
+  const params = new URLSearchParams();
+  for (const d of domains) params.append("domains", d);
+  return `?${params.toString()}`;
 }
 
-export async function startDiscoveryRun(scope: DiscoveryScope): Promise<DiscoveryRun> {
-  return (await discoveryRequest<{ run: DiscoveryRun }>("/runs", "Discovery", postJson(scope))).run;
+export function countDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryCount> {
+  return discoveryRequest(
+    `/runs/count${selectedDomainsQuery(domains)}`,
+    "Discovery count",
+    postJson(scope),
+  );
+}
+
+export async function startDiscoveryRun(
+  scope: DiscoveryScope,
+  domains: ReadonlySet<string> | null,
+): Promise<DiscoveryRun> {
+  return (
+    await discoveryRequest<{ run: DiscoveryRun }>(
+      `/runs${selectedDomainsQuery(domains)}`,
+      "Discovery",
+      postJson(scope),
+    )
+  ).run;
 }
 
 export async function fetchDiscoveryRun(id: number): Promise<DiscoveryRun> {
