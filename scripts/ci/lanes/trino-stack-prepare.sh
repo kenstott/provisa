@@ -79,9 +79,12 @@ esac
 # before the stack mounts them.
 python3 tests/trino_plugins.py verify
 
-# REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), built from
-# trino-functions/ in a Maven container; the engine's compose mounts it beside the others.
-scripts/build_trino_functions.sh
+# REQ-1494: Provisa's own function plugin (provisa_digest, provisa_fake_method), which the engine's
+# compose mounts beside the others. The caller restored it with the jars above: the priming job
+# built it once from trino-functions/ (.github/actions/trino-plugins). Built here, every lane ran
+# Maven against Maven Central at once (run 44216356740: HTTP 429).
+functions=trino/plugins/provisa-functions/provisa-functions-1.jar
+[ -s "$functions" ] || { echo "$functions is missing: restore it with .github/actions/trino-plugins" >&2; exit 1; }
 
 # Pull before `up` so the compose wait below spends its budget on Trino's JVM boot rather
 # than on a 1 GB image download racing the healthcheck's start_period.
