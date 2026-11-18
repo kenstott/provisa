@@ -62,8 +62,10 @@ export const NODE_GAP = 14;
  * to each next one. */
 const TRACK_INSET = 14;
 const TRACK_STEP = 12;
-/** The space between a line's run beside the lane and its name, and between two names. */
+/** The space between a line's name and the first track, and between two names on one run. */
 const NAME_GAP = 4;
+/** The room a name leaves at its node's side, for an arrowhead. */
+const NAME_END = 8;
 /** A line's name: its text background's padding (stylesheet) and its line height. */
 const NAME_PAD = 2;
 const NAME_LINE = 1.25;
@@ -616,11 +618,26 @@ function routesBeside(
   const lines = all.filter((k) => byId.has(k.source) && byId.has(k.target));
   const order = [...items].sort((p, q) => p.y - q.y).map((n) => n.id);
   const tracks = besideTracks(order, lines);
+  const tracked = lines.filter((k) => tracks.has(k.id));
   const right = Math.max(...items.map((n) => n.x + n.w / 2));
-  for (const k of lines) {
-    const t = tracks.get(k.id);
-    if (t === undefined) continue;
-    const x = right + TRACK_INSET + t * TRACK_STEP;
+  // The first track stands far enough out that each node's names (besideNames) fit end to end on
+  // its runs across to the tracks, clear of every line running down them.
+  const room = new Map<string, number>();
+  ownEnds(tracked).forEach((end, id) => {
+    const text = tracked.find((k) => k.id === id)?.label ?? "";
+    if (text === "") return;
+    room.set(end, (room.get(end) ?? NAME_END + NAME_GAP) + nameWidth(text) + NAME_GAP);
+  });
+  const inset = Math.max(
+    TRACK_INSET,
+    ...[...room].map(([id, w]) => {
+      const n = byId.get(id) as (typeof items)[number];
+      return w - (right - (n.x + n.w / 2));
+    }),
+  );
+  for (const k of tracked) {
+    const t = tracks.get(k.id) as number;
+    const x = right + inset + t * TRACK_STEP;
     const s = byId.get(k.source) as (typeof items)[number];
     const g = byId.get(k.target) as (typeof items)[number];
     out.set(k.id, [
@@ -633,6 +650,24 @@ function routesBeside(
   return out;
 }
 
+/** A line's name as drawn: as wide as its text, its background's padding round it. */
+const nameWidth = (text: string) => textWidth(text, SIZE.edgeLabel) + 2 * NAME_PAD;
+
+/** The end of each of ``lines`` (between nodes of one lane) whose run across to the tracks is its
+ * own, by id: the end at the node with fewer of ``lines``, which the line does not share as a comb
+ * with the node's other lines; the source when the two have as many. */
+function ownEnds(lines: LaneLine[]): Map<string, string> {
+  const degree = new Map<string, number>();
+  for (const k of lines)
+    for (const id of [k.source, k.target]) degree.set(id, (degree.get(id) ?? 0) + 1);
+  return new Map(
+    lines.map((k) => [
+      k.id,
+      (degree.get(k.target) as number) < (degree.get(k.source) as number) ? k.target : k.source,
+    ]),
+  );
+}
+
 /** A box drawn on the canvas. */
 export interface NameBox {
   x1: number;
@@ -641,63 +676,40 @@ export interface NameBox {
   y2: number;
 }
 
-const overlaps = (p: NameBox, q: NameBox) =>
-  p.x1 < q.x2 + NAME_GAP &&
-  q.x1 < p.x2 + NAME_GAP &&
-  p.y1 < q.y2 + NAME_GAP &&
-  q.y1 < p.y2 + NAME_GAP;
-
 /** Where the name of each of ``lines`` running beside its lane on ``routes`` (besideRoutes) is
- * drawn, by id: right of its run down its track (``NAME_GAP`` past it), growing away from the lane,
- * centred on that run's middle. A name never lies on another name or on any line's route: it moves
- * along its own run, a name's height at a time, nearest the middle first (above before below), to
- * the first place clear of them; where its run has none, it moves right past what it meets and
- * tries again. Names go in turn from the track nearest the lane, each down its track from the top,
- * then by id. A line with no name has no box. */
+ * drawn, by id: on its own run across from a node to its track (ownEnds), level with that node,
+ * between the node's side (``NAME_END`` clear of it, for an arrowhead) and the first track
+ * (``NAME_GAP`` short of it), where no line runs down. The names of one node's runs stand end to
+ * end, ``NAME_GAP`` apart, nearest track first and then by id, centred on that span; besideRoutes
+ * sets the first track out far enough for them. A line with no name has no box. */
 export function besideNames(routes: Map<string, At[]>, lines: LaneLine[]): Map<string, NameBox> {
-  const label = new Map(lines.map((k) => [k.id, k.label ?? ""]));
-  const size = SIZE.edgeLabel;
-  const h = size * NAME_LINE + 2 * NAME_PAD;
-  const thin = (a: At, b: At): NameBox => ({
-    x1: Math.min(a.x, b.x),
-    x2: Math.max(a.x, b.x),
-    y1: Math.min(a.y, b.y),
-    y2: Math.max(a.y, b.y),
-  });
-  const taken: NameBox[] = [];
-  routes.forEach((p) => {
-    for (let i = 1; i < p.length; i++) taken.push(thin(p[i - 1], p[i]));
-  });
-  const named = [...routes]
-    .filter(([id]) => (label.get(id) ?? "") !== "")
-    .map(([id, p]) => ({
-      id,
-      x: p[1].x,
-      lo: Math.min(p[1].y, p[2].y),
-      hi: Math.max(p[1].y, p[2].y),
-    }))
-    .sort((p, q) => p.x - q.x || p.lo + p.hi - (q.lo + q.hi) || (p.id < q.id ? -1 : 1));
   const out = new Map<string, NameBox>();
-  for (const n of named) {
-    const w = textWidth(label.get(n.id) as string, size) + 2 * NAME_PAD;
-    const mid = (n.lo + n.hi) / 2;
-    const ys = [mid];
-    for (let k = 1; mid - k * (h + NAME_GAP) >= n.lo || mid + k * (h + NAME_GAP) <= n.hi; k++)
-      for (const y of [mid - k * (h + NAME_GAP), mid + k * (h + NAME_GAP)])
-        if (y >= n.lo && y <= n.hi) ys.push(y);
-    let x1 = n.x + NAME_GAP;
-    let placed: NameBox | undefined;
-    while (placed === undefined) {
-      const at = (y: number): NameBox => ({ x1, x2: x1 + w, y1: y - h / 2, y2: y + h / 2 });
-      const y = ys.find((c) => taken.every((t) => !overlaps(at(c), t)));
-      if (y !== undefined) placed = at(y);
-      else
-        x1 =
-          Math.max(...taken.filter((t) => overlaps(at(mid), t)).map((t) => t.x2)) + NAME_GAP + 1e-6;
-    }
-    taken.push(placed);
-    out.set(n.id, placed);
-  }
+  if (routes.size === 0) return out;
+  const tracked = lines.filter((k) => routes.has(k.id));
+  const h = SIZE.edgeLabel * NAME_LINE + 2 * NAME_PAD;
+  const firstTrack = Math.min(...[...routes.values()].map((p) => p[1].x));
+  const byNode = new Map<string, { id: string; text: string; run: [At, At] }[]>();
+  ownEnds(tracked).forEach((end, id) => {
+    const k = tracked.find((l) => l.id === id) as LaneLine;
+    const text = k.label ?? "";
+    if (text === "") return;
+    const p = routes.get(id) as At[];
+    const run: [At, At] = end === k.source ? [p[0], p[1]] : [p[3], p[2]];
+    byNode.set(end, [...(byNode.get(end) ?? []), { id, text, run }]);
+  });
+  byNode.forEach((names) => {
+    names.sort((p, q) => p.run[1].x - q.run[1].x || (p.id < q.id ? -1 : 1));
+    const [node] = names[0].run;
+    const widths = names.map((n) => nameWidth(n.text));
+    const total = widths.reduce((s, w) => s + w, 0) + (names.length - 1) * NAME_GAP;
+    const from = node.x + NAME_END;
+    const to = firstTrack - NAME_GAP;
+    let x1 = (from + to) / 2 - total / 2;
+    names.forEach((n, i) => {
+      out.set(n.id, { x1, x2: x1 + widths[i], y1: node.y - h / 2, y2: node.y + h / 2 });
+      x1 += widths[i] + NAME_GAP;
+    });
+  });
   return out;
 }
 
@@ -753,7 +765,7 @@ function routeBeside(cy: Core, lane: string): void {
       "segment-weights": `${c1.weight} ${c2.weight}`,
       "segment-distances": `${c1.distance} ${c2.distance}`,
     });
-    // Its name beside its run down the track (besideNames): cytoscape centres a segments edge's
+    // Its name on its own run across to the track (besideNames): cytoscape centres a segments edge's
     // label on the middle of its two bends, so the margins move it from there.
     const b = names.get(id);
     if (b !== undefined)
