@@ -13,6 +13,7 @@
 
 import { LAYOUT_OPTIONS } from "../../src/components/graph/canvas/canvas-types";
 import { ERD_ELK_LAYOUT } from "../../src/components/provisa-graph/presets";
+import { graphTokens } from "../../src/components/provisa-graph/tokens";
 
 /** The layouts a caller may name: the graph page's force and hierarchy, and the ERD's ELK. */
 export const LAYOUTS = {
@@ -22,7 +23,8 @@ export const LAYOUTS = {
 } as const;
 export type LayoutName = keyof typeof LAYOUTS;
 
-/** What the graph canvas sits on: the page's --bg (theme/tokens.css); the stylesheet itself has
- *  no theme. Held equal to the tokens by the provisa-ui test graphRenderTheme.test.ts. */
-export const BACKGROUND = { light: "#ffffff", dark: "#0f1117" } as const;
+/** What the graph canvas sits on: the graph tokens' canvas, as the page's Cypher graph paints it
+ *  (GraphCanvas), so the label boxes (drawn in the same colour) blend in. Held equal by the
+ *  provisa-ui test graphRenderLook.test.ts. */
+export const BACKGROUND = { light: graphTokens(false).canvas, dark: graphTokens(true).canvas } as const;
 export type Theme = keyof typeof BACKGROUND;

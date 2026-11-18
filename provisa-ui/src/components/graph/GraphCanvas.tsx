@@ -16,6 +16,7 @@
 
 import { useRef, useEffect, useLayoutEffect, useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
+import { useComputedColorScheme } from "@mantine/core";
 import { labelColor, darkenColor } from "./graph-model";
 import type { GNode, GEdge, GraphStats } from "./graph-model";
 import { LITERAL_LABEL } from "./sparql";
@@ -27,6 +28,7 @@ import {
   type ClusterLevel,
 } from "./graph-clusters";
 import { buildGraphStylesheet, nodeCaption } from "./graph-stylesheet";
+import { graphTokens } from "../provisa-graph/tokens";
 import { NodeContextMenu, type NodeCtxMenuState } from "./NodeContextMenu";
 import type {
   CyLayoutOptions,
@@ -106,6 +108,10 @@ export function GraphCanvas({
   sizeMultiplierRef.current = sizeMultiplier;
   const relLineOverridesRef = useRef(relLineOverrides);
   relLineOverridesRef.current = relLineOverrides;
+  // The theme the drawing's colours are taken from (graphTokens); a switch restyles it in place.
+  const isDark = useComputedColorScheme("light") === "dark";
+  const isDarkRef = useRef(isDark);
+  isDarkRef.current = isDark;
   const nodeDraggedRef = useRef(onNodeDragged);
   nodeDraggedRef.current = onNodeDragged;
   const nodeDroppedRef = useRef(onNodeDroppedOnNode);
@@ -461,12 +467,10 @@ export function GraphCanvas({
     const cy = cytoscape({
       container: containerRef.current,
       elements: els,
-      style: buildGraphStylesheet({
-        colorOverridesRef,
-        sizeOverridesRef,
-        labelPropertyRef,
-        relLineOverridesRef,
-      }),
+      style: buildGraphStylesheet(
+        { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
+        graphTokens(isDarkRef.current),
+      ),
       layout: { name: "null" } as CyLayoutOptions,
       minZoom: 0.05,
       maxZoom: 8,
@@ -797,6 +801,19 @@ export function GraphCanvas({
        re-apply overlay nodes/edges only when the overlay data or clustering changes; the imperative apply helpers are stable refs and intentionally excluded */
   }, [overlayNodes, overlayEdges, clusterLevel]);
 
+  // A theme switch restyles the drawing in place: the stylesheet for the new scheme, the same
+  // elements, positions and per-element overrides (cytoscape keeps bypass styles across a sheet).
+  useEffect(() => {
+    const cy = cyRef.current;
+    if (!cy) return;
+    cy.style(
+      buildGraphStylesheet(
+        { colorOverridesRef, sizeOverridesRef, labelPropertyRef, relLineOverridesRef },
+        graphTokens(isDark),
+      ),
+    );
+  }, [isDark]);
+
   // Update node colors when colorOverrides changes without rebuilding the graph
   useEffect(() => {
     const cy = cyRef.current;
@@ -869,6 +886,10 @@ export function GraphCanvas({
   return (
     <div
       className="gf-canvas-wrap"
+      // The canvas is the graph tokens' canvas, the colour the label boxes are drawn in, so a
+      // label box never shows as a patch on the canvas (and matches provisa-graph's canvas).
+      style={{ backgroundColor: graphTokens(isDark).canvas }}
+      data-testid="graph-canvas-wrap"
       tabIndex={0}
       onKeyDown={(e) => {
         if ((e.metaKey || e.ctrlKey) && e.key === "a") {
