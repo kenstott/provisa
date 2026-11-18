@@ -87,7 +87,6 @@
     "graphqlQueriesEmpty": "कोई क्वेरी योग्य टेबल या संबंध नहीं",
     "graphqlQueryAria": "{{table}} के लिए उदाहरण GraphQL क्वेरी चलाएँ",
     "sqlQueryAria": "{{table}} के लिए उदाहरण SQL क्वेरी चलाएँ",
-    "cypherQueryAria": "{{type}} के लिए उदाहरण Cypher क्वेरी चलाएँ",
     "grpcQueryAria": "{{table}} के लिए उदाहरण gRPC कॉल चलाएँ",
     "jsonapiQueryAria": "{{table}} के लिए उदाहरण JSON:API अनुरोध चलाएँ",
     "openApiQueryAria": "{{table}} के लिए उदाहरण REST अनुरोध चलाएँ",

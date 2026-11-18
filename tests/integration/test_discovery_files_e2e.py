@@ -84,7 +84,7 @@ _ANSWERS = [
 ]
 
 
-def _listed(prompt: str) -> tuple[list[dict], list[dict]]:
+def _call_listing(prompt: str) -> tuple[list[dict], list[dict]]:
     """The tables and the numbered table pairs a call lists."""
     tables = json.loads(prompt.split(TABLES_HEADER, 1)[1].split("\n" + PAIRS_HEADER, 1)[0])
     return tables, json.loads(prompt.split(PAIRS_HEADER, 1)[1])
@@ -92,7 +92,7 @@ def _listed(prompt: str) -> tuple[list[dict], list[dict]]:
 
 def _compared(prompt: str) -> dict[tuple[str, str], dict]:
     """Every comparable column of a call, by (table name, column): its context."""
-    tables, _ = _listed(prompt)
+    tables, _ = _call_listing(prompt)
     return {(t["name"], c["name"]): c for t in tables for c in t["comparable_columns"]}
 
 
@@ -109,7 +109,7 @@ class _Endpoint:
                 body = json.loads(self.rfile.read(int(self.headers["Content-Length"])))
                 prompt = body["messages"][-1]["content"]
                 endpoint.prompts.append(prompt)
-                _, pairs = _listed(prompt)
+                _, pairs = _call_listing(prompt)
                 answer = [
                     {
                         "pair": pair["pair"],
@@ -384,7 +384,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     # One call lists every table pair; it holds both permit columns and every neighborhood. The
     # files' date and timestamp columns are in no group (REQ-413): no call lists them.
     (text,) = prompts
-    _, pairs = _listed(text)
+    _, pairs = _call_listing(text)
     assert {frozenset({p["source"], p["target"]}) for p in pairs} >= {
         frozenset({"inspections", "building_permits"}),
         frozenset({"complaints_2026_08", "budget_2026__budget"}),
@@ -426,7 +426,8 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     ] == [
         # 60 inspections, each of a different permit, all 60 among the 128 permits.
         (_PERMIT, 0.55, KEY_SCORE, "one-to-one", None),
-        # Six neighborhoods on every side, repeated in each file: a key of none.
+        # Six neighborhoods on every side, repeated in each file: a key of none. Scored alike,
+        # they keep the order the call lists their tables in (by name).
         *(
             (
                 (table, "neighborhood", "budget_2026__budget", "neighborhood"),
@@ -435,7 +436,7 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
                 "many-to-many",
                 "below_threshold",
             )
-            for table in ("complaints_2026_08", "complaints_2026_09", "building_permits")
+            for table in ("building_permits", "complaints_2026_08", "complaints_2026_09")
         ),
         # 75 of the complaints' 215 addresses are among the permits' 128, each permit's own.
         (_ADDRESS, 0.4, address_score, "many-to-one", "below_threshold"),
@@ -525,9 +526,9 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
     instance: Instance, endpoint: _Endpoint, files
 ):
     """All three domains, with the limits of a model that holds every table pair in one call: the
-    permit columns share the call with every other table's, and every proposal is read again. What the first run's reviewer decided shows: the accepted ones are registered and
-    cannot be decided, the one marked keeps its decision and cannot be decided, and the other
-    neighborhood pairs, a key of no table, are scored under the threshold again."""
+    permit columns share the call with every other table's, and every proposal is read again. What the first run's reviewer decided holds: the accepted ones are registered and the one
+    marked keeps its decision, so none of them is listed, and the other neighborhood pairs, a
+    key of no table, are scored under the threshold again."""
     before = len(endpoint.prompts)
     run = _run(instance, _scope(source_domains=["pet-store", "shelter", _DOMAIN]))
     prompts = endpoint.prompts[before:]
@@ -544,13 +545,10 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
         for r in _proposals(instance, run["id"])
         if r["kind"] == "semantics"
     }
+    # REQ-413 (amended 2026-11-18): a pair registered since (the key and the address) and one
+    # marked not to be recommended again keep that decision and are not listed; the other
+    # neighborhood pairs are scored under the threshold again.
     assert read == {
-        _PERMIT: ("existing", False),
-        # Marked not to be recommended again: it keeps that decision and is not measured anew.
-        ("building_permits", "neighborhood", "budget_2026__budget", "neighborhood"): (
-            "rejected",
-            False,
-        ),
         ("complaints_2026_08", "neighborhood", "budget_2026__budget", "neighborhood"): (
             "below_threshold",
             True,
@@ -559,6 +557,4 @@ def test_a_run_over_every_domain_reads_the_files_key_among_the_other_tables(
             "below_threshold",
             True,
         ),
-        # Rated 0.4 again, and registered since: said as registered, not to be accepted twice.
-        _ADDRESS: ("existing", False),
     }

@@ -290,6 +290,7 @@ def pipeline(monkeypatch):
 
     monkeypatch.setattr(gather, "_published_as", published_as)
     monkeypatch.setattr(gather, "_governed_as", governed_as)
+    monkeypatch.setattr(gather, "_measured_as", governed_as)
     return SimpleNamespace(calls=calls, answers=answers)
 
 

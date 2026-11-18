@@ -26,6 +26,7 @@ pair, and an answer to the table pair that omits the column pair scores it zero 
 
 from __future__ import annotations
 
+from collections import Counter
 from typing import Any
 
 from provisa.discovery.columns import UNKNOWN, ColumnFacts, TableFacts, comparable, type_groups
@@ -157,26 +158,21 @@ OBSERVED = [
 ]
 
 
-def _values(tid: int, column: str) -> list[str]:
-    """A column's values as the generator writes them: each neighborhood repeated as counted, any
-    other column a key of its table (each value once)."""
+def _held(table: TableFacts, column: str) -> list[str]:
+    """A column's rows as the generator writes them: a neighborhood's as counted, any other
+    column a key of its table, each value once."""
     if column == "neighborhood":
-        return [n for n, times in _NEIGHBORHOODS[tid].items() for _ in range(times)]
-    return [f"{BY_ID[tid].table_name}-{i}" for i in range(100)]
+        return list(Counter(_NEIGHBORHOODS[table.table_id]).elements())
+    return [f"{table.table_name}-{i}" for i in range(100)]
 
 
 class _Reader(EngineReader):
-    """The measure's engine holding every column a pair can name; records each column read."""
+    """The measure's queries run in an engine holding each table's rows. Records each column
+    the measure reads."""
 
     def __init__(self) -> None:
         super().__init__(
-            {
-                (t.table_name, c.name): _values(t.table_id, c.name)
-                for t in TABLES
-                for c in t.columns
-                if c.name == "permit_id"
-                or (c.name == "neighborhood" and t.table_id in _NEIGHBORHOODS)
-            }
+            {(t.table_name, c.name): _held(t, c.name) for t in TABLES for c in t.columns}
         )
         self.read: list[tuple[int, str]] = []
 

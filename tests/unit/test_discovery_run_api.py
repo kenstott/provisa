@@ -27,9 +27,10 @@ from typing import Any, cast
 
 import json
 import random
-from collections import Counter
+import re
 from dataclasses import replace
 
+import duckdb
 import pytest
 from pydantic import ValidationError
 from sqlalchemy import func, insert, select
@@ -88,6 +89,7 @@ _PUBLISHED: dict[int, tuple[str, list[str]]] = {}
 def _nothing_published():
     _PUBLISHED.clear()
     _TABLE_NAMES.clear()
+    _TYPES.clear()
 
 
 class _Reads:
@@ -159,6 +161,7 @@ async def _table(db: Database, tid: int, domain: str, name: str, columns: list[t
     """``columns``: (name, type, primary key), or with a fourth, the kind of the required
     parameter the column is."""
     _PUBLISHED[tid] = (domain, [c[0] for c in columns])
+    _TYPES[tid] = {c[0]: c[1] for c in columns}
     _TABLE_NAMES[tid] = name
     async with db.acquire() as conn:
         await conn.execute_core(
@@ -204,54 +207,45 @@ class _Measured:
             return self.values[(table, column)]
         return [v for v in self.reads.values.get(column, []) if v is not None]
 
-    def _engine(self, sql: str) -> list[tuple]:
-        """A pair's join count (:func:`provisa.discovery.measure.join_count_sql`) run in an
-        in-memory DuckDB holding every table the role reads, each column with its values here,
-        a shorter column padded with nulls (the count reads non-null values only)."""
-        import duckdb
-
-        engine = duckdb.connect()
-        for tid, (domain, columns) in _PUBLISHED.items():
-            name = _TABLE_NAMES[tid]
-            if name in self.unpublished:
-                continue
-            schema = domain_to_sql_name(domain)
-            held = {
-                c.lower(): [None if v is None else str(v) for v in self.column(name, c)]
-                for c in columns
-            }
+    async def governed_as(self, sql: str, role: str) -> list[tuple]:
+        """The measure's query run as the engine runs it: each table it reads is created in an
+        in-memory DuckDB with its published columns, of their registered types, holding the
+        values given (REQ-413)."""
+        self.sql.append((sql, role))
+        db = duckdb.connect()
+        for schema, table in dict.fromkeys(re.findall(r'"([^"]+)"\."([^"]+)"', sql)):
+            self.reads.refuse(table)
+            tid = next(t for t, name in _TABLE_NAMES.items() if name == table)
+            columns = _PUBLISHED[tid][1]
+            held = {c: self.column(table, c) for c in columns}
             depth = max((len(v) for v in held.values()), default=0)
-            engine.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
-            engine.execute(
-                f'CREATE TABLE "{schema}"."{name}" ('
-                + ", ".join(f'"{c}" VARCHAR' for c in held)
+            db.execute(f'CREATE SCHEMA IF NOT EXISTS "{schema}"')
+            db.execute(
+                f'CREATE TABLE "{schema}"."{table}" ('
+                + ", ".join(f'"{c.lower()}" {_ENGINE_TYPES[_TYPES[tid][c]]}' for c in columns)
                 + ")"
             )
-            rows = [tuple((v + [None] * depth)[i] for v in held.values()) for i in range(depth)]
+            rows = [
+                tuple(held[c][i] if i < len(held[c]) else None for c in columns)
+                for i in range(depth)
+            ]
             if rows:
-                engine.executemany(
-                    f'INSERT INTO "{schema}"."{name}" VALUES ({", ".join("?" for _ in held)})',
-                    rows,
-                )
-        return engine.execute(sql).fetchall()
+                marks = ", ".join("?" for _ in columns)
+                db.executemany(f'INSERT INTO "{schema}"."{table}" VALUES ({marks})', rows)
+        return db.execute(sql).fetchall()
 
-    async def governed_as(self, sql: str, role: str) -> list[tuple]:
-        self.sql.append((sql, role))
-        if sql.startswith("WITH "):
-            for part in sql.split(' FROM "')[1:]:
-                self.reads.refuse(part.split('"."', 1)[1].split('"', 1)[0])
-            return self._engine(sql)
-        table = sql.split(' FROM "', 1)[1].split('"."', 1)[1].split('"', 1)[0]
-        self.reads.refuse(table)
-        column = sql.split('"', 2)[1]
-        values = self.column(table, column)
-        if " IN (" in sql:
-            wanted = sql.rsplit(" IN (", 1)[1].rstrip(")").split(", ")
-            held = {str(v): v for v in values}
-            return [(held[w.strip("'")],) for w in wanted if w.strip("'") in held]
-        counts = Counter(values)
-        limit = int(sql.rsplit("LIMIT ", 1)[1])
-        return sorted(counts.items(), key=lambda kv: -kv[1])[:limit]
+
+#: The engine type of each registered column type the tests give.
+_ENGINE_TYPES = {
+    "integer": "BIGINT",
+    "text": "VARCHAR",
+    "date": "DATE",
+    "timestamp": "TIMESTAMP",
+    "timestamp with time zone": "TIMESTAMPTZ",
+}
+
+#: Each registered table's column types, by id.
+_TYPES: dict[int, dict[str, str]] = {}
 
 
 #: Each registered table's name, by id.
@@ -337,6 +331,7 @@ class _World:
         monkeypatch.setattr("provisa.profiler.run._governed", self.reads.governed)
         monkeypatch.setattr(gather, "_published_as", self.measured.published_as)
         monkeypatch.setattr(gather, "_governed_as", self.measured.governed_as)
+        monkeypatch.setattr(gather, "_measured_as", self.measured.governed_as)
         monkeypatch.setattr("provisa.core.org_settings.resolve_org_config", org_config)
         monkeypatch.setattr("provisa.core.org_secrets.read_org_api_keys", org_keys)
         monkeypatch.setattr("provisa.core.org_secrets.org_ai_key_or_none", no_jev)
