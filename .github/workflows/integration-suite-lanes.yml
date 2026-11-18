@@ -681,10 +681,16 @@ jobs:
       python-extras: dev cassandra saphana gx soda
       ui: chromium
       ui-timeout: 12
+      # One worker, a backend and a browser, on the 4-vCPU runner, as each ui-e2e-core.yml shard
+      # runs: two held a core runner at a load of about 10 (run 43995449668's sampler), several
+      # times slower than the specs' bounds allow. Not sharded: its seven specs took 18.3 min at two
+      # workers (run 44112453390), inside the 50-minute global timeout at one; and two shards would
+      # each hold the live-cloud-warehouses group, and each one's after-script would stop the
+      # warehouses the other was still using.
       env: |
         CI=true
         PROVISA_E2E_LANE=core
-        PROVISA_E2E_WORKERS=2
+        PROVISA_E2E_WORKERS=1
       working-directory: provisa-ui
       # Playwright stops itself after 50 minutes, inside the job's bound, so it still writes its
       # reports.
