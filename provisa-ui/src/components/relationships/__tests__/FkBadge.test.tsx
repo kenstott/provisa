@@ -70,6 +70,7 @@ function panel(r: Relationship) {
       functions={[]}
       tableDomainById={{}}
       domainsEnabled={false}
+      actingRole={null}
     />,
   );
 }

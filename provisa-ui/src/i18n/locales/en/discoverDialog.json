@@ -40,10 +40,7 @@
       "whole_number": "whole numbers",
       "decimal": "decimals",
       "text": "text",
-      "uuid": "UUIDs",
-      "date": "dates",
-      "timestamp": "timestamps",
-      "timestamptz": "timestamps with time zone"
+      "uuid": "UUIDs"
     },
     "starting": "Starting...",
     "reading": "Reading tables: {{done}} of {{total}}",

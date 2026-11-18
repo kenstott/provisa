@@ -40,10 +40,7 @@
       "whole_number": "numeri interi",
       "decimal": "decimali",
       "text": "testo",
-      "uuid": "UUID",
-      "date": "date",
-      "timestamp": "timestamp",
-      "timestamptz": "timestamp con fuso orario"
+      "uuid": "UUID"
     },
     "starting": "Avvio...",
     "reading": "Lettura delle tabelle: {{done}} di {{total}}",

@@ -271,7 +271,7 @@ def _left_out(tables, raw: dict) -> list[str]:
     from provisa.llm.limits import DEFAULT_LIMITS
 
     _, (request,) = plan(tables, None, *DEFAULT_LIMITS)
-    tally = Tally(total=1)
+    tally = Tally(total=1, threshold=0.7)
     read_items(request, [raw], tally)
     return [r.left_out for r in tally.left_out]
 

@@ -541,7 +541,7 @@ async def _invoke_webhook(
     timeout = wh["timeout_ms"] / 1000
     # REQ-2006: a held org's webhook reaches public destinations only, each hop checked.
     async with httpx.AsyncClient(
-        timeout=timeout, event_hooks=sandbox_egress.http_event_hooks()
+        timeout=timeout, event_hooks=sandbox_egress.endpoint_event_hooks()
     ) as client:
         # The URL is kept as written; an environment or secret reference in it is resolved here.
         url = resolve_secrets(wh["url"])

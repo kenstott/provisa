@@ -272,7 +272,7 @@ async def set_syncing(request: Request) -> dict:  # REQ-2247, REQ-2122, REQ-1072
     for entry in config.catalogs:
         if entry.endpoint:
             # REQ-2006: a held org's catalog endpoint is a public destination; refused by name.
-            sandbox_egress.require_url_allowed(entry.endpoint)
+            sandbox_egress.require_endpoint_url_allowed(entry.endpoint)
         unknown = sorted(set(entry.domains) - known)
         if unknown:
             raise ApiError(

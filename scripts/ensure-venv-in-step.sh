@@ -4,6 +4,9 @@
 # removed or written, and a start never changes the environment without being asked.
 #   --inexact: packages the lock's default set does not name stay out of the comparison, so optional
 #     extras (dev, the drivers) and a demo's requirements are not reported as removals.
+#   --extra vector: the default config's embedding model needs the vector extra (REQ-419), so a
+#     checkout without it is out of step. The lock takes torch from PyTorch's CPU-only index on
+#     Linux ([tool.uv.sources]), so the command printed below never installs a CUDA build.
 #   --no-install-project: provisa itself is rebuilt by uv whenever a [tool.uv] cache key changes,
 #     which every edit under rust/ does. That is not a difference from the lock, and
 #     rust/ensure-local-build.sh already looks after the build.
@@ -20,7 +23,7 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 
 _rc=0
-_out="$(cd "$REPO" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --no-install-project --dry-run 2>&1)" || _rc=$?
+_out="$(cd "$REPO" && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --extra vector --no-install-project --dry-run 2>&1)" || _rc=$?
 # uv exits 0 when it would change something, so the verdict is its own sentence.
 if [ "$_rc" -eq 0 ]; then
   case "$_out" in *"Would make no changes"*) exit 0 ;; esac
@@ -31,7 +34,7 @@ fi
   echo "$_out" | sed 's/^/       /'
   echo "       To bring it in step, run:"
   echo
-  printf '    cd %q && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact\n' "$REPO"
+  printf '    cd %q && UV_PROJECT_ENVIRONMENT=.venv uv sync --locked --inexact --extra vector\n' "$REPO"
   echo
 } >&2
 exit 1

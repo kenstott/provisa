@@ -230,6 +230,10 @@ embedded = [
     "duckdb-extension-delta==2.0.0",
     "duckdb-extension-avro==2.0.0",  # iceberg loads it
     "provisa-duckdb-ext>=0.2.2",  # 0.2.2: Query.Farm's airport
+    # The default config (config/provisa-install.yaml) registers a huggingface embedding model
+    # (all-MiniLM-L6-v2: glossary term embeddings, catalog search, the reference library), so every
+    # install carries the library that runs it (maintainer 2026-11-17, "Ship it in every install").
+    "provisa[vector]",
 ]
 # Native/desktop tier: mcp-proxy is the Node-free stdio<->Streamable-HTTP bridge Claude Desktop
 # launches to reach the local MCP server (REQ-1104). Bundled into the standalone runtime by the
@@ -284,7 +288,11 @@ demo = ["great-expectations[postgresql]"]
 firebase = ["firebase-admin"]
 # Local embedding provider for catalog search (REQ-1008, provisa/vector/providers.py
 # HuggingFaceLocalProvider). No network at query time once the model is cached.
-vector = ["sentence-transformers"]
+# torch is named so [tool.uv.sources] can take it from PyTorch's CPU-only index on Linux, where
+# PyPI's build is the CUDA one (~2.5 GiB of GPU libraries an install never loads); macOS arm64 and
+# Windows PyPI wheels are CPU-only already. A native installer that pip-installs on Linux takes
+# torch from the same CPU index (packaging/linux/build-appimage.sh, first-launch.sh).
+vector = ["sentence-transformers", "torch"]
 # Encryption master-key providers (REQ-690-694). boto3 (AWS KMS) is a base dependency,
 # so aws_kms needs no extra. These optional SDKs auto-enable their provider in the
 # registry (provisa/encryption/registry.py) once installed.
@@ -347,6 +355,9 @@ dev = [
     # REQ-1310: the invite-delivery test sends over SMTP to a real local server this provides.
     # Asserting on a captured message is only meaningful against a server that speaks the protocol.
     "aiosmtpd",
+    # Every CI job and test venv has what every install ships: the default config's embedding
+    # model needs the vector extra (CPU torch, via [tool.uv.sources]).
+    "provisa[vector]",
 ]
 
 [build-system]
@@ -369,6 +380,13 @@ args = ["--locked"]
 # (`python -m provisa_notebook.build`); a release publishes it to PyPI with provisa.
 [tool.uv.sources]
 provisa-notebook = { path = "provisa-notebook", editable = true }
+# The vector extra's torch: the CPU-only build on Linux (PyPI's Linux wheel is the CUDA build).
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.uv]
 # REQ-2194: `uv sync` rebuilds provisa (and so provisa._encoders) when the Rust source changes.
