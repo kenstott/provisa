@@ -6032,6 +6032,7 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
         """One junction-backed relationship between the other ends of two relationships that share
         a middle table, named ``id``; the two stay."""
         from provisa.api.admin import join_through
+        from provisa.core.relationship_naming import RelationshipNameTaken
 
         pool = await _get_pool()
         async with pool.acquire() as _conn:
@@ -6047,7 +6048,12 @@ class Mutation:  # REQ-012, REQ-013, REQ-016, REQ-042
                     code="relationship.join_through_none",
                     params={"first": first_id, "second": second_id},
                 )
-            result, _ = await join_through.create(info, conn, planned.through, id)
+            try:
+                result, _ = await join_through.create(info, conn, planned.through, id)
+            except RelationshipNameTaken as taken:
+                return MutationResult(
+                    success=False, message=str(taken), code=taken.code, params=taken.params
+                )
         return result
 
     @strawberry.mutation

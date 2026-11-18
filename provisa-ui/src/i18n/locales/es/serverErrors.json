@@ -920,7 +920,8 @@
       "filter_operator_refused": "{{operator}} no es un operador con el que se pueda convertir un filtro de permiso."
     },
     "relationship": {
-      "name_taken": "El nombre '{{name}}' ya lo usa la relación '{{held_by}}'. Asigne otro nombre a esta."
+      "name_taken": "El nombre '{{name}}' ya lo usa la relación '{{held_by}}'. Asigne otro nombre a esta.",
+      "join_through_none": "Las relaciones '{{first}}' y '{{second}}' no comparten una tabla intermedia, o sus otros extremos ya están unidos a través de ella."
     }
   }
 }

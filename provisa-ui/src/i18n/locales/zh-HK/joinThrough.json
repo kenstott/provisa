@@ -1,0 +1,15 @@
+{
+  "joinThrough": {
+    "action": "透過 {{table}} 連接",
+    "title": "透過 {{table}} 連接",
+    "junction": "{{table}} 引用了這兩個表。它的其他欄位將成為此關係的屬性。",
+    "sharedDimension": "兩個表都引用 {{table}}。",
+    "name": "名稱",
+    "cardinality": "基數",
+    "manyToMany": "多對多",
+    "from": "從",
+    "to": "到",
+    "through": "透過",
+    "attributes": "屬性"
+  }
+}

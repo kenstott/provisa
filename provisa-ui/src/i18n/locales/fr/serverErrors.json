@@ -920,7 +920,8 @@
       "filter_operator_refused": "{{operator}} n'est pas un opérateur avec lequel un filtre d'autorisation peut être converti."
     },
     "relationship": {
-      "name_taken": "Le nom « {{name}} » est déjà pris par la relation « {{held_by}} ». Nommez celle-ci autrement."
+      "name_taken": "Le nom « {{name}} » est déjà pris par la relation « {{held_by}} ». Nommez celle-ci autrement.",
+      "join_through_none": "Les relations '{{first}}' et '{{second}}' ne partagent aucune table intermédiaire, ou leurs autres extrémités y sont déjà jointes."
     }
   }
 }

@@ -10930,5 +10930,17 @@
   "zh-HK/list.json::list.putBackNoRegion": "None of your roles' data residency grants covers a region to put it back into. A holder of data residency for the region it goes to puts it back.",
   "zh-HK/list.json::list.putBackRegionHint": "The region it returns to, one your data residency grant covers.",
   "zh-HK/list.json::list.putBackTitle": "Put back {{name}}",
-  "zh-HK/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
+  "zh-HK/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one.",
+  "zh-HK/joinThrough.json::joinThrough.action": "Join through {{table}}",
+  "zh-HK/joinThrough.json::joinThrough.title": "Join through {{table}}",
+  "zh-HK/joinThrough.json::joinThrough.junction": "{{table}} refers to both tables. Its other columns become this relationship's attributes.",
+  "zh-HK/joinThrough.json::joinThrough.sharedDimension": "Both tables refer to {{table}}.",
+  "zh-HK/joinThrough.json::joinThrough.name": "Name",
+  "zh-HK/joinThrough.json::joinThrough.cardinality": "Cardinality",
+  "zh-HK/joinThrough.json::joinThrough.manyToMany": "Many-to-many",
+  "zh-HK/joinThrough.json::joinThrough.from": "From",
+  "zh-HK/joinThrough.json::joinThrough.to": "To",
+  "zh-HK/joinThrough.json::joinThrough.through": "Through",
+  "zh-HK/joinThrough.json::joinThrough.attributes": "Attributes",
+  "zh-HK/serverErrors.json::serverErrors.relationship.join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it."
 }

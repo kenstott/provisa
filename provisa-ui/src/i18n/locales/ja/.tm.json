@@ -10933,5 +10933,17 @@
   "ja/list.json::list.putBackNoRegion": "None of your roles' data residency grants covers a region to put it back into. A holder of data residency for the region it goes to puts it back.",
   "ja/list.json::list.putBackRegionHint": "The region it returns to, one your data residency grant covers.",
   "ja/list.json::list.putBackTitle": "Put back {{name}}",
-  "ja/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one."
+  "ja/serverErrors.json::serverErrors.egress.private_destination": "This org may call only public addresses; {{host}} is {{address}}, which is not one.",
+  "ja/joinThrough.json::joinThrough.action": "Join through {{table}}",
+  "ja/joinThrough.json::joinThrough.title": "Join through {{table}}",
+  "ja/joinThrough.json::joinThrough.junction": "{{table}} refers to both tables. Its other columns become this relationship's attributes.",
+  "ja/joinThrough.json::joinThrough.sharedDimension": "Both tables refer to {{table}}.",
+  "ja/joinThrough.json::joinThrough.name": "Name",
+  "ja/joinThrough.json::joinThrough.cardinality": "Cardinality",
+  "ja/joinThrough.json::joinThrough.manyToMany": "Many-to-many",
+  "ja/joinThrough.json::joinThrough.from": "From",
+  "ja/joinThrough.json::joinThrough.to": "To",
+  "ja/joinThrough.json::joinThrough.through": "Through",
+  "ja/joinThrough.json::joinThrough.attributes": "Attributes",
+  "ja/serverErrors.json::serverErrors.relationship.join_through_none": "Relationships '{{first}}' and '{{second}}' share no middle table, or their other ends are already joined through it."
 }
