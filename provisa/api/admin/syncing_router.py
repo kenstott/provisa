@@ -20,6 +20,9 @@ Credentials are write-only (REQ-1074): the read reports whether each is set, a c
 of a write keeps the one held, and one sent empty clears it. The connection test is the provider's
 own health check, the one the export runs.
 
+An entry's review lists its differences with its catalog and applies a steward's decisions on them
+(``syncing_review``); taking Provisa's side runs the entry's publish, so it is gated the same way.
+
 Publishing is premium-gated (REQ-1073): Publish now, turning an entry's Export on or changing its
 export settings, and the organisation-wide reconcile schedule are refused below the entitled tier.
 A direction that is off never runs: Publish now refuses an entry that does not export.
@@ -397,3 +400,105 @@ async def publish_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, R
             entry=entry_id,
         )
     return await _publish(org_id, entry_id)
+
+
+async def _entry_differences(org_id: str, entry: CatalogConnection) -> tuple[Any, list[Any]]:
+    """The snapshot the entry is published and its differences with the catalog (REQ-2247).
+
+    Refused by name: an entry with no catalog to read, one naming no role (it is read for what it
+    is sent, which a role decides, REQ-2152), a provider that does not read yet, and a read the
+    catalog refused or never answered (never an empty review)."""
+    import httpx
+
+    from provisa.api.admin import syncing_review
+    from provisa.api.metadata_export.provider import CatalogReadNotSupported
+    from provisa.api.metadata_export.publishing import entry_snapshot
+    from provisa.api.metadata_export.sync_values import provisa_values
+    from provisa.core.http_failure import describe_http_failure
+    from provisa.core.repositories import catalog_exchange
+
+    if entry.type != "data_catalog":
+        raise ApiError(
+            400, "syncing.no_connection", f"{entry.id!r} has no catalog to read", entry=entry.id
+        )
+    if entry.role is None:
+        raise ApiError(
+            400,
+            "syncing.no_role",
+            f"{entry.id!r} names no role, so what it is sent and read back for is undecided",
+            entry=entry.id,
+        )
+    snapshot = await entry_snapshot(org_id, list(entry.domains), entry.role)
+    try:
+        theirs = await metadata_export(entry.export_target()).read(snapshot)
+    except CatalogReadNotSupported as exc:
+        raise ApiError(
+            400, "syncing.read_not_supported", str(exc), provider=entry.provider
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise ApiError(
+            502,
+            "syncing.read_failed",
+            client_text(f"reading {entry.id!r} failed: {describe_http_failure(exc)}"),
+            entry=entry.id,
+        ) from exc
+    async with _model_db().acquire() as conn:
+        last = await catalog_exchange.latest(conn, entry.id)
+    return snapshot, syncing_review.differences(provisa_values(snapshot), theirs, last)
+
+
+@router.get("/admin/syncing/{entry_id}/review")
+async def review_entry(request: Request, entry_id: str) -> dict:  # REQ-2247, REQ-2122
+    """The entry's differences with its catalog: each with Provisa's value, the catalog's and the
+    value last exchanged, grouped by kind and then by table or term, with counts."""
+    from provisa.api.admin import syncing_review
+
+    require_org_settings(request)
+    org_id = require_active_org_id(request)
+    entry = _entry(await stored_settings(), entry_id)
+    _, diffs = await _entry_differences(org_id, entry)
+    return {
+        "id": entry_id,
+        "provider": entry.provider,
+        # Which sides a decision may take: Provisa's is an Export, the catalog's an Import.
+        "directions": {"export": entry.exports, "import": entry.imports},
+        **syncing_review.grouped(diffs),
+    }
+
+
+@router.post("/admin/syncing/{entry_id}/review/apply")
+async def apply_review(request: Request, entry_id: str) -> dict:  # REQ-2247, REQ-2122
+    """Take a side on differences, per row (``kind`` + ``object``) or per group (``kind`` +
+    ``group``): ``provisa`` publishes the entry, ``catalog`` writes the catalog's value into
+    Provisa. Each value taken is recorded as last exchanged, decided by the caller. The decisions
+    are checked against a fresh read; nothing is applied when any is refused."""
+    from provisa.api.admin import syncing_review
+
+    require_org_settings(request)
+    org_id = require_active_org_id(request)
+    body = await request.json()
+    entry = _entry(await stored_settings(), entry_id)
+    snapshot, diffs = await _entry_differences(org_id, entry)
+    taken = syncing_review.chosen(diffs, list(body.get("decisions") or []))
+    syncing_review.require_sides_run(entry, taken)
+    publish = None
+    if taken[syncing_review.PROVISA]:
+        await _require_entitled(org_id)
+        publish = await _publish(org_id, entry_id)
+        if not publish["ok"]:
+            raise ApiError(
+                502,
+                "syncing.publish_failed",
+                f"publishing {entry_id!r} did not succeed, so nothing was applied",
+                entry=entry_id,
+            )
+    identity = getattr(request.state, "identity", None)
+    decided_by = getattr(identity, "user_id", "anonymous")
+    async with _model_db().acquire() as conn:
+        await syncing_review.write_into_provisa(conn, snapshot, taken[syncing_review.CATALOG])
+        await syncing_review.record_taken(conn, entry_id, taken, decided_by)
+    return {
+        "id": entry_id,
+        "applied": {side: len(rows) for side, rows in taken.items()},
+        "publish": publish,
+    }

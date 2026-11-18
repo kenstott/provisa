@@ -14,10 +14,12 @@ Mirrors the provider pattern already in the tree: an abstract base with a stable
 ``provider_name`` (``provisa/auth/models.py`` ``AuthProvider``) resolved by a factory that
 refuses an unknown name at construction (``provisa/core/mail.py`` ``email_sender``).
 
-Outbound only. The port declares ``publish`` and ``health`` and nothing that reads.
+The port declares ``publish`` and ``health``, and ``read`` (REQ-2247): the catalog's values for
+the assets a Syncing entry links, which the import review compares with Provisa's. A provider that
+does not read yet refuses by name rather than answering with nothing.
 """
 
-# Requirements: REQ-1068, REQ-1069
+# Requirements: REQ-1068, REQ-1069, REQ-2247
 
 from __future__ import annotations
 
@@ -27,11 +29,22 @@ from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from provisa.api.metadata_export.model import AssetRef, MetadataSnapshot
+    from provisa.api.metadata_export.sync_values import Key, SyncValue
     from provisa.core.models import MetadataExportTarget
 
 
 class MetadataExportNotConfiguredError(RuntimeError):  # REQ-1068
     """Raised when export is asked for but no usable provider is configured."""
+
+
+class CatalogReadNotSupported(RuntimeError):  # REQ-2247
+    """Raised by a provider that cannot read its catalog's values back yet."""
+
+    def __init__(self, provider_name: str) -> None:
+        super().__init__(
+            f"metadata export provider {provider_name!r} is not supported for reading yet"
+        )
+        self.provider_name = provider_name
 
 
 @dataclass(frozen=True)
@@ -114,9 +127,8 @@ class MetadataExport(ABC):  # REQ-1068
     def stored_bindings(self) -> dict[str, tuple[str, str]]:
         """The vendor bindings captured by earlier publishes (REQ-1389).
 
-        A property rather than a method: the port stays outbound-only — ``publish`` and
-        ``health`` are its whole callable surface — and this is state the publish path
-        loads in, not an operation on the catalog.
+        A property rather than a method: this is state the publish path loads in, not an
+        operation on the catalog.
         """
         return self._bindings
 
@@ -164,3 +176,14 @@ class MetadataExport(ABC):  # REQ-1068
         message, so a health check that returned a boolean would discard the diagnosis.
         """
         ...
+
+    async def read(self, snapshot: MetadataSnapshot) -> dict[Key, SyncValue]:
+        """The catalog's values for the tables, columns and terms of ``snapshot`` (REQ-2247), in
+        the neutral form of :mod:`provisa.api.metadata_export.sync_values`, keyed the same way as
+        Provisa's. An asset the catalog does not hold has no values; a failed read raises.
+
+        Read through the same checked, pinned client the publish uses (SEC-H6/SEC-H6b). A provider
+        that does not read yet keeps this refusal.
+        """
+        del snapshot
+        raise CatalogReadNotSupported(self.provider_name)

@@ -8,15 +8,15 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""REQ-1068 is outbound-only, and that is a structural property of the package.
+"""The export package's one way back in is the port's ``read``, asserted on the source tree.
 
-Provisa publishes governance metadata to external catalogs and never reads one back as the
-source of truth. A future adapter that added a ``fetch_from_catalog`` helper would violate
-the requirement without breaking any behavioural test, so the constraint is asserted
-against the source tree itself.
+REQ-1068 was outbound-only; REQ-2122 superseded that: a steward may read descriptions, owners,
+tags and glossary links back from a catalog, and REQ-2247 lists the differences for review. That
+read is the port's ``read`` and nothing else: no adapter grows its own ``fetch_from_catalog``
+helper that would bring a catalog's values into Provisa past the review.
 """
 
-# Requirements: REQ-1068
+# Requirements: REQ-1068, REQ-2122, REQ-2247
 
 from __future__ import annotations
 
@@ -56,7 +56,7 @@ def test_no_inbound_entry_points(path: Path):
     )
 
 
-def test_port_declares_no_read_method():
+def test_port_declares_one_read_method():
     from provisa.api.metadata_export.provider import MetadataExport
 
     declared = {
@@ -64,4 +64,4 @@ def test_port_declares_no_read_method():
         for name in vars(MetadataExport)
         if not name.startswith("_") and callable(vars(MetadataExport)[name])
     }
-    assert declared == {"publish", "health"}
+    assert declared == {"publish", "health", "read"}
