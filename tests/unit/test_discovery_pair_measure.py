@@ -301,7 +301,7 @@ async def test_a_table_that_requires_a_parameter_is_never_read_by_the_measure(pi
 
 
 async def test_values_are_looked_up_in_another_column_as_literals_of_their_type(pipeline):
-    from datetime import date
+    from datetime import UTC, date, datetime
 
     reader = gather.values_reader(SimpleNamespace(), "steward")
     pipeline.answers.append([("BP-0001",)])
@@ -310,5 +310,9 @@ async def test_values_are_looked_up_in_another_column_as_literals_of_their_type(
     )
     assert found == frozenset({"BP-0001"})
     assert pipeline.calls[0][0].endswith("""WHERE "permit_id" IN ('BP-0001', 'O''Hare')""")
-    assert gather._literal(date(2026, 1, 2)) == "DATE '2026-01-02'"
     assert gather._literal(12) == "12"
+    # REQ-413 (amended 2026-11-16): a date or timestamp column is in no compared group, so its
+    # values are never looked up in another column.
+    for value in (date(2026, 1, 2), datetime(2026, 1, 2, 3, 4), datetime(2026, 1, 2, tzinfo=UTC)):
+        with pytest.raises(TypeError):
+            gather._literal(value)

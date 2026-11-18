@@ -545,8 +545,7 @@ async def _governed_as(sql: str, role: str) -> list[tuple]:
 
 def _literal(value: Any) -> str:
     """A value read from a compared column, written as an SQL literal to look it up in another.
-    The compared type groups are whole numbers, decimals, text, uuid, dates and timestamps."""
-    from datetime import date, datetime
+    The compared type groups are whole numbers, decimals, text and uuid."""
     from decimal import Decimal
     from uuid import UUID
 
@@ -556,11 +555,6 @@ def _literal(value: Any) -> str:
         return str(value)
     if isinstance(value, (str, UUID)):
         return "'" + str(value).replace("'", "''") + "'"
-    if isinstance(value, datetime):
-        kind = "TIMESTAMP" if value.tzinfo is None else "TIMESTAMP WITH TIME ZONE"
-        return f"{kind} '{value.isoformat(sep=' ')}'"
-    if isinstance(value, date):
-        return f"DATE '{value.isoformat()}'"
     raise TypeError(f"a value of type {type(value).__name__} is not of a compared type group")
 
 

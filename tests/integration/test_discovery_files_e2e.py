@@ -354,8 +354,9 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     assert report["target_same_as_source"] is True and report["tables_not_read"] == 0
 
     # One request per type group; the text one holds both permit columns and every neighborhood.
+    # The files' date and timestamp columns are in no group (REQ-413): no request asks about them.
     groups = [p.split("type group '", 1)[1].split("'", 1)[0] for p in prompts]
-    assert sorted(groups) == ["date", "text", "timestamp", "whole_number"]
+    assert sorted(groups) == ["text", "whole_number"]
     (text,) = [p for p in prompts if "type group 'text'" in p]
     compared = _compared(text)
     for table, column in (
