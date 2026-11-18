@@ -768,6 +768,9 @@
       "private_destination": "De bronnen van deze organisatie mogen alleen openbare adressen bereiken; {{host}} is {{address}}, en dat is er geen.",
       "local_path_refused": "De bronnen van deze organisatie lezen geen bestand van de eigen schijf van de server buiten de eigen map; {{path}} is er zo een. Upload het bestand of geef het op als {files}/… of met een extern adres."
     },
+    "egress": {
+      "private_destination": "Deze organisatie mag alleen openbare adressen aanroepen; {{host}} is {{address}}, en dat is er geen."
+    },
     "sandbox": {
       "wrong_tier": "Deze sandbox wordt elders geserveerd; open hem via zijn eigen adres.",
       "unknown_demo": "Er is geen gepubliceerde demo met de naam {{demo}}.",
