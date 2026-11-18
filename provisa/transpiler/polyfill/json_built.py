@@ -75,7 +75,16 @@ def value_of(node: exp.Expr, function: str, dialect: str) -> tuple[str, exp.Expr
     said = said_of(node)
     if said not in _SCALAR or not plain(node):
         raise Refused(trino.no_form(function, dialect))
-    return said, clickhouse.integer_read(node, dialect) or node
+    return said, integer_literal(node, dialect)
+
+
+def integer_literal(node: exp.Expr, dialect: str) -> exp.Expr:
+    """``node``, a literal integer read as PostgreSQL reads it: its 22003 or 22P02 is the call's
+    answer, before any refusal of the call by its name."""
+    try:
+        return clickhouse.integer_read(node, dialect) or node
+    except Refused as refused:
+        raise Refused(refused.refusal, ruling=True) from refused
 
 
 def element(said: str, hole: str) -> str:

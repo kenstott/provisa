@@ -33,13 +33,14 @@ from collections.abc import Callable
 
 import sqlglot.expressions as exp
 
-from provisa.transpiler.polyfill import clickhouse, trino
+from provisa.transpiler.polyfill import trino
 from provisa.transpiler.polyfill.grid import Feature, Limitation, Rule, Side
 from provisa.transpiler.polyfill.json_built import (
     TYPES,
     called_names,
     element,
     for_name,
+    integer_literal,
     literal_array,
     said_of,
     sorted_by,
@@ -337,7 +338,7 @@ def _key(node: exp.Expr, function: str, dialect: str) -> tuple[str, exp.Expr]:
         )
     if said not in _KEYS or not plain(node):
         raise Refused(trino.no_form(function, dialect))
-    return said, clickhouse.integer_read(node, dialect) or node
+    return said, integer_literal(node, dialect)
 
 
 def built_object(node: exp.Expr, dialect: str) -> exp.Expr | None:
@@ -495,7 +496,7 @@ def delete(node: exp.Expr, dialect: str) -> exp.Expr | None:
             kept_pairs = f"arrayFilter(_p -> _p.1 != $k, {pairs})"
             kept = f"arrayFilter(_e -> NOT (startsWith(_e, '\"') AND JSONExtractString(_e) = $k), {elements})"
         elif said in ("smallint", "integer") and plain(removed):
-            holes["k"] = clickhouse.integer_read(removed, dialect) or removed
+            holes["k"] = integer_literal(removed, dialect)
             raises.append(
                 _raise(
                     "22023",
