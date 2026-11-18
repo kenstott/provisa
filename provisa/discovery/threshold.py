@@ -8,13 +8,14 @@
 # machine learning models is strictly prohibited without explicit written
 # permission from the copyright holder.
 
-"""The score from which a discovery run's proposals start ticked, and every other threshold and
-sample size a run uses, kept for the person who set them (REQ-413, amended 2026-11-18).
+"""A person's discovery settings, kept for the person who set them (REQ-413, amended
+2026-11-18): the score from which a run's proposals start ticked, every other threshold and
+sample size a run uses, and the filter on a run's Score column.
 
-It is kept in the person's row of ``user_directory``, the tenant's per-person store that also
-holds their email preference. A person who has set none has the column's default,
-:data:`DEFAULT`, the threshold a suggestion is kept at (REQ-413: rows scoring 0.70 or more start
-ticked).
+They are kept in the person's row of ``user_directory``, the tenant's per-person store that also
+holds their email preference, read by :func:`read_settings` and written by
+:func:`keep_settings`. A person who has set none has the columns' defaults, :data:`DEFAULTS`
+(REQ-413: rows scoring 0.70 or more start ticked; Score >= 10% shown).
 """
 
 # Requirements: REQ-413
@@ -37,28 +38,6 @@ if TYPE_CHECKING:
 #: The threshold of a person who has set none: the column's default (REQ-413: 70%, the
 #: ``server_default`` of ``user_directory.discovery_threshold``).
 DEFAULT = 0.7
-
-
-async def read(conn: "Connection", user_id: str) -> float:
-    """The person's threshold; :data:`DEFAULT` when they have no row (REQ-413: the default
-    selection starts at 0.70)."""
-    row = (
-        await conn.execute_core(
-            select(user_directory.c.discovery_threshold).where(user_directory.c.user_id == user_id)
-        )
-    ).fetchone()
-    return DEFAULT if row is None else float(row[0])
-
-
-async def keep(conn: "Connection", user_id: str, threshold: float) -> float:
-    """Keep ``threshold`` as the person's own."""
-    await conn.upsert(
-        user_directory,
-        {"user_id": user_id, "discovery_threshold": threshold},
-        index_elements=["user_id"],
-        update_columns=["discovery_threshold"],
-    )
-    return threshold
 
 
 @dataclass(frozen=True)
@@ -84,21 +63,29 @@ class KeyValueSettings:
         }
 
 
+#: The Score filter of a person who has set none: Score at least 10% (REQ-413, amended
+#: 2026-11-18), the ``server_default`` of ``user_directory.discovery_score_filter``.
+SCORE_FILTER_DEFAULT: dict[str, str] = {"op": "ge", "a": "10"}
+
+
 @dataclass(frozen=True)
 class RunSettings:
     """Every threshold and sample size a run uses, as the person last set them in the discover
     dialog (REQ-413, amended 2026-11-18): their Tick from, the sample values shown per column,
-    and Key value overlap's."""
+    and Key value overlap's; and the filter on a run's Score column as they last set it in the
+    results (None: they cleared it)."""
 
     threshold: float
     samples_per_column: int
     key_values: KeyValueSettings
+    score_filter: dict[str, Any] | None
 
     def as_dict(self) -> dict[str, Any]:
         return {
             "threshold": self.threshold,
             "samples_per_column": self.samples_per_column,
             "key_values": self.key_values.as_dict(),
+            "score_filter": self.score_filter,
         }
 
 
@@ -114,6 +101,7 @@ DEFAULTS = RunSettings(
         contained_at=CONTAINED_AT,
         shared_ceiling=SHARED_CEILING,
     ),
+    score_filter=SCORE_FILTER_DEFAULT,
 )
 
 
@@ -130,6 +118,7 @@ async def read_settings(conn: "Connection", user_id: str) -> RunSettings:
                 d.discovery_sample_size,
                 d.discovery_contained_at,
                 d.discovery_shared_ceiling,
+                d.discovery_score_filter,
             ).where(d.user_id == user_id)
         )
     ).fetchone()
@@ -139,6 +128,7 @@ async def read_settings(conn: "Connection", user_id: str) -> RunSettings:
         float(row[0]),
         int(row[1]),
         KeyValueSettings(bool(row[2]), float(row[3]), int(row[4]), float(row[5]), float(row[6])),
+        None if row[7] is None else json.loads(row[7]),
     )
 
 
@@ -153,6 +143,9 @@ async def keep_settings(conn: "Connection", user_id: str, settings: RunSettings)
         "discovery_sample_size": kv.sample_size,
         "discovery_contained_at": kv.contained_at,
         "discovery_shared_ceiling": kv.shared_ceiling,
+        "discovery_score_filter": (
+            None if settings.score_filter is None else json.dumps(settings.score_filter)
+        ),
     }
     await conn.upsert(
         user_directory,
@@ -161,36 +154,3 @@ async def keep_settings(conn: "Connection", user_id: str, settings: RunSettings)
         update_columns=list(values),
     )
     return settings
-
-
-#: The Score filter of a person who has set none: Score at least 10% (REQ-413, amended
-#: 2026-11-18), the ``server_default`` of ``user_directory.discovery_score_filter``.
-SCORE_FILTER_DEFAULT: dict[str, str] = {"op": "ge", "a": "10"}
-
-
-async def read_score_filter(conn: "Connection", user_id: str) -> dict[str, Any] | None:
-    """The person's filter on a run's Score column; None when they cleared it, and
-    :data:`SCORE_FILTER_DEFAULT` when they have no row."""
-    d = user_directory.c
-    row = (
-        await conn.execute_core(select(d.discovery_score_filter).where(d.user_id == user_id))
-    ).fetchone()
-    if row is None:
-        return dict(SCORE_FILTER_DEFAULT)
-    return None if row[0] is None else json.loads(row[0])
-
-
-async def keep_score_filter(
-    conn: "Connection", user_id: str, spec: dict[str, Any] | None
-) -> dict[str, Any] | None:
-    """Keep ``spec`` (None: cleared) as the person's filter on a run's Score column."""
-    await conn.upsert(
-        user_directory,
-        {
-            "user_id": user_id,
-            "discovery_score_filter": None if spec is None else json.dumps(spec),
-        },
-        index_elements=["user_id"],
-        update_columns=["discovery_score_filter"],
-    )
-    return spec

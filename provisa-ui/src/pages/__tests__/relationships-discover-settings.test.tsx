@@ -119,6 +119,7 @@ describe("Discovery dialog: every threshold and sample size", () => {
         contained_at: 0.9,
         shared_ceiling: 0.5,
       },
+      score_filter: null,
     };
     settingsMock.mockResolvedValue({ ...own, defaults: SETTINGS_DEFAULT });
     const ran: DiscoveryScope = {

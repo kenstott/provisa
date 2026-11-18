@@ -114,6 +114,7 @@ vi.mock("../../api/admin", async (importOriginal) => ({
         contained_at: 0.95,
         shared_ceiling: 0.6,
       },
+      score_filter: { op: "ge", a: "10" },
     };
     return { ...defaults, defaults };
   }),

@@ -34,6 +34,7 @@ import {
   type DiscoveryModels,
   type DiscoveryRun,
   type DiscoveryScope,
+  type DiscoverySettings,
   type RunProposal,
 } from "../../api/admin";
 
@@ -76,10 +77,11 @@ export const KEY_VALUES_DEFAULT = {
   shared_ceiling: 0.6,
 };
 /** Every run setting as a person who has set none has them: the defaults. */
-export const SETTINGS_DEFAULT = {
+export const SETTINGS_DEFAULT: DiscoverySettings = {
   threshold: 0.7,
   samples_per_column: 5,
   key_values: KEY_VALUES_DEFAULT,
+  score_filter: { op: "ge", a: "10" },
 };
 export const SCOPE: DiscoveryScope = {
   kinds: ["foreign_keys", "semantics", "key_values"],

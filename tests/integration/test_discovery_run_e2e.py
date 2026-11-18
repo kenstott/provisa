@@ -239,8 +239,10 @@ def test_a_small_discovery_runs_end_to_end(server, endpoint):
     )
 
     counted = _post(server, "/admin/discover/runs/count", scope)
-    assert counted["requests"] >= 1
-    assert sum(counted["by_group"].values()) == counted["requests"]
+    # REQ-413 (amended 2026-11-18): the count is of calls and the table pairs they list.
+    assert 1 <= counted["requests"] <= counted["table_pairs"], counted
+    assert counted["requests"] * counted["table_pairs_per_request"] >= counted["table_pairs"]
+    assert counted["by_group"] == {}
     assert endpoint.prompts == []
 
     run = _post(server, "/admin/discover/runs", scope)["run"]

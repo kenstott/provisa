@@ -732,10 +732,16 @@ export interface DiscoveryRunSettings {
   key_values: KeyValueSettings;
 }
 
-/** The person's run settings, which prefill the dialog, and the defaults Reset to defaults
+/** REQ-413 (amended 2026-11-18): the person's discovery settings, one store: the run settings
+ *  and the filter on a run's Score column the results open with (null: cleared). */
+export interface DiscoverySettings extends DiscoveryRunSettings {
+  score_filter: ScoreFilter | null;
+}
+
+/** The person's settings, which prefill the dialog, and the defaults Reset to defaults
  *  restores. */
 export function fetchDiscoverySettings(): Promise<
-  DiscoveryRunSettings & { defaults: DiscoveryRunSettings }
+  DiscoverySettings & { defaults: DiscoverySettings }
 > {
   return discoveryRequest("/settings", "Discovery settings");
 }

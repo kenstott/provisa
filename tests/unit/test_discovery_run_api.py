@@ -2410,9 +2410,17 @@ async def test_the_score_filter_is_the_persons_own_ten_percent_until_set(monkeyp
         "op": "ge",
         "a": "10",
     }
+    # One store: the settings read gives the same filter, and a run started from the dialog,
+    # which keeps the run settings, leaves it as set.
+    await discovery.start_run(_REQUEST, _scope(threshold=0.6))
+    settings = await discovery.get_settings(_REQUEST)
+    assert settings["threshold"] == 0.6
+    assert settings["score_filter"] == {"op": "between", "a": "20", "b": "80"}
     # Cleared, it stays cleared.
     await discovery.put_score_filter(_REQUEST, discovery.ScoreFilterBody(filter=None))
     assert (await discovery.list_proposals(_REQUEST, run["id"]))["score_filter"] is None
+    assert (await discovery.get_settings(_REQUEST))["score_filter"] is None
+    assert (await discovery.get_threshold(_REQUEST))["threshold"] == 0.6
     with pytest.raises(Exception):
         discovery.ScoreFilter(op="contains", a="x")  # type: ignore[arg-type]
 
@@ -2555,7 +2563,12 @@ async def test_every_setting_is_remembered_for_the_person_and_prefills_their_nex
         "contained_at": 0.95,
         "shared_ceiling": 0.6,
     }
-    defaults = {"threshold": 0.7, "samples_per_column": 5, "key_values": key_defaults}
+    defaults = {
+        "threshold": 0.7,
+        "samples_per_column": 5,
+        "key_values": key_defaults,
+        "score_filter": {"op": "ge", "a": "10"},
+    }
     assert await discovery.get_settings(_REQUEST) == {**defaults, "defaults": defaults}
     set_now = {
         "threshold": 0.55,
@@ -2573,7 +2586,12 @@ async def test_every_setting_is_remembered_for_the_person_and_prefills_their_nex
         "contained_at": 0.85,
         "shared_ceiling": 0.4,
     }
-    kept = {"threshold": 0.55, "samples_per_column": 8, "key_values": key_kept}
+    kept = {
+        "threshold": 0.55,
+        "samples_per_column": 8,
+        "key_values": key_kept,
+        "score_filter": {"op": "ge", "a": "10"},
+    }
     assert await discovery.get_settings(_REQUEST) == {**kept, "defaults": defaults}
     assert await discovery.get_settings(other) == {**defaults, "defaults": defaults}
     # Key value overlap not chosen: remembered as not chosen, its last settings kept.

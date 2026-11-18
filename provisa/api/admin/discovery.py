@@ -649,12 +649,13 @@ async def list_proposals(request: Request, run_id: int):  # REQ-413
     async with pool.acquire() as _conn:
         conn = cast("Connection", _conn)
         held = await _held(conn, run_id)
+        kept = await threshold_repo.read_settings(conn, _person(request))
         return {
             "proposals": await proposals_repo.listed(conn, state, run_id),
-            "threshold": await threshold_repo.read(conn, _person(request)),
+            "threshold": kept.threshold,
             # The person's filter on the Score column, applied when the results open
             # (REQ-413, amended 2026-11-18); None when they cleared it.
-            "score_filter": await threshold_repo.read_score_filter(conn, _person(request)),
+            "score_filter": kept.score_filter,
             # The score the run keeps a suggestion at: the threshold it was started with
             # (REQ-413, amended 2026-11-18); a proposal's reason below_threshold is against it,
             # whatever the person's threshold is now.
@@ -695,14 +696,16 @@ async def _remember(conn: "Connection", request: Request, body: RunScope) -> Non
             )
         )
     await threshold_repo.keep_settings(
-        conn, person, threshold_repo.RunSettings(body.threshold, samples, kv)
+        conn,
+        person,
+        replace(last, threshold=body.threshold, samples_per_column=samples, key_values=kv),
     )
 
 
 @router.get("/settings")
 async def get_settings(request: Request):  # REQ-413
-    """The signed-in person's run settings, which prefill the discover dialog, and the defaults
-    Reset to defaults restores."""
+    """The signed-in person's settings: the run settings, which prefill the discover dialog, and
+    the Score filter the results open with; and the defaults Reset to defaults restores."""
     require_capability_request(request, "create_relationship")
     pool = state.model_db
     assert pool is not None
@@ -718,7 +721,8 @@ async def get_threshold(request: Request):  # REQ-413
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        return {"threshold": await threshold_repo.read(cast("Connection", _conn), _person(request))}
+        kept = await threshold_repo.read_settings(cast("Connection", _conn), _person(request))
+    return {"threshold": kept.threshold}
 
 
 @router.put("/threshold")
@@ -728,10 +732,13 @@ async def put_threshold(request: Request, body: ThresholdBody):  # REQ-413
     pool = state.model_db
     assert pool is not None
     async with pool.acquire() as _conn:
-        kept = await threshold_repo.keep(
-            cast("Connection", _conn), _person(request), body.threshold
+        conn = cast("Connection", _conn)
+        person = _person(request)
+        last = await threshold_repo.read_settings(conn, person)
+        kept = await threshold_repo.keep_settings(
+            conn, person, replace(last, threshold=body.threshold)
         )
-    return {"threshold": kept}
+    return {"threshold": kept.threshold}
 
 
 class ScoreFilter(BaseModel):  # REQ-413
@@ -758,10 +765,11 @@ async def put_score_filter(request: Request, body: ScoreFilterBody):  # REQ-413
     assert pool is not None
     spec = None if body.filter is None else body.filter.model_dump(exclude_none=True)
     async with pool.acquire() as _conn:
-        kept = await threshold_repo.keep_score_filter(
-            cast("Connection", _conn), _person(request), spec
-        )
-    return {"filter": kept}
+        conn = cast("Connection", _conn)
+        person = _person(request)
+        last = await threshold_repo.read_settings(conn, person)
+        kept = await threshold_repo.keep_settings(conn, person, replace(last, score_filter=spec))
+    return {"filter": kept.score_filter}
 
 
 class ApplyRequest(BaseModel):
