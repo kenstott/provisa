@@ -274,12 +274,12 @@ def _answered_after_governance(
 
 
 def _mentions(text: str, view: str) -> bool:
-    """Whether ``text`` may read ``view``: its name appears; for a view keyed ``schema.name`` (an
-    ontology Class, REQ-2163), its name under that schema, quoted or not."""
-    if "." not in view:
-        return view in text
-    schema, name = view.split(".", 1)
-    return view in text or f'"{schema}"."{name}"' in text
+    """Whether ``text`` reads ``view``: a reference to it as a table, quoted or not, which is what
+    its expansion replaces (``compiler.view_expand.reads_view``). A column named like the view (a
+    shared dimension is named for its column, REQ-413) is not a read of it."""
+    from provisa.compiler.view_expand import reads_view  # noqa: PLC0415
+
+    return reads_view(text, view)
 
 
 def views_read(sql: str, view_sql_map: dict[str, str]) -> dict[str, str]:

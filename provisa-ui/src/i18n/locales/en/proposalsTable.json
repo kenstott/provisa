@@ -61,6 +61,8 @@
       "noValues": "The source holds no values.",
       "modelScore": "Scored by the model: no values were compared."
     },
-    "manyToMany": "Neither column is a key, so it cannot be accepted."
+    "dimensionMade": "Accepting makes the shared dimension {{name}}, which both columns join.",
+    "dimensionJoined": "Accepting joins both columns to the shared dimension {{name}}.",
+    "twoDimensions": "Its columns already join two different shared dimensions, so it cannot be accepted."
   }
 }

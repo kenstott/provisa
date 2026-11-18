@@ -113,9 +113,11 @@ class _Endpoint:
                         "cardinality": "many-to-one",
                         "confidence": confidence,
                         "reasoning": f"{st}.{sc} names {tt}.{tc}",
-                        "suggested_name": f"{st}-{sc}-{tt}".replace("_", "-"),
+                        "suggested_name": named[0]
+                        if named
+                        else f"{st}-{sc}-{tt}".replace("_", "-"),
                     }
-                    for st, sc, tt, tc, confidence in _ANSWERS
+                    for st, sc, tt, tc, confidence, *named in _ANSWERS
                     if (st, sc) in compared and (tt, tc) in compared
                 ]
                 payload = json.dumps(
@@ -409,7 +411,8 @@ def test_a_run_over_the_files_suggests_their_key_and_lists_all_it_read(
     assert permit["target"]["values"] == 128 and permit["target"]["distinct"] is True
     address = by_edge[_ADDRESS]["measure"]
     assert (address["source_in_target"], address["source"]["values"]) == (75, 215)
-    assert [r["acceptable"] for r in listed] == [True, False, False, False, True]
+    # A many-to-many pair is accepted as a shared dimension (REQ-413): every row can be.
+    assert [r["acceptable"] for r in listed] == [True, True, True, True, True]
     assert by_edge[_ADDRESS]["reasoning"] == (
         "complaints_2026_08.address names building_permits.address"
     )

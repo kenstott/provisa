@@ -143,6 +143,7 @@
   "tests/integration/test_discovery_count_demo_e2e.py": 60.0,
   "tests/integration/test_discovery_files_e2e.py": 120.0,
   "tests/integration/test_discovery_demo_apply_e2e.py": 90.0,
+  "tests/integration/test_discovery_shared_dimension_e2e.py": 120.0,
   "tests/integration/test_discovery_run_e2e.py": 60.0,
   "tests/integration/test_domain_delete_guarded.py": 69.6,
   "tests/integration/test_domain_policy_integration.py": 2.5,

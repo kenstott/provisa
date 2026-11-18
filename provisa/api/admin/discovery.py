@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any, Literal, cast
 from fastapi import APIRouter, Request
 from pydantic import BaseModel, ConfigDict, Field
 
+from provisa.api.admin import discovery_dimension
 from provisa.api.app import state
 from provisa.api.errors import ApiError
 from provisa.discovery import candidates as candidates_repo
@@ -662,7 +663,13 @@ async def apply_decisions(request: Request, run_id: int, body: ApplyRequest):  #
             )
         for each in body.accept:
             try:
-                relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
+                if await proposals_repo.shared_pair(conn, run_id, each.id):
+                    # REQ-413: a many-to-many pair is accepted as a shared dimension.
+                    relationship_id = await discovery_dimension.accept(
+                        request, conn, run_id, each.id, each.name
+                    )
+                else:
+                    relationship_id = await proposals_repo.accept(conn, run_id, each.id, each.name)
             except Exception as exc:  # reported per proposal, the rest go on
                 _log.warning("Apply: accepting proposal %s failed: %s", each.id, exc)
                 results.append(

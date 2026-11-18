@@ -185,9 +185,8 @@ from function_report import (
     ROW_ORDER,
     ZONE_PACKAGING,
 )
-from pgwire_function_probe import Function
-
-from provisa.transpiler import server_functions
+from by_design import SERVER_FUNCTION_GROUP
+from pgwire_function_probe import Function, not_served
 
 #: The session settings both servers compare under.
 SETTINGS = (
@@ -2477,7 +2476,6 @@ SERVER_EXTENSIONS_GROUP = "The server's installed extensions"
 SINGLE_BYTE_DATABASE_GROUP = "One-argument to_ascii needs a single-byte database"
 NO_SQL_VALUE_GROUP = "Types no SQL value can have"
 INTERNAL_TYPE_GROUP = "Types that exist only inside PostgreSQL"
-SERVER_FUNCTION_GROUP = "A function that reads or acts on its server is not served"
 GROUPS = {
     # REQ-2167, amended 2026-11-02, Side-effect functions.
     SIDE_EFFECT_GROUP: (
@@ -2560,7 +2558,7 @@ GROUPS = {
     "types, record, aclitem, xid and xid8), a type's input by oid and an aggregate's transition "
     "state are refused by name: no engine holds such a value. A function that merely takes or "
     "returns one, such as row_to_json(record) or a record comparison, is a gap and stays refused.",
-    # REQ-001: the validator's V007, whose list is provisa.transpiler.server_functions.
+    # REQ-001: the validator's V007 (pgwire_function_probe.not_served).
     SERVER_FUNCTION_GROUP: "A call of a function that reads or acts on its server, outside the "
     "tables a statement is governed by, is refused on every engine, PostgreSQL included: one "
     "that runs SQL it is given as text, or reads a file, a large object, a "
@@ -2912,24 +2910,6 @@ _FIXTURE_ANSWERS = frozenset(
 
 #: A rule's node tree, which a call reads from pg_rewrite.
 _NODE_TREES = frozenset({"pg_node_tree_out", "pg_node_tree_send"})
-
-
-#: The validator's refusal of a function that reads or acts on its server (V007 of
-#: compiler.sql_validator), as a client reads it, and the function it names.
-_NOT_SERVED = re.compile(
-    r"\[V007\] Function '([^']+)' is not served: it reads or acts on its server"
-)
-
-
-def not_served(name: str, error: str) -> bool:
-    """Whether ``error`` is the validator's refusal of ``name`` itself as a function that reads or
-    acts on its server. The list is the validator's own (transpiler.server_functions): a refusal
-    naming another function, or one that is not on it, is no decision about ``name``, and stays
-    the error it is."""
-    listed = server_functions.refused_in_a_governed_statement(name, names_a_table=True)
-    return listed == "server" and any(
-        said[1] == name.lower() for said in _NOT_SERVED.finditer(error)
-    )
 
 
 def decided_error(name: str, error: str) -> str | None:
